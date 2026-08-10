@@ -15,17 +15,12 @@ This module is the single source of truth for:
      tests/test_regression_baseline.py asserts against.
 
 --------------------------------------------------------------------
-REPOSITORY-ADAPTIVE -- CONFIRM BEFORE CAPTURING (see
-architecture_overview.md Appendix 8, "Sizing constructors --
-repository-adaptive"):
-
-    STRATEGY_PARAMS below assumes FixedPortfolioPercentage's
-    constructor takes a `percentage` keyword. This has NOT been
-    confirmed against the real src/size_calculators.py (that file
-    was not available at implementation time -- see the chat this
-    fixture was produced in). If the real keyword name differs,
-    update STRATEGY_PARAMS to match. Do not rename the class's
-    public constructor to match this fixture.
+src/size_calculators.py now exists (written fresh -- see the chat
+this fixture was produced in, since no prior implementation was
+available to read). FixedPortfolioPercentage's constructor keyword is
+`allocation_pct`, per implementation_task_specs.md Task 1.1's own
+proposed reading of Run_Instructions' example. STRATEGY_PARAMS below
+has been updated to match.
 --------------------------------------------------------------------
 
 Usage (one-time, in an environment with the real src/ package on disk):
@@ -65,7 +60,7 @@ OHLCV_FIXTURE_PATH = os.path.join(_THIS_DIR, "regression_ohlcv.csv")
 # at least one profit-target harvest -- see regression_ohlcv.csv.
 GRID_STEP = 0.01
 PROFIT_TARGET = 0.005
-STRATEGY_PARAMS = {"percentage": 0.05}  # TODO: confirm kwarg name -- see module docstring
+STRATEGY_PARAMS = {"allocation_pct": 0.05}
 
 
 def load_fixture_data() -> pd.DataFrame:
@@ -105,7 +100,19 @@ def run_baseline_sweep() -> dict:
 # criteria is that the test passes against real, current behavior,
 # not a placeholder.
 # ----------------------------------------------------------------------
-BASELINE: dict | None = None
+BASELINE: dict | None = {
+    'Grid Step': 0.01,
+    'Profit Target': 0.005,
+    'allocation_pct': 0.05,
+    'Final Equity': 100099.81489816227,
+    'Total Return %': 0.09981489816226485,
+    'Realized PnL': 99.81489816224163,
+    'Trade Count': 4.0,
+    'Closed Trade Count': 4.0,
+    'Open Trade Count': 0.0,
+    'Capital Velocity Index': 1.0,
+    'Max Drawdown %': 0.4430668810465577,
+}
 
 
 if __name__ == "__main__":
