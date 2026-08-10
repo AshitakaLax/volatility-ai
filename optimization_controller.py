@@ -1,0 +1,95 @@
+import itertools
+import logging
+import pandas as pd
+from src.ledger import AssetLotLedger
+from src.size_calculators import FixedPortfolioPercentage
+from src.order_management_system import OrderManagementSystem
+from src.performance_analyzer import PerformanceAnalyzer
+
+logger = logging.getLogger("Optimizer")
+
+class BacktestState:
+    """Enforces isolated state management for simulation iterations."""
+    def __init__(self, initial_cash: float, start_price: float):
+        self.cash = initial_cash
+        self.last_buy_price = start_price
+        self.peak_equity = initial_cash
+        self.max_drawdown = 0.0
+
+class OptimizationController:
+    def __init__(self, historical_data: pd.DataFrame):
+        self.data = historical_data
+        logger.info(f"OptimizationController initialized with historical dataset length: {len(historical_data)}")
+
+    def run_sweep(self, grid_steps: list, profit_targets: list, strategy_class, strategy_params_grid: list[dict]) -> pd.DataFrame:
+        """
+        Creates a parametric multi-dimensional sweep.
+        :param strategy_class: The uninstantiated class of the strategy (e.g., RsiMomentumSizing).
+        :param strategy_params_grid: A list of keyword-argument dictionaries to instantiate the strategy.
+        """
+        results = []
+        combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
+        logger.info(f"Starting parameter sweep. Evaluating {len(combinations)} total variations.")
+        
+        for idx, (step, target, params) in enumerate(combinations):
+            logger.debug(f"Evaluating iteration [{idx + 1}/{len(combinations)}]: Step={step}, Target={target}, Params={params}")
+            
+            ledger = AssetLotLedger()
+            # Dynamically instantiate the target sizing engine with the current dictionary of parameters
+            sizing_engine = strategy_class(**params)
+            oms = OrderManagementSystem(mode="SIMULATION")
+            
+            start_price = self.data['close'].iloc[0]
+            state = BacktestState(initial_cash=100000.0, start_price=start_price)
+            
+            for timestamp, row in self.data.iterrows():
+                current_price = row['close']
+                
+                # 1. Harvest target checks
+                marketable = ledger.get_marketable_lots(current_price)
+                for lot in marketable:
+                    exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
+                    state.cash += (exec_res["qty"] * exec_res["filled_avg_price"])
+                    ledger.close_lot(lot)
+                
+                # 2. Step purchase checks
+                if current_price <= state.last_buy_price * (1.0 - step):
+                    open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
+                    total_equity = state.cash + open_assets_val
+                    
+                    # Track peaks and drawdowns
+                    if total_equity > state.peak_equity:
+                        state.peak_equity = total_equity
+                    current_dd = (state.peak_equity - total_equity) / state.peak_equity
+                    if current_dd > state.max_drawdown:
+                        state.max_drawdown = current_dd
+
+                    # Query the sizing engine (RSI/Drawdown internal states process the tick here)
+                    trade_value = sizing_engine.calculate_trade_value(total_equity, current_price)
+                    
+                    if state.cash >= trade_value and trade_value > 0:
+                        order = oms.execute_buy("TQQQ", trade_value, current_price)
+                        ledger.register_buy(
+                            order["id"], "TQQQ", order["filled_avg_price"], order["qty"], target
+                        )
+                        state.cash -= trade_value
+                        state.last_buy_price = current_price
+            
+            final_price = self.data['close'].iloc[-1]
+            open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
+            final_portfolio_value = state.cash + open_assets_val
+            
+            metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, 100000.0)
+            metrics["Max Drawdown %"] = state.max_drawdown * 100.0
+            
+            # Merge the strategy parameter dictionary directly into the results table for clean output
+            result_row = {
+                "Grid Step": step,
+                "Profit Target": target,
+                **params, 
+                **metrics
+            }
+            results.append(result_row)
+            
+        logger.info("Hyperparameter sweeping logic execution complete.")
+        return pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False)
