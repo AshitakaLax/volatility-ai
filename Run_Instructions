@@ -9,22 +9,30 @@ data/TQQQ_historical.csv
 Step 2: Running the Parametric Sweep
 An example execution script can be run with:
 
-python src/optimization_controller.py
+python optimization_controller.py
 
 Script Example & Ingestion Configuration:
 import pandas as pd
-from src.optimization_controller import OptimizationController
+from optimization_controller import OptimizationController
+from src.size_calculators import FixedPortfolioPercentage
 
 # Load historical pandas frame
 df = pd.read_csv("data/TQQQ_historical.csv", parse_dates=['timestamp'])
 df.set_index('timestamp', inplace=True)
 
+# Each dict in strategy_params_grid is a set of constructor kwargs for
+# strategy_class -- run_sweep instantiates FixedPortfolioPercentage(**params)
+# once per combination. allocation_pct is FixedPortfolioPercentage's real
+# constructor keyword (src/size_calculators.py).
+strategy_params_grid = [{"allocation_pct": a} for a in [0.01, 0.02]]  # 1% and 2% portfolio limits
+
 # Define target sweeping matrix bounds
 controller = OptimizationController(historical_data=df)
 results_df = controller.run_sweep(
-grid_steps=[0.005, 0.01, 0.015], # 0.5%, 1.0%, 1.5% drops
-profit_targets=[0.003, 0.005, 0.01], # 0.3%, 0.5%, 1.0% targets
-allocations=[0.01, 0.02] # 1% and 2% portfolio limits
+    grid_steps=[0.005, 0.01, 0.015],  # 0.5%, 1.0%, 1.5% drops
+    profit_targets=[0.003, 0.005, 0.01],  # 0.3%, 0.5%, 1.0% targets
+    strategy_class=FixedPortfolioPercentage,
+    strategy_params_grid=strategy_params_grid,
 )
 
 # Output optimization sorted by Capital Velocity Index
