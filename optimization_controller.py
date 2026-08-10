@@ -35,7 +35,6 @@ class OptimizationController:
             logger.debug(f"Evaluating iteration [{idx + 1}/{len(combinations)}]: Step={step}, Target={target}, Params={params}")
             
             ledger = AssetLotLedger()
-            # Dynamically instantiate the target sizing engine with the current dictionary of parameters
             sizing_engine = strategy_class(**params)
             oms = OrderManagementSystem(mode="SIMULATION")
             
@@ -44,6 +43,10 @@ class OptimizationController:
             
             for timestamp, row in self.data.iterrows():
                 current_price = row['close']
+
+                # Every sizing strategy receives exactly one tick for every bar,
+                # before any bar-level trading decisions are evaluated.
+                sizing_engine.record_tick(current_price)
 
                 # Track portfolio equity, peak equity, and drawdown on every bar,
                 # not only on bars that happen to trigger a grid purchase.
@@ -75,7 +78,7 @@ class OptimizationController:
                     if current_dd > state.max_drawdown:
                         state.max_drawdown = current_dd
 
-                    trade_value = sizing_engine.calculate_trade_value(total_equity, current_price)
+                    trade_value = sizing_engine.calculate_trade_value(total_equity, current_price, current_dd)
                     
                     if state.cash >= trade_value and trade_value > 0:
                         order = oms.execute_buy("TQQQ", trade_value, current_price)
@@ -92,7 +95,6 @@ class OptimizationController:
             metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, 100000.0)
             metrics["Max Drawdown %"] = state.max_drawdown * 100.0
             
-            # Merge the strategy parameter dictionary directly into the results table for clean output
             result_row = {
                 "Grid Step": step,
                 "Profit Target": target,
