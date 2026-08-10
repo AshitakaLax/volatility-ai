@@ -44,6 +44,16 @@ class OptimizationController:
             
             for timestamp, row in self.data.iterrows():
                 current_price = row['close']
+
+                # Track portfolio equity, peak equity, and drawdown on every bar,
+                # not only on bars that happen to trigger a grid purchase.
+                open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
+                total_equity = state.cash + open_assets_val
+                if total_equity > state.peak_equity:
+                    state.peak_equity = total_equity
+                current_dd = (state.peak_equity - total_equity) / state.peak_equity
+                if current_dd > state.max_drawdown:
+                    state.max_drawdown = current_dd
                 
                 # 1. Harvest target checks
                 marketable = ledger.get_marketable_lots(current_price)
@@ -54,17 +64,17 @@ class OptimizationController:
                 
                 # 2. Step purchase checks
                 if current_price <= state.last_buy_price * (1.0 - step):
+                    # Recalculate equity after any same-bar harvest before sizing the buy.
                     open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
                     total_equity = state.cash + open_assets_val
                     
-                    # Track peaks and drawdowns
+                    # Track peaks and drawdowns for the post-harvest account state as well.
                     if total_equity > state.peak_equity:
                         state.peak_equity = total_equity
                     current_dd = (state.peak_equity - total_equity) / state.peak_equity
                     if current_dd > state.max_drawdown:
                         state.max_drawdown = current_dd
 
-                    # Query the sizing engine (RSI/Drawdown internal states process the tick here)
                     trade_value = sizing_engine.calculate_trade_value(total_equity, current_price)
                     
                     if state.cash >= trade_value and trade_value > 0:
