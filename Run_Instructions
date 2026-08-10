@@ -1,0 +1,31 @@
+5. Running Backtests (Hyperparameter Sweeps)
+Backtests process historical datasets sequentially via the OptimizationController, bypassing aggregate positions in order to find target grid-step and take-profit parameters that maximize performance.
+
+Step 1: Establish Historical CSV Data
+Ensure you have structured historical closing prices in a local directory matching this path framework:
+
+data/TQQQ_historical.csv
+
+Step 2: Running the Parametric Sweep
+An example execution script can be run with:
+
+python src/optimization_controller.py
+
+Script Example & Ingestion Configuration:
+import pandas as pd
+from src.optimization_controller import OptimizationController
+
+# Load historical pandas frame
+df = pd.read_csv("data/TQQQ_historical.csv", parse_dates=['timestamp'])
+df.set_index('timestamp', inplace=True)
+
+# Define target sweeping matrix bounds
+controller = OptimizationController(historical_data=df)
+results_df = controller.run_sweep(
+grid_steps=[0.005, 0.01, 0.015], # 0.5%, 1.0%, 1.5% drops
+profit_targets=[0.003, 0.005, 0.01], # 0.3%, 0.5%, 1.0% targets
+allocations=[0.01, 0.02] # 1% and 2% portfolio limits
+)
+
+# Output optimization sorted by Capital Velocity Index
+print(results_df.head(5))
