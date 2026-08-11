@@ -8,6 +8,7 @@ from src.performance_analyzer import PerformanceAnalyzer
 from src import data_validation
 from src.cost_models import TransactionCostModel, ZeroCostModel
 from src import intraday_validation
+from src.risk_manager import RiskManager
 
 logger = logging.getLogger("Optimizer")
 
@@ -32,6 +33,7 @@ class OptimizationController:
         strategy_class,
         strategy_params_grid: list[dict],
         cost_model: TransactionCostModel = None,
+        risk_manager: RiskManager = None,
     ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
@@ -39,8 +41,11 @@ class OptimizationController:
         :param strategy_params_grid: A list of keyword-argument dictionaries to instantiate the strategy.
         :param cost_model: Commission/slippage model applied to every fill. Defaults to
             ZeroCostModel() (zero commission, zero slippage) -- exactly today's behavior.
+        :param risk_manager: Clamps proposed new-buy value. Defaults to RiskManager() with
+            both limits unset (unlimited) -- exactly today's behavior.
         """
         cost_model = cost_model if cost_model is not None else ZeroCostModel()
+        risk_manager = risk_manager if risk_manager is not None else RiskManager()
         results = []
         combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
         logger.info(f"Starting parameter sweep. Evaluating {len(combinations)} total variations.")
@@ -122,6 +127,9 @@ class OptimizationController:
                     # Query the sizing engine (RSI/Drawdown internal states process the tick here)
                     trade_value = sizing_engine.calculate_trade_value(
                         total_equity, current_price, current_dd=current_dd
+                    )
+                    trade_value = risk_manager.clamp_trade_value(
+                        trade_value, total_equity, state.cash, len(ledger.open_lots)
                     )
                     
                     if state.cash >= trade_value and trade_value > 0:
