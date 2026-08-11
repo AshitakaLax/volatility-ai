@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 from src.ledger import AssetLotLedger
 from src.size_calculators import FixedPortfolioPercentage
-from src.order_management_system import OrderManagementSystem
+from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 
 logger = logging.getLogger("Optimizer")
@@ -67,7 +67,32 @@ class OptimizationController:
                 marketable = ledger.get_marketable_lots(current_price)
                 for lot in marketable:
                     exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
-                    state.cash += (exec_res["qty"] * exec_res["filled_avg_price"])
+                    if exec_res.get("status") != OrderStatus.FILLED:
+                        # NEW/ACCEPTED/PENDING/PARTIALLY_FILLED/CANCELED/
+                        # REJECTED/EXPIRED are all non-complete-fill states
+                        # -- lot stays open, nothing credited. (Real
+                        # partial-fill accounting -- crediting the filled
+                        # portion, reducing shares, leaving the rest open
+                        # -- needs ledger support this repo doesn't have
+                        # yet; see AssetLotLedger.close_lot and Task 7.2.)
+                        logger.warning(
+                            f"Sell not filled for lot {lot.order_id}: status={exec_res.get('status')}"
+                        )
+                        continue
+
+                    filled_qty = exec_res["filled_qty"]
+                    filled_price = exec_res["filled_avg_price"]
+                    net_sell_proceeds = filled_qty * filled_price
+                    allocated_cost_basis = lot.buy_price * filled_qty
+                    if net_sell_proceeds < allocated_cost_basis:
+                        logger.warning(
+                            f"Sell for lot {lot.order_id} rejected: net proceeds "
+                            f"{net_sell_proceeds:.2f} would be below cost basis "
+                            f"{allocated_cost_basis:.2f} (no-loss invariant)."
+                        )
+                        continue
+
+                    state.cash += net_sell_proceeds
                     ledger.close_lot(lot)
                 
                 # 2. Step purchase checks
@@ -81,11 +106,14 @@ class OptimizationController:
                     
                     if state.cash >= trade_value and trade_value > 0:
                         order = oms.execute_buy("TQQQ", trade_value, current_price)
-                        ledger.register_buy(
-                            order["id"], "TQQQ", order["filled_avg_price"], order["qty"], target
-                        )
-                        state.cash -= trade_value
-                        state.last_buy_price = current_price
+                        if order.get("status") != OrderStatus.FILLED:
+                            logger.warning(f"Buy not filled: status={order.get('status')}")
+                        else:
+                            filled_qty = order["filled_qty"]
+                            filled_price = order["filled_avg_price"]
+                            ledger.register_buy(order["id"], "TQQQ", filled_price, filled_qty, target)
+                            state.cash -= (filled_qty * filled_price)
+                            state.last_buy_price = current_price
             
             final_price = self.data['close'].iloc[-1]
             open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
