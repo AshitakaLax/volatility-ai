@@ -33,8 +33,12 @@ class OptimizationController:
         strategy_params_grid: list[dict],
         cost_model: TransactionCostModel | None = None,
         risk_manager: RiskManager | None = None,
+        on_flat_reentry: str = "stale_reference",
     ) -> pd.DataFrame:
         """Creates a parametric multi-dimensional sweep."""
+        if on_flat_reentry not in {"stale_reference", "reset_to_market"}:
+            raise ValueError("on_flat_reentry must be 'stale_reference' or 'reset_to_market'")
+
         results = []
         cost_model = ZeroCostModel() if cost_model is None else cost_model
         risk_manager = RiskManager() if risk_manager is None else risk_manager
@@ -70,6 +74,8 @@ class OptimizationController:
                             effective_price, sell_cost = cost_model.apply_sell(float(filled_price), filled_qty)
                             state.cash += filled_qty * effective_price - sell_cost
                             ledger.close_lot(lot)
+                            if not ledger.open_lots and on_flat_reentry == "reset_to_market":
+                                state.last_buy_price = current_price
                     else:
                         logger.warning(f"Sell not filled for lot {lot.symbol}: status={exec_res.get('status')}")
 
