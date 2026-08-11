@@ -45,6 +45,13 @@ class OptimizationController:
             for timestamp, row in self.data.iterrows():
                 current_price = row['close']
 
+                # Every bar, unconditionally -- B4. Strategies maintaining
+                # an internal rolling window (RSI, Bayesian posteriors)
+                # need continuous ticks even on bars with no trigger.
+                # Interim form (price only), per architecture_overview.md
+                # Section 5.2 -- Task 4.1 migrates this to record_tick(context).
+                sizing_engine.record_tick(current_price)
+
                 # Track peaks and drawdowns every bar (not only on trigger
                 # bars) -- B3. A stale/sparse drawdown value here would
                 # also feed sizing strategies once threaded through.
