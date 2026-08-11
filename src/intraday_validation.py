@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import itertools
 from typing import Literal
 
 import pandas as pd
@@ -17,15 +16,7 @@ class IntradayValidationError(ValueError):
 
 
 class IntradayValidator:
-    """Replay finalist parameter combinations using OHLC intrabar touches.
-
-    The normal daily-close sweep is intentionally untouched. This validator is
-    an opt-in diagnostic pass: buys use the bar close, while open sell targets
-    are considered touched when the bar high reaches the target. If a bar also
-    reaches a grid-buy level, ``sell_first`` is the conservative/default
-    ordering because the canonical decision sequence evaluates exits before
-    new entries.
-    """
+    """Replay finalists using OHLC intrabar sell-target touches."""
 
     def __init__(self, *, intrabar_priority: Literal["sell_first", "buy_first"] = "sell_first") -> None:
         if intrabar_priority not in {"sell_first", "buy_first"}:
@@ -54,15 +45,12 @@ class IntradayValidator:
 
         rows = []
         for finalist in finalist_params:
-            step = float(finalist["Grid Step"])
-            target = float(finalist["Profit Target"])
-            strategy_params = self._strategy_params(finalist, strategy_params_grid)
             metrics = self._replay(
                 intraday_data,
-                step=step,
-                target=target,
+                step=float(finalist["Grid Step"]),
+                target=float(finalist["Profit Target"]),
                 strategy_class=strategy_class,
-                strategy_params=strategy_params,
+                strategy_params=self._strategy_params(finalist, strategy_params_grid),
                 initial_cash=initial_cash,
             )
             rows.append({
@@ -79,8 +67,7 @@ class IntradayValidator:
     def _strategy_params(finalist: dict, strategy_params_grid: list[dict]) -> dict:
         if not strategy_params_grid:
             return {}
-        keys = strategy_params_grid[0].keys()
-        return {key: finalist[key] for key in keys if key in finalist}
+        return {key: finalist[key] for key in strategy_params_grid[0].keys() if key in finalist}
 
     def _replay(self, data, *, step, target, strategy_class, strategy_params, initial_cash):
         ledger = AssetLotLedger()
@@ -93,6 +80,7 @@ class IntradayValidator:
 
         for _, row in data.iterrows():
             price = float(row["close"])
+            bar_high = float(row["high"])
             sizing.record_tick(price)
             equity = cash + sum(lot.shares * price for lot in ledger.open_lots)
             peak_equity = max(peak_equity, equity)
@@ -100,7 +88,8 @@ class IntradayValidator:
 
             def harvest() -> None:
                 nonlocal cash
-                for lot in ledger.get_marketable_lots(price, market_high=float(row["high"])):
+                touched = [lot for lot in ledger.open_lots if bar_high >= lot.target_sell_price]
+                for lot in touched:
                     order = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
                     if order.get("status") == OrderStatus.FILLED.value:
                         qty = float(order.get("filled_qty", order.get("qty", 0.0)))
