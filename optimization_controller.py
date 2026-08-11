@@ -75,7 +75,9 @@ class OptimizationController:
                     # total_equity/current_dd already computed above for every bar.
 
                     # Query the sizing engine (RSI/Drawdown internal states process the tick here)
-                    trade_value = sizing_engine.calculate_trade_value(total_equity, current_price)
+                    trade_value = sizing_engine.calculate_trade_value(
+                        total_equity, current_price, current_dd=current_dd
+                    )
                     
                     if state.cash >= trade_value and trade_value > 0:
                         order = oms.execute_buy("TQQQ", trade_value, current_price)
