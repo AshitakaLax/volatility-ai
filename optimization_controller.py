@@ -1,23 +1,28 @@
 import itertools
 import logging
+from typing import Type
+
 import pandas as pd
+
 from src import data_validation
+from src.cost_models import TransactionCostModel, ZeroCostModel
 from src.ledger import AssetLotLedger
-from src.size_calculators import FixedPortfolioPercentage
+from src.market_context import MarketContext, SimulationResult
 from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
-from src.cost_models import TransactionCostModel, ZeroCostModel
 from src.risk_manager import RiskManager
+from src.size_calculators import SizingStrategy
 
 logger = logging.getLogger("Optimizer")
 
+
 class BacktestState:
-    """Enforces isolated state management for simulation iterations."""
     def __init__(self, initial_cash: float, start_price: float):
         self.cash = initial_cash
         self.last_buy_price = start_price
         self.peak_equity = initial_cash
         self.max_drawdown = 0.0
+
 
 class OptimizationController:
     def __init__(self, historical_data: pd.DataFrame):
@@ -25,114 +30,113 @@ class OptimizationController:
         self.data = historical_data
         logger.info(f"OptimizationController initialized with historical dataset length: {len(historical_data)}")
 
+    def _simulate_single(
+        self,
+        step: float,
+        target: float,
+        strategy_instance: SizingStrategy,
+        symbol: str,
+        initial_cash: float,
+        cost_model: TransactionCostModel,
+        risk_manager: RiskManager,
+    ) -> SimulationResult:
+        ledger = AssetLotLedger()
+        oms = OrderManagementSystem(mode="SIMULATION")
+        state = BacktestState(initial_cash, float(self.data["close"].iloc[0]))
+
+        for bar_index, (timestamp, row) in enumerate(self.data.iterrows()):
+            current_price = float(row["close"])
+            equity = state.cash + sum(lot.shares * current_price for lot in ledger.open_lots)
+            if equity > state.peak_equity:
+                state.peak_equity = equity
+            drawdown = (state.peak_equity - equity) / state.peak_equity if state.peak_equity else 0.0
+            state.max_drawdown = max(state.max_drawdown, drawdown)
+
+            context = MarketContext(
+                timestamp=timestamp.to_pydatetime() if hasattr(timestamp, "to_pydatetime") else timestamp,
+                open=float(row["open"]) if "open" in row else current_price,
+                high=float(row["high"]) if "high" in row else current_price,
+                low=float(row["low"]) if "low" in row else current_price,
+                close=current_price,
+                cash=float(state.cash),
+                equity=float(equity),
+                peak_equity=float(state.peak_equity),
+                drawdown=float(drawdown),
+                open_lot_count=len(ledger.open_lots),
+                bar_index=bar_index,
+            )
+            strategy_instance.record_tick(context)
+
+            for lot in ledger.get_marketable_lots(current_price):
+                result = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
+                if result.get("status") == OrderStatus.FILLED.value:
+                    qty = float(result.get("filled_qty", result.get("qty", 0.0)))
+                    price = result.get("filled_avg_price")
+                    if qty > 0 and price is not None:
+                        effective_price, cost = cost_model.apply_sell(float(price), qty, context=context)
+                        state.cash += qty * effective_price - cost
+                        ledger.close_lot(lot)
+                else:
+                    logger.warning(f"Sell not filled for lot {lot.symbol}: status={result.get('status')}")
+
+            if strategy_instance._check_grid_trigger(context, state.last_buy_price, step):
+                post_sell_equity = state.cash + sum(lot.shares * current_price for lot in ledger.open_lots)
+                if post_sell_equity > state.peak_equity:
+                    state.peak_equity = post_sell_equity
+                post_sell_dd = (state.peak_equity - post_sell_equity) / state.peak_equity if state.peak_equity else 0.0
+                state.max_drawdown = max(state.max_drawdown, post_sell_dd)
+                if post_sell_equity != context.equity or post_sell_dd != context.drawdown:
+                    context = MarketContext(
+                        timestamp=context.timestamp, open=context.open, high=context.high, low=context.low,
+                        close=context.close, cash=float(state.cash), equity=float(post_sell_equity),
+                        peak_equity=float(state.peak_equity), drawdown=float(post_sell_dd),
+                        open_lot_count=len(ledger.open_lots), bar_index=bar_index,
+                    )
+                proposed = strategy_instance.calculate_trade_value(context)
+                trade_value = risk_manager.clamp_trade_value(proposed, context.equity, state.cash, len(ledger.open_lots))
+                if state.cash >= trade_value and trade_value > 0:
+                    result = oms.execute_buy(symbol, trade_value, current_price)
+                    if result.get("status") == OrderStatus.FILLED.value:
+                        qty = float(result.get("filled_qty", result.get("qty", 0.0)))
+                        price = result.get("filled_avg_price")
+                        if qty > 0 and price is not None:
+                            effective_price, cost = cost_model.apply_buy(float(price), qty, context=context)
+                            actual_notional = qty * effective_price + cost
+                            if state.cash >= actual_notional:
+                                state.cash -= actual_notional
+                                ledger.register_buy(result["id"], symbol, effective_price, qty, target)
+                    else:
+                        logger.warning(f"Buy not filled for {symbol}: status={result.get('status')}")
+
+        final_price = float(self.data["close"].iloc[-1])
+        final_value = state.cash + sum(lot.shares * final_price for lot in ledger.open_lots)
+        metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_value, initial_cash)
+        metrics["Max Drawdown %"] = state.max_drawdown * 100.0
+        return SimulationResult(metrics=metrics)
+
     def run_sweep(
         self,
         grid_steps: list,
         profit_targets: list,
-        strategy_class,
+        strategy_class: Type[SizingStrategy],
         strategy_params_grid: list[dict],
         cost_model: TransactionCostModel | None = None,
         risk_manager: RiskManager | None = None,
         on_flat_reentry: str = "stale_reference",
     ) -> pd.DataFrame:
-        """Creates a parametric multi-dimensional sweep."""
         if on_flat_reentry not in {"stale_reference", "reset_to_market"}:
             raise ValueError("on_flat_reentry must be 'stale_reference' or 'reset_to_market'")
-
-        results = []
         cost_model = ZeroCostModel() if cost_model is None else cost_model
         risk_manager = RiskManager() if risk_manager is None else risk_manager
-        combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
-        logger.info(f"Starting parameter sweep. Evaluating {len(combinations)} total variations.")
-
-        for idx, (step, target, params) in enumerate(combinations):
-            logger.debug(f"Evaluating iteration [{idx + 1}/{len(combinations)}]: Step={step}, Target={target}, Params={params}")
-            ledger = AssetLotLedger()
-            sizing_engine = strategy_class(**params)
-            oms = OrderManagementSystem(mode="SIMULATION")
-            start_price = self.data['close'].iloc[0]
-            state = BacktestState(initial_cash=100000.0, start_price=start_price)
-
-            for timestamp, row in self.data.iterrows():
-                current_price = float(row['close'])
-                sizing_engine.record_tick(current_price)
-                open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
-                total_equity = state.cash + open_assets_val
-                if total_equity > state.peak_equity:
-                    state.peak_equity = total_equity
-                current_dd = (state.peak_equity - total_equity) / state.peak_equity
-                if current_dd > state.max_drawdown:
-                    state.max_drawdown = current_dd
-
-                marketable = ledger.get_marketable_lots(current_price)
-                for lot in marketable:
-                    exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
-                    if exec_res.get("status") == OrderStatus.FILLED.value:
-                        filled_qty = float(exec_res.get("filled_qty", exec_res.get("qty", 0.0)))
-                        filled_price = exec_res.get("filled_avg_price")
-                        if filled_qty > 0 and filled_price is not None:
-                            effective_price, sell_cost = cost_model.apply_sell(float(filled_price), filled_qty)
-                            state.cash += filled_qty * effective_price - sell_cost
-                            ledger.close_lot(lot)
-                            if not ledger.open_lots and on_flat_reentry == "reset_to_market":
-                                state.last_buy_price = current_price
-                    else:
-                        logger.warning(f"Sell not filled for lot {lot.symbol}: status={exec_res.get('status')}")
-
-                if current_price <= state.last_buy_price * (1.0 - step):
-                    open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
-                    total_equity = state.cash + open_assets_val
-                    if total_equity > state.peak_equity:
-                        state.peak_equity = total_equity
-                    current_dd = (state.peak_equity - total_equity) / state.peak_equity
-                    if current_dd > state.max_drawdown:
-                        state.max_drawdown = current_dd
-                    proposed_trade_value = sizing_engine.calculate_trade_value(total_equity, current_price, current_dd)
-                    trade_value = risk_manager.clamp_trade_value(
-                        proposed_trade_value,
-                        total_equity,
-                        state.cash,
-                        len(ledger.open_lots),
-                    )
-                    if state.cash >= trade_value and trade_value > 0:
-                        order = oms.execute_buy("TQQQ", trade_value, current_price)
-                        if order.get("status") == OrderStatus.FILLED.value:
-                            filled_qty = float(order.get("filled_qty", order.get("qty", 0.0)))
-                            filled_price = order.get("filled_avg_price")
-                            if filled_qty > 0 and filled_price is not None:
-                                effective_price, buy_cost = cost_model.apply_buy(float(filled_price), filled_qty)
-                                actual_notional = filled_qty * effective_price + buy_cost
-                                if state.cash >= actual_notional:
-                                    state.cash -= actual_notional
-                                    ledger.register_buy(order["id"], "TQQQ", effective_price, filled_qty, target)
-                        else:
-                            logger.warning(f"Buy not filled for TQQQ: status={order.get('status')}")
-
-            final_price = float(self.data['close'].iloc[-1])
-            open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
-            final_portfolio_value = state.cash + open_assets_val
-            metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, 100000.0)
-            metrics["Max Drawdown %"] = state.max_drawdown * 100.0
-            results.append({"Grid Step": step, "Profit Target": target, **params, **metrics})
-
-        logger.info("Hyperparameter sweeping logic execution complete.")
+        results = []
+        for step, target, params in itertools.product(grid_steps, profit_targets, strategy_params_grid):
+            simulation = self._simulate_single(
+                step, target, strategy_class(**params), "TQQQ", 100_000.0, cost_model, risk_manager
+            )
+            results.append({"Grid Step": step, "Profit Target": target, **params, **simulation.metrics})
         return pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False)
 
-    def validate_finalists_intraday(
-        self,
-        finalist_params: list[dict],
-        intraday_data: pd.DataFrame,
-        *,
-        strategy_class,
-        strategy_params_grid: list[dict],
-        intrabar_priority: str = "sell_first",
-    ) -> pd.DataFrame:
-        """Run the opt-in OHLC intraday validation pass for daily finalists."""
+    def validate_finalists_intraday(self, finalist_params, intraday_data, *, strategy_class, strategy_params_grid, intrabar_priority="sell_first") -> pd.DataFrame:
         from src.intraday_validation import IntradayValidator
         validator = IntradayValidator(intrabar_priority=intrabar_priority)
-        return validator.validate_finalists_intraday(
-            finalist_params,
-            intraday_data,
-            strategy_class=strategy_class,
-            strategy_params_grid=strategy_params_grid,
-        )
+        return validator.validate_finalists_intraday(finalist_params, intraday_data, strategy_class=strategy_class, strategy_params_grid=strategy_params_grid)
