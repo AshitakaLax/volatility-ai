@@ -24,29 +24,22 @@ class OptimizationController:
         logger.info(f"OptimizationController initialized with historical dataset length: {len(historical_data)}")
 
     def run_sweep(self, grid_steps: list, profit_targets: list, strategy_class, strategy_params_grid: list[dict]) -> pd.DataFrame:
-        """
-        Creates a parametric multi-dimensional sweep.
-        :param strategy_class: The uninstantiated class of the strategy (e.g., RsiMomentumSizing).
-        :param strategy_params_grid: A list of keyword-argument dictionaries to instantiate the strategy.
-        """
+        """Creates a parametric multi-dimensional sweep."""
         results = []
         combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
         logger.info(f"Starting parameter sweep. Evaluating {len(combinations)} total variations.")
         
         for idx, (step, target, params) in enumerate(combinations):
             logger.debug(f"Evaluating iteration [{idx + 1}/{len(combinations)}]: Step={step}, Target={target}, Params={params}")
-            
             ledger = AssetLotLedger()
             sizing_engine = strategy_class(**params)
             oms = OrderManagementSystem(mode="SIMULATION")
-            
             start_price = self.data['close'].iloc[0]
             state = BacktestState(initial_cash=100000.0, start_price=start_price)
             
             for timestamp, row in self.data.iterrows():
                 current_price = row['close']
                 sizing_engine.record_tick(current_price)
-
                 open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
                 total_equity = state.cash + open_assets_val
                 if total_equity > state.peak_equity:
@@ -75,7 +68,6 @@ class OptimizationController:
                     current_dd = (state.peak_equity - total_equity) / state.peak_equity
                     if current_dd > state.max_drawdown:
                         state.max_drawdown = current_dd
-
                     trade_value = sizing_engine.calculate_trade_value(total_equity, current_price, current_dd)
                     if state.cash >= trade_value and trade_value > 0:
                         order = oms.execute_buy("TQQQ", trade_value, current_price)
@@ -92,17 +84,28 @@ class OptimizationController:
             final_price = self.data['close'].iloc[-1]
             open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
             final_portfolio_value = state.cash + open_assets_val
-            
             metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, 100000.0)
             metrics["Max Drawdown %"] = state.max_drawdown * 100.0
-            
-            result_row = {
-                "Grid Step": step,
-                "Profit Target": target,
-                **params, 
-                **metrics
-            }
-            results.append(result_row)
+            results.append({"Grid Step": step, "Profit Target": target, **params, **metrics})
             
         logger.info("Hyperparameter sweeping logic execution complete.")
         return pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False)
+
+    def validate_finalists_intraday(
+        self,
+        finalist_params: list[dict],
+        intraday_data: pd.DataFrame,
+        *,
+        strategy_class,
+        strategy_params_grid: list[dict],
+        intrabar_priority: str = "sell_first",
+    ) -> pd.DataFrame:
+        """Run the opt-in OHLC intraday validation pass for daily finalists."""
+        from src.intraday_validation import IntradayValidator
+        validator = IntradayValidator(intrabar_priority=intrabar_priority)
+        return validator.validate_finalists_intraday(
+            finalist_params,
+            intraday_data,
+            strategy_class=strategy_class,
+            strategy_params_grid=strategy_params_grid,
+        )
