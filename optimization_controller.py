@@ -76,10 +76,12 @@ class OptimizationController:
                         effective_price, cost = cost_model.apply_sell(float(price), qty, context=context)
                         state.cash += qty * effective_price - cost
                         ledger.close_lot(lot)
+                        if not ledger.open_lots and self._on_flat_reentry == "reset_to_market":
+                            state.last_buy_price = current_price
                 else:
                     logger.warning(f"Sell not filled for lot {lot.symbol}: status={result.get('status')}")
 
-            if strategy_instance._check_grid_trigger(context, state.last_buy_price, step):
+            if strategy_instance._check_grid_trigger(context, state.last_buy_price, self._step):
                 post_sell_equity = state.cash + sum(lot.shares * current_price for lot in ledger.open_lots)
                 if post_sell_equity > state.peak_equity:
                     state.peak_equity = post_sell_equity
@@ -129,7 +131,9 @@ class OptimizationController:
         cost_model = ZeroCostModel() if cost_model is None else cost_model
         risk_manager = RiskManager() if risk_manager is None else risk_manager
         results = []
+        self._on_flat_reentry = on_flat_reentry
         for step, target, params in itertools.product(grid_steps, profit_targets, strategy_params_grid):
+            self._step = step
             simulation = self._simulate_single(
                 step, target, strategy_class(**params), "TQQQ", 100_000.0, cost_model, risk_manager
             )
