@@ -1,6 +1,7 @@
 import itertools
 import logging
 import pandas as pd
+from src import data_validation
 from src.ledger import AssetLotLedger
 from src.size_calculators import FixedPortfolioPercentage
 from src.order_management_system import OrderManagementSystem, OrderStatus
@@ -18,6 +19,7 @@ class BacktestState:
 
 class OptimizationController:
     def __init__(self, historical_data: pd.DataFrame):
+        data_validation.validate(historical_data)
         self.data = historical_data
         logger.info(f"OptimizationController initialized with historical dataset length: {len(historical_data)}")
 
@@ -43,13 +45,8 @@ class OptimizationController:
             
             for timestamp, row in self.data.iterrows():
                 current_price = row['close']
-
-                # Every sizing strategy receives exactly one tick for every bar,
-                # before any bar-level trading decisions are evaluated.
                 sizing_engine.record_tick(current_price)
 
-                # Track portfolio equity, peak equity, and drawdown on every bar,
-                # not only on bars that happen to trigger a grid purchase.
                 open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
                 total_equity = state.cash + open_assets_val
                 if total_equity > state.peak_equity:
@@ -58,7 +55,6 @@ class OptimizationController:
                 if current_dd > state.max_drawdown:
                     state.max_drawdown = current_dd
                 
-                # 1. Harvest target checks
                 marketable = ledger.get_marketable_lots(current_price)
                 for lot in marketable:
                     exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
@@ -69,17 +65,11 @@ class OptimizationController:
                             state.cash += float(filled_qty) * float(filled_price)
                             ledger.close_lot(lot)
                     else:
-                        logger.warning(
-                            f"Sell not filled for lot {lot.symbol}: status={exec_res.get('status')}"
-                        )
+                        logger.warning(f"Sell not filled for lot {lot.symbol}: status={exec_res.get('status')}")
                 
-                # 2. Step purchase checks
                 if current_price <= state.last_buy_price * (1.0 - step):
-                    # Recalculate equity after any same-bar harvest before sizing the buy.
                     open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
                     total_equity = state.cash + open_assets_val
-                    
-                    # Track peaks and drawdowns for the post-harvest account state as well.
                     if total_equity > state.peak_equity:
                         state.peak_equity = total_equity
                     current_dd = (state.peak_equity - total_equity) / state.peak_equity
@@ -87,7 +77,6 @@ class OptimizationController:
                         state.max_drawdown = current_dd
 
                     trade_value = sizing_engine.calculate_trade_value(total_equity, current_price, current_dd)
-                    
                     if state.cash >= trade_value and trade_value > 0:
                         order = oms.execute_buy("TQQQ", trade_value, current_price)
                         if order.get("status") == OrderStatus.FILLED.value:
@@ -96,13 +85,9 @@ class OptimizationController:
                             if filled_qty > 0 and filled_price is not None:
                                 filled_notional = float(filled_qty) * float(filled_price)
                                 state.cash -= filled_notional
-                                ledger.register_buy(
-                                    order["id"], "TQQQ", float(filled_price), float(filled_qty), target
-                                )
+                                ledger.register_buy(order["id"], "TQQQ", float(filled_price), float(filled_qty), target)
                         else:
-                            logger.warning(
-                                f"Buy not filled for TQQQ: status={order.get('status')}"
-                            )
+                            logger.warning(f"Buy not filled for TQQQ: status={order.get('status')}")
             
             final_price = self.data['close'].iloc[-1]
             open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
