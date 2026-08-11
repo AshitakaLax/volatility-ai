@@ -44,7 +44,18 @@ class OptimizationController:
             
             for timestamp, row in self.data.iterrows():
                 current_price = row['close']
-                
+
+                # Track peaks and drawdowns every bar (not only on trigger
+                # bars) -- B3. A stale/sparse drawdown value here would
+                # also feed sizing strategies once threaded through.
+                open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
+                total_equity = state.cash + open_assets_val
+                if total_equity > state.peak_equity:
+                    state.peak_equity = total_equity
+                current_dd = (state.peak_equity - total_equity) / state.peak_equity
+                if current_dd > state.max_drawdown:
+                    state.max_drawdown = current_dd
+
                 # 1. Harvest target checks
                 marketable = ledger.get_marketable_lots(current_price)
                 for lot in marketable:
@@ -54,15 +65,7 @@ class OptimizationController:
                 
                 # 2. Step purchase checks
                 if current_price <= state.last_buy_price * (1.0 - step):
-                    open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
-                    total_equity = state.cash + open_assets_val
-                    
-                    # Track peaks and drawdowns
-                    if total_equity > state.peak_equity:
-                        state.peak_equity = total_equity
-                    current_dd = (state.peak_equity - total_equity) / state.peak_equity
-                    if current_dd > state.max_drawdown:
-                        state.max_drawdown = current_dd
+                    # total_equity/current_dd already computed above for every bar.
 
                     # Query the sizing engine (RSI/Drawdown internal states process the tick here)
                     trade_value = sizing_engine.calculate_trade_value(total_equity, current_price)
