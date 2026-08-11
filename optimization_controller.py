@@ -28,6 +28,7 @@ class OptimizationController:
     def __init__(self, historical_data: pd.DataFrame):
         data_validation.validate(historical_data)
         self.data = historical_data
+        self._on_flat_reentry = "stale_reference"
         logger.info(f"OptimizationController initialized with historical dataset length: {len(historical_data)}")
 
     def _simulate_single(
@@ -81,7 +82,7 @@ class OptimizationController:
                 else:
                     logger.warning(f"Sell not filled for lot {lot.symbol}: status={result.get('status')}")
 
-            if strategy_instance._check_grid_trigger(context, state.last_buy_price, self._step):
+            if strategy_instance._check_grid_trigger(context, state.last_buy_price, step):
                 post_sell_equity = state.cash + sum(lot.shares * current_price for lot in ledger.open_lots)
                 if post_sell_equity > state.peak_equity:
                     state.peak_equity = post_sell_equity
@@ -130,10 +131,9 @@ class OptimizationController:
             raise ValueError("on_flat_reentry must be 'stale_reference' or 'reset_to_market'")
         cost_model = ZeroCostModel() if cost_model is None else cost_model
         risk_manager = RiskManager() if risk_manager is None else risk_manager
-        results = []
         self._on_flat_reentry = on_flat_reentry
+        results = []
         for step, target, params in itertools.product(grid_steps, profit_targets, strategy_params_grid):
-            self._step = step
             simulation = self._simulate_single(
                 step, target, strategy_class(**params), "TQQQ", 100_000.0, cost_model, risk_manager
             )
