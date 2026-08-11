@@ -5,6 +5,7 @@ from src.ledger import AssetLotLedger
 from src.size_calculators import FixedPortfolioPercentage
 from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
+from src import data_validation
 
 logger = logging.getLogger("Optimizer")
 
@@ -18,6 +19,7 @@ class BacktestState:
 
 class OptimizationController:
     def __init__(self, historical_data: pd.DataFrame):
+        data_validation.validate(historical_data)
         self.data = historical_data
         logger.info(f"OptimizationController initialized with historical dataset length: {len(historical_data)}")
 
