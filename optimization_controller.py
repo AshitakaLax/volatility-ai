@@ -6,6 +6,7 @@ from src.size_calculators import FixedPortfolioPercentage
 from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 from src import data_validation
+from src.cost_models import TransactionCostModel, ZeroCostModel
 
 logger = logging.getLogger("Optimizer")
 
@@ -23,12 +24,22 @@ class OptimizationController:
         self.data = historical_data
         logger.info(f"OptimizationController initialized with historical dataset length: {len(historical_data)}")
 
-    def run_sweep(self, grid_steps: list, profit_targets: list, strategy_class, strategy_params_grid: list[dict]) -> pd.DataFrame:
+    def run_sweep(
+        self,
+        grid_steps: list,
+        profit_targets: list,
+        strategy_class,
+        strategy_params_grid: list[dict],
+        cost_model: TransactionCostModel = None,
+    ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
         :param strategy_class: The uninstantiated class of the strategy (e.g., RsiMomentumSizing).
         :param strategy_params_grid: A list of keyword-argument dictionaries to instantiate the strategy.
+        :param cost_model: Commission/slippage model applied to every fill. Defaults to
+            ZeroCostModel() (zero commission, zero slippage) -- exactly today's behavior.
         """
+        cost_model = cost_model if cost_model is not None else ZeroCostModel()
         results = []
         combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
         logger.info(f"Starting parameter sweep. Evaluating {len(combinations)} total variations.")
@@ -84,7 +95,13 @@ class OptimizationController:
 
                     filled_qty = exec_res["filled_qty"]
                     filled_price = exec_res["filled_avg_price"]
-                    net_sell_proceeds = filled_qty * filled_price
+
+                    # Cost model runs on the confirmed fill, after the
+                    # status check -- effective_price/sell_cost feed the
+                    # no-loss check below so it reflects actual realized
+                    # economics, not just the quoted price (Task 2.2).
+                    effective_price, sell_cost = cost_model.apply_sell(filled_price, filled_qty)
+                    net_sell_proceeds = (effective_price * filled_qty) - sell_cost
                     allocated_cost_basis = lot.buy_price * filled_qty
                     if net_sell_proceeds < allocated_cost_basis:
                         logger.warning(
@@ -113,8 +130,21 @@ class OptimizationController:
                         else:
                             filled_qty = order["filled_qty"]
                             filled_price = order["filled_avg_price"]
-                            ledger.register_buy(order["id"], "TQQQ", filled_price, filled_qty, target)
-                            state.cash -= (filled_qty * filled_price)
+
+                            # Cost model runs on the confirmed fill, after
+                            # the status check, before decrementing cash
+                            # (Task 2.2). buy_cost is folded into a
+                            # per-share cost basis (rather than tracked
+                            # separately) so the sell-side no-loss check's
+                            # existing lot.buy_price * filled_qty formula
+                            # stays correct unchanged -- it already
+                            # includes the buy-side commission this way.
+                            effective_price, buy_cost = cost_model.apply_buy(filled_price, filled_qty)
+                            total_buy_outlay = (effective_price * filled_qty) + buy_cost
+                            per_share_cost_basis = total_buy_outlay / filled_qty
+
+                            ledger.register_buy(order["id"], "TQQQ", per_share_cost_basis, filled_qty, target)
+                            state.cash -= total_buy_outlay
                             state.last_buy_price = current_price
             
             final_price = self.data['close'].iloc[-1]
