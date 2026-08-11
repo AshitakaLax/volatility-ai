@@ -5,23 +5,21 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import deque
 
+from src.market_context import MarketContext
+
 
 class SizingStrategy(ABC):
-    """Base contract for sizing engines used by the current controller."""
+    """Canonical context-based sizing strategy contract."""
 
-    def _check_grid_trigger(self, current_price: float, last_buy_price: float, step: float) -> bool:
-        return float(current_price) <= float(last_buy_price) * (1.0 - float(step))
-
-    def record_tick(self, current_price: float) -> None:
-        """Hook for stateful strategies; no-op for the fixed strategy."""
+    def _check_grid_trigger(self, context: MarketContext, last_buy_price: float, step: float) -> bool:
+        return context.price <= float(last_buy_price) * (1.0 - float(step))
 
     @abstractmethod
-    def calculate_trade_value(
-        self,
-        total_equity: float,
-        current_price: float,
-        current_dd: float = 0.0,
-    ) -> float:
+    def record_tick(self, context: MarketContext) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def calculate_trade_value(self, context: MarketContext) -> float:
         raise NotImplementedError
 
 
@@ -39,24 +37,15 @@ class FixedPortfolioPercentage(SizingStrategy):
             raise ValueError("percentage must be in the interval (0, 1]")
         self.percentage = float(value)
 
-    def calculate_trade_value(
-        self,
-        total_equity: float,
-        current_price: float,
-        current_dd: float = 0.0,
-    ) -> float:
-        _ = current_price, current_dd
-        return max(0.0, float(total_equity) * self.percentage)
+    def record_tick(self, context: MarketContext) -> None:
+        _ = context
+
+    def calculate_trade_value(self, context: MarketContext) -> float:
+        return max(0.0, float(context.equity) * self.percentage)
 
 
 class RsiMomentumSizing(SizingStrategy):
-    """RSI-aware position sizing for the Phase 1 interim strategy API.
-
-    The strategy consumes one close price per bar through ``record_tick``. It
-    waits for a complete RSI window before sizing a trade. Allocation is the
-    configured base percentage, reduced as RSI moves above the neutral 50 level,
-    and capped at zero for an overbought RSI of 70 or higher.
-    """
+    """RSI-aware position sizing using the canonical MarketContext contract."""
 
     def __init__(
         self,
@@ -78,10 +67,10 @@ class RsiMomentumSizing(SizingStrategy):
     def rsi(self) -> float | None:
         return self._rsi
 
-    def record_tick(self, current_price: float) -> None:
-        price = float(current_price)
+    def record_tick(self, context: MarketContext) -> None:
+        price = float(context.price)
         if price <= 0.0:
-            raise ValueError("current_price must be positive")
+            raise ValueError("context.price must be positive")
         self._prices.append(price)
         if len(self._prices) < self.rsi_period + 1:
             self._rsi = None
@@ -104,17 +93,8 @@ class RsiMomentumSizing(SizingStrategy):
         else:
             self._rsi = 100.0 - (100.0 / (1.0 + (avg_gain / avg_loss)))
 
-    def calculate_trade_value(
-        self,
-        total_equity: float,
-        current_price: float,
-        current_dd: float = 0.0,
-    ) -> float:
-        _ = current_price, current_dd
+    def calculate_trade_value(self, context: MarketContext) -> float:
         if self._rsi is None:
             return 0.0
-
-        # Full base allocation at RSI 50 or below. Linearly reduce allocation
-        # from 50 to 70, reaching zero at the overbought boundary.
         multiplier = 1.0 if self._rsi <= 50.0 else max(0.0, (70.0 - self._rsi) / 20.0)
-        return max(0.0, float(total_equity) * self.base_percentage * multiplier)
+        return max(0.0, float(context.equity) * self.base_percentage * multiplier)
