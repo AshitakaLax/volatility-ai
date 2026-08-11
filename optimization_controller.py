@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 from src.ledger import AssetLotLedger
 from src.size_calculators import FixedPortfolioPercentage
-from src.order_management_system import OrderManagementSystem
+from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 
 logger = logging.getLogger("Optimizer")
@@ -62,8 +62,16 @@ class OptimizationController:
                 marketable = ledger.get_marketable_lots(current_price)
                 for lot in marketable:
                     exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
-                    state.cash += (exec_res["qty"] * exec_res["filled_avg_price"])
-                    ledger.close_lot(lot)
+                    if exec_res.get("status") == OrderStatus.FILLED.value:
+                        filled_qty = exec_res.get("filled_qty", exec_res.get("qty", 0.0))
+                        filled_price = exec_res.get("filled_avg_price")
+                        if filled_qty > 0 and filled_price is not None:
+                            state.cash += float(filled_qty) * float(filled_price)
+                            ledger.close_lot(lot)
+                    else:
+                        logger.warning(
+                            f"Sell not filled for lot {lot.symbol}: status={exec_res.get('status')}"
+                        )
                 
                 # 2. Step purchase checks
                 if current_price <= state.last_buy_price * (1.0 - step):
@@ -82,11 +90,19 @@ class OptimizationController:
                     
                     if state.cash >= trade_value and trade_value > 0:
                         order = oms.execute_buy("TQQQ", trade_value, current_price)
-                        ledger.register_buy(
-                            order["id"], "TQQQ", order["filled_avg_price"], order["qty"], target
-                        )
-                        state.cash -= trade_value
-                        state.last_buy_price = current_price
+                        if order.get("status") == OrderStatus.FILLED.value:
+                            filled_qty = order.get("filled_qty", order.get("qty", 0.0))
+                            filled_price = order.get("filled_avg_price")
+                            if filled_qty > 0 and filled_price is not None:
+                                filled_notional = float(filled_qty) * float(filled_price)
+                                state.cash -= filled_notional
+                                ledger.register_buy(
+                                    order["id"], "TQQQ", float(filled_price), float(filled_qty), target
+                                )
+                        else:
+                            logger.warning(
+                                f"Buy not filled for TQQQ: status={order.get('status')}"
+                            )
             
             final_price = self.data['close'].iloc[-1]
             open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
