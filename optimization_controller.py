@@ -26,7 +26,6 @@ class BacktestState:
 
 
 def _run_single_combination(controller, idx, total, step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager, return_full_results=False):
-    """Process-pool entry point; isolates construction and simulation per combination."""
     try:
         strategy_instance = strategy_class(**params)
         simulation = controller._simulate_single(step, target, strategy_instance, symbol, initial_cash, cost_model, risk_manager)
@@ -35,6 +34,31 @@ def _run_single_combination(controller, idx, total, step, target, strategy_class
     except Exception as exc:
         logger.error(f"Combination failed [{idx + 1}/{total}] step={step} target={target} params={params}: {exc}")
         return {"Grid Step": step, "Profit Target": target, **params, "error": str(exc)}, None
+
+
+def _rank_results(results: pd.DataFrame) -> pd.DataFrame:
+    """Return a deterministic ranking without letting malformed metrics break the sweep."""
+    if results.empty:
+        return results
+
+    ranked = results.copy()
+    metric = "Capital Velocity Index"
+    if metric not in ranked.columns:
+        ranked[metric] = float("-inf")
+    ranked["_ranking_metric"] = pd.to_numeric(ranked[metric], errors="coerce")
+    ranked["_ranking_metric"] = ranked["_ranking_metric"].where(ranked["_ranking_metric"].notna(), float("-inf"))
+    ranked["_ranking_metric"] = ranked["_ranking_metric"].where(ranked["_ranking_metric"] != float("inf"), float("-inf"))
+    ranked["_ranking_metric"] = ranked["_ranking_metric"].where(ranked["_ranking_metric"] != float("-inf"), float("-inf"))
+
+    # Preserve combination order for exact ties; this makes sequential and
+    # parallel runs deterministic even when ranking values are identical.
+    ranked["_result_order"] = range(len(ranked))
+    ranked = ranked.sort_values(
+        by=["_ranking_metric", "_result_order"],
+        ascending=[False, True],
+        kind="mergesort",
+    )
+    return ranked.drop(columns=["_ranking_metric", "_result_order"])
 
 
 class OptimizationController:
@@ -129,10 +153,7 @@ class OptimizationController:
                     full_results.append(simulation)
         else:
             with ProcessPoolExecutor(max_workers=n_jobs) as executor:
-                futures = {
-                    executor.submit(_run_single_combination, self, idx, len(combinations), step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager, return_full_results): idx
-                    for idx, (step, target, params) in enumerate(combinations)
-                }
+                futures = {executor.submit(_run_single_combination, self, idx, len(combinations), step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager, return_full_results): idx for idx, (step, target, params) in enumerate(combinations)}
                 completed = {}
                 for future in as_completed(futures):
                     idx = futures[future]
@@ -146,7 +167,7 @@ class OptimizationController:
                     if simulation is not None:
                         completed[idx] = simulation
                 full_results = [completed[idx] for idx in sorted(completed)]
-        summary = pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False, na_position="last")
+        summary = _rank_results(pd.DataFrame(results))
         if return_full_results:
             return summary, full_results
         return summary
