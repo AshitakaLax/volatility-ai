@@ -45,8 +45,9 @@ class OptimizationController:
         oms = OrderManagementSystem(mode="SIMULATION")
         state = BacktestState(initial_cash, float(self.data["close"].iloc[0]))
 
-        for bar_index, (timestamp, row) in enumerate(self.data.iterrows()):
-            current_price = float(row["close"])
+        for bar_index, row in enumerate(self.data.itertuples()):
+            timestamp = row.Index
+            current_price = float(row.close)
             equity = state.cash + sum(lot.shares * current_price for lot in ledger.open_lots)
             if equity > state.peak_equity:
                 state.peak_equity = equity
@@ -55,9 +56,9 @@ class OptimizationController:
 
             context = MarketContext(
                 timestamp=timestamp.to_pydatetime() if hasattr(timestamp, "to_pydatetime") else timestamp,
-                open=float(row["open"]) if "open" in row else current_price,
-                high=float(row["high"]) if "high" in row else current_price,
-                low=float(row["low"]) if "low" in row else current_price,
+                open=float(getattr(row, "open", current_price)),
+                high=float(getattr(row, "high", current_price)),
+                low=float(getattr(row, "low", current_price)),
                 close=current_price,
                 cash=float(state.cash),
                 equity=float(equity),
