@@ -7,6 +7,7 @@ from src.size_calculators import FixedPortfolioPercentage
 from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 from src.cost_models import TransactionCostModel, ZeroCostModel
+from src.risk_manager import RiskManager
 
 logger = logging.getLogger("Optimizer")
 
@@ -31,10 +32,12 @@ class OptimizationController:
         strategy_class,
         strategy_params_grid: list[dict],
         cost_model: TransactionCostModel | None = None,
+        risk_manager: RiskManager | None = None,
     ) -> pd.DataFrame:
         """Creates a parametric multi-dimensional sweep."""
         results = []
         cost_model = ZeroCostModel() if cost_model is None else cost_model
+        risk_manager = RiskManager() if risk_manager is None else risk_manager
         combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
         logger.info(f"Starting parameter sweep. Evaluating {len(combinations)} total variations.")
 
@@ -78,7 +81,13 @@ class OptimizationController:
                     current_dd = (state.peak_equity - total_equity) / state.peak_equity
                     if current_dd > state.max_drawdown:
                         state.max_drawdown = current_dd
-                    trade_value = sizing_engine.calculate_trade_value(total_equity, current_price, current_dd)
+                    proposed_trade_value = sizing_engine.calculate_trade_value(total_equity, current_price, current_dd)
+                    trade_value = risk_manager.clamp_trade_value(
+                        proposed_trade_value,
+                        total_equity,
+                        state.cash,
+                        len(ledger.open_lots),
+                    )
                     if state.cash >= trade_value and trade_value > 0:
                         order = oms.execute_buy("TQQQ", trade_value, current_price)
                         if order.get("status") == OrderStatus.FILLED.value:
