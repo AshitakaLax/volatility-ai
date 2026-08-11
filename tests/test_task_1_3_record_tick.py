@@ -1,19 +1,21 @@
 import pandas as pd
 
 from optimization_controller import OptimizationController
+from src.market_context import MarketContext
+from src.size_calculators import SizingStrategy
 
 
-class RecordingStrategy:
+class RecordingStrategy(SizingStrategy):
     ticks = []
 
     def __init__(self, **kwargs):
         self.ticks = []
         RecordingStrategy.ticks = self.ticks
 
-    def record_tick(self, current_price: float) -> None:
-        self.ticks.append(float(current_price))
+    def record_tick(self, context: MarketContext) -> None:
+        self.ticks.append(context.price)
 
-    def calculate_trade_value(self, total_equity: float, current_price: float, current_dd: float = 0.0) -> float:
+    def calculate_trade_value(self, context: MarketContext) -> float:
         return 0.0
 
 
