@@ -7,6 +7,7 @@ from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 from src import data_validation
 from src.cost_models import TransactionCostModel, ZeroCostModel
+from src import intraday_validation
 
 logger = logging.getLogger("Optimizer")
 
@@ -165,3 +166,66 @@ class OptimizationController:
             
         logger.info("Hyperparameter sweeping logic execution complete.")
         return pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False)
+
+    def validate_finalists_intraday(
+        self,
+        finalist_params: list,
+        intraday_data: pd.DataFrame,
+        strategy_class,
+        cost_model: TransactionCostModel = None,
+        intrabar_priority: str = "sell_first",
+    ) -> pd.DataFrame:
+        """
+        Task 2.3 (F2). Re-runs each finalist combination -- typically a
+        short list picked from a prior daily-close run_sweep() -- against
+        minute-bar intraday_data, using high/low to catch any intrabar
+        sell-target or grid-trigger touch the daily pass would have
+        missed. Strictly additive: run_sweep()'s own behavior is
+        unaffected by this method existing or being called.
+
+        :param finalist_params: list of {"grid_step": float, "profit_target": float,
+            "strategy_params": dict} -- one entry per finalist combination to re-check.
+        :param intraday_data: minute-bar OHLC data (needs open/high/low/close),
+            same index conventions as run_sweep's historical_data.
+        :param cost_model: applied identically to both the daily comparison run
+            and the intraday replay, so the comparison isolates the intrabar
+            effect rather than mixing it with a cost-model difference.
+        """
+        intraday_validation.validate_intraday_schema(intraday_data)
+
+        rows = []
+        for finalist in finalist_params:
+            grid_step = finalist["grid_step"]
+            profit_target = finalist["profit_target"]
+            strategy_params = finalist.get("strategy_params", {})
+
+            daily_result = self.run_sweep(
+                grid_steps=[grid_step],
+                profit_targets=[profit_target],
+                strategy_class=strategy_class,
+                strategy_params_grid=[strategy_params],
+                cost_model=cost_model,
+            ).iloc[0]
+
+            intraday_metrics = intraday_validation.simulate_single_intraday(
+                intraday_data=intraday_data,
+                grid_step=grid_step,
+                profit_target=profit_target,
+                strategy_class=strategy_class,
+                strategy_params=strategy_params,
+                cost_model=cost_model,
+                intrabar_priority=intrabar_priority,
+            )
+
+            rows.append({
+                "Grid Step": grid_step,
+                "Profit Target": profit_target,
+                **strategy_params,
+                "Daily Closed Trades": daily_result["Closed Trade Count"],
+                "Intraday Closed Trades": intraday_metrics["Closed Trade Count"],
+                "Daily Final Equity": daily_result["Final Equity"],
+                "Intraday Final Equity": intraday_metrics["Final Equity"],
+                "Diverges": daily_result["Closed Trade Count"] != intraday_metrics["Closed Trade Count"],
+            })
+
+        return pd.DataFrame(rows)
