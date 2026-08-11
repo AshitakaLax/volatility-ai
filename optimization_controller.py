@@ -34,6 +34,7 @@ class OptimizationController:
         strategy_params_grid: list[dict],
         cost_model: TransactionCostModel = None,
         risk_manager: RiskManager = None,
+        on_flat_reentry: str = "stale_reference",
     ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
@@ -43,7 +44,16 @@ class OptimizationController:
             ZeroCostModel() (zero commission, zero slippage) -- exactly today's behavior.
         :param risk_manager: Clamps proposed new-buy value. Defaults to RiskManager() with
             both limits unset (unlimited) -- exactly today's behavior.
+        :param on_flat_reentry: "stale_reference" (default, exactly today's behavior) keeps
+            last_buy_price as-is when the portfolio goes fully flat (no open lots) --
+            the next grid trigger compares against that stale reference. "reset_to_market"
+            resets last_buy_price to the current bar's price the moment the portfolio goes
+            flat, so the next trigger is measured from the price level at which it went flat.
         """
+        if on_flat_reentry not in ("stale_reference", "reset_to_market"):
+            raise ValueError(
+                f"on_flat_reentry must be 'stale_reference' or 'reset_to_market', got {on_flat_reentry!r}"
+            )
         cost_model = cost_model if cost_model is not None else ZeroCostModel()
         risk_manager = risk_manager if risk_manager is not None else RiskManager()
         results = []
@@ -119,6 +129,9 @@ class OptimizationController:
 
                     state.cash += net_sell_proceeds
                     ledger.close_lot(lot)
+
+                    if len(ledger.open_lots) == 0 and on_flat_reentry == "reset_to_market":
+                        state.last_buy_price = current_price
                 
                 # 2. Step purchase checks
                 if current_price <= state.last_buy_price * (1.0 - step):
