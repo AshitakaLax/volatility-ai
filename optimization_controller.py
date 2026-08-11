@@ -25,15 +25,16 @@ class BacktestState:
         self.max_drawdown = 0.0
 
 
-def _run_single_combination(controller, idx, total, step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager):
+def _run_single_combination(controller, idx, total, step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager, return_full_results=False):
     """Process-pool entry point; isolates construction and simulation per combination."""
     try:
         strategy_instance = strategy_class(**params)
         simulation = controller._simulate_single(step, target, strategy_instance, symbol, initial_cash, cost_model, risk_manager)
-        return {"Grid Step": step, "Profit Target": target, **params, **simulation.metrics}
+        result_row = {"Grid Step": step, "Profit Target": target, **params, **simulation.metrics}
+        return result_row, simulation if return_full_results else None
     except Exception as exc:
         logger.error(f"Combination failed [{idx + 1}/{total}] step={step} target={target} params={params}: {exc}")
-        return {"Grid Step": step, "Profit Target": target, **params, "error": str(exc)}
+        return {"Grid Step": step, "Profit Target": target, **params, "error": str(exc)}, None
 
 
 class OptimizationController:
@@ -47,6 +48,8 @@ class OptimizationController:
         ledger = AssetLotLedger()
         oms = OrderManagementSystem(mode=Mode.SIMULATION)
         state = BacktestState(initial_cash, float(self.data["close"].iloc[0]))
+        trade_blotter = []
+        equity_points = []
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp = row.Index
             current_price = float(row.close)
@@ -66,6 +69,7 @@ class OptimizationController:
                         effective_price, cost = cost_model.apply_sell(float(price), qty, context=context)
                         state.cash += qty * effective_price - cost
                         ledger.close_lot(lot)
+                        trade_blotter.append({"timestamp": context.timestamp, "side": "SELL", "price": float(effective_price), "qty": qty, "equity": float(context.equity)})
                         if not ledger.open_lots and self._on_flat_reentry == "reset_to_market":
                             state.last_buy_price = current_price
                 else:
@@ -91,15 +95,22 @@ class OptimizationController:
                             if state.cash >= actual_notional:
                                 state.cash -= actual_notional
                                 ledger.register_buy(result["id"], symbol, effective_price, qty, target)
+                                trade_blotter.append({"timestamp": context.timestamp, "side": "BUY", "price": float(effective_price), "qty": qty, "equity": float(context.equity)})
                     else:
                         logger.warning(f"Buy not filled for {symbol}: status={result.get('status')}")
+            equity_points.append((context.timestamp, float(context.equity)))
         final_price = float(self.data["close"].iloc[-1])
         final_value = state.cash + sum(lot.shares * final_price for lot in ledger.open_lots)
         metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_value, initial_cash)
         metrics["Max Drawdown %"] = state.max_drawdown * 100.0
-        return SimulationResult(metrics=metrics)
+        blotter = pd.DataFrame(trade_blotter, columns=["timestamp", "side", "price", "qty", "equity"])
+        if not blotter.empty:
+            blotter["timestamp"] = pd.to_datetime(blotter["timestamp"])
+        equity_curve = pd.Series({timestamp: equity for timestamp, equity in equity_points}, dtype=float)
+        params = {"Grid Step": step, "Profit Target": target}
+        return SimulationResult(metrics=metrics, trade_blotter=blotter, equity_curve=equity_curve, params=params)
 
-    def run_sweep(self, grid_steps: list, profit_targets: list, strategy_class: Type[SizingStrategy], strategy_params_grid: list[dict], cost_model: TransactionCostModel | None = None, risk_manager: RiskManager | None = None, on_flat_reentry: str = "stale_reference", symbol: str = "TQQQ", initial_cash: float = 100_000.0, n_jobs: int = 1) -> pd.DataFrame:
+    def run_sweep(self, grid_steps: list, profit_targets: list, strategy_class: Type[SizingStrategy], strategy_params_grid: list[dict], cost_model: TransactionCostModel | None = None, risk_manager: RiskManager | None = None, on_flat_reentry: str = "stale_reference", symbol: str = "TQQQ", initial_cash: float = 100_000.0, n_jobs: int = 1, return_full_results: bool = False):
         if on_flat_reentry not in {"stale_reference", "reset_to_market"}:
             raise ValueError("on_flat_reentry must be 'stale_reference' or 'reset_to_market'")
         if not isinstance(n_jobs, int) or isinstance(n_jobs, bool) or n_jobs < 1:
@@ -108,25 +119,37 @@ class OptimizationController:
         risk_manager = RiskManager() if risk_manager is None else risk_manager
         self._on_flat_reentry = on_flat_reentry
         results = []
+        full_results = []
         combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
         if n_jobs == 1:
             for idx, (step, target, params) in enumerate(combinations):
-                results.append(_run_single_combination(self, idx, len(combinations), step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager))
+                result_row, simulation = _run_single_combination(self, idx, len(combinations), step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager, return_full_results)
+                results.append(result_row)
+                if simulation is not None:
+                    full_results.append(simulation)
         else:
             with ProcessPoolExecutor(max_workers=n_jobs) as executor:
                 futures = {
-                    executor.submit(_run_single_combination, self, idx, len(combinations), step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager): idx
+                    executor.submit(_run_single_combination, self, idx, len(combinations), step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager, return_full_results): idx
                     for idx, (step, target, params) in enumerate(combinations)
                 }
+                completed = {}
                 for future in as_completed(futures):
+                    idx = futures[future]
                     try:
-                        results.append(future.result())
+                        result_row, simulation = future.result()
                     except Exception as exc:
-                        idx = futures[future]
                         step, target, params = combinations[idx]
                         logger.error(f"Combination worker failed [{idx + 1}/{len(combinations)}] step={step} target={target} params={params}: {exc}")
-                        results.append({"Grid Step": step, "Profit Target": target, **params, "error": str(exc)})
-        return pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False, na_position="last")
+                        result_row, simulation = {"Grid Step": step, "Profit Target": target, **params, "error": str(exc)}, None
+                    results.append(result_row)
+                    if simulation is not None:
+                        completed[idx] = simulation
+                full_results = [completed[idx] for idx in sorted(completed)]
+        summary = pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False, na_position="last")
+        if return_full_results:
+            return summary, full_results
+        return summary
 
     def validate_finalists_intraday(self, finalist_params, intraday_data, *, strategy_class, strategy_params_grid, intrabar_priority="sell_first") -> pd.DataFrame:
         from src.intraday_validation import IntradayValidator
