@@ -94,10 +94,19 @@ class OptimizationController:
         risk_manager = RiskManager() if risk_manager is None else risk_manager
         self._on_flat_reentry = on_flat_reentry
         results = []
-        for step, target, params in itertools.product(grid_steps, profit_targets, strategy_params_grid):
-            simulation = self._simulate_single(step, target, strategy_class(**params), symbol, initial_cash, cost_model, risk_manager)
-            results.append({"Grid Step": step, "Profit Target": target, **params, **simulation.metrics})
-        return pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False)
+        combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
+        for idx, (step, target, params) in enumerate(combinations):
+            try:
+                simulation = self._simulate_single(step, target, strategy_class(**params), symbol, initial_cash, cost_model, risk_manager)
+                result_row = {"Grid Step": step, "Profit Target": target, **params, **simulation.metrics}
+            except Exception as exc:
+                logger.error(
+                    f"Combination failed [{idx + 1}/{len(combinations)}] "
+                    f"step={step} target={target} params={params}: {exc}"
+                )
+                result_row = {"Grid Step": step, "Profit Target": target, **params, "error": str(exc)}
+            results.append(result_row)
+        return pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False, na_position="last")
 
     def validate_finalists_intraday(self, finalist_params, intraday_data, *, strategy_class, strategy_params_grid, intrabar_priority="sell_first") -> pd.DataFrame:
         from src.intraday_validation import IntradayValidator
