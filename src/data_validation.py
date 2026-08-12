@@ -6,11 +6,9 @@ import logging
 
 import pandas as pd
 
+from src.exceptions import DataValidationError
+
 REQUIRED_COLUMNS = {"close"}
-
-
-class DataValidationError(ValueError):
-    """Raised when historical market data violates the backtest contract."""
 
 
 def validate(df: pd.DataFrame, *, warn_on_gap_pct: float = 0.15) -> None:
