@@ -1,6 +1,7 @@
 import itertools
 import logging
 from typing import Type
+import concurrent.futures
 import pandas as pd
 from src.ledger import AssetLotLedger
 from src.size_calculators import FixedPortfolioPercentage, SizingStrategy
@@ -21,6 +22,55 @@ class BacktestState:
         self.last_buy_price = start_price
         self.peak_equity = initial_cash
         self.max_drawdown = 0.0
+
+
+def _run_one_combination(
+    controller: "OptimizationController",
+    step: float,
+    target: float,
+    strategy_class: Type[SizingStrategy],
+    params: dict,
+    symbol: str,
+    initial_cash: float,
+    cost_model: TransactionCostModel,
+    risk_manager: RiskManager,
+    on_flat_reentry: str,
+) -> dict:
+    """
+    Task 4.5. Module-level (not a method) so it, and everything passed
+    to it, is picklable for ProcessPoolExecutor when n_jobs > 1 --
+    controller (wraps only self.data, a DataFrame), strategy_class,
+    and params must all be picklable for that path to work at all.
+
+    Same per-combination try/except isolation (Task 4.4) whether
+    called from the sequential loop or a worker process, so behavior
+    can't drift between the two paths. Does NOT log the per-iteration
+    "Evaluating..." debug line itself -- that stays in run_sweep, in
+    the main process only, so subprocess logging setup/noise (an
+    explicit concern this task raises) is never a question: worker
+    processes only ever log on failure (logger.error below), and even
+    that's best-effort, since a freshly spawned process doesn't
+    inherit the parent's logging handlers without extra setup this
+    task doesn't ask for -- the functional guarantee (an isolated
+    failure becomes a returned {"error": ...} row) holds either way,
+    independent of whether that log line is actually visible anywhere.
+    """
+    try:
+        sizing_engine = strategy_class(**params)
+        result = controller._simulate_single(
+            step=step,
+            target=target,
+            strategy_instance=sizing_engine,
+            symbol=symbol,
+            initial_cash=initial_cash,
+            cost_model=cost_model,
+            risk_manager=risk_manager,
+            on_flat_reentry=on_flat_reentry,
+        )
+        return {"Grid Step": step, "Profit Target": target, **params, **result.metrics}
+    except Exception as e:
+        logger.error(f"Combination failed: step={step} target={target} params={params}: {e}")
+        return {"Grid Step": step, "Profit Target": target, **params, "error": str(e)}
 
 class OptimizationController:
     def __init__(self, historical_data: pd.DataFrame):
@@ -169,6 +219,7 @@ class OptimizationController:
         on_flat_reentry: str = "stale_reference",
         symbol: str = "TQQQ",
         initial_cash: float = 100_000.0,
+        n_jobs: int = 1,
     ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
@@ -186,50 +237,48 @@ class OptimizationController:
         :param symbol: Ticker traded. Defaults to "TQQQ" -- exactly today's behavior.
         :param initial_cash: Starting cash for every combination. Defaults to 100_000.0 --
             exactly today's behavior.
+        :param n_jobs: 1 (default) runs combinations sequentially in this process --
+            exactly today's behavior. >1 runs combinations across a
+            ProcessPoolExecutor with that many workers. Row order may differ
+            from n_jobs=1 (workers complete in whatever order they finish),
+            but the *set* of rows is identical -- worker completion order
+            never affects ranking or any metric value (Determinism contract,
+            architecture_overview.md Section 5.5-adjacent). self.data,
+            strategy_class, and every params dict must all be picklable
+            for n_jobs > 1 to work.
         """
         if on_flat_reentry not in ("stale_reference", "reset_to_market"):
             raise ValueError(
                 f"on_flat_reentry must be 'stale_reference' or 'reset_to_market', got {on_flat_reentry!r}"
             )
+        if n_jobs < 1:
+            raise ValueError(f"n_jobs must be >= 1, got {n_jobs}")
         cost_model = cost_model if cost_model is not None else ZeroCostModel()
         risk_manager = risk_manager if risk_manager is not None else RiskManager()
         results = []
         combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
         logger.info(f"Starting parameter sweep. Evaluating {len(combinations)} total variations.")
 
-        for idx, (step, target, params) in enumerate(combinations):
-            logger.debug(f"Evaluating iteration [{idx + 1}/{len(combinations)}]: Step={step}, Target={target}, Params={params}")
-
-            try:
-                # Dynamically instantiate the target sizing engine with the
-                # current dictionary of parameters -- inside the try too,
-                # since a bad params dict raising in __init__ is exactly
-                # the "edge case in one strategy" this task's context names,
-                # not just a failure inside _simulate_single itself.
-                sizing_engine = strategy_class(**params)
-
-                result = self._simulate_single(
-                    step=step,
-                    target=target,
-                    strategy_instance=sizing_engine,
-                    symbol=symbol,
-                    initial_cash=initial_cash,
-                    cost_model=cost_model,
-                    risk_manager=risk_manager,
-                    on_flat_reentry=on_flat_reentry,
+        if n_jobs == 1:
+            for idx, (step, target, params) in enumerate(combinations):
+                logger.debug(f"Evaluating iteration [{idx + 1}/{len(combinations)}]: Step={step}, Target={target}, Params={params}")
+                results.append(
+                    _run_one_combination(
+                        self, step, target, strategy_class, params, symbol, initial_cash,
+                        cost_model, risk_manager, on_flat_reentry,
+                    )
                 )
-                result_row = {
-                    "Grid Step": step,
-                    "Profit Target": target,
-                    **params,
-                    **result.metrics
-                }
-            except Exception as e:
-                logger.error(
-                    f"Combination failed [{idx + 1}/{len(combinations)}] step={step} target={target} params={params}: {e}"
-                )
-                result_row = {"Grid Step": step, "Profit Target": target, **params, "error": str(e)}
-            results.append(result_row)
+        else:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=n_jobs) as executor:
+                futures = [
+                    executor.submit(
+                        _run_one_combination, self, step, target, strategy_class, params,
+                        symbol, initial_cash, cost_model, risk_manager, on_flat_reentry,
+                    )
+                    for (step, target, params) in combinations
+                ]
+                for future in concurrent.futures.as_completed(futures):
+                    results.append(future.result())
 
         logger.info("Hyperparameter sweeping logic execution complete.")
         return pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False)
