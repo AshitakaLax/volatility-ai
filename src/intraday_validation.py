@@ -12,8 +12,11 @@ sharing) optimization_controller.py's per-bar logic, per Task 2.3's
 own explicit allowance: "can be implemented against the current
 inline loop (with some duplicated logic) or deferred until after 4.1
 for a cleaner implementation that reuses _simulate_single directly."
-There is no extracted _simulate_single yet (that's Task 4.1), so this
-takes the duplication path rather than waiting.
+Updated for Task 4.1's MarketContext-based SizingStrategy interface,
+but still its own loop, not a call into _simulate_single -- Task 2.3
+sanctioned duplication, not a promise to unify later, and unifying
+these two genuinely different fill models (limit-at-touched-level vs.
+fill-at-close) is a bigger change than this pass warrants right now.
 
 Intrabar ambiguity contract: when a bar's high/low show that both a
 sell target and a buy trigger were touched and the true order can't
@@ -35,11 +38,17 @@ crosses it. This differs from the daily pass, which fills buys at
 that bar's close (there's no theoretical trigger level to fill at on
 a daily bar) -- an intentional difference from daily behavior, not an
 oversight, since intraday data makes the actual touched limit price
-knowable.
+knowable. Because of this, calculate_trade_value is given a
+*fill_context* with close/price overridden to the touched trigger
+level (via dataclasses.replace on the bar's real MarketContext, since
+it's frozen) rather than the bar's real context -- matching the
+pre-Task-4.1 behavior, which sized against trigger_level, not the
+bar's close.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import Literal
 
@@ -47,6 +56,7 @@ import pandas as pd
 
 from src.cost_models import TransactionCostModel, ZeroCostModel
 from src.ledger import AssetLotLedger
+from src.market_context import MarketContext
 from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 
@@ -95,9 +105,9 @@ def simulate_single_intraday(
     peak_equity = initial_cash
     max_drawdown = 0.0
 
-    def _harvest_check(bar_high: float) -> None:
+    def _harvest_check(context: MarketContext) -> None:
         nonlocal cash
-        marketable = [lot for lot in ledger.open_lots if bar_high >= lot.target_sell_price]
+        marketable = [lot for lot in ledger.open_lots if context.high >= lot.target_sell_price]
         for lot in marketable:
             exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
             if exec_res.get("status") != OrderStatus.FILLED:
@@ -114,12 +124,16 @@ def simulate_single_intraday(
             cash += net_sell_proceeds
             ledger.close_lot(lot)
 
-    def _trigger_check(bar_low: float, total_equity: float, current_dd: float) -> None:
+    def _trigger_check(context: MarketContext) -> None:
         nonlocal cash, last_buy_price
         trigger_level = last_buy_price * (1.0 - grid_step)
-        if bar_low > trigger_level:
+        if context.low > trigger_level:
             return
-        trade_value = sizing_engine.calculate_trade_value(total_equity, trigger_level, current_dd=current_dd)
+        # Fill happens at the touched limit price, not the bar's close --
+        # size against that level (matches pre-Task-4.1 behavior). frozen
+        # dataclass, so a modified copy rather than mutation.
+        fill_context = dataclasses.replace(context, close=trigger_level)
+        trade_value = sizing_engine.calculate_trade_value(fill_context)
         if not (cash >= trade_value and trade_value > 0):
             return
         order = oms.execute_buy("TQQQ", trade_value, trigger_level)
@@ -135,10 +149,8 @@ def simulate_single_intraday(
         cash -= total_buy_outlay
         last_buy_price = trigger_level
 
-    for _timestamp, row in intraday_data.iterrows():
-        bar_high, bar_low, bar_close = row["high"], row["low"], row["close"]
-
-        sizing_engine.record_tick(bar_close)
+    for bar_index, (timestamp, row) in enumerate(intraday_data.iterrows()):
+        bar_close = row["close"]
 
         open_assets_val = sum(lot.shares * bar_close for lot in ledger.open_lots)
         total_equity = cash + open_assets_val
@@ -148,12 +160,28 @@ def simulate_single_intraday(
         if current_dd > max_drawdown:
             max_drawdown = current_dd
 
+        context = MarketContext(
+            timestamp=timestamp,
+            open=row["open"],
+            high=row["high"],
+            low=row["low"],
+            close=bar_close,
+            cash=cash,
+            equity=total_equity,
+            peak_equity=peak_equity,
+            drawdown=current_dd,
+            open_lot_count=len(ledger.open_lots),
+            bar_index=bar_index,
+        )
+
+        sizing_engine.record_tick(context)
+
         if intrabar_priority == "sell_first":
-            _harvest_check(bar_high)
-            _trigger_check(bar_low, total_equity, current_dd)
+            _harvest_check(context)
+            _trigger_check(context)
         else:
-            _trigger_check(bar_low, total_equity, current_dd)
-            _harvest_check(bar_high)
+            _trigger_check(context)
+            _harvest_check(context)
 
     final_price = intraday_data["close"].iloc[-1]
     open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
