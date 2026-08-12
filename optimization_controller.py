@@ -1,5 +1,6 @@
 import itertools
 import logging
+from typing import Type
 import pandas as pd
 from src.ledger import AssetLotLedger
 from src.size_calculators import FixedPortfolioPercentage, SizingStrategy
@@ -51,6 +52,11 @@ class OptimizationController:
         Threaded through as an extra parameter rather than dropped.
         """
         ledger = AssetLotLedger()
+        # mode="SIMULATION" stays a bare string here (Task 4.3): a Mode
+        # enum would live in src/order_management_system.py, which isn't
+        # in this task's Files touched -- noted as a follow-up dependent
+        # on that file, per Task 4.3's own alternative wording, rather
+        # than extended here.
         oms = OrderManagementSystem(mode="SIMULATION")
 
         start_price = self.data['close'].iloc[0]
@@ -156,15 +162,17 @@ class OptimizationController:
         self,
         grid_steps: list,
         profit_targets: list,
-        strategy_class,
+        strategy_class: Type[SizingStrategy],
         strategy_params_grid: list[dict],
         cost_model: TransactionCostModel = None,
         risk_manager: RiskManager = None,
         on_flat_reentry: str = "stale_reference",
+        symbol: str = "TQQQ",
+        initial_cash: float = 100_000.0,
     ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
-        :param strategy_class: The uninstantiated class of the strategy (e.g., RsiMomentumSizing).
+        :param strategy_class: The uninstantiated SizingStrategy subclass (e.g., RsiMomentumSizing).
         :param strategy_params_grid: A list of keyword-argument dictionaries to instantiate the strategy.
         :param cost_model: Commission/slippage model applied to every fill. Defaults to
             ZeroCostModel() (zero commission, zero slippage) -- exactly today's behavior.
@@ -175,6 +183,9 @@ class OptimizationController:
             the next grid trigger compares against that stale reference. "reset_to_market"
             resets last_buy_price to the current bar's price the moment the portfolio goes
             flat, so the next trigger is measured from the price level at which it went flat.
+        :param symbol: Ticker traded. Defaults to "TQQQ" -- exactly today's behavior.
+        :param initial_cash: Starting cash for every combination. Defaults to 100_000.0 --
+            exactly today's behavior.
         """
         if on_flat_reentry not in ("stale_reference", "reset_to_market"):
             raise ValueError(
@@ -196,8 +207,8 @@ class OptimizationController:
                 step=step,
                 target=target,
                 strategy_instance=sizing_engine,
-                symbol="TQQQ",
-                initial_cash=100_000.0,
+                symbol=symbol,
+                initial_cash=initial_cash,
                 cost_model=cost_model,
                 risk_manager=risk_manager,
                 on_flat_reentry=on_flat_reentry,
