@@ -76,7 +76,12 @@ class OptimizationController:
             context = MarketContext(timestamp=timestamp.to_pydatetime() if hasattr(timestamp, "to_pydatetime") else timestamp, open=float(getattr(row, "open", current_price)), high=float(getattr(row, "high", current_price)), low=float(getattr(row, "low", current_price)), close=current_price, cash=float(state.cash), equity=float(equity), peak_equity=float(state.peak_equity), drawdown=float(drawdown), open_lot_count=len(ledger.open_lots), bar_index=bar_index)
             strategy_instance.record_tick(context)
             for lot in ledger.get_marketable_lots(current_price):
+                event_id = f"fill:{oms.orders[-1]['id']}" if oms.orders else None
                 result = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
+                event_id = f"fill:{result['id']}"
+                applied, _ = oms.process_event_once(event_id, lambda: None)
+                if not applied:
+                    continue
                 if result.get("status") == OrderStatus.FILLED.value:
                     qty = float(result.get("filled_qty", result.get("qty", 0.0)))
                     price = result.get("filled_avg_price")
@@ -122,14 +127,7 @@ class OptimizationController:
         return SimulationResult(metrics=metrics, trade_blotter=blotter, equity_curve=equity_curve, params=params)
 
     def run_sweep(self, grid_steps: list, profit_targets: list, strategy_class: Type[SizingStrategy], strategy_params_grid: list[dict], cost_model: TransactionCostModel | None = None, risk_manager: RiskManager | None = None, on_flat_reentry: str = "stale_reference", symbol: str = "TQQQ", initial_cash: float = 100_000.0, n_jobs: int = 1, return_full_results: bool = False):
-        validate_sweep_config(
-            grid_steps=grid_steps,
-            profit_targets=profit_targets,
-            n_jobs=n_jobs,
-            initial_cash=initial_cash,
-            max_concurrent_lots=getattr(risk_manager, "max_concurrent_lots", None) if risk_manager is not None else None,
-            max_total_exposure=getattr(risk_manager, "max_total_exposure", None) if risk_manager is not None else None,
-        )
+        validate_sweep_config(grid_steps=grid_steps, profit_targets=profit_targets, n_jobs=n_jobs, initial_cash=initial_cash, max_concurrent_lots=getattr(risk_manager, "max_concurrent_lots", None) if risk_manager is not None else None, max_total_exposure=getattr(risk_manager, "max_total_exposure", None) if risk_manager is not None else None)
         if on_flat_reentry not in {"stale_reference", "reset_to_market"}:
             raise ValueError("on_flat_reentry must be 'stale_reference' or 'reset_to_market'")
         cost_model = ZeroCostModel() if cost_model is None else cost_model
