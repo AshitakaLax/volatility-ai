@@ -1,9 +1,4 @@
-"""Live execution adapter using the same strategy decision-cycle as backtests.
-
-Broker I/O is deliberately injected so importing this module never opens a
-network connection. Credentials are loaded before a broker adapter can be
-constructed.
-"""
+"""Live execution adapter using the same strategy decision-cycle as backtests."""
 
 from __future__ import annotations
 
@@ -16,6 +11,7 @@ from src.exceptions import ConfigurationError, ReconciliationError
 from src.ledger import AssetLotLedger, InventoryLot
 from src.market_context import MarketContext
 from src.order_management_system import Mode, OrderManagementSystem
+from src.persistence import SQLiteStateStore
 from src.risk_manager import RiskManager
 from src.secrets import LiveCredentials, load_live_credentials
 from src.size_calculators import SizingStrategy
@@ -41,28 +37,22 @@ class _CumulativeFill:
 
 
 def _cumulative_fill_delta(order: Any, previous: _CumulativeFill) -> tuple[float, float, float]:
-    """Calculate an incremental fill from broker-reported cumulative totals."""
     current_qty = float(order.filled_qty or 0.0)
     current_avg = float(order.filled_avg_price or 0.0)
     current_notional = current_qty * current_avg
     new_qty = current_qty - previous.qty
     new_notional = current_notional - previous.notional
     if new_qty < -1e-12 or new_notional < -1e-9:
-        raise ReconciliationError(
-            f"cumulative fill decreased: previous_qty={previous.qty}, current_qty={current_qty}, "
-            f"previous_notional={previous.notional}, current_notional={current_notional}"
-        )
+        raise ReconciliationError(f"cumulative fill decreased: previous_qty={previous.qty}, current_qty={current_qty}, previous_notional={previous.notional}, current_notional={current_notional}")
     if new_qty <= 1e-12:
         return 0.0, 0.0, 0.0
-    if new_notional < -1e-9:
-        raise ReconciliationError("cumulative fill notional decreased")
     return new_qty, new_notional, new_notional / new_qty
 
 
 class LiveExecutionLoop:
     """Drive live ticks through the canonical strategy-facing contract."""
 
-    def __init__(self, config: BacktestConfig, strategy: SizingStrategy, risk_manager: RiskManager | None = None, *, broker_factory: Callable[[LiveCredentials], LiveBroker] | None = None, oms: OrderManagementSystem | None = None) -> None:
+    def __init__(self, config: BacktestConfig, strategy: SizingStrategy, risk_manager: RiskManager | None = None, *, broker_factory: Callable[[LiveCredentials], LiveBroker] | None = None, oms: OrderManagementSystem | None = None, state_store: SQLiteStateStore | None = None, state_path: str | None = None, broker_position_qty: Callable[[str], float] | None = None) -> None:
         config.validate()
         if not config.live.enabled:
             raise ConfigurationError("live.enabled=False: live execution is disabled")
@@ -72,16 +62,32 @@ class LiveExecutionLoop:
         self._broker_factory = broker_factory
         self.oms = oms or OrderManagementSystem(mode=Mode.LIVE)
         self.broker: LiveBroker | None = None
+        self.state_store = state_store or (SQLiteStateStore(state_path) if state_path else None)
+        self._broker_position_qty = broker_position_qty
+        self.ledger = AssetLotLedger()
         self.last_buy_price = None
         self._started = False
         self._fill_state: dict[str, _CumulativeFill] = {}
+        self.reconciliation_required = False
 
     def start(self) -> None:
-        """Validate credentials before attempting any broker/WebSocket work."""
         credentials = load_live_credentials()
         if self._broker_factory is not None:
             self.broker = self._broker_factory(credentials)
+        if self.state_store is not None:
+            self.ledger = self.state_store.load_open_lots()
+            if self.ledger.open_lots:
+                self.last_buy_price = self.ledger.open_lots[-1].buy_price
+            if self._broker_position_qty is not None:
+                self.state_store.reconcile_position(self.ledger, self._broker_position_qty(self.config.backtest.symbol))
+            elif self.ledger.open_lots and self.broker is not None:
+                self.reconciliation_required = True
+                raise ReconciliationError("durable ledger has open lots but no broker position reconciliation callback was supplied")
         self._started = True
+
+    def persist_state(self) -> None:
+        if self.state_store is not None:
+            self.state_store.persist_ledger(self.ledger)
 
     def build_context(self, *, timestamp: datetime, open: float, high: float, low: float, close: float, cash: float, equity: float, peak_equity: float, drawdown: float, open_lot_count: int, bar_index: int, time_of_day_flag: int = 0, is_macro_event_day: bool = False, macro_surprise_factor: float = 0.0) -> MarketContext:
         if timestamp.tzinfo is None:
@@ -91,6 +97,8 @@ class LiveExecutionLoop:
     def decision_cycle(self, context: MarketContext, *, step: float, last_buy_price: float) -> LiveDecision:
         if not self._started:
             raise RuntimeError("live execution has not been started")
+        if self.reconciliation_required:
+            raise ReconciliationError("live execution is halted pending reconciliation")
         self.strategy.record_tick(context)
         triggered = self.strategy._check_grid_trigger(context, last_buy_price, step)
         if not triggered:
@@ -99,8 +107,8 @@ class LiveExecutionLoop:
         clamped = self.risk_manager.clamp_trade_value(proposed, context.equity, context.cash, context.open_lot_count)
         return LiveDecision(context=context, triggered=True, proposed_trade_value=float(proposed), clamped_trade_value=float(clamped))
 
-    def apply_sell_fill(self, order: Any, lot: InventoryLot, ledger: AssetLotLedger, cash: float, *, execution_cost: float = 0.0) -> tuple[float, float]:
-        """Apply only the newly confirmed cumulative sell fill to cash/ledger."""
+    def apply_sell_fill(self, order: Any, lot: InventoryLot, ledger: AssetLotLedger | None = None, cash: float = 0.0, *, execution_cost: float = 0.0) -> tuple[float, float]:
+        ledger = ledger or self.ledger
         order_id = str(order.id)
         state = self._fill_state.setdefault(order_id, _CumulativeFill())
         new_qty, new_notional, new_avg = _cumulative_fill_delta(order, state)
@@ -108,25 +116,41 @@ class LiveExecutionLoop:
             return float(cash), 0.0
         if new_qty > lot.shares + 1e-12:
             raise ReconciliationError(f"fill qty {new_qty} exceeds remaining lot shares {lot.shares}")
-        applied, _ = self.oms.process_event_once(f"fill:{order_id}:{float(order.filled_qty):.12g}", lambda: ledger.close_lot(lot, sell_qty=new_qty, execution_price=new_avg, completed=False))
+        event_id = f"fill:{order_id}:{float(order.filled_qty):.12g}"
+        if self.state_store is not None:
+            claimed, _ = self.state_store.mark_processed(event_id)
+            if not claimed:
+                return float(cash), 0.0
+        applied, _ = self.oms.process_event_once(event_id, lambda: ledger.close_lot(lot, sell_qty=new_qty, execution_price=new_avg, completed=False))
         if not applied:
             return float(cash), 0.0
         state.qty = float(order.filled_qty)
         state.notional = float(order.filled_qty) * float(order.filled_avg_price or 0.0)
+        if self.state_store is not None:
+            self.state_store.persist_ledger(ledger)
+            self.state_store.record_audit(event_id, "fill", {"order_id": order_id, "side": "sell", "qty": new_qty, "notional": new_notional})
         return float(cash) + new_notional - float(execution_cost), new_notional
 
-    def apply_buy_fill(self, order: Any, symbol: str, profit_target: float, ledger: AssetLotLedger, cash: float, *, execution_cost: float = 0.0) -> tuple[float, InventoryLot | None]:
-        """Register only the newly confirmed cumulative buy fill."""
+    def apply_buy_fill(self, order: Any, symbol: str, profit_target: float, ledger: AssetLotLedger | None = None, cash: float = 0.0, *, execution_cost: float = 0.0) -> tuple[float, InventoryLot | None]:
+        ledger = ledger or self.ledger
         order_id = str(order.id)
         state = self._fill_state.setdefault(order_id, _CumulativeFill())
         new_qty, new_notional, new_avg = _cumulative_fill_delta(order, state)
         if new_qty <= 0.0:
             return float(cash), None
-        applied, lot = self.oms.process_event_once(f"fill:{order_id}:{float(order.filled_qty):.12g}", lambda: ledger.register_buy(order_id, symbol, new_avg, new_qty, profit_target))
+        event_id = f"fill:{order_id}:{float(order.filled_qty):.12g}"
+        if self.state_store is not None:
+            claimed, _ = self.state_store.mark_processed(event_id)
+            if not claimed:
+                return float(cash), None
+        applied, lot = self.oms.process_event_once(event_id, lambda: ledger.register_buy(order_id, symbol, new_avg, new_qty, profit_target))
         if not applied:
             return float(cash), None
         state.qty = float(order.filled_qty)
         state.notional = float(order.filled_qty) * float(order.filled_avg_price or 0.0)
+        if self.state_store is not None:
+            self.state_store.persist_ledger(ledger)
+            self.state_store.record_audit(event_id, "fill", {"order_id": order_id, "side": "buy", "qty": new_qty, "notional": new_notional})
         return float(cash) - new_notional - float(execution_cost), lot
 
     def submit_buy(self, decision: LiveDecision) -> Any:
