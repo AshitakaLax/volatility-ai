@@ -2,13 +2,14 @@ import itertools
 import logging
 import pandas as pd
 from src.ledger import AssetLotLedger
-from src.size_calculators import FixedPortfolioPercentage
+from src.size_calculators import FixedPortfolioPercentage, SizingStrategy
 from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 from src import data_validation
 from src.cost_models import TransactionCostModel, ZeroCostModel
 from src import intraday_validation
 from src.risk_manager import RiskManager
+from src.market_context import MarketContext, SimulationResult
 
 logger = logging.getLogger("Optimizer")
 
@@ -25,6 +26,130 @@ class OptimizationController:
         data_validation.validate(historical_data)
         self.data = historical_data
         logger.info(f"OptimizationController initialized with historical dataset length: {len(historical_data)}")
+
+    def _simulate_single(
+        self,
+        step: float,
+        target: float,
+        strategy_instance: SizingStrategy,
+        symbol: str,
+        initial_cash: float,
+        cost_model: TransactionCostModel,
+        risk_manager: RiskManager,
+        on_flat_reentry: str = "stale_reference",
+    ) -> SimulationResult:
+        """
+        Task 4.1. One isolated combination: fresh AssetLotLedger and
+        OrderManagementSystem every call, no state leaks between calls.
+        strategy_instance is already-constructed (run_sweep instantiates
+        it per combination, same as before extraction).
+
+        on_flat_reentry isn't in Task 4.1's illustrative signature but is
+        pre-existing behavior (Task 3.3) this extraction must preserve
+        unchanged, per this task's own Non-goals ("this task extracts
+        and unifies existing behavior -- it does not change ... logic").
+        Threaded through as an extra parameter rather than dropped.
+        """
+        ledger = AssetLotLedger()
+        oms = OrderManagementSystem(mode="SIMULATION")
+
+        start_price = self.data['close'].iloc[0]
+        state = BacktestState(initial_cash=initial_cash, start_price=start_price)
+
+        for bar_index, (timestamp, row) in enumerate(self.data.iterrows()):
+            current_price = row['close']
+
+            # Peaks/drawdown every bar (B3), before constructing context,
+            # since MarketContext.equity/peak_equity/drawdown need this
+            # bar's values.
+            open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
+            total_equity = state.cash + open_assets_val
+            if total_equity > state.peak_equity:
+                state.peak_equity = total_equity
+            current_dd = (state.peak_equity - total_equity) / state.peak_equity
+            if current_dd > state.max_drawdown:
+                state.max_drawdown = current_dd
+
+            context = MarketContext(
+                timestamp=timestamp,
+                open=row['open'],
+                high=row['high'],
+                low=row['low'],
+                close=current_price,
+                cash=state.cash,
+                equity=total_equity,
+                peak_equity=state.peak_equity,
+                drawdown=current_dd,
+                open_lot_count=len(ledger.open_lots),
+                bar_index=bar_index,
+            )
+
+            # Every bar, unconditionally -- B4.
+            strategy_instance.record_tick(context)
+
+            # 1. Harvest target checks
+            marketable = ledger.get_marketable_lots(context.price)
+            for lot in marketable:
+                exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
+                if exec_res.get("status") != OrderStatus.FILLED:
+                    logger.warning(
+                        f"Sell not filled for lot {lot.order_id}: status={exec_res.get('status')}"
+                    )
+                    continue
+
+                filled_qty = exec_res["filled_qty"]
+                filled_price = exec_res["filled_avg_price"]
+
+                effective_price, sell_cost = cost_model.apply_sell(filled_price, filled_qty)
+                net_sell_proceeds = (effective_price * filled_qty) - sell_cost
+                allocated_cost_basis = lot.buy_price * filled_qty
+                if net_sell_proceeds < allocated_cost_basis:
+                    logger.warning(
+                        f"Sell for lot {lot.order_id} rejected: net proceeds "
+                        f"{net_sell_proceeds:.2f} would be below cost basis "
+                        f"{allocated_cost_basis:.2f} (no-loss invariant)."
+                    )
+                    continue
+
+                state.cash += net_sell_proceeds
+                ledger.close_lot(lot)
+
+                if len(ledger.open_lots) == 0 and on_flat_reentry == "reset_to_market":
+                    state.last_buy_price = context.price
+
+            # 2. Step purchase checks -- now delegated to the strategy's
+            # _check_grid_trigger (default implementation is identical to
+            # the pre-Task-4.1 inline check), not a hardcoded inline check.
+            if strategy_instance._check_grid_trigger(context, state.last_buy_price, step):
+                trade_value = strategy_instance.calculate_trade_value(context)
+                trade_value = risk_manager.clamp_trade_value(
+                    trade_value, context.equity, state.cash, context.open_lot_count
+                )
+
+                if state.cash >= trade_value and trade_value > 0:
+                    order = oms.execute_buy(symbol, trade_value, context.price)
+                    if order.get("status") != OrderStatus.FILLED:
+                        logger.warning(f"Buy not filled: status={order.get('status')}")
+                    else:
+                        filled_qty = order["filled_qty"]
+                        filled_price = order["filled_avg_price"]
+
+                        effective_price, buy_cost = cost_model.apply_buy(filled_price, filled_qty)
+                        total_buy_outlay = (effective_price * filled_qty) + buy_cost
+                        per_share_cost_basis = total_buy_outlay / filled_qty
+
+                        ledger.register_buy(order["id"], symbol, per_share_cost_basis, filled_qty, target)
+                        state.cash -= total_buy_outlay
+                        state.last_buy_price = context.price
+
+        final_price = self.data['close'].iloc[-1]
+        open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
+        final_portfolio_value = state.cash + open_assets_val
+
+        metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, initial_cash)
+        metrics["Max Drawdown %"] = state.max_drawdown * 100.0
+
+        return SimulationResult(metrics=metrics)
 
     def run_sweep(
         self,
@@ -59,132 +184,33 @@ class OptimizationController:
         results = []
         combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
         logger.info(f"Starting parameter sweep. Evaluating {len(combinations)} total variations.")
-        
+
         for idx, (step, target, params) in enumerate(combinations):
             logger.debug(f"Evaluating iteration [{idx + 1}/{len(combinations)}]: Step={step}, Target={target}, Params={params}")
-            
-            ledger = AssetLotLedger()
+
             # Dynamically instantiate the target sizing engine with the current dictionary of parameters
             sizing_engine = strategy_class(**params)
-            oms = OrderManagementSystem(mode="SIMULATION")
-            
-            start_price = self.data['close'].iloc[0]
-            state = BacktestState(initial_cash=100000.0, start_price=start_price)
-            
-            for timestamp, row in self.data.iterrows():
-                current_price = row['close']
 
-                # Every bar, unconditionally -- B4. Strategies maintaining
-                # an internal rolling window (RSI, Bayesian posteriors)
-                # need continuous ticks even on bars with no trigger.
-                # Interim form (price only), per architecture_overview.md
-                # Section 5.2 -- Task 4.1 migrates this to record_tick(context).
-                sizing_engine.record_tick(current_price)
+            result = self._simulate_single(
+                step=step,
+                target=target,
+                strategy_instance=sizing_engine,
+                symbol="TQQQ",
+                initial_cash=100_000.0,
+                cost_model=cost_model,
+                risk_manager=risk_manager,
+                on_flat_reentry=on_flat_reentry,
+            )
 
-                # Track peaks and drawdowns every bar (not only on trigger
-                # bars) -- B3. A stale/sparse drawdown value here would
-                # also feed sizing strategies once threaded through.
-                open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
-                total_equity = state.cash + open_assets_val
-                if total_equity > state.peak_equity:
-                    state.peak_equity = total_equity
-                current_dd = (state.peak_equity - total_equity) / state.peak_equity
-                if current_dd > state.max_drawdown:
-                    state.max_drawdown = current_dd
-
-                # 1. Harvest target checks
-                marketable = ledger.get_marketable_lots(current_price)
-                for lot in marketable:
-                    exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
-                    if exec_res.get("status") != OrderStatus.FILLED:
-                        # NEW/ACCEPTED/PENDING/PARTIALLY_FILLED/CANCELED/
-                        # REJECTED/EXPIRED are all non-complete-fill states
-                        # -- lot stays open, nothing credited. (Real
-                        # partial-fill accounting -- crediting the filled
-                        # portion, reducing shares, leaving the rest open
-                        # -- needs ledger support this repo doesn't have
-                        # yet; see AssetLotLedger.close_lot and Task 7.2.)
-                        logger.warning(
-                            f"Sell not filled for lot {lot.order_id}: status={exec_res.get('status')}"
-                        )
-                        continue
-
-                    filled_qty = exec_res["filled_qty"]
-                    filled_price = exec_res["filled_avg_price"]
-
-                    # Cost model runs on the confirmed fill, after the
-                    # status check -- effective_price/sell_cost feed the
-                    # no-loss check below so it reflects actual realized
-                    # economics, not just the quoted price (Task 2.2).
-                    effective_price, sell_cost = cost_model.apply_sell(filled_price, filled_qty)
-                    net_sell_proceeds = (effective_price * filled_qty) - sell_cost
-                    allocated_cost_basis = lot.buy_price * filled_qty
-                    if net_sell_proceeds < allocated_cost_basis:
-                        logger.warning(
-                            f"Sell for lot {lot.order_id} rejected: net proceeds "
-                            f"{net_sell_proceeds:.2f} would be below cost basis "
-                            f"{allocated_cost_basis:.2f} (no-loss invariant)."
-                        )
-                        continue
-
-                    state.cash += net_sell_proceeds
-                    ledger.close_lot(lot)
-
-                    if len(ledger.open_lots) == 0 and on_flat_reentry == "reset_to_market":
-                        state.last_buy_price = current_price
-                
-                # 2. Step purchase checks
-                if current_price <= state.last_buy_price * (1.0 - step):
-                    # total_equity/current_dd already computed above for every bar.
-
-                    # Query the sizing engine (RSI/Drawdown internal states process the tick here)
-                    trade_value = sizing_engine.calculate_trade_value(
-                        total_equity, current_price, current_dd=current_dd
-                    )
-                    trade_value = risk_manager.clamp_trade_value(
-                        trade_value, total_equity, state.cash, len(ledger.open_lots)
-                    )
-                    
-                    if state.cash >= trade_value and trade_value > 0:
-                        order = oms.execute_buy("TQQQ", trade_value, current_price)
-                        if order.get("status") != OrderStatus.FILLED:
-                            logger.warning(f"Buy not filled: status={order.get('status')}")
-                        else:
-                            filled_qty = order["filled_qty"]
-                            filled_price = order["filled_avg_price"]
-
-                            # Cost model runs on the confirmed fill, after
-                            # the status check, before decrementing cash
-                            # (Task 2.2). buy_cost is folded into a
-                            # per-share cost basis (rather than tracked
-                            # separately) so the sell-side no-loss check's
-                            # existing lot.buy_price * filled_qty formula
-                            # stays correct unchanged -- it already
-                            # includes the buy-side commission this way.
-                            effective_price, buy_cost = cost_model.apply_buy(filled_price, filled_qty)
-                            total_buy_outlay = (effective_price * filled_qty) + buy_cost
-                            per_share_cost_basis = total_buy_outlay / filled_qty
-
-                            ledger.register_buy(order["id"], "TQQQ", per_share_cost_basis, filled_qty, target)
-                            state.cash -= total_buy_outlay
-                            state.last_buy_price = current_price
-            
-            final_price = self.data['close'].iloc[-1]
-            open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
-            final_portfolio_value = state.cash + open_assets_val
-            
-            metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, 100000.0)
-            metrics["Max Drawdown %"] = state.max_drawdown * 100.0
-            
             # Merge the strategy parameter dictionary directly into the results table for clean output
             result_row = {
                 "Grid Step": step,
                 "Profit Target": target,
-                **params, 
-                **metrics
+                **params,
+                **result.metrics
             }
             results.append(result_row)
-            
+
         logger.info("Hyperparameter sweeping logic execution complete.")
         return pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False)
 

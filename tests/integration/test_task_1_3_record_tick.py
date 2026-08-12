@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from optimization_controller import OptimizationController
+from src.market_context import MarketContext
 from src.size_calculators import FixedPortfolioPercentage, SizingStrategy
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv"
@@ -22,17 +23,17 @@ FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "regression_oh
 class RecordTickCountingStrategy(SizingStrategy):
     """Test double only -- wraps a real FixedPortfolioPercentage for its
     actual sizing math, and additionally counts record_tick calls and
-    the price passed each time. Not a production sizing strategy."""
+    the context passed each time. Not a production sizing strategy."""
 
     def __init__(self, allocation_pct: float):
         self._inner = FixedPortfolioPercentage(allocation_pct=allocation_pct)
-        self.record_tick_calls: list[float] = []
+        self.record_tick_contexts: list[MarketContext] = []
 
-    def record_tick(self, current_price: float) -> None:
-        self.record_tick_calls.append(current_price)
+    def record_tick(self, context: MarketContext) -> None:
+        self.record_tick_contexts.append(context)
 
-    def calculate_trade_value(self, total_equity: float, current_price: float, current_dd: float = 0.0) -> float:
-        return self._inner.calculate_trade_value(total_equity, current_price, current_dd)
+    def calculate_trade_value(self, context: MarketContext) -> float:
+        return self._inner.calculate_trade_value(context)
 
 
 def _load_fixture() -> pd.DataFrame:
@@ -69,12 +70,14 @@ def test_record_tick_called_exactly_once_per_bar_including_non_trigger_bars():
     assert len(created) == 1, "Expected exactly one sweep combination to instantiate exactly one strategy"
     strategy = created[0]
 
-    assert len(strategy.record_tick_calls) == n_bars, (
-        f"record_tick was called {len(strategy.record_tick_calls)} times, expected exactly "
+    assert len(strategy.record_tick_contexts) == n_bars, (
+        f"record_tick was called {len(strategy.record_tick_contexts)} times, expected exactly "
         f"{n_bars} (once per bar) -- it should fire unconditionally, not only on trigger bars."
     )
-    # The prices passed must be the actual per-bar close prices, in order.
-    assert strategy.record_tick_calls == list(df["close"])
+    # The prices passed must be the actual per-bar close prices, in order,
+    # and bar_index must be sequential.
+    assert [c.close for c in strategy.record_tick_contexts] == list(df["close"])
+    assert [c.bar_index for c in strategy.record_tick_contexts] == list(range(n_bars))
 
 
 def test_calculate_trade_value_behavior_unchanged_for_strategies_ignoring_record_tick():

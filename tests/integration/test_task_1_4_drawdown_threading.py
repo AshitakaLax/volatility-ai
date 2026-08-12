@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 
 from optimization_controller import OptimizationController
+from src.market_context import MarketContext
 from src.size_calculators import FixedPortfolioPercentage, SizingStrategy
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "drawdown_non_trigger_bar.csv"
@@ -25,18 +26,18 @@ ALLOCATION_PCT = 0.05
 
 class DrawdownCapturingStrategy(SizingStrategy):
     """Test double: real FixedPortfolioPercentage math, plus records the
-    current_dd value received on every calculate_trade_value call."""
+    context.drawdown value received on every calculate_trade_value call."""
 
     def __init__(self, allocation_pct: float):
         self._inner = FixedPortfolioPercentage(allocation_pct=allocation_pct)
         self.dd_values_seen: list[float] = []
 
-    def record_tick(self, current_price: float) -> None:
-        self._inner.record_tick(current_price)
+    def record_tick(self, context: MarketContext) -> None:
+        self._inner.record_tick(context)
 
-    def calculate_trade_value(self, total_equity: float, current_price: float, current_dd: float = 0.0) -> float:
-        self.dd_values_seen.append(current_dd)
-        return self._inner.calculate_trade_value(total_equity, current_price, current_dd)
+    def calculate_trade_value(self, context: MarketContext) -> float:
+        self.dd_values_seen.append(context.drawdown)
+        return self._inner.calculate_trade_value(context)
 
 
 def _load_fixture() -> pd.DataFrame:
