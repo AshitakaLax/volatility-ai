@@ -35,7 +35,7 @@ def _run_one_combination(
     cost_model: TransactionCostModel,
     risk_manager: RiskManager,
     on_flat_reentry: str,
-) -> dict:
+):
     """
     Task 4.5. Module-level (not a method) so it, and everything passed
     to it, is picklable for ProcessPoolExecutor when n_jobs > 1 --
@@ -54,6 +54,12 @@ def _run_one_combination(
     task doesn't ask for -- the functional guarantee (an isolated
     failure becomes a returned {"error": ...} row) holds either way,
     independent of whether that log line is actually visible anywhere.
+
+    Returns (result_row, simulation_result) -- simulation_result is
+    None on failure (Task 4.6's return_full_results needs the full
+    SimulationResult, not just the flattened row, and re-running to
+    get it separately would double the work and risk it disagreeing
+    with the row that was already reported).
     """
     try:
         sizing_engine = strategy_class(**params)
@@ -67,10 +73,11 @@ def _run_one_combination(
             risk_manager=risk_manager,
             on_flat_reentry=on_flat_reentry,
         )
-        return {"Grid Step": step, "Profit Target": target, **params, **result.metrics}
+        result_row = {"Grid Step": step, "Profit Target": target, **params, **result.metrics}
+        return result_row, result
     except Exception as e:
         logger.error(f"Combination failed: step={step} target={target} params={params}: {e}")
-        return {"Grid Step": step, "Profit Target": target, **params, "error": str(e)}
+        return {"Grid Step": step, "Profit Target": target, **params, "error": str(e)}, None
 
 class OptimizationController:
     def __init__(self, historical_data: pd.DataFrame):
@@ -109,6 +116,11 @@ class OptimizationController:
         # than extended here.
         oms = OrderManagementSystem(mode="SIMULATION")
 
+        # Task 4.6: opt-in trade blotter / equity curve capture.
+        blotter_records = []
+        equity_curve_timestamps = []
+        equity_curve_values = []
+
         start_price = self.data['close'].iloc[0]
         state = BacktestState(initial_cash=initial_cash, start_price=start_price)
 
@@ -144,6 +156,12 @@ class OptimizationController:
             # Every bar, unconditionally -- B4.
             strategy_instance.record_tick(context)
 
+            # Task 4.6: one equity-curve entry per bar, regardless of
+            # trade activity, using the bar's start-of-bar equity
+            # (matches context.equity's existing convention).
+            equity_curve_timestamps.append(context.timestamp)
+            equity_curve_values.append(context.equity)
+
             # 1. Harvest target checks
             marketable = ledger.get_marketable_lots(context.price)
             for lot in marketable:
@@ -170,6 +188,13 @@ class OptimizationController:
 
                 state.cash += net_sell_proceeds
                 ledger.close_lot(lot)
+                blotter_records.append({
+                    "timestamp": context.timestamp,
+                    "side": "sell",
+                    "price": filled_price,
+                    "qty": filled_qty,
+                    "equity": context.equity,
+                })
 
                 if len(ledger.open_lots) == 0 and on_flat_reentry == "reset_to_market":
                     state.last_buy_price = context.price
@@ -198,6 +223,13 @@ class OptimizationController:
                         ledger.register_buy(order["id"], symbol, per_share_cost_basis, filled_qty, target)
                         state.cash -= total_buy_outlay
                         state.last_buy_price = context.price
+                        blotter_records.append({
+                            "timestamp": context.timestamp,
+                            "side": "buy",
+                            "price": filled_price,
+                            "qty": filled_qty,
+                            "equity": context.equity,
+                        })
 
         final_price = self.data['close'].iloc[-1]
         open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
@@ -206,7 +238,29 @@ class OptimizationController:
         metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, initial_cash)
         metrics["Max Drawdown %"] = state.max_drawdown * 100.0
 
-        return SimulationResult(metrics=metrics)
+        # Task 4.6. params captures every input _simulate_single itself
+        # actually received -- the strategy's own constructor-derived
+        # attributes (e.g. allocation_pct) are merged in via vars(),
+        # since a "what configured this run" record that omitted the
+        # strategy's own settings would be missing exactly the thing
+        # someone re-inspecting a specific combination's blotter would
+        # want to know. This isn't literally specified (the task only
+        # says "set params"), documented here as a deliberate choice.
+        params = {
+            "step": step,
+            "target": target,
+            "symbol": symbol,
+            "initial_cash": initial_cash,
+            "on_flat_reentry": on_flat_reentry,
+            **vars(strategy_instance),
+        }
+
+        return SimulationResult(
+            metrics=metrics,
+            trade_blotter=pd.DataFrame(blotter_records),
+            equity_curve=pd.Series(data=equity_curve_values, index=pd.Index(equity_curve_timestamps, name="timestamp")),
+            params=params,
+        )
 
     def run_sweep(
         self,
@@ -220,6 +274,7 @@ class OptimizationController:
         symbol: str = "TQQQ",
         initial_cash: float = 100_000.0,
         n_jobs: int = 1,
+        return_full_results: bool = False,
     ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
@@ -246,6 +301,12 @@ class OptimizationController:
             architecture_overview.md Section 5.5-adjacent). self.data,
             strategy_class, and every params dict must all be picklable
             for n_jobs > 1 to work.
+        :param return_full_results: False (default) returns a single summary
+            DataFrame, exactly today's behavior -- return type unchanged.
+            True additionally returns the list of per-combination
+            SimulationResult objects (trade_blotter, equity_curve, params) as
+            (summary_df, full_results); a failed combination contributes None
+            to that list rather than a SimulationResult.
         """
         if on_flat_reentry not in ("stale_reference", "reset_to_market"):
             raise ValueError(
@@ -256,18 +317,19 @@ class OptimizationController:
         cost_model = cost_model if cost_model is not None else ZeroCostModel()
         risk_manager = risk_manager if risk_manager is not None else RiskManager()
         results = []
+        full_results = []
         combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
         logger.info(f"Starting parameter sweep. Evaluating {len(combinations)} total variations.")
 
         if n_jobs == 1:
             for idx, (step, target, params) in enumerate(combinations):
                 logger.debug(f"Evaluating iteration [{idx + 1}/{len(combinations)}]: Step={step}, Target={target}, Params={params}")
-                results.append(
-                    _run_one_combination(
-                        self, step, target, strategy_class, params, symbol, initial_cash,
-                        cost_model, risk_manager, on_flat_reentry,
-                    )
+                row, sim_result = _run_one_combination(
+                    self, step, target, strategy_class, params, symbol, initial_cash,
+                    cost_model, risk_manager, on_flat_reentry,
                 )
+                results.append(row)
+                full_results.append(sim_result)
         else:
             with concurrent.futures.ProcessPoolExecutor(max_workers=n_jobs) as executor:
                 futures = [
@@ -278,10 +340,25 @@ class OptimizationController:
                     for (step, target, params) in combinations
                 ]
                 for future in concurrent.futures.as_completed(futures):
-                    results.append(future.result())
+                    row, sim_result = future.result()
+                    results.append(row)
+                    full_results.append(sim_result)
 
         logger.info("Hyperparameter sweeping logic execution complete.")
-        return pd.DataFrame(results).sort_values(by="Capital Velocity Index", ascending=False)
+
+        summary_df = pd.DataFrame(results)
+        # Sort via the Series' own index (not DataFrame.sort_values
+        # directly) so full_results -- a separate, same-order-as-results
+        # list -- can be reordered identically and stay paired with the
+        # right row after sorting (Task 4.6's return_full_results needs
+        # summary_df.iloc[i] and full_results[i] to correspond).
+        sort_order = summary_df["Capital Velocity Index"].sort_values(ascending=False, na_position="last").index
+        summary_df = summary_df.loc[sort_order].reset_index(drop=True)
+        full_results = [full_results[i] for i in sort_order]
+
+        if return_full_results:
+            return summary_df, full_results
+        return summary_df
 
     def validate_finalists_intraday(
         self,
