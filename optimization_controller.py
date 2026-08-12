@@ -200,27 +200,35 @@ class OptimizationController:
         for idx, (step, target, params) in enumerate(combinations):
             logger.debug(f"Evaluating iteration [{idx + 1}/{len(combinations)}]: Step={step}, Target={target}, Params={params}")
 
-            # Dynamically instantiate the target sizing engine with the current dictionary of parameters
-            sizing_engine = strategy_class(**params)
+            try:
+                # Dynamically instantiate the target sizing engine with the
+                # current dictionary of parameters -- inside the try too,
+                # since a bad params dict raising in __init__ is exactly
+                # the "edge case in one strategy" this task's context names,
+                # not just a failure inside _simulate_single itself.
+                sizing_engine = strategy_class(**params)
 
-            result = self._simulate_single(
-                step=step,
-                target=target,
-                strategy_instance=sizing_engine,
-                symbol=symbol,
-                initial_cash=initial_cash,
-                cost_model=cost_model,
-                risk_manager=risk_manager,
-                on_flat_reentry=on_flat_reentry,
-            )
-
-            # Merge the strategy parameter dictionary directly into the results table for clean output
-            result_row = {
-                "Grid Step": step,
-                "Profit Target": target,
-                **params,
-                **result.metrics
-            }
+                result = self._simulate_single(
+                    step=step,
+                    target=target,
+                    strategy_instance=sizing_engine,
+                    symbol=symbol,
+                    initial_cash=initial_cash,
+                    cost_model=cost_model,
+                    risk_manager=risk_manager,
+                    on_flat_reentry=on_flat_reentry,
+                )
+                result_row = {
+                    "Grid Step": step,
+                    "Profit Target": target,
+                    **params,
+                    **result.metrics
+                }
+            except Exception as e:
+                logger.error(
+                    f"Combination failed [{idx + 1}/{len(combinations)}] step={step} target={target} params={params}: {e}"
+                )
+                result_row = {"Grid Step": step, "Profit Target": target, **params, "error": str(e)}
             results.append(result_row)
 
         logger.info("Hyperparameter sweeping logic execution complete.")
