@@ -13,6 +13,7 @@ from src.order_management_system import Mode, OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 from src.risk_manager import RiskManager
 from src.size_calculators import SizingStrategy
+from src.validation import validate_sweep_config
 
 logger = logging.getLogger("Optimizer")
 
@@ -37,10 +38,8 @@ def _run_single_combination(controller, idx, total, step, target, strategy_class
 
 
 def _rank_results(results: pd.DataFrame) -> pd.DataFrame:
-    """Return a deterministic ranking without letting malformed metrics break the sweep."""
     if results.empty:
         return results
-
     ranked = results.copy()
     metric = "Capital Velocity Index"
     if metric not in ranked.columns:
@@ -48,16 +47,8 @@ def _rank_results(results: pd.DataFrame) -> pd.DataFrame:
     ranked["_ranking_metric"] = pd.to_numeric(ranked[metric], errors="coerce")
     ranked["_ranking_metric"] = ranked["_ranking_metric"].where(ranked["_ranking_metric"].notna(), float("-inf"))
     ranked["_ranking_metric"] = ranked["_ranking_metric"].where(ranked["_ranking_metric"] != float("inf"), float("-inf"))
-    ranked["_ranking_metric"] = ranked["_ranking_metric"].where(ranked["_ranking_metric"] != float("-inf"), float("-inf"))
-
-    # Preserve combination order for exact ties; this makes sequential and
-    # parallel runs deterministic even when ranking values are identical.
     ranked["_result_order"] = range(len(ranked))
-    ranked = ranked.sort_values(
-        by=["_ranking_metric", "_result_order"],
-        ascending=[False, True],
-        kind="mergesort",
-    )
+    ranked = ranked.sort_values(by=["_ranking_metric", "_result_order"], ascending=[False, True], kind="mergesort")
     return ranked.drop(columns=["_ranking_metric", "_result_order"])
 
 
@@ -96,8 +87,6 @@ class OptimizationController:
                         trade_blotter.append({"timestamp": context.timestamp, "side": "SELL", "price": float(effective_price), "qty": qty, "equity": float(context.equity)})
                         if not ledger.open_lots and self._on_flat_reentry == "reset_to_market":
                             state.last_buy_price = current_price
-                else:
-                    logger.warning(f"Sell not filled for lot {lot.symbol}: status={result.get('status')}")
             if strategy_instance._check_grid_trigger(context, state.last_buy_price, step):
                 post_sell_equity = state.cash + sum(lot.shares * current_price for lot in ledger.open_lots)
                 if post_sell_equity > state.peak_equity:
@@ -120,8 +109,6 @@ class OptimizationController:
                                 state.cash -= actual_notional
                                 ledger.register_buy(result["id"], symbol, effective_price, qty, target)
                                 trade_blotter.append({"timestamp": context.timestamp, "side": "BUY", "price": float(effective_price), "qty": qty, "equity": float(context.equity)})
-                    else:
-                        logger.warning(f"Buy not filled for {symbol}: status={result.get('status')}")
             equity_points.append((context.timestamp, float(context.equity)))
         final_price = float(self.data["close"].iloc[-1])
         final_value = state.cash + sum(lot.shares * final_price for lot in ledger.open_lots)
@@ -135,10 +122,16 @@ class OptimizationController:
         return SimulationResult(metrics=metrics, trade_blotter=blotter, equity_curve=equity_curve, params=params)
 
     def run_sweep(self, grid_steps: list, profit_targets: list, strategy_class: Type[SizingStrategy], strategy_params_grid: list[dict], cost_model: TransactionCostModel | None = None, risk_manager: RiskManager | None = None, on_flat_reentry: str = "stale_reference", symbol: str = "TQQQ", initial_cash: float = 100_000.0, n_jobs: int = 1, return_full_results: bool = False):
+        validate_sweep_config(
+            grid_steps=grid_steps,
+            profit_targets=profit_targets,
+            n_jobs=n_jobs,
+            initial_cash=initial_cash,
+            max_concurrent_lots=getattr(risk_manager, "max_concurrent_lots", None) if risk_manager is not None else None,
+            max_total_exposure=getattr(risk_manager, "max_total_exposure", None) if risk_manager is not None else None,
+        )
         if on_flat_reentry not in {"stale_reference", "reset_to_market"}:
             raise ValueError("on_flat_reentry must be 'stale_reference' or 'reset_to_market'")
-        if not isinstance(n_jobs, int) or isinstance(n_jobs, bool) or n_jobs < 1:
-            raise ValueError("n_jobs must be a positive integer")
         cost_model = ZeroCostModel() if cost_model is None else cost_model
         risk_manager = RiskManager() if risk_manager is None else risk_manager
         self._on_flat_reentry = on_flat_reentry
