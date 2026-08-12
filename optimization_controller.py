@@ -12,6 +12,7 @@ from src.market_context import MarketContext, SimulationResult
 from src.order_management_system import Mode, OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 from src.risk_manager import RiskManager
+from src.search_strategies import BayesianSearch, GridSearch
 from src.size_calculators import SizingStrategy
 from src.validation import validate_sweep_config
 
@@ -37,18 +38,23 @@ def _run_single_combination(controller, idx, total, step, target, strategy_class
         return {"Grid Step": step, "Profit Target": target, **params, "error": str(exc)}, None
 
 
-def _rank_results(results: pd.DataFrame) -> pd.DataFrame:
+def _rank_results(results: pd.DataFrame, rank_by: str = "Capital Velocity Index", direction: str = "maximize") -> pd.DataFrame:
     if results.empty:
         return results
     ranked = results.copy()
-    metric = "Capital Velocity Index"
-    if metric not in ranked.columns:
-        ranked[metric] = float("-inf")
-    ranked["_ranking_metric"] = pd.to_numeric(ranked[metric], errors="coerce")
-    ranked["_ranking_metric"] = ranked["_ranking_metric"].where(ranked["_ranking_metric"].notna(), float("-inf"))
-    ranked["_ranking_metric"] = ranked["_ranking_metric"].where(ranked["_ranking_metric"] != float("inf"), float("-inf"))
+    if direction not in {"maximize", "minimize"}:
+        raise ValueError("direction must be 'maximize' or 'minimize'")
+    if rank_by not in ranked.columns:
+        ranked[rank_by] = float("-inf") if direction == "maximize" else float("inf")
+    ranked["_ranking_metric"] = pd.to_numeric(ranked[rank_by], errors="coerce")
+    invalid = ~ranked["_ranking_metric"].apply(lambda value: pd.notna(value) and value not in {float("inf"), float("-inf")})
+    ranked.loc[invalid, "_ranking_metric"] = float("-inf") if direction == "maximize" else float("inf")
     ranked["_result_order"] = range(len(ranked))
-    ranked = ranked.sort_values(by=["_ranking_metric", "_result_order"], ascending=[False, True], kind="mergesort")
+    ranked = ranked.sort_values(
+        by=["_ranking_metric", "_result_order"],
+        ascending=[direction == "minimize", True],
+        kind="mergesort",
+    )
     return ranked.drop(columns=["_ranking_metric", "_result_order"])
 
 
@@ -76,7 +82,6 @@ class OptimizationController:
             context = MarketContext(timestamp=timestamp.to_pydatetime() if hasattr(timestamp, "to_pydatetime") else timestamp, open=float(getattr(row, "open", current_price)), high=float(getattr(row, "high", current_price)), low=float(getattr(row, "low", current_price)), close=current_price, cash=float(state.cash), equity=float(equity), peak_equity=float(state.peak_equity), drawdown=float(drawdown), open_lot_count=len(ledger.open_lots), bar_index=bar_index)
             strategy_instance.record_tick(context)
             for lot in ledger.get_marketable_lots(current_price):
-                event_id = f"fill:{oms.orders[-1]['id']}" if oms.orders else None
                 result = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
                 event_id = f"fill:{result['id']}"
                 applied, _ = oms.process_event_once(event_id, lambda: None)
@@ -126,39 +131,69 @@ class OptimizationController:
         params = {"Grid Step": step, "Profit Target": target}
         return SimulationResult(metrics=metrics, trade_blotter=blotter, equity_curve=equity_curve, params=params)
 
-    def run_sweep(self, grid_steps: list, profit_targets: list, strategy_class: Type[SizingStrategy], strategy_params_grid: list[dict], cost_model: TransactionCostModel | None = None, risk_manager: RiskManager | None = None, on_flat_reentry: str = "stale_reference", symbol: str = "TQQQ", initial_cash: float = 100_000.0, n_jobs: int = 1, return_full_results: bool = False):
+    def run_sweep(self, grid_steps: list, profit_targets: list, strategy_class: Type[SizingStrategy], strategy_params_grid: list[dict], cost_model: TransactionCostModel | None = None, risk_manager: RiskManager | None = None, on_flat_reentry: str = "stale_reference", symbol: str = "TQQQ", initial_cash: float = 100_000.0, n_jobs: int = 1, return_full_results: bool = False, search_strategy: str | object = "grid", rank_by: str = "Capital Velocity Index", rank_direction: str = "maximize", search_seed: int = 0, search_n_trials: int | None = None):
         validate_sweep_config(grid_steps=grid_steps, profit_targets=profit_targets, n_jobs=n_jobs, initial_cash=initial_cash, max_concurrent_lots=getattr(risk_manager, "max_concurrent_lots", None) if risk_manager is not None else None, max_total_exposure=getattr(risk_manager, "max_total_exposure", None) if risk_manager is not None else None)
         if on_flat_reentry not in {"stale_reference", "reset_to_market"}:
             raise ValueError("on_flat_reentry must be 'stale_reference' or 'reset_to_market'")
+        if rank_direction not in {"maximize", "minimize"}:
+            raise ValueError("rank_direction must be 'maximize' or 'minimize'")
         cost_model = ZeroCostModel() if cost_model is None else cost_model
         risk_manager = RiskManager() if risk_manager is None else risk_manager
         self._on_flat_reentry = on_flat_reentry
+        combinations = [
+            {"Grid Step": step, "Profit Target": target, **params}
+            for step, target, params in itertools.product(grid_steps, profit_targets, strategy_params_grid)
+        ]
+        if search_strategy == "grid":
+            search = GridSearch(combinations)
+        elif search_strategy == "bayesian":
+            trial_count = search_n_trials if search_n_trials is not None else max(1, int(len(combinations) * 0.75))
+            search = BayesianSearch(combinations, rank_by=rank_by, direction=rank_direction, seed=search_seed, n_trials=trial_count)
+        elif isinstance(search_strategy, object) and not isinstance(search_strategy, str):
+            search = search_strategy
+        else:
+            raise ValueError("search_strategy must be 'grid', 'bayesian', or a SearchStrategy instance")
+
         results = []
         full_results = []
-        combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
+        ordered_combinations = []
+        while True:
+            try:
+                candidate = search.suggest()
+            except StopIteration:
+                break
+            step = candidate.pop("Grid Step")
+            target = candidate.pop("Profit Target")
+            ordered_combinations.append((step, target, candidate))
+
         if n_jobs == 1:
-            for idx, (step, target, params) in enumerate(combinations):
-                result_row, simulation = _run_single_combination(self, idx, len(combinations), step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager, return_full_results)
+            for idx, (step, target, params) in enumerate(ordered_combinations):
+                result_row, simulation = _run_single_combination(self, idx, len(ordered_combinations), step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager, return_full_results)
                 results.append(result_row)
                 if simulation is not None:
                     full_results.append(simulation)
+                if simulation is not None:
+                    search.report({"Grid Step": step, "Profit Target": target, **params}, simulation)
         else:
             with ProcessPoolExecutor(max_workers=n_jobs) as executor:
-                futures = {executor.submit(_run_single_combination, self, idx, len(combinations), step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager, return_full_results): idx for idx, (step, target, params) in enumerate(combinations)}
+                futures = {executor.submit(_run_single_combination, self, idx, len(ordered_combinations), step, target, strategy_class, params, symbol, initial_cash, cost_model, risk_manager, return_full_results): idx for idx, (step, target, params) in enumerate(ordered_combinations)}
                 completed = {}
                 for future in as_completed(futures):
                     idx = futures[future]
                     try:
                         result_row, simulation = future.result()
                     except Exception as exc:
-                        step, target, params = combinations[idx]
-                        logger.error(f"Combination worker failed [{idx + 1}/{len(combinations)}] step={step} target={target} params={params}: {exc}")
+                        step, target, params = ordered_combinations[idx]
+                        logger.error(f"Combination worker failed [{idx + 1}/{len(ordered_combinations)}] step={step} target={target} params={params}: {exc}")
                         result_row, simulation = {"Grid Step": step, "Profit Target": target, **params, "error": str(exc)}, None
                     results.append(result_row)
                     if simulation is not None:
                         completed[idx] = simulation
                 full_results = [completed[idx] for idx in sorted(completed)]
-        summary = _rank_results(pd.DataFrame(results))
+                for idx in sorted(completed):
+                    step, target, params = ordered_combinations[idx]
+                    search.report({"Grid Step": step, "Profit Target": target, **params}, completed[idx])
+        summary = _rank_results(pd.DataFrame(results), rank_by=rank_by, direction=rank_direction)
         if return_full_results:
             return summary, full_results
         return summary
