@@ -52,10 +52,13 @@ def test_simulate_single_callable_directly_returns_valid_simulation_result():
     assert isinstance(result.metrics, dict)
     assert "Final Equity" in result.metrics
     assert "Max Drawdown %" in result.metrics
-    # Task 4.6 hasn't landed yet -- these must still be at their defaults.
-    assert result.trade_blotter.empty
-    assert result.equity_curve.empty
-    assert result.params == {}
+    # Task 4.6 landed after this test was first written -- trade_blotter/
+    # equity_curve/params are populated now, not at their empty defaults.
+    # See tests/integration/test_task_4_6_blotter_equity_curve.py for the
+    # dedicated tests on their actual content.
+    assert not result.trade_blotter.empty
+    assert not result.equity_curve.empty
+    assert result.params != {}
 
 
 def test_run_sweep_output_matches_pre_task_4_1_baseline_exactly():
