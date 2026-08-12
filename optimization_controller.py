@@ -56,8 +56,9 @@ class OptimizationController:
         start_price = self.data['close'].iloc[0]
         state = BacktestState(initial_cash=initial_cash, start_price=start_price)
 
-        for bar_index, (timestamp, row) in enumerate(self.data.iterrows()):
-            current_price = row['close']
+        for bar_index, row in enumerate(self.data.itertuples()):
+            timestamp = row.Index
+            current_price = row.close
 
             # Peaks/drawdown every bar (B3), before constructing context,
             # since MarketContext.equity/peak_equity/drawdown need this
@@ -72,9 +73,9 @@ class OptimizationController:
 
             context = MarketContext(
                 timestamp=timestamp,
-                open=row['open'],
-                high=row['high'],
-                low=row['low'],
+                open=row.open,
+                high=row.high,
+                low=row.low,
                 close=current_price,
                 cash=state.cash,
                 equity=total_equity,
