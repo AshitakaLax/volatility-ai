@@ -27,6 +27,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from src.market_context import MarketContext
+from src.exceptions import ConfigurationError
 
 
 class SizingStrategy(ABC):
@@ -67,7 +68,7 @@ class FixedPortfolioPercentage(SizingStrategy):
 
     def __init__(self, allocation_pct: float):
         if not 0.0 < allocation_pct <= 1.0:
-            raise ValueError(f"allocation_pct must be in (0, 1], got {allocation_pct}")
+            raise ConfigurationError(f"allocation_pct must be in (0, 1], got {allocation_pct}")
         self.allocation_pct = allocation_pct
 
     def record_tick(self, context: MarketContext) -> None:

@@ -12,6 +12,7 @@ from src.cost_models import TransactionCostModel, ZeroCostModel
 from src import intraday_validation
 from src.risk_manager import RiskManager
 from src.market_context import MarketContext, SimulationResult
+from src.exceptions import ConfigurationError
 
 logger = logging.getLogger("Optimizer")
 
@@ -318,11 +319,11 @@ class OptimizationController:
             behavior (ties broken arbitrarily by pandas' stable sort).
         """
         if on_flat_reentry not in ("stale_reference", "reset_to_market"):
-            raise ValueError(
+            raise ConfigurationError(
                 f"on_flat_reentry must be 'stale_reference' or 'reset_to_market', got {on_flat_reentry!r}"
             )
         if n_jobs < 1:
-            raise ValueError(f"n_jobs must be >= 1, got {n_jobs}")
+            raise ConfigurationError(f"n_jobs must be >= 1, got {n_jobs}")
         cost_model = cost_model if cost_model is not None else ZeroCostModel()
         risk_manager = risk_manager if risk_manager is not None else RiskManager()
         results = []
@@ -359,12 +360,12 @@ class OptimizationController:
 
         if rank_by not in summary_df.columns:
             available = sorted(summary_df.columns.tolist())
-            raise ValueError(
+            raise ConfigurationError(
                 f"rank_by column {rank_by!r} not found in results. Available columns: {available}"
             )
         if tie_break_by is not None and tie_break_by not in summary_df.columns:
             available = sorted(summary_df.columns.tolist())
-            raise ValueError(
+            raise ConfigurationError(
                 f"tie_break_by column {tie_break_by!r} not found in results. Available columns: {available}"
             )
 

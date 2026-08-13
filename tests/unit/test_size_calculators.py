@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from src.exceptions import ConfigurationError
 from src.market_context import MarketContext
 from src.size_calculators import FixedPortfolioPercentage
 
@@ -48,7 +49,7 @@ def test_check_grid_trigger_matches_pre_task_4_1_inline_check():
 
 @pytest.mark.parametrize("allocation_pct", [0.0, -0.01, 1.01, 2.0])
 def test_rejects_out_of_range_allocation(allocation_pct):
-    with pytest.raises(ValueError):
+    with pytest.raises(ConfigurationError):
         FixedPortfolioPercentage(allocation_pct=allocation_pct)
 
 

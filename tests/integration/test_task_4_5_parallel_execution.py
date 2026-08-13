@@ -28,6 +28,7 @@ import pandas as pd
 import pytest
 
 from optimization_controller import OptimizationController
+from src.exceptions import ConfigurationError
 from src.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 
@@ -112,7 +113,7 @@ class _ParallelExplodingStrategy:
 
 def test_invalid_n_jobs_rejected():
     df = _load_fixture()
-    with pytest.raises(ValueError, match="n_jobs"):
+    with pytest.raises(ConfigurationError, match="n_jobs"):
         OptimizationController(historical_data=df).run_sweep(
             grid_steps=[0.01], profit_targets=[0.005],
             strategy_class=FixedPortfolioPercentage,

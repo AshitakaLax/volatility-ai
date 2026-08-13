@@ -18,11 +18,9 @@ import logging
 import numpy as np
 import pandas as pd
 
+from src.exceptions import DataValidationError
+
 REQUIRED_COLUMNS = {"close"}  # extend to {"open","high","low","close","volume"} if/when OHLC is adopted (Task 2.3)
-
-
-class DataValidationError(ValueError):
-    pass
 
 
 def _format_bad_indices(df: pd.DataFrame, mask: pd.Series, limit: int = 5) -> str:

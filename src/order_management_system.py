@@ -33,6 +33,8 @@ NotImplementedError rather than silently behaving like SIMULATION.
 
 from __future__ import annotations
 
+from src.exceptions import ConfigurationError
+
 
 class OrderStatus:
     """String constants mirroring the Alpaca OrderStatus values named in
@@ -52,7 +54,7 @@ class OrderStatus:
 class OrderManagementSystem:
     def __init__(self, mode: str = "SIMULATION"):
         if mode not in ("SIMULATION", "LIVE"):
-            raise ValueError(f"mode must be 'SIMULATION' or 'LIVE', got {mode!r}")
+            raise ConfigurationError(f"mode must be 'SIMULATION' or 'LIVE', got {mode!r}")
         self.mode = mode
         self._order_seq = 0
 

@@ -1,5 +1,6 @@
 import pytest
 
+from src.exceptions import ConfigurationError
 from src.order_management_system import OrderManagementSystem, OrderStatus
 
 
@@ -47,7 +48,7 @@ def test_execute_sell_rejects_non_positive_values(qty, price):
 
 
 def test_invalid_mode_rejected_at_construction():
-    with pytest.raises(ValueError):
+    with pytest.raises(ConfigurationError):
         OrderManagementSystem(mode="PAPER")
 
 

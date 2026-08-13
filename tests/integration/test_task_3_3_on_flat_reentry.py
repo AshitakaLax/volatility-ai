@@ -18,6 +18,7 @@ import pandas as pd
 import pytest
 
 from optimization_controller import OptimizationController
+from src.exceptions import ConfigurationError
 from src.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 
@@ -91,5 +92,5 @@ def test_default_matches_task_0_1_baseline():
 
 def test_invalid_policy_rejected():
     df = _flat_reentry_fixture()
-    with pytest.raises(ValueError, match="on_flat_reentry"):
+    with pytest.raises(ConfigurationError, match="on_flat_reentry"):
         _run(df, on_flat_reentry="something_else")
