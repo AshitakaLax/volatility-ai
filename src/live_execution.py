@@ -18,7 +18,7 @@ from src.promotion_gate import PromotionGate
 from src.risk_manager import RiskManager
 from src.secrets import LiveCredentials, load_live_credentials
 from src.size_calculators import SizingStrategy
-from src.live_circuit_breaker import CircuitState, LiveCircuitBreaker, SQLiteCircuitBreakerStore
+from src.live_circuit_breaker import LiveCircuitBreaker, SQLiteCircuitBreakerStore
 
 logger = logging.getLogger("LiveExecution")
 
@@ -80,6 +80,7 @@ class LiveExecutionLoop:
                 raise ConfigurationError("live capital requires a passed paper-trading promotion gate")
             promotion_gate.require_live_promotion()
         self.config = config
+        self.strategy = strategy
         self.circuit_store = circuit_store
         self.circuit_breaker = circuit_breaker or LiveCircuitBreaker()
         self.risk_manager = risk_manager or RiskManager(max_concurrent_lots=config.risk.max_concurrent_lots, max_total_exposure=config.risk.max_total_exposure, circuit_breaker=self.circuit_breaker)
@@ -135,28 +136,27 @@ class LiveExecutionLoop:
         self._transition(RuntimeState.READY)
 
     def shutdown(self, *, settle: Callable[[], bool] | None = None, max_wait_seconds: float = 30.0) -> RuntimeState:
-        if self.runtime_state in {RuntimeState.STOPPED, RuntimeState.SHUTTING_DOWN}:
+        if self.runtime_state in {RuntimeState.STOPPED, RuntimeState.RECONCILIATION_REQUIRED}:
             return self.runtime_state
         if max_wait_seconds < 0:
             raise ValueError("max_wait_seconds must be non-negative")
         self._transition(RuntimeState.SHUTTING_DOWN)
         self._started = False
         settled = True if settle is None else bool(settle())
+        self.persist_state()
+        if self.state_store is not None:
+            self.state_store.record_audit(
+                f"shutdown:{datetime.now(timezone.utc).isoformat()}",
+                "STARTUP_SHUTDOWN",
+                {"deployment_id": getattr(self.config, "deployment_id", "unknown"), "runtime_state": RuntimeState.SHUTTING_DOWN.value, "settled": settled, "max_wait_seconds": float(max_wait_seconds)},
+            )
         if not settled:
             self.reconciliation_required = True
             self._transition(RuntimeState.RECONCILIATION_REQUIRED)
-        try:
-            self.persist_state()
-            if self.state_store is not None:
-                self.state_store.record_audit(
-                    f"shutdown:{datetime.now(timezone.utc).isoformat()}",
-                    "STARTUP_SHUTDOWN",
-                    {"deployment_id": getattr(self.config, "deployment_id", "unknown"), "runtime_state": self.runtime_state.value, "settled": settled, "max_wait_seconds": float(max_wait_seconds)},
-                )
-        finally:
-            if self.state_store is not None and not self.reconciliation_required:
-                self.state_store.close()
-            self._transition(RuntimeState.STOPPED if not self.reconciliation_required else RuntimeState.RECONCILIATION_REQUIRED)
+            return self.runtime_state
+        self._transition(RuntimeState.STOPPED)
+        if self.state_store is not None:
+            self.state_store.close()
         return self.runtime_state
 
     def evaluate_circuit_breaker(self, drawdown: float) -> bool:
