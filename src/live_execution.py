@@ -13,6 +13,7 @@ from src.ledger import AssetLotLedger, InventoryLot
 from src.market_context import MarketContext
 from src.order_management_system import Mode, OrderManagementSystem
 from src.persistence import SQLiteStateStore
+from src.promotion_gate import PromotionGate
 from src.risk_manager import RiskManager
 from src.secrets import LiveCredentials, load_live_credentials
 from src.size_calculators import SizingStrategy
@@ -57,10 +58,14 @@ class LiveExecutionLoop:
 
     LIVE_TICK_MAX_MOVE_PCT = 0.15
 
-    def __init__(self, config: BacktestConfig, strategy: SizingStrategy, risk_manager: RiskManager | None = None, *, broker_factory: Callable[[LiveCredentials], LiveBroker] | None = None, oms: OrderManagementSystem | None = None, state_store: SQLiteStateStore | None = None, state_path: str | None = None, broker_position_qty: Callable[[str], float] | None = None) -> None:
+    def __init__(self, config: BacktestConfig, strategy: SizingStrategy, risk_manager: RiskManager | None = None, *, broker_factory: Callable[[LiveCredentials], LiveBroker] | None = None, oms: OrderManagementSystem | None = None, state_store: SQLiteStateStore | None = None, state_path: str | None = None, broker_position_qty: Callable[[str], float] | None = None, promotion_gate: PromotionGate | None = None) -> None:
         config.validate()
         if not config.live.enabled:
             raise ConfigurationError("live.enabled=False: live execution is disabled")
+        if not config.live.paper_trading:
+            if promotion_gate is None:
+                raise ConfigurationError("live capital requires a passed paper-trading promotion gate")
+            promotion_gate.require_live_promotion()
         self.config = config
         self.strategy = strategy
         self.risk_manager = risk_manager or RiskManager(max_concurrent_lots=config.risk.max_concurrent_lots, max_total_exposure=config.risk.max_total_exposure)
@@ -119,7 +124,6 @@ class LiveExecutionLoop:
         return True
 
     def process_tick(self, context: MarketContext, *, step: float, last_buy_price: float) -> LiveDecision | None:
-        """Validate a streaming tick before it can reach strategy evaluation."""
         if not self.validate_tick(context.close):
             return None
         return self.decision_cycle(context, step=step, last_buy_price=last_buy_price)
