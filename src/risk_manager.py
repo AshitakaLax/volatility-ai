@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
-
-class CircuitState(str, Enum):
-    ACTIVE = "ACTIVE"
-    HALTED_NEW_BUYS = "HALTED_NEW_BUYS"
-    MANUAL_RESET_REQUIRED = "MANUAL_RESET_REQUIRED"
+from src.live_circuit_breaker import CircuitState
 
 
 class RiskManager:
@@ -29,7 +24,7 @@ class RiskManager:
         equity = max(0.0, float(equity))
         cash = max(0.0, float(cash))
         lots = max(0, int(open_lot_count))
-        if self.circuit_breaker is not None and self.circuit_breaker.state != CircuitState.ACTIVE:
+        if self.circuit_breaker is not None and self.circuit_breaker.state is not CircuitState.ACTIVE:
             return 0.0
         if self.max_concurrent_lots is not None and lots >= self.max_concurrent_lots:
             return 0.0
