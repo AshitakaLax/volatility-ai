@@ -61,15 +61,31 @@ class FixedPortfolioPercentage(SizingStrategy):
     1.6's acceptance criteria for this specific strategy ("doesn't use
     drawdown or ticks in its sizing").
 
-    Constructor keyword is `allocation_pct`, per
+    Canonical constructor keyword is `allocation_pct`, per
     implementation_task_specs.md Task 1.1's own proposed reading of
-    Run_Instructions' (buggy) `allocations` example parameter.
+    Run_Instructions' (buggy) `allocations` example parameter --
+    everything in this codebase built against that name. `percentage`
+    is also accepted (also keyword-only) since src/live_execution.py,
+    pushed directly to main mid-session, calls this constructor with
+    that name instead -- see the chat this was produced in. Passing
+    both is only allowed if they agree; the stored attribute is always
+    `self.allocation_pct` either way, so every existing reader of that
+    attribute (Task 4.6's params capture, this class's own
+    calculate_trade_value) is unaffected by which name a caller used.
     """
 
-    def __init__(self, allocation_pct: float):
-        if not 0.0 < allocation_pct <= 1.0:
-            raise ConfigurationError(f"allocation_pct must be in (0, 1], got {allocation_pct}")
-        self.allocation_pct = allocation_pct
+    def __init__(self, allocation_pct: float = None, percentage: float = None):
+        if allocation_pct is None and percentage is None:
+            raise ConfigurationError("FixedPortfolioPercentage requires allocation_pct (or percentage)")
+        if allocation_pct is not None and percentage is not None and allocation_pct != percentage:
+            raise ConfigurationError(
+                f"allocation_pct ({allocation_pct!r}) and percentage ({percentage!r}) were both "
+                "given and disagree -- pass only one"
+            )
+        value = allocation_pct if allocation_pct is not None else percentage
+        if not 0.0 < value <= 1.0:
+            raise ConfigurationError(f"allocation_pct must be in (0, 1], got {value}")
+        self.allocation_pct = value
 
     def record_tick(self, context: MarketContext) -> None:
         pass  # stateless -- nothing to track

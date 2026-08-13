@@ -28,6 +28,15 @@ class MarketContext:
     drawdown: float
     open_lot_count: int
     bar_index: int
+    # Added to unblock src/live_execution.py (pushed directly to main
+    # mid-session -- see the chat this was produced in). Defaulted so
+    # every pre-existing MarketContext(...) call site (all keyword-arg,
+    # confirmed before this change) keeps working unmodified. Defaults
+    # match exactly what live_execution.py's own build_context already
+    # assumed before these fields existed on this class.
+    time_of_day_flag: int = 0
+    is_macro_event_day: bool = False
+    macro_surprise_factor: float = 0.0
 
     @property
     def price(self) -> float:
