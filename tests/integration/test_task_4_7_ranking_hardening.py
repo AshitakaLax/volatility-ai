@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from optimization_controller import OptimizationController
+from src.exceptions import ConfigurationError
 from src.market_context import MarketContext
 from src.size_calculators import FixedPortfolioPercentage, SizingStrategy
 from tests.fixtures.regression_baseline import BASELINE
@@ -66,7 +67,7 @@ def test_error_row_sorts_to_the_bottom_without_raising(caplog):
 
 def test_nonexistent_rank_by_raises_clear_error_not_keyerror():
     df = _load_fixture()
-    with pytest.raises(ValueError, match="rank_by column"):
+    with pytest.raises(ConfigurationError, match="rank_by column"):
         OptimizationController(historical_data=df).run_sweep(
             grid_steps=[0.01],
             profit_targets=[0.005],
@@ -78,7 +79,7 @@ def test_nonexistent_rank_by_raises_clear_error_not_keyerror():
 
 def test_nonexistent_tie_break_by_raises_clear_error():
     df = _load_fixture()
-    with pytest.raises(ValueError, match="tie_break_by column"):
+    with pytest.raises(ConfigurationError, match="tie_break_by column"):
         OptimizationController(historical_data=df).run_sweep(
             grid_steps=[0.01],
             profit_targets=[0.005],
