@@ -47,7 +47,9 @@ def _rank_results(results: pd.DataFrame, rank_by: str = "Capital Velocity Index"
     if rank_by not in ranked.columns:
         ranked[rank_by] = fallback
     ranked["_ranking_metric"] = pd.to_numeric(ranked[rank_by], errors="coerce")
-    ranked.loc[~ranked["_ranking_metric"].apply(lambda value: pd.notna(value) and value not in {float("inf"), float("-inf")}), "_ranking_metric"] = fallback
+    ranked["_ranking_metric"] = ranked["_ranking_metric"].where(ranked["_ranking_metric"].notna(), fallback)
+    ranked["_ranking_metric"] = ranked["_ranking_metric"].where(ranked["_ranking_metric"] != float("inf"), fallback)
+    ranked["_ranking_metric"] = ranked["_ranking_metric"].where(ranked["_ranking_metric"] != float("-inf"), fallback)
     ranked["_result_order"] = range(len(ranked))
     ranked = ranked.sort_values(by=["_ranking_metric", "_result_order"], ascending=[direction == "minimize", True], kind="mergesort")
     return ranked.drop(columns=["_ranking_metric", "_result_order"])
@@ -65,6 +67,7 @@ class OptimizationController:
         oms = OrderManagementSystem(mode=Mode.SIMULATION)
         state = BacktestState(initial_cash, float(self.data["close"].iloc[0]))
         trade_blotter, equity_points = [], []
+        previous_close = None
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp, current_price = row.Index, float(row.close)
             equity = state.cash + sum(lot.shares * current_price for lot in ledger.open_lots)
@@ -77,16 +80,15 @@ class OptimizationController:
             for lot in ledger.get_marketable_lots(current_price):
                 result = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
                 applied, _ = oms.process_event_once(f"fill:{result['id']}", lambda: None)
-                if not applied or result.get("status") != OrderStatus.FILLED.value:
-                    continue
-                qty, price = float(result.get("filled_qty", result.get("qty", 0.0))), result.get("filled_avg_price")
-                if qty > 0 and price is not None:
-                    effective_price, cost = cost_model.apply_sell(float(price), qty, context=context)
-                    state.cash += qty * effective_price - cost
-                    ledger.close_lot(lot)
-                    trade_blotter.append({"timestamp": context.timestamp, "side": "SELL", "price": float(effective_price), "qty": qty, "equity": float(context.equity)})
-                    if not ledger.open_lots and self._on_flat_reentry == "reset_to_market":
-                        state.last_buy_price = current_price
+                if applied and result.get("status") == OrderStatus.FILLED.value:
+                    qty, price = float(result.get("filled_qty", result.get("qty", 0.0))), result.get("filled_avg_price")
+                    if qty > 0 and price is not None:
+                        effective_price, cost = cost_model.apply_sell(float(price), qty, context=context, prev_close=previous_close)
+                        state.cash += qty * effective_price - cost
+                        ledger.close_lot(lot)
+                        trade_blotter.append({"timestamp": context.timestamp, "side": "SELL", "price": float(effective_price), "qty": qty, "equity": float(context.equity)})
+                        if not ledger.open_lots and self._on_flat_reentry == "reset_to_market":
+                            state.last_buy_price = current_price
             if strategy_instance._check_grid_trigger(context, state.last_buy_price, step):
                 post_sell_equity = state.cash + sum(lot.shares * current_price for lot in ledger.open_lots)
                 if post_sell_equity > state.peak_equity:
@@ -102,13 +104,14 @@ class OptimizationController:
                     if result.get("status") == OrderStatus.FILLED.value:
                         qty, price = float(result.get("filled_qty", result.get("qty", 0.0))), result.get("filled_avg_price")
                         if qty > 0 and price is not None:
-                            effective_price, cost = cost_model.apply_buy(float(price), qty, context=context)
+                            effective_price, cost = cost_model.apply_buy(float(price), qty, context=context, prev_close=previous_close)
                             actual_notional = qty * effective_price + cost
                             if state.cash >= actual_notional:
                                 state.cash -= actual_notional
                                 ledger.register_buy(result["id"], symbol, effective_price, qty, target)
                                 trade_blotter.append({"timestamp": context.timestamp, "side": "BUY", "price": float(effective_price), "qty": qty, "equity": float(context.equity)})
             equity_points.append((context.timestamp, float(context.equity)))
+            previous_close = current_price
         final_price = float(self.data["close"].iloc[-1])
         final_value = state.cash + sum(lot.shares * final_price for lot in ledger.open_lots)
         metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_value, initial_cash)
@@ -139,8 +142,7 @@ class OptimizationController:
         elif isinstance(search_strategy, SearchStrategy):
             search = search_strategy
         else:
-            raise ValueError("search_strategy must be 'grid', 'bayesian', or a SearchStrategy instance")
-
+            raise ValueError("search_strategy must be 'grid', 'bayesian', or a SearchStrategy instance')
         results, full_results = [], []
         if isinstance(search, BayesianSearch):
             while True:
@@ -153,10 +155,7 @@ class OptimizationController:
                 results.append(result_row)
                 if simulation is not None:
                     full_results.append(simulation)
-                    search.report({"Grid Step": step, "Profit Target": target, **candidate}, simulation)
-                else:
-                    failed = SimulationResult(metrics={rank_by: float("-inf") if rank_direction == "maximize" else float("inf")})
-                    search.report({"Grid Step": step, "Profit Target": target, **candidate}, failed)
+                search.report({"Grid Step": step, "Profit Target": target, **candidate}, simulation or SimulationResult(metrics={}))
         elif n_jobs == 1:
             while True:
                 try:
@@ -193,7 +192,7 @@ class OptimizationController:
                         completed[idx] = simulation
                 full_results = [completed[idx] for idx in sorted(completed)]
                 for idx in sorted(completed):
-                    idx2, step, target, params = futures[next(f for f in futures if futures[f][0] == idx)]
+                    _, step, target, params = futures[next(f for f in futures if futures[f][0] == idx)]
                     search.report({"Grid Step": step, "Profit Target": target, **params}, completed[idx])
         summary = _rank_results(pd.DataFrame(results), rank_by=rank_by, direction=rank_direction)
         return (summary, full_results) if return_full_results else summary
