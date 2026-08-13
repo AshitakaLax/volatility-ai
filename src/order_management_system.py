@@ -33,7 +33,23 @@ NotImplementedError rather than silently behaving like SIMULATION.
 
 from __future__ import annotations
 
+from enum import Enum
+
 from src.exceptions import ConfigurationError
+
+
+class Mode(str, Enum):
+    """Subclasses str so Mode.SIMULATION == "SIMULATION" and
+    Mode.LIVE == "LIVE" -- every existing bare-string mode="SIMULATION"
+    call site (and the `mode not in ("SIMULATION", "LIVE")` /
+    `self.mode == "LIVE"` checks below) keeps working unmodified
+    whether callers pass the enum or the string. Added to unblock
+    src/live_execution.py, pushed directly to main mid-session with
+    `from src.order_management_system import Mode` -- see the chat
+    this was produced in."""
+
+    SIMULATION = "SIMULATION"
+    LIVE = "LIVE"
 
 
 class OrderStatus:
