@@ -17,6 +17,7 @@ from src.promotion_gate import PromotionGate
 from src.risk_manager import RiskManager
 from src.secrets import LiveCredentials, load_live_credentials
 from src.size_calculators import SizingStrategy
+from src.live_circuit_breaker import CircuitState, LiveCircuitBreaker, SQLiteCircuitBreakerStore
 
 logger = logging.getLogger("LiveExecution")
 
@@ -54,11 +55,9 @@ def _cumulative_fill_delta(order: Any, previous: _CumulativeFill) -> tuple[float
 
 
 class LiveExecutionLoop:
-    """Drive live ticks through the canonical strategy-facing contract."""
-
     LIVE_TICK_MAX_MOVE_PCT = 0.15
 
-    def __init__(self, config: BacktestConfig, strategy: SizingStrategy, risk_manager: RiskManager | None = None, *, broker_factory: Callable[[LiveCredentials], LiveBroker] | None = None, oms: OrderManagementSystem | None = None, state_store: SQLiteStateStore | None = None, state_path: str | None = None, broker_position_qty: Callable[[str], float] | None = None, promotion_gate: PromotionGate | None = None) -> None:
+    def __init__(self, config: BacktestConfig, strategy: SizingStrategy, risk_manager: RiskManager | None = None, *, broker_factory: Callable[[LiveCredentials], LiveBroker] | None = None, oms: OrderManagementSystem | None = None, state_store: SQLiteStateStore | None = None, state_path: str | None = None, broker_position_qty: Callable[[str], float] | None = None, promotion_gate: PromotionGate | None = None, circuit_breaker: LiveCircuitBreaker | None = None, circuit_store: SQLiteCircuitBreakerStore | None = None) -> None:
         config.validate()
         if not config.live.enabled:
             raise ConfigurationError("live.enabled=False: live execution is disabled")
@@ -67,8 +66,9 @@ class LiveExecutionLoop:
                 raise ConfigurationError("live capital requires a passed paper-trading promotion gate")
             promotion_gate.require_live_promotion()
         self.config = config
-        self.strategy = strategy
-        self.risk_manager = risk_manager or RiskManager(max_concurrent_lots=config.risk.max_concurrent_lots, max_total_exposure=config.risk.max_total_exposure)
+        self.circuit_store = circuit_store
+        self.circuit_breaker = circuit_breaker or LiveCircuitBreaker()
+        self.risk_manager = risk_manager or RiskManager(max_concurrent_lots=config.risk.max_concurrent_lots, max_total_exposure=config.risk.max_total_exposure, circuit_breaker=self.circuit_breaker)
         self._broker_factory = broker_factory
         self.oms = oms or OrderManagementSystem(mode=Mode.LIVE)
         self.broker: LiveBroker | None = None
@@ -84,6 +84,8 @@ class LiveExecutionLoop:
 
     def start(self) -> None:
         credentials = load_live_credentials()
+        if self.circuit_store is not None:
+            self.circuit_breaker.state = self.circuit_store.load()
         if self._broker_factory is not None:
             self.broker = self._broker_factory(credentials)
         if self.state_store is not None:
@@ -97,6 +99,17 @@ class LiveExecutionLoop:
                 raise ReconciliationError("durable ledger has open lots but no broker position reconciliation callback was supplied")
         self._started = True
 
+    def evaluate_circuit_breaker(self, drawdown: float) -> bool:
+        halted = self.circuit_breaker.evaluate(float(drawdown))
+        if halted and self.circuit_store is not None:
+            self.circuit_store.save(self.circuit_breaker.state)
+        return halted
+
+    def reset_circuit_breaker(self) -> None:
+        self.circuit_breaker.reset()
+        if self.circuit_store is not None:
+            self.circuit_store.save(self.circuit_breaker.state)
+
     def persist_state(self) -> None:
         if self.state_store is not None:
             self.state_store.persist_ledger(self.ledger)
@@ -107,7 +120,6 @@ class LiveExecutionLoop:
         return MarketContext(timestamp=timestamp, open=float(open), high=float(high), low=float(low), close=float(close), cash=float(cash), equity=float(equity), peak_equity=float(peak_equity), drawdown=float(drawdown), open_lot_count=int(open_lot_count), bar_index=int(bar_index), time_of_day_flag=int(time_of_day_flag), is_macro_event_day=bool(is_macro_event_day), macro_surprise_factor=float(macro_surprise_factor))
 
     def validate_tick(self, price: float) -> bool:
-        """Accept only positive prices and bounded moves from the last good tick."""
         price = float(price)
         if price <= 0.0:
             self.rejected_tick_count += 1
@@ -138,6 +150,7 @@ class LiveExecutionLoop:
         if not triggered:
             return LiveDecision(context=context, triggered=False)
         proposed = self.strategy.calculate_trade_value(context)
+        self.evaluate_circuit_breaker(context.drawdown)
         clamped = self.risk_manager.clamp_trade_value(proposed, context.equity, context.cash, context.open_lot_count)
         return LiveDecision(context=context, triggered=True, proposed_trade_value=float(proposed), clamped_trade_value=float(clamped))
 
@@ -190,7 +203,7 @@ class LiveExecutionLoop:
     def submit_buy(self, decision: LiveDecision) -> Any:
         if self.broker is None:
             raise RuntimeError("live broker is not connected")
-        if decision.clamped_trade_value <= 0:
+        if self.circuit_breaker.halted or decision.clamped_trade_value <= 0:
             return None
         return self.broker.submit_buy(self.config.backtest.symbol, decision.clamped_trade_value)
 
