@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Type
+from typing import Type, Optional
 import concurrent.futures
 import pandas as pd
 from src.ledger import AssetLotLedger
@@ -275,6 +275,8 @@ class OptimizationController:
         initial_cash: float = 100_000.0,
         n_jobs: int = 1,
         return_full_results: bool = False,
+        rank_by: str = "Capital Velocity Index",
+        tie_break_by: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
@@ -307,6 +309,13 @@ class OptimizationController:
             SimulationResult objects (trade_blotter, equity_curve, params) as
             (summary_df, full_results); a failed combination contributes None
             to that list rather than a SimulationResult.
+        :param rank_by: Column results are sorted by, descending. Defaults to
+            "Capital Velocity Index" -- exactly today's behavior. Raises a
+            clear error (naming available columns) if the column doesn't
+            exist, rather than a raw pandas KeyError.
+        :param tie_break_by: Optional secondary sort column for rows tied on
+            rank_by, also descending. None (default) -- exactly today's
+            behavior (ties broken arbitrarily by pandas' stable sort).
         """
         if on_flat_reentry not in ("stale_reference", "reset_to_market"):
             raise ValueError(
@@ -347,13 +356,38 @@ class OptimizationController:
         logger.info("Hyperparameter sweeping logic execution complete.")
 
         summary_df = pd.DataFrame(results)
-        # Sort via the Series' own index (not DataFrame.sort_values
-        # directly) so full_results -- a separate, same-order-as-results
-        # list -- can be reordered identically and stay paired with the
-        # right row after sorting (Task 4.6's return_full_results needs
-        # summary_df.iloc[i] and full_results[i] to correspond).
-        sort_order = summary_df["Capital Velocity Index"].sort_values(ascending=False, na_position="last").index
-        summary_df = summary_df.loc[sort_order].reset_index(drop=True)
+
+        if rank_by not in summary_df.columns:
+            available = sorted(summary_df.columns.tolist())
+            raise ValueError(
+                f"rank_by column {rank_by!r} not found in results. Available columns: {available}"
+            )
+        if tie_break_by is not None and tie_break_by not in summary_df.columns:
+            available = sorted(summary_df.columns.tolist())
+            raise ValueError(
+                f"tie_break_by column {tie_break_by!r} not found in results. Available columns: {available}"
+            )
+
+        missing_rank_count = summary_df[rank_by].isna().sum()
+        if missing_rank_count > 0:
+            logger.warning(
+                f"{missing_rank_count} row(s) have no {rank_by!r} value (error rows or NaN/inf metrics) "
+                f"and were excluded from ranking -- sunk to the bottom regardless of sort direction."
+            )
+
+        sort_columns = [rank_by] if tie_break_by is None else [rank_by, tie_break_by]
+        # Sort via the DataFrame's own resulting index (not a plain
+        # sort_values-and-done) so full_results -- a separate,
+        # same-order-as-results list -- can be reordered identically and
+        # stay paired with the right row after sorting (Task 4.6's
+        # return_full_results needs summary_df.iloc[i] and
+        # full_results[i] to correspond). na_position="last" is
+        # pandas' own default, made explicit here since sinking
+        # rank_by-missing rows to the bottom is now a stated contract,
+        # not an implicit side effect.
+        sorted_df = summary_df.sort_values(by=sort_columns, ascending=False, na_position="last")
+        sort_order = sorted_df.index
+        summary_df = sorted_df.reset_index(drop=True)
         full_results = [full_results[i] for i in sort_order]
 
         if return_full_results:
