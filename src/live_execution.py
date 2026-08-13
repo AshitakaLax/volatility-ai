@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import logging
 from typing import Any, Callable, Protocol
 
 from src.config import BacktestConfig
@@ -15,6 +16,8 @@ from src.persistence import SQLiteStateStore
 from src.risk_manager import RiskManager
 from src.secrets import LiveCredentials, load_live_credentials
 from src.size_calculators import SizingStrategy
+
+logger = logging.getLogger("LiveExecution")
 
 
 class LiveBroker(Protocol):
@@ -52,6 +55,8 @@ def _cumulative_fill_delta(order: Any, previous: _CumulativeFill) -> tuple[float
 class LiveExecutionLoop:
     """Drive live ticks through the canonical strategy-facing contract."""
 
+    LIVE_TICK_MAX_MOVE_PCT = 0.15
+
     def __init__(self, config: BacktestConfig, strategy: SizingStrategy, risk_manager: RiskManager | None = None, *, broker_factory: Callable[[LiveCredentials], LiveBroker] | None = None, oms: OrderManagementSystem | None = None, state_store: SQLiteStateStore | None = None, state_path: str | None = None, broker_position_qty: Callable[[str], float] | None = None) -> None:
         config.validate()
         if not config.live.enabled:
@@ -69,6 +74,8 @@ class LiveExecutionLoop:
         self._started = False
         self._fill_state: dict[str, _CumulativeFill] = {}
         self.reconciliation_required = False
+        self._last_known_good_price: float | None = None
+        self.rejected_tick_count = 0
 
     def start(self) -> None:
         credentials = load_live_credentials()
@@ -93,6 +100,29 @@ class LiveExecutionLoop:
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         return MarketContext(timestamp=timestamp, open=float(open), high=float(high), low=float(low), close=float(close), cash=float(cash), equity=float(equity), peak_equity=float(peak_equity), drawdown=float(drawdown), open_lot_count=int(open_lot_count), bar_index=int(bar_index), time_of_day_flag=int(time_of_day_flag), is_macro_event_day=bool(is_macro_event_day), macro_surprise_factor=float(macro_surprise_factor))
+
+    def validate_tick(self, price: float) -> bool:
+        """Accept only positive prices and bounded moves from the last good tick."""
+        price = float(price)
+        if price <= 0.0:
+            self.rejected_tick_count += 1
+            logger.warning("Rejected live tick: non-positive price price=%s", price)
+            return False
+        previous = self._last_known_good_price
+        if previous is not None:
+            move = abs(price / previous - 1.0)
+            if move > self.LIVE_TICK_MAX_MOVE_PCT:
+                self.rejected_tick_count += 1
+                logger.warning("Rejected live tick: implausible price move previous=%s price=%s move_pct=%.4f threshold=%.4f", previous, price, move, self.LIVE_TICK_MAX_MOVE_PCT)
+                return False
+        self._last_known_good_price = price
+        return True
+
+    def process_tick(self, context: MarketContext, *, step: float, last_buy_price: float) -> LiveDecision | None:
+        """Validate a streaming tick before it can reach strategy evaluation."""
+        if not self.validate_tick(context.close):
+            return None
+        return self.decision_cycle(context, step=step, last_buy_price=last_buy_price)
 
     def decision_cycle(self, context: MarketContext, *, step: float, last_buy_price: float) -> LiveDecision:
         if not self._started:
