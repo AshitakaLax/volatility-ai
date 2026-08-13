@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 import logging
 from typing import Any, Callable, Protocol
 
@@ -25,6 +26,19 @@ logger = logging.getLogger("LiveExecution")
 class LiveBroker(Protocol):
     def submit_buy(self, symbol: str, trade_value: float) -> Any: ...
     def submit_sell(self, symbol: str, qty: float, target_price: float) -> Any: ...
+
+
+class RuntimeState(str, Enum):
+    STARTING = "STARTING"
+    LOAD_CONFIG = "LOAD_CONFIG"
+    LOAD_STATE = "LOAD_STATE"
+    CONNECT_BROKER = "CONNECT_BROKER"
+    RECONCILE = "RECONCILE"
+    VALIDATE_DATA_CLOCK = "VALIDATE_DATA/CLOCK"
+    READY = "READY"
+    SHUTTING_DOWN = "SHUTTING_DOWN"
+    RECONCILIATION_REQUIRED = "RECONCILIATION_REQUIRED"
+    STOPPED = "STOPPED"
 
 
 @dataclass(frozen=True)
@@ -77,27 +91,73 @@ class LiveExecutionLoop:
         self.ledger = AssetLotLedger()
         self.last_buy_price = None
         self._started = False
+        self.runtime_state = RuntimeState.STARTING
         self._fill_state: dict[str, _CumulativeFill] = {}
         self.reconciliation_required = False
         self._last_known_good_price: float | None = None
         self.rejected_tick_count = 0
 
+    def _transition(self, state: RuntimeState) -> None:
+        self.runtime_state = state
+        logger.info("Live runtime state transition: %s", state.value)
+        if self.state_store is not None:
+            self.state_store.record_audit(
+                f"runtime:{datetime.now(timezone.utc).isoformat()}",
+                "STARTUP_SHUTDOWN",
+                {"deployment_id": getattr(self.config, "deployment_id", "unknown"), "runtime_state": state.value},
+            )
+
     def start(self) -> None:
+        self._transition(RuntimeState.STARTING)
+        self._transition(RuntimeState.LOAD_CONFIG)
         credentials = load_live_credentials()
+        self._transition(RuntimeState.LOAD_STATE)
         if self.circuit_store is not None:
             self.circuit_breaker.state = self.circuit_store.load()
-        if self._broker_factory is not None:
-            self.broker = self._broker_factory(credentials)
         if self.state_store is not None:
             self.ledger = self.state_store.load_open_lots()
             if self.ledger.open_lots:
                 self.last_buy_price = self.ledger.open_lots[-1].buy_price
+        self._transition(RuntimeState.CONNECT_BROKER)
+        if self._broker_factory is not None:
+            self.broker = self._broker_factory(credentials)
+        self._transition(RuntimeState.RECONCILE)
+        if self.state_store is not None:
             if self._broker_position_qty is not None:
                 self.state_store.reconcile_position(self.ledger, self._broker_position_qty(self.config.backtest.symbol))
             elif self.ledger.open_lots and self.broker is not None:
                 self.reconciliation_required = True
+                self._transition(RuntimeState.RECONCILIATION_REQUIRED)
                 raise ReconciliationError("durable ledger has open lots but no broker position reconciliation callback was supplied")
+        self._transition(RuntimeState.VALIDATE_DATA_CLOCK)
         self._started = True
+        self.reconciliation_required = False
+        self._transition(RuntimeState.READY)
+
+    def shutdown(self, *, settle: Callable[[], bool] | None = None, max_wait_seconds: float = 30.0) -> RuntimeState:
+        if self.runtime_state in {RuntimeState.STOPPED, RuntimeState.SHUTTING_DOWN}:
+            return self.runtime_state
+        if max_wait_seconds < 0:
+            raise ValueError("max_wait_seconds must be non-negative")
+        self._transition(RuntimeState.SHUTTING_DOWN)
+        self._started = False
+        settled = True if settle is None else bool(settle())
+        if not settled:
+            self.reconciliation_required = True
+            self._transition(RuntimeState.RECONCILIATION_REQUIRED)
+        try:
+            self.persist_state()
+            if self.state_store is not None:
+                self.state_store.record_audit(
+                    f"shutdown:{datetime.now(timezone.utc).isoformat()}",
+                    "STARTUP_SHUTDOWN",
+                    {"deployment_id": getattr(self.config, "deployment_id", "unknown"), "runtime_state": self.runtime_state.value, "settled": settled, "max_wait_seconds": float(max_wait_seconds)},
+                )
+        finally:
+            if self.state_store is not None and not self.reconciliation_required:
+                self.state_store.close()
+            self._transition(RuntimeState.STOPPED if not self.reconciliation_required else RuntimeState.RECONCILIATION_REQUIRED)
+        return self.runtime_state
 
     def evaluate_circuit_breaker(self, drawdown: float) -> bool:
         halted = self.circuit_breaker.evaluate(float(drawdown))
@@ -141,8 +201,8 @@ class LiveExecutionLoop:
         return self.decision_cycle(context, step=step, last_buy_price=last_buy_price)
 
     def decision_cycle(self, context: MarketContext, *, step: float, last_buy_price: float) -> LiveDecision:
-        if not self._started:
-            raise RuntimeError("live execution has not been started")
+        if not self._started or self.runtime_state is not RuntimeState.READY:
+            raise RuntimeError("live execution is not READY")
         if self.reconciliation_required:
             raise ReconciliationError("live execution is halted pending reconciliation")
         self.strategy.record_tick(context)
@@ -203,6 +263,8 @@ class LiveExecutionLoop:
     def submit_buy(self, decision: LiveDecision) -> Any:
         if self.broker is None:
             raise RuntimeError("live broker is not connected")
+        if self.runtime_state is not RuntimeState.READY:
+            return None
         if self.circuit_breaker.halted or decision.clamped_trade_value <= 0:
             return None
         return self.broker.submit_buy(self.config.backtest.symbol, decision.clamped_trade_value)
