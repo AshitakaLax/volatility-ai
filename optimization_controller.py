@@ -13,6 +13,7 @@ from src import intraday_validation
 from src.risk_manager import RiskManager
 from src.market_context import MarketContext, SimulationResult
 from src.exceptions import ConfigurationError
+from src.validation import validate_run_sweep_config
 
 logger = logging.getLogger("Optimizer")
 
@@ -318,12 +319,18 @@ class OptimizationController:
             rank_by, also descending. None (default) -- exactly today's
             behavior (ties broken arbitrarily by pandas' stable sort).
         """
-        if on_flat_reentry not in ("stale_reference", "reset_to_market"):
-            raise ConfigurationError(
-                f"on_flat_reentry must be 'stale_reference' or 'reset_to_market', got {on_flat_reentry!r}"
-            )
-        if n_jobs < 1:
-            raise ConfigurationError(f"n_jobs must be >= 1, got {n_jobs}")
+        # Task 4.9: validate everything up front, before building
+        # combinations or running anything -- a bad config fails
+        # immediately rather than partway through a potentially
+        # expensive sweep. Replaces the two inline checks this
+        # previously did itself.
+        validate_run_sweep_config(
+            grid_steps=grid_steps,
+            profit_targets=profit_targets,
+            n_jobs=n_jobs,
+            on_flat_reentry=on_flat_reentry,
+            initial_cash=initial_cash,
+        )
         cost_model = cost_model if cost_model is not None else ZeroCostModel()
         risk_manager = risk_manager if risk_manager is not None else RiskManager()
         results = []
