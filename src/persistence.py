@@ -10,8 +10,9 @@ from typing import Iterable
 
 from src.exceptions import PersistenceError, ReconciliationError
 from src.ledger import AssetLotLedger, InventoryLot
+from src.audit import AuditEvent
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class SQLiteStateStore:
@@ -62,17 +63,38 @@ class SQLiteStateStore:
                     schema_version INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS audit_events (
-                    event_id TEXT PRIMARY KEY,
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT NOT NULL UNIQUE,
+                    timestamp TEXT NOT NULL,
                     event_type TEXT NOT NULL,
+                    schema_version INTEGER NOT NULL,
+                    deployment_id TEXT NOT NULL,
                     payload TEXT NOT NULL,
-                    revision INTEGER NOT NULL,
-                    schema_version INTEGER NOT NULL
+                    revision INTEGER NOT NULL
                 );
                 """
             )
             row = self._conn.execute("SELECT schema_version FROM schema_meta LIMIT 1").fetchone()
             if row is None:
                 self._conn.execute("INSERT INTO schema_meta(schema_version) VALUES (?)", (SCHEMA_VERSION,))
+                self._conn.commit()
+            elif int(row[0]) == 1 and SCHEMA_VERSION == 2:
+                self._conn.execute("DROP TABLE IF EXISTS audit_events")
+                self._conn.execute(
+                    """
+                    CREATE TABLE audit_events (
+                        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event_id TEXT NOT NULL UNIQUE,
+                        timestamp TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        schema_version INTEGER NOT NULL,
+                        deployment_id TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        revision INTEGER NOT NULL
+                    )
+                    """
+                )
+                self._conn.execute("UPDATE schema_meta SET schema_version=2")
                 self._conn.commit()
             elif int(row[0]) != SCHEMA_VERSION:
                 raise PersistenceError(f"unsupported persistence schema version {row[0]}")
@@ -119,13 +141,21 @@ class SQLiteStateStore:
         except sqlite3.Error as exc:
             raise PersistenceError("failed to claim processed event") from exc
 
-    def record_audit(self, event_id: str, event_type: str, payload: dict) -> int:
+    def record_audit(self, event: AuditEvent) -> int:
         try:
             with self._conn:
                 revision = self._next_revision(self._conn)
                 self._conn.execute(
-                    "INSERT OR REPLACE INTO audit_events(event_id,event_type,payload,revision,schema_version) VALUES (?,?,?,?,?)",
-                    (event_id, event_type, json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False), revision, SCHEMA_VERSION),
+                    "INSERT INTO audit_events(event_id,timestamp,event_type,schema_version,deployment_id,payload,revision) VALUES (?,?,?,?,?,?,?)",
+                    (
+                        event.event_id,
+                        event.timestamp,
+                        event.event_type,
+                        event.schema_version,
+                        event.deployment_id,
+                        json.dumps(event.payload, sort_keys=True, separators=(",", ":"), allow_nan=False),
+                        revision,
+                    ),
                 )
                 return revision
         except (sqlite3.Error, ValueError) as exc:

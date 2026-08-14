@@ -35,7 +35,7 @@ def load_live_credentials(environ: Mapping[str, str] | None = None) -> LiveCrede
     env = os.environ if environ is None else environ
     key = env.get("APCA_API_KEY_ID")
     secret = env.get("APCA_API_SECRET_KEY")
-    missing = [name for name, value in SECRET_ENV_VARS if not env.get(name)]
+    missing = [name for name in SECRET_ENV_VARS if not env.get(name)]
     if missing:
         raise ConfigurationError(
             f"missing required live credential environment variable(s): {', '.join(missing)}"

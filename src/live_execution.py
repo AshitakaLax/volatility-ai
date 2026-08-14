@@ -2,15 +2,32 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 import logging
 from typing import Any, Callable, Protocol
 
+from src.audit import (
+    AuditEvent,
+    MarketContextPayload,
+    StrategyDecisionPayload,
+    RiskDecisionPayload,
+    OrderIntentPayload,
+    OrderStatusPayload,
+    FillPayload,
+    LedgerMutationPayload,
+    ReconciliationPayload,
+    RiskHaltPayload,
+    StartupShutdownPayload,
+    generate_event_id,
+)
+
 from src.config import BacktestConfig
-from src.exceptions import ConfigurationError, ReconciliationError
-from src.ledger import AssetLotLedger, InventoryLot
+from src.cost_models import TransactionCostModel, ZeroCostModel
+from src.exceptions import ConfigurationError, ReconciliationError, SellEconomicsError
+from src.ledger import AssetLotLedger, InventoryLot, validate_sell
 from src.market_context import MarketContext
 from src.order_management_system import Mode, OrderManagementSystem
 from src.persistence import SQLiteStateStore
@@ -47,6 +64,7 @@ class LiveDecision:
     triggered: bool
     proposed_trade_value: float = 0.0
     clamped_trade_value: float = 0.0
+    decision_id: str | None = None
 
 
 @dataclass
@@ -97,16 +115,35 @@ class LiveExecutionLoop:
         self.reconciliation_required = False
         self._last_known_good_price: float | None = None
         self.rejected_tick_count = 0
+        # Counter for no-loss guard violations encountered during live/paper
+        # trading.  Fed into PaperTradingResult.no_loss_guard_violations.
+        self.no_loss_guard_violations: int = 0
+
+    def _record_audit(self, event_type: str, payload_obj: Any, event_id: str | None = None) -> None:
+        if self.state_store is None:
+            return
+        event = AuditEvent(
+            event_id=event_id or generate_event_id(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            event_type=event_type,
+            schema_version=1,
+            deployment_id=getattr(self.config, "deployment_id", "unknown"),
+            payload=dataclasses.asdict(payload_obj) if dataclasses.is_dataclass(payload_obj) else payload_obj,
+        )
+        self.state_store.record_audit(event)
 
     def _transition(self, state: RuntimeState) -> None:
         self.runtime_state = state
         logger.info("Live runtime state transition: %s", state.value)
-        if self.state_store is not None:
-            self.state_store.record_audit(
-                f"runtime:{datetime.now(timezone.utc).isoformat()}",
-                "STARTUP_SHUTDOWN",
-                {"deployment_id": getattr(self.config, "deployment_id", "unknown"), "runtime_state": state.value},
-            )
+        self._record_audit(
+            "STARTUP_SHUTDOWN",
+            StartupShutdownPayload(
+                deployment_id=getattr(self.config, "deployment_id", "unknown"),
+                runtime_state=state.value,
+                reconciliation_result=None
+            ),
+            event_id=f"runtime:{datetime.now(timezone.utc).isoformat()}"
+        )
 
     def start(self) -> None:
         self._transition(RuntimeState.STARTING)
@@ -125,7 +162,21 @@ class LiveExecutionLoop:
         self._transition(RuntimeState.RECONCILE)
         if self.state_store is not None:
             if self._broker_position_qty is not None:
-                self.state_store.reconcile_position(self.ledger, self._broker_position_qty(self.config.backtest.symbol))
+                b_qty = float(self._broker_position_qty(self.config.backtest.symbol))
+                l_qty = float(self.ledger.open_share_count)
+                matched = abs(b_qty - l_qty) <= 1e-9
+                
+                self._record_audit(
+                    "RECONCILIATION",
+                    ReconciliationPayload(
+                        correlation_id="startup-reconcile",
+                        local_state_summary={"position_qty": l_qty},
+                        broker_state_summary={"position_qty": b_qty},
+                        resolution="matched" if matched else "mismatch"
+                    )
+                )
+                
+                self.state_store.reconcile_position(self.ledger, b_qty)
             elif self.ledger.open_lots and self.broker is not None:
                 self.reconciliation_required = True
                 self._transition(RuntimeState.RECONCILIATION_REQUIRED)
@@ -144,12 +195,15 @@ class LiveExecutionLoop:
         self._started = False
         settled = True if settle is None else bool(settle())
         self.persist_state()
-        if self.state_store is not None:
-            self.state_store.record_audit(
-                f"shutdown:{datetime.now(timezone.utc).isoformat()}",
-                "STARTUP_SHUTDOWN",
-                {"deployment_id": getattr(self.config, "deployment_id", "unknown"), "runtime_state": RuntimeState.SHUTTING_DOWN.value, "settled": settled, "max_wait_seconds": float(max_wait_seconds)},
-            )
+        self._record_audit(
+            "STARTUP_SHUTDOWN",
+            StartupShutdownPayload(
+                deployment_id=getattr(self.config, "deployment_id", "unknown"),
+                runtime_state=RuntimeState.SHUTTING_DOWN.value,
+                reconciliation_result=f"settled={settled}"
+            ),
+            event_id=f"shutdown:{datetime.now(timezone.utc).isoformat()}"
+        )
         if not settled:
             self.reconciliation_required = True
             self._transition(RuntimeState.RECONCILIATION_REQUIRED)
@@ -160,7 +214,14 @@ class LiveExecutionLoop:
         return self.runtime_state
 
     def evaluate_circuit_breaker(self, drawdown: float) -> bool:
+        was_halted = self.circuit_breaker.halted
         halted = self.circuit_breaker.evaluate(float(drawdown))
+        if halted != was_halted:
+            self._record_audit("RISK_HALT", RiskHaltPayload(
+                halt_reason="drawdown_exceeded" if halted else "reset",
+                previous_state="halted" if was_halted else "active",
+                new_state="halted" if halted else "active"
+            ))
         if halted and self.circuit_store is not None:
             self.circuit_store.save(self.circuit_breaker.state)
         return halted
@@ -205,16 +266,67 @@ class LiveExecutionLoop:
             raise RuntimeError("live execution is not READY")
         if self.reconciliation_required:
             raise ReconciliationError("live execution is halted pending reconciliation")
+            
+        decision_id = generate_event_id()
+        self._record_audit("MARKET_CONTEXT", MarketContextPayload(
+            timestamp=context.timestamp.isoformat(),
+            symbol=self.config.backtest.symbol,
+            OHLCV={"open": context.open, "high": context.high, "low": context.low, "close": context.close, "volume": 0.0},
+            bar_event_id=str(context.bar_index)
+        ), event_id=decision_id + "-ctx")
+
         self.strategy.record_tick(context)
         triggered = self.strategy._check_grid_trigger(context, last_buy_price, step)
+        
+        proposed = float(self.strategy.calculate_trade_value(context)) if triggered else 0.0
+        self._record_audit("STRATEGY_DECISION", StrategyDecisionPayload(
+            decision_id=decision_id,
+            strategy_id=self.config.strategy.strategy_id,
+            proposed_action="BUY" if triggered else "NONE",
+            parameters={"proposed_trade_value": proposed, "step": step}
+        ))
+        
         if not triggered:
-            return LiveDecision(context=context, triggered=False)
-        proposed = self.strategy.calculate_trade_value(context)
+            return LiveDecision(context=context, triggered=False, decision_id=decision_id)
+            
         self.evaluate_circuit_breaker(context.drawdown)
-        clamped = self.risk_manager.clamp_trade_value(proposed, context.equity, context.cash, context.open_lot_count)
-        return LiveDecision(context=context, triggered=True, proposed_trade_value=float(proposed), clamped_trade_value=float(clamped))
+        clamped = float(self.risk_manager.clamp_trade_value(proposed, context.equity, context.cash, context.open_lot_count))
+        
+        self._record_audit("RISK_DECISION", RiskDecisionPayload(
+            decision_id=decision_id,
+            allowed=(clamped > 0),
+            reason="clamped" if clamped < proposed else ("halted" if self.circuit_breaker.halted else "allowed"),
+            relevant_limits={"max_concurrent_lots": getattr(self.risk_manager, "max_concurrent_lots", None), "max_total_exposure": getattr(self.risk_manager, "max_total_exposure", None)}
+        ))
+        
+        return LiveDecision(context=context, triggered=True, proposed_trade_value=proposed, clamped_trade_value=clamped, decision_id=decision_id)
 
-    def apply_sell_fill(self, order: Any, lot: InventoryLot, ledger: AssetLotLedger | None = None, cash: float = 0.0, *, execution_cost: float = 0.0) -> tuple[float, float]:
+    def apply_sell_fill(
+        self,
+        order: Any,
+        lot: InventoryLot,
+        ledger: AssetLotLedger | None = None,
+        cash: float = 0.0,
+        *,
+        execution_cost: float = 0.0,
+        cost_model: TransactionCostModel | None = None,
+    ) -> tuple[float, float]:
+        """Process a (partial) sell fill and enforce the no-loss guard.
+
+        The guard is called with the **actual** broker-confirmed fill price.
+        If a fill-time loss is detected (e.g. broker filled below the quoted
+        price used in ``submit_sell``), the fill is still recorded — accounting
+        is fill-driven (§2.1) and we cannot un-execute a broker fill — but the
+        violation is audited and counted in ``no_loss_guard_violations``.
+
+        Parameters
+        ----------
+        cost_model:
+            ``TransactionCostModel`` to compute effective fill price and
+            sell-side costs from the actual fill price.  Defaults to
+            ``ZeroCostModel`` for backward compatibility.
+        """
+        cost_model = cost_model or ZeroCostModel()
         ledger = ledger or self.ledger
         order_id = str(order.id)
         state = self._fill_state.setdefault(order_id, _CumulativeFill())
@@ -228,15 +340,58 @@ class LiveExecutionLoop:
             claimed, _ = self.state_store.mark_processed(event_id)
             if not claimed:
                 return float(cash), 0.0
+
+        # ── No-loss guard at fill boundary (Rule One §2.1) ──────────────────
+        # Evaluate economics BEFORE close_lot mutates lot.shares to 0.
+        # The fill has already been executed at the broker; we record reality
+        # regardless, but flag any violation for audit and the promotion gate.
+        fill_violation = False
+        try:
+            econ = validate_sell(lot, new_qty, new_avg, cost_model)
+            net_proceeds = econ.net_sell_proceeds
+        except SellEconomicsError as exc:
+            # Fill already happened — record it and flag the violation.
+            logger.warning(
+                "No-loss guard violation at fill boundary (fill already executed): %s", exc
+            )
+            self.no_loss_guard_violations += 1
+            fill_violation = True
+            # Fall back to raw notional minus provided execution_cost so
+            # accounting still closes correctly.
+            net_proceeds = new_notional - float(execution_cost)
+
         applied, _ = self.oms.process_event_once(event_id, lambda: ledger.close_lot(lot, sell_qty=new_qty, execution_price=new_avg, completed=False))
         if not applied:
             return float(cash), 0.0
         state.qty = float(order.filled_qty)
         state.notional = float(order.filled_qty) * float(order.filled_avg_price or 0.0)
+
+        self._record_audit("ORDER_STATUS", OrderStatusPayload(
+            intent_id=order_id,
+            broker_order_id=order_id,
+            status="FILLED" if state.qty >= lot.shares - 1e-9 else "PARTIALLY_FILLED",
+            cumulative_filled_qty=state.qty
+        ))
+        self._record_audit("FILL", FillPayload(
+            fill_id=event_id,
+            order_id=order_id,
+            incremental_fill_qty=new_qty,
+            cumulative_filled_qty=state.qty,
+            price=new_avg,
+            fees=execution_cost,
+            timestamp=datetime.now(timezone.utc).isoformat()
+        ), event_id=event_id)
+        self._record_audit("LEDGER_MUTATION", LedgerMutationPayload(
+            event_id=event_id,
+            lot_id=lot.order_id,
+            mutation_type="close_lot" + ("_violation" if fill_violation else ""),
+            quantity_delta=-new_qty,
+            cash_delta=net_proceeds
+        ))
+
         if self.state_store is not None:
             self.state_store.persist_ledger(ledger)
-            self.state_store.record_audit(event_id, "fill", {"order_id": order_id, "side": "sell", "qty": new_qty, "notional": new_notional})
-        return float(cash) + new_notional - float(execution_cost), new_notional
+        return float(cash) + net_proceeds, net_proceeds
 
     def apply_buy_fill(self, order: Any, symbol: str, profit_target: float, ledger: AssetLotLedger | None = None, cash: float = 0.0, *, execution_cost: float = 0.0) -> tuple[float, InventoryLot | None]:
         ledger = ledger or self.ledger
@@ -255,9 +410,32 @@ class LiveExecutionLoop:
             return float(cash), None
         state.qty = float(order.filled_qty)
         state.notional = float(order.filled_qty) * float(order.filled_avg_price or 0.0)
+        
+        self._record_audit("ORDER_STATUS", OrderStatusPayload(
+            intent_id=order_id,
+            broker_order_id=order_id,
+            status="FILLED" if state.qty > 0 else "PARTIALLY_FILLED", # simplified status
+            cumulative_filled_qty=state.qty
+        ))
+        self._record_audit("FILL", FillPayload(
+            fill_id=event_id,
+            order_id=order_id,
+            incremental_fill_qty=new_qty,
+            cumulative_filled_qty=state.qty,
+            price=new_avg,
+            fees=execution_cost,
+            timestamp=datetime.now(timezone.utc).isoformat()
+        ), event_id=event_id)
+        self._record_audit("LEDGER_MUTATION", LedgerMutationPayload(
+            event_id=event_id,
+            lot_id=order_id,
+            mutation_type="register_buy",
+            quantity_delta=new_qty,
+            cash_delta=-(new_notional + execution_cost)
+        ))
+        
         if self.state_store is not None:
             self.state_store.persist_ledger(ledger)
-            self.state_store.record_audit(event_id, "fill", {"order_id": order_id, "side": "buy", "qty": new_qty, "notional": new_notional})
         return float(cash) - new_notional - float(execution_cost), lot
 
     def submit_buy(self, decision: LiveDecision) -> Any:
@@ -267,9 +445,74 @@ class LiveExecutionLoop:
             return None
         if self.circuit_breaker.halted or decision.clamped_trade_value <= 0:
             return None
+            
+        intent_id = generate_event_id()
+        self._record_audit("ORDER_INTENT", OrderIntentPayload(
+            intent_id=intent_id,
+            decision_id=decision.decision_id or "",
+            symbol=self.config.backtest.symbol,
+            side="BUY",
+            quantity=decision.clamped_trade_value,
+            limit_price=None
+        ), event_id=intent_id)
+            
         return self.broker.submit_buy(self.config.backtest.symbol, decision.clamped_trade_value)
 
-    def submit_sell(self, qty: float, target_price: float) -> Any:
+    def submit_sell(
+        self,
+        qty: float,
+        target_price: float,
+        decision_id: str = "",
+        *,
+        lot: InventoryLot | None = None,
+        cost_model: TransactionCostModel | None = None,
+    ) -> Any:
+        """Submit a sell intent to the broker, enforcing the no-loss guard.
+
+        The no-loss guard (``validate_sell``, Rule One §2.1) is evaluated
+        against *target_price* before any broker call.  If the guard rejects
+        the sell, ``None`` is returned and nothing is submitted.
+
+        Parameters
+        ----------
+        lot:
+            The ``InventoryLot`` being sold.  Required for the no-loss guard;
+            if ``None``, the guard is skipped (backward-compatible behaviour
+            for callers that have not yet been updated, but a deprecation
+            warning is logged).
+        cost_model:
+            ``TransactionCostModel`` for sell-side cost calculation.  Defaults
+            to ``ZeroCostModel`` when not supplied.
+        """
         if self.broker is None:
             raise RuntimeError("live broker is not connected")
+
+        cost_model = cost_model or ZeroCostModel()
+
+        # ── No-loss guard at submission boundary (Rule One §2.1) ─────────────
+        if lot is not None:
+            try:
+                validate_sell(lot, float(qty), float(target_price), cost_model)
+            except SellEconomicsError as exc:
+                logger.warning(
+                    "submit_sell rejected by no-loss guard — order not submitted: %s", exc
+                )
+                self.no_loss_guard_violations += 1
+                return None
+        else:
+            logger.warning(
+                "submit_sell called without a lot — no-loss guard skipped for qty=%s price=%s",
+                qty, target_price,
+            )
+
+        intent_id = generate_event_id()
+        self._record_audit("ORDER_INTENT", OrderIntentPayload(
+            intent_id=intent_id,
+            decision_id=decision_id,
+            symbol=self.config.backtest.symbol,
+            side="SELL",
+            quantity=qty,
+            limit_price=target_price
+        ), event_id=intent_id)
+
         return self.broker.submit_sell(self.config.backtest.symbol, float(qty), float(target_price))

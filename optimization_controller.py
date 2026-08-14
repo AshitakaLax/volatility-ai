@@ -7,7 +7,8 @@ import pandas as pd
 
 from src import data_validation
 from src.cost_models import TransactionCostModel, ZeroCostModel
-from src.ledger import AssetLotLedger
+from src.exceptions import SellEconomicsError
+from src.ledger import AssetLotLedger, validate_sell
 from src.market_context import MarketContext, SimulationResult
 from src.order_management_system import Mode, OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
@@ -78,15 +79,27 @@ class OptimizationController:
             context = MarketContext(timestamp=timestamp.to_pydatetime() if hasattr(timestamp, "to_pydatetime") else timestamp, open=float(getattr(row, "open", current_price)), high=float(getattr(row, "high", current_price)), low=float(getattr(row, "low", current_price)), close=current_price, cash=float(state.cash), equity=float(equity), peak_equity=float(state.peak_equity), drawdown=float(drawdown), open_lot_count=len(ledger.open_lots), bar_index=bar_index)
             strategy_instance.record_tick(context)
             for lot in ledger.get_marketable_lots(current_price):
+                # ── No-loss guard (Rule One §2.1) ────────────────────────────
+                # validate_sell is the single canonical exit-boundary check.
+                # It raises SellEconomicsError if net proceeds < allocated cost
+                # basis after sell-side costs.  When rejected we skip this lot
+                # rather than submitting the order.
+                try:
+                    econ = validate_sell(lot, lot.shares, lot.target_sell_price, cost_model)
+                except SellEconomicsError as exc:
+                    logger.warning("Backtest sell rejected by no-loss guard: %s", exc)
+                    continue
                 result = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
                 applied, _ = oms.process_event_once(f"fill:{result['id']}", lambda: None)
                 if applied and result.get("status") == OrderStatus.FILLED.value:
-                    qty, price = float(result.get("filled_qty", result.get("qty", 0.0))), result.get("filled_avg_price")
+                    qty = float(result.get("filled_qty", result.get("qty", 0.0)))
+                    price = result.get("filled_avg_price")
                     if qty > 0 and price is not None:
-                        effective_price, cost = cost_model.apply_sell(float(price), qty, context=context, prev_close=previous_close)
-                        state.cash += qty * effective_price - cost
+                        # Use the economics already computed by the guard so that
+                        # apply_sell is never called twice for the same transaction.
+                        state.cash += econ.net_sell_proceeds
                         ledger.close_lot(lot)
-                        trade_blotter.append({"timestamp": context.timestamp, "side": "SELL", "price": float(effective_price), "qty": qty, "equity": float(context.equity)})
+                        trade_blotter.append({"timestamp": context.timestamp, "side": "SELL", "price": float(econ.net_sell_proceeds / qty if qty else 0.0), "qty": qty, "equity": float(context.equity)})
                         if not ledger.open_lots and self._on_flat_reentry == "reset_to_market":
                             state.last_buy_price = current_price
             if strategy_instance._check_grid_trigger(context, state.last_buy_price, step):
@@ -108,7 +121,9 @@ class OptimizationController:
                             actual_notional = qty * effective_price + cost
                             if state.cash >= actual_notional:
                                 state.cash -= actual_notional
-                                ledger.register_buy(result["id"], symbol, effective_price, qty, target)
+                                # Thread buy_costs into the lot so that the no-loss
+                                # guard has the full allocated cost basis on exit.
+                                ledger.register_buy(result["id"], symbol, effective_price, qty, target, buy_costs=float(cost))
                                 trade_blotter.append({"timestamp": context.timestamp, "side": "BUY", "price": float(effective_price), "qty": qty, "equity": float(context.equity)})
             equity_points.append((context.timestamp, float(context.equity)))
             previous_close = current_price
@@ -142,7 +157,7 @@ class OptimizationController:
         elif isinstance(search_strategy, SearchStrategy):
             search = search_strategy
         else:
-            raise ValueError("search_strategy must be 'grid', 'bayesian', or a SearchStrategy instance')
+            raise ValueError("search_strategy must be 'grid', 'bayesian', or a SearchStrategy instance")
         results, full_results = [], []
         if isinstance(search, BayesianSearch):
             while True:

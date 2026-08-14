@@ -42,6 +42,7 @@ class BrokerReconciler:
         ledger: AssetLotLedger,
         *,
         local_open_orders: int = 0,
+        audit_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> ReconciliationResult:
         broker_qty = float(self.position_reader(symbol))
         local_qty = float(ledger.open_share_count)
@@ -56,6 +57,14 @@ class BrokerReconciler:
             matched=matched,
             reason="matched" if matched else "broker/local state mismatch",
         )
+        if audit_callback is not None:
+            audit_callback({
+                "correlation_id": "reconcile",
+                "local_state_summary": {"position_qty": local_qty, "open_orders": local_open_orders},
+                "broker_state_summary": {"position_qty": broker_qty, "open_orders": broker_open_orders},
+                "resolution": result.reason
+            })
+            
         if not matched:
             raise ReconciliationError(
                 f"reconciliation failed for {symbol}: local_qty={local_qty}, "

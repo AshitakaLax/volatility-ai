@@ -30,6 +30,16 @@ class ExecutionError(TradingSystemError):
     """Order submission or execution failed."""
 
 
+class SellEconomicsError(ExecutionError):
+    """A proposed sell is rejected because net proceeds would not cover
+    the allocated cost basis (no-loss Rule One violation).
+
+    Raised by ``validate_sell`` before a sell intent is submitted to the
+    broker.  All exit paths must call ``validate_sell`` rather than
+    duplicating the net_sell_proceeds / allocated_cost_basis comparison.
+    """
+
+
 class ReconciliationError(TradingSystemError):
     """Internal state cannot be reconciled with observed execution state."""
 
