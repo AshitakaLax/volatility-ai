@@ -14,6 +14,7 @@ from src.risk_manager import RiskManager
 from src.market_context import MarketContext, SimulationResult
 from src.exceptions import ConfigurationError
 from src.validation import validate_run_sweep_config
+from src.idempotency import ProcessedEventStore
 
 logger = logging.getLogger("Optimizer")
 
@@ -118,6 +119,13 @@ class OptimizationController:
         # than extended here.
         oms = OrderManagementSystem(mode="SIMULATION")
 
+        # Task 4.10: one store per combination run -- in-process is
+        # sufficient for SIMULATION mode per that task's own wording
+        # ("bounded by the run's lifetime, no restart to survive").
+        # See src/idempotency.py's docstring for the full ID-scheme
+        # contract (shared with Tasks 7.4/7.14).
+        event_store = ProcessedEventStore()
+
         # Task 4.6: opt-in trade blotter / equity curve capture.
         blotter_records = []
         equity_curve_timestamps = []
@@ -188,18 +196,20 @@ class OptimizationController:
                     )
                     continue
 
-                state.cash += net_sell_proceeds
-                ledger.close_lot(lot)
-                blotter_records.append({
-                    "timestamp": context.timestamp,
-                    "side": "sell",
-                    "price": filled_price,
-                    "qty": filled_qty,
-                    "equity": context.equity,
-                })
+                def _apply_sell_fill():
+                    state.cash += net_sell_proceeds
+                    ledger.close_lot(lot)
+                    blotter_records.append({
+                        "timestamp": context.timestamp,
+                        "side": "sell",
+                        "price": filled_price,
+                        "qty": filled_qty,
+                        "equity": context.equity,
+                    })
+                    if len(ledger.open_lots) == 0 and on_flat_reentry == "reset_to_market":
+                        state.last_buy_price = context.price
 
-                if len(ledger.open_lots) == 0 and on_flat_reentry == "reset_to_market":
-                    state.last_buy_price = context.price
+                event_store.apply_once(exec_res["id"], _apply_sell_fill, event_kind="sell_fill")
 
             # 2. Step purchase checks -- now delegated to the strategy's
             # _check_grid_trigger (default implementation is identical to
@@ -222,16 +232,19 @@ class OptimizationController:
                         total_buy_outlay = (effective_price * filled_qty) + buy_cost
                         per_share_cost_basis = total_buy_outlay / filled_qty
 
-                        ledger.register_buy(order["id"], symbol, per_share_cost_basis, filled_qty, target)
-                        state.cash -= total_buy_outlay
-                        state.last_buy_price = context.price
-                        blotter_records.append({
-                            "timestamp": context.timestamp,
-                            "side": "buy",
-                            "price": filled_price,
-                            "qty": filled_qty,
-                            "equity": context.equity,
-                        })
+                        def _apply_buy_fill():
+                            ledger.register_buy(order["id"], symbol, per_share_cost_basis, filled_qty, target)
+                            state.cash -= total_buy_outlay
+                            state.last_buy_price = context.price
+                            blotter_records.append({
+                                "timestamp": context.timestamp,
+                                "side": "buy",
+                                "price": filled_price,
+                                "qty": filled_qty,
+                                "equity": context.equity,
+                            })
+
+                        event_store.apply_once(order["id"], _apply_buy_fill, event_kind="buy_fill")
 
         final_price = self.data['close'].iloc[-1]
         open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
