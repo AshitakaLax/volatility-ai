@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import asdict
 from pathlib import Path
-from typing import Iterable
 
 from src.exceptions import PersistenceError, ReconciliationError
 from src.ledger import AssetLotLedger, InventoryLot
 from src.audit import AuditEvent
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class SQLiteStateStore:
@@ -63,7 +61,7 @@ class SQLiteStateStore:
                     schema_version INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS audit_events (
-                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sequence INTEGER PRIMARY KEY,
                     event_id TEXT NOT NULL UNIQUE,
                     timestamp TEXT NOT NULL,
                     event_type TEXT NOT NULL,
@@ -78,12 +76,23 @@ class SQLiteStateStore:
             if row is None:
                 self._conn.execute("INSERT INTO schema_meta(schema_version) VALUES (?)", (SCHEMA_VERSION,))
                 self._conn.commit()
-            elif int(row[0]) == 1 and SCHEMA_VERSION == 2:
-                self._conn.execute("DROP TABLE IF EXISTS audit_events")
+            elif int(row[0]) < SCHEMA_VERSION:
+                self._migrate_schema(int(row[0]))
+            elif int(row[0]) != SCHEMA_VERSION:
+                raise PersistenceError(f"unsupported persistence schema version {row[0]}")
+        except sqlite3.Error as exc:
+            self._conn.rollback()
+            raise PersistenceError("failed to initialize SQLite schema") from exc
+
+    def _migrate_schema(self, current_version: int) -> None:
+        """Upgrade audit storage without destroying existing audit history."""
+        try:
+            with self._conn:
+                self._conn.execute("ALTER TABLE audit_events RENAME TO audit_events_legacy")
                 self._conn.execute(
                     """
                     CREATE TABLE audit_events (
-                        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                        sequence INTEGER PRIMARY KEY,
                         event_id TEXT NOT NULL UNIQUE,
                         timestamp TEXT NOT NULL,
                         event_type TEXT NOT NULL,
@@ -94,13 +103,24 @@ class SQLiteStateStore:
                     )
                     """
                 )
-                self._conn.execute("UPDATE schema_meta SET schema_version=2")
-                self._conn.commit()
-            elif int(row[0]) != SCHEMA_VERSION:
-                raise PersistenceError(f"unsupported persistence schema version {row[0]}")
+                self._conn.execute(
+                    """
+                    INSERT INTO audit_events
+                        (sequence,event_id,timestamp,event_type,schema_version,
+                         deployment_id,payload,revision)
+                    SELECT sequence,event_id,timestamp,event_type,schema_version,
+                           deployment_id,payload,revision
+                    FROM audit_events_legacy
+                    ORDER BY sequence
+                    """
+                )
+                self._conn.execute("DROP TABLE audit_events_legacy")
+                self._conn.execute(
+                    "UPDATE schema_meta SET schema_version=?", (SCHEMA_VERSION,)
+                )
         except sqlite3.Error as exc:
             self._conn.rollback()
-            raise PersistenceError("failed to initialize SQLite schema") from exc
+            raise PersistenceError("failed to migrate audit schema without data loss") from exc
 
     def close(self) -> None:
         self._conn.close()
@@ -142,24 +162,101 @@ class SQLiteStateStore:
             raise PersistenceError("failed to claim processed event") from exc
 
     def record_audit(self, event: AuditEvent) -> int:
+        """Durably append an audit event exactly once.
+
+        The SQLite transaction commits before this method returns. Replaying an
+        event with the same canonical event ID is a no-op and returns the
+        original revision. Sequence 0 means the persistence layer allocates the
+        next stream sequence; a positive sequence is preserved and must be the
+        next sequence in the durable stream.
+        """
         try:
+            payload = json.dumps(
+                event.payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
             with self._conn:
+                existing = self._conn.execute(
+                    "SELECT sequence,revision,payload,event_type,schema_version,deployment_id,timestamp FROM audit_events WHERE event_id=?",
+                    (event.event_id,),
+                ).fetchone()
+                if existing is not None:
+                    # A duplicate event must not create a second durable row or
+                    # revision. Conflicting duplicate payloads are corruption,
+                    # not a reason to overwrite immutable history.
+                    if (
+                        str(existing["payload"]) != payload
+                        or str(existing["event_type"]) != event.event_type
+                        or int(existing["schema_version"]) != event.schema_version
+                        or str(existing["deployment_id"]) != event.deployment_id
+                    ):
+                        raise PersistenceError(
+                            f"conflicting duplicate audit event_id={event.event_id!r}"
+                        )
+                    return int(existing["revision"])
+
+                row = self._conn.execute(
+                    "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM audit_events"
+                ).fetchone()
+                next_sequence = int(row["sequence"]) + 1
+                if event.sequence not in (0, next_sequence):
+                    raise PersistenceError(
+                        f"audit sequence mismatch: event={event.sequence}, expected={next_sequence}"
+                    )
+
+                sequence = next_sequence
                 revision = self._next_revision(self._conn)
                 self._conn.execute(
-                    "INSERT INTO audit_events(event_id,timestamp,event_type,schema_version,deployment_id,payload,revision) VALUES (?,?,?,?,?,?,?)",
+                    """INSERT INTO audit_events(
+                        sequence,event_id,timestamp,event_type,schema_version,
+                        deployment_id,payload,revision
+                    ) VALUES (?,?,?,?,?,?,?,?)""",
                     (
+                        sequence,
                         event.event_id,
                         event.timestamp,
                         event.event_type,
                         event.schema_version,
                         event.deployment_id,
-                        json.dumps(event.payload, sort_keys=True, separators=(",", ":"), allow_nan=False),
+                        payload,
                         revision,
                     ),
                 )
                 return revision
+        except PersistenceError:
+            raise
         except (sqlite3.Error, ValueError) as exc:
             raise PersistenceError("failed to persist audit event") from exc
+
+    def load_audit_events(self, *, deployment_id: str | None = None) -> list[AuditEvent]:
+        """Reload immutable audit history in deterministic sequence order."""
+        query = (
+            "SELECT sequence,event_id,timestamp,event_type,schema_version,"
+            "deployment_id,payload FROM audit_events"
+        )
+        params: tuple[str, ...] = ()
+        if deployment_id is not None:
+            query += " WHERE deployment_id=?"
+            params = (deployment_id,)
+        query += " ORDER BY sequence ASC"
+        try:
+            rows = self._conn.execute(query, params).fetchall()
+        except sqlite3.Error as exc:
+            raise PersistenceError("failed to load audit events") from exc
+        return [
+            AuditEvent(
+                event_id=str(row["event_id"]),
+                timestamp=str(row["timestamp"]),
+                event_type=str(row["event_type"]),
+                schema_version=int(row["schema_version"]),
+                deployment_id=str(row["deployment_id"]),
+                payload=json.loads(row["payload"]),
+                sequence=int(row["sequence"]),
+            )
+            for row in rows
+        ]
 
     def load_open_lots(self) -> AssetLotLedger:
         ledger = AssetLotLedger()
