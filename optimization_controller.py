@@ -1,4 +1,3 @@
-import itertools
 import logging
 from typing import Type, Optional
 import concurrent.futures
@@ -15,6 +14,7 @@ from src.market_context import MarketContext, SimulationResult
 from src.exceptions import ConfigurationError
 from src.validation import validate_run_sweep_config
 from src.idempotency import ProcessedEventStore
+from src.search_strategies import SearchStrategy, GridSearch, BayesianSearch
 
 logger = logging.getLogger("Optimizer")
 
@@ -25,6 +25,26 @@ class BacktestState:
         self.last_buy_price = start_price
         self.peak_equity = initial_cash
         self.max_drawdown = 0.0
+
+
+def _resolve_search_strategy(
+    search_strategy, grid_steps, profit_targets, strategy_params_grid, rank_by, search_seed
+) -> SearchStrategy:
+    """Task 5.3. None/"grid" -> GridSearch (today's exact exhaustive
+    behavior). "bayesian" -> BayesianSearch over the same discrete
+    space. An already-constructed SearchStrategy is used as-is,
+    letting a caller configure e.g. BayesianSearch's own n_trials
+    directly rather than being forced into the default (full
+    combination count) budget."""
+    if search_strategy is None or search_strategy == "grid":
+        return GridSearch(grid_steps, profit_targets, strategy_params_grid)
+    if search_strategy == "bayesian":
+        return BayesianSearch(grid_steps, profit_targets, strategy_params_grid, rank_by=rank_by, seed=search_seed)
+    if isinstance(search_strategy, SearchStrategy):
+        return search_strategy
+    raise ConfigurationError(
+        f"search_strategy must be None, 'grid', 'bayesian', or a SearchStrategy instance, got {search_strategy!r}"
+    )
 
 
 def _run_one_combination(
@@ -292,6 +312,8 @@ class OptimizationController:
         return_full_results: bool = False,
         rank_by: str = "Capital Velocity Index",
         tie_break_by: Optional[str] = None,
+        search_strategy=None,
+        search_seed: Optional[int] = None,
     ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
@@ -331,6 +353,17 @@ class OptimizationController:
         :param tie_break_by: Optional secondary sort column for rows tied on
             rank_by, also descending. None (default) -- exactly today's
             behavior (ties broken arbitrarily by pandas' stable sort).
+        :param search_strategy: None or "grid" (default) uses GridSearch --
+            exactly today's exhaustive itertools.product behavior, same
+            combinations, same order. "bayesian" uses Optuna-backed
+            BayesianSearch over the same discrete space, with search_seed
+            for reproducibility and a trial budget defaulting to the full
+            combination count (pass a pre-configured BayesianSearch
+            instance instead of the string for a smaller budget). A
+            SearchStrategy instance can be passed directly instead of a
+            string for advanced/custom configurations.
+        :param search_seed: Seed for search_strategy="bayesian"'s sampler.
+            Ignored for grid search (nothing stochastic to seed).
         """
         # Task 4.9: validate everything up front, before building
         # combinations or running anything -- a bad config fails
@@ -348,31 +381,58 @@ class OptimizationController:
         risk_manager = risk_manager if risk_manager is not None else RiskManager()
         results = []
         full_results = []
-        combinations = list(itertools.product(grid_steps, profit_targets, strategy_params_grid))
-        logger.info(f"Starting parameter sweep. Evaluating {len(combinations)} total variations.")
 
+        resolved_search_strategy = _resolve_search_strategy(
+            search_strategy, grid_steps, profit_targets, strategy_params_grid, rank_by, search_seed
+        )
+        total_combinations = len(grid_steps) * len(profit_targets) * len(strategy_params_grid)
+        logger.info(f"Starting parameter sweep. Evaluating up to {total_combinations} total variations.")
+
+        idx = 0
         if n_jobs == 1:
-            for idx, (step, target, params) in enumerate(combinations):
-                logger.debug(f"Evaluating iteration [{idx + 1}/{len(combinations)}]: Step={step}, Target={target}, Params={params}")
-                row, sim_result = _run_one_combination(
-                    self, step, target, strategy_class, params, symbol, initial_cash,
-                    cost_model, risk_manager, on_flat_reentry,
+            while True:
+                suggestion = resolved_search_strategy.suggest()
+                if suggestion is None:
+                    break
+                idx += 1
+                logger.debug(
+                    f"Evaluating iteration [{idx}]: Step={suggestion['grid_step']}, "
+                    f"Target={suggestion['profit_target']}, Params={suggestion['strategy_params']}"
                 )
+                row, sim_result = _run_one_combination(
+                    self, suggestion["grid_step"], suggestion["profit_target"], strategy_class,
+                    suggestion["strategy_params"], symbol, initial_cash, cost_model, risk_manager, on_flat_reentry,
+                )
+                resolved_search_strategy.report(suggestion, sim_result)
                 results.append(row)
                 full_results.append(sim_result)
         else:
+            # One executor reused across every batch (rather than one per
+            # batch) -- avoids repeated pool spin-up/teardown overhead.
             with concurrent.futures.ProcessPoolExecutor(max_workers=n_jobs) as executor:
-                futures = [
-                    executor.submit(
-                        _run_one_combination, self, step, target, strategy_class, params,
-                        symbol, initial_cash, cost_model, risk_manager, on_flat_reentry,
-                    )
-                    for (step, target, params) in combinations
-                ]
-                for future in concurrent.futures.as_completed(futures):
-                    row, sim_result = future.result()
-                    results.append(row)
-                    full_results.append(sim_result)
+                while True:
+                    batch = []
+                    for _ in range(n_jobs):
+                        suggestion = resolved_search_strategy.suggest()
+                        if suggestion is None:
+                            break
+                        batch.append(suggestion)
+                    if not batch:
+                        break
+
+                    future_to_suggestion = {
+                        executor.submit(
+                            _run_one_combination, self, s["grid_step"], s["profit_target"], strategy_class,
+                            s["strategy_params"], symbol, initial_cash, cost_model, risk_manager, on_flat_reentry,
+                        ): s
+                        for s in batch
+                    }
+                    for future in concurrent.futures.as_completed(future_to_suggestion):
+                        suggestion = future_to_suggestion[future]
+                        row, sim_result = future.result()
+                        resolved_search_strategy.report(suggestion, sim_result)
+                        results.append(row)
+                        full_results.append(sim_result)
 
         logger.info("Hyperparameter sweeping logic execution complete.")
 

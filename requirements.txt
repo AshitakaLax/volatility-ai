@@ -1,0 +1,13 @@
+# Core dependencies -- used throughout src/ and optimization_controller.py
+# since the project's original files.
+pandas>=2.0
+numpy>=1.25
+
+# Optional: only required for search_strategy="bayesian" (Task 5.3).
+# search_strategy="grid" (the default) needs none of this. Without it,
+# BayesianSearch(...) raises a clear ConfigurationError rather than
+# failing at import time or silently falling back to grid search.
+optuna>=3.0
+
+# Development / test only.
+pytest>=7.0
