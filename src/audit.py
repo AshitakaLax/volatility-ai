@@ -2,22 +2,27 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
 
+# Task 4.10 owns the shared event-ID contract. AuditEvent deliberately accepts
+# the producer-supplied ID rather than deriving a second ID scheme here.
 def generate_event_id() -> str:
-    """Generate a canonical UUIDv4 event identifier.
-    
-    This fulfills the shared event-ID contract for Tasks 4.10, 7.4, and 7.14.
+    """Generate an ID for event producers that need a new local event ID.
+
+    Existing Task 4.10 producers remain authoritative for event IDs. In
+    particular, simulation fill IDs come from the OMS fill ID and must be
+    passed into AuditEvent unchanged.
     """
     return str(uuid.uuid4())
 
 
 @dataclass(frozen=True)
 class AuditEvent:
-    """Envelope for all deterministic audit events."""
+    """Immutable envelope for all canonical audit events."""
     event_id: str
     timestamp: str
     event_type: str
@@ -25,6 +30,29 @@ class AuditEvent:
     deployment_id: str
     payload: dict[str, Any]
     sequence: int = 0
+
+    def __post_init__(self) -> None:
+        if not self.event_id:
+            raise ValueError("event_id must not be empty")
+        if not self.timestamp:
+            raise ValueError("timestamp must not be empty")
+        if not self.event_type:
+            raise ValueError("event_type must not be empty")
+        if self.schema_version < 1:
+            raise ValueError("schema_version must be positive")
+        if self.sequence < 0:
+            raise ValueError("sequence must be non-negative")
+        if not isinstance(self.payload, dict):
+            raise TypeError("audit payload must be a dictionary")
+        # Fail at the event boundary instead of allowing a non-JSON payload to
+        # reach durable persistence.
+        json.dumps(
+            self.payload,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
 
 
 @dataclass(frozen=True)
