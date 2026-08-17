@@ -3,6 +3,9 @@
 pandas>=2.0
 numpy>=1.25
 
+# Required for BacktestConfig.from_yaml (Task 6.1).
+pyyaml>=6.0
+
 # Optional: only required for search_strategy="bayesian" (Task 5.3).
 # search_strategy="grid" (the default) needs none of this. Without it,
 # BayesianSearch(...) raises a clear ConfigurationError rather than

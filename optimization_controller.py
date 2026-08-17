@@ -28,7 +28,7 @@ class BacktestState:
 
 
 def _resolve_search_strategy(
-    search_strategy, grid_steps, profit_targets, strategy_params_grid, rank_by, search_seed
+    search_strategy, grid_steps, profit_targets, strategy_params_grid, rank_by, search_seed, search_direction="maximize"
 ) -> SearchStrategy:
     """Task 5.3. None/"grid" -> GridSearch (today's exact exhaustive
     behavior). "bayesian" -> BayesianSearch over the same discrete
@@ -39,7 +39,10 @@ def _resolve_search_strategy(
     if search_strategy is None or search_strategy == "grid":
         return GridSearch(grid_steps, profit_targets, strategy_params_grid)
     if search_strategy == "bayesian":
-        return BayesianSearch(grid_steps, profit_targets, strategy_params_grid, rank_by=rank_by, seed=search_seed)
+        return BayesianSearch(
+            grid_steps, profit_targets, strategy_params_grid,
+            rank_by=rank_by, direction=search_direction, seed=search_seed,
+        )
     if isinstance(search_strategy, SearchStrategy):
         return search_strategy
     raise ConfigurationError(
@@ -314,6 +317,7 @@ class OptimizationController:
         tie_break_by: Optional[str] = None,
         search_strategy=None,
         search_seed: Optional[int] = None,
+        search_direction: str = "maximize",
     ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
@@ -364,6 +368,10 @@ class OptimizationController:
             string for advanced/custom configurations.
         :param search_seed: Seed for search_strategy="bayesian"'s sampler.
             Ignored for grid search (nothing stochastic to seed).
+        :param search_direction: "maximize" (default) or "minimize" -- only
+            affects search_strategy="bayesian" (passed to Optuna). Grid
+            search always enumerates exhaustively regardless of direction;
+            ranking/sorting is controlled separately by rank_by/ascending.
         """
         # Task 4.9: validate everything up front, before building
         # combinations or running anything -- a bad config fails
@@ -383,7 +391,7 @@ class OptimizationController:
         full_results = []
 
         resolved_search_strategy = _resolve_search_strategy(
-            search_strategy, grid_steps, profit_targets, strategy_params_grid, rank_by, search_seed
+            search_strategy, grid_steps, profit_targets, strategy_params_grid, rank_by, search_seed, search_direction
         )
         total_combinations = len(grid_steps) * len(profit_targets) * len(strategy_params_grid)
         logger.info(f"Starting parameter sweep. Evaluating up to {total_combinations} total variations.")

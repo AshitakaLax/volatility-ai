@@ -29,7 +29,12 @@ def _extract_script_from_run_instructions() -> str:
     text = (REPO_ROOT / "Run_Instructions").read_text()
     marker = "Script Example & Ingestion Configuration:"
     assert marker in text, "Run_Instructions no longer contains the expected script section header"
-    script = text.split(marker, 1)[1].strip()
+    script = text.split(marker, 1)[1]
+    # Bounded at the next section header -- Task 6.1 added more content
+    # after this script (Step 3/4); without this bound the "script"
+    # would include that prose too and fail to even parse as Python.
+    assert "\nStep 3:" in script, "Run_Instructions' Step 3 header moved or was removed"
+    script = script.split("\nStep 3:", 1)[0].strip()
     # Guard against silently testing an empty/near-empty extraction.
     assert "run_sweep(" in script, "Extracted script does not contain a run_sweep(...) call"
     return script
