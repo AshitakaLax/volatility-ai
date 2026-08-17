@@ -2,22 +2,47 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
-import uuid
 from dataclasses import dataclass
 from typing import Any
 
 
-# Task 4.10 owns the shared event-ID contract. AuditEvent deliberately accepts
-# the producer-supplied ID rather than deriving a second ID scheme here.
-def generate_event_id() -> str:
-    """Generate an ID for event producers that need a new local event ID.
+# v6.1 shared event-ID contract. Task 4.10, 7.4, and 7.14 must use this
+# exact canonicalization rather than independent identifier schemes.
+def canonical_event_id(
+    *,
+    deployment_id: str,
+    strategy_id: str,
+    symbol: str,
+    market_event_id: str | int,
+    decision_type: str,
+    sequence_number: int,
+) -> str:
+    """Return the v6.1 canonical SHA-256 event/decision identifier.
 
-    Existing Task 4.10 producers remain authoritative for event IDs. In
-    particular, simulation fill IDs come from the OMS fill ID and must be
-    passed into AuditEvent unchanged.
+    The canonical object is serialized as UTF-8 JSON with sorted keys,
+    compact separators, and NaN/Infinity rejected. The resulting digest is
+    lowercase hexadecimal.
     """
-    return str(uuid.uuid4())
+    if sequence_number < 0:
+        raise ValueError("sequence_number must be non-negative")
+    canonical = {
+        "deployment_id": str(deployment_id),
+        "strategy_id": str(strategy_id),
+        "symbol": str(symbol),
+        "market_event_id": str(market_event_id),
+        "decision_type": str(decision_type),
+        "sequence_number": int(sequence_number),
+    }
+    encoded = json.dumps(
+        canonical,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -44,8 +69,6 @@ class AuditEvent:
             raise ValueError("sequence must be non-negative")
         if not isinstance(self.payload, dict):
             raise TypeError("audit payload must be a dictionary")
-        # Fail at the event boundary instead of allowing a non-JSON payload to
-        # reach durable persistence.
         json.dumps(
             self.payload,
             ensure_ascii=False,
