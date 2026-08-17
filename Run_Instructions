@@ -1,12 +1,12 @@
 5. Running Backtests (Hyperparameter Sweeps)
-Backtests process historical datasets sequentially via the OptimizationController, bypassing aggregate positions in order to find target grid-step and take-profit parameters that maximize performance.
+Backtests process historical datasets sequentially via the OptimizationController to find grid-step, take-profit, and sizing parameters that maximize a chosen ranking metric.
 
 Step 1: Establish Historical CSV Data
-Ensure you have structured historical closing prices in a local directory matching this path framework:
+Ensure you have structured historical OHLCV data (columns: timestamp, open, high, low, close, volume) in a local directory matching this path framework:
 
 data/TQQQ_historical.csv
 
-Step 2: Running the Parametric Sweep
+Step 2: Quick Start -- Calling run_sweep() Directly
 An example execution script can be run with:
 
 python optimization_controller.py
@@ -35,5 +35,81 @@ results_df = controller.run_sweep(
     strategy_params_grid=strategy_params_grid,
 )
 
-# Output optimization sorted by Capital Velocity Index
+# Output optimization sorted by Capital Velocity Index (the default rank_by)
 print(results_df.head(5))
+
+Step 3: Configuration-Driven Workflow -- BacktestConfig / YAML
+For anything beyond a one-off run, src/config.py's BacktestConfig is the source of truth for a sweep's configuration -- build it programmatically via BacktestConfig.from_dict({...}), or from a YAML file via BacktestConfig.from_yaml("config.yaml"). Both paths validate identically via config.validate().
+
+Example config.yaml (every section except strategy/grid is optional -- omitted sections use the defaults shown):
+strategy:
+  strategy_id: fixed              # looked up in your own strategy_id -> class mapping (see below); not a registry this codebase provides
+  strategy_params:
+    allocation_pct: 0.05
+grid:
+  steps: [0.005, 0.01, 0.015]
+  profit_targets: [0.003, 0.005, 0.01]
+backtest:
+  symbol: TQQQ                    # default: TQQQ
+  initial_cash: 100000.0          # default: 100000.0
+costs:
+  model_type: zero                # "zero" (default) or "slippage_commission"
+  commission_per_trade: 0.0
+  slippage_bps: 0.0
+risk:
+  max_concurrent_lots: null       # default: unlimited
+  max_total_exposure: null        # default: unlimited, else 0-1
+search:
+  strategy: grid                  # "grid" (default) or "bayesian"
+  rank_by: Capital Velocity Index # default
+  direction: maximize             # "maximize" (default) or "minimize"
+  seed: null                      # only used by search_strategy="bayesian"
+execution:
+  on_flat_reentry: stale_reference  # "stale_reference" (default) or "reset_to_market"
+  intrabar_priority: sell_first     # used by validate_finalists_intraday, not run_sweep itself
+output:
+  return_full_results: false      # true also returns per-combination trade blotters/equity curves
+live:
+  enabled: false
+  paper_trading: true
+
+Script Example:
+import pandas as pd
+from optimization_controller import OptimizationController
+from src.config import BacktestConfig
+from src.size_calculators import FixedPortfolioPercentage
+
+df = pd.read_csv("data/TQQQ_historical.csv", parse_dates=['timestamp'])
+df.set_index('timestamp', inplace=True)
+
+config = BacktestConfig.from_yaml("config.yaml")
+config.validate()
+
+# BacktestConfig stores strategy_id as a string; this codebase has no
+# strategy-id-to-class registry, so map it yourself:
+STRATEGY_REGISTRY = {"fixed": FixedPortfolioPercentage}
+strategy_class = STRATEGY_REGISTRY[config.strategy.strategy_id]
+
+controller = OptimizationController(historical_data=df)
+results_df = controller.run_sweep(**config.to_run_sweep_kwargs(strategy_class))
+
+print(results_df.head(5))
+
+Step 4: Optional run_sweep() Capabilities Reference
+All of the following are real, tested run_sweep() keyword arguments beyond the required grid_steps/profit_targets/strategy_class/strategy_params_grid -- every one defaults to today's original behavior when omitted:
+
+- cost_model: TransactionCostModel -- ZeroCostModel() (default) or SlippageCommissionModel(commission_per_trade=..., slippage_bps=...). src/cost_models.py.
+- risk_manager: RiskManager -- clamps new-buy size by max_concurrent_lots and/or max_total_exposure_pct. Unlimited by default. src/risk_manager.py.
+- on_flat_reentry: "stale_reference" (default) or "reset_to_market" -- controls the grid's reference price once the portfolio goes fully flat.
+- symbol: str -- ticker traded, default "TQQQ".
+- initial_cash: float -- default 100000.0.
+- n_jobs: int -- 1 (default, sequential) or >1 to evaluate combinations across a process pool.
+- search_strategy: None/"grid" (default, exhaustive) or "bayesian" (Optuna-backed, needs the optuna package -- see requirements.txt) or a pre-built SearchStrategy instance. src/search_strategies.py.
+- search_seed / search_direction: only affect search_strategy="bayesian".
+- rank_by / tie_break_by: which result column(s) to sort by; default rank_by is "Capital Velocity Index".
+- return_full_results: bool -- False (default) returns one summary DataFrame; True returns (summary_df, full_results), where full_results is a list of per-combination SimulationResult (trade_blotter, equity_curve, params).
+
+Additional, related tools beyond run_sweep() itself:
+- controller.validate_finalists_intraday(...) -- re-checks a short list of finalists against minute-bar data (src/intraday_validation.py).
+- WalkForwardRunner (src/walk_forward.py) -- selects parameters on a training window, scores only on a held-out test window.
+- MonteCarloRunner (src/monte_carlo.py) -- block-bootstraps the historical return series into synthetic paths, reporting percentile outcomes.
