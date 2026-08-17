@@ -1,10 +1,14 @@
 import pytest
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from src.audit import (
     AuditEvent,
     MarketContextPayload,
     canonical_event_id,
 )
+from src.live_execution import LiveExecutionLoop, RuntimeState
+from src.market_context import MarketContext
 from src.persistence import SQLiteStateStore
 
 
@@ -243,5 +247,66 @@ def test_record_audit_builder_rejects_non_next_sequence_without_partial_write(tm
         with pytest.raises(Exception):
             store.record_audit_builder(invalid_builder)
         assert [event.sequence for event in store.load_audit_events()] == [1]
+    finally:
+        store.close()
+
+
+def test_task_7_14_reconstructs_market_to_strategy_to_risk_chain(tmp_path):
+    """The live decision path emits a durable, sequence-ordered causal chain."""
+    store = SQLiteStateStore(tmp_path / "state.db")
+    try:
+        loop = LiveExecutionLoop.__new__(LiveExecutionLoop)
+        loop.config = SimpleNamespace(
+            deployment_id="dep-test",
+            backtest=SimpleNamespace(symbol="TQQQ"),
+            strategy=SimpleNamespace(strategy_id="grid-v6"),
+        )
+        loop.state_store = store
+        loop.runtime_state = RuntimeState.READY
+        loop._started = True
+        loop.reconciliation_required = False
+        loop.circuit_store = None
+        loop.circuit_breaker = SimpleNamespace(halted=False, evaluate=lambda drawdown: False)
+        loop.risk_manager = SimpleNamespace(
+            clamp_trade_value=lambda proposed, equity, cash, open_lot_count: proposed,
+            max_concurrent_lots=5,
+            max_total_exposure=10000.0,
+        )
+        loop.strategy = SimpleNamespace(
+            record_tick=lambda context: None,
+            _check_grid_trigger=lambda context, last_buy_price, step: True,
+            calculate_trade_value=lambda context: 500.0,
+        )
+
+        context = MarketContext(
+            timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            open=100.0,
+            high=101.0,
+            low=99.0,
+            close=100.5,
+            cash=10000.0,
+            equity=10000.0,
+            peak_equity=10000.0,
+            drawdown=0.0,
+            open_lot_count=0,
+            bar_index=42,
+            time_of_day_flag=0,
+            is_macro_event_day=False,
+            macro_surprise_factor=0.0,
+        )
+
+        decision = loop.decision_cycle(context, step=1.0, last_buy_price=99.0)
+        events = store.load_audit_events()
+        assert [event.event_type for event in events] == [
+            "MARKET_CONTEXT",
+            "STRATEGY_DECISION",
+            "RISK_DECISION",
+        ]
+        assert [event.sequence for event in events] == [1, 2, 3]
+        assert all(len(event.event_id) == 64 for event in events)
+        assert decision.decision_id == events[1].event_id
+        assert events[1].payload["decision_id"] == events[1].event_id
+        assert events[2].payload["decision_id"] == events[1].event_id
+        assert events[0].payload["bar_event_id"] == "42"
     finally:
         store.close()
