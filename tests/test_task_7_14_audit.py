@@ -163,3 +163,85 @@ def test_audit_sequence_mismatch_is_rejected(tmp_path):
         assert [event.sequence for event in store.load_audit_events()] == [1]
     finally:
         store.close()
+
+
+def test_record_audit_builder_owns_sequence_atomically(tmp_path):
+    store = SQLiteStateStore(tmp_path / "state.db")
+    try:
+        seen = []
+
+        def build(sequence: int) -> AuditEvent:
+            seen.append(sequence)
+            return _market_event(sequence)
+
+        event, revision = store.record_audit_builder(build)
+        assert seen == [1]
+        assert event.sequence == 1
+        assert revision > 0
+        assert store.load_audit_events() == [event]
+    finally:
+        store.close()
+
+
+def test_record_audit_builder_assigns_next_sequence_after_restart(tmp_path):
+    db = tmp_path / "state.db"
+    first = SQLiteStateStore(db)
+    try:
+        first_event, _ = first.record_audit_builder(lambda sequence: _market_event(sequence))
+        assert first_event.sequence == 1
+    finally:
+        first.close()
+
+    reopened = SQLiteStateStore(db)
+    try:
+        second_event, _ = reopened.record_audit_builder(
+            lambda sequence: AuditEvent(
+                event_id=canonical_event_id(
+                    deployment_id="test",
+                    strategy_id="grid-v6",
+                    symbol="TQQQ",
+                    market_event_id="2",
+                    decision_type="STRATEGY_DECISION",
+                    sequence_number=sequence,
+                ),
+                timestamp="2026-01-01T00:01:00Z",
+                event_type="STRATEGY_DECISION",
+                schema_version=1,
+                deployment_id="test",
+                payload={
+                    "decision_id": "decision-1",
+                    "strategy_id": "grid-v6",
+                    "proposed_action": "BUY",
+                    "parameters": {},
+                },
+                sequence=sequence,
+            )
+        )
+        assert second_event.sequence == 2
+        assert [event.sequence for event in reopened.load_audit_events()] == [1, 2]
+    finally:
+        reopened.close()
+
+
+def test_record_audit_builder_rejects_non_next_sequence_without_partial_write(tmp_path):
+    store = SQLiteStateStore(tmp_path / "state.db")
+    try:
+        store.record_audit(_market_event(1))
+
+        def invalid_builder(sequence: int) -> AuditEvent:
+            event = _market_event(sequence)
+            return AuditEvent(
+                event_id=event.event_id,
+                timestamp=event.timestamp,
+                event_type=event.event_type,
+                schema_version=event.schema_version,
+                deployment_id=event.deployment_id,
+                payload=event.payload,
+                sequence=sequence + 1,
+            )
+
+        with pytest.raises(Exception):
+            store.record_audit_builder(invalid_builder)
+        assert [event.sequence for event in store.load_audit_events()] == [1]
+    finally:
+        store.close()
