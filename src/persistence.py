@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from collections.abc import Callable, Sequence
 
 from src.exceptions import PersistenceError, ReconciliationError
 from src.ledger import AssetLotLedger, InventoryLot
@@ -162,22 +163,36 @@ class SQLiteStateStore:
             raise PersistenceError("failed to claim processed event") from exc
 
     def record_audit(self, event: AuditEvent) -> int:
-        """Durably append an audit event exactly once.
+        """Durably append an audit event exactly once."""
+        return self.record_audit_builder(lambda _sequence: event)
 
-        The SQLite transaction commits before this method returns. Replaying an
-        event with the same canonical event ID is a no-op and returns the
-        original revision. Sequence 0 means the persistence layer allocates the
-        next stream sequence; a positive sequence is preserved and must be the
-        next sequence in the durable stream.
+    def record_audit_builder(self, builder: Callable[[int], AuditEvent]) -> tuple[AuditEvent, int]:
+        """Build and durably append one event with its authoritative sequence.
+
+        The sequence is allocated inside the same SQLite transaction that
+        persists the resulting event. The builder therefore receives the exact
+        durable stream sequence before the canonical event ID is constructed.
+        This removes the sequence/ID circular dependency without a race-prone
+        sequence peek. Duplicate canonical IDs remain idempotent.
         """
         try:
-            payload = json.dumps(
-                event.payload,
-                sort_keys=True,
-                separators=(",", ":"),
-                allow_nan=False,
-            )
             with self._conn:
+                row = self._conn.execute(
+                    "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM audit_events"
+                ).fetchone()
+                next_sequence = int(row["sequence"]) + 1
+                event = builder(next_sequence)
+                if event.sequence not in (0, next_sequence):
+                    raise PersistenceError(
+                        f"audit sequence mismatch: event={event.sequence}, expected={next_sequence}"
+                    )
+                sequence = next_sequence
+                payload = json.dumps(
+                    event.payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
                 existing = self._conn.execute(
                     "SELECT sequence,revision,payload,event_type,schema_version,deployment_id,timestamp FROM audit_events WHERE event_id=?",
                     (event.event_id,),
@@ -192,18 +207,8 @@ class SQLiteStateStore:
                         raise PersistenceError(
                             f"conflicting duplicate audit event_id={event.event_id!r}"
                         )
-                    return int(existing["revision"])
+                    return event, int(existing["revision"])
 
-                row = self._conn.execute(
-                    "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM audit_events"
-                ).fetchone()
-                next_sequence = int(row["sequence"]) + 1
-                if event.sequence not in (0, next_sequence):
-                    raise PersistenceError(
-                        f"audit sequence mismatch: event={event.sequence}, expected={next_sequence}"
-                    )
-
-                sequence = next_sequence
                 revision = self._next_revision(self._conn)
                 self._conn.execute(
                     """INSERT INTO audit_events(
@@ -221,10 +226,10 @@ class SQLiteStateStore:
                         revision,
                     ),
                 )
-                return revision
+                return event, revision
         except PersistenceError:
             raise
-        except (sqlite3.Error, ValueError) as exc:
+        except (sqlite3.Error, ValueError, TypeError) as exc:
             raise PersistenceError("failed to persist audit event") from exc
 
     def load_audit_events(self, *, deployment_id: str | None = None) -> list[AuditEvent]:
