@@ -45,6 +45,30 @@ def canonical_event_id(
     return hashlib.sha256(encoded).hexdigest()
 
 
+def canonical_order_intent_id(
+    *,
+    deployment_id: str,
+    strategy_id: str,
+    symbol: str,
+    market_event_id: str | int,
+    sequence_number: int,
+) -> str:
+    """Return the shared v6.1 ID for an ORDER_INTENT event.
+
+    This is a named wrapper around ``canonical_event_id`` so Task 4.10's
+    internally generated order-intent identity and Task 7.14's audit record
+    cannot silently drift into separate identifier schemes.
+    """
+    return canonical_event_id(
+        deployment_id=deployment_id,
+        strategy_id=strategy_id,
+        symbol=symbol,
+        market_event_id=market_event_id,
+        decision_type="ORDER_INTENT",
+        sequence_number=sequence_number,
+    )
+
+
 @dataclass(frozen=True)
 class AuditEvent:
     """Immutable envelope for all canonical audit events."""
