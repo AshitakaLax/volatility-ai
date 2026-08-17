@@ -21,6 +21,7 @@ from src.audit import (
     ReconciliationPayload,
     RiskHaltPayload,
     StartupShutdownPayload,
+    canonical_event_id,
     generate_event_id,
 )
 
@@ -117,9 +118,9 @@ class LiveExecutionLoop:
         self.rejected_tick_count = 0
         self.no_loss_guard_violations: int = 0
 
-    def _record_audit(self, event_type: str, payload_obj: Any, event_id: str | None = None) -> None:
+    def _record_audit(self, event_type: str, payload_obj: Any, event_id: str | None = None) -> AuditEvent | None:
         if self.state_store is None:
-            return
+            return None
         event = AuditEvent(
             event_id=event_id or generate_event_id(),
             timestamp=datetime.now(timezone.utc).isoformat(),
@@ -129,6 +130,37 @@ class LiveExecutionLoop:
             payload=dataclasses.asdict(payload_obj) if dataclasses.is_dataclass(payload_obj) else payload_obj,
         )
         self.state_store.record_audit(event)
+        return event
+
+    def _record_canonical_audit(self, event_type: str, payload_factory: Callable[[str], Any], *, strategy_id: str, symbol: str, market_event_id: str | int, decision_type: str) -> AuditEvent | None:
+        """Persist one canonical v6.1 event using the transaction-owned sequence."""
+        if self.state_store is None:
+            return None
+        deployment_id = getattr(self.config, "deployment_id", "unknown")
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        def builder(sequence: int) -> AuditEvent:
+            event_id = canonical_event_id(
+                deployment_id=deployment_id,
+                strategy_id=strategy_id,
+                symbol=symbol,
+                market_event_id=market_event_id,
+                decision_type=decision_type,
+                sequence_number=sequence,
+            )
+            payload = payload_factory(event_id)
+            return AuditEvent(
+                event_id=event_id,
+                timestamp=timestamp,
+                event_type=event_type,
+                schema_version=1,
+                deployment_id=deployment_id,
+                payload=dataclasses.asdict(payload) if dataclasses.is_dataclass(payload) else payload,
+                sequence=sequence,
+            )
+
+        event, _ = self.state_store.record_audit_builder(builder)
+        return event
 
     def _transition(self, state: RuntimeState) -> None:
         self.runtime_state = state
@@ -263,36 +295,65 @@ class LiveExecutionLoop:
         if self.reconciliation_required:
             raise ReconciliationError("live execution is halted pending reconciliation")
 
-        decision_id = generate_event_id()
-        context_event_id = f"{decision_id}:market"
-        self._record_audit("MARKET_CONTEXT", MarketContextPayload(
-            timestamp=context.timestamp.isoformat(),
-            symbol=self.config.backtest.symbol,
-            OHLCV={"open": context.open, "high": context.high, "low": context.low, "close": context.close, "volume": 0.0},
-            bar_event_id=str(context.bar_index)
-        ), event_id=context_event_id)
+        symbol = self.config.backtest.symbol
+        strategy_id = self.config.strategy.strategy_id
+        market_event_id = str(context.bar_index)
+        market_event = self._record_canonical_audit(
+            "MARKET_CONTEXT",
+            lambda _event_id: MarketContextPayload(
+                timestamp=context.timestamp.isoformat(),
+                symbol=symbol,
+                OHLCV={"open": context.open, "high": context.high, "low": context.low, "close": context.close, "volume": 0.0},
+                bar_event_id=market_event_id,
+            ),
+            strategy_id=strategy_id,
+            symbol=symbol,
+            market_event_id=market_event_id,
+            decision_type="MARKET_CONTEXT",
+        )
 
         self.strategy.record_tick(context)
         triggered = self.strategy._check_grid_trigger(context, last_buy_price, step)
         proposed = float(self.strategy.calculate_trade_value(context)) if triggered else 0.0
-        self._record_audit("STRATEGY_DECISION", StrategyDecisionPayload(
-            decision_id=decision_id,
-            strategy_id=self.config.strategy.strategy_id,
-            proposed_action="BUY" if triggered else "NONE",
-            parameters={"proposed_trade_value": proposed, "step": step}
-        ), event_id=f"{decision_id}:strategy")
+
+        strategy_event = self._record_canonical_audit(
+            "STRATEGY_DECISION",
+            lambda event_id: StrategyDecisionPayload(
+                decision_id=event_id,
+                strategy_id=strategy_id,
+                proposed_action="BUY" if triggered else "NONE",
+                parameters={"proposed_trade_value": proposed, "step": step},
+            ),
+            strategy_id=strategy_id,
+            symbol=symbol,
+            market_event_id=market_event_id,
+            decision_type="STRATEGY_DECISION",
+        )
+        if strategy_event is not None:
+            decision_id = strategy_event.event_id
+        elif market_event is not None:
+            decision_id = market_event.event_id
+        else:
+            decision_id = f"decision:{market_event_id}"
 
         if not triggered:
             return LiveDecision(context=context, triggered=False, decision_id=decision_id)
 
         self.evaluate_circuit_breaker(context.drawdown)
         clamped = float(self.risk_manager.clamp_trade_value(proposed, context.equity, context.cash, context.open_lot_count))
-        self._record_audit("RISK_DECISION", RiskDecisionPayload(
-            decision_id=decision_id,
-            allowed=(clamped > 0),
-            reason="clamped" if clamped < proposed else ("halted" if self.circuit_breaker.halted else "allowed"),
-            relevant_limits={"max_concurrent_lots": getattr(self.risk_manager, "max_concurrent_lots", None), "max_total_exposure": getattr(self.risk_manager, "max_total_exposure", None)}
-        ), event_id=f"{decision_id}:risk")
+        self._record_canonical_audit(
+            "RISK_DECISION",
+            lambda event_id: RiskDecisionPayload(
+                decision_id=decision_id,
+                allowed=(clamped > 0),
+                reason="clamped" if clamped < proposed else ("halted" if self.circuit_breaker.halted else "allowed"),
+                relevant_limits={"max_concurrent_lots": getattr(self.risk_manager, "max_concurrent_lots", None), "max_total_exposure": getattr(self.risk_manager, "max_total_exposure", None)},
+            ),
+            strategy_id=strategy_id,
+            symbol=symbol,
+            market_event_id=market_event_id,
+            decision_type="RISK_DECISION",
+        )
         return LiveDecision(context=context, triggered=True, proposed_trade_value=proposed, clamped_trade_value=clamped, decision_id=decision_id)
 
     def apply_sell_fill(self, order: Any, lot: InventoryLot, ledger: AssetLotLedger | None = None, cash: float = 0.0, *, execution_cost: float = 0.0, cost_model: TransactionCostModel | None = None) -> tuple[float, float]:
