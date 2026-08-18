@@ -78,10 +78,16 @@ class OrderManagementSystem:
         self._order_seq += 1
         return f"SIM-{self._order_seq:06d}"
 
-    def execute_buy(self, symbol: str, trade_value: float, price: float) -> dict:
+    def execute_buy(self, symbol: str, trade_value: float, price: float, client_order_id: str = None) -> dict:
         """Buy trade_value dollars of symbol at price. Returns qty as
         trade_value / price (fractional shares -- optimization_controller.py
-        does not round this)."""
+        does not round this).
+
+        client_order_id (Task 7.4) is the caller's stable decision_id,
+        passed through to the broker for server-side deduplication in
+        LIVE mode. Defaults to None so every existing call site is
+        unaffected; in SIMULATION mode it is echoed back on the result
+        when supplied, and the generated "id" is used otherwise."""
         if self.mode == "LIVE":
             raise NotImplementedError(
                 "LIVE mode needs a real Alpaca broker adapter (Phase 7) -- not implemented here."
@@ -94,6 +100,7 @@ class OrderManagementSystem:
         qty = trade_value / price
         return {
             "id": self._next_order_id(),
+            "client_order_id": client_order_id,
             "symbol": symbol,
             "qty": qty,
             "filled_qty": qty,
@@ -101,8 +108,10 @@ class OrderManagementSystem:
             "status": OrderStatus.FILLED,
         }
 
-    def execute_sell(self, symbol: str, qty: float, price: float) -> dict:
-        """Sell qty shares of symbol at price. Fills completely."""
+    def execute_sell(self, symbol: str, qty: float, price: float, client_order_id: str = None) -> dict:
+        """Sell qty shares of symbol at price. Fills completely.
+
+        client_order_id: see execute_buy."""
         if self.mode == "LIVE":
             raise NotImplementedError(
                 "LIVE mode needs a real Alpaca broker adapter (Phase 7) -- not implemented here."
@@ -114,6 +123,7 @@ class OrderManagementSystem:
 
         return {
             "id": self._next_order_id(),
+            "client_order_id": client_order_id,
             "symbol": symbol,
             "qty": qty,
             "filled_qty": qty,
