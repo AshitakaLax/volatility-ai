@@ -115,6 +115,7 @@ class LiveExecutionLoop:
         self._fill_state: dict[str, _CumulativeFill] = {}
         self.reconciliation_required = False
         self._last_known_good_price: float | None = None
+        self._last_market_event_id: str | None = None
         self.rejected_tick_count = 0
         self.no_loss_guard_violations: int = 0
 
@@ -161,6 +162,24 @@ class LiveExecutionLoop:
 
         event, _ = self.state_store.record_audit_builder(builder)
         return event
+
+    def _record_order_intent(self, *, decision_id: str, symbol: str, side: str, quantity: float, limit_price: float | None, market_event_id: str | int) -> AuditEvent | None:
+        """Persist an ORDER_INTENT using the same canonical ID scheme as 4.10/7.14."""
+        return self._record_canonical_audit(
+            "ORDER_INTENT",
+            lambda event_id: OrderIntentPayload(
+                intent_id=event_id,
+                decision_id=decision_id,
+                symbol=symbol,
+                side=side,
+                quantity=float(quantity),
+                limit_price=limit_price,
+            ),
+            strategy_id=self.config.strategy.strategy_id,
+            symbol=symbol,
+            market_event_id=market_event_id,
+            decision_type="ORDER_INTENT",
+        )
 
     def _transition(self, state: RuntimeState) -> None:
         self.runtime_state = state
@@ -298,6 +317,7 @@ class LiveExecutionLoop:
         symbol = self.config.backtest.symbol
         strategy_id = self.config.strategy.strategy_id
         market_event_id = str(context.bar_index)
+        self._last_market_event_id = market_event_id
         market_event = self._record_canonical_audit(
             "MARKET_CONTEXT",
             lambda _event_id: MarketContextPayload(
@@ -427,15 +447,28 @@ class LiveExecutionLoop:
         if self.circuit_breaker.halted or decision.clamped_trade_value <= 0:
             return None
 
-        intent_id = generate_event_id()
-        self._record_audit("ORDER_INTENT", OrderIntentPayload(intent_id=intent_id, decision_id=decision.decision_id or "", symbol=self.config.backtest.symbol, side="BUY", quantity=decision.clamped_trade_value, limit_price=None), event_id=intent_id)
-        result = self.broker.submit_buy(self.config.backtest.symbol, decision.clamped_trade_value)
+        symbol = self.config.backtest.symbol
+        market_event_id = str(decision.context.bar_index)
+        intent_event = self._record_order_intent(
+            decision_id=decision.decision_id or "",
+            symbol=symbol,
+            side="BUY",
+            quantity=decision.clamped_trade_value,
+            limit_price=None,
+            market_event_id=market_event_id,
+        )
+        if intent_event is not None:
+            intent_id = intent_event.event_id
+        else:
+            intent_id = generate_event_id()
+            self._record_audit("ORDER_INTENT", OrderIntentPayload(intent_id=intent_id, decision_id=decision.decision_id or "", symbol=symbol, side="BUY", quantity=decision.clamped_trade_value, limit_price=None), event_id=intent_id)
+        result = self.broker.submit_buy(symbol, decision.clamped_trade_value)
         broker_order_id = str(getattr(result, "id", "")) if result is not None else ""
         status = str(getattr(result, "status", "SUBMITTED"))
         self._record_audit("ORDER_STATUS", OrderStatusPayload(intent_id=intent_id, broker_order_id=broker_order_id or intent_id, status=status, cumulative_filled_qty=float(getattr(result, "filled_qty", 0.0) or 0.0)), event_id=f"{intent_id}:status")
         return result
 
-    def submit_sell(self, qty: float, target_price: float, decision_id: str = "", *, lot: InventoryLot | None = None, cost_model: TransactionCostModel | None = None) -> Any:
+    def submit_sell(self, qty: float, target_price: float, decision_id: str = "", *, lot: InventoryLot | None = None, cost_model: TransactionCostModel | None = None, market_event_id: str | int | None = None) -> Any:
         """Submit a sell intent only when an authoritative lot proves Rule One."""
         if self.broker is None:
             raise RuntimeError("live broker is not connected")
@@ -449,9 +482,22 @@ class LiveExecutionLoop:
             self.no_loss_guard_violations += 1
             return None
 
-        intent_id = generate_event_id()
-        self._record_audit("ORDER_INTENT", OrderIntentPayload(intent_id=intent_id, decision_id=decision_id, symbol=self.config.backtest.symbol, side="SELL", quantity=qty, limit_price=target_price), event_id=intent_id)
-        result = self.broker.submit_sell(self.config.backtest.symbol, float(qty), float(target_price))
+        symbol = self.config.backtest.symbol
+        resolved_market_event_id = str(market_event_id if market_event_id is not None else (self._last_market_event_id or decision_id))
+        intent_event = self._record_order_intent(
+            decision_id=decision_id,
+            symbol=symbol,
+            side="SELL",
+            quantity=qty,
+            limit_price=target_price,
+            market_event_id=resolved_market_event_id,
+        )
+        if intent_event is not None:
+            intent_id = intent_event.event_id
+        else:
+            intent_id = generate_event_id()
+            self._record_audit("ORDER_INTENT", OrderIntentPayload(intent_id=intent_id, decision_id=decision_id, symbol=symbol, side="SELL", quantity=qty, limit_price=target_price), event_id=intent_id)
+        result = self.broker.submit_sell(symbol, float(qty), float(target_price))
         broker_order_id = str(getattr(result, "id", "")) if result is not None else ""
         status = str(getattr(result, "status", "SUBMITTED"))
         self._record_audit("ORDER_STATUS", OrderStatusPayload(intent_id=intent_id, broker_order_id=broker_order_id or intent_id, status=status, cumulative_filled_qty=float(getattr(result, "filled_qty", 0.0) or 0.0)), event_id=f"{intent_id}:status")
