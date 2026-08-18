@@ -158,6 +158,12 @@ class OptimizationController:
         start_price = self.data['close'].iloc[0]
         state = BacktestState(initial_cash=initial_cash, start_price=start_price)
 
+        # Task 7.5: the previous bar's close, fed to the cost model so
+        # volatility-aware slippage can scale by this bar's move. None
+        # on the first bar (no previous close exists) --
+        # DynamicSlippageModel falls back to base_bps in that case.
+        prev_close = None
+
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp = row.Index
             current_price = row.close
@@ -211,7 +217,9 @@ class OptimizationController:
                 filled_qty = exec_res["filled_qty"]
                 filled_price = exec_res["filled_avg_price"]
 
-                effective_price, sell_cost = cost_model.apply_sell(filled_price, filled_qty)
+                effective_price, sell_cost = cost_model.apply_sell(
+                    filled_price, filled_qty, context=context, prev_close=prev_close
+                )
                 net_sell_proceeds = (effective_price * filled_qty) - sell_cost
                 allocated_cost_basis = lot.buy_price * filled_qty
                 if net_sell_proceeds < allocated_cost_basis:
@@ -257,7 +265,9 @@ class OptimizationController:
                         filled_qty = order["filled_qty"]
                         filled_price = order["filled_avg_price"]
 
-                        effective_price, buy_cost = cost_model.apply_buy(filled_price, filled_qty)
+                        effective_price, buy_cost = cost_model.apply_buy(
+                            filled_price, filled_qty, context=context, prev_close=prev_close
+                        )
                         total_buy_outlay = (effective_price * filled_qty) + buy_cost
                         per_share_cost_basis = total_buy_outlay / filled_qty
 
@@ -274,6 +284,11 @@ class OptimizationController:
                             })
 
                         event_store.apply_once(order["id"], _apply_buy_fill, event_kind="buy_fill")
+
+            # End of bar: this bar's close becomes the next bar's
+            # prev_close. At the loop's own indentation so it advances
+            # every bar, not only on triggering ones (Task 7.5).
+            prev_close = current_price
 
         final_price = self.data['close'].iloc[-1]
         open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
