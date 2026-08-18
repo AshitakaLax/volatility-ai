@@ -15,6 +15,7 @@ from src.exceptions import ConfigurationError
 from src.validation import validate_run_sweep_config
 from src.idempotency import ProcessedEventStore
 from src.search_strategies import SearchStrategy, GridSearch, BayesianSearch
+from src import decision_cycle
 
 logger = logging.getLogger("Optimizer")
 
@@ -186,8 +187,10 @@ class OptimizationController:
                 bar_index=bar_index,
             )
 
-            # Every bar, unconditionally -- B4.
-            strategy_instance.record_tick(context)
+            # Every bar, unconditionally -- B4. Routed through the shared
+            # canonical decision cycle (Task 7.1) so live and backtest
+            # provably call the same code, not two copies.
+            decision_cycle.record_tick(strategy_instance, context)
 
             # Task 4.6: one equity-curve entry per bar, regardless of
             # trade activity, using the bar's start-of-bar equity
@@ -234,14 +237,17 @@ class OptimizationController:
 
                 event_store.apply_once(exec_res["id"], _apply_sell_fill, event_kind="sell_fill")
 
-            # 2. Step purchase checks -- now delegated to the strategy's
-            # _check_grid_trigger (default implementation is identical to
-            # the pre-Task-4.1 inline check), not a hardcoded inline check.
-            if strategy_instance._check_grid_trigger(context, state.last_buy_price, step):
-                trade_value = strategy_instance.calculate_trade_value(context)
-                trade_value = risk_manager.clamp_trade_value(
-                    trade_value, context.equity, state.cash, context.open_lot_count
-                )
+            # 2. Step purchase checks -- delegated to the shared canonical
+            # decision cycle (Task 7.1), which live_execution.py also
+            # calls, so the trigger/sizing/clamp sequence exists in
+            # exactly one place. state.cash (not context.cash) is passed
+            # deliberately: it reflects this same bar's harvest proceeds,
+            # which have already landed by the time a buy is sized.
+            decision = decision_cycle.evaluate_grid_decision(
+                strategy_instance, risk_manager, context, state.last_buy_price, step, state.cash
+            )
+            if decision.triggered:
+                trade_value = decision.clamped_trade_value
 
                 if state.cash >= trade_value and trade_value > 0:
                     order = oms.execute_buy(symbol, trade_value, context.price)

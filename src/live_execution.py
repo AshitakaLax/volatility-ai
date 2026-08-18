@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Protocol
 
 from src.config import BacktestConfig
+from src import decision_cycle
 from src.exceptions import ConfigurationError
 from src.market_context import MarketContext
 from src.order_management_system import Mode, OrderManagementSystem
@@ -97,23 +98,38 @@ class LiveExecutionLoop:
             macro_surprise_factor=float(macro_surprise_factor),
         )
 
-    def decision_cycle(self, context: MarketContext, *, step: float, last_buy_price: float) -> LiveDecision:
-        """Canonical live strategy sequence; no broker/network side effects."""
+    def decision_cycle(
+        self, context: MarketContext, *, step: float, last_buy_price: float, cash: float | None = None
+    ) -> LiveDecision:
+        """Canonical live strategy sequence; no broker/network side effects.
+
+        Delegates to src/decision_cycle.py -- the same functions
+        optimization_controller._simulate_single calls -- so live and
+        backtest provably run one implementation of the sequence rather
+        than two copies (Task 7.1's shared decision-cycle contract).
+
+        cash defaults to context.cash, preserving this method's
+        pre-Task-7.1 behavior for existing callers. Pass it explicitly
+        when current cash has moved since the context was built (e.g.
+        fills confirmed mid-tick) -- the backtest path passes its
+        post-harvest cash for exactly that reason.
+        """
         if not self._started:
             raise RuntimeError("live execution has not been started")
-        self.strategy.record_tick(context)
-        triggered = self.strategy._check_grid_trigger(context, last_buy_price, step)
-        if not triggered:
-            return LiveDecision(context=context, triggered=False)
-        proposed = self.strategy.calculate_trade_value(context)
-        clamped = self.risk_manager.clamp_trade_value(
-            proposed, context.equity, context.cash, context.open_lot_count
+        decision_cycle.record_tick(self.strategy, context)
+        decision = decision_cycle.evaluate_grid_decision(
+            self.strategy,
+            self.risk_manager,
+            context,
+            last_buy_price,
+            step,
+            context.cash if cash is None else cash,
         )
         return LiveDecision(
-            context=context,
-            triggered=True,
-            proposed_trade_value=float(proposed),
-            clamped_trade_value=float(clamped),
+            context=decision.context,
+            triggered=decision.triggered,
+            proposed_trade_value=decision.proposed_trade_value,
+            clamped_trade_value=decision.clamped_trade_value,
         )
 
     def submit_buy(self, decision: LiveDecision) -> Any:
