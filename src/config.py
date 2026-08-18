@@ -262,6 +262,43 @@ class BacktestConfig:
         )
         validate_one_of(self.execution.intrabar_priority, ("sell_first", "buy_first"), "execution.intrabar_priority")
 
+    def to_dict(self) -> dict:
+        """Inverse of from_dict() -- round-trips through the same nested
+        shape (BacktestConfig.from_dict(config.to_dict()) == config).
+        Tuples (grid.steps/profit_targets, held as tuples internally for
+        immutability/hashability) are converted back to lists, since
+        JSON has no tuple type and this needs to be JSON-serializable
+        for Task 6.3's configuration hash."""
+        return {
+            "strategy": {"strategy_id": self.strategy.strategy_id, "strategy_params": dict(self.strategy.strategy_params)},
+            "grid": {"steps": list(self.grid.steps), "profit_targets": list(self.grid.profit_targets)},
+            "backtest": {
+                "symbol": self.backtest.symbol,
+                "initial_cash": self.backtest.initial_cash,
+                "start_date": self.backtest.start_date,
+                "end_date": self.backtest.end_date,
+                "data_path": self.backtest.data_path,
+            },
+            "costs": {
+                "model_type": self.costs.model_type,
+                "commission_per_trade": self.costs.commission_per_trade,
+                "slippage_bps": self.costs.slippage_bps,
+            },
+            "risk": {"max_concurrent_lots": self.risk.max_concurrent_lots, "max_total_exposure": self.risk.max_total_exposure},
+            "search": {
+                "strategy": self.search.strategy,
+                "rank_by": self.search.rank_by,
+                "direction": self.search.direction,
+                "seed": self.search.seed,
+            },
+            "execution": {
+                "on_flat_reentry": self.execution.on_flat_reentry,
+                "intrabar_priority": self.execution.intrabar_priority,
+            },
+            "output": {"return_full_results": self.output.return_full_results},
+            "live": {"enabled": self.live.enabled, "paper_trading": self.live.paper_trading},
+        }
+
     def to_run_sweep_kwargs(self, strategy_class) -> dict:
         """Builds the actual kwargs for
         OptimizationController.run_sweep(**kwargs) -- constructs real
