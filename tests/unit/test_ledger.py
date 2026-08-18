@@ -80,10 +80,69 @@ def test_close_lot_unknown_lot_raises():
         ledger.close_lot(stray)
 
 
-def test_close_lot_partial_close_not_implemented():
+def test_close_lot_with_no_sell_qty_and_completed_false_is_rejected():
+    # Task 7.2 replaced the old NotImplementedError: partial closes are
+    # implemented now, but completed=False with NO sell_qty is
+    # genuinely ambiguous (how much was filled?) and is rejected.
     ledger = AssetLotLedger()
     lot = ledger.register_buy("ord-1", "TQQQ", buy_price=40.0, shares=1.0, profit_target=0.01)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="ambiguous"):
         ledger.close_lot(lot, completed=False)
-    # Rejected attempt must not have mutated state.
     assert lot in ledger.open_lots
+
+
+def test_partial_close_leaves_lot_open_with_reduced_shares():
+    ledger = AssetLotLedger()
+    lot = ledger.register_buy("ord-1", "TQQQ", buy_price=40.0, shares=10.0, profit_target=0.01)
+    ledger.close_lot(lot, sell_qty=4.0, execution_price=41.0)
+    assert lot in ledger.open_lots
+    assert lot.shares == pytest.approx(6.0)
+    assert lot not in ledger.closed_lots
+
+
+def test_partial_close_never_mutates_cost_basis_or_target():
+    ledger = AssetLotLedger()
+    lot = ledger.register_buy("ord-1", "TQQQ", buy_price=40.0, shares=10.0, profit_target=0.01)
+    original_buy_price = lot.buy_price
+    original_target = lot.target_sell_price
+    ledger.close_lot(lot, sell_qty=4.0, execution_price=99.0)
+    assert lot.buy_price == original_buy_price
+    assert lot.target_sell_price == original_target
+
+
+def test_successive_partial_closes_exhausting_the_lot_close_it():
+    ledger = AssetLotLedger()
+    lot = ledger.register_buy("ord-1", "TQQQ", buy_price=40.0, shares=10.0, profit_target=0.01)
+    ledger.close_lot(lot, sell_qty=4.0)
+    ledger.close_lot(lot, sell_qty=3.0)
+    assert lot in ledger.open_lots
+    ledger.close_lot(lot, sell_qty=3.0)  # exhausts it
+    assert lot not in ledger.open_lots
+    assert lot in ledger.closed_lots
+    assert lot.shares == 0.0
+
+
+def test_partial_close_within_epsilon_closes_the_lot():
+    # Floating-point drift must not leave a phantom sliver open.
+    ledger = AssetLotLedger()
+    lot = ledger.register_buy("ord-1", "TQQQ", buy_price=40.0, shares=10.0, profit_target=0.01)
+    ledger.close_lot(lot, sell_qty=10.0 - 1e-12)
+    assert lot not in ledger.open_lots
+    assert lot.shares == 0.0
+
+
+def test_partial_close_rejects_oversell():
+    ledger = AssetLotLedger()
+    lot = ledger.register_buy("ord-1", "TQQQ", buy_price=40.0, shares=10.0, profit_target=0.01)
+    with pytest.raises(ValueError, match="exceeds"):
+        ledger.close_lot(lot, sell_qty=11.0)
+    assert lot.shares == pytest.approx(10.0)  # unchanged
+
+
+def test_partial_close_rejects_non_positive_sell_qty():
+    ledger = AssetLotLedger()
+    lot = ledger.register_buy("ord-1", "TQQQ", buy_price=40.0, shares=10.0, profit_target=0.01)
+    for bad in (0.0, -1.0):
+        with pytest.raises(ValueError):
+            ledger.close_lot(lot, sell_qty=bad)
+    assert lot.shares == pytest.approx(10.0)
