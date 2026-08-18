@@ -86,3 +86,36 @@ new tests that would just re-check the same behavior a second time:
 | 4 | A single raised exception inside one combination doesn't abort the sweep (Task 4.4) | `tests/integration/test_task_4_4_error_isolation.py::test_one_bad_combination_does_not_abort_the_others` |
 | 5 | `n_jobs>1` output matches `n_jobs=1` output (Task 4.5) | `tests/integration/test_task_4_5_parallel_execution.py::test_n_jobs_greater_than_1_produces_the_same_result_set_as_sequential` |
 | 6 | Walk-forward out-of-sample metrics are computed on data never used for that fold's selection (Task 5.1) | `tests/unit/test_walk_forward.py::test_no_test_slice_overlaps_its_own_train_slice` |
+
+### Tasks 6.3 / 6.4: deployment artifacts and secret policy
+
+**Backtest artifacts are safe to persist without credentials.** A
+`DeploymentArtifact` (`src/artifacts.py`) contains only provenance
+identifiers and hashes — no credential fields exist on it, and
+`canonical_hash()` actively *rejects* any content carrying a
+secret-looking key (`secret`, `password`, `api_key`, `token`,
+`credential`, `private_key`, checked case-insensitively through
+nested structures) rather than silently hashing it. The same is true
+of `BacktestConfig`: it has no credential fields by design, so a
+serialized config is safe to commit to source control.
+
+**Credentials come only from the environment**, never from YAML/JSON
+config, command-line arguments, or source control:
+
+| Variable | Purpose |
+|---|---|
+| `APCA_API_KEY_ID` | Alpaca API key ID |
+| `APCA_API_SECRET_KEY` | Alpaca API secret key |
+
+`load_live_credentials()` (`src/secrets.py`) raises
+`ConfigurationError` naming exactly which variables are missing —
+it never falls back to simulation mode, and never echoes a value
+(even partially) into the error message.
+
+**Redaction is structural, not conventional.** `LiveCredentials`
+overrides `__repr__`/`__str__`, so credentials cannot reach a log
+line, f-string, `%`-format, `.format()` call, or traceback frame even
+when the object is logged directly. `redact_secrets(payload)` is
+available for masking secret-bearing values inside arbitrary
+structured-logging payloads (non-mutating — the caller's live values
+are untouched).
