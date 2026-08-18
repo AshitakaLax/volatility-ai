@@ -76,7 +76,11 @@ CREATE TABLE IF NOT EXISTS processed_events (
     event_id       TEXT PRIMARY KEY,
     event_kind     TEXT NOT NULL,
     revision       INTEGER NOT NULL,
-    schema_version INTEGER NOT NULL
+    schema_version INTEGER NOT NULL,
+    -- Task 7.4: the broker/client order id this decision resolved to,
+    -- so a replay after reconnect returns the EXISTING order rather
+    -- than submitting a second one. NULL for events with no order.
+    result_ref     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ledger_meta (
@@ -215,7 +219,7 @@ class LedgerStore:
         ).fetchone()
         return row is not None
 
-    def record_processed_event(self, event_id: str, event_kind: str = "event") -> bool:
+    def record_processed_event(self, event_id: str, event_kind: str = "event", result_ref: str = None) -> bool:
         """Returns True if newly recorded, False if already present.
         The PRIMARY KEY makes replay a no-op at the database level, so
         idempotency doesn't depend on callers checking first."""
@@ -224,10 +228,33 @@ class LedgerStore:
                 return False
             revision = self._next_revision(conn, "processed_event", None, event_id)
             conn.execute(
-                "INSERT INTO processed_events (event_id, event_kind, revision, schema_version) VALUES (?, ?, ?, ?)",
-                (event_id, event_kind, revision, SCHEMA_VERSION),
+                "INSERT INTO processed_events (event_id, event_kind, revision, schema_version, result_ref) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (event_id, event_kind, revision, SCHEMA_VERSION, result_ref),
             )
             return True
+
+    def get_event_result_ref(self, event_id: str) -> Optional[str]:
+        """The broker/client order id a previously-recorded decision
+        resolved to, or None if the decision is unknown."""
+        row = self._conn.execute(
+            "SELECT result_ref FROM processed_events WHERE event_id = ?", (event_id,)
+        ).fetchone()
+        return row["result_ref"] if row else None
+
+    def set_event_result_ref(self, event_id: str, result_ref: str) -> None:
+        """Attach a broker order reference to an already-claimed
+        decision (claim-then-submit: the claim lands durably BEFORE the
+        broker call, so a crash between the two still blocks a
+        duplicate submission on restart -- it just leaves result_ref
+        NULL, which recovery treats as 'submitted, outcome unknown')."""
+        with self._transaction() as conn:
+            self._next_revision(conn, "event_result_ref", None, f"{event_id}={result_ref}")
+            cursor = conn.execute(
+                "UPDATE processed_events SET result_ref = ? WHERE event_id = ?", (result_ref, event_id)
+            )
+            if cursor.rowcount == 0:
+                raise PersistenceError(f"No processed event with id {event_id!r} to attach a result to")
 
     # --- recovery ---
 

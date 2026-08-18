@@ -19,15 +19,13 @@ is documented here for them to adopt rather than re-derive:
   OrderManagementSystem.execute_buy/execute_sell already generates
   (e.g. "SIM-000001") -- confirmed stable and unique per simulated
   fill by reading order_management_system.py directly.
-- LIVE-mode fills: NOT YET CONFIRMED. This task's own instructions say
-  to use the broker's own order/event ID "if the SDK guarantees it's
-  stable and unique per event -- confirm this against alpaca-py's
-  actual fields rather than assuming." This repo's LIVE mode isn't
-  implemented (OrderManagementSystem raises NotImplementedError for
-  it), so there's no real alpaca-py integration to confirm this
-  against yet. Task 7.1's real broker adapter must confirm the actual
-  field (candidates: Alpaca's own order.id, or a client_order_id set
-  at submission time) before wiring LIVE fills through this module.
+- LIVE-mode decisions: RESOLVED by Task 7.4. compute_decision_id()
+  below implements architecture_overview.md 2.5's canonical scheme,
+  and it is used as the Alpaca client_order_id. Verified against the
+  installed alpaca-py rather than assumed: MarketOrderRequest/
+  LimitOrderRequest accept an optional client_order_id, Order returns
+  it as a required field, TradingClient.get_order_by_client_id
+  provides lookup, and a 64-char SHA-256 hex digest is accepted.
 - Internally generated pre-submission events (e.g. an order intent
   created before submission): NOT YET APPLICABLE. This codebase has
   no OrderIntent/pre-submission-intent concept yet (that's Task
@@ -53,12 +51,61 @@ already-processed ID."
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Callable, Hashable, MutableSet, Optional, TypeVar
 
 logger = logging.getLogger("Optimizer")
 
 T = TypeVar("T")
+
+# architecture_overview.md 2.5's canonical field separator.
+_FIELD_SEPARATOR = "|"
+
+
+def compute_decision_id(
+    deployment_id: str,
+    strategy_id: str,
+    symbol: str,
+    market_event_id: str,
+    decision_type: str,
+    sequence_number: int,
+) -> str:
+    """Canonical logical decision/event ID -- architecture_overview.md
+    2.5's "Event identity" scheme, resolving the LIVE-mode question
+    this module's docstring left open for Task 7.4.
+
+    SHA-256 lowercase hex over a UTF-8 canonical serialization of
+    deployment_id | strategy_id | symbol | market_event_id |
+    decision_type | sequence_number, with explicit separators and no
+    insignificant whitespace.
+
+    The same logical decision produces the same ID across reconnects
+    and process restarts -- it is derived purely from the decision's
+    own identity, never from wall-clock time, randomness, or object
+    identity. Generating a fresh ID for a replayed decision is
+    forbidden, so nothing here may vary between runs.
+
+    Used as the Alpaca client_order_id (verified: the installed
+    alpaca-py accepts a 64-char client_order_id on
+    MarketOrderRequest/LimitOrderRequest, returns it on Order, and
+    exposes TradingClient.get_order_by_client_id for lookup), and as
+    the processed_events key for Task 7.14's audit records.
+    """
+    if sequence_number < 0:
+        raise ValueError(f"sequence_number must be non-negative, got {sequence_number}")
+    parts = [
+        str(deployment_id), str(strategy_id), str(symbol),
+        str(market_event_id), str(decision_type), str(int(sequence_number)),
+    ]
+    for part in parts:
+        if _FIELD_SEPARATOR in part:
+            raise ValueError(
+                f"decision-ID field {part!r} contains the reserved separator {_FIELD_SEPARATOR!r}, "
+                "which would make the serialization ambiguous."
+            )
+    canonical = _FIELD_SEPARATOR.join(parts)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class ProcessedEventStore:
