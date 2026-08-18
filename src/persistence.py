@@ -12,6 +12,7 @@ from src.ledger import AssetLotLedger, InventoryLot
 from src.audit import AuditEvent
 
 SCHEMA_VERSION = 3
+FILL_CURSOR_SCHEMA_VERSION = 1
 
 
 class SQLiteStateStore:
@@ -116,9 +117,7 @@ class SQLiteStateStore:
                     """
                 )
                 self._conn.execute("DROP TABLE audit_events_legacy")
-                self._conn.execute(
-                    "UPDATE schema_meta SET schema_version=?", (SCHEMA_VERSION,)
-                )
+                self._conn.execute("UPDATE schema_meta SET schema_version=?", (SCHEMA_VERSION,))
         except sqlite3.Error as exc:
             self._conn.rollback()
             raise PersistenceError("failed to migrate audit schema without data loss") from exc
@@ -146,6 +145,73 @@ class SQLiteStateStore:
         except sqlite3.Error as exc:
             raise PersistenceError("failed to persist lot mutation") from exc
 
+    def save_fill_cursor(self, order_id: str, cumulative_qty: float, cumulative_notional: float) -> int:
+        """Durably persist the broker cumulative-fill cursor for restart recovery."""
+        try:
+            with self._conn:
+                revision = self._next_revision(self._conn)
+                payload = json.dumps(
+                    {
+                        "type": "fill_cursor",
+                        "schema_version": FILL_CURSOR_SCHEMA_VERSION,
+                        "cumulative_filled_qty": float(cumulative_qty),
+                        "cumulative_filled_notional": float(cumulative_notional),
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+                self._conn.execute(
+                    """INSERT INTO order_state(order_id,payload,revision,schema_version)
+                       VALUES (?,?,?,?,?)
+                       ON CONFLICT(order_id) DO UPDATE SET payload=excluded.payload,
+                       revision=excluded.revision,schema_version=excluded.schema_version""",
+                    (str(order_id), payload, revision, SCHEMA_VERSION),
+                )
+                return revision
+        except (sqlite3.Error, ValueError, TypeError) as exc:
+            raise PersistenceError("failed to persist fill cursor") from exc
+
+    def load_fill_cursor(self, order_id: str) -> tuple[float, float] | None:
+        """Load one durable cumulative-fill cursor, if present."""
+        try:
+            row = self._conn.execute(
+                "SELECT payload FROM order_state WHERE order_id=?",
+                (str(order_id),),
+            ).fetchone()
+        except sqlite3.Error as exc:
+            raise PersistenceError("failed to load fill cursor") from exc
+        if row is None:
+            return None
+        try:
+            payload = json.loads(row["payload"])
+            if payload.get("type") != "fill_cursor":
+                return None
+            if int(payload.get("schema_version", 0)) != FILL_CURSOR_SCHEMA_VERSION:
+                raise PersistenceError(f"unsupported fill cursor schema for order {order_id!r}")
+            return float(payload["cumulative_filled_qty"]), float(payload["cumulative_filled_notional"])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise PersistenceError(f"invalid persisted fill cursor for order {order_id!r}") from exc
+
+    def load_fill_cursors(self) -> dict[str, tuple[float, float]]:
+        """Load all durable cumulative-fill cursors for restart recovery."""
+        try:
+            rows = self._conn.execute("SELECT order_id,payload FROM order_state ORDER BY order_id").fetchall()
+        except sqlite3.Error as exc:
+            raise PersistenceError("failed to load fill cursors") from exc
+        cursors: dict[str, tuple[float, float]] = {}
+        for row in rows:
+            payload = json.loads(row["payload"])
+            if payload.get("type") != "fill_cursor":
+                continue
+            if int(payload.get("schema_version", 0)) != FILL_CURSOR_SCHEMA_VERSION:
+                raise PersistenceError(f"unsupported fill cursor schema for order {row['order_id']!r}")
+            cursors[str(row["order_id"])] = (
+                float(payload["cumulative_filled_qty"]),
+                float(payload["cumulative_filled_notional"]),
+            )
+        return cursors
+
     def mark_processed(self, event_id: str) -> tuple[bool, int]:
         """Atomically claim an event. Returns (claimed, revision)."""
         try:
@@ -167,64 +233,32 @@ class SQLiteStateStore:
         return self.record_audit_builder(lambda _sequence: event)
 
     def record_audit_builder(self, builder: Callable[[int], AuditEvent]) -> tuple[AuditEvent, int]:
-        """Build and durably append one event with its authoritative sequence.
-
-        The sequence is allocated inside the same SQLite transaction that
-        persists the resulting event. The builder therefore receives the exact
-        durable stream sequence before the canonical event ID is constructed.
-        This removes the sequence/ID circular dependency without a race-prone
-        sequence peek. Duplicate canonical IDs remain idempotent.
-        """
+        """Build and durably append one event with its authoritative sequence."""
         try:
             with self._conn:
-                row = self._conn.execute(
-                    "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM audit_events"
-                ).fetchone()
+                row = self._conn.execute("SELECT COALESCE(MAX(sequence), 0) AS sequence FROM audit_events").fetchone()
                 next_sequence = int(row["sequence"]) + 1
                 event = builder(next_sequence)
                 if event.sequence not in (0, next_sequence):
-                    raise PersistenceError(
-                        f"audit sequence mismatch: event={event.sequence}, expected={next_sequence}"
-                    )
+                    raise PersistenceError(f"audit sequence mismatch: event={event.sequence}, expected={next_sequence}")
                 sequence = next_sequence
-                payload = json.dumps(
-                    event.payload,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    allow_nan=False,
-                )
+                payload = json.dumps(event.payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
                 existing = self._conn.execute(
                     "SELECT sequence,revision,payload,event_type,schema_version,deployment_id,timestamp FROM audit_events WHERE event_id=?",
                     (event.event_id,),
                 ).fetchone()
                 if existing is not None:
-                    if (
-                        str(existing["payload"]) != payload
-                        or str(existing["event_type"]) != event.event_type
-                        or int(existing["schema_version"]) != event.schema_version
-                        or str(existing["deployment_id"]) != event.deployment_id
-                    ):
-                        raise PersistenceError(
-                            f"conflicting duplicate audit event_id={event.event_id!r}"
-                        )
+                    if (str(existing["payload"]) != payload or str(existing["event_type"]) != event.event_type
+                            or int(existing["schema_version"]) != event.schema_version
+                            or str(existing["deployment_id"]) != event.deployment_id):
+                        raise PersistenceError(f"conflicting duplicate audit event_id={event.event_id!r}")
                     return event, int(existing["revision"])
-
                 revision = self._next_revision(self._conn)
                 self._conn.execute(
-                    """INSERT INTO audit_events(
-                        sequence,event_id,timestamp,event_type,schema_version,
-                        deployment_id,payload,revision
-                    ) VALUES (?,?,?,?,?,?,?,?)""",
-                    (
-                        sequence,
-                        event.event_id,
-                        event.timestamp,
-                        event.event_type,
-                        event.schema_version,
-                        event.deployment_id,
-                        payload,
-                        revision,
-                    ),
+                    """INSERT INTO audit_events(sequence,event_id,timestamp,event_type,schema_version,
+                       deployment_id,payload,revision) VALUES (?,?,?,?,?,?,?,?)""",
+                    (sequence, event.event_id, event.timestamp, event.event_type, event.schema_version,
+                     event.deployment_id, payload, revision),
                 )
                 return event, revision
         except PersistenceError:
@@ -233,11 +267,7 @@ class SQLiteStateStore:
             raise PersistenceError("failed to persist audit event") from exc
 
     def load_audit_events(self, *, deployment_id: str | None = None) -> list[AuditEvent]:
-        """Reload immutable audit history in deterministic sequence order."""
-        query = (
-            "SELECT sequence,event_id,timestamp,event_type,schema_version,"
-            "deployment_id,payload FROM audit_events"
-        )
+        query = "SELECT sequence,event_id,timestamp,event_type,schema_version,deployment_id,payload FROM audit_events"
         params: tuple[str, ...] = ()
         if deployment_id is not None:
             query += " WHERE deployment_id=?"
@@ -247,18 +277,9 @@ class SQLiteStateStore:
             rows = self._conn.execute(query, params).fetchall()
         except sqlite3.Error as exc:
             raise PersistenceError("failed to load audit events") from exc
-        return [
-            AuditEvent(
-                event_id=str(row["event_id"]),
-                timestamp=str(row["timestamp"]),
-                event_type=str(row["event_type"]),
-                schema_version=int(row["schema_version"]),
-                deployment_id=str(row["deployment_id"]),
-                payload=json.loads(row["payload"]),
-                sequence=int(row["sequence"]),
-            )
-            for row in rows
-        ]
+        return [AuditEvent(event_id=str(row["event_id"]), timestamp=str(row["timestamp"]), event_type=str(row["event_type"]),
+                           schema_version=int(row["schema_version"]), deployment_id=str(row["deployment_id"]),
+                           payload=json.loads(row["payload"]), sequence=int(row["sequence"])) for row in rows]
 
     def load_open_lots(self) -> AssetLotLedger:
         ledger = AssetLotLedger()
@@ -269,12 +290,10 @@ class SQLiteStateStore:
         except sqlite3.Error as exc:
             raise PersistenceError("failed to load open lots") from exc
         for row in rows:
-            lot = InventoryLot(str(row["order_id"]), str(row["symbol"]), float(row["buy_price"]), float(row["shares"]), float(row["target_sell_price"]))
-            ledger.open_lots.append(lot)
+            ledger.open_lots.append(InventoryLot(str(row["order_id"]), str(row["symbol"]), float(row["buy_price"]), float(row["shares"]), float(row["target_sell_price"])))
         return ledger
 
     def persist_ledger(self, ledger: AssetLotLedger) -> int:
-        """Atomically replace the persisted lot snapshot with the current ledger state."""
         try:
             with self._conn:
                 revision = self._next_revision(self._conn)
@@ -296,6 +315,4 @@ class SQLiteStateStore:
     def reconcile_position(self, ledger: AssetLotLedger, broker_qty: float) -> None:
         local_qty = ledger.open_share_count
         if abs(float(broker_qty) - local_qty) > 1e-9:
-            raise ReconciliationError(
-                f"position mismatch: local_qty={local_qty}, broker_qty={float(broker_qty)}"
-            )
+            raise ReconciliationError(f"position mismatch: local_qty={local_qty}, broker_qty={float(broker_qty)}")
