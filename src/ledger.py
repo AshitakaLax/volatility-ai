@@ -30,6 +30,10 @@ record the current (pre-Phase-4) controller flow needs.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Optional
+
+# Floating-point drift tolerance for share quantities (Task 7.2 step 5).
+SHARE_EPSILON = 1e-9
 
 
 @dataclass
@@ -37,7 +41,9 @@ class Lot:
     """A single open or closed position lot.
 
     target_sell_price is computed once at registration from buy_price
-    and profit_target and does not change afterward.
+    and profit_target and does not change afterward -- including across
+    partial closes (Task 7.2's State Mutation Scope forbids mutating
+    either during a partial split).
     """
 
     order_id: str
@@ -46,6 +52,9 @@ class Lot:
     shares: float
     profit_target: float
     target_sell_price: float = field(init=False)
+    # Audit-only: the price of the most recent confirmed fill applied to
+    # this lot. Never feeds cost basis or the exit target.
+    last_execution_price: Optional[float] = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.target_sell_price = self.buy_price * (1.0 + self.profit_target)
@@ -97,21 +106,63 @@ class AssetLotLedger:
         """
         return [lot for lot in self.open_lots if current_price >= lot.target_sell_price]
 
-    def close_lot(self, lot: Lot, completed: bool = True) -> None:
-        """Move a lot from open to closed after a confirmed sell fill.
+    def close_lot(
+        self,
+        lot: Lot,
+        sell_qty: float = None,
+        execution_price: float = None,
+        completed: bool = True,
+    ) -> None:
+        """Apply a confirmed sell fill to a lot. Task 7.2.
 
-        completed=True (the default, and the only path
-        optimization_controller.py currently exercises) fully closes the
-        lot. completed=False is not implemented -- see module docstring.
+        Backward compatible with the original close_lot(lot) call site
+        (optimization_controller.py's SIMULATION path, unchanged since
+        Phase 0): with sell_qty omitted, this is a full close, exactly
+        as before.
+
+        sell_qty is the NEWLY filled (incremental) quantity, never the
+        broker's cumulative filled_qty -- see
+        src/fill_accounting.py, which derives the increment. Passing a
+        cumulative value here would double-count shares.
+
+        Mutates lot.shares only. lot.buy_price and lot.target_sell_price
+        are never modified during a partial close (State Mutation Scope),
+        so the remaining shares keep their original cost basis and exit
+        target. execution_price is accepted per the task's proposed
+        signature and recorded on the lot for audit; it deliberately
+        does NOT alter buy_price/target_sell_price.
+
+        The lot is removed from open_lots only when its remaining shares
+        fall to <= SHARE_EPSILON (floating-point drift), or on an
+        omitted-sell_qty full close.
         """
-        if not completed:
-            raise NotImplementedError(
-                "Partial lot closes (completed=False) are not specified anywhere "
-                "in architecture_overview.md or implementation_task_specs.md -- "
-                "see Appendix 8. Task 7.2 is expected to define sell_qty/"
-                "execution_price semantics for this before it's implemented."
-            )
         if lot not in self.open_lots:
             raise ValueError(f"Lot {lot.order_id!r} is not an open lot in this ledger")
-        self.open_lots.remove(lot)
-        self.closed_lots.append(lot)
+
+        if sell_qty is None:
+            # Original behavior: full close.
+            if not completed:
+                raise ValueError(
+                    "close_lot(completed=False) with no sell_qty is ambiguous -- pass sell_qty "
+                    "to record a partial fill, or completed=True for a full close."
+                )
+            self.open_lots.remove(lot)
+            self.closed_lots.append(lot)
+            return
+
+        if sell_qty <= 0:
+            raise ValueError(f"sell_qty must be positive, got {sell_qty}")
+        if sell_qty > lot.shares + SHARE_EPSILON:
+            raise ValueError(
+                f"sell_qty ({sell_qty}) exceeds lot {lot.order_id!r}'s remaining shares ({lot.shares}). "
+                "This usually means a cumulative broker quantity was passed instead of an incremental one."
+            )
+
+        lot.shares -= sell_qty
+        if execution_price is not None:
+            lot.last_execution_price = execution_price
+
+        if lot.shares <= SHARE_EPSILON:
+            lot.shares = 0.0
+            self.open_lots.remove(lot)
+            self.closed_lots.append(lot)

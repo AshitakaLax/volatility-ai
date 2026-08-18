@@ -12,5 +12,11 @@ pyyaml>=6.0
 # failing at import time or silently falling back to grid search.
 optuna>=3.0
 
+# Optional: only required for live trading against Alpaca (Phase 7).
+# Backtesting needs none of this. src/fill_accounting.py's core
+# arithmetic is SDK-independent; only extract_alpaca_fill() and the
+# live broker path touch alpaca-py types.
+alpaca-py>=0.20
+
 # Development / test only.
 pytest>=7.0
