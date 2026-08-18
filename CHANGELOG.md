@@ -64,3 +64,25 @@ Confirmed by
 | 1.3 | B4 | `sizing_engine.record_tick(current_price)` now called every bar (previously never called) |
 | 1.4 | B2 | `current_dd` now threaded into `calculate_trade_value` (previously always defaulted to 0.0) |
 | 1.5 | B5 | Fill status (`OrderStatus.FILLED`) and the no-loss invariant now validated before cash/ledger mutation on both buy and sell paths |
+
+## Phase 6 — Config & docs
+
+### Task 6.2: integration-test coverage for scenarios 1–6
+
+Task 6.2 lists 13 integration-test scenarios; scenarios 7–13 need
+Phase 7 tasks that don't exist in this repo yet and were explicitly
+not attempted, per that task's own instruction not to build ahead of
+the tasks they depend on. Scenarios 1–6 were each already covered by
+a dedicated, traceably-named test written when its source task was
+originally implemented — re-verified together (not assumed still
+passing) before this entry was written, rather than duplicated into
+new tests that would just re-check the same behavior a second time:
+
+| # | Scenario | Test |
+|---|---|---|
+| 1 | `record_tick` called exactly once per bar regardless of trigger state (Task 1.3) | `tests/integration/test_task_1_3_record_tick.py::test_record_tick_called_exactly_once_per_bar_including_non_trigger_bars` |
+| 2 | `calculate_trade_value` receives a non-zero drawdown during a scripted drawdown (Task 1.4) | `tests/integration/test_task_1_4_drawdown_threading.py::test_calculate_trade_value_receives_real_drawdown_not_default_zero` |
+| 3 | Each `RiskManager` cap clamps rather than silently over-allocating (Tasks 3.1/3.2) | `tests/unit/test_risk_manager.py::test_max_concurrent_lots_clamps_to_zero_once_at_cap`, `::test_max_total_exposure_pct_clamps_to_zero_when_already_at_or_over_cap`, and `tests/integration/test_task_3_2_risk_manager_wiring.py::test_max_concurrent_lots_caps_trade_count` |
+| 4 | A single raised exception inside one combination doesn't abort the sweep (Task 4.4) | `tests/integration/test_task_4_4_error_isolation.py::test_one_bad_combination_does_not_abort_the_others` |
+| 5 | `n_jobs>1` output matches `n_jobs=1` output (Task 4.5) | `tests/integration/test_task_4_5_parallel_execution.py::test_n_jobs_greater_than_1_produces_the_same_result_set_as_sequential` |
+| 6 | Walk-forward out-of-sample metrics are computed on data never used for that fold's selection (Task 5.1) | `tests/unit/test_walk_forward.py::test_no_test_slice_overlaps_its_own_train_slice` |
