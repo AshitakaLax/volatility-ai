@@ -6,6 +6,7 @@ import json
 import sqlite3
 from pathlib import Path
 from collections.abc import Callable, Sequence
+from typing import Any
 
 from src.exceptions import PersistenceError, ReconciliationError
 from src.ledger import AssetLotLedger, InventoryLot
@@ -265,6 +266,117 @@ class SQLiteStateStore:
             raise
         except (sqlite3.Error, ValueError, TypeError) as exc:
             raise PersistenceError("failed to persist audit event") from exc
+
+    def apply_fill_transaction(
+        self,
+        *,
+        event_id: str,
+        ledger: AssetLotLedger,
+        order_id: str,
+        cumulative_qty: float,
+        cumulative_notional: float,
+        cursor: Any,
+        mutation: Callable[[], Any],
+        audit_events: Sequence[AuditEvent],
+    ) -> tuple[bool, Any]:
+        """Atomically apply one confirmed fill and all durable side effects."""
+        if not event_id:
+            raise PersistenceError("fill event_id must be non-empty")
+
+        open_lots = list(ledger.open_lots)
+        closed_lots = list(ledger.closed_lots)
+        lot_shares = {id(lot): float(lot.shares) for lot in open_lots + closed_lots}
+        cursor_qty = float(cursor.cumulative_qty)
+        cursor_notional = float(cursor.cumulative_notional)
+
+        try:
+            with self._conn:
+                existing = self._conn.execute(
+                    "SELECT revision FROM processed_events WHERE event_id=?",
+                    (event_id,),
+                ).fetchone()
+                if existing is not None:
+                    return False, None
+
+                result = mutation()
+                cursor.advance(float(cumulative_qty), float(cumulative_notional))
+                revision = self._next_revision(self._conn)
+
+                self._conn.execute("DELETE FROM ledger_lots")
+                for lot in ledger.open_lots:
+                    self._conn.execute(
+                        "INSERT INTO ledger_lots(order_id,symbol,buy_price,shares,target_sell_price,closed,revision,schema_version) VALUES (?,?,?,?,?,?,?,?)",
+                        (lot.order_id, lot.symbol, lot.buy_price, lot.shares, lot.target_sell_price, 0, revision, SCHEMA_VERSION),
+                    )
+                for lot in ledger.closed_lots:
+                    self._conn.execute(
+                        "INSERT OR REPLACE INTO ledger_lots(order_id,symbol,buy_price,shares,target_sell_price,closed,revision,schema_version) VALUES (?,?,?,?,?,?,?,?)",
+                        (lot.order_id, lot.symbol, lot.buy_price, lot.shares, lot.target_sell_price, 1, revision, SCHEMA_VERSION),
+                    )
+
+                cursor_payload = json.dumps(
+                    {
+                        "type": "fill_cursor",
+                        "schema_version": FILL_CURSOR_SCHEMA_VERSION,
+                        "cumulative_filled_qty": float(cursor.cumulative_qty),
+                        "cumulative_filled_notional": float(cursor.cumulative_notional),
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+                self._conn.execute(
+                    """INSERT INTO order_state(order_id,payload,revision,schema_version) VALUES (?,?,?,?,?)
+                       ON CONFLICT(order_id) DO UPDATE SET payload=excluded.payload,
+                       revision=excluded.revision,schema_version=excluded.schema_version""",
+                    (str(order_id), cursor_payload, revision, SCHEMA_VERSION),
+                )
+                self._conn.execute(
+                    "INSERT INTO processed_events(event_id,revision,schema_version) VALUES (?,?,?)",
+                    (event_id, revision, SCHEMA_VERSION),
+                )
+
+                next_row = self._conn.execute("SELECT COALESCE(MAX(sequence), 0) AS sequence FROM audit_events").fetchone()
+                next_sequence = int(next_row["sequence"]) + 1
+                for offset, event in enumerate(audit_events):
+                    sequence = next_sequence + offset
+                    if event.sequence not in (0, sequence):
+                        raise PersistenceError(f"audit sequence mismatch: event={event.sequence}, expected={sequence}")
+                    payload = json.dumps(event.payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                    existing_audit = self._conn.execute(
+                        "SELECT sequence,payload,event_type,schema_version,deployment_id FROM audit_events WHERE event_id=?",
+                        (event.event_id,),
+                    ).fetchone()
+                    if existing_audit is not None:
+                        if (str(existing_audit["payload"]) != payload
+                                or str(existing_audit["event_type"]) != event.event_type
+                                or int(existing_audit["schema_version"]) != event.schema_version
+                                or str(existing_audit["deployment_id"]) != event.deployment_id):
+                            raise PersistenceError(f"conflicting duplicate audit event_id={event.event_id!r}")
+                        continue
+                    self._conn.execute(
+                        """INSERT INTO audit_events(sequence,event_id,timestamp,event_type,schema_version,
+                           deployment_id,payload,revision) VALUES (?,?,?,?,?,?,?,?)""",
+                        (sequence, event.event_id, event.timestamp, event.event_type, event.schema_version,
+                         event.deployment_id, payload, revision),
+                    )
+                return True, result
+        except PersistenceError:
+            ledger.open_lots[:] = open_lots
+            ledger.closed_lots[:] = closed_lots
+            for lot in open_lots + closed_lots:
+                lot.shares = lot_shares[id(lot)]
+            cursor.cumulative_qty = cursor_qty
+            cursor.cumulative_notional = cursor_notional
+            raise
+        except (sqlite3.Error, ValueError, TypeError) as exc:
+            ledger.open_lots[:] = open_lots
+            ledger.closed_lots[:] = closed_lots
+            for lot in open_lots + closed_lots:
+                lot.shares = lot_shares[id(lot)]
+            cursor.cumulative_qty = cursor_qty
+            cursor.cumulative_notional = cursor_notional
+            raise PersistenceError("failed to atomically persist fill transition") from exc
 
     def load_audit_events(self, *, deployment_id: str | None = None) -> list[AuditEvent]:
         query = "SELECT sequence,event_id,timestamp,event_type,schema_version,deployment_id,payload FROM audit_events"
