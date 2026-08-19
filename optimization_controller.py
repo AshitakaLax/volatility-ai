@@ -16,6 +16,7 @@ from src.validation import validate_run_sweep_config
 from src.idempotency import ProcessedEventStore
 from src.search_strategies import SearchStrategy, GridSearch, BayesianSearch
 from src import decision_cycle
+from src.no_loss_guard import NoLossViolation, validate_sell
 
 logger = logging.getLogger("Optimizer")
 
@@ -217,18 +218,18 @@ class OptimizationController:
                 filled_qty = exec_res["filled_qty"]
                 filled_price = exec_res["filled_avg_price"]
 
-                effective_price, sell_cost = cost_model.apply_sell(
-                    filled_price, filled_qty, context=context, prev_close=prev_close
-                )
-                net_sell_proceeds = (effective_price * filled_qty) - sell_cost
-                allocated_cost_basis = lot.buy_price * filled_qty
-                if net_sell_proceeds < allocated_cost_basis:
-                    logger.warning(
-                        f"Sell for lot {lot.order_id} rejected: net proceeds "
-                        f"{net_sell_proceeds:.2f} would be below cost basis "
-                        f"{allocated_cost_basis:.2f} (no-loss invariant)."
+                # Task 7.15: the ONE no-loss guard. This block used to
+                # carry its own copy of the net_sell_proceeds /
+                # allocated_cost_basis comparison; it now calls the
+                # canonical implementation so the two cannot drift.
+                try:
+                    economics = validate_sell(
+                        lot, filled_qty, filled_price, cost_model,
+                        context=context, prev_close=prev_close,
                     )
-                    continue
+                except NoLossViolation:
+                    continue  # already logged by the guard
+                net_sell_proceeds = economics.net_sell_proceeds
 
                 def _apply_sell_fill():
                     state.cash += net_sell_proceeds

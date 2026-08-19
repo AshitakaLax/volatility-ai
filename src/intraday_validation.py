@@ -58,6 +58,7 @@ from src.cost_models import TransactionCostModel, ZeroCostModel
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext
 from src.order_management_system import OrderManagementSystem, OrderStatus
+from src.no_loss_guard import NoLossViolation, validate_sell
 from src.performance_analyzer import PerformanceAnalyzer
 
 logger = logging.getLogger("Optimizer")
@@ -115,13 +116,14 @@ def simulate_single_intraday(
                 continue
             filled_qty = exec_res["filled_qty"]
             filled_price = exec_res["filled_avg_price"]
-            effective_price, sell_cost = cost_model.apply_sell(filled_price, filled_qty)
-            net_sell_proceeds = (effective_price * filled_qty) - sell_cost
-            allocated_cost_basis = lot.buy_price * filled_qty
-            if net_sell_proceeds < allocated_cost_basis:
-                logger.warning(f"[intraday] Sell for lot {lot.order_id} rejected by the no-loss check.")
-                continue
-            cash += net_sell_proceeds
+            # Task 7.15: same canonical guard the daily path calls --
+            # this block previously carried its own duplicate copy of
+            # the comparison.
+            try:
+                economics = validate_sell(lot, filled_qty, filled_price, cost_model, context=context)
+            except NoLossViolation:
+                continue  # already logged by the guard
+            cash += economics.net_sell_proceeds
             ledger.close_lot(lot)
 
     def _trigger_check(context: MarketContext) -> None:
