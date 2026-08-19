@@ -119,3 +119,62 @@ when the object is logged directly. `redact_secrets(payload)` is
 available for masking secret-bearing values inside arbitrary
 structured-logging payloads (non-mutating — the caller's live values
 are untouched).
+
+## Phase 7 — Live execution parity
+
+### Task 7.7: promotion runbook (backtest → paper → live capital)
+
+**No code path goes from a backtest result directly to live capital.**
+This is enforced structurally, not by convention: constructing a
+`Mode.LIVE` `OrderManagementSystem` requires a passing
+`PromotionEvaluation`, which requires a real `PaperTradingRecord` that
+met every threshold. There is deliberately no `enable_live=True`
+boolean shortcut.
+
+**The three stages, in required order:**
+
+| Stage | Mode | What it proves |
+|---|---|---|
+| 1. Backtest | `Mode.SIMULATION` | The parameter set survives historical data (and ideally Task 5.1 walk-forward validation) |
+| 2. Paper | `Mode.PAPER` | It survives real-time execution against Alpaca's paper endpoint, risk-free |
+| 3. Live | `Mode.LIVE` | Only reachable with recorded evidence that stage 2 passed |
+
+`Mode.PAPER` is a first-class mode rather than a flag on `LIVE`,
+so reaching real capital is an explicit, auditable step.
+
+**Promotion criteria** (`src/promotion.py::PromotionCriteria`) — all
+machine-checkable, all recorded in the promotion artifact rather than
+left to operator judgment:
+
+| Criterion | Default |
+|---|---|
+| Minimum paper-trading duration | 5 days |
+| Minimum strategy decisions | 20 |
+| Minimum fills | 5 |
+| Accounting discrepancies | 0 allowed |
+| Duplicate-order incidents | 0 allowed |
+| No-loss guard violations | 0 allowed |
+| Unresolved reconciliation state | 0 allowed |
+| Unhandled runtime exceptions | 0 allowed |
+
+**Operator procedure:**
+
+1. Run the backtest sweep; select a parameter set.
+2. Build a `BacktestConfig` with `live.paper_trading: true` and run it.
+   `LiveExecutionLoop` builds a `Mode.PAPER` OMS — real capital is
+   unreachable at this stage regardless of what else is configured.
+3. Collect results into a `PaperTradingRecord`. Its `metrics` field
+   mirrors `SimulationResult.metrics` (Task 4.6), so paper and
+   backtest results are directly comparable rather than living in two
+   incompatible report formats.
+4. Call `assert_promotable_to_live(artifact, record)`. It reports
+   *every* unmet criterion at once, not just the first.
+5. Only on success, pass the returned evaluation as
+   `live_capital_promotion` to enable `Mode.LIVE`. Record
+   `evaluation.criteria` in the deployment artifact — that is the
+   auditable record of which bar was cleared.
+
+**Gap closed during this task:** `LiveExecutionLoop` previously
+constructed `Mode.LIVE` unconditionally, ignoring
+`config.live.paper_trading` entirely — a config asking for paper
+trading still got a real-capital OMS. It now honors the flag.

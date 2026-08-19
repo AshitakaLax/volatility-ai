@@ -2,6 +2,16 @@ import pytest
 
 from src.exceptions import ConfigurationError
 from src.order_management_system import OrderManagementSystem, OrderStatus
+from src.promotion import PaperTradingRecord, evaluate_promotion
+
+
+def _passing_promotion():
+    """Promotion evidence that clears every default criterion."""
+    return evaluate_promotion(
+        PaperTradingRecord(
+            deployment_id="d1", paper_trading_days=10.0, decision_count=50, fill_count=10
+        )
+    )
 
 
 def test_execute_buy_computes_qty_and_fills_at_requested_price():
@@ -48,12 +58,24 @@ def test_execute_sell_rejects_non_positive_values(qty, price):
 
 
 def test_invalid_mode_rejected_at_construction():
+    # "PAPER" was this test's invalid-mode example until Task 7.7 made
+    # it a real, valid third mode -- using a genuinely invalid value now.
     with pytest.raises(ConfigurationError):
-        OrderManagementSystem(mode="PAPER")
+        OrderManagementSystem(mode="NOT_A_MODE")
+
+
+def test_paper_mode_is_valid_and_needs_no_promotion_evidence():
+    # Task 7.7: paper trading never touches real capital, so it is
+    # constructible freely -- that's what makes the gate usable.
+    oms = OrderManagementSystem(mode="PAPER")
+    assert oms.mode == "PAPER"
 
 
 def test_live_mode_not_implemented():
-    oms = OrderManagementSystem(mode="LIVE")
+    # Task 7.7: constructing a LIVE OMS now requires passing promotion
+    # evidence, so this test supplies it to reach the execution path
+    # it actually cares about.
+    oms = OrderManagementSystem(mode="LIVE", live_capital_promotion=_passing_promotion())
     with pytest.raises(NotImplementedError):
         oms.execute_buy("TQQQ", 1000.0, 50.0)
     with pytest.raises(NotImplementedError):

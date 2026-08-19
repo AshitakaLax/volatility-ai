@@ -108,4 +108,6 @@ def test_existing_successful_behavior_unchanged():
     # touched by this task.
     FixedPortfolioPercentage(allocation_pct=0.5)  # doesn't raise
     OrderManagementSystem(mode="SIMULATION")  # doesn't raise
-    OrderManagementSystem(mode="LIVE")  # doesn't raise (construction only)
+    # Task 7.7 made LIVE construction require passing promotion evidence,
+    # so PAPER is the non-capital mode that stands in here now.
+    OrderManagementSystem(mode="PAPER")  # doesn't raise
