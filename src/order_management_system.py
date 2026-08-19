@@ -125,7 +125,9 @@ class OrderManagementSystem:
         self._order_seq += 1
         return f"SIM-{self._order_seq:06d}"
 
-    def execute_buy(self, symbol: str, trade_value: float, price: float, client_order_id: str = None) -> dict:
+    def execute_buy(
+        self, symbol: str, trade_value: float, price: float, client_order_id: str | None = None
+    ) -> dict:
         """Buy trade_value dollars of symbol at price. Returns qty as
         trade_value / price (fractional shares -- optimization_controller.py
         does not round this).
@@ -155,7 +157,9 @@ class OrderManagementSystem:
             "status": OrderStatus.FILLED,
         }
 
-    def execute_sell(self, symbol: str, qty: float, price: float, client_order_id: str = None) -> dict:
+    def execute_sell(
+        self, symbol: str, qty: float, price: float, client_order_id: str | None = None
+    ) -> dict:
         """Sell qty shares of symbol at price. Fills completely.
 
         client_order_id: see execute_buy."""

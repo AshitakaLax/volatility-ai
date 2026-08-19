@@ -7,12 +7,13 @@ constructed.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
-from src.config import BacktestConfig
 from src import decision_cycle
+from src.config import BacktestConfig
 from src.exceptions import ConfigurationError
 from src.market_context import MarketContext
 from src.order_management_system import Mode, OrderManagementSystem
@@ -66,7 +67,7 @@ class LiveExecutionLoop:
         *,
         broker_factory: Callable[[LiveCredentials], LiveBroker] | None = None,
         oms: OrderManagementSystem | None = None,
-        tick_validator: "TickValidator | None" = None,
+        tick_validator: TickValidator | None = None,
         live_capital_promotion=None,
         circuit_breaker=None,
     ) -> None:
@@ -176,16 +177,28 @@ class LiveExecutionLoop:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         return MarketContext(
             timestamp=timestamp,
-            open=float(open), high=float(high), low=float(low), close=float(close),
-            cash=float(cash), equity=float(equity), peak_equity=float(peak_equity),
-            drawdown=float(drawdown), open_lot_count=int(open_lot_count),
-            bar_index=int(bar_index), time_of_day_flag=int(time_of_day_flag),
+            open=float(open),
+            high=float(high),
+            low=float(low),
+            close=float(close),
+            cash=float(cash),
+            equity=float(equity),
+            peak_equity=float(peak_equity),
+            drawdown=float(drawdown),
+            open_lot_count=int(open_lot_count),
+            bar_index=int(bar_index),
+            time_of_day_flag=int(time_of_day_flag),
             is_macro_event_day=bool(is_macro_event_day),
             macro_surprise_factor=float(macro_surprise_factor),
         )
 
     def decision_cycle(
-        self, context: MarketContext, *, step: float, last_buy_price: float, cash: float | None = None
+        self,
+        context: MarketContext,
+        *,
+        step: float,
+        last_buy_price: float,
+        cash: float | None = None,
     ) -> LiveDecision:
         """Canonical live strategy sequence; no broker/network side effects.
 

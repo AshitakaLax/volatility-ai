@@ -38,7 +38,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def _config(allocation_pct: float = 0.05) -> BacktestConfig:
     return BacktestConfig.from_dict(
         {
-            "strategy": {"strategy_id": "fixed", "strategy_params": {"allocation_pct": allocation_pct}},
+            "strategy": {
+                "strategy_id": "fixed",
+                "strategy_params": {"allocation_pct": allocation_pct},
+            },
             "grid": {"steps": [0.01], "profit_targets": [0.005]},
         }
     )
@@ -146,7 +149,10 @@ def test_artifact_hash_stable_across_processes():
     hashes = []
     for _ in range(2):
         result = subprocess.run(
-            [sys.executable, "-c", script], capture_output=True, text=True, timeout=60,
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=60,
             env={"PYTHONHASHSEED": "random", "PATH": "/usr/bin:/bin"},
         )
         assert result.returncode == 0, result.stderr
@@ -177,7 +183,8 @@ def test_live_startup_rejects_missing_artifact():
 
 
 @pytest.mark.parametrize(
-    "field_name", ["deployment_id", "strategy_id", "strategy_version", "code_commit", "experiment_id"]
+    "field_name",
+    ["deployment_id", "strategy_id", "strategy_version", "code_commit", "experiment_id"],
 )
 def test_live_startup_rejects_missing_required_provenance_field(field_name):
     artifact = _artifact(validation_status="passed", promotion_status="promoted")

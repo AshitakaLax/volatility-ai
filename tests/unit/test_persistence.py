@@ -64,7 +64,10 @@ def test_every_durable_record_carries_a_schema_version(db_path):
 def test_revisions_are_monotonically_increasing(db_path):
     with LedgerStore(db_path) as store:
         _seed(store)
-        revisions = [r["revision"] for r in store._conn.execute("SELECT revision FROM revisions ORDER BY rowid")]
+        revisions = [
+            r["revision"]
+            for r in store._conn.execute("SELECT revision FROM revisions ORDER BY rowid")
+        ]
         assert revisions == sorted(revisions)
         assert len(set(revisions)) == len(revisions)
         assert store.current_revision() == max(revisions)
@@ -83,14 +86,14 @@ def test_correctness_does_not_depend_on_wal_mode(db_path):
 def test_restart_reconstructs_the_exact_open_lot_state(db_path):
     store = LedgerStore(db_path)
     ledger = _seed(store)
-    before_open = sorted((l.order_id, l.shares) for l in ledger.open_lots)
-    before_closed = sorted(l.order_id for l in ledger.closed_lots)
+    before_open = sorted((lot_.order_id, lot_.shares) for lot_ in ledger.open_lots)
+    before_closed = sorted(lot_.order_id for lot_ in ledger.closed_lots)
     store.close()  # simulate process death
 
     store2 = LedgerStore(db_path)  # fresh process, same store
     recovered = store2.load_ledger()
-    after_open = sorted((l.order_id, l.shares) for l in recovered.open_lots)
-    after_closed = sorted(l.order_id for l in recovered.closed_lots)
+    after_open = sorted((lot_.order_id, lot_.shares) for lot_ in recovered.open_lots)
+    after_closed = sorted(lot_.order_id for lot_ in recovered.closed_lots)
     store2.close()
 
     assert after_open == before_open
@@ -100,7 +103,9 @@ def test_restart_reconstructs_the_exact_open_lot_state(db_path):
 def test_restart_preserves_cost_basis_and_target_sell_price(db_path):
     store = LedgerStore(db_path)
     ledger = _seed(store)
-    original = {l.order_id: (l.buy_price, l.target_sell_price) for l in ledger.open_lots}
+    original = {
+        lot_.order_id: (lot_.buy_price, lot_.target_sell_price) for lot_ in ledger.open_lots
+    }
     store.close()
 
     with LedgerStore(db_path) as store2:
@@ -119,9 +124,9 @@ def test_restart_restores_last_buy_price(db_path):
 def test_recovery_is_idempotent(db_path):
     with LedgerStore(db_path) as store:
         _seed(store)
-        first = [(l.order_id, l.shares) for l in store.load_ledger().open_lots]
-        second = [(l.order_id, l.shares) for l in store.load_ledger().open_lots]
-        third = [(l.order_id, l.shares) for l in store.load_ledger().open_lots]
+        first = [(lot_.order_id, lot_.shares) for lot_ in store.load_ledger().open_lots]
+        second = [(lot_.order_id, lot_.shares) for lot_ in store.load_ledger().open_lots]
+        third = [(lot_.order_id, lot_.shares) for lot_ in store.load_ledger().open_lots]
         assert first == second == third
 
 
@@ -207,9 +212,9 @@ def test_reconciliation_never_mutates_either_side(db_path):
     with LedgerStore(db_path) as store:
         _seed(store)
         revision_before = store.current_revision()
-        before = [(l.order_id, l.shares) for l in store.load_ledger().open_lots]
+        before = [(lot_.order_id, lot_.shares) for lot_ in store.load_ledger().open_lots]
         store.compare_with_broker({"TQQQ": 99.0})
-        after = [(l.order_id, l.shares) for l in store.load_ledger().open_lots]
+        after = [(lot_.order_id, lot_.shares) for lot_ in store.load_ledger().open_lots]
         assert before == after
         assert store.current_revision() == revision_before
 
@@ -219,7 +224,9 @@ def test_corrupted_target_sell_price_is_detected_on_load(db_path):
     # longer agrees with buy_price/profit_target.
     with LedgerStore(db_path) as store:
         _seed(store)
-        store._conn.execute("UPDATE ledger_lots SET target_sell_price = 999.0 WHERE order_id = 'o1'")
+        store._conn.execute(
+            "UPDATE ledger_lots SET target_sell_price = 999.0 WHERE order_id = 'o1'"
+        )
         store._conn.commit()
         with pytest.raises(PersistenceError, match="disagrees"):
             store.load_ledger()

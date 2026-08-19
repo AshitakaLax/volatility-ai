@@ -1,5 +1,44 @@
 # Changelog
 
+## Tooling — ruff (formatter + linter)
+
+Formatting and linting are both handled by [ruff](https://docs.astral.sh/ruff/),
+configured in `pyproject.toml`.
+
+```
+ruff format .           # apply formatting
+ruff format --check .   # verify only, for CI
+ruff check .            # lint
+ruff check --fix .      # lint and apply safe fixes
+```
+
+**Configuration choices, and why:**
+
+- **`line-length = 100`**, not ruff's default 88. Measured against the
+  existing code: p95 of line lengths is 87 and p99 is 106, so 88 would
+  have rewrapped ~4.5% of all lines while 100 touches ~1.6%. This keeps
+  formatting churn off code that was already readable.
+- **`E501` (line-too-long) is ignored** at lint level. Operator-facing
+  error strings — reconciliation diagnostics, no-loss rejections —
+  deliberately name the specific delta so someone paged at 3am can act
+  without reading source. The *formatter* still enforces line length on
+  code; this only exempts strings it cannot split.
+- **`C408` is exempted in `tests/` only.** Test helpers build kwargs
+  dicts that are immediately splatted (`base = dict(...)` →
+  `Model(**base)`), where the call form mirrors the keywords it becomes.
+  `src/` and `optimization_controller.py` are held to the rule and are
+  C408-clean.
+- **`docstring-code-format = false`.** Several docstrings contain spec
+  excerpts and illustrative pseudo-code that are not valid Python and
+  must not be rewritten.
+
+Two `noqa` comments exist, both in `tests/unit/test_secret_policy.py`,
+both with stated reasons: that test verifies credentials stay redacted
+through *every* string-conversion path, so the `%`-format and
+`.format()` call sites are the code paths under test — modernizing them
+would silently drop coverage.
+
+
 ## Phase 1 — Fix the confirmed bugs (B1–B5)
 
 Tasks 1.1–1.5 fixed. Task 1.6 (this entry) re-runs the Task 0.1

@@ -42,9 +42,16 @@ def _config():
 def _context(close: float, drawdown: float = 0.0, open_lot_count: int = 0) -> MarketContext:
     return MarketContext(
         timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
-        open=close, high=close, low=close, close=close,
-        cash=100_000.0, equity=100_000.0, peak_equity=100_000.0,
-        drawdown=drawdown, open_lot_count=open_lot_count, bar_index=0,
+        open=close,
+        high=close,
+        low=close,
+        close=close,
+        cash=100_000.0,
+        equity=100_000.0,
+        peak_equity=100_000.0,
+        drawdown=drawdown,
+        open_lot_count=open_lot_count,
+        bar_index=0,
     )
 
 
@@ -213,7 +220,9 @@ def test_live_loop_blocks_new_buys_once_halted(monkeypatch):
     assert ok.clamped_trade_value > 0
 
     # Above threshold: the same triggering tick is blocked.
-    halted = loop.decision_cycle(_context(close=49.0, drawdown=0.25), step=0.01, last_buy_price=50.0)
+    halted = loop.decision_cycle(
+        _context(close=49.0, drawdown=0.25), step=0.01, last_buy_price=50.0
+    )
     assert halted.triggered is False, "New buys must be blocked once halted"
     assert halted.clamped_trade_value == 0.0
     assert loop.circuit_breaker.state is CircuitBreakerState.HALTED_NEW_BUYS
@@ -233,7 +242,9 @@ def test_halted_loop_still_updates_strategy_rolling_state(monkeypatch):
     monkeypatch.setenv(API_KEY_ID_ENV_VAR, "k")
     monkeypatch.setenv(API_SECRET_KEY_ENV_VAR, "s")
     strategy = _CountingStrategy(allocation_pct=0.05)
-    loop = LiveExecutionLoop(_config(), strategy, RiskManager(halt_new_buys_if_drawdown_exceeds=THRESHOLD))
+    loop = LiveExecutionLoop(
+        _config(), strategy, RiskManager(halt_new_buys_if_drawdown_exceeds=THRESHOLD)
+    )
     loop.start()
 
     loop.decision_cycle(_context(close=49.0, drawdown=0.25), step=0.01, last_buy_price=50.0)
@@ -257,7 +268,9 @@ def test_halt_never_forces_liquidation(monkeypatch):
     structurally impossible rather than merely avoided.
     """
     loop = _started_loop(monkeypatch)
-    loop.decision_cycle(_context(close=49.0, drawdown=0.30, open_lot_count=4), step=0.01, last_buy_price=50.0)
+    loop.decision_cycle(
+        _context(close=49.0, drawdown=0.30, open_lot_count=4), step=0.01, last_buy_price=50.0
+    )
 
     breaker = loop.circuit_breaker
     for forbidden in ("liquidate", "close_all", "emergency_sell", "flatten", "force_exit"):
@@ -272,11 +285,15 @@ def test_buys_resume_only_after_a_manual_reset(monkeypatch):
     assert loop.circuit_breaker.allows_new_buys is False
 
     # Drawdown recovers -- still blocked.
-    recovered = loop.decision_cycle(_context(close=49.0, drawdown=0.01), step=0.01, last_buy_price=50.0)
+    recovered = loop.decision_cycle(
+        _context(close=49.0, drawdown=0.01), step=0.01, last_buy_price=50.0
+    )
     assert recovered.triggered is False
 
     loop.circuit_breaker.manual_reset(operator="alice", note="verified")
-    resumed = loop.decision_cycle(_context(close=49.0, drawdown=0.01), step=0.01, last_buy_price=50.0)
+    resumed = loop.decision_cycle(
+        _context(close=49.0, drawdown=0.01), step=0.01, last_buy_price=50.0
+    )
     assert resumed.triggered is True
     assert resumed.clamped_trade_value > 0
 

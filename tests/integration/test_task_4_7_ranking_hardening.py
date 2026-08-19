@@ -27,13 +27,17 @@ def _load_fixture() -> pd.DataFrame:
 
 def test_default_rank_by_reproduces_baseline_exactly():
     df = _load_fixture()
-    row = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[BASELINE["Grid Step"]],
-        profit_targets=[BASELINE["Profit Target"]],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
-        # rank_by/tie_break_by both omitted -> defaults, must match exactly.
-    ).iloc[0]
+    row = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+            # rank_by/tie_break_by both omitted -> defaults, must match exactly.
+        )
+        .iloc[0]
+    )
     for key, expected in BASELINE.items():
         assert row[key] == expected
 

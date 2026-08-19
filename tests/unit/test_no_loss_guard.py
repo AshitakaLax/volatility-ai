@@ -151,7 +151,7 @@ def test_only_one_no_loss_comparison_exists_in_the_codebase():
     """
     comparison = re.compile(r"net_sell_proceeds\s*<\s*allocated_cost_basis")
     offenders = []
-    for path in list((REPO_ROOT / "src").glob("*.py")) + [REPO_ROOT / "optimization_controller.py"]:
+    for path in [*(REPO_ROOT / "src").glob("*.py"), REPO_ROOT / "optimization_controller.py"]:
         if path.name == "no_loss_guard.py":
             continue  # the one legitimate home
         if comparison.search(path.read_text()):
@@ -257,9 +257,16 @@ def test_volatility_aware_cost_model_is_supported_at_the_guard():
     _, lot = _lot(buy_price=100.0, shares=10.0)
     context = MarketContext(
         timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
-        open=105.0, high=105.0, low=105.0, close=105.0,
-        cash=0.0, equity=0.0, peak_equity=0.0, drawdown=0.0,
-        open_lot_count=1, bar_index=0,
+        open=105.0,
+        high=105.0,
+        low=105.0,
+        close=105.0,
+        cash=0.0,
+        equity=0.0,
+        peak_equity=0.0,
+        drawdown=0.0,
+        open_lot_count=1,
+        bar_index=0,
     )
     model = DynamicSlippageModel(base_bps=5.0, vol_multiplier=1.0)
 

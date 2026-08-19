@@ -88,7 +88,8 @@ def test_fixed_portfolio_percentage_output_unaffected_by_drawdown_threading():
     # baseline must still hold exactly, confirming this change is a
     # true no-op for strategies that don't use it.
     df = pd.read_csv(
-        Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv", parse_dates=["timestamp"]
+        Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv",
+        parse_dates=["timestamp"],
     )
     df.set_index("timestamp", inplace=True)
     controller = OptimizationController(historical_data=df)

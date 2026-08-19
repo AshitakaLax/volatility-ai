@@ -34,7 +34,9 @@ GRID_STEPS = [0.01, 0.02, 0.03, 0.04]
 PROFIT_TARGETS = [0.01, 0.02, 0.03, 0.04]
 ALLOCATIONS = [0.02, 0.04, 0.06, 0.08]
 STRATEGY_PARAMS_GRID = [{"allocation_pct": a} for a in ALLOCATIONS]
-TRUE_OPTIMUM_TOTAL_RETURN_PCT = 3.967736885090578  # Grid Step=0.01, Profit Target=0.04, allocation_pct=0.06
+TRUE_OPTIMUM_TOTAL_RETURN_PCT = (
+    3.967736885090578  # Grid Step=0.01, Profit Target=0.04, allocation_pct=0.06
+)
 
 
 def _known_optimum_fixture() -> pd.DataFrame:
@@ -46,7 +48,7 @@ def _known_optimum_fixture() -> pd.DataFrame:
     idx = pd.date_range("2024-01-01", periods=len(closes), freq="D", tz="UTC")
     return pd.DataFrame(
         {
-            "open": [closes[0]] + closes[:-1],
+            "open": [closes[0], *closes[:-1]],
             "high": [c * 1.002 for c in closes],
             "low": [c * 0.998 for c in closes],
             "close": closes,
@@ -78,25 +80,33 @@ def test_grid_search_matches_itertools_product_exactly():
 
 def test_search_strategy_default_reproduces_task_0_1_baseline():
     df = _regression_fixture()
-    row = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[BASELINE["Grid Step"]],
-        profit_targets=[BASELINE["Profit Target"]],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
-    ).iloc[0]
+    row = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+        )
+        .iloc[0]
+    )
     for key, expected in BASELINE.items():
         assert row[key] == expected
 
 
 def test_search_strategy_grid_string_reproduces_baseline():
     df = _regression_fixture()
-    row = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[BASELINE["Grid Step"]],
-        profit_targets=[BASELINE["Profit Target"]],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
-        search_strategy="grid",
-    ).iloc[0]
+    row = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+            search_strategy="grid",
+        )
+        .iloc[0]
+    )
     for key, expected in BASELINE.items():
         assert row[key] == expected
 
@@ -121,11 +131,18 @@ def test_bayesian_search_finds_near_optimum_with_62_percent_of_evaluations():
     assert n_trials / full_grid_size <= 0.75
 
     search = BayesianSearch(
-        GRID_STEPS, PROFIT_TARGETS, STRATEGY_PARAMS_GRID, rank_by="Total Return %", n_trials=n_trials, seed=42
+        GRID_STEPS,
+        PROFIT_TARGETS,
+        STRATEGY_PARAMS_GRID,
+        rank_by="Total Return %",
+        n_trials=n_trials,
+        seed=42,
     )
     result = controller.run_sweep(
-        grid_steps=GRID_STEPS, profit_targets=PROFIT_TARGETS,
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=STRATEGY_PARAMS_GRID,
+        grid_steps=GRID_STEPS,
+        profit_targets=PROFIT_TARGETS,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=STRATEGY_PARAMS_GRID,
         search_strategy=search,
     )
     assert len(result) == n_trials
@@ -138,10 +155,14 @@ def test_bayesian_search_reproducible_with_same_seed():
     controller = OptimizationController(historical_data=df)
 
     def _run(seed):
-        search = BayesianSearch(GRID_STEPS, PROFIT_TARGETS, STRATEGY_PARAMS_GRID, n_trials=15, seed=seed)
+        search = BayesianSearch(
+            GRID_STEPS, PROFIT_TARGETS, STRATEGY_PARAMS_GRID, n_trials=15, seed=seed
+        )
         return controller.run_sweep(
-            grid_steps=GRID_STEPS, profit_targets=PROFIT_TARGETS,
-            strategy_class=FixedPortfolioPercentage, strategy_params_grid=STRATEGY_PARAMS_GRID,
+            grid_steps=GRID_STEPS,
+            profit_targets=PROFIT_TARGETS,
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=STRATEGY_PARAMS_GRID,
             search_strategy=search,
         )
 
@@ -157,14 +178,20 @@ def test_search_strategy_bayesian_string_uses_search_seed():
     df = _known_optimum_fixture()
     controller = OptimizationController(historical_data=df)
     result1 = controller.run_sweep(
-        grid_steps=GRID_STEPS, profit_targets=PROFIT_TARGETS,
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=STRATEGY_PARAMS_GRID,
-        search_strategy="bayesian", search_seed=7,
+        grid_steps=GRID_STEPS,
+        profit_targets=PROFIT_TARGETS,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=STRATEGY_PARAMS_GRID,
+        search_strategy="bayesian",
+        search_seed=7,
     )
     result2 = controller.run_sweep(
-        grid_steps=GRID_STEPS, profit_targets=PROFIT_TARGETS,
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=STRATEGY_PARAMS_GRID,
-        search_strategy="bayesian", search_seed=7,
+        grid_steps=GRID_STEPS,
+        profit_targets=PROFIT_TARGETS,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=STRATEGY_PARAMS_GRID,
+        search_strategy="bayesian",
+        search_seed=7,
     )
     pd.testing.assert_frame_equal(
         result1.sort_values(by=list(result1.columns)).reset_index(drop=True),
@@ -192,7 +219,8 @@ def test_failed_evaluation_reported_to_bayesian_search_without_crashing():
         [0.01], [0.005], [{"divisor": 1.0}, {"divisor": 0.0}, {"divisor": 2.0}], n_trials=3, seed=1
     )
     result = controller.run_sweep(
-        grid_steps=[0.01], profit_targets=[0.005],
+        grid_steps=[0.01],
+        profit_targets=[0.005],
         strategy_class=_ExplodingStrategy,
         strategy_params_grid=[{"divisor": 1.0}, {"divisor": 0.0}, {"divisor": 2.0}],
         search_strategy=search,
@@ -210,8 +238,10 @@ def test_search_strategy_instance_used_directly():
     # SearchStrategy is supplied -- valid dummy values, not the
     # actual search space, since GridSearch(custom) already owns that.
     result = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[0.99], profit_targets=[0.99],
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=[{"allocation_pct": 0.5}],
+        grid_steps=[0.99],
+        profit_targets=[0.99],
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=[{"allocation_pct": 0.5}],
         search_strategy=custom,
     )
     assert len(result) == 1
@@ -222,8 +252,10 @@ def test_invalid_search_strategy_value_rejected():
     df = _regression_fixture()
     with pytest.raises(ConfigurationError, match="search_strategy"):
         OptimizationController(historical_data=df).run_sweep(
-            grid_steps=[0.01], profit_targets=[0.005],
-            strategy_class=FixedPortfolioPercentage, strategy_params_grid=[{"allocation_pct": 0.05}],
+            grid_steps=[0.01],
+            profit_targets=[0.005],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": 0.05}],
             search_strategy="genetic_algorithm",
         )
 

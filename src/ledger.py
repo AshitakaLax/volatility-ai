@@ -30,7 +30,6 @@ record the current (pre-Phase-4) controller flow needs.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 # Floating-point drift tolerance for share quantities (Task 7.2 step 5).
 SHARE_EPSILON = 1e-9
@@ -54,7 +53,7 @@ class Lot:
     target_sell_price: float = field(init=False)
     # Audit-only: the price of the most recent confirmed fill applied to
     # this lot. Never feeds cost basis or the exit target.
-    last_execution_price: Optional[float] = field(default=None, init=False)
+    last_execution_price: float | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         """Derive the exit target once, at creation.
@@ -120,8 +119,8 @@ class AssetLotLedger:
     def close_lot(
         self,
         lot: Lot,
-        sell_qty: float = None,
-        execution_price: float = None,
+        sell_qty: float | None = None,
+        execution_price: float | None = None,
         completed: bool = True,
     ) -> None:
         """Apply a confirmed sell fill to a lot. Task 7.2.

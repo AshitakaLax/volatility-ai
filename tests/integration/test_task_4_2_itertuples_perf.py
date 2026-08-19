@@ -26,12 +26,16 @@ from tests.fixtures.regression_baseline import BASELINE
 def test_regression_fixture_output_unchanged():
     df = pd.read_csv("tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"])
     df.set_index("timestamp", inplace=True)
-    result = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[BASELINE["Grid Step"]],
-        profit_targets=[BASELINE["Profit Target"]],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
-    ).iloc[0]
+    result = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+        )
+        .iloc[0]
+    )
     for key, expected in BASELINE.items():
         assert result[key] == expected
 

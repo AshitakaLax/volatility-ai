@@ -41,7 +41,9 @@ def _assert_matches_baseline(expected: dict, actual: dict) -> None:
     mismatches = []
     for key, expected_value in expected.items():
         actual_value = actual[key]
-        both_numeric = isinstance(expected_value, (int, float)) and isinstance(actual_value, (int, float))
+        both_numeric = isinstance(expected_value, (int, float)) and isinstance(
+            actual_value, (int, float)
+        )
         if both_numeric:
             exp_nan = isinstance(expected_value, float) and math.isnan(expected_value)
             act_nan = isinstance(actual_value, float) and math.isnan(actual_value)

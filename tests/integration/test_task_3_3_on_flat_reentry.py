@@ -33,7 +33,7 @@ def _flat_reentry_fixture() -> pd.DataFrame:
     idx = pd.date_range("2024-01-01", periods=len(CLOSES), freq="D", tz="UTC")
     return pd.DataFrame(
         {
-            "open": [100.0] + CLOSES[:-1],
+            "open": [100.0, *CLOSES[:-1]],
             "high": [c * 1.001 for c in CLOSES],
             "low": [c * 0.999 for c in CLOSES],
             "close": CLOSES,
@@ -44,13 +44,17 @@ def _flat_reentry_fixture() -> pd.DataFrame:
 
 
 def _run(df, **kwargs):
-    return OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[GRID_STEP],
-        profit_targets=[PROFIT_TARGET],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": ALLOCATION_PCT}],
-        **kwargs,
-    ).iloc[0]
+    return (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[GRID_STEP],
+            profit_targets=[PROFIT_TARGET],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": ALLOCATION_PCT}],
+            **kwargs,
+        )
+        .iloc[0]
+    )
 
 
 def test_stale_reference_default_does_not_reenter():
@@ -77,15 +81,20 @@ def test_explicit_stale_reference_matches_default():
 
 def test_default_matches_task_0_1_baseline():
     df = pd.read_csv(
-        Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv", parse_dates=["timestamp"]
+        Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv",
+        parse_dates=["timestamp"],
     )
     df.set_index("timestamp", inplace=True)
-    row = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[BASELINE["Grid Step"]],
-        profit_targets=[BASELINE["Profit Target"]],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
-    ).iloc[0]
+    row = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+        )
+        .iloc[0]
+    )
     for key, expected in BASELINE.items():
         assert row[key] == expected
 

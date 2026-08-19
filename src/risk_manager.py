@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 from enum import Enum
-from typing import Optional
 
 from src.exceptions import ConfigurationError
 from src.validation import validate_positive_int, validate_unit_interval
@@ -134,7 +133,7 @@ class CircuitBreaker:
         else:
             logger.error(f"CIRCUIT BREAKER {event}: state={self._state.value} -- {detail}")
 
-    def evaluate(self, drawdown: float, threshold: Optional[float]) -> CircuitBreakerState:
+    def evaluate(self, drawdown: float, threshold: float | None) -> CircuitBreakerState:
         """Check the current drawdown against the halt threshold.
 
         Called at the same point as clamp_trade_value but kept distinct
@@ -217,10 +216,10 @@ class RiskManager:
 
     def __init__(
         self,
-        max_concurrent_lots: Optional[int] = None,
-        max_total_exposure_pct: Optional[float] = None,
-        max_total_exposure: Optional[float] = None,
-        halt_new_buys_if_drawdown_exceeds: Optional[float] = None,
+        max_concurrent_lots: int | None = None,
+        max_total_exposure_pct: float | None = None,
+        max_total_exposure: float | None = None,
+        halt_new_buys_if_drawdown_exceeds: float | None = None,
     ):
         """Configure the risk limits; every one defaults to unlimited.
 
@@ -232,12 +231,18 @@ class RiskManager:
         CircuitBreaker, not the sizing clamp -- it blocks entry outright
         rather than reducing size.
         """
-        if max_total_exposure_pct is not None and max_total_exposure is not None and max_total_exposure_pct != max_total_exposure:
+        if (
+            max_total_exposure_pct is not None
+            and max_total_exposure is not None
+            and max_total_exposure_pct != max_total_exposure
+        ):
             raise ConfigurationError(
                 f"max_total_exposure_pct ({max_total_exposure_pct!r}) and max_total_exposure "
                 f"({max_total_exposure!r}) were both given and disagree -- pass only one"
             )
-        exposure_value = max_total_exposure_pct if max_total_exposure_pct is not None else max_total_exposure
+        exposure_value = (
+            max_total_exposure_pct if max_total_exposure_pct is not None else max_total_exposure
+        )
 
         if max_concurrent_lots is not None:
             validate_positive_int(max_concurrent_lots, "max_concurrent_lots")
@@ -245,7 +250,9 @@ class RiskManager:
             validate_unit_interval(exposure_value, "max_total_exposure_pct")
 
         if halt_new_buys_if_drawdown_exceeds is not None:
-            validate_unit_interval(halt_new_buys_if_drawdown_exceeds, "halt_new_buys_if_drawdown_exceeds")
+            validate_unit_interval(
+                halt_new_buys_if_drawdown_exceeds, "halt_new_buys_if_drawdown_exceeds"
+            )
 
         self.max_concurrent_lots = max_concurrent_lots
         self.max_total_exposure_pct = exposure_value
@@ -253,7 +260,9 @@ class RiskManager:
         # breaker never trips -- backtests are entirely unaffected.
         self.halt_new_buys_if_drawdown_exceeds = halt_new_buys_if_drawdown_exceeds
 
-    def clamp_trade_value(self, proposed_value: float, equity: float, cash: float, open_lot_count: int) -> float:
+    def clamp_trade_value(
+        self, proposed_value: float, equity: float, cash: float, open_lot_count: int
+    ) -> float:
         """Both limits default to None -> unlimited, matching current
         behavior. Takes plain values (not a context object) so it works
         identically before and after Task 4.1's context-object refactor

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import itertools
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from src.exceptions import ConfigurationError
 
@@ -33,7 +32,7 @@ class SearchStrategy(ABC):
     """
 
     @abstractmethod
-    def suggest(self) -> Optional[dict]:
+    def suggest(self) -> dict | None:
         """Return the next {"grid_step", "profit_target", "strategy_params"}
         combination to evaluate, or None once the search is exhausted."""
         ...
@@ -61,14 +60,18 @@ class GridSearch(SearchStrategy):
         """
         self._combinations = itertools.product(grid_steps, profit_targets, strategy_params_grid)
 
-    def suggest(self) -> Optional[dict]:
+    def suggest(self) -> dict | None:
         """Next combination in itertools.product order, or None when the
         space is exhausted."""
         try:
             grid_step, profit_target, strategy_params = next(self._combinations)
         except StopIteration:
             return None
-        return {"grid_step": grid_step, "profit_target": profit_target, "strategy_params": strategy_params}
+        return {
+            "grid_step": grid_step,
+            "profit_target": profit_target,
+            "strategy_params": strategy_params,
+        }
 
     def report(self, params: dict, result) -> None:
         """No-op: an exhaustive search visits every combination
@@ -112,8 +115,8 @@ class BayesianSearch(SearchStrategy):
         strategy_params_grid,
         rank_by: str = "Capital Velocity Index",
         direction: str = "maximize",
-        n_trials: Optional[int] = None,
-        seed: Optional[int] = None,
+        n_trials: int | None = None,
+        seed: int | None = None,
     ):
         """Configure an Optuna study over the same discrete space.
 
@@ -135,7 +138,9 @@ class BayesianSearch(SearchStrategy):
             ) from e
 
         if direction not in ("maximize", "minimize"):
-            raise ConfigurationError(f"direction must be 'maximize' or 'minimize', got {direction!r}")
+            raise ConfigurationError(
+                f"direction must be 'maximize' or 'minimize', got {direction!r}"
+            )
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -143,15 +148,17 @@ class BayesianSearch(SearchStrategy):
         self._profit_targets = list(profit_targets)
         self._strategy_params_grid = list(strategy_params_grid)
         self.rank_by = rank_by
-        total_combinations = len(self._grid_steps) * len(self._profit_targets) * len(self._strategy_params_grid)
+        total_combinations = (
+            len(self._grid_steps) * len(self._profit_targets) * len(self._strategy_params_grid)
+        )
         self.n_trials = n_trials if n_trials is not None else total_combinations
 
         sampler = optuna.samplers.TPESampler(seed=seed)
         self._study = optuna.create_study(direction=direction, sampler=sampler)
         self._trial_count = 0
-        self._pending_trials: dict[int, "optuna.trial.Trial"] = {}
+        self._pending_trials: dict[int, optuna.trial.Trial] = {}
 
-    def suggest(self) -> Optional[dict]:
+    def suggest(self) -> dict | None:
         """Ask Optuna for the next combination, or None once the trial
         budget is spent.
 
@@ -164,7 +171,9 @@ class BayesianSearch(SearchStrategy):
         trial = self._study.ask()
         grid_step = trial.suggest_categorical("grid_step", self._grid_steps)
         profit_target = trial.suggest_categorical("profit_target", self._profit_targets)
-        params_index = trial.suggest_categorical("strategy_params_index", list(range(len(self._strategy_params_grid))))
+        params_index = trial.suggest_categorical(
+            "strategy_params_index", list(range(len(self._strategy_params_grid)))
+        )
         self._trial_count += 1
         self._pending_trials[trial.number] = trial
         return {

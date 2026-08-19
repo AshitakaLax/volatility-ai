@@ -46,7 +46,9 @@ class RecordingStrategy(SizingStrategy):
         self.calls.append(("record_tick", ("context",)))
         self._inner.record_tick(context)
 
-    def _check_grid_trigger(self, context: MarketContext, last_buy_price: float, step: float) -> bool:
+    def _check_grid_trigger(
+        self, context: MarketContext, last_buy_price: float, step: float
+    ) -> bool:
         self.calls.append(("_check_grid_trigger", ("context", "last_buy_price", "step")))
         return self._inner._check_grid_trigger(context, last_buy_price, step)
 
@@ -61,7 +63,9 @@ class RecordingRiskManager(RiskManager):
         self.calls = []
 
     def clamp_trade_value(self, proposed_value, equity, cash, open_lot_count):
-        self.calls.append(("clamp_trade_value", ("proposed_value", "equity", "cash", "open_lot_count")))
+        self.calls.append(
+            ("clamp_trade_value", ("proposed_value", "equity", "cash", "open_lot_count"))
+        )
         return super().clamp_trade_value(proposed_value, equity, cash, open_lot_count)
 
 
@@ -79,9 +83,16 @@ def _live_config(enabled: bool = True) -> BacktestConfig:
 def _context(close: float, cash: float = 100_000.0, equity: float = 100_000.0) -> MarketContext:
     return MarketContext(
         timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
-        open=close, high=close, low=close, close=close,
-        cash=cash, equity=equity, peak_equity=equity, drawdown=0.0,
-        open_lot_count=0, bar_index=0,
+        open=close,
+        high=close,
+        low=close,
+        close=close,
+        cash=cash,
+        equity=equity,
+        peak_equity=equity,
+        drawdown=0.0,
+        open_lot_count=0,
+        bar_index=0,
     )
 
 
@@ -91,11 +102,18 @@ def test_both_paths_route_through_the_shared_decision_cycle_module():
     import optimization_controller
     import src.live_execution
 
-    backtest_src = inspect.getsource(optimization_controller.OptimizationController._simulate_single)
+    backtest_src = inspect.getsource(
+        optimization_controller.OptimizationController._simulate_single
+    )
     live_src = inspect.getsource(src.live_execution.LiveExecutionLoop.decision_cycle)
 
-    for source, name in ((backtest_src, "_simulate_single"), (live_src, "LiveExecutionLoop.decision_cycle")):
-        assert "decision_cycle.record_tick(" in source, f"{name} no longer routes record_tick through the shared module"
+    for source, name in (
+        (backtest_src, "_simulate_single"),
+        (live_src, "LiveExecutionLoop.decision_cycle"),
+    ):
+        assert "decision_cycle.record_tick(" in source, (
+            f"{name} no longer routes record_tick through the shared module"
+        )
         assert "decision_cycle.evaluate_grid_decision(" in source, (
             f"{name} no longer routes the trigger/sizing/clamp sequence through the shared module"
         )
@@ -106,7 +124,9 @@ def test_both_paths_route_through_the_shared_decision_cycle_module():
 
 
 def test_live_and_backtest_produce_the_identical_strategy_call_sequence(monkeypatch):
-    df = pd.read_csv("tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]).set_index("timestamp")
+    df = pd.read_csv("tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]).set_index(
+        "timestamp"
+    )
 
     backtest_strategy = RecordingStrategy()
     backtest_risk = RecordingRiskManager()
@@ -120,8 +140,10 @@ def test_live_and_backtest_produce_the_identical_strategy_call_sequence(monkeypa
     # triggers, and the backtest path would never reach
     # calculate_trade_value at all -- making the comparison vacuous.
     OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[0.01], profit_targets=[0.005],
-        strategy_class=_Factory(), strategy_params_grid=[{}],
+        grid_steps=[0.01],
+        profit_targets=[0.005],
+        strategy_class=_Factory(),
+        strategy_params_grid=[{}],
         risk_manager=backtest_risk,
     )
     assert "calculate_trade_value" in [c[0] for c in backtest_strategy.calls], (
@@ -145,14 +167,23 @@ def test_live_and_backtest_produce_the_identical_strategy_call_sequence(monkeypa
     live_names = [c[0] for c in live_sequence]
     for name in live_names:
         assert name in backtest_names, f"Live path calls {name}, backtest path never does"
-    assert live_risk.calls == [("clamp_trade_value", ("proposed_value", "equity", "cash", "open_lot_count"))]
-    assert backtest_risk.calls[0] == live_risk.calls[0], "clamp_trade_value argument shape differs between paths"
+    assert live_risk.calls == [
+        ("clamp_trade_value", ("proposed_value", "equity", "cash", "open_lot_count"))
+    ]
+    assert backtest_risk.calls[0] == live_risk.calls[0], (
+        "clamp_trade_value argument shape differs between paths"
+    )
 
 
 def test_shared_helper_returns_zero_values_when_not_triggered():
     strategy = RecordingStrategy()
     decision = decision_cycle_module.evaluate_grid_decision(
-        strategy, RiskManager(), _context(close=51.0), last_buy_price=50.0, step=0.01, cash=100_000.0
+        strategy,
+        RiskManager(),
+        _context(close=51.0),
+        last_buy_price=50.0,
+        step=0.01,
+        cash=100_000.0,
     )
     assert decision.triggered is False
     assert decision.proposed_trade_value == 0.0
@@ -195,14 +226,19 @@ def test_decision_cycle_refuses_to_run_before_start():
 
 
 def test_live_disabled_config_rejected():
-    with pytest.raises(ConfigurationError, match="live.enabled"):
-        LiveExecutionLoop(_live_config(enabled=False), FixedPortfolioPercentage(allocation_pct=0.05))
+    with pytest.raises(ConfigurationError, match=r"live\.enabled"):
+        LiveExecutionLoop(
+            _live_config(enabled=False), FixedPortfolioPercentage(allocation_pct=0.05)
+        )
 
 
 def test_backtest_sweep_winner_loads_into_the_live_loop_without_code_edits(monkeypatch):
-    df = pd.read_csv("tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]).set_index("timestamp")
+    df = pd.read_csv("tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]).set_index(
+        "timestamp"
+    )
     results = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[0.005, 0.01], profit_targets=[0.003, 0.005],
+        grid_steps=[0.005, 0.01],
+        profit_targets=[0.003, 0.005],
         strategy_class=FixedPortfolioPercentage,
         strategy_params_grid=[{"allocation_pct": 0.05}, {"allocation_pct": 0.08}],
     )
@@ -214,7 +250,10 @@ def test_backtest_sweep_winner_loads_into_the_live_loop_without_code_edits(monke
                 "strategy_id": "fixed",
                 "strategy_params": {"allocation_pct": float(winner["allocation_pct"])},
             },
-            "grid": {"steps": [float(winner["Grid Step"])], "profit_targets": [float(winner["Profit Target"])]},
+            "grid": {
+                "steps": [float(winner["Grid Step"])],
+                "profit_targets": [float(winner["Profit Target"])],
+            },
             "live": {"enabled": True, "paper_trading": True},
         }
     )

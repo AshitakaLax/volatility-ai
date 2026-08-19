@@ -23,8 +23,12 @@ from src.idempotency import ProcessedEventStore, compute_decision_id
 from src.persistence import LedgerStore
 
 DECISION_KWARGS = dict(
-    deployment_id="deploy-1", strategy_id="fixed", symbol="TQQQ",
-    market_event_id="bar-2024-01-01T14:30:00Z", decision_type="grid_buy", sequence_number=1,
+    deployment_id="deploy-1",
+    strategy_id="fixed",
+    symbol="TQQQ",
+    market_event_id="bar-2024-01-01T14:30:00Z",
+    decision_type="grid_buy",
+    sequence_number=1,
 )
 
 
@@ -45,9 +49,19 @@ def _payload(event_type: EventType, **overrides) -> dict:
     the real required-field contract."""
     base = {f: f"{f}-value" for f in REQUIRED_PAYLOAD_FIELDS[event_type]}
     numeric_fields = {
-        "open", "high", "low", "close", "volume", "quantity", "limit_price",
-        "cumulative_filled_qty", "incremental_fill_qty", "price", "fees",
-        "quantity_delta", "cash_delta",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "quantity",
+        "limit_price",
+        "cumulative_filled_qty",
+        "incremental_fill_qty",
+        "price",
+        "fees",
+        "quantity_delta",
+        "cash_delta",
     }
     for f in list(base):
         if f in numeric_fields:
@@ -66,21 +80,39 @@ def test_full_causal_chain_is_reconstructable(audit):
     decision_id = compute_decision_id(**DECISION_KWARGS)
     correlation = decision_id  # the decision ties the whole chain together
 
-    audit.record_event(f"{decision_id}:ctx", EventType.MARKET_CONTEXT,
-                       _payload(EventType.MARKET_CONTEXT), correlation_id=correlation)
-    audit.record_event(decision_id, EventType.STRATEGY_DECISION,
-                       _payload(EventType.STRATEGY_DECISION, decision_id=decision_id),
-                       correlation_id=correlation)
-    audit.record_event(f"{decision_id}:risk", EventType.RISK_DECISION,
-                       _payload(EventType.RISK_DECISION, decision_id=decision_id),
-                       correlation_id=correlation)
-    audit.record_event(f"{decision_id}:intent", EventType.ORDER_INTENT,
-                       _payload(EventType.ORDER_INTENT, decision_id=decision_id),
-                       correlation_id=correlation)
-    audit.record_event(f"{decision_id}:fill", EventType.FILL,
-                       _payload(EventType.FILL), correlation_id=correlation)
-    audit.record_event(f"{decision_id}:ledger", EventType.LEDGER_MUTATION,
-                       _payload(EventType.LEDGER_MUTATION), correlation_id=correlation)
+    audit.record_event(
+        f"{decision_id}:ctx",
+        EventType.MARKET_CONTEXT,
+        _payload(EventType.MARKET_CONTEXT),
+        correlation_id=correlation,
+    )
+    audit.record_event(
+        decision_id,
+        EventType.STRATEGY_DECISION,
+        _payload(EventType.STRATEGY_DECISION, decision_id=decision_id),
+        correlation_id=correlation,
+    )
+    audit.record_event(
+        f"{decision_id}:risk",
+        EventType.RISK_DECISION,
+        _payload(EventType.RISK_DECISION, decision_id=decision_id),
+        correlation_id=correlation,
+    )
+    audit.record_event(
+        f"{decision_id}:intent",
+        EventType.ORDER_INTENT,
+        _payload(EventType.ORDER_INTENT, decision_id=decision_id),
+        correlation_id=correlation,
+    )
+    audit.record_event(
+        f"{decision_id}:fill", EventType.FILL, _payload(EventType.FILL), correlation_id=correlation
+    )
+    audit.record_event(
+        f"{decision_id}:ledger",
+        EventType.LEDGER_MUTATION,
+        _payload(EventType.LEDGER_MUTATION),
+        correlation_id=correlation,
+    )
 
     chain = audit.causal_chain(correlation)
     assert [e.event_type for e in chain] == [
@@ -95,8 +127,18 @@ def test_full_causal_chain_is_reconstructable(audit):
 
 
 def test_causal_chain_excludes_unrelated_events(audit):
-    audit.record_event("a", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION), correlation_id="chain-1")
-    audit.record_event("b", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION), correlation_id="chain-2")
+    audit.record_event(
+        "a",
+        EventType.STRATEGY_DECISION,
+        _payload(EventType.STRATEGY_DECISION),
+        correlation_id="chain-1",
+    )
+    audit.record_event(
+        "b",
+        EventType.STRATEGY_DECISION,
+        _payload(EventType.STRATEGY_DECISION),
+        correlation_id="chain-2",
+    )
     assert [e.event_id for e in audit.causal_chain("chain-1")] == ["a"]
 
 
@@ -113,7 +155,9 @@ def test_duplicate_event_id_records_only_once(audit):
 def test_duplicate_does_not_advance_the_sequence(audit):
     audit.record_event("evt-1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION))
     audit.record_event("evt-1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION))
-    third = audit.record_event("evt-2", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION))
+    third = audit.record_event(
+        "evt-2", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION)
+    )
     assert third.sequence == 2, "A rejected duplicate must not consume a sequence number"
 
 
@@ -128,13 +172,20 @@ def test_duplicates_survive_a_restart(tmp_path):
     store2 = LedgerStore(db)
     audit2 = AuditLog(store2, "deploy-1", "fixed")
     assert audit2.has_event("evt-1")
-    assert audit2.record_event("evt-1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION)) is None
+    assert (
+        audit2.record_event(
+            "evt-1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION)
+        )
+        is None
+    )
     assert len(audit2.read_stream()) == 1
     store2.close()
 
 
 def test_every_event_carries_an_explicit_schema_version(audit):
-    event = audit.record_event("evt-1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION))
+    event = audit.record_event(
+        "evt-1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION)
+    )
     assert event.schema_version == AUDIT_SCHEMA_VERSION
     assert audit.read_stream()[0].schema_version == AUDIT_SCHEMA_VERSION
 
@@ -174,8 +225,11 @@ def test_audit_event_ids_are_the_same_ids_task_4_10_uses(store, audit):
     idempotency.apply_once(decision_id, lambda: "applied", event_kind="strategy_decision")
 
     # This task's audit subsystem, same ID.
-    audit.record_event(decision_id, EventType.STRATEGY_DECISION,
-                       _payload(EventType.STRATEGY_DECISION, decision_id=decision_id))
+    audit.record_event(
+        decision_id,
+        EventType.STRATEGY_DECISION,
+        _payload(EventType.STRATEGY_DECISION, decision_id=decision_id),
+    )
 
     assert idempotency.has_processed(decision_id)
     assert audit.has_event(decision_id)
@@ -189,8 +243,11 @@ def test_the_same_id_also_gates_task_7_4_duplicate_protection(store, audit):
     submissions = []
     guard = DuplicateOrderGuard(store)
     guard.submit_once(decision_id, lambda cid: submissions.append(cid) or "order-1")
-    audit.record_event(decision_id, EventType.STRATEGY_DECISION,
-                       _payload(EventType.STRATEGY_DECISION, decision_id=decision_id))
+    audit.record_event(
+        decision_id,
+        EventType.STRATEGY_DECISION,
+        _payload(EventType.STRATEGY_DECISION, decision_id=decision_id),
+    )
 
     # One scheme across all three subsystems.
     assert store.has_processed(decision_id)
@@ -228,7 +285,8 @@ def test_fill_payload_distinguishes_incremental_from_cumulative(audit):
     assert "cumulative_filled_qty" in fields
 
     event = audit.record_event(
-        "evt-fill", EventType.FILL,
+        "evt-fill",
+        EventType.FILL,
         _payload(EventType.FILL, incremental_fill_qty=3.0, cumulative_filled_qty=7.0),
     )
     assert event.payload["incremental_fill_qty"] == 3.0
@@ -238,20 +296,34 @@ def test_fill_payload_distinguishes_incremental_from_cumulative(audit):
 def test_ordering_is_by_sequence_not_timestamp(audit):
     same_instant = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     for i in range(5):
-        audit.record_event(f"evt-{i}", EventType.STRATEGY_DECISION,
-                           _payload(EventType.STRATEGY_DECISION), timestamp=same_instant)
+        audit.record_event(
+            f"evt-{i}",
+            EventType.STRATEGY_DECISION,
+            _payload(EventType.STRATEGY_DECISION),
+            timestamp=same_instant,
+        )
 
     stream = audit.read_stream()
     assert [e.event_id for e in stream] == [f"evt-{i}" for i in range(5)]
-    assert len({e.timestamp for e in stream}) == 1, "All share one timestamp -- only sequence can order them"
+    assert len({e.timestamp for e in stream}) == 1, (
+        "All share one timestamp -- only sequence can order them"
+    )
     assert [e.sequence for e in stream] == [1, 2, 3, 4, 5]
 
 
 def test_a_backwards_clock_cannot_reorder_history(audit):
-    audit.record_event("first", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION),
-                       timestamp=datetime(2024, 1, 2, tzinfo=timezone.utc))
-    audit.record_event("second", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION),
-                       timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc))  # clock went backwards
+    audit.record_event(
+        "first",
+        EventType.STRATEGY_DECISION,
+        _payload(EventType.STRATEGY_DECISION),
+        timestamp=datetime(2024, 1, 2, tzinfo=timezone.utc),
+    )
+    audit.record_event(
+        "second",
+        EventType.STRATEGY_DECISION,
+        _payload(EventType.STRATEGY_DECISION),
+        timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )  # clock went backwards
     assert [e.event_id for e in audit.read_stream()] == ["first", "second"]
 
 
@@ -265,7 +337,9 @@ def test_sequence_continues_across_a_restart(tmp_path):
 
     store2 = LedgerStore(db)
     audit2 = AuditLog(store2, "deploy-1", "fixed")
-    event = audit2.record_event("evt-2", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION))
+    event = audit2.record_event(
+        "evt-2", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION)
+    )
     assert event.sequence == 2, "Sequence must keep increasing across a restart"
     store2.close()
 
@@ -273,8 +347,18 @@ def test_sequence_continues_across_a_restart(tmp_path):
 def test_streams_have_independent_sequences(store):
     a = AuditLog(store, "deploy-1", "fixed", stream_id="stream-a")
     b = AuditLog(store, "deploy-1", "fixed", stream_id="stream-b")
-    assert a.record_event("e1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION)).sequence == 1
-    assert b.record_event("e1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION)).sequence == 1
+    assert (
+        a.record_event(
+            "e1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION)
+        ).sequence
+        == 1
+    )
+    assert (
+        b.record_event(
+            "e1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION)
+        ).sequence
+        == 1
+    )
     assert len(a.read_stream()) == 1 and len(b.read_stream()) == 1
 
 
@@ -287,14 +371,18 @@ def test_events_are_durable_before_record_event_returns(tmp_path):
     # A SEPARATE connection can already see it -- proving it was
     # committed, not merely buffered in-process, before return.
     other = sqlite3.connect(db)
-    count = other.execute("SELECT COUNT(*) FROM audit_events WHERE event_id = 'evt-1'").fetchone()[0]
+    count = other.execute("SELECT COUNT(*) FROM audit_events WHERE event_id = 'evt-1'").fetchone()[
+        0
+    ]
     other.close()
     store.close()
     assert count == 1
 
 
 def test_secrets_never_reach_the_audit_trail(audit):
-    payload = _payload(EventType.STRATEGY_DECISION, api_key="sk-LEAKCANARY", parameters={"password": "hunter2"})
+    payload = _payload(
+        EventType.STRATEGY_DECISION, api_key="sk-LEAKCANARY", parameters={"password": "hunter2"}
+    )
     audit.record_event("evt-1", EventType.STRATEGY_DECISION, payload)
     stored = json.dumps(audit.read_stream()[0].payload)
     assert "sk-LEAKCANARY" not in stored
@@ -304,12 +392,16 @@ def test_secrets_never_reach_the_audit_trail(audit):
 def test_events_are_immutable(audit):
     import dataclasses
 
-    event = audit.record_event("evt-1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION))
+    event = audit.record_event(
+        "evt-1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION)
+    )
     with pytest.raises(dataclasses.FrozenInstanceError):
         event.payload = {"tampered": True}
 
 
 def test_deployment_and_strategy_identity_are_recorded(audit):
-    event = audit.record_event("evt-1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION))
+    event = audit.record_event(
+        "evt-1", EventType.STRATEGY_DECISION, _payload(EventType.STRATEGY_DECISION)
+    )
     assert event.deployment_id == "deploy-1"
     assert event.strategy_id == "fixed"

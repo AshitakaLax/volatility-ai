@@ -112,8 +112,11 @@ def test_validate_one_of_accepts_listed_value():
 
 def test_validate_run_sweep_config_accepts_valid_input():
     validate_run_sweep_config(
-        grid_steps=[0.01], profit_targets=[0.005], n_jobs=1,
-        on_flat_reentry="stale_reference", initial_cash=100_000.0,
+        grid_steps=[0.01],
+        profit_targets=[0.005],
+        n_jobs=1,
+        on_flat_reentry="stale_reference",
+        initial_cash=100_000.0,
     )
 
 
@@ -129,7 +132,13 @@ def test_validate_run_sweep_config_accepts_valid_input():
     ],
 )
 def test_validate_run_sweep_config_rejects_each_invalid_field(kwargs):
-    base = dict(grid_steps=[0.01], profit_targets=[0.005], n_jobs=1, on_flat_reentry="stale_reference", initial_cash=100_000.0)
+    base = dict(
+        grid_steps=[0.01],
+        profit_targets=[0.005],
+        n_jobs=1,
+        on_flat_reentry="stale_reference",
+        initial_cash=100_000.0,
+    )
     base.update(kwargs)
     with pytest.raises(ConfigurationError):
         validate_run_sweep_config(**base)
@@ -163,11 +172,15 @@ def test_run_sweep_with_valid_config_matches_baseline():
     from tests.fixtures.regression_baseline import BASELINE
 
     df = _load_fixture()
-    row = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[BASELINE["Grid Step"]],
-        profit_targets=[BASELINE["Profit Target"]],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
-    ).iloc[0]
+    row = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+        )
+        .iloc[0]
+    )
     for key, expected in BASELINE.items():
         assert row[key] == expected

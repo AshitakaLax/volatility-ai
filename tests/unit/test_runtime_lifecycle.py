@@ -150,8 +150,12 @@ def test_a_persisted_halt_survives_startup(tmp_path):
 def test_restart_recovery_never_duplicates_an_acted_on_decision(tmp_path):
     db = str(tmp_path / "ledger.db")
     decision_id = compute_decision_id(
-        deployment_id="d1", strategy_id="fixed", symbol="TQQQ",
-        market_event_id="bar-1", decision_type="grid_buy", sequence_number=1,
+        deployment_id="d1",
+        strategy_id="fixed",
+        symbol="TQQQ",
+        market_event_id="bar-1",
+        decision_type="grid_buy",
+        sequence_number=1,
     )
     submissions = []
 

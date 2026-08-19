@@ -70,6 +70,10 @@ class SimulationResult:
     """
 
     metrics: dict  # required from Task 4.1 onward; PerformanceAnalyzer.calculate_metrics output, passed through unmodified
-    trade_blotter: pd.DataFrame = field(default_factory=pd.DataFrame)  # populated starting Task 4.6; empty until then
-    equity_curve: pd.Series = field(default_factory=pd.Series)  # populated starting Task 4.6; empty until then
+    trade_blotter: pd.DataFrame = field(
+        default_factory=pd.DataFrame
+    )  # populated starting Task 4.6; empty until then
+    equity_curve: pd.Series = field(
+        default_factory=pd.Series
+    )  # populated starting Task 4.6; empty until then
     params: dict = field(default_factory=dict)  # populated starting Task 4.6; empty until then

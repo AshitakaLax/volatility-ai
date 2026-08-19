@@ -7,7 +7,9 @@ def test_both_limits_none_is_a_no_op_for_any_input():
     rm = RiskManager()
     assert rm.clamp_trade_value(5000.0, equity=100_000.0, cash=90_000.0, open_lot_count=0) == 5000.0
     assert rm.clamp_trade_value(0.0, equity=100_000.0, cash=90_000.0, open_lot_count=10) == 0.0
-    assert rm.clamp_trade_value(999_999.0, equity=100_000.0, cash=0.0, open_lot_count=100) == 999_999.0
+    assert (
+        rm.clamp_trade_value(999_999.0, equity=100_000.0, cash=0.0, open_lot_count=100) == 999_999.0
+    )
 
 
 def test_max_concurrent_lots_clamps_to_zero_once_at_cap():
@@ -48,7 +50,10 @@ def test_never_increases_proposed_value():
     # Plenty of headroom under both caps -- must still return exactly
     # what was proposed, never more.
     proposed = 123.45
-    assert rm.clamp_trade_value(proposed, equity=1_000_000.0, cash=999_000.0, open_lot_count=0) == proposed
+    assert (
+        rm.clamp_trade_value(proposed, equity=1_000_000.0, cash=999_000.0, open_lot_count=0)
+        == proposed
+    )
 
 
 def test_both_limits_set_the_more_restrictive_applies():

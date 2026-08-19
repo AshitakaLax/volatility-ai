@@ -35,9 +35,9 @@ would let a restart submit the same order twice.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Optional
 
 from src.exceptions import ReconciliationError
 
@@ -50,8 +50,8 @@ class DecisionState(str, Enum):
     exists is genuinely unknown and must be reconciled, never retried.
     """
 
-    NEW = "NEW"                    # never seen; safe to submit
-    SUBMITTED = "SUBMITTED"        # claimed, but no broker reference recorded (outcome unknown)
+    NEW = "NEW"  # never seen; safe to submit
+    SUBMITTED = "SUBMITTED"  # claimed, but no broker reference recorded (outcome unknown)
     ACKNOWLEDGED = "ACKNOWLEDGED"  # claimed and a broker order reference is on file
 
 
@@ -66,7 +66,7 @@ class SubmissionOutcome:
 
     decision_id: str
     state: DecisionState
-    order_ref: Optional[str]
+    order_ref: str | None
     submitted_now: bool  # False means a prior submission was reused, not repeated
 
 
@@ -137,7 +137,9 @@ class DuplicateOrderGuard:
             submitted_now=True,
         )
 
-    def resolve_ambiguous_submission(self, decision_id: str, broker_lookup: Callable[[str], object]):
+    def resolve_ambiguous_submission(
+        self, decision_id: str, broker_lookup: Callable[[str], object]
+    ):
         """Resolve the local-says-SUBMITTED / broker-says-FILLED case
         the idempotency contract explicitly requires handling.
 
@@ -162,6 +164,8 @@ class DuplicateOrderGuard:
                 "reconcile manually; not auto-resubmitting (that risks a duplicate) and not "
                 "auto-clearing (that risks losing a real position)."
             )
-        order_ref = getattr(broker_order, "client_order_id", None) or getattr(broker_order, "id", None)
+        order_ref = getattr(broker_order, "client_order_id", None) or getattr(
+            broker_order, "id", None
+        )
         self.store.set_event_result_ref(decision_id, str(order_ref))
         return str(order_ref)

@@ -36,7 +36,12 @@ FULL_DICT = {
     "backtest": {"symbol": "TQQQ", "initial_cash": 100_000.0},
     "costs": {"model_type": "slippage_commission", "commission_per_trade": 1.0, "slippage_bps": 5},
     "risk": {"max_concurrent_lots": 3, "max_total_exposure": 0.6},
-    "search": {"strategy": "grid", "rank_by": "Capital Velocity Index", "direction": "maximize", "seed": 42},
+    "search": {
+        "strategy": "grid",
+        "rank_by": "Capital Velocity Index",
+        "direction": "maximize",
+        "seed": 42,
+    },
     "execution": {"on_flat_reentry": "stale_reference", "intrabar_priority": "sell_first"},
     "output": {"return_full_results": False},
     "live": {"enabled": False, "paper_trading": True},

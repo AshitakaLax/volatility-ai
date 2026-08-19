@@ -43,9 +43,9 @@ from __future__ import annotations
 import logging
 import random
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Optional
 
 from src.exceptions import ExecutionError
 
@@ -94,10 +94,12 @@ def canonical_delays(config: RetryConfig = None, count: int = 5) -> list:
     """The pre-jitter backoff sequence the formula defines: base *
     multiplier**n, capped. With defaults that is [1, 2, 4, 8, 16]."""
     config = config or RetryConfig()
-    return [min(config.base_delay * (config.multiplier ** n), config.cap) for n in range(count)]
+    return [min(config.base_delay * (config.multiplier**n), config.cap) for n in range(count)]
 
 
-def apply_jitter(delay: float, config: RetryConfig = None, rng: random.Random = None) -> float:
+def apply_jitter(
+    delay: float, config: RetryConfig = None, rng: random.Random | None = None
+) -> float:
     """+/- jitter fraction of the delay, never negative and never above
     the cap."""
     config = config or RetryConfig()
@@ -106,7 +108,7 @@ def apply_jitter(delay: float, config: RetryConfig = None, rng: random.Random = 
     return max(0.0, min(delay * factor, config.cap))
 
 
-def _status_code_of(error) -> Optional[int]:
+def _status_code_of(error) -> int | None:
     """Best-effort HTTP status. Returns None when the error carries no
     HTTP context -- a real case for alpaca's APIError, verified."""
     status = getattr(error, "status_code", None)
@@ -129,10 +131,11 @@ def classify_error(error: BaseException, *, after_submission: bool = False) -> E
     state and Task 7.11's reconciliation-by-client-order-ID instead.
     """
     import requests.exceptions as rex
-
     from alpaca.common.exceptions import APIError, RetryException
 
-    is_transport_failure = isinstance(error, (rex.ConnectionError, rex.Timeout, TimeoutError, ConnectionError))
+    is_transport_failure = isinstance(
+        error, (rex.ConnectionError, rex.Timeout, TimeoutError, ConnectionError)
+    )
 
     if after_submission and is_transport_failure:
         return ErrorClass.AMBIGUOUS
@@ -164,7 +167,7 @@ def classify_error(error: BaseException, *, after_submission: bool = False) -> E
     return ErrorClass.AMBIGUOUS if after_submission else ErrorClass.NON_RETRYABLE
 
 
-def rate_limit_wait(error, config: RetryConfig = None) -> Optional[float]:
+def rate_limit_wait(error, config: RetryConfig = None) -> float | None:
     """A broker-supplied Retry-After, in seconds, bounded by
     max_rate_limit_wait.
 
@@ -208,8 +211,8 @@ def retry_call(
     *,
     after_submission: bool = False,
     sleep: Callable[[float], None] = time.sleep,
-    rng: random.Random = None,
-    on_repeated_failure: Callable[[str], None] = None,
+    rng: random.Random | None = None,
+    on_repeated_failure: Callable[[str], None] | None = None,
 ):
     """Call fn with bounded exponential backoff.
 
@@ -229,7 +232,7 @@ def retry_call(
     for attempt in range(config.max_attempts):
         try:
             return fn()
-        except BaseException as error:  # noqa: BLE001 -- classified below, re-raised if not retryable
+        except BaseException as error:
             last_error = error
             error_class = classify_error(error, after_submission=after_submission)
 

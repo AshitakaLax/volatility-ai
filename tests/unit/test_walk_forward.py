@@ -52,7 +52,9 @@ def test_no_test_slice_overlaps_its_own_train_slice():
         strategy_params_grid=[{"allocation_pct": 0.05}],
     )
     for _, row in result.iterrows():
-        assert row["test_start"] > row["train_end"], "Test slice must strictly follow its own train slice"
+        assert row["test_start"] > row["train_end"], (
+            "Test slice must strictly follow its own train slice"
+        )
 
 
 def test_fold_boundaries_are_utc():
@@ -70,30 +72,46 @@ def test_fold_boundaries_are_utc():
 
 
 def test_rolling_window_train_start_advances_each_fold():
-    runner = WalkForwardRunner(_controller_factory, train_window=15, test_window=5, step=5, anchored=False)
+    runner = WalkForwardRunner(
+        _controller_factory, train_window=15, test_window=5, step=5, anchored=False
+    )
     result = runner.run(
-        _load_fixture(), grid_steps=[0.01], profit_targets=[0.005],
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=[{"allocation_pct": 0.05}],
+        _load_fixture(),
+        grid_steps=[0.01],
+        profit_targets=[0.005],
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=[{"allocation_pct": 0.05}],
     )
     train_starts = result["train_start"].tolist()
     assert train_starts == sorted(train_starts) and len(set(train_starts)) == len(train_starts)
 
 
 def test_anchored_window_train_start_is_always_the_beginning():
-    runner = WalkForwardRunner(_controller_factory, train_window=15, test_window=5, step=5, anchored=True)
+    runner = WalkForwardRunner(
+        _controller_factory, train_window=15, test_window=5, step=5, anchored=True
+    )
     result = runner.run(
-        _load_fixture(), grid_steps=[0.01], profit_targets=[0.005],
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=[{"allocation_pct": 0.05}],
+        _load_fixture(),
+        grid_steps=[0.01],
+        profit_targets=[0.005],
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=[{"allocation_pct": 0.05}],
     )
     df = _load_fixture()
     assert (result["train_start"] == df.index[0]).all()
 
 
-@pytest.mark.parametrize("kwargs", [
-    dict(train_window=0), dict(train_window=-1),
-    dict(test_window=0), dict(test_window=-1),
-    dict(step=0), dict(step=-1),
-])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        dict(train_window=0),
+        dict(train_window=-1),
+        dict(test_window=0),
+        dict(test_window=-1),
+        dict(step=0),
+        dict(step=-1),
+    ],
+)
 def test_non_positive_window_values_rejected(kwargs):
     base = dict(train_window=15, test_window=5, step=5)
     base.update(kwargs)
@@ -106,7 +124,9 @@ def test_winner_params_correctly_reconstructed_for_the_test_rerun():
     # training window selected as the winner, not a default/wrong one.
     runner = WalkForwardRunner(_controller_factory, train_window=15, test_window=5, step=5)
     result = runner.run(
-        _load_fixture(), grid_steps=[0.01], profit_targets=[0.005],
+        _load_fixture(),
+        grid_steps=[0.01],
+        profit_targets=[0.005],
         strategy_class=FixedPortfolioPercentage,
         strategy_params_grid=[{"allocation_pct": 0.03}, {"allocation_pct": 0.08}],
     )

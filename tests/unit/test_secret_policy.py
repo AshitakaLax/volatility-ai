@@ -29,7 +29,13 @@ SECRET_VALUE = "sk-LEAKCANARY-supersecret"
 
 @pytest.mark.parametrize(
     "to_string",
-    [repr, str, lambda c: f"{c}", lambda c: "%s" % c, lambda c: "{}".format(c)],
+    [
+        repr,
+        str,
+        lambda c: f"{c}",
+        lambda c: "%s" % c,  # noqa: UP031 -- %-format is the code path under test
+        lambda c: "{}".format(c),  # noqa: UP032 -- .format() is likewise under test
+    ],
 )
 def test_credentials_redacted_in_every_string_conversion(to_string):
     creds = LiveCredentials(api_key_id=SECRET_KEY, api_secret_key=SECRET_VALUE)
@@ -118,9 +124,15 @@ def test_artifact_rejects_any_secret_bearing_content():
         }
     )
     artifact = DeploymentArtifact.create(
-        deployment_id="d1", strategy_id="fixed", strategy_version="1.0.0",
-        code_commit="abc", config=config, dataset_id="TQQQ", dataset_hash="h",
-        experiment_id="e1", created_at="2024-01-01T00:00:00+00:00",
+        deployment_id="d1",
+        strategy_id="fixed",
+        strategy_version="1.0.0",
+        code_commit="abc",
+        config=config,
+        dataset_id="TQQQ",
+        dataset_hash="h",
+        experiment_id="e1",
+        created_at="2024-01-01T00:00:00+00:00",
     )
     serialized = json.dumps(artifact.to_dict())
     assert SECRET_VALUE not in serialized

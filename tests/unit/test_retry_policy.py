@@ -47,7 +47,9 @@ def _api_error(status_code=None, headers=None, code=40010001, message="err"):
     """A real alpaca APIError. status_code comes from the http_error's
     response, exactly as the SDK derives it."""
     err = APIError(f'{{"code":{code},"message":"{message}"}}')
-    err._http_error = type("H", (), {"response": _Response(status_code, headers), "request": None})()
+    err._http_error = type(
+        "H", (), {"response": _Response(status_code, headers), "request": None}
+    )()
     return err
 
 
@@ -86,9 +88,13 @@ def test_retry_call_uses_at_most_max_attempts_minus_one_delays():
 
 def test_canonical_defaults_match_the_contract():
     config = RetryConfig()
-    assert (config.base_delay, config.multiplier, config.max_attempts, config.cap, config.jitter) == (
-        1.0, 2.0, 5, 30.0, 0.20
-    )
+    assert (
+        config.base_delay,
+        config.multiplier,
+        config.max_attempts,
+        config.cap,
+        config.jitter,
+    ) == (1.0, 2.0, 5, 30.0, 0.20)
 
 
 def test_jitter_stays_within_twenty_percent_of_the_delay():
@@ -113,7 +119,12 @@ def test_zero_jitter_is_exact():
 
 @pytest.mark.parametrize(
     "error",
-    [rex.ConnectionError("down"), rex.Timeout("slow"), rex.ReadTimeout("slow"), rex.ConnectTimeout("slow")],
+    [
+        rex.ConnectionError("down"),
+        rex.Timeout("slow"),
+        rex.ReadTimeout("slow"),
+        rex.ConnectTimeout("slow"),
+    ],
 )
 def test_transport_failures_are_retryable_when_not_after_submission(error):
     assert classify_error(error, after_submission=False) is ErrorClass.RETRYABLE

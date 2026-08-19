@@ -12,27 +12,27 @@ exit-boundary loss check through src/no_loss_guard.py (Task 7.15)
 rather than keeping parallel copies that could drift apart.
 """
 
-import logging
-from typing import Type, Optional
 import concurrent.futures
+import logging
+
 import pandas as pd
+
+from src import data_validation, decision_cycle, intraday_validation
+from src.cost_models import TransactionCostModel, ZeroCostModel
+from src.exceptions import ConfigurationError
+from src.idempotency import ProcessedEventStore
 from src.ledger import AssetLotLedger
-from src.size_calculators import FixedPortfolioPercentage, SizingStrategy
+from src.market_context import MarketContext, SimulationResult
+from src.no_loss_guard import NoLossViolation, validate_sell
 from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
-from src import data_validation
-from src.cost_models import TransactionCostModel, ZeroCostModel
-from src import intraday_validation
 from src.risk_manager import RiskManager
-from src.market_context import MarketContext, SimulationResult
-from src.exceptions import ConfigurationError
+from src.search_strategies import BayesianSearch, GridSearch, SearchStrategy
+from src.size_calculators import SizingStrategy
 from src.validation import validate_run_sweep_config
-from src.idempotency import ProcessedEventStore
-from src.search_strategies import SearchStrategy, GridSearch, BayesianSearch
-from src import decision_cycle
-from src.no_loss_guard import NoLossViolation, validate_sell
 
 logger = logging.getLogger("Optimizer")
+
 
 class BacktestState:
     """Enforces isolated state management for simulation iterations."""
@@ -53,7 +53,13 @@ class BacktestState:
 
 
 def _resolve_search_strategy(
-    search_strategy, grid_steps, profit_targets, strategy_params_grid, rank_by, search_seed, search_direction="maximize"
+    search_strategy,
+    grid_steps,
+    profit_targets,
+    strategy_params_grid,
+    rank_by,
+    search_seed,
+    search_direction="maximize",
 ) -> SearchStrategy:
     """Task 5.3. None/"grid" -> GridSearch (today's exact exhaustive
     behavior). "bayesian" -> BayesianSearch over the same discrete
@@ -65,8 +71,12 @@ def _resolve_search_strategy(
         return GridSearch(grid_steps, profit_targets, strategy_params_grid)
     if search_strategy == "bayesian":
         return BayesianSearch(
-            grid_steps, profit_targets, strategy_params_grid,
-            rank_by=rank_by, direction=search_direction, seed=search_seed,
+            grid_steps,
+            profit_targets,
+            strategy_params_grid,
+            rank_by=rank_by,
+            direction=search_direction,
+            seed=search_seed,
         )
     if isinstance(search_strategy, SearchStrategy):
         return search_strategy
@@ -79,7 +89,7 @@ def _run_one_combination(
     controller: "OptimizationController",
     step: float,
     target: float,
-    strategy_class: Type[SizingStrategy],
+    strategy_class: type[SizingStrategy],
     params: dict,
     symbol: str,
     initial_cash: float,
@@ -130,6 +140,7 @@ def _run_one_combination(
         logger.error(f"Combination failed: step={step} target={target} params={params}: {e}")
         return {"Grid Step": step, "Profit Target": target, **params, "error": str(e)}, None
 
+
 class OptimizationController:
     """Runs parameter sweeps of the grid strategy over one historical dataset.
 
@@ -148,7 +159,9 @@ class OptimizationController:
         """
         data_validation.validate(historical_data)
         self.data = historical_data
-        logger.info(f"OptimizationController initialized with historical dataset length: {len(historical_data)}")
+        logger.info(
+            f"OptimizationController initialized with historical dataset length: {len(historical_data)}"
+        )
 
     def _simulate_single(
         self,
@@ -193,7 +206,7 @@ class OptimizationController:
         equity_curve_timestamps = []
         equity_curve_values = []
 
-        start_price = self.data['close'].iloc[0]
+        start_price = self.data["close"].iloc[0]
         state = BacktestState(initial_cash=initial_cash, start_price=start_price)
 
         # Task 7.5: the previous bar's close, fed to the cost model so
@@ -261,29 +274,49 @@ class OptimizationController:
                 # canonical implementation so the two cannot drift.
                 try:
                     economics = validate_sell(
-                        lot, filled_qty, filled_price, cost_model,
-                        context=context, prev_close=prev_close,
+                        lot,
+                        filled_qty,
+                        filled_price,
+                        cost_model,
+                        context=context,
+                        prev_close=prev_close,
                     )
                 except NoLossViolation:
                     continue  # already logged by the guard
                 net_sell_proceeds = economics.net_sell_proceeds
 
-                def _apply_sell_fill():
+                def _apply_sell_fill(
+                    lot=lot,
+                    context=context,
+                    net_sell_proceeds=net_sell_proceeds,
+                    filled_price=filled_price,
+                    filled_qty=filled_qty,
+                ):
                     """Side effects of one confirmed sell, applied at most once.
 
                     Wrapped as a closure so ProcessedEventStore.apply_once
                     (Task 4.10) can guard it by order id -- a duplicated
                     fill event must not credit cash or close a lot twice.
+
+                    Per-iteration values are bound as DEFAULT ARGUMENTS
+                    rather than captured by reference. apply_once happens
+                    to invoke this immediately, so late binding is not a
+                    bug today -- but if it ever deferred or batched, a
+                    free-variable capture would silently apply the wrong
+                    lot's economics. Binding removes that failure mode
+                    outright instead of relying on the caller's timing.
                     """
                     state.cash += net_sell_proceeds
                     ledger.close_lot(lot)
-                    blotter_records.append({
-                        "timestamp": context.timestamp,
-                        "side": "sell",
-                        "price": filled_price,
-                        "qty": filled_qty,
-                        "equity": context.equity,
-                    })
+                    blotter_records.append(
+                        {
+                            "timestamp": context.timestamp,
+                            "side": "sell",
+                            "price": filled_price,
+                            "qty": filled_qty,
+                            "equity": context.equity,
+                        }
+                    )
                     if len(ledger.open_lots) == 0 and on_flat_reentry == "reset_to_market":
                         state.last_buy_price = context.price
 
@@ -315,24 +348,37 @@ class OptimizationController:
                         total_buy_outlay = (effective_price * filled_qty) + buy_cost
                         per_share_cost_basis = total_buy_outlay / filled_qty
 
-                        def _apply_buy_fill():
+                        def _apply_buy_fill(
+                            order=order,
+                            context=context,
+                            per_share_cost_basis=per_share_cost_basis,
+                            total_buy_outlay=total_buy_outlay,
+                            filled_price=filled_price,
+                            filled_qty=filled_qty,
+                        ):
                             """Side effects of one confirmed buy, applied at most once.
 
                             Closure for the same reason as _apply_sell_fill:
                             idempotency is enforced by order id, so a
                             replayed fill cannot open a second lot or debit
-                            cash twice.
+                            cash twice. Per-iteration values are likewise
+                            bound as default arguments so the closure is
+                            correct regardless of when it is invoked.
                             """
-                            ledger.register_buy(order["id"], symbol, per_share_cost_basis, filled_qty, target)
+                            ledger.register_buy(
+                                order["id"], symbol, per_share_cost_basis, filled_qty, target
+                            )
                             state.cash -= total_buy_outlay
                             state.last_buy_price = context.price
-                            blotter_records.append({
-                                "timestamp": context.timestamp,
-                                "side": "buy",
-                                "price": filled_price,
-                                "qty": filled_qty,
-                                "equity": context.equity,
-                            })
+                            blotter_records.append(
+                                {
+                                    "timestamp": context.timestamp,
+                                    "side": "buy",
+                                    "price": filled_price,
+                                    "qty": filled_qty,
+                                    "equity": context.equity,
+                                }
+                            )
 
                         event_store.apply_once(order["id"], _apply_buy_fill, event_kind="buy_fill")
 
@@ -341,7 +387,7 @@ class OptimizationController:
             # every bar, not only on triggering ones (Task 7.5).
             prev_close = current_price
 
-        final_price = self.data['close'].iloc[-1]
+        final_price = self.data["close"].iloc[-1]
         open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
         final_portfolio_value = state.cash + open_assets_val
 
@@ -368,7 +414,9 @@ class OptimizationController:
         return SimulationResult(
             metrics=metrics,
             trade_blotter=pd.DataFrame(blotter_records),
-            equity_curve=pd.Series(data=equity_curve_values, index=pd.Index(equity_curve_timestamps, name="timestamp")),
+            equity_curve=pd.Series(
+                data=equity_curve_values, index=pd.Index(equity_curve_timestamps, name="timestamp")
+            ),
             params=params,
         )
 
@@ -376,7 +424,7 @@ class OptimizationController:
         self,
         grid_steps: list,
         profit_targets: list,
-        strategy_class: Type[SizingStrategy],
+        strategy_class: type[SizingStrategy],
         strategy_params_grid: list[dict],
         cost_model: TransactionCostModel = None,
         risk_manager: RiskManager = None,
@@ -386,9 +434,9 @@ class OptimizationController:
         n_jobs: int = 1,
         return_full_results: bool = False,
         rank_by: str = "Capital Velocity Index",
-        tie_break_by: Optional[str] = None,
+        tie_break_by: str | None = None,
         search_strategy=None,
-        search_seed: Optional[int] = None,
+        search_seed: int | None = None,
         search_direction: str = "maximize",
     ) -> pd.DataFrame:
         """
@@ -463,10 +511,18 @@ class OptimizationController:
         full_results = []
 
         resolved_search_strategy = _resolve_search_strategy(
-            search_strategy, grid_steps, profit_targets, strategy_params_grid, rank_by, search_seed, search_direction
+            search_strategy,
+            grid_steps,
+            profit_targets,
+            strategy_params_grid,
+            rank_by,
+            search_seed,
+            search_direction,
         )
         total_combinations = len(grid_steps) * len(profit_targets) * len(strategy_params_grid)
-        logger.info(f"Starting parameter sweep. Evaluating up to {total_combinations} total variations.")
+        logger.info(
+            f"Starting parameter sweep. Evaluating up to {total_combinations} total variations."
+        )
 
         idx = 0
         if n_jobs == 1:
@@ -480,8 +536,16 @@ class OptimizationController:
                     f"Target={suggestion['profit_target']}, Params={suggestion['strategy_params']}"
                 )
                 row, sim_result = _run_one_combination(
-                    self, suggestion["grid_step"], suggestion["profit_target"], strategy_class,
-                    suggestion["strategy_params"], symbol, initial_cash, cost_model, risk_manager, on_flat_reentry,
+                    self,
+                    suggestion["grid_step"],
+                    suggestion["profit_target"],
+                    strategy_class,
+                    suggestion["strategy_params"],
+                    symbol,
+                    initial_cash,
+                    cost_model,
+                    risk_manager,
+                    on_flat_reentry,
                 )
                 resolved_search_strategy.report(suggestion, sim_result)
                 results.append(row)
@@ -502,8 +566,17 @@ class OptimizationController:
 
                     future_to_suggestion = {
                         executor.submit(
-                            _run_one_combination, self, s["grid_step"], s["profit_target"], strategy_class,
-                            s["strategy_params"], symbol, initial_cash, cost_model, risk_manager, on_flat_reentry,
+                            _run_one_combination,
+                            self,
+                            s["grid_step"],
+                            s["profit_target"],
+                            strategy_class,
+                            s["strategy_params"],
+                            symbol,
+                            initial_cash,
+                            cost_model,
+                            risk_manager,
+                            on_flat_reentry,
                         ): s
                         for s in batch
                     }
@@ -605,15 +678,18 @@ class OptimizationController:
                 intrabar_priority=intrabar_priority,
             )
 
-            rows.append({
-                "Grid Step": grid_step,
-                "Profit Target": profit_target,
-                **strategy_params,
-                "Daily Closed Trades": daily_result["Closed Trade Count"],
-                "Intraday Closed Trades": intraday_metrics["Closed Trade Count"],
-                "Daily Final Equity": daily_result["Final Equity"],
-                "Intraday Final Equity": intraday_metrics["Final Equity"],
-                "Diverges": daily_result["Closed Trade Count"] != intraday_metrics["Closed Trade Count"],
-            })
+            rows.append(
+                {
+                    "Grid Step": grid_step,
+                    "Profit Target": profit_target,
+                    **strategy_params,
+                    "Daily Closed Trades": daily_result["Closed Trade Count"],
+                    "Intraday Closed Trades": intraday_metrics["Closed Trade Count"],
+                    "Daily Final Equity": daily_result["Final Equity"],
+                    "Intraday Final Equity": intraday_metrics["Final Equity"],
+                    "Diverges": daily_result["Closed Trade Count"]
+                    != intraday_metrics["Closed Trade Count"],
+                }
+            )
 
         return pd.DataFrame(rows)

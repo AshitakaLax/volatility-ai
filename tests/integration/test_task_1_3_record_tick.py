@@ -67,7 +67,9 @@ def test_record_tick_called_exactly_once_per_bar_including_non_trigger_bars():
         strategy_params_grid=[{"allocation_pct": 0.05}],
     )
 
-    assert len(created) == 1, "Expected exactly one sweep combination to instantiate exactly one strategy"
+    assert len(created) == 1, (
+        "Expected exactly one sweep combination to instantiate exactly one strategy"
+    )
     strategy = created[0]
 
     assert len(strategy.record_tick_contexts) == n_bars, (

@@ -31,7 +31,6 @@ through two incompatible report formats.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Optional
 
 from src.exceptions import ConfigurationError
 
@@ -71,8 +70,11 @@ class PromotionCriteria:
                 "activity would pass a strategy that never actually traded."
             )
         for name in (
-            "max_accounting_discrepancies", "max_duplicate_order_incidents",
-            "max_no_loss_violations", "max_unresolved_reconciliations", "max_unhandled_exceptions",
+            "max_accounting_discrepancies",
+            "max_duplicate_order_incidents",
+            "max_no_loss_violations",
+            "max_unresolved_reconciliations",
+            "max_unhandled_exceptions",
         ):
             if getattr(self, name) < 0:
                 raise ConfigurationError(f"{name} must be >= 0, got {getattr(self, name)}")
@@ -137,7 +139,9 @@ class PromotionEvaluation:
             )
 
 
-def evaluate_promotion(record: PaperTradingRecord, criteria: PromotionCriteria = None) -> PromotionEvaluation:
+def evaluate_promotion(
+    record: PaperTradingRecord, criteria: PromotionCriteria = None
+) -> PromotionEvaluation:
     """Check a paper-trading record against the promotion criteria.
 
     Returns every unmet criterion rather than short-circuiting on the
@@ -152,7 +156,9 @@ def evaluate_promotion(record: PaperTradingRecord, criteria: PromotionCriteria =
             f"paper_trading_days {record.paper_trading_days} < required {criteria.min_paper_trading_days}"
         )
     if record.decision_count < criteria.min_decisions:
-        failures.append(f"decision_count {record.decision_count} < required {criteria.min_decisions}")
+        failures.append(
+            f"decision_count {record.decision_count} < required {criteria.min_decisions}"
+        )
     if record.fill_count < criteria.min_fills:
         failures.append(f"fill_count {record.fill_count} < required {criteria.min_fills}")
 
@@ -160,7 +166,11 @@ def evaluate_promotion(record: PaperTradingRecord, criteria: PromotionCriteria =
         ("accounting_discrepancies", "max_accounting_discrepancies", "accounting discrepancies"),
         ("duplicate_order_incidents", "max_duplicate_order_incidents", "duplicate-order incidents"),
         ("no_loss_violations", "max_no_loss_violations", "no-loss guard violations"),
-        ("unresolved_reconciliations", "max_unresolved_reconciliations", "unresolved reconciliations"),
+        (
+            "unresolved_reconciliations",
+            "max_unresolved_reconciliations",
+            "unresolved reconciliations",
+        ),
         ("unhandled_exceptions", "max_unhandled_exceptions", "unhandled runtime exceptions"),
     ):
         observed = getattr(record, observed_name)
@@ -177,7 +187,7 @@ def evaluate_promotion(record: PaperTradingRecord, criteria: PromotionCriteria =
 
 
 def assert_promotable_to_live(
-    artifact, record: Optional[PaperTradingRecord], criteria: PromotionCriteria = None
+    artifact, record: PaperTradingRecord | None, criteria: PromotionCriteria = None
 ) -> PromotionEvaluation:
     """The gate itself: a deployment may only reach live capital by
     passing through a paper-trading stage.

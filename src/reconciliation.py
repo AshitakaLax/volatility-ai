@@ -28,7 +28,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 from src.order_lifecycle import OrderState
 
@@ -101,7 +100,7 @@ class BrokerSnapshot:
 
     positions: dict = field(default_factory=dict)
     orders: dict = field(default_factory=dict)
-    cash: Optional[float] = None
+    cash: float | None = None
 
 
 class Reconciler:
@@ -143,8 +142,8 @@ class Reconciler:
     def reconcile(
         self,
         snapshot: BrokerSnapshot,
-        local_orders: dict = None,
-        expected_cash: Optional[float] = None,
+        local_orders: dict | None = None,
+        expected_cash: float | None = None,
     ) -> ReconciliationReport:
         """Run one reconciliation pass.
 
@@ -240,7 +239,11 @@ class Reconciler:
             if broker_filled > local.filled_qty + self.QTY_EPSILON:
                 # Unambiguous: a broker-confirmed fill on an order we
                 # already know, under a known client order ID.
-                if local.state in (OrderState.ACCEPTED, OrderState.PARTIALLY_FILLED, OrderState.SUBMITTED):
+                if local.state in (
+                    OrderState.ACCEPTED,
+                    OrderState.PARTIALLY_FILLED,
+                    OrderState.SUBMITTED,
+                ):
                     repairs.append(
                         f"Order {client_order_id!r}: adopted broker-confirmed fill "
                         f"{local.filled_qty} -> {broker_filled}"
@@ -260,10 +263,17 @@ class Reconciler:
             # "Local order absent at broker -> query by client order ID;
             # if unresolved, UNKNOWN/halt" -- an order the broker still
             # reports as live while we think it's terminal is ambiguous.
-            if broker_state is not None and local.state in (
-                OrderState.FILLED, OrderState.CANCELED, OrderState.REJECTED, OrderState.EXPIRED
-            ) and broker_state not in (
-                OrderState.FILLED, OrderState.CANCELED, OrderState.REJECTED, OrderState.EXPIRED
+            if (
+                broker_state is not None
+                and local.state
+                in (OrderState.FILLED, OrderState.CANCELED, OrderState.REJECTED, OrderState.EXPIRED)
+                and broker_state
+                not in (
+                    OrderState.FILLED,
+                    OrderState.CANCELED,
+                    OrderState.REJECTED,
+                    OrderState.EXPIRED,
+                )
             ):
                 discrepancies.append(
                     Discrepancy(
@@ -279,7 +289,12 @@ class Reconciler:
         for client_order_id, local in local_orders.items():
             if client_order_id in snapshot.orders:
                 continue
-            if local.state in (OrderState.FILLED, OrderState.CANCELED, OrderState.REJECTED, OrderState.EXPIRED):
+            if local.state in (
+                OrderState.FILLED,
+                OrderState.CANCELED,
+                OrderState.REJECTED,
+                OrderState.EXPIRED,
+            ):
                 continue  # settled and aged out of the broker's window -- expected
             discrepancies.append(
                 Discrepancy(
@@ -293,7 +308,7 @@ class Reconciler:
             )
 
     def _reconcile_positions(self, snapshot, discrepancies) -> None:
-        """"Position quantity mismatch -> RECONCILIATION_REQUIRED; never
+        """ "Position quantity mismatch -> RECONCILIATION_REQUIRED; never
         invent a fill." Reuses the store's own comparison so there is
         one definition of a position mismatch, not two."""
         report = self.store.compare_with_broker(snapshot.positions)
@@ -332,7 +347,7 @@ class Reconciler:
             )
 
     def _reconcile_cash(self, snapshot, expected_cash, discrepancies) -> None:
-        """"Cash mismatch -> RECONCILIATION_REQUIRED; no trading from
+        """ "Cash mismatch -> RECONCILIATION_REQUIRED; no trading from
         guessed cash." """
         if snapshot.cash is None or expected_cash is None:
             return

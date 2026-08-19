@@ -63,21 +63,35 @@ def test_simulate_single_callable_directly_returns_valid_simulation_result():
 
 def test_run_sweep_output_matches_pre_task_4_1_baseline_exactly():
     df = _load_fixture()
-    result = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[BASELINE["Grid Step"]],
-        profit_targets=[BASELINE["Profit Target"]],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
-    ).iloc[0]
+    result = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+        )
+        .iloc[0]
+    )
     for key, expected in BASELINE.items():
-        assert result[key] == expected, f"{key}: {result[key]!r} != baseline {expected!r} post-Task-4.1"
+        assert result[key] == expected, (
+            f"{key}: {result[key]!r} != baseline {expected!r} post-Task-4.1"
+        )
 
 
 def test_market_context_is_genuinely_frozen():
     context = MarketContext(
-        timestamp=None, open=1.0, high=1.0, low=1.0, close=1.0,
-        cash=1.0, equity=1.0, peak_equity=1.0, drawdown=0.0,
-        open_lot_count=0, bar_index=0,
+        timestamp=None,
+        open=1.0,
+        high=1.0,
+        low=1.0,
+        close=1.0,
+        cash=1.0,
+        equity=1.0,
+        peak_equity=1.0,
+        drawdown=0.0,
+        open_lot_count=0,
+        bar_index=0,
     )
     with pytest.raises(dataclasses.FrozenInstanceError):
         context.close = 2.0
@@ -85,9 +99,17 @@ def test_market_context_is_genuinely_frozen():
 
 def test_market_context_price_property_returns_close():
     context = MarketContext(
-        timestamp=None, open=1.0, high=1.0, low=1.0, close=42.0,
-        cash=1.0, equity=1.0, peak_equity=1.0, drawdown=0.0,
-        open_lot_count=0, bar_index=0,
+        timestamp=None,
+        open=1.0,
+        high=1.0,
+        low=1.0,
+        close=42.0,
+        cash=1.0,
+        equity=1.0,
+        peak_equity=1.0,
+        drawdown=0.0,
+        open_lot_count=0,
+        bar_index=0,
     )
     assert context.price == 42.0
 

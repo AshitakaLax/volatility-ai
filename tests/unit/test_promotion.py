@@ -34,9 +34,15 @@ from src.size_calculators import FixedPortfolioPercentage
 
 def _good_record(**overrides) -> PaperTradingRecord:
     base = dict(
-        deployment_id="d1", paper_trading_days=10.0, decision_count=50, fill_count=10,
-        accounting_discrepancies=0, duplicate_order_incidents=0, no_loss_violations=0,
-        unresolved_reconciliations=0, unhandled_exceptions=0,
+        deployment_id="d1",
+        paper_trading_days=10.0,
+        decision_count=50,
+        fill_count=10,
+        accounting_discrepancies=0,
+        duplicate_order_incidents=0,
+        no_loss_violations=0,
+        unresolved_reconciliations=0,
+        unhandled_exceptions=0,
     )
     base.update(overrides)
     return PaperTradingRecord(**base)
@@ -54,8 +60,14 @@ def _config(paper_trading=True, live_enabled=True):
 
 def _artifact(deployment_id="d1", **overrides):
     base = dict(
-        deployment_id=deployment_id, strategy_id="fixed", strategy_version="1.0.0", code_commit="abc",
-        config=_config(), dataset_id="TQQQ", dataset_hash="h", experiment_id="e1",
+        deployment_id=deployment_id,
+        strategy_id="fixed",
+        strategy_version="1.0.0",
+        code_commit="abc",
+        config=_config(),
+        dataset_id="TQQQ",
+        dataset_hash="h",
+        experiment_id="e1",
         created_at="2024-01-01T00:00:00+00:00",
     )
     base.update(overrides)
@@ -197,7 +209,9 @@ def test_assert_promotable_returns_the_evaluation_on_success():
 def test_live_loop_defaults_to_paper_mode(monkeypatch):
     monkeypatch.setenv(API_KEY_ID_ENV_VAR, "k")
     monkeypatch.setenv(API_SECRET_KEY_ENV_VAR, "s")
-    loop = LiveExecutionLoop(_config(paper_trading=True), FixedPortfolioPercentage(allocation_pct=0.05))
+    loop = LiveExecutionLoop(
+        _config(paper_trading=True), FixedPortfolioPercentage(allocation_pct=0.05)
+    )
     assert loop.oms.mode == Mode.PAPER, "paper_trading=True must not build a real-capital OMS"
 
 
@@ -205,7 +219,9 @@ def test_live_loop_with_paper_trading_false_still_needs_promotion_evidence(monke
     monkeypatch.setenv(API_KEY_ID_ENV_VAR, "k")
     monkeypatch.setenv(API_SECRET_KEY_ENV_VAR, "s")
     with pytest.raises(ConfigurationError, match="paper-trading"):
-        LiveExecutionLoop(_config(paper_trading=False), FixedPortfolioPercentage(allocation_pct=0.05))
+        LiveExecutionLoop(
+            _config(paper_trading=False), FixedPortfolioPercentage(allocation_pct=0.05)
+        )
 
 
 def test_live_loop_reaches_live_capital_only_with_passing_evidence(monkeypatch):

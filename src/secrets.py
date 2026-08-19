@@ -42,7 +42,14 @@ REDACTED = "***REDACTED***"
 # rejects such keys outright rather than redacting them) -- the two
 # serve different purposes on the same threat.
 SECRET_KEY_MARKERS = (
-    "secret", "password", "passwd", "api_key", "apikey", "token", "credential", "private_key",
+    "secret",
+    "password",
+    "passwd",
+    "api_key",
+    "apikey",
+    "token",
+    "credential",
+    "private_key",
 )
 
 
@@ -75,11 +82,16 @@ def load_live_credentials() -> LiveCredentials:
 
     missing = [
         name
-        for name, value in ((API_KEY_ID_ENV_VAR, api_key_id), (API_SECRET_KEY_ENV_VAR, api_secret_key))
+        for name, value in (
+            (API_KEY_ID_ENV_VAR, api_key_id),
+            (API_SECRET_KEY_ENV_VAR, api_secret_key),
+        )
         if not value
     ]
     if missing:
-        raise ConfigurationError(f"Missing required live-credential environment variable(s): {missing}")
+        raise ConfigurationError(
+            f"Missing required live-credential environment variable(s): {missing}"
+        )
 
     return LiveCredentials(api_key_id=api_key_id, api_secret_key=api_secret_key)
 

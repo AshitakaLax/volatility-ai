@@ -8,7 +8,6 @@ Task 4.4 acceptance tests (A5).
 """
 
 import pandas as pd
-import pytest
 
 from optimization_controller import OptimizationController
 from src.market_context import MarketContext
@@ -58,7 +57,10 @@ def test_one_bad_combination_does_not_abort_the_others():
     assert "error" in result.columns
     error_rows = result[result["error"].notna()]
     assert len(error_rows) == 1
-    assert "division" in str(error_rows.iloc[0]["error"]).lower() or "divisor" in str(error_rows.iloc[0]["error"]).lower()
+    assert (
+        "division" in str(error_rows.iloc[0]["error"]).lower()
+        or "divisor" in str(error_rows.iloc[0]["error"]).lower()
+    )
 
     success_rows = result[result["error"].isna()]
     assert len(success_rows) == 2
@@ -86,12 +88,16 @@ def test_sorting_does_not_crash_with_an_error_row_present():
 
 def test_regression_fixture_with_no_failures_unchanged():
     df = _load_fixture()
-    result = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[BASELINE["Grid Step"]],
-        profit_targets=[BASELINE["Profit Target"]],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
-    ).iloc[0]
+    result = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+        )
+        .iloc[0]
+    )
     for key, expected in BASELINE.items():
         assert result[key] == expected
     assert "error" not in result or pd.isna(result.get("error"))

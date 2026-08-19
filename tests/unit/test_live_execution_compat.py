@@ -11,8 +11,8 @@ from src.order_management_system import Mode, OrderManagementSystem
 from src.risk_manager import RiskManager
 from src.size_calculators import FixedPortfolioPercentage
 
-
 # --- FixedPortfolioPercentage: percentage / allocation_pct dual support ---
+
 
 def test_percentage_kwarg_works_same_as_allocation_pct():
     a = FixedPortfolioPercentage(allocation_pct=0.1)
@@ -42,6 +42,7 @@ def test_percentage_kwarg_still_validates_bounds():
 
 # --- RiskManager: max_total_exposure / max_total_exposure_pct dual support ---
 
+
 def test_max_total_exposure_works_same_as_pct_variant():
     a = RiskManager(max_total_exposure_pct=0.5)
     b = RiskManager(max_total_exposure=0.5)
@@ -70,6 +71,7 @@ def test_risk_manager_clamping_unaffected_by_alias_used():
 
 
 # --- Mode enum ---
+
 
 def test_mode_enum_interoperates_with_bare_strings():
     assert Mode.SIMULATION == "SIMULATION"

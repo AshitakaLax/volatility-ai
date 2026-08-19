@@ -15,13 +15,15 @@ import pytest
 from src.data_validation import DataValidationError, validate
 from src.exceptions import (
     ConfigurationError,
-    DataValidationError as CanonicalDataValidationError,
     ExecutionError,
     PersistenceError,
     ReconciliationError,
     RiskError,
     StrategyError,
     TradingSystemError,
+)
+from src.exceptions import (
+    DataValidationError as CanonicalDataValidationError,
 )
 from src.order_management_system import OrderManagementSystem
 from src.size_calculators import FixedPortfolioPercentage
@@ -92,7 +94,14 @@ def test_wrapped_exception_preserves_cause_for_chaining():
 
 
 def test_all_domain_exceptions_support_chaining_uniformly():
-    for cls in (ConfigurationError, StrategyError, RiskError, ExecutionError, ReconciliationError, PersistenceError):
+    for cls in (
+        ConfigurationError,
+        StrategyError,
+        RiskError,
+        ExecutionError,
+        ReconciliationError,
+        PersistenceError,
+    ):
         original = ValueError("root cause")
         try:
             try:

@@ -10,9 +10,16 @@ from src.size_calculators import FixedPortfolioPercentage
 def _context(**overrides) -> MarketContext:
     defaults = dict(
         timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
-        open=50.0, high=50.0, low=50.0, close=50.0,
-        cash=95_000.0, equity=100_000.0, peak_equity=100_000.0,
-        drawdown=0.0, open_lot_count=0, bar_index=0,
+        open=50.0,
+        high=50.0,
+        low=50.0,
+        close=50.0,
+        cash=95_000.0,
+        equity=100_000.0,
+        peak_equity=100_000.0,
+        drawdown=0.0,
+        open_lot_count=0,
+        bar_index=0,
     )
     defaults.update(overrides)
     return MarketContext(**defaults)
@@ -42,8 +49,12 @@ def test_record_tick_is_a_stateless_noop():
 def test_check_grid_trigger_matches_pre_task_4_1_inline_check():
     strategy = FixedPortfolioPercentage(allocation_pct=0.05)
     last_buy_price, step = 100.0, 0.01
-    assert strategy._check_grid_trigger(_context(close=98.99), last_buy_price, step) is True  # 98.99 <= 99
-    assert strategy._check_grid_trigger(_context(close=99.00), last_buy_price, step) is True  # boundary, inclusive
+    assert (
+        strategy._check_grid_trigger(_context(close=98.99), last_buy_price, step) is True
+    )  # 98.99 <= 99
+    assert (
+        strategy._check_grid_trigger(_context(close=99.00), last_buy_price, step) is True
+    )  # boundary, inclusive
     assert strategy._check_grid_trigger(_context(close=99.01), last_buy_price, step) is False
 
 

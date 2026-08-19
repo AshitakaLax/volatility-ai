@@ -25,7 +25,6 @@ import logging
 import math
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 logger = logging.getLogger("Optimizer")
 
@@ -54,7 +53,7 @@ class TickCheck:
 
     accepted: bool
     price: float
-    reason: Optional[TickRejectionReason] = None
+    reason: TickRejectionReason | None = None
     detail: str = ""
 
 
@@ -79,7 +78,7 @@ class TickValidator:
         if not (max_move_pct > 0):
             raise ValueError(f"max_move_pct must be positive, got {max_move_pct}")
         self.max_move_pct = max_move_pct
-        self.last_good_price: Optional[float] = None
+        self.last_good_price: float | None = None
         # Canonical observability/audit path when one is wired in
         # (Task 7.14); falls back to structured logging otherwise.
         # Either way a rejected tick is never silently dropped.

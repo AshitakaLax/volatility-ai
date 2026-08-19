@@ -137,9 +137,13 @@ def _alpaca_order(filled_qty: str, filled_avg_price, status, qty: str = "10.0"):
     return Order(
         id=str(uuid.UUID(int=123)),
         client_order_id="test-123",
-        created_at=now, updated_at=now, submitted_at=now,
+        created_at=now,
+        updated_at=now,
+        submitted_at=now,
         status=status,
-        qty=qty, filled_qty=filled_qty, filled_avg_price=filled_avg_price,
+        qty=qty,
+        filled_qty=filled_qty,
+        filled_avg_price=filled_avg_price,
         side=OrderSide.SELL,
         time_in_force=TimeInForce.DAY,
         extended_hours=False,
@@ -149,7 +153,9 @@ def _alpaca_order(filled_qty: str, filled_avg_price, status, qty: str = "10.0"):
 def test_extract_alpaca_fill_parses_string_fields_to_floats():
     from alpaca.trading.enums import OrderStatus
 
-    order = _alpaca_order(filled_qty="4.0", filled_avg_price="150.00", status=OrderStatus.PARTIALLY_FILLED)
+    order = _alpaca_order(
+        filled_qty="4.0", filled_avg_price="150.00", status=OrderStatus.PARTIALLY_FILLED
+    )
     filled_qty, filled_avg_price = extract_alpaca_fill(order)
     assert filled_qty == pytest.approx(4.0)
     assert filled_avg_price == pytest.approx(150.0)
@@ -172,7 +178,9 @@ def test_partial_sell_credits_cash_for_exactly_four_shares_and_leaves_six_open()
     ledger = AssetLotLedger()
     lot = ledger.register_buy("buy-1", "TQQQ", buy_price=100.0, shares=10.0, profit_target=0.5)
 
-    order = _alpaca_order(filled_qty="4.0", filled_avg_price="150.00", status=OrderStatus.PARTIALLY_FILLED)
+    order = _alpaca_order(
+        filled_qty="4.0", filled_avg_price="150.00", status=OrderStatus.PARTIALLY_FILLED
+    )
     filled_qty, filled_avg_price = extract_alpaca_fill(order)
 
     tracker = FillTracker("sell-1")

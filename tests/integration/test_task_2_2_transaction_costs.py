@@ -16,7 +16,6 @@ model contract).
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 from optimization_controller import OptimizationController
 from src.cost_models import SlippageCommissionModel, TransactionCostModel, ZeroCostModel
@@ -50,27 +49,37 @@ def test_cost_model_omitted_defaults_to_zero_cost_matches_baseline():
     df = _load_fixture()
     row = _run(df)  # no cost_model kwarg at all
     for key, expected in BASELINE.items():
-        assert row[key] == expected, f"{key}: {row[key]!r} != baseline {expected!r} with default cost_model"
+        assert row[key] == expected, (
+            f"{key}: {row[key]!r} != baseline {expected!r} with default cost_model"
+        )
 
 
 def test_explicit_zero_cost_model_matches_baseline():
     df = _load_fixture()
     row = _run(df, cost_model=ZeroCostModel())
     for key, expected in BASELINE.items():
-        assert row[key] == expected, f"{key}: {row[key]!r} != baseline {expected!r} with explicit ZeroCostModel"
+        assert row[key] == expected, (
+            f"{key}: {row[key]!r} != baseline {expected!r} with explicit ZeroCostModel"
+        )
 
 
 def test_slippage_commission_produces_lower_final_equity_explainable_by_drag():
     df = _load_fixture()
     zero_cost_row = _run(df, cost_model=ZeroCostModel())
-    costed_row = _run(df, cost_model=SlippageCommissionModel(commission_per_trade=1.0, slippage_bps=5))
+    costed_row = _run(
+        df, cost_model=SlippageCommissionModel(commission_per_trade=1.0, slippage_bps=5)
+    )
 
     assert costed_row["Final Equity"] < zero_cost_row["Final Equity"]
 
     trade_count = zero_cost_row["Trade Count"]
-    assert costed_row["Trade Count"] == trade_count, "Cost model must not change which/how many trades fire"
+    assert costed_row["Trade Count"] == trade_count, (
+        "Cost model must not change which/how many trades fire"
+    )
 
-    commission_drag = trade_count * 2 * 1.0  # commission charged on both the buy and the matching sell
+    commission_drag = (
+        trade_count * 2 * 1.0
+    )  # commission charged on both the buy and the matching sell
     # Slippage drag: ~5bps adverse move applied on both buy (pay more)
     # and sell (receive less) legs of each round-trip, roughly
     # 2 * 0.0005 * notional per trade. Bound loosely (order of

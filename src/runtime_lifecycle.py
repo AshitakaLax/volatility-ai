@@ -43,8 +43,8 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from enum import Enum
-from typing import Callable, Optional
 
 from src.exceptions import ExecutionError
 
@@ -83,9 +83,7 @@ STARTUP_SEQUENCE = (
 )
 
 # States in which a human must act before trading can resume.
-BLOCKED_STATES = frozenset(
-    {RuntimeState.RECONCILIATION_REQUIRED, RuntimeState.RECOVERY_REQUIRED}
-)
+BLOCKED_STATES = frozenset({RuntimeState.RECONCILIATION_REQUIRED, RuntimeState.RECOVERY_REQUIRED})
 
 
 class RuntimeLifecycle:
@@ -154,20 +152,20 @@ class RuntimeLifecycle:
         """
         if self.state is not RuntimeState.READY:
             return False
-        if self.circuit_breaker is not None and not self.circuit_breaker.allows_new_buys:
-            return False
-        return True
+        if self.circuit_breaker is None:
+            return True
+        return self.circuit_breaker.allows_new_buys
 
     # --- startup ---
 
     def start(
         self,
-        load_config: Callable[[], object] = None,
-        connect_broker: Callable[[], object] = None,
-        broker_snapshot_provider: Callable[[], object] = None,
-        validate_data_clock: Callable[[], bool] = None,
-        local_orders: dict = None,
-        expected_cash: Optional[float] = None,
+        load_config: Callable[[], object] | None = None,
+        connect_broker: Callable[[], object] | None = None,
+        broker_snapshot_provider: Callable[[], object] | None = None,
+        validate_data_clock: Callable[[], bool] | None = None,
+        local_orders: dict | None = None,
+        expected_cash: float | None = None,
     ) -> RuntimeState:
         """Walk the startup sequence in order, stopping at the first
         stage that cannot complete safely.
@@ -204,7 +202,9 @@ class RuntimeLifecycle:
             try:
                 snapshot = broker_snapshot_provider()
             except Exception as e:
-                return self._fail(RuntimeState.RECONCILIATION_REQUIRED, f"broker snapshot failed: {e}")
+                return self._fail(
+                    RuntimeState.RECONCILIATION_REQUIRED, f"broker snapshot failed: {e}"
+                )
             report = self.reconciler.reconcile(
                 snapshot, local_orders=local_orders, expected_cash=expected_cash
             )
@@ -219,7 +219,9 @@ class RuntimeLifecycle:
                         RuntimeState.RECOVERY_REQUIRED, "data/clock validation returned false"
                     )
             except Exception as e:
-                return self._fail(RuntimeState.RECOVERY_REQUIRED, f"data/clock validation failed: {e}")
+                return self._fail(
+                    RuntimeState.RECOVERY_REQUIRED, f"data/clock validation failed: {e}"
+                )
 
         # A halt persisted from a previous run (Task 7.8) survives
         # startup: reaching READY does not clear it, and
@@ -244,10 +246,10 @@ class RuntimeLifecycle:
 
     def shutdown(
         self,
-        in_flight_settled: Callable[[], bool] = None,
-        persist_state: Callable[[], None] = None,
-        flush_audit: Callable[[], None] = None,
-        close_connections: Callable[[], None] = None,
+        in_flight_settled: Callable[[], bool] | None = None,
+        persist_state: Callable[[], None] | None = None,
+        flush_audit: Callable[[], None] | None = None,
+        close_connections: Callable[[], None] | None = None,
         poll_interval: float = 0.05,
     ) -> RuntimeState:
         """Graceful shutdown, following the contract step for step.
