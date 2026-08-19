@@ -31,6 +31,14 @@ logger = logging.getLogger("Optimizer")
 
 
 class TickRejectionReason(str, Enum):
+    """Why a tick was rejected.
+
+    Recorded on every rejection so an operator can distinguish a
+    malformed feed (NON_FINITE / NON_POSITIVE) from a plausible-looking
+    but implausibly large move (IMPLAUSIBLE_MOVE), which have very
+    different causes.
+    """
+
     NON_FINITE = "NON_FINITE"
     NON_POSITIVE = "NON_POSITIVE"
     IMPLAUSIBLE_MOVE = "IMPLAUSIBLE_MOVE"
@@ -38,6 +46,12 @@ class TickRejectionReason(str, Enum):
 
 @dataclass(frozen=True)
 class TickCheck:
+    """Outcome of validating one tick.
+
+    `price` is the parsed value that was examined -- present on
+    rejections too, so the offending value can be logged.
+    """
+
     accepted: bool
     price: float
     reason: Optional[TickRejectionReason] = None
@@ -56,6 +70,12 @@ class TickValidator:
     """
 
     def __init__(self, max_move_pct: float = 0.20, audit_sink=None):
+        """Configure the tick validator.
+
+        The 20% default is deliberately loose: TQQQ is 3x-leveraged, so
+        genuine multi-percent intraday moves are routine and the goal is
+        catching feed glitches, not second-guessing real volatility.
+        """
         if not (max_move_pct > 0):
             raise ValueError(f"max_move_pct must be positive, got {max_move_pct}")
         self.max_move_pct = max_move_pct
@@ -68,6 +88,12 @@ class TickValidator:
         self.accepted_count = 0
 
     def _reject(self, price: float, reason: TickRejectionReason, detail: str) -> TickCheck:
+        """Record and report a rejection.
+
+        Critically does NOT advance last_good_price: a bad tick must not
+        become the reference the next tick is measured against, or a
+        stuck feed could walk the baseline arbitrarily far from reality.
+        """
         self.rejected_count += 1
         check = TickCheck(accepted=False, price=price, reason=reason, detail=detail)
         record = {

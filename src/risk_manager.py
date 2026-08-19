@@ -71,6 +71,14 @@ class CircuitBreaker:
     """
 
     def __init__(self, store=None, alert_sink=None):
+        """Restore any persisted halt, or start ACTIVE.
+
+        When `store` is given it is the durable source of truth and a
+        halt survives restarts -- the in-memory state is a cache of it.
+        Without a store the breaker is process-local, which is fine for
+        backtests but means a restart silently clears a halt, so live
+        use should always pass one.
+        """
         self._store = store
         # Canonical observability path when wired (Task 7.14); falls
         # back to structured logging so a halt is never silent.
@@ -85,22 +93,41 @@ class CircuitBreaker:
 
     @property
     def state(self) -> CircuitBreakerState:
+        """Current breaker state, reloaded from durable storage at
+        construction when a store is attached.
+
+        Prefer `allows_new_buys` for gating decisions -- two distinct
+        states block buying, so comparing against a single state here is
+        an easy way to get it wrong.
+        """
         return self._state
 
     @property
     def reason(self) -> str:
+        """Human-readable explanation of the current state, for the
+        operator who has to decide whether to reset."""
         return self._reason
 
     @property
     def allows_new_buys(self) -> bool:
+        """Whether new buy exposure is currently permitted.
+
+        Only ACTIVE permits buying. Both HALTED_NEW_BUYS and
+        MANUAL_RESET_REQUIRED block it -- including after the drawdown
+        has recovered, which is the point: recovery must not silently
+        re-enable trading before a human has looked.
+        """
         return self._state is CircuitBreakerState.ACTIVE
 
     def _persist(self) -> None:
+        """Write state and reason to durable storage, if a store exists."""
         if self._store is not None:
             self._store.set_meta(HALT_STATE_KEY, self._state.value)
             self._store.set_meta(HALT_REASON_KEY, self._reason)
 
     def _alert(self, event: str, detail: str) -> None:
+        """Emit a breaker transition to the alert sink, or to ERROR-level
+        logging when none is wired -- a halt must never be silent."""
         record = {"event": event, "state": self._state.value, "detail": detail}
         if self._alert_sink is not None:
             self._alert_sink(record)
@@ -195,6 +222,16 @@ class RiskManager:
         max_total_exposure: Optional[float] = None,
         halt_new_buys_if_drawdown_exceeds: Optional[float] = None,
     ):
+        """Configure the risk limits; every one defaults to unlimited.
+
+        max_total_exposure and max_total_exposure_pct are two names for
+        the same setting (the former is what src/live_execution.py
+        expects); passing both is allowed only if they agree.
+
+        halt_new_buys_if_drawdown_exceeds is live-only and drives the
+        CircuitBreaker, not the sizing clamp -- it blocks entry outright
+        rather than reducing size.
+        """
         if max_total_exposure_pct is not None and max_total_exposure is not None and max_total_exposure_pct != max_total_exposure:
             raise ConfigurationError(
                 f"max_total_exposure_pct ({max_total_exposure_pct!r}) and max_total_exposure "

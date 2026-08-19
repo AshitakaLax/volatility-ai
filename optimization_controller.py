@@ -1,3 +1,17 @@
+"""
+Backtest orchestration: parameter sweeps over the grid-harvesting strategy.
+
+OptimizationController owns one historical dataset and evaluates many
+parameter combinations against it. _simulate_single runs exactly one
+combination in isolation; run_sweep drives the search across many.
+
+This module is the backtest half of the system. Its live counterpart is
+src/live_execution.py, and the two deliberately share their strategy
+call sequence through src/decision_cycle.py (Task 7.1) and their
+exit-boundary loss check through src/no_loss_guard.py (Task 7.15)
+rather than keeping parallel copies that could drift apart.
+"""
+
 import logging
 from typing import Type, Optional
 import concurrent.futures
@@ -22,7 +36,16 @@ logger = logging.getLogger("Optimizer")
 
 class BacktestState:
     """Enforces isolated state management for simulation iterations."""
+
     def __init__(self, initial_cash: float, start_price: float):
+        """Fresh mutable state for one combination.
+
+        A new instance per combination is what keeps sweeps independent:
+        cash, the grid reference price, and the running peak/drawdown all
+        start clean, so one combination's trades cannot influence
+        another's. start_price seeds last_buy_price so the first grid
+        trigger is measured from the dataset's opening price.
+        """
         self.cash = initial_cash
         self.last_buy_price = start_price
         self.peak_equity = initial_cash
@@ -108,7 +131,21 @@ def _run_one_combination(
         return {"Grid Step": step, "Profit Target": target, **params, "error": str(e)}, None
 
 class OptimizationController:
+    """Runs parameter sweeps of the grid strategy over one historical dataset.
+
+    The dataset is validated once at construction and then held immutable
+    for the controller's lifetime, so every combination in a sweep is
+    scored against identical data.
+    """
+
     def __init__(self, historical_data: pd.DataFrame):
+        """Validate and retain the historical dataset.
+
+        Validation happens here rather than at sweep time so malformed
+        data fails immediately, before any combination runs. Raises
+        DataValidationError (Task 2.1) on empty, non-finite,
+        non-positive, unsorted, or duplicate-timestamped input.
+        """
         data_validation.validate(historical_data)
         self.data = historical_data
         logger.info(f"OptimizationController initialized with historical dataset length: {len(historical_data)}")
@@ -232,6 +269,12 @@ class OptimizationController:
                 net_sell_proceeds = economics.net_sell_proceeds
 
                 def _apply_sell_fill():
+                    """Side effects of one confirmed sell, applied at most once.
+
+                    Wrapped as a closure so ProcessedEventStore.apply_once
+                    (Task 4.10) can guard it by order id -- a duplicated
+                    fill event must not credit cash or close a lot twice.
+                    """
                     state.cash += net_sell_proceeds
                     ledger.close_lot(lot)
                     blotter_records.append({
@@ -273,6 +316,13 @@ class OptimizationController:
                         per_share_cost_basis = total_buy_outlay / filled_qty
 
                         def _apply_buy_fill():
+                            """Side effects of one confirmed buy, applied at most once.
+
+                            Closure for the same reason as _apply_sell_fill:
+                            idempotency is enforced by order id, so a
+                            replayed fill cannot open a second lot or debit
+                            cash twice.
+                            """
                             ledger.register_buy(order["id"], symbol, per_share_cost_basis, filled_qty, target)
                             state.cash -= total_buy_outlay
                             state.last_buy_price = context.price

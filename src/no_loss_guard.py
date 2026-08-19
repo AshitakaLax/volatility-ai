@@ -75,6 +75,11 @@ class SellEconomics:
 
     @property
     def permitted(self) -> bool:
+        """Whether this sell clears the no-loss invariant.
+
+        Uses `>= basis - MONEY_EPSILON`, so a break-even exit passes and
+        a difference smaller than float noise is not treated as a loss.
+        """
         return self.net_sell_proceeds >= self.allocated_cost_basis - MONEY_EPSILON
 
 

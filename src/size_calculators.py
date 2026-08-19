@@ -75,6 +75,13 @@ class FixedPortfolioPercentage(SizingStrategy):
     """
 
     def __init__(self, allocation_pct: float = None, percentage: float = None):
+        """Configure the fixed allocation fraction.
+
+        allocation_pct and percentage are two accepted names for the
+        same value (see the class docstring); exactly one is required,
+        and supplying both is allowed only if they agree. Must be in
+        (0, 1].
+        """
         if allocation_pct is None and percentage is None:
             raise ConfigurationError("FixedPortfolioPercentage requires allocation_pct (or percentage)")
         if allocation_pct is not None and percentage is not None and allocation_pct != percentage:
@@ -88,7 +95,15 @@ class FixedPortfolioPercentage(SizingStrategy):
         self.allocation_pct = value
 
     def record_tick(self, context: MarketContext) -> None:
-        pass  # stateless -- nothing to track
+        """No-op: this strategy holds no rolling state, so a tick
+        carries no information it needs to retain."""
+        pass
 
     def calculate_trade_value(self, context: MarketContext) -> float:
+        """A fixed fraction of current equity.
+
+        Sizing off equity rather than initial capital means position
+        size compounds with gains and shrinks after losses, without any
+        explicit rebalancing step.
+        """
         return context.equity * self.allocation_pct

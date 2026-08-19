@@ -112,10 +112,17 @@ class ProcessedEventStore:
     """Applies a given event's effect at most once per event_id."""
 
     def __init__(self, backend: Optional[MutableSet] = None):
+        """Create a store, optionally over an injected backend.
+
+        The backend holds the processed-id set and is what a caller
+        swaps for durable storage to make the guarantee survive a
+        restart. Defaults to a plain in-process set.
+        """
         self._processed: MutableSet = backend if backend is not None else set()
         self._results: dict = {}
 
     def has_processed(self, event_id: Hashable) -> bool:
+        """Whether this event's effect has already been applied."""
         return event_id in self._processed
 
     def apply_once(self, event_id: Hashable, apply_fn: Callable[[], T], *, event_kind: str = "event") -> Optional[T]:

@@ -45,6 +45,13 @@ from src.exceptions import ConfigurationError
 
 
 class WalkForwardRunner:
+    """Selects parameters on one window and scores them on the next.
+
+    Guards against the overfitting that in-sample optimization invites:
+    a combination is only ever measured on data that played no part in
+    choosing it.
+    """
+
     def __init__(
         self,
         controller_factory,
@@ -77,6 +84,14 @@ class WalkForwardRunner:
         strategy_params_grid,
         rank_by: str = "Capital Velocity Index",
     ) -> pd.DataFrame:
+        """Walk the data in folds; return train and test results per fold.
+
+        For each fold: sweep the training window, take the winner by
+        rank_by, then re-run ONLY that winner on the immediately
+        following test window. Result columns are prefixed train_ and
+        test_ so in-sample and out-of-sample figures can never be
+        confused for one another.
+        """
         folds = []
         start = 0
         while start + self.train_window + self.test_window <= len(full_data):

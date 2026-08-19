@@ -57,6 +57,12 @@ class Lot:
     last_execution_price: Optional[float] = field(default=None, init=False)
 
     def __post_init__(self) -> None:
+        """Derive the exit target once, at creation.
+
+        Computed here rather than on each access so it is fixed for the
+        lot's lifetime: partial closes must not move an existing lot's
+        exit price.
+        """
         self.target_sell_price = self.buy_price * (1.0 + self.profit_target)
 
 
@@ -68,6 +74,11 @@ class AssetLotLedger:
     """
 
     def __init__(self) -> None:
+        """Start with no lots.
+
+        A fresh ledger per simulated combination is what keeps sweeps
+        isolated from each other.
+        """
         self.open_lots: list[Lot] = []
         self.closed_lots: list[Lot] = []
 

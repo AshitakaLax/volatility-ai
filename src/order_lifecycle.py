@@ -178,9 +178,16 @@ class OrderRecord:
 
     @property
     def is_terminal(self) -> bool:
+        """Whether this order has reached a state it can never leave."""
         return self.state in TERMINAL_STATES
 
     def can_transition_to(self, new_state: OrderState) -> bool:
+        """Whether the table permits this move, without attempting it.
+
+        Lets a caller check first rather than catching ExecutionError,
+        which matters where an invalid transition is expected and
+        routine rather than exceptional.
+        """
         return new_state in ALLOWED_TRANSITIONS[self.state]
 
     def transition_to(self, new_state: OrderState, *, at: Optional[datetime] = None) -> None:
@@ -273,6 +280,13 @@ class OrderRecord:
         return self.state
 
     def _record_quantities(self, filled_qty, avg_fill_price, broker_order_id, at) -> None:
+        """Write the quantity fields an update supplied.
+
+        Every argument is optional and None means "unchanged", so a
+        status-only update cannot blank out quantities it said nothing
+        about. Called only AFTER the transition is validated, so a
+        rejected update leaves accounting untouched.
+        """
         if filled_qty is not None:
             self.filled_qty = float(filled_qty)
         if avg_fill_price is not None:

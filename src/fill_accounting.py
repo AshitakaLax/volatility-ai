@@ -66,6 +66,9 @@ class FillDelta:
 
     @property
     def is_empty(self) -> bool:
+        """Whether this delta carries no new fill -- a duplicate or
+        no-progress broker update. Callers should skip such deltas
+        entirely rather than applying a zero-value mutation."""
         return self.qty <= QTY_EPSILON
 
 
@@ -78,16 +81,24 @@ class FillTracker:
     """
 
     def __init__(self, order_id: str):
+        """One tracker per order id.
+
+        Starts at zero cumulative quantity and notional, so the first
+        update's delta equals its full reported value.
+        """
         self.order_id = order_id
         self._cumulative_qty = 0.0
         self._cumulative_notional = 0.0
 
     @property
     def cumulative_qty(self) -> float:
+        """Total quantity filled so far, as last reported by the broker."""
         return self._cumulative_qty
 
     @property
     def cumulative_notional(self) -> float:
+        """Total notional filled so far (cumulative_qty * cumulative avg
+        price at the time of the last update)."""
         return self._cumulative_notional
 
     def apply_update(self, filled_qty: float, filled_avg_price: float) -> FillDelta:

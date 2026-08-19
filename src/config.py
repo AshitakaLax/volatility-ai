@@ -42,12 +42,21 @@ from src.validation import (
 
 @dataclass(frozen=True)
 class StrategyConfig:
+    """Which sizing strategy to run and how to construct it.
+
+    strategy_id is an opaque string label; this codebase has no
+    id-to-class registry, so the caller maps it (see Run_Instructions).
+    strategy_params are the constructor kwargs for that class.
+    """
+
     strategy_id: str
     strategy_params: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class BacktestSection:
+    """Instrument and capital settings for a run."""
+
     symbol: str = "TQQQ"
     initial_cash: float = 100_000.0
     # Metadata/provenance only -- not yet wired to actively filter or
@@ -64,6 +73,12 @@ class BacktestSection:
 
 @dataclass(frozen=True)
 class GridConfig:
+    """The grid search space: drop thresholds and profit targets.
+
+    Held as tuples rather than lists so the config stays immutable and
+    hashable, which matters for the artifact hashing in Task 6.3.
+    """
+
     steps: tuple
     profit_targets: tuple
 
@@ -79,6 +94,13 @@ class CostConfig:
     slippage_bps: float = 0.0
 
     def build(self) -> TransactionCostModel:
+        """Construct the real TransactionCostModel this config describes.
+
+        Config carries data; this turns it into behavior. Raises
+        ConfigurationError for an unrecognized model_type rather than
+        silently falling back to zero cost, which would understate
+        every subsequent result.
+        """
         if self.model_type == "zero":
             return ZeroCostModel()
         if self.model_type == "slippage_commission":
@@ -99,6 +121,11 @@ class RiskConfig:
     max_total_exposure: Optional[float] = None
 
     def build(self) -> RiskManager:
+        """Construct the real RiskManager this config describes.
+
+        Both limits default to None (unlimited), so an omitted risk
+        section yields an unconstrained manager rather than an error.
+        """
         return RiskManager(max_concurrent_lots=self.max_concurrent_lots, max_total_exposure_pct=self.max_total_exposure)
 
 
@@ -126,17 +153,34 @@ class ExecutionConfig:
 
 @dataclass(frozen=True)
 class OutputConfig:
+    """What a sweep returns. return_full_results=True additionally
+    yields per-combination trade blotters and equity curves."""
+
     return_full_results: bool = False
 
 
 @dataclass(frozen=True)
 class LiveConfig:
+    """Live-trading switches.
+
+    paper_trading=True (the default) routes to a PAPER-mode OMS that
+    cannot touch real capital. Setting it False additionally requires
+    passing promotion evidence (Task 7.7); it is not sufficient alone.
+    """
+
     enabled: bool = False
     paper_trading: bool = True
 
 
 @dataclass(frozen=True)
 class BacktestConfig:
+    """The complete, validated configuration for a run.
+
+    Single source of truth for a sweep's settings, constructible from a
+    dict or YAML (both go through from_dict, so they validate
+    identically). Frozen, so a validated config cannot drift afterward.
+    """
+
     strategy: StrategyConfig
     grid: GridConfig
     backtest: BacktestSection = field(default_factory=BacktestSection)
@@ -149,6 +193,16 @@ class BacktestConfig:
 
     @classmethod
     def from_dict(cls, data: dict) -> "BacktestConfig":
+        """Build a config from a nested dict.
+
+        `strategy` (with strategy_id) and `grid` are required; every
+        other section is optional and falls back to documented defaults,
+        so a minimal config is genuinely runnable. Raises
+        ConfigurationError naming the missing section otherwise.
+
+        Note this only assembles the object -- call validate() to check
+        ranges and cross-field constraints.
+        """
         strategy_data = data.get("strategy")
         if not strategy_data or "strategy_id" not in strategy_data:
             raise ConfigurationError("config['strategy']['strategy_id'] is required")

@@ -106,6 +106,13 @@ class RuntimeLifecycle:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ):
+        """Assemble the lifecycle from its collaborators.
+
+        All are optional so a partial system can still be sequenced;
+        each stage is simply skipped when its collaborator is absent.
+        clock defaults to time.monotonic (not wall time) so the shutdown
+        window is immune to clock adjustments.
+        """
         self.store = store
         self.circuit_breaker = circuit_breaker
         self.reconciler = reconciler
@@ -121,12 +128,20 @@ class RuntimeLifecycle:
     # --- state ---
 
     def _enter(self, state: RuntimeState) -> None:
+        """Move to a state and append it to the visited trail.
+
+        The trail is what lets tests assert the startup sequence ran in
+        the specified ORDER, not merely that it reached READY.
+        """
         self.state = state
         self.visited.append(state)
         logger.info(f"Runtime state -> {state.value}")
 
     @property
     def is_ready(self) -> bool:
+        """Whether startup completed. Note this is NOT sufficient to
+        permit buying -- use allows_new_buys(), which also honors a
+        persisted circuit-breaker halt."""
         return self.state is RuntimeState.READY
 
     def allows_new_buys(self) -> bool:
@@ -213,6 +228,12 @@ class RuntimeLifecycle:
         return self.state
 
     def _fail(self, state: RuntimeState, detail: str) -> RuntimeState:
+        """Abort startup into a blocked state, logging why.
+
+        A reconciliation failure additionally halts the circuit breaker,
+        so the block persists across a restart rather than evaporating
+        when someone restarts the process to "fix" it.
+        """
         self._enter(state)
         logger.error(f"Startup halted in {state.value}: {detail}")
         if self.circuit_breaker is not None and state is RuntimeState.RECONCILIATION_REQUIRED:
