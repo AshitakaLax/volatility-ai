@@ -47,6 +47,7 @@ class LiveExecutionLoop:
         broker_factory: Callable[[LiveCredentials], LiveBroker] | None = None,
         oms: OrderManagementSystem | None = None,
         tick_validator: "TickValidator | None" = None,
+        live_capital_promotion=None,
     ) -> None:
         config.validate()
         if not config.live.enabled:
@@ -58,7 +59,15 @@ class LiveExecutionLoop:
             max_total_exposure=config.risk.max_total_exposure,
         )
         self._broker_factory = broker_factory
-        self.oms = oms or OrderManagementSystem(mode=Mode.LIVE)
+        # Task 7.7: honor config.live.paper_trading. This previously
+        # constructed Mode.LIVE unconditionally, ignoring the flag
+        # entirely -- so a paper-trading config still built a
+        # real-capital OMS. Reaching LIVE now additionally requires a
+        # passing promotion evaluation (enforced in the OMS itself).
+        self.oms = oms or OrderManagementSystem(
+            mode=Mode.PAPER if config.live.paper_trading else Mode.LIVE,
+            live_capital_promotion=live_capital_promotion,
+        )
         self.broker: LiveBroker | None = None
         self.last_buy_price = None
         self._started = False

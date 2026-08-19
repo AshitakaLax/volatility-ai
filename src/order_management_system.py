@@ -41,15 +41,23 @@ from src.exceptions import ConfigurationError
 class Mode(str, Enum):
     """Subclasses str so Mode.SIMULATION == "SIMULATION" and
     Mode.LIVE == "LIVE" -- every existing bare-string mode="SIMULATION"
-    call site (and the `mode not in ("SIMULATION", "LIVE")` /
-    `self.mode == "LIVE"` checks below) keeps working unmodified
-    whether callers pass the enum or the string. Added to unblock
-    src/live_execution.py, pushed directly to main mid-session with
-    `from src.order_management_system import Mode` -- see the chat
-    this was produced in."""
+    call site keeps working unmodified whether callers pass the enum or
+    the string.
+
+    PAPER (Task 7.7) is a first-class third mode, deliberately NOT a
+    boolean flag on LIVE: paper trading is the mandatory gate between
+    backtest and real capital, and making it a distinct mode means
+    reaching LIVE is an explicit, auditable step rather than flipping
+    one config value.
+    """
 
     SIMULATION = "SIMULATION"
+    PAPER = "PAPER"
     LIVE = "LIVE"
+
+
+# Modes that never touch real capital.
+NON_CAPITAL_MODES = (Mode.SIMULATION, Mode.PAPER)
 
 
 class OrderStatus:
@@ -68,10 +76,32 @@ class OrderStatus:
 
 
 class OrderManagementSystem:
-    def __init__(self, mode: str = "SIMULATION"):
-        if mode not in ("SIMULATION", "LIVE"):
-            raise ConfigurationError(f"mode must be 'SIMULATION' or 'LIVE', got {mode!r}")
+    def __init__(self, mode: str = "SIMULATION", live_capital_promotion=None):
+        """Task 7.7: constructing a LIVE (real-capital) OMS requires an
+        explicit, passing PromotionEvaluation. There is deliberately no
+        boolean "enable_live=True" shortcut -- the caller must hold
+        actual evidence that a paper-trading stage was completed and
+        met the recorded criteria, which is the whole point of the gate.
+
+        SIMULATION and PAPER need no such evidence; neither touches
+        real capital.
+        """
+        if mode not in ("SIMULATION", "PAPER", "LIVE"):
+            raise ConfigurationError(f"mode must be 'SIMULATION', 'PAPER', or 'LIVE', got {mode!r}")
+        if mode == "LIVE":
+            if live_capital_promotion is None:
+                raise ConfigurationError(
+                    "Refusing to construct a LIVE (real-capital) OrderManagementSystem without a "
+                    "passing paper-trading PromotionEvaluation (Task 7.7). Use mode='PAPER' to "
+                    "trade risk-free, or supply the promotion evidence to enable live capital."
+                )
+            if not getattr(live_capital_promotion, "passed", False):
+                raise ConfigurationError(
+                    "Refusing to enable live capital: the supplied promotion evaluation did not "
+                    f"pass. Unmet criteria: {list(getattr(live_capital_promotion, 'failures', ()))}"
+                )
         self.mode = mode
+        self.live_capital_promotion = live_capital_promotion
         self._order_seq = 0
 
     def _next_order_id(self) -> str:
