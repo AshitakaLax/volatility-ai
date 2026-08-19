@@ -285,6 +285,20 @@ class LedgerStore:
                 ledger.closed_lots.append(lot)
         return ledger
 
+    def get_meta(self, key: str) -> Optional[str]:
+        """Generic durable key/value read. Added for Task 7.8's halt
+        state, which must survive a restart; kept generic rather than
+        adding another single-purpose accessor pair."""
+        row = self._conn.execute("SELECT value FROM ledger_meta WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else None
+
+    def set_meta(self, key: str, value: Optional[str]) -> int:
+        """Generic durable key/value write, atomic with its revision row."""
+        with self._transaction() as conn:
+            revision = self._next_revision(conn, "set_meta", None, f"{key}={value}")
+            conn.execute("INSERT OR REPLACE INTO ledger_meta (key, value) VALUES (?, ?)", (key, value))
+            return revision
+
     def load_last_buy_price(self) -> Optional[float]:
         row = self._conn.execute("SELECT value FROM ledger_meta WHERE key = 'last_buy_price'").fetchone()
         return float(row["value"]) if row and row["value"] is not None else None

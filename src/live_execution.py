@@ -16,7 +16,7 @@ from src import decision_cycle
 from src.exceptions import ConfigurationError
 from src.market_context import MarketContext
 from src.order_management_system import Mode, OrderManagementSystem
-from src.risk_manager import RiskManager
+from src.risk_manager import CircuitBreaker, RiskManager
 from src.secrets import LiveCredentials, load_live_credentials
 from src.size_calculators import SizingStrategy
 from src.tick_validation import TickCheck, TickValidator
@@ -48,6 +48,7 @@ class LiveExecutionLoop:
         oms: OrderManagementSystem | None = None,
         tick_validator: "TickValidator | None" = None,
         live_capital_promotion=None,
+        circuit_breaker=None,
     ) -> None:
         config.validate()
         if not config.live.enabled:
@@ -73,6 +74,10 @@ class LiveExecutionLoop:
         self._started = False
         # Task 7.6: per-tick sanity check. Owns last_good_price; a
         # rejected tick never advances it.
+        # Task 7.8: live-only hard stop on new buys. Defaults to a
+        # fresh in-memory breaker; pass one backed by a LedgerStore to
+        # make the halt survive a restart.
+        self.circuit_breaker = circuit_breaker or CircuitBreaker()
         self.tick_validator = tick_validator or TickValidator()
 
     def validate_tick(self, price: float) -> TickCheck:
@@ -163,6 +168,25 @@ class LiveExecutionLoop:
             step,
             context.cash if cash is None else cash,
         )
+
+        # Task 7.8: the circuit breaker is checked at the same point as
+        # the sizing clamp but is deliberately DISTINCT from it -- the
+        # clamp reduces size, this blocks new entry outright. Only the
+        # BUY side is affected: record_tick above already ran (strategy
+        # rolling state keeps updating), and harvest/sell evaluation is
+        # untouched, so open lots stay fully exitable. This never forces
+        # liquidation (no-loss shutdown invariant).
+        self.circuit_breaker.evaluate(
+            context.drawdown, self.risk_manager.halt_new_buys_if_drawdown_exceeds
+        )
+        if decision.triggered and not self.circuit_breaker.allows_new_buys:
+            return LiveDecision(
+                context=decision.context,
+                triggered=False,
+                proposed_trade_value=decision.proposed_trade_value,
+                clamped_trade_value=0.0,
+            )
+
         return LiveDecision(
             context=decision.context,
             triggered=decision.triggered,
