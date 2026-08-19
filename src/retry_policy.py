@@ -45,14 +45,14 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from src.exceptions import ExecutionError
 
 logger = logging.getLogger("Optimizer")
 
 
-class ErrorClass(str, Enum):
+class ErrorClass(StrEnum):
     """Step 1's three categories."""
 
     RETRYABLE = "RETRYABLE"

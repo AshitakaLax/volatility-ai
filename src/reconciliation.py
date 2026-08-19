@@ -27,14 +27,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from src.order_lifecycle import OrderState
 
 logger = logging.getLogger("Optimizer")
 
 
-class ReconciliationOutcome(str, Enum):
+class ReconciliationOutcome(StrEnum):
     """Terminal outcome of one reconciliation pass."""
 
     READY = "READY"

@@ -44,7 +44,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 
 from src.exceptions import ExecutionError
 
@@ -53,7 +53,7 @@ logger = logging.getLogger("Optimizer")
 DEFAULT_SETTLE_TIMEOUT_SECONDS = 30.0
 
 
-class RuntimeState(str, Enum):
+class RuntimeState(StrEnum):
     """Startup/shutdown lifecycle states."""
 
     STARTING = "STARTING"

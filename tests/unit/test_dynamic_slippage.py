@@ -13,7 +13,7 @@ assertions (a 5% move produces a ~33x wider spread than a 0.1% move at
 base_bps=5, vol_multiplier=1).
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 import pytest
@@ -27,7 +27,7 @@ from tests.fixtures.regression_baseline import BASELINE
 
 def _context(close: float) -> MarketContext:
     return MarketContext(
-        timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2024, 1, 1, tzinfo=UTC),
         open=close,
         high=close,
         low=close,

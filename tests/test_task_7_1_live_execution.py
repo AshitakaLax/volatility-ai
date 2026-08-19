@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -26,7 +26,7 @@ def test_live_loop_uses_market_context_and_same_strategy_sequence(monkeypatch):
     loop = LiveExecutionLoop(live_config(), strategy, broker_factory=lambda credentials: object())
     loop.start()
     context = loop.build_context(
-        timestamp=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2025, 1, 1, tzinfo=UTC),
         open=99,
         high=100,
         low=98,

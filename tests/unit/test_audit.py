@@ -13,7 +13,7 @@ Acceptance criteria:
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -294,7 +294,7 @@ def test_fill_payload_distinguishes_incremental_from_cumulative(audit):
 
 
 def test_ordering_is_by_sequence_not_timestamp(audit):
-    same_instant = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    same_instant = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
     for i in range(5):
         audit.record_event(
             f"evt-{i}",
@@ -316,13 +316,13 @@ def test_a_backwards_clock_cannot_reorder_history(audit):
         "first",
         EventType.STRATEGY_DECISION,
         _payload(EventType.STRATEGY_DECISION),
-        timestamp=datetime(2024, 1, 2, tzinfo=timezone.utc),
+        timestamp=datetime(2024, 1, 2, tzinfo=UTC),
     )
     audit.record_event(
         "second",
         EventType.STRATEGY_DECISION,
         _payload(EventType.STRATEGY_DECISION),
-        timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2024, 1, 1, tzinfo=UTC),
     )  # clock went backwards
     assert [e.event_id for e in audit.read_stream()] == ["first", "second"]
 

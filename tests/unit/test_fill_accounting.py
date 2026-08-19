@@ -8,7 +8,7 @@ See src/fill_accounting.py's module docstring for the full resolution.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -133,7 +133,7 @@ def _alpaca_order(filled_qty: str, filled_avg_price, status, qty: str = "10.0"):
     from alpaca.trading.enums import OrderSide, TimeInForce
     from alpaca.trading.models import Order
 
-    now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    now = datetime(2024, 1, 1, tzinfo=UTC)
     return Order(
         id=str(uuid.UUID(int=123)),
         client_order_id="test-123",

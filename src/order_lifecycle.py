@@ -35,15 +35,15 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 
 from src.exceptions import ExecutionError
 
 logger = logging.getLogger("Optimizer")
 
 
-class OrderState(str, Enum):
+class OrderState(StrEnum):
     """The nine canonical internal states named by Task 7.10 step 1."""
 
     CREATED = "CREATED"
@@ -164,7 +164,7 @@ class OrderRecord:
     state: OrderState = OrderState.CREATED
     filled_qty: float = 0.0
     avg_fill_price: float = 0.0
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     submitted_at: datetime | None = None
     last_update_at: datetime | None = None
 
@@ -210,7 +210,7 @@ class OrderRecord:
             raise ExecutionError(detail)
 
         self.state = new_state
-        now = at or datetime.now(timezone.utc)
+        now = at or datetime.now(UTC)
         if new_state is OrderState.SUBMITTED and self.submitted_at is None:
             self.submitted_at = now
         self.last_update_at = now
@@ -238,7 +238,7 @@ class OrderRecord:
                 "order may not be resolved by inference."
             )
         self.state = new_state
-        self.last_update_at = at or datetime.now(timezone.utc)
+        self.last_update_at = at or datetime.now(UTC)
         logger.info(
             f"Order {self.client_order_id!r} resolved UNKNOWN -> {new_state.value} "
             f"via {resolution_source}."
@@ -292,4 +292,4 @@ class OrderRecord:
             self.avg_fill_price = float(avg_fill_price)
         if broker_order_id is not None:
             self.broker_order_id = str(broker_order_id)
-        self.last_update_at = at or datetime.now(timezone.utc)
+        self.last_update_at = at or datetime.now(UTC)

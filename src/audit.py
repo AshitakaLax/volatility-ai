@@ -34,8 +34,8 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 
 from src.exceptions import PersistenceError
 from src.secrets import redact_secrets
@@ -45,7 +45,7 @@ logger = logging.getLogger("Optimizer")
 AUDIT_SCHEMA_VERSION = 1
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     """The event types step 2 requires recording."""
 
     MARKET_CONTEXT = "MARKET_CONTEXT"
@@ -235,7 +235,7 @@ class AuditLog:
                 f"{event_type.value} audit payload is not JSON-serializable: {e}"
             ) from e
 
-        when = (timestamp or datetime.now(timezone.utc)).isoformat()
+        when = (timestamp or datetime.now(UTC)).isoformat()
         with self.store._transaction() as conn:
             existing = conn.execute(
                 "SELECT 1 FROM audit_events WHERE stream_id = ? AND event_id = ?",

@@ -7,7 +7,7 @@ rejected/flagged rather than processed as real triggers, while
 surrounding valid ticks are processed normally.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -32,7 +32,7 @@ def _live_config() -> BacktestConfig:
 
 def _context_builder(price: float) -> MarketContext:
     return MarketContext(
-        timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2024, 1, 1, tzinfo=UTC),
         open=price,
         high=price,
         low=price,

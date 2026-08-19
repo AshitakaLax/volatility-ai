@@ -13,7 +13,7 @@ shutdown invariant ("must never force liquidation solely because the
 system is halted").
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -41,7 +41,7 @@ def _config():
 
 def _context(close: float, drawdown: float = 0.0, open_lot_count: int = 0) -> MarketContext:
     return MarketContext(
-        timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2024, 1, 1, tzinfo=UTC),
         open=close,
         high=close,
         low=close,
