@@ -178,3 +178,46 @@ left to operator judgment:
 constructed `Mode.LIVE` unconditionally, ignoring
 `config.live.paper_trading` entirely — a config asking for paper
 trading still got a real-capital OMS. It now honors the flag.
+
+### Task 7.9: macro/seasonality signals — **Not required / deferred**
+
+Discovery gate outcome. **No confirmed consumer exists**, so per the
+task's own step 2 no ingestion pipeline was built and no production
+behavior was changed.
+
+Evidence from a repository-wide search of all three field names
+(`time_of_day_flag`, `is_macro_event_day`, `macro_surprise_factor`):
+
+| Location | Role |
+|---|---|
+| `src/market_context.py` | **Defines** the fields with safe defaults (`0`, `False`, `0.0`) — a definition, not a consumer |
+| `src/live_execution.py` | `build_context()` **forwards** them. Pure pass-through plumbing; it type-coerces and hands them to the constructor, never reading a value to make a decision |
+| `src/size_calculators.py` | The only real strategy, `FixedPortfolioPercentage`, reads exactly `context.price` and `context.equity` — neither of the three fields |
+
+Also confirmed: no conditional logic anywhere branches on these
+fields; no call site supplies a non-default value; and no FinBERT /
+sentiment / transformers / CPI / Federal Reserve / FOMC reference
+exists anywhere in the repository.
+
+**On the external claim that prompted this task** — that FinBERT NLP
+sentiment and Fed/CPI macro-event awareness were already integrated
+into this system's Bayesian sizing — nothing here supports it.
+`BayesianDualScaleSizing` is not implemented in this repository at all
+(`FixedPortfolioPercentage` is the only sizing strategy that exists),
+and "macro" in that class's name refers to a **long-window Bayesian
+posterior** — a lookback-length distinction — not to macroeconomic
+events. The two senses of "macro" appear to be the source of the
+confusion.
+
+The fields are deliberately **left in place**: they are optional,
+defaulted, and already part of overview §5.1's `MarketContext`
+contract. Removing them would be a breaking change for no benefit;
+populating them would be the speculative scope this gate exists to
+prevent.
+
+This finding is **executable, not just documented** —
+`tests/unit/test_task_7_9_macro_signals_discovery.py` fails if a
+consumer, a branch, an ingestion dependency, or a new sizing strategy
+appears, at which point the gate must be re-run and step 3 (consuming
+strategy, source dataset, timestamp-join semantics, defaults, and a
+follow-up implementation task) becomes live.
