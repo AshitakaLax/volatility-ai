@@ -76,6 +76,12 @@ class RetryConfig:
     max_rate_limit_wait: float = 60.0
 
     def __post_init__(self):
+        """Reject a configuration that could not retry sensibly.
+
+        A multiplier below 1 would shrink each successive delay, and a
+        jitter of 1.0 or more could produce a zero or negative wait --
+        both defeat the purpose of backoff.
+        """
         if self.max_attempts < 1:
             raise ValueError(f"max_attempts must be >= 1, got {self.max_attempts}")
         if self.base_delay <= 0 or self.multiplier < 1:

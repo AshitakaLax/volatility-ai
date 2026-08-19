@@ -76,6 +76,17 @@ class OrderStatus:
 
 
 class OrderManagementSystem:
+    """Submits orders in SIMULATION, PAPER, or LIVE mode.
+
+    SIMULATION fills everything instantly and completely at the
+    requested price -- slippage and commission are modeled separately by
+    TransactionCostModel, not here, so the two concerns stay testable
+    independently.
+
+    LIVE requires passing paper-trading promotion evidence to construct
+    (Task 7.7); PAPER and SIMULATION never touch real capital.
+    """
+
     def __init__(self, mode: str = "SIMULATION", live_capital_promotion=None):
         """Task 7.7: constructing a LIVE (real-capital) OMS requires an
         explicit, passing PromotionEvaluation. There is deliberately no
@@ -105,6 +116,12 @@ class OrderManagementSystem:
         self._order_seq = 0
 
     def _next_order_id(self) -> str:
+        """Next simulated order id, unique within this instance.
+
+        Per-instance rather than global, so combinations running in
+        parallel cannot collide -- and since each combination gets a
+        fresh OMS, ids are reproducible across runs.
+        """
         self._order_seq += 1
         return f"SIM-{self._order_seq:06d}"
 

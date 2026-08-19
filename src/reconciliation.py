@@ -58,15 +58,30 @@ class Discrepancy:
 
 @dataclass
 class ReconciliationReport:
+    """Outcome of one reconciliation pass.
+
+    discrepancies are the UNRESOLVED differences that force a halt;
+    repairs_applied are the unambiguous ones already adopted from
+    broker-confirmed evidence. A report can carry both.
+    """
+
     outcome: ReconciliationOutcome
     discrepancies: list = field(default_factory=list)
     repairs_applied: list = field(default_factory=list)
 
     @property
     def ready(self) -> bool:
+        """Whether trading may resume: true only with zero unresolved
+        discrepancies."""
         return self.outcome is ReconciliationOutcome.READY
 
     def diagnostic(self) -> str:
+        """Operator-facing summary naming every specific delta.
+
+        Deliberately enumerates the actual numbers rather than saying
+        "state mismatch" -- whoever is paged at 3am needs to know which
+        symbol and how many shares, not that something is wrong.
+        """
         if self.ready:
             return "READY -- local and broker state agree."
         lines = [f"  - [{d.kind}] {d.detail}" for d in self.discrepancies]
@@ -102,11 +117,20 @@ class Reconciler:
     CASH_EPSILON = 0.01  # one cent
 
     def __init__(self, store, circuit_breaker=None, alert_sink=None):
+        """Bind the reconciler to its collaborators.
+
+        Both circuit_breaker and alert_sink are optional so the
+        comparison can be run read-only for inspection; supply the
+        breaker for live use, where an ambiguous result must actually
+        halt new buys.
+        """
         self.store = store
         self.circuit_breaker = circuit_breaker
         self._alert_sink = alert_sink
 
     def _alert(self, report: ReconciliationReport) -> None:
+        """Surface an unresolved reconciliation to the alert sink, or to
+        ERROR-level logging when none is wired."""
         record = {
             "event": "reconciliation_required",
             "discrepancies": [{"kind": d.kind, "detail": d.detail} for d in report.discrepancies],
@@ -159,6 +183,15 @@ class Reconciler:
     # --- decision table rows ---
 
     def _reconcile_orders(self, snapshot, local_orders, discrepancies, repairs) -> None:
+        """Compare orders in both directions, appending findings in place.
+
+        Auto-repairs ONLY the unambiguous case: a broker-confirmed fill
+        on an order we already hold as live, under our own client order
+        id. Everything else -- a fill on a locally terminal order, a
+        broker order we never decided, a fill count that went backwards,
+        a live local order the broker has never seen -- is recorded as a
+        discrepancy and halts.
+        """
         for client_order_id, broker_order in snapshot.orders.items():
             local = local_orders.get(client_order_id)
 

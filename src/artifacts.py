@@ -62,6 +62,13 @@ VALID_PROMOTION_STATUSES = ("draft", "candidate", "promoted", "retired")
 
 
 def _assert_no_secret_fields(data, path: str = "") -> None:
+    """Recursively REJECT any secret-looking key, naming its path.
+
+    Rejects rather than redacts: an artifact is a permanent provenance
+    record, so a credential must never have been put there in the first
+    place. (Log payloads differ -- see secrets.redact_secrets, which
+    masks the value instead.)
+    """
     if isinstance(data, dict):
         for key, value in data.items():
             lowered = str(key).lower()
@@ -165,6 +172,7 @@ class DeploymentArtifact:
         )
 
     def to_dict(self) -> dict:
+        """Plain-dict form of this artifact, for hashing or storage."""
         return asdict(self)
 
     def canonical_hash(self) -> str:

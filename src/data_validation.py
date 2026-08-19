@@ -24,6 +24,12 @@ REQUIRED_COLUMNS = {"close"}  # extend to {"open","high","low","close","volume"}
 
 
 def _format_bad_indices(df: pd.DataFrame, mask: pd.Series, limit: int = 5) -> str:
+    """Render the offending timestamps for an error message.
+
+    Truncates to `limit` with a "+N more" suffix, so a systematically
+    broken dataset produces a readable error rather than thousands of
+    lines of index dump.
+    """
     bad = df.index[mask]
     shown = list(bad[:limit])
     suffix = f" (+{len(bad) - limit} more)" if len(bad) > limit else ""
@@ -31,6 +37,16 @@ def _format_bad_indices(df: pd.DataFrame, mask: pd.Series, limit: int = 5) -> st
 
 
 def validate(df: pd.DataFrame, *, warn_on_gap_pct: float = 0.15) -> None:
+    """Validate a historical dataset before any simulation runs.
+
+    RAISES DataValidationError for conditions that make results
+    meaningless: empty frame, missing columns, NaN/inf, non-positive
+    prices, unsorted index, duplicate timestamps.
+
+    WARNS but does not raise for a large single-bar move, since that is
+    usually an unadjusted split but can be a genuine event -- and
+    rejecting real data outright would be worse than flagging it.
+    """
     if df.empty:
         raise DataValidationError("historical_data is empty.")
 

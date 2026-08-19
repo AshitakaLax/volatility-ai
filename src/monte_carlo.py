@@ -48,6 +48,16 @@ PERCENTILES = (5, 25, 50, 75, 95)
 
 
 def _block_bootstrap_returns(returns: np.ndarray, block_size: int, n_needed: int, rng: np.random.Generator) -> np.ndarray:
+    """Resample `n_needed` returns as contiguous blocks, with replacement.
+
+    Blocks rather than individual observations: drawing single days
+    would destroy the serial correlation and volatility clustering that
+    make a price path realistic, producing implausibly smooth synthetic
+    histories.
+
+    Raises ConfigurationError if block_size exceeds the available
+    history, since not even one full block could be formed.
+    """
     if len(returns) < block_size:
         raise ConfigurationError(
             f"block_size ({block_size}) exceeds available return observations ({len(returns)}) -- "
@@ -94,6 +104,13 @@ def generate_synthetic_path(historical_data: pd.DataFrame, block_size: int, rng:
 
 
 class MonteCarloRunner:
+    """Runs a chosen parameter set across many resampled price paths.
+
+    Answers "how else might this have gone" rather than "how did this
+    go" -- a single backtest is one sample from a distribution, and this
+    estimates the rest of that distribution.
+    """
+
     def run(
         self,
         controller_factory,
@@ -107,6 +124,13 @@ class MonteCarloRunner:
         seed: Optional[int] = None,
         initial_cash: float = 100_000.0,
     ) -> pd.DataFrame:
+        """Simulate n_paths synthetic histories; return percentile outcomes.
+
+        Each path gets an independent child seed derived from `seed`, so
+        results are reproducible without any two paths sharing a random
+        stream. Returns 5th/25th/50th/75th/95th percentiles of CAGR,
+        Max Drawdown %, and Final Equity.
+        """
         validate_positive_int(n_paths, "n_paths")
         validate_positive_int(block_size, "block_size")
 

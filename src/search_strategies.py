@@ -23,6 +23,15 @@ from src.exceptions import ConfigurationError
 
 
 class SearchStrategy(ABC):
+    """Pull-based interface for proposing parameter combinations.
+
+    The caller drives the loop: it asks for a combination, evaluates it,
+    and reports the result back. That inversion (rather than handing an
+    objective function to the strategy) is what lets run_sweep own
+    parallelism, error isolation, and result collection uniformly across
+    exhaustive and adaptive searches alike.
+    """
+
     @abstractmethod
     def suggest(self) -> Optional[dict]:
         """Return the next {"grid_step", "profit_target", "strategy_params"}
@@ -45,9 +54,16 @@ class GridSearch(SearchStrategy):
     reimplementation that merely intends to match it."""
 
     def __init__(self, grid_steps, profit_targets, strategy_params_grid):
+        """Build the exhaustive product of the three axes, lazily.
+
+        itertools.product is consumed as an iterator rather than
+        materialized, so a large space costs nothing until it is walked.
+        """
         self._combinations = itertools.product(grid_steps, profit_targets, strategy_params_grid)
 
     def suggest(self) -> Optional[dict]:
+        """Next combination in itertools.product order, or None when the
+        space is exhausted."""
         try:
             grid_step, profit_target, strategy_params = next(self._combinations)
         except StopIteration:
@@ -55,7 +71,14 @@ class GridSearch(SearchStrategy):
         return {"grid_step": grid_step, "profit_target": profit_target, "strategy_params": strategy_params}
 
     def report(self, params: dict, result) -> None:
-        pass  # exhaustive search never adapts based on feedback
+        """No-op: an exhaustive search visits every combination
+        regardless of outcome, so feedback cannot change what it does.
+
+        This being a genuine no-op is also what makes GridSearch
+        deterministic under parallelism -- batch boundaries cannot
+        affect which combinations are produced.
+        """
+        pass
 
 
 class BayesianSearch(SearchStrategy):
@@ -92,6 +115,17 @@ class BayesianSearch(SearchStrategy):
         n_trials: Optional[int] = None,
         seed: Optional[int] = None,
     ):
+        """Configure an Optuna study over the same discrete space.
+
+        n_trials defaults to the FULL combination count, so an
+        unconfigured BayesianSearch explores as much as grid search
+        would; pass a smaller budget to actually save evaluations. seed
+        makes the search reproducible.
+
+        Raises ConfigurationError at construction if optuna is missing,
+        rather than failing later inside suggest() or silently degrading
+        to grid search.
+        """
         try:
             import optuna
         except ImportError as e:
@@ -118,6 +152,13 @@ class BayesianSearch(SearchStrategy):
         self._pending_trials: dict[int, "optuna.trial.Trial"] = {}
 
     def suggest(self) -> Optional[dict]:
+        """Ask Optuna for the next combination, or None once the trial
+        budget is spent.
+
+        Uses ask/tell rather than study.optimize() so the caller keeps
+        control of the evaluation loop. The returned dict carries an
+        internal _trial_number that report() needs; run_sweep ignores it.
+        """
         if self._trial_count >= self.n_trials:
             return None
         trial = self._study.ask()
@@ -134,6 +175,14 @@ class BayesianSearch(SearchStrategy):
         }
 
     def report(self, params: dict, result) -> None:
+        """Feed one evaluation back to Optuna.
+
+        A failed combination (result is None, or metrics carry an error,
+        or the ranking metric is absent) is told to Optuna as a FAILED
+        trial rather than as a bad score -- scoring it would teach the
+        sampler that a whole region is unpromising when in fact it was
+        never measured.
+        """
         import optuna
 
         trial_number = params["_trial_number"]

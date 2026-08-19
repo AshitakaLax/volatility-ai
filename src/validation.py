@@ -33,31 +33,55 @@ VALID_INTRABAR_PRIORITY = ("sell_first", "buy_first")
 
 
 def validate_positive(value: float, field_name: str) -> None:
+    """Require value > 0. Zero is rejected -- callers that want to allow
+    it should use validate_non_negative instead."""
     if not (value > 0):
         raise ConfigurationError(f"{field_name} must be positive, got {value!r}")
 
 
 def validate_non_negative(value: float, field_name: str) -> None:
+    """Require value >= 0. Used for costs and fees, where zero is a
+    legitimate value but a negative one is nonsense."""
     if not (value >= 0):
         raise ConfigurationError(f"{field_name} must be non-negative, got {value!r}")
 
 
 def validate_unit_interval(value: float, field_name: str) -> None:
+    """Require 0 <= value <= 1, INCLUSIVE at both ends.
+
+    For fractions and percentages expressed as decimals (exposure
+    limits, drawdown thresholds). 1.0 means 100% and is allowed.
+    """
     if not (0 <= value <= 1):
         raise ConfigurationError(f"{field_name} must be in [0, 1], got {value!r}")
 
 
 def validate_positive_int(value: int, field_name: str) -> None:
+    """Require a positive whole number.
+
+    Explicitly rejects bool, which is an int subclass in Python -- so
+    True would otherwise sneak through as the integer 1 and silently
+    become a count. For lot limits and worker/trial counts.
+    """
     if not (isinstance(value, int) and not isinstance(value, bool) and value > 0):
         raise ConfigurationError(f"{field_name} must be a positive integer, got {value!r}")
 
 
 def validate_one_of(value, allowed: Iterable, field_name: str) -> None:
+    """Require value to be one of `allowed`, naming every permitted
+    option in the error so a typo is immediately fixable."""
     if value not in allowed:
         raise ConfigurationError(f"{field_name} must be one of {tuple(allowed)}, got {value!r}")
 
 
 def validate_grid_steps(grid_steps: Iterable[float]) -> None:
+    """Validate a list of grid-step fractions.
+
+    Each must be positive and strictly below 1.0. The upper bound is a
+    domain check, not a range check: a step of 1.0 means a 100% drop,
+    which from any positive price can never trigger twice, so it is
+    incompatible with the grid strategy's own mechanics.
+    """
     grid_steps = list(grid_steps)
     if not grid_steps:
         raise ConfigurationError("grid_steps must not be empty")
@@ -76,6 +100,9 @@ def validate_grid_steps(grid_steps: Iterable[float]) -> None:
 
 
 def validate_profit_targets(profit_targets: Iterable[float]) -> None:
+    """Validate a list of profit-target fractions: non-empty, each
+    positive. A zero or negative target would mean exiting at or below
+    cost, which the no-loss invariant forbids anyway."""
     profit_targets = list(profit_targets)
     if not profit_targets:
         raise ConfigurationError("profit_targets must not be empty")

@@ -54,6 +54,12 @@ class PromotionCriteria:
     max_unhandled_exceptions: int = 0
 
     def __post_init__(self):
+        """Reject a gate that would not actually gate anything.
+
+        Zero required days, decisions, or fills would pass a strategy
+        that never traded at all -- worse than having no gate, because
+        it looks like one.
+        """
         if self.min_paper_trading_days <= 0:
             raise ConfigurationError(
                 f"min_paper_trading_days must be positive, got {self.min_paper_trading_days} -- "
@@ -72,6 +78,9 @@ class PromotionCriteria:
                 raise ConfigurationError(f"{name} must be >= 0, got {getattr(self, name)}")
 
     def to_dict(self) -> dict:
+        """The thresholds as a plain dict, for embedding in a deployment
+        artifact -- which is what makes the bar auditable rather than a
+        matter of recollection."""
         return asdict(self)
 
 
@@ -95,17 +104,32 @@ class PaperTradingRecord:
     metrics: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
+        """The observed paper-trading results as a plain dict, recorded
+        alongside the criteria they were judged against."""
         return asdict(self)
 
 
 @dataclass(frozen=True)
 class PromotionEvaluation:
+    """Verdict of one promotion check, plus the evidence behind it.
+
+    Carries both the criteria applied and the observed record, so what
+    bar a deployment cleared stays auditable long after the fact --
+    a bare pass/fail would not be.
+    """
+
     passed: bool
     failures: tuple
     criteria: dict
     record: dict
 
     def raise_if_failed(self) -> None:
+        """Raise ConfigurationError listing every unmet criterion.
+
+        Reports them all at once rather than the first, so an operator
+        fixes one round of problems instead of discovering them
+        one failed run at a time.
+        """
         if not self.passed:
             raise ConfigurationError(
                 "Paper-trading promotion gate FAILED -- live capital must not be enabled. "

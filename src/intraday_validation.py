@@ -67,10 +67,17 @@ REQUIRED_INTRADAY_COLUMNS = {"open", "high", "low", "close"}
 
 
 class IntradayValidationError(ValueError):
+    """Raised when intraday data is unusable for a replay pass."""
+
     pass
 
 
 def validate_intraday_schema(df: pd.DataFrame) -> None:
+    """Require the OHLC columns an intrabar replay depends on.
+
+    Stricter than the daily validator, which needs only `close`: high
+    and low are what make intrabar touch detection possible at all.
+    """
     if df.empty:
         raise IntradayValidationError("intraday_data is empty.")
     missing = REQUIRED_INTRADAY_COLUMNS - set(df.columns)
@@ -107,6 +114,12 @@ def simulate_single_intraday(
     max_drawdown = 0.0
 
     def _harvest_check(context: MarketContext) -> None:
+        """Sell any lot whose target the bar's HIGH reached.
+
+        Uses high rather than close, which is the whole point of the
+        intraday pass: a target touched and then reversed within the bar
+        is a real fill that a close-only backtest never sees.
+        """
         nonlocal cash
         marketable = [lot for lot in ledger.open_lots if context.high >= lot.target_sell_price]
         for lot in marketable:
@@ -127,6 +140,12 @@ def simulate_single_intraday(
             ledger.close_lot(lot)
 
     def _trigger_check(context: MarketContext) -> None:
+        """Buy if the bar's LOW reached the grid trigger level.
+
+        Fills at the trigger level itself, not the bar's close, since
+        intraday data makes the actual touched limit price knowable.
+        Sizes against that same level for the same reason.
+        """
         nonlocal cash, last_buy_price
         trigger_level = last_buy_price * (1.0 - grid_step)
         if context.low > trigger_level:

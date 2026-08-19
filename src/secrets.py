@@ -56,6 +56,9 @@ class LiveCredentials:
     api_secret_key: str = field(repr=False)
 
     def __repr__(self) -> str:
+        """Redacted representation. __str__ is aliased to this, so no
+        f-string, %-format, .format() call, log record, or traceback
+        frame can expose the raw values."""
         return f"LiveCredentials(api_key_id={REDACTED}, api_secret_key={REDACTED})"
 
     __str__ = __repr__

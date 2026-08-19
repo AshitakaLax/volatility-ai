@@ -121,6 +121,7 @@ class AuditEvent:
     schema_version: int = AUDIT_SCHEMA_VERSION
 
     def to_dict(self) -> dict:
+        """JSON-serializable form of this event, for export or inspection."""
         return {
             "event_id": self.event_id,
             "stream_id": self.stream_id,
@@ -145,6 +146,12 @@ class AuditLog:
     """
 
     def __init__(self, store, deployment_id: str, strategy_id: str, stream_id: str = "default"):
+        """Attach an append-only event log to a durable store.
+
+        Creates the audit tables if absent, so construction is safe to
+        repeat. stream_id partitions independent sequences; separate
+        streams number their events independently.
+        """
         self.store = store
         self.deployment_id = deployment_id
         self.strategy_id = strategy_id
@@ -231,6 +238,8 @@ class AuditLog:
     # --- reading ---
 
     def _row_to_event(self, row) -> AuditEvent:
+        """Rebuild an AuditEvent from a database row, deserializing the
+        JSON payload back into a dict."""
         return AuditEvent(
             event_id=row["event_id"], stream_id=row["stream_id"], sequence=row["sequence"],
             timestamp=row["timestamp"], event_type=EventType(row["event_type"]),
@@ -259,6 +268,7 @@ class AuditLog:
         return [self._row_to_event(r) for r in rows]
 
     def has_event(self, event_id: str) -> bool:
+        """Whether this event id is already recorded on this stream."""
         row = self.store._conn.execute(
             "SELECT 1 FROM audit_events WHERE stream_id = ? AND event_id = ?",
             (self.stream_id, event_id),

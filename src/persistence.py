@@ -104,6 +104,11 @@ class ReconciliationReport:
     quantity_mismatches: dict
 
     def raise_if_mismatched(self) -> None:
+        """Raise ReconciliationError if local and broker state disagree.
+
+        Separate from the comparison itself so a caller can inspect the
+        report without being forced to catch an exception.
+        """
         if not self.agrees:
             raise ReconciliationError(
                 "Persisted ledger state disagrees with broker positions -- "
@@ -124,6 +129,12 @@ class LedgerStore:
     """
 
     def __init__(self, db_path: str = ":memory:"):
+        """Open (creating if needed) the SQLite store and ensure its schema.
+
+        Defaults to an in-memory database, which is convenient for tests
+        but does NOT survive a restart -- pass a real path for anything
+        whose state must be recoverable.
+        """
         self.db_path = db_path
         self._conn = sqlite3.connect(db_path)
         self._conn.row_factory = sqlite3.Row
@@ -136,12 +147,15 @@ class LedgerStore:
             )
 
     def close(self) -> None:
+        """Close the underlying connection. Committed data is unaffected."""
         self._conn.close()
 
     def __enter__(self) -> "LedgerStore":
+        """Support `with LedgerStore(path) as store:`."""
         return self
 
     def __exit__(self, *exc) -> None:
+        """Close on block exit, including on exception."""
         self.close()
 
     @contextmanager
@@ -156,6 +170,14 @@ class LedgerStore:
     # --- revisions ---
 
     def _next_revision(self, conn, operation: str, order_id: Optional[str], detail: str = "") -> int:
+        """Insert a revision row and return its number.
+
+        Takes the caller's open `conn` rather than opening its own, so
+        the revision commits atomically with the mutation it describes --
+        a mutation without its revision, or vice versa, must be
+        impossible. Uses AUTOINCREMENT for true monotonicity: plain
+        SQLite ROWIDs can be reused after a delete.
+        """
         cursor = conn.execute(
             "INSERT INTO revisions (operation, order_id, detail, schema_version) VALUES (?, ?, ?, ?)",
             (operation, order_id, detail, SCHEMA_VERSION),
@@ -163,12 +185,18 @@ class LedgerStore:
         return cursor.lastrowid
 
     def current_revision(self) -> int:
+        """Highest revision number recorded, or 0 if none."""
         row = self._conn.execute("SELECT COALESCE(MAX(revision), 0) AS r FROM revisions").fetchone()
         return row["r"]
 
     # --- lot mutations (each atomic with its revision row) ---
 
     def record_open_lot(self, lot: Lot) -> int:
+        """Persist a newly opened lot; returns its revision number.
+
+        INSERT OR REPLACE keyed on order_id, so re-recording the same
+        lot is idempotent rather than a duplicate-key failure.
+        """
         with self._transaction() as conn:
             revision = self._next_revision(conn, "open_lot", lot.order_id, f"shares={lot.shares}")
             conn.execute(
@@ -214,6 +242,7 @@ class LedgerStore:
     # --- processed events (idempotent recovery) ---
 
     def has_processed(self, event_id: str) -> bool:
+        """Whether this event id has already been applied (Task 4.10)."""
         row = self._conn.execute(
             "SELECT 1 FROM processed_events WHERE event_id = ?", (event_id,)
         ).fetchone()
@@ -300,10 +329,17 @@ class LedgerStore:
             return revision
 
     def load_last_buy_price(self) -> Optional[float]:
+        """The persisted grid reference price, or None if never saved.
+
+        Needed on restart so the grid resumes from the price it last
+        bought at rather than re-anchoring to whatever the market
+        happens to be doing at startup.
+        """
         row = self._conn.execute("SELECT value FROM ledger_meta WHERE key = 'last_buy_price'").fetchone()
         return float(row["value"]) if row and row["value"] is not None else None
 
     def save_last_buy_price(self, price: float) -> None:
+        """Persist the grid reference price, atomic with its revision."""
         with self._transaction() as conn:
             self._next_revision(conn, "last_buy_price", None, str(price))
             conn.execute(

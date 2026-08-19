@@ -43,6 +43,13 @@ from src.exceptions import ReconciliationError
 
 
 class DecisionState(str, Enum):
+    """How far a decision has progressed toward a broker order.
+
+    SUBMITTED is the dangerous middle ground: the decision was durably
+    claimed but no broker reference came back, so whether an order
+    exists is genuinely unknown and must be reconciled, never retried.
+    """
+
     NEW = "NEW"                    # never seen; safe to submit
     SUBMITTED = "SUBMITTED"        # claimed, but no broker reference recorded (outcome unknown)
     ACKNOWLEDGED = "ACKNOWLEDGED"  # claimed and a broker order reference is on file
@@ -50,6 +57,13 @@ class DecisionState(str, Enum):
 
 @dataclass(frozen=True)
 class SubmissionOutcome:
+    """Result of a submit_once call.
+
+    submitted_now distinguishes a real submission from a reused prior
+    one -- the caller must not treat a deduplicated replay as a fresh
+    order.
+    """
+
     decision_id: str
     state: DecisionState
     order_ref: Optional[str]
@@ -66,9 +80,21 @@ class DuplicateOrderGuard:
     """
 
     def __init__(self, store):
+        """Bind the guard to a durable store.
+
+        The store, not this object, is the source of truth -- which is
+        why the guarantee survives process death rather than living in
+        a process-local set.
+        """
         self.store = store
 
     def state_of(self, decision_id: str) -> DecisionState:
+        """Current state of a decision, read from durable storage.
+
+        A claimed decision carrying no broker reference reads as
+        SUBMITTED -- claimed, outcome unknown -- which is exactly the
+        crash-between-claim-and-submit case.
+        """
         if not self.store.has_processed(decision_id):
             return DecisionState.NEW
         return (

@@ -40,8 +40,24 @@ from __future__ import annotations
 
 
 class PerformanceAnalyzer:
+    """Computes end-of-run summary metrics from a ledger.
+
+    Stateless by design -- a static method rather than an instance, so
+    there is no accumulated state to reset between combinations.
+    """
+
     @staticmethod
     def calculate_metrics(ledger, final_portfolio_value: float, initial_cash: float) -> dict:
+        """Summary metrics for one completed run.
+
+        Deliberately does NOT return "Max Drawdown %": the controller
+        tracks that per-bar and assigns it itself, and producing it here
+        too would create two figures under one key that could silently
+        disagree.
+
+        Realized PnL counts only closed lots; open lots contribute to
+        Final Equity through mark-to-market instead.
+        """
         closed_lots = ledger.closed_lots
         open_lots = ledger.open_lots
         total_lots = len(closed_lots) + len(open_lots)

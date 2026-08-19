@@ -23,12 +23,32 @@ from src.tick_validation import TickCheck, TickValidator
 
 
 class LiveBroker(Protocol):
-    def submit_buy(self, symbol: str, trade_value: float) -> Any: ...
-    def submit_sell(self, symbol: str, qty: float, target_price: float) -> Any: ...
+    """Minimal broker interface the live loop depends on.
+
+    A Protocol rather than a base class so any object with these two
+    methods works -- real Alpaca client, paper client, or test double --
+    without inheriting from anything here.
+    """
+
+    def submit_buy(self, symbol: str, trade_value: float) -> Any:
+        """Buy trade_value worth of symbol. Returns the broker's order object."""
+        ...
+
+    def submit_sell(self, symbol: str, qty: float, target_price: float) -> Any:
+        """Sell qty of symbol at target_price. Returns the broker's order object."""
+        ...
 
 
 @dataclass(frozen=True)
 class LiveDecision:
+    """One tick's outcome: what the strategy proposed and what risk allowed.
+
+    triggered=False means no buy is proposed -- either the grid did not
+    trigger, or a halt suppressed it. clamped_trade_value is the amount
+    actually permitted after the risk clamp, and is the only figure a
+    caller should act on.
+    """
+
     context: MarketContext
     triggered: bool
     proposed_trade_value: float = 0.0
@@ -50,6 +70,18 @@ class LiveExecutionLoop:
         live_capital_promotion=None,
         circuit_breaker=None,
     ) -> None:
+        """Assemble the live loop from its collaborators.
+
+        Every collaborator is injectable and defaults to a safe
+        instance, so a caller opts in to risk rather than out of it:
+        an unconfigured RiskManager is unlimited but the OMS still
+        defaults to PAPER mode, and reaching LIVE additionally requires
+        live_capital_promotion (Task 7.7).
+
+        Raises ConfigurationError if config.live.enabled is False --
+        constructing a live loop from a config that does not ask for
+        live execution is a mistake worth failing on, not defaulting.
+        """
         config.validate()
         if not config.live.enabled:
             raise ConfigurationError("live.enabled=False: live execution is disabled")
@@ -129,6 +161,17 @@ class LiveExecutionLoop:
         is_macro_event_day: bool = False,
         macro_surprise_factor: float = 0.0,
     ) -> MarketContext:
+        """Build the per-tick MarketContext the strategy sees.
+
+        Naive timestamps are coerced to UTC rather than rejected, since
+        a broker feed supplying local-naive times is common and silently
+        mixing zones is the worse failure.
+
+        The three macro fields are accepted and forwarded but are not
+        consumed by any strategy in this repository -- see Task 7.9's
+        discovery outcome in CHANGELOG.md. They default to the safe
+        values from overview 5.1.
+        """
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         return MarketContext(
@@ -195,6 +238,13 @@ class LiveExecutionLoop:
         )
 
     def submit_buy(self, decision: LiveDecision) -> Any:
+        """Submit the buy a decision authorized, if any.
+
+        Submits clamped_trade_value -- the risk-approved amount -- never
+        the strategy's raw proposal. Returns None without contacting the
+        broker when the clamped value is zero, which is how a suppressed
+        or fully-clamped decision ends quietly rather than as an error.
+        """
         if self.broker is None:
             raise RuntimeError("live broker is not connected")
         if decision.clamped_trade_value <= 0:
@@ -202,6 +252,12 @@ class LiveExecutionLoop:
         return self.broker.submit_buy(self.config.backtest.symbol, decision.clamped_trade_value)
 
     def submit_sell(self, qty: float, target_price: float) -> Any:
+        """Submit a harvest sell for an open lot.
+
+        Callers must have already cleared this quantity and price
+        through src/no_loss_guard.validate_sell (Task 7.15); this method
+        does not re-check, because the guard exists in exactly one place.
+        """
         if self.broker is None:
             raise RuntimeError("live broker is not connected")
         return self.broker.submit_sell(self.config.backtest.symbol, float(qty), float(target_price))
