@@ -42,9 +42,9 @@ side, invents a fill, or rewrites cost basis.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterator, Optional
 
 from src.exceptions import PersistenceError, ReconciliationError
 from src.ledger import AssetLotLedger, Lot
@@ -150,7 +150,7 @@ class LedgerStore:
         """Close the underlying connection. Committed data is unaffected."""
         self._conn.close()
 
-    def __enter__(self) -> "LedgerStore":
+    def __enter__(self) -> LedgerStore:
         """Support `with LedgerStore(path) as store:`."""
         return self
 
@@ -169,7 +169,7 @@ class LedgerStore:
 
     # --- revisions ---
 
-    def _next_revision(self, conn, operation: str, order_id: Optional[str], detail: str = "") -> int:
+    def _next_revision(self, conn, operation: str, order_id: str | None, detail: str = "") -> int:
         """Insert a revision row and return its number.
 
         Takes the caller's open `conn` rather than opening its own, so
@@ -204,8 +204,14 @@ class LedgerStore:
                 "(order_id, symbol, buy_price, shares, profit_target, target_sell_price, status, schema_version, revision) "
                 "VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)",
                 (
-                    lot.order_id, lot.symbol, lot.buy_price, lot.shares, lot.profit_target,
-                    lot.target_sell_price, SCHEMA_VERSION, revision,
+                    lot.order_id,
+                    lot.symbol,
+                    lot.buy_price,
+                    lot.shares,
+                    lot.profit_target,
+                    lot.target_sell_price,
+                    SCHEMA_VERSION,
+                    revision,
                 ),
             )
             return revision
@@ -225,7 +231,9 @@ class LedgerStore:
         """
         status = "open" if is_open else "closed"
         with self._transaction() as conn:
-            revision = self._next_revision(conn, "update_lot", lot.order_id, f"shares={lot.shares},status={status}")
+            revision = self._next_revision(
+                conn, "update_lot", lot.order_id, f"shares={lot.shares},status={status}"
+            )
             cursor = conn.execute(
                 "UPDATE ledger_lots SET shares = ?, status = ?, revision = ? WHERE order_id = ?",
                 (lot.shares, status, revision, lot.order_id),
@@ -248,12 +256,16 @@ class LedgerStore:
         ).fetchone()
         return row is not None
 
-    def record_processed_event(self, event_id: str, event_kind: str = "event", result_ref: str = None) -> bool:
+    def record_processed_event(
+        self, event_id: str, event_kind: str = "event", result_ref: str | None = None
+    ) -> bool:
         """Returns True if newly recorded, False if already present.
         The PRIMARY KEY makes replay a no-op at the database level, so
         idempotency doesn't depend on callers checking first."""
         with self._transaction() as conn:
-            if conn.execute("SELECT 1 FROM processed_events WHERE event_id = ?", (event_id,)).fetchone():
+            if conn.execute(
+                "SELECT 1 FROM processed_events WHERE event_id = ?", (event_id,)
+            ).fetchone():
                 return False
             revision = self._next_revision(conn, "processed_event", None, event_id)
             conn.execute(
@@ -263,7 +275,7 @@ class LedgerStore:
             )
             return True
 
-    def get_event_result_ref(self, event_id: str) -> Optional[str]:
+    def get_event_result_ref(self, event_id: str) -> str | None:
         """The broker/client order id a previously-recorded decision
         resolved to, or None if the decision is unknown."""
         row = self._conn.execute(
@@ -280,10 +292,13 @@ class LedgerStore:
         with self._transaction() as conn:
             self._next_revision(conn, "event_result_ref", None, f"{event_id}={result_ref}")
             cursor = conn.execute(
-                "UPDATE processed_events SET result_ref = ? WHERE event_id = ?", (result_ref, event_id)
+                "UPDATE processed_events SET result_ref = ? WHERE event_id = ?",
+                (result_ref, event_id),
             )
             if cursor.rowcount == 0:
-                raise PersistenceError(f"No processed event with id {event_id!r} to attach a result to")
+                raise PersistenceError(
+                    f"No processed event with id {event_id!r} to attach a result to"
+                )
 
     # --- recovery ---
 
@@ -292,13 +307,14 @@ class LedgerStore:
         calling it repeatedly yields equivalent ledgers and mutates
         nothing."""
         ledger = AssetLotLedger()
-        rows = self._conn.execute(
-            "SELECT * FROM ledger_lots ORDER BY revision ASC"
-        ).fetchall()
+        rows = self._conn.execute("SELECT * FROM ledger_lots ORDER BY revision ASC").fetchall()
         for row in rows:
             lot = Lot(
-                order_id=row["order_id"], symbol=row["symbol"], buy_price=row["buy_price"],
-                shares=row["shares"], profit_target=row["profit_target"],
+                order_id=row["order_id"],
+                symbol=row["symbol"],
+                buy_price=row["buy_price"],
+                shares=row["shares"],
+                profit_target=row["profit_target"],
             )
             # target_sell_price is recomputed identically by Lot.__post_init__
             # from the persisted buy_price/profit_target; assert rather than
@@ -314,28 +330,32 @@ class LedgerStore:
                 ledger.closed_lots.append(lot)
         return ledger
 
-    def get_meta(self, key: str) -> Optional[str]:
+    def get_meta(self, key: str) -> str | None:
         """Generic durable key/value read. Added for Task 7.8's halt
         state, which must survive a restart; kept generic rather than
         adding another single-purpose accessor pair."""
         row = self._conn.execute("SELECT value FROM ledger_meta WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else None
 
-    def set_meta(self, key: str, value: Optional[str]) -> int:
+    def set_meta(self, key: str, value: str | None) -> int:
         """Generic durable key/value write, atomic with its revision row."""
         with self._transaction() as conn:
             revision = self._next_revision(conn, "set_meta", None, f"{key}={value}")
-            conn.execute("INSERT OR REPLACE INTO ledger_meta (key, value) VALUES (?, ?)", (key, value))
+            conn.execute(
+                "INSERT OR REPLACE INTO ledger_meta (key, value) VALUES (?, ?)", (key, value)
+            )
             return revision
 
-    def load_last_buy_price(self) -> Optional[float]:
+    def load_last_buy_price(self) -> float | None:
         """The persisted grid reference price, or None if never saved.
 
         Needed on restart so the grid resumes from the price it last
         bought at rather than re-anchoring to whatever the market
         happens to be doing at startup.
         """
-        row = self._conn.execute("SELECT value FROM ledger_meta WHERE key = 'last_buy_price'").fetchone()
+        row = self._conn.execute(
+            "SELECT value FROM ledger_meta WHERE key = 'last_buy_price'"
+        ).fetchone()
         return float(row["value"]) if row and row["value"] is not None else None
 
     def save_last_buy_price(self, price: float) -> None:
@@ -343,7 +363,8 @@ class LedgerStore:
         with self._transaction() as conn:
             self._next_revision(conn, "last_buy_price", None, str(price))
             conn.execute(
-                "INSERT OR REPLACE INTO ledger_meta (key, value) VALUES ('last_buy_price', ?)", (str(price),)
+                "INSERT OR REPLACE INTO ledger_meta (key, value) VALUES ('last_buy_price', ?)",
+                (str(price),),
             )
 
     # --- reconciliation (2.7 precedence -- reports, never auto-resolves) ---
@@ -366,7 +387,10 @@ class LedgerStore:
         }
         agrees = not (missing_locally or missing_at_broker or quantity_mismatches)
         return ReconciliationReport(
-            agrees=agrees, local_shares=local, broker_shares=dict(broker_positions),
-            missing_locally=missing_locally, missing_at_broker=missing_at_broker,
+            agrees=agrees,
+            local_shares=local,
+            broker_shares=dict(broker_positions),
+            missing_locally=missing_locally,
+            missing_at_broker=missing_at_broker,
             quantity_mismatches=quantity_mismatches,
         )

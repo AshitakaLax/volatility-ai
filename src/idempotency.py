@@ -53,7 +53,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Callable, Hashable, MutableSet, Optional, TypeVar
+from collections.abc import Callable, Hashable, MutableSet
+from typing import TypeVar
 
 logger = logging.getLogger("Optimizer")
 
@@ -95,8 +96,12 @@ def compute_decision_id(
     if sequence_number < 0:
         raise ValueError(f"sequence_number must be non-negative, got {sequence_number}")
     parts = [
-        str(deployment_id), str(strategy_id), str(symbol),
-        str(market_event_id), str(decision_type), str(int(sequence_number)),
+        str(deployment_id),
+        str(strategy_id),
+        str(symbol),
+        str(market_event_id),
+        str(decision_type),
+        str(int(sequence_number)),
     ]
     for part in parts:
         if _FIELD_SEPARATOR in part:
@@ -111,7 +116,7 @@ def compute_decision_id(
 class ProcessedEventStore:
     """Applies a given event's effect at most once per event_id."""
 
-    def __init__(self, backend: Optional[MutableSet] = None):
+    def __init__(self, backend: MutableSet | None = None):
         """Create a store, optionally over an injected backend.
 
         The backend holds the processed-id set and is what a caller
@@ -125,7 +130,9 @@ class ProcessedEventStore:
         """Whether this event's effect has already been applied."""
         return event_id in self._processed
 
-    def apply_once(self, event_id: Hashable, apply_fn: Callable[[], T], *, event_kind: str = "event") -> Optional[T]:
+    def apply_once(
+        self, event_id: Hashable, apply_fn: Callable[[], T], *, event_kind: str = "event"
+    ) -> T | None:
         """Calls apply_fn() and returns its result exactly once per
         event_id. A repeated event_id returns the cached result from
         the first application without calling apply_fn again -- the
@@ -145,7 +152,9 @@ class ProcessedEventStore:
         (apply_fn not re-running), not about the return value being
         recoverable across a restart."""
         if event_id in self._processed:
-            logger.info(f"Duplicate {event_kind} event_id={event_id!r} -- already applied, skipping re-application.")
+            logger.info(
+                f"Duplicate {event_kind} event_id={event_id!r} -- already applied, skipping re-application."
+            )
             return self._results.get(event_id)
         result = apply_fn()
         self._processed.add(event_id)

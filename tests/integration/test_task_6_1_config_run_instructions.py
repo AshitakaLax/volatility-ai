@@ -18,7 +18,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def _extract_between(text: str, start_marker: str, end_marker: str) -> str:
     assert start_marker in text, f"Run_Instructions no longer contains {start_marker!r}"
     after_start = text.split(start_marker, 1)[1]
-    assert end_marker in after_start, f"Run_Instructions no longer contains {end_marker!r} after {start_marker!r}"
+    assert end_marker in after_start, (
+        f"Run_Instructions no longer contains {end_marker!r} after {start_marker!r}"
+    )
     return after_start.split(end_marker, 1)[0].strip()
 
 
@@ -75,11 +77,24 @@ def test_every_run_sweep_kwarg_named_in_run_instructions_actually_exists():
         "\n\nAdditional, related tools beyond run_sweep() itself:",
     )
     named_params = [
-        "cost_model", "risk_manager", "on_flat_reentry", "symbol", "initial_cash",
-        "n_jobs", "search_strategy", "search_seed", "search_direction",
-        "rank_by", "tie_break_by", "return_full_results",
+        "cost_model",
+        "risk_manager",
+        "on_flat_reentry",
+        "symbol",
+        "initial_cash",
+        "n_jobs",
+        "search_strategy",
+        "search_seed",
+        "search_direction",
+        "rank_by",
+        "tie_break_by",
+        "return_full_results",
     ]
     real_params = set(inspect.signature(OptimizationController.run_sweep).parameters.keys())
     for param in named_params:
-        assert param in reference_section, f"{param} is missing from Run_Instructions' own capabilities reference"
-        assert param in real_params, f"Run_Instructions documents {param}, but it isn't a real run_sweep() parameter"
+        assert param in reference_section, (
+            f"{param} is missing from Run_Instructions' own capabilities reference"
+        )
+        assert param in real_params, (
+            f"Run_Instructions documents {param}, but it isn't a real run_sweep() parameter"
+        )

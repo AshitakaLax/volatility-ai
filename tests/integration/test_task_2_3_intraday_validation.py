@@ -42,14 +42,56 @@ PROFIT_TARGET = 0.06
 ALLOCATION_PCT = 0.05
 
 DAILY_ROWS = [
-    {"timestamp": "2024-01-02T00:00:00+00:00", "open": 100.0, "high": 100.1, "low": 99.9, "close": 100.0, "volume": 1_000_000},
-    {"timestamp": "2024-01-03T00:00:00+00:00", "open": 100.0, "high": 100.1, "low": 94.905, "close": 95.0, "volume": 1_000_000},
-    {"timestamp": "2024-01-04T00:00:00+00:00", "open": 95.0, "high": 99.5995, "low": 94.905, "close": 99.5, "volume": 1_000_000},
+    {
+        "timestamp": "2024-01-02T00:00:00+00:00",
+        "open": 100.0,
+        "high": 100.1,
+        "low": 99.9,
+        "close": 100.0,
+        "volume": 1_000_000,
+    },
+    {
+        "timestamp": "2024-01-03T00:00:00+00:00",
+        "open": 100.0,
+        "high": 100.1,
+        "low": 94.905,
+        "close": 95.0,
+        "volume": 1_000_000,
+    },
+    {
+        "timestamp": "2024-01-04T00:00:00+00:00",
+        "open": 95.0,
+        "high": 99.5995,
+        "low": 94.905,
+        "close": 99.5,
+        "volume": 1_000_000,
+    },
 ]
 INTRADAY_ROWS = [
-    {"timestamp": "2024-01-02T00:00:00+00:00", "open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0, "volume": 100_000},
-    {"timestamp": "2024-01-02T00:01:00+00:00", "open": 100.0, "high": 100.2, "low": 94.5, "close": 95.0, "volume": 100_000},
-    {"timestamp": "2024-01-02T00:02:00+00:00", "open": 95.0, "high": 106.0, "low": 98.5, "close": 99.5, "volume": 100_000},
+    {
+        "timestamp": "2024-01-02T00:00:00+00:00",
+        "open": 100.0,
+        "high": 100.0,
+        "low": 100.0,
+        "close": 100.0,
+        "volume": 100_000,
+    },
+    {
+        "timestamp": "2024-01-02T00:01:00+00:00",
+        "open": 100.0,
+        "high": 100.2,
+        "low": 94.5,
+        "close": 95.0,
+        "volume": 100_000,
+    },
+    {
+        "timestamp": "2024-01-02T00:02:00+00:00",
+        "open": 95.0,
+        "high": 106.0,
+        "low": 98.5,
+        "close": 99.5,
+        "volume": 100_000,
+    },
 ]
 
 
@@ -62,13 +104,19 @@ def _to_df(rows):
 
 def test_intraday_pass_catches_reversal_daily_close_only_misses():
     daily_df = _to_df(DAILY_ROWS)
-    daily_result = OptimizationController(historical_data=daily_df).run_sweep(
-        grid_steps=[GRID_STEP],
-        profit_targets=[PROFIT_TARGET],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": ALLOCATION_PCT}],
-    ).iloc[0]
-    assert daily_result["Closed Trade Count"] == 0, "Daily close-only pass must NOT record the reversed sell"
+    daily_result = (
+        OptimizationController(historical_data=daily_df)
+        .run_sweep(
+            grid_steps=[GRID_STEP],
+            profit_targets=[PROFIT_TARGET],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": ALLOCATION_PCT}],
+        )
+        .iloc[0]
+    )
+    assert daily_result["Closed Trade Count"] == 0, (
+        "Daily close-only pass must NOT record the reversed sell"
+    )
     assert daily_result["Open Trade Count"] == 1
 
     intraday_df = _to_df(INTRADAY_ROWS)
@@ -79,7 +127,9 @@ def test_intraday_pass_catches_reversal_daily_close_only_misses():
         strategy_class=FixedPortfolioPercentage,
         strategy_params={"allocation_pct": ALLOCATION_PCT},
     )
-    assert intraday_metrics["Closed Trade Count"] == 1, "Intraday pass must catch the intrabar touch via high"
+    assert intraday_metrics["Closed Trade Count"] == 1, (
+        "Intraday pass must catch the intrabar touch via high"
+    )
     assert intraday_metrics["Open Trade Count"] == 0
 
 
@@ -89,15 +139,20 @@ def test_run_sweep_default_behavior_unaffected_by_intraday_module_existing():
     from tests.fixtures.regression_baseline import BASELINE
 
     df = pd.read_csv(
-        Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv", parse_dates=["timestamp"]
+        Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv",
+        parse_dates=["timestamp"],
     )
     df.set_index("timestamp", inplace=True)
-    result = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[BASELINE["Grid Step"]],
-        profit_targets=[BASELINE["Profit Target"]],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
-    ).iloc[0]
+    result = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+        )
+        .iloc[0]
+    )
     for key, expected in BASELINE.items():
         assert result[key] == expected
 
@@ -108,7 +163,13 @@ def test_validate_finalists_intraday_surfaces_daily_vs_intraday_comparison():
     controller = OptimizationController(historical_data=daily_df)
 
     comparison = controller.validate_finalists_intraday(
-        finalist_params=[{"grid_step": GRID_STEP, "profit_target": PROFIT_TARGET, "strategy_params": {"allocation_pct": ALLOCATION_PCT}}],
+        finalist_params=[
+            {
+                "grid_step": GRID_STEP,
+                "profit_target": PROFIT_TARGET,
+                "strategy_params": {"allocation_pct": ALLOCATION_PCT},
+            }
+        ],
         intraday_data=intraday_df,
         strategy_class=FixedPortfolioPercentage,
     )
@@ -120,7 +181,9 @@ def test_validate_finalists_intraday_surfaces_daily_vs_intraday_comparison():
 
 
 def test_missing_ohlc_columns_rejected():
-    close_only = pd.DataFrame({"close": [100.0, 101.0]}, index=pd.date_range("2024-01-01", periods=2, tz="UTC"))
+    close_only = pd.DataFrame(
+        {"close": [100.0, 101.0]}, index=pd.date_range("2024-01-01", periods=2, tz="UTC")
+    )
     with pytest.raises(IntradayValidationError, match="missing required columns"):
         intraday_validation.validate_intraday_schema(close_only)
 
@@ -145,13 +208,19 @@ def test_sell_first_and_buy_first_agree_when_bar_is_unambiguous():
     # genuinely ambiguous bars.
     intraday_df = _to_df(INTRADAY_ROWS)
     sell_first = simulate_single_intraday(
-        intraday_data=intraday_df, grid_step=GRID_STEP, profit_target=PROFIT_TARGET,
-        strategy_class=FixedPortfolioPercentage, strategy_params={"allocation_pct": ALLOCATION_PCT},
+        intraday_data=intraday_df,
+        grid_step=GRID_STEP,
+        profit_target=PROFIT_TARGET,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params={"allocation_pct": ALLOCATION_PCT},
         intrabar_priority="sell_first",
     )
     buy_first = simulate_single_intraday(
-        intraday_data=intraday_df, grid_step=GRID_STEP, profit_target=PROFIT_TARGET,
-        strategy_class=FixedPortfolioPercentage, strategy_params={"allocation_pct": ALLOCATION_PCT},
+        intraday_data=intraday_df,
+        grid_step=GRID_STEP,
+        profit_target=PROFIT_TARGET,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params={"allocation_pct": ALLOCATION_PCT},
         intrabar_priority="buy_first",
     )
     assert sell_first["Closed Trade Count"] == buy_first["Closed Trade Count"]

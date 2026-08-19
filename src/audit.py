@@ -33,10 +33,9 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
 
 from src.exceptions import PersistenceError
 from src.secrets import redact_secrets
@@ -68,16 +67,43 @@ class EventType(str, Enum):
 # audit trail you discover is incomplete after an incident is worth
 # very little.
 REQUIRED_PAYLOAD_FIELDS: dict = {
-    EventType.MARKET_CONTEXT: ("timestamp", "symbol", "open", "high", "low", "close", "volume", "bar_event_id"),
+    EventType.MARKET_CONTEXT: (
+        "timestamp",
+        "symbol",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "bar_event_id",
+    ),
     EventType.STRATEGY_DECISION: ("decision_id", "strategy_id", "proposed_action", "parameters"),
     EventType.RISK_DECISION: ("decision_id", "allowed", "reason", "limits"),
-    EventType.ORDER_INTENT: ("intent_id", "decision_id", "symbol", "side", "quantity", "limit_price"),
+    EventType.ORDER_INTENT: (
+        "intent_id",
+        "decision_id",
+        "symbol",
+        "side",
+        "quantity",
+        "limit_price",
+    ),
     EventType.ORDER_STATUS: ("intent_id", "broker_order_id", "status", "cumulative_filled_qty"),
     EventType.FILL: (
-        "fill_id", "order_id", "incremental_fill_qty", "cumulative_filled_qty",
-        "price", "fees", "timestamp",
+        "fill_id",
+        "order_id",
+        "incremental_fill_qty",
+        "cumulative_filled_qty",
+        "price",
+        "fees",
+        "timestamp",
     ),
-    EventType.LEDGER_MUTATION: ("event_id", "lot_id", "mutation_type", "quantity_delta", "cash_delta"),
+    EventType.LEDGER_MUTATION: (
+        "event_id",
+        "lot_id",
+        "mutation_type",
+        "quantity_delta",
+        "cash_delta",
+    ),
     EventType.RECONCILIATION: ("correlation_id", "local_state", "broker_state", "resolution"),
     EventType.RISK_HALT: ("halt_reason", "previous_state", "new_state"),
     EventType.STARTUP: ("deployment_id", "runtime_state", "reconciliation_result"),
@@ -117,7 +143,7 @@ class AuditEvent:
     deployment_id: str
     strategy_id: str
     payload: dict
-    correlation_id: Optional[str] = None
+    correlation_id: str | None = None
     schema_version: int = AUDIT_SCHEMA_VERSION
 
     def to_dict(self) -> dict:
@@ -174,9 +200,9 @@ class AuditLog:
         event_id: str,
         event_type: EventType,
         payload: dict,
-        correlation_id: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
-    ) -> Optional[AuditEvent]:
+        correlation_id: str | None = None,
+        timestamp: datetime | None = None,
+    ) -> AuditEvent | None:
         """Append one event, durably.
 
         Returns the recorded AuditEvent, or None if this event_id was
@@ -201,7 +227,9 @@ class AuditLog:
 
         safe_payload = redact_secrets(payload)
         try:
-            serialized = json.dumps(safe_payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            serialized = json.dumps(
+                safe_payload, sort_keys=True, separators=(",", ":"), allow_nan=False
+            )
         except (TypeError, ValueError) as e:
             raise PersistenceError(
                 f"{event_type.value} audit payload is not JSON-serializable: {e}"
@@ -214,7 +242,9 @@ class AuditLog:
                 (self.stream_id, event_id),
             ).fetchone()
             if existing:
-                logger.info(f"Duplicate audit event_id={event_id!r} on stream {self.stream_id!r} -- not re-recording.")
+                logger.info(
+                    f"Duplicate audit event_id={event_id!r} on stream {self.stream_id!r} -- not re-recording."
+                )
                 return None
 
             sequence = self._next_sequence(conn)
@@ -223,16 +253,29 @@ class AuditLog:
                 "schema_version, deployment_id, strategy_id, correlation_id, payload) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    event_id, self.stream_id, sequence, when, event_type.value,
-                    AUDIT_SCHEMA_VERSION, self.deployment_id, self.strategy_id,
-                    correlation_id, serialized,
+                    event_id,
+                    self.stream_id,
+                    sequence,
+                    when,
+                    event_type.value,
+                    AUDIT_SCHEMA_VERSION,
+                    self.deployment_id,
+                    self.strategy_id,
+                    correlation_id,
+                    serialized,
                 ),
             )
 
         return AuditEvent(
-            event_id=event_id, stream_id=self.stream_id, sequence=sequence, timestamp=when,
-            event_type=event_type, deployment_id=self.deployment_id, strategy_id=self.strategy_id,
-            payload=safe_payload, correlation_id=correlation_id,
+            event_id=event_id,
+            stream_id=self.stream_id,
+            sequence=sequence,
+            timestamp=when,
+            event_type=event_type,
+            deployment_id=self.deployment_id,
+            strategy_id=self.strategy_id,
+            payload=safe_payload,
+            correlation_id=correlation_id,
         )
 
     # --- reading ---
@@ -241,10 +284,15 @@ class AuditLog:
         """Rebuild an AuditEvent from a database row, deserializing the
         JSON payload back into a dict."""
         return AuditEvent(
-            event_id=row["event_id"], stream_id=row["stream_id"], sequence=row["sequence"],
-            timestamp=row["timestamp"], event_type=EventType(row["event_type"]),
-            deployment_id=row["deployment_id"], strategy_id=row["strategy_id"],
-            payload=json.loads(row["payload"]), correlation_id=row["correlation_id"],
+            event_id=row["event_id"],
+            stream_id=row["stream_id"],
+            sequence=row["sequence"],
+            timestamp=row["timestamp"],
+            event_type=EventType(row["event_type"]),
+            deployment_id=row["deployment_id"],
+            strategy_id=row["strategy_id"],
+            payload=json.loads(row["payload"]),
+            correlation_id=row["correlation_id"],
             schema_version=row["schema_version"],
         )
 
@@ -253,7 +301,8 @@ class AuditLog:
         never by timestamp, which cannot break ties within a clock tick
         and can be moved by a clock adjustment."""
         rows = self.store._conn.execute(
-            "SELECT * FROM audit_events WHERE stream_id = ? ORDER BY sequence ASC", (self.stream_id,)
+            "SELECT * FROM audit_events WHERE stream_id = ? ORDER BY sequence ASC",
+            (self.stream_id,),
         ).fetchall()
         return [self._row_to_event(r) for r in rows]
 

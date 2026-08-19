@@ -57,8 +57,8 @@ import pandas as pd
 from src.cost_models import TransactionCostModel, ZeroCostModel
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext
-from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.no_loss_guard import NoLossViolation, validate_sell
+from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 
 logger = logging.getLogger("Optimizer")
@@ -100,7 +100,9 @@ def simulate_single_intraday(
     invariant, and cost-model application (Task 2.2) all apply
     identically to the daily path."""
     if intrabar_priority not in ("sell_first", "buy_first"):
-        raise ValueError(f"intrabar_priority must be 'sell_first' or 'buy_first', got {intrabar_priority!r}")
+        raise ValueError(
+            f"intrabar_priority must be 'sell_first' or 'buy_first', got {intrabar_priority!r}"
+        )
     cost_model = cost_model if cost_model is not None else ZeroCostModel()
 
     ledger = AssetLotLedger()
@@ -125,7 +127,9 @@ def simulate_single_intraday(
         for lot in marketable:
             exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
             if exec_res.get("status") != OrderStatus.FILLED:
-                logger.warning(f"[intraday] Sell not filled for lot {lot.order_id}: status={exec_res.get('status')}")
+                logger.warning(
+                    f"[intraday] Sell not filled for lot {lot.order_id}: status={exec_res.get('status')}"
+                )
                 continue
             filled_qty = exec_res["filled_qty"]
             filled_price = exec_res["filled_avg_price"]
@@ -133,7 +137,9 @@ def simulate_single_intraday(
             # this block previously carried its own duplicate copy of
             # the comparison.
             try:
-                economics = validate_sell(lot, filled_qty, filled_price, cost_model, context=context)
+                economics = validate_sell(
+                    lot, filled_qty, filled_price, cost_model, context=context
+                )
             except NoLossViolation:
                 continue  # already logged by the guard
             cash += economics.net_sell_proceeds

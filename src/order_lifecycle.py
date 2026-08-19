@@ -37,7 +37,6 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
 
 from src.exceptions import ExecutionError
 
@@ -161,13 +160,13 @@ class OrderRecord:
     client_order_id: str
     requested_qty: float
     symbol: str = ""
-    broker_order_id: Optional[str] = None
+    broker_order_id: str | None = None
     state: OrderState = OrderState.CREATED
     filled_qty: float = 0.0
     avg_fill_price: float = 0.0
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    submitted_at: Optional[datetime] = None
-    last_update_at: Optional[datetime] = None
+    submitted_at: datetime | None = None
+    last_update_at: datetime | None = None
 
     @property
     def remaining_qty(self) -> float:
@@ -190,7 +189,7 @@ class OrderRecord:
         """
         return new_state in ALLOWED_TRANSITIONS[self.state]
 
-    def transition_to(self, new_state: OrderState, *, at: Optional[datetime] = None) -> None:
+    def transition_to(self, new_state: OrderState, *, at: datetime | None = None) -> None:
         """Move to new_state, enforcing the transition table.
 
         Raises ExecutionError WITHOUT mutating any field on an invalid
@@ -217,7 +216,7 @@ class OrderRecord:
         self.last_update_at = now
 
     def resolve_from_unknown(
-        self, new_state: OrderState, *, resolution_source: str, at: Optional[datetime] = None
+        self, new_state: OrderState, *, resolution_source: str, at: datetime | None = None
     ) -> None:
         """The ONLY path out of UNKNOWN, per the transition contract's
         "only via an explicit reconciliation/query resolution (Task
@@ -248,10 +247,10 @@ class OrderRecord:
     def apply_broker_update(
         self,
         broker_status,
-        filled_qty: Optional[float] = None,
-        avg_fill_price: Optional[float] = None,
-        broker_order_id: Optional[str] = None,
-        at: Optional[datetime] = None,
+        filled_qty: float | None = None,
+        avg_fill_price: float | None = None,
+        broker_order_id: str | None = None,
+        at: datetime | None = None,
     ) -> OrderState:
         """Apply one broker status update: map the status, enforce the
         transition, then record quantities.

@@ -9,7 +9,16 @@ later).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Import for type checkers only. cost_models is imported by nearly
+    # everything, so keeping this out of the runtime import graph avoids
+    # coupling the cost model to MarketContext for callers that never use
+    # the volatility-aware path. market_context imports nothing from src,
+    # so there is no cycle either way -- this is about keeping the runtime
+    # dependency surface small, not about breaking one.
+    from src.market_context import MarketContext
 
 
 class TransactionCostModel(ABC):
@@ -28,7 +37,11 @@ class TransactionCostModel(ABC):
 
     @abstractmethod
     def apply_buy(
-        self, price: float, qty: float, context: Optional["MarketContext"] = None, prev_close: Optional[float] = None
+        self,
+        price: float,
+        qty: float,
+        context: MarketContext | None = None,
+        prev_close: float | None = None,
     ) -> tuple[float, float]:
         """Returns (effective_fill_price, cost). Pure calculation --
         does not mutate portfolio, ledger, or order state. context/
@@ -37,7 +50,11 @@ class TransactionCostModel(ABC):
 
     @abstractmethod
     def apply_sell(
-        self, price: float, qty: float, context: Optional["MarketContext"] = None, prev_close: Optional[float] = None
+        self,
+        price: float,
+        qty: float,
+        context: MarketContext | None = None,
+        prev_close: float | None = None,
     ) -> tuple[float, float]:
         """Returns (effective_fill_price, cost) for a sell.
 
@@ -105,7 +122,9 @@ class DynamicSlippageModel(TransactionCostModel):
     7.5" -- deliberately not done here.
     """
 
-    def __init__(self, base_bps: float = 0.0, vol_multiplier: float = 1.0, commission_per_trade: float = 0.0):
+    def __init__(
+        self, base_bps: float = 0.0, vol_multiplier: float = 1.0, commission_per_trade: float = 0.0
+    ):
         """base_bps is the floor charged even on a flat bar.
         vol_multiplier scales the volatility component: the bar's
         absolute percentage move is converted to bps and multiplied by

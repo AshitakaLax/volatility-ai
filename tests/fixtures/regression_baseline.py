@@ -101,17 +101,17 @@ def run_baseline_sweep() -> dict:
 # not a placeholder.
 # ----------------------------------------------------------------------
 BASELINE: dict | None = {
-    'Grid Step': 0.01,
-    'Profit Target': 0.005,
-    'allocation_pct': 0.05,
-    'Final Equity': 100099.81489816227,
-    'Total Return %': 0.09981489816226485,
-    'Realized PnL': 99.81489816224163,
-    'Trade Count': 4.0,
-    'Closed Trade Count': 4.0,
-    'Open Trade Count': 0.0,
-    'Capital Velocity Index': 1.0,
-    'Max Drawdown %': 0.4430668810465577,
+    "Grid Step": 0.01,
+    "Profit Target": 0.005,
+    "allocation_pct": 0.05,
+    "Final Equity": 100099.81489816227,
+    "Total Return %": 0.09981489816226485,
+    "Realized PnL": 99.81489816224163,
+    "Trade Count": 4.0,
+    "Closed Trade Count": 4.0,
+    "Open Trade Count": 0.0,
+    "Capital Velocity Index": 1.0,
+    "Max Drawdown %": 0.4430668810465577,
 }
 
 

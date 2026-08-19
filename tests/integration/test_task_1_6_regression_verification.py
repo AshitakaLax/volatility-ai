@@ -22,7 +22,9 @@ FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "regression_oh
 
 
 def test_fixed_portfolio_percentage_baseline_value_for_value_identical_post_phase_1():
-    assert BASELINE is not None, "Task 0.1's baseline must be captured for this comparison to mean anything"
+    assert BASELINE is not None, (
+        "Task 0.1's baseline must be captured for this comparison to mean anything"
+    )
 
     df = pd.read_csv(FIXTURE_PATH, parse_dates=["timestamp"])
     df.set_index("timestamp", inplace=True)
@@ -60,4 +62,6 @@ def test_no_collision_between_controller_and_analyzer_drawdown_figures():
     # state.max_drawdown * 100.0, with nothing else able to have
     # silently written or overwritten it in between.
     assert "Max Drawdown %" in row
-    assert row["Max Drawdown %"] == 0.4430668810465577  # matches Task 0.1's captured baseline exactly
+    assert (
+        row["Max Drawdown %"] == 0.4430668810465577
+    )  # matches Task 0.1's captured baseline exactly

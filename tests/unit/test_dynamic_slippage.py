@@ -28,9 +28,16 @@ from tests.fixtures.regression_baseline import BASELINE
 def _context(close: float) -> MarketContext:
     return MarketContext(
         timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
-        open=close, high=close, low=close, close=close,
-        cash=100_000.0, equity=100_000.0, peak_equity=100_000.0,
-        drawdown=0.0, open_lot_count=0, bar_index=0,
+        open=close,
+        high=close,
+        low=close,
+        close=close,
+        cash=100_000.0,
+        equity=100_000.0,
+        peak_equity=100_000.0,
+        drawdown=0.0,
+        open_lot_count=0,
+        bar_index=0,
     )
 
 
@@ -42,10 +49,12 @@ def _spread(model, prev_close, close, price=100.0):
 
 def test_large_single_bar_move_produces_a_visibly_wider_spread():
     model = DynamicSlippageModel(base_bps=5.0, vol_multiplier=1.0)
-    calm = _spread(model, prev_close=100.0, close=100.1)   # 0.1% move
+    calm = _spread(model, prev_close=100.0, close=100.1)  # 0.1% move
     volatile = _spread(model, prev_close=100.0, close=105.0)  # 5% move
     assert volatile > calm
-    assert volatile > calm * 10, f"Expected a visibly wider spread; got calm={calm}, volatile={volatile}"
+    assert volatile > calm * 10, (
+        f"Expected a visibly wider spread; got calm={calm}, volatile={volatile}"
+    )
 
 
 def test_spread_scales_monotonically_with_bar_move():
@@ -132,13 +141,19 @@ def test_slippage_commission_model_ignores_context_and_prev_close():
 
 
 def test_regression_baseline_unchanged_after_threading_context_through():
-    df = pd.read_csv("tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]).set_index("timestamp")
-    row = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[BASELINE["Grid Step"]],
-        profit_targets=[BASELINE["Profit Target"]],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
-    ).iloc[0]
+    df = pd.read_csv("tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]).set_index(
+        "timestamp"
+    )
+    row = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+        )
+        .iloc[0]
+    )
     for key, expected in BASELINE.items():
         assert row[key] == expected
 
@@ -160,11 +175,15 @@ def test_dynamic_slippage_eats_thin_margins_and_the_no_loss_check_blocks_those_h
     being free -- the real, checkable cost signal is that the thin
     harvests stop happening at all.
     """
-    df = pd.read_csv("tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]).set_index("timestamp")
+    df = pd.read_csv("tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]).set_index(
+        "timestamp"
+    )
     controller = OptimizationController(historical_data=df)
     common = dict(
-        grid_steps=[0.01], profit_targets=[0.005],
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=[{"allocation_pct": 0.05}],
+        grid_steps=[0.01],
+        profit_targets=[0.005],
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=[{"allocation_pct": 0.05}],
     )
     zero = controller.run_sweep(cost_model=ZeroCostModel(), **common).iloc[0]
     dynamic = controller.run_sweep(
@@ -175,17 +194,29 @@ def test_dynamic_slippage_eats_thin_margins_and_the_no_loss_check_blocks_those_h
     assert dynamic["Closed Trade Count"] < zero["Closed Trade Count"], (
         "Dynamic slippage should make thin-margin harvests unprofitable, so fewer close"
     )
-    assert dynamic["Realized PnL"] == 0, "No harvest should clear the no-loss check at this slippage"
-    assert dynamic["Trade Count"] == zero["Trade Count"], "Buys still fire; only the exits are blocked"
+    assert dynamic["Realized PnL"] == 0, (
+        "No harvest should clear the no-loss check at this slippage"
+    )
+    assert dynamic["Trade Count"] == zero["Trade Count"], (
+        "Buys still fire; only the exits are blocked"
+    )
 
 
 def test_a_generous_profit_target_still_harvests_under_dynamic_slippage():
     # Counterpart to the above: the blocking is margin-dependent, not a
     # blanket refusal to ever sell under a dynamic cost model.
-    df = pd.read_csv("tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]).set_index("timestamp")
-    result = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[0.01], profit_targets=[0.10],  # 10% target, far above the slippage
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=[{"allocation_pct": 0.05}],
-        cost_model=DynamicSlippageModel(base_bps=5.0, vol_multiplier=1.0),
-    ).iloc[0]
+    df = pd.read_csv("tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]).set_index(
+        "timestamp"
+    )
+    result = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[0.01],
+            profit_targets=[0.10],  # 10% target, far above the slippage
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": 0.05}],
+            cost_model=DynamicSlippageModel(base_bps=5.0, vol_multiplier=1.0),
+        )
+        .iloc[0]
+    )
     assert result["Closed Trade Count"] > 0

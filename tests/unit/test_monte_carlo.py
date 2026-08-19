@@ -32,7 +32,13 @@ def _fixture(vol: float, seed: int, n: int = 80) -> pd.DataFrame:
     closes = 100 * np.cumprod(1 + rng.normal(0.0, vol, n))
     idx = pd.date_range("2020-01-01", periods=n, freq="D", tz="UTC")
     df = pd.DataFrame(
-        {"open": np.roll(closes, 1), "high": closes * 1.005, "low": closes * 0.995, "close": closes, "volume": 1_000_000},
+        {
+            "open": np.roll(closes, 1),
+            "high": closes * 1.005,
+            "low": closes * 0.995,
+            "close": closes,
+            "volume": 1_000_000,
+        },
         index=idx,
     )
     df.iloc[0, df.columns.get_loc("open")] = closes[0]
@@ -48,7 +54,8 @@ def test_same_seed_produces_identical_paths():
     runner = MonteCarloRunner()
     paths1 = runner.generate_paths(df, n_paths=5, block_size=5, seed=42)
     paths2 = runner.generate_paths(df, n_paths=5, block_size=5, seed=42)
-    for p1, p2 in zip(paths1, paths2):
+    assert len(paths1) == len(paths2)
+    for p1, p2 in zip(paths1, paths2, strict=True):
         pd.testing.assert_series_equal(p1["close"], p2["close"])
 
 
@@ -72,9 +79,15 @@ def test_same_seed_produces_identical_run_output():
     df = _fixture(vol=0.01, seed=1)
     runner = MonteCarloRunner()
     kwargs = dict(
-        controller_factory=_factory, n_paths=10, block_size=5, step=0.01, target=0.005,
-        strategy_class=FixedPortfolioPercentage, strategy_params={"allocation_pct": 0.05},
-        historical_data=df, seed=42,
+        controller_factory=_factory,
+        n_paths=10,
+        block_size=5,
+        step=0.01,
+        target=0.005,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params={"allocation_pct": 0.05},
+        historical_data=df,
+        seed=42,
     )
     result1 = runner.run(**kwargs)
     result2 = runner.run(**kwargs)
@@ -92,9 +105,15 @@ def test_run_over_modest_n_paths_returns_clean_percentile_summary():
     df = _fixture(vol=0.01, seed=1)
     runner = MonteCarloRunner()
     result = runner.run(
-        controller_factory=_factory, n_paths=20, block_size=5, step=0.01, target=0.005,
-        strategy_class=FixedPortfolioPercentage, strategy_params={"allocation_pct": 0.05},
-        historical_data=df, seed=42,
+        controller_factory=_factory,
+        n_paths=20,
+        block_size=5,
+        step=0.01,
+        target=0.005,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params={"allocation_pct": 0.05},
+        historical_data=df,
+        seed=42,
     )
     assert list(result.index) == [5, 25, 50, 75, 95]
     assert list(result.columns) == ["CAGR", "Max Drawdown %", "Final Equity"]
@@ -107,8 +126,14 @@ def test_percentile_spread_visibly_narrower_for_lower_volatility():
     high_vol = _fixture(vol=0.03, seed=1)
     runner = MonteCarloRunner()
     common = dict(
-        controller_factory=_factory, n_paths=30, block_size=5, step=0.01, target=0.005,
-        strategy_class=FixedPortfolioPercentage, strategy_params={"allocation_pct": 0.05}, seed=42,
+        controller_factory=_factory,
+        n_paths=30,
+        block_size=5,
+        step=0.01,
+        target=0.005,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params={"allocation_pct": 0.05},
+        seed=42,
     )
     low_result = runner.run(historical_data=low_vol, **common)
     high_result = runner.run(historical_data=high_vol, **common)
@@ -130,7 +155,9 @@ def test_generate_synthetic_path_preserves_length_and_start_price():
     assert list(path.index) == list(df.index)
 
 
-@pytest.mark.parametrize("kwargs", [dict(n_paths=0), dict(n_paths=-1), dict(block_size=0), dict(block_size=-1)])
+@pytest.mark.parametrize(
+    "kwargs", [dict(n_paths=0), dict(n_paths=-1), dict(block_size=0), dict(block_size=-1)]
+)
 def test_non_positive_config_rejected(kwargs):
     df = _fixture(vol=0.01, seed=1)
     runner = MonteCarloRunner()

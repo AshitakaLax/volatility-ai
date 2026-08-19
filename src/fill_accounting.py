@@ -135,7 +135,9 @@ class FillTracker:
 
         if delta_qty <= QTY_EPSILON:
             return FillDelta(qty=0.0, notional=0.0, avg_price=0.0)
-        return FillDelta(qty=delta_qty, notional=delta_notional, avg_price=delta_notional / delta_qty)
+        return FillDelta(
+            qty=delta_qty, notional=delta_notional, avg_price=delta_notional / delta_qty
+        )
 
 
 def extract_alpaca_fill(order) -> tuple[float, float]:

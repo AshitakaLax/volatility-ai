@@ -18,7 +18,7 @@ any other non-FILLED status here: the lot stays fully open and no
 cash is credited for it at all, rather than crediting the filled
 portion and leaving a reduced remainder open. That's safe (nothing is
 mis-credited or double-counted) but not the fuller behavior the task's
-own test description names ("only filled quantity is removed... 
+own test description names ("only filled quantity is removed...
 remaining cost basis remains open") -- flagging this rather than
 quietly building partial-close ledger support to make the wording
 match, which would be Task 7.2's job.
@@ -30,7 +30,6 @@ import pandas as pd
 import pytest
 
 from optimization_controller import OptimizationController
-from src.ledger import AssetLotLedger
 from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.size_calculators import FixedPortfolioPercentage
 
@@ -108,7 +107,9 @@ def test_non_filled_buy_does_not_mutate_cash_or_ledger(monkeypatch):
     }
     result, stub = _run_one_bar_sweep_with_stub_oms(monkeypatch, df, buy_response=non_filled_buy)
 
-    assert len(stub.buy_calls) > 0, "Test fixture didn't even attempt a buy -- fixture no longer triggers"
+    assert len(stub.buy_calls) > 0, (
+        "Test fixture didn't even attempt a buy -- fixture no longer triggers"
+    )
     row = result.iloc[0]
     # No buy was ever actually filled, so cash must be exactly the
     # initial 100,000 and no lots were ever registered.
@@ -128,7 +129,9 @@ def test_non_filled_sell_does_not_close_lot_or_credit_cash(monkeypatch):
     }
     result, stub = _run_one_bar_sweep_with_stub_oms(monkeypatch, df, sell_response=non_filled_sell)
 
-    assert len(stub.sell_calls) > 0, "Test fixture didn't even attempt a sell -- fixture no longer harvests"
+    assert len(stub.sell_calls) > 0, (
+        "Test fixture didn't even attempt a sell -- fixture no longer harvests"
+    )
     row = result.iloc[0]
     # 4 buys open (as in Task 0.1's baseline), 0 closed -- sells were
     # attempted but none filled, so every lot remains open.
@@ -150,7 +153,7 @@ def test_partially_filled_sell_is_treated_conservatively_not_as_complete(monkeyp
         "filled_avg_price": 50.0,
         "status": OrderStatus.PARTIALLY_FILLED,
     }
-    result, stub = _run_one_bar_sweep_with_stub_oms(monkeypatch, df, sell_response=partial_sell)
+    result, _stub = _run_one_bar_sweep_with_stub_oms(monkeypatch, df, sell_response=partial_sell)
     row = result.iloc[0]
     assert row["Trade Count"] == 4
     assert row["Closed Trade Count"] == 0, "A PARTIALLY_FILLED sell must not close the lot"

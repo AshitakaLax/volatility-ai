@@ -1,0 +1,64 @@
+[project]
+name = "volatility-ai"
+version = "0.1.0"
+description = "Grid-based volatility-harvesting strategy for leveraged ETFs, with backtesting, risk management, and live-execution parity."
+# Every module uses `from __future__ import annotations`, so the modern
+# annotation syntax here does not itself force a newer runtime. 3.10 is a
+# deliberately conservative floor -- note the test suite has only been
+# executed against 3.12, so anything older is untested rather than known-good.
+requires-python = ">=3.10"
+
+[tool.ruff]
+# Chosen from the actual codebase rather than taken as a default: p95 of
+# existing line lengths is 87 and p99 is 106, so 88 would rewrap ~4.5% of
+# all lines while 100 touches ~1.6%. This keeps formatting churn off code
+# that was already readable.
+line-length = 100
+target-version = "py310"
+extend-exclude = ["build", "dist", ".venv", "venv"]
+
+[tool.ruff.lint]
+select = [
+    "F",    # pyflakes -- real errors: undefined names, unused imports
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "I",    # isort -- deterministic import order
+    "UP",   # pyupgrade -- modern syntax
+    "B",    # flake8-bugbear -- likely bugs, not just style
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    # Long messages in raise/log statements are deliberate throughout this
+    # codebase: a reconciliation or no-loss rejection message names the
+    # specific delta so an operator can act on it without reading source.
+    # The formatter still enforces line-length on code; this only exempts
+    # strings it cannot split.
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test helpers build kwargs dicts that are immediately splatted into a
+# constructor:
+#     base = dict(client_order_id="cid-1", requested_qty=10.0)
+#     base.update(overrides)
+#     return OrderRecord(**base)
+# The dict(...) call form mirrors the keyword arguments it becomes, which
+# reads better than a string-keyed literal at these sites. C408 exists for
+# a micro-optimization that is irrelevant in a test helper, so this is a
+# deliberate style exemption rather than an unaddressed finding -- src/ and
+# optimization_controller.py are held to the rule and are C408-clean.
+"tests/**" = ["C408"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "optimization_controller"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+# Format code inside docstrings is left off: several docstrings in this
+# repo contain illustrative pseudo-code and spec excerpts that are not
+# valid Python and must not be rewritten.
+docstring-code-format = false

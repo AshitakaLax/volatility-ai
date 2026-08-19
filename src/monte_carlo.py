@@ -36,8 +36,6 @@ not substituted for it here, per the contract's own explicit warning.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 
@@ -47,7 +45,9 @@ from src.validation import validate_positive_int
 PERCENTILES = (5, 25, 50, 75, 95)
 
 
-def _block_bootstrap_returns(returns: np.ndarray, block_size: int, n_needed: int, rng: np.random.Generator) -> np.ndarray:
+def _block_bootstrap_returns(
+    returns: np.ndarray, block_size: int, n_needed: int, rng: np.random.Generator
+) -> np.ndarray:
     """Resample `n_needed` returns as contiguous blocks, with replacement.
 
     Blocks rather than individual observations: drawing single days
@@ -70,7 +70,9 @@ def _block_bootstrap_returns(returns: np.ndarray, block_size: int, n_needed: int
     return np.concatenate(blocks)[:n_needed]
 
 
-def generate_synthetic_path(historical_data: pd.DataFrame, block_size: int, rng: np.random.Generator) -> pd.DataFrame:
+def generate_synthetic_path(
+    historical_data: pd.DataFrame, block_size: int, rng: np.random.Generator
+) -> pd.DataFrame:
     """One synthetic OHLCV path, same length and index as
     historical_data, built by block-bootstrapping historical_data's
     own close-to-close returns. Directly testable in isolation (not
@@ -97,7 +99,9 @@ def generate_synthetic_path(historical_data: pd.DataFrame, block_size: int, rng:
             "high": highs,
             "low": lows,
             "close": synthetic_closes,
-            "volume": historical_data["volume"].to_numpy() if "volume" in historical_data.columns else 1_000_000,
+            "volume": historical_data["volume"].to_numpy()
+            if "volume" in historical_data.columns
+            else 1_000_000,
         },
         index=historical_data.index,
     )
@@ -121,7 +125,7 @@ class MonteCarloRunner:
         strategy_class,
         strategy_params: dict,
         historical_data: pd.DataFrame,
-        seed: Optional[int] = None,
+        seed: int | None = None,
         initial_cash: float = 100_000.0,
     ) -> pd.DataFrame:
         """Simulate n_paths synthetic histories; return percentile outcomes.
@@ -153,7 +157,9 @@ class MonteCarloRunner:
 
             final_equity = result["Final Equity"]
             years = (path.index[-1] - path.index[0]).days / 365.25
-            cagr = (final_equity / initial_cash) ** (1.0 / years) - 1.0 if years > 0 else float("nan")
+            cagr = (
+                (final_equity / initial_cash) ** (1.0 / years) - 1.0 if years > 0 else float("nan")
+            )
 
             cagrs.append(cagr)
             drawdowns.append(result["Max Drawdown %"])
@@ -170,7 +176,7 @@ class MonteCarloRunner:
         return summary
 
     def generate_paths(
-        self, historical_data: pd.DataFrame, n_paths: int, block_size: int, seed: Optional[int] = None
+        self, historical_data: pd.DataFrame, n_paths: int, block_size: int, seed: int | None = None
     ) -> list:
         """Path generation alone, without running any simulation --
         exposed directly for the seed-determinism acceptance criterion
@@ -180,4 +186,7 @@ class MonteCarloRunner:
         validate_positive_int(block_size, "block_size")
         seed_sequence = np.random.SeedSequence(seed)
         child_seeds = seed_sequence.spawn(n_paths)
-        return [generate_synthetic_path(historical_data, block_size, np.random.default_rng(cs)) for cs in child_seeds]
+        return [
+            generate_synthetic_path(historical_data, block_size, np.random.default_rng(cs))
+            for cs in child_seeds
+        ]

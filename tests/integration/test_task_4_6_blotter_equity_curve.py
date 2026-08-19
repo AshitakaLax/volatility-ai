@@ -130,8 +130,13 @@ def test_simulation_result_metrics_passes_through_every_performance_analyzer_key
     controller = OptimizationController(historical_data=df)
     strategy = FixedPortfolioPercentage(allocation_pct=0.05)
     result = controller._simulate_single(
-        step=0.01, target=0.005, strategy_instance=strategy, symbol="TQQQ",
-        initial_cash=100_000.0, cost_model=ZeroCostModel(), risk_manager=RiskManager(),
+        step=0.01,
+        target=0.005,
+        strategy_instance=strategy,
+        symbol="TQQQ",
+        initial_cash=100_000.0,
+        cost_model=ZeroCostModel(),
+        risk_manager=RiskManager(),
     )
 
     # Independently call PerformanceAnalyzer to get its real key set
@@ -139,4 +144,6 @@ def test_simulation_result_metrics_passes_through_every_performance_analyzer_key
     probe_metrics = PerformanceAnalyzer.calculate_metrics(AssetLotLedger(), 100_000.0, 100_000.0)
 
     for key in probe_metrics:
-        assert key in result.metrics, f"PerformanceAnalyzer key {key!r} was dropped from SimulationResult.metrics"
+        assert key in result.metrics, (
+            f"PerformanceAnalyzer key {key!r} was dropped from SimulationResult.metrics"
+        )

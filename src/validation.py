@@ -24,7 +24,7 @@ state, per this task's own requirement.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from src.exceptions import ConfigurationError
 

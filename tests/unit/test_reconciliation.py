@@ -15,7 +15,7 @@ import pytest
 from src.ledger import AssetLotLedger
 from src.order_lifecycle import OrderRecord, OrderState
 from src.persistence import LedgerStore
-from src.reconciliation import BrokerSnapshot, ReconciliationOutcome, Reconciler
+from src.reconciliation import BrokerSnapshot, Reconciler, ReconciliationOutcome
 from src.risk_manager import CircuitBreaker, CircuitBreakerState
 
 
@@ -33,7 +33,9 @@ def _seed_one_open_lot(store, shares=10.0, symbol="TQQQ"):
     return ledger, lot
 
 
-def _local_order(client_order_id="cid-1", state=OrderState.ACCEPTED, filled_qty=0.0, requested_qty=10.0):
+def _local_order(
+    client_order_id="cid-1", state=OrderState.ACCEPTED, filled_qty=0.0, requested_qty=10.0
+):
     order = OrderRecord(client_order_id=client_order_id, requested_qty=requested_qty, symbol="TQQQ")
     order.state = state
     order.filled_qty = filled_qty
@@ -41,7 +43,12 @@ def _local_order(client_order_id="cid-1", state=OrderState.ACCEPTED, filled_qty=
 
 
 def _broker_order(state=OrderState.ACCEPTED, filled_qty=0.0, avg_fill_price=50.0, symbol="TQQQ"):
-    return {"state": state, "filled_qty": filled_qty, "avg_fill_price": avg_fill_price, "symbol": symbol}
+    return {
+        "state": state,
+        "filled_qty": filled_qty,
+        "avg_fill_price": avg_fill_price,
+        "symbol": symbol,
+    }
 
 
 def test_matching_state_returns_ready(store):
@@ -74,7 +81,9 @@ def test_broker_order_with_a_known_decision_id_is_imported(store):
     _seed_one_open_lot(store, shares=10.0)
 
     report = Reconciler(store).reconcile(
-        BrokerSnapshot(positions={"TQQQ": 10.0}, orders={"cid-known": _broker_order(filled_qty=4.0)}),
+        BrokerSnapshot(
+            positions={"TQQQ": 10.0}, orders={"cid-known": _broker_order(filled_qty=4.0)}
+        ),
         local_orders={},
     )
     assert report.ready
@@ -85,7 +94,9 @@ def test_broker_order_with_no_known_decision_is_not_imported(store):
     # A trade placed outside this system: ambiguous, must halt.
     _seed_one_open_lot(store, shares=10.0)
     report = Reconciler(store).reconcile(
-        BrokerSnapshot(positions={"TQQQ": 10.0}, orders={"cid-stranger": _broker_order(filled_qty=4.0)}),
+        BrokerSnapshot(
+            positions={"TQQQ": 10.0}, orders={"cid-stranger": _broker_order(filled_qty=4.0)}
+        ),
         local_orders={},
     )
     assert not report.ready
@@ -171,7 +182,9 @@ def test_fill_regression_halts_and_never_auto_reverses(store):
 
 def test_broker_confirmed_fill_on_a_known_live_order_is_adopted(store):
     report = Reconciler(store).reconcile(
-        BrokerSnapshot(orders={"cid-1": _broker_order(state=OrderState.PARTIALLY_FILLED, filled_qty=4.0)}),
+        BrokerSnapshot(
+            orders={"cid-1": _broker_order(state=OrderState.PARTIALLY_FILLED, filled_qty=4.0)}
+        ),
         local_orders={"cid-1": _local_order(state=OrderState.ACCEPTED, filled_qty=0.0)},
     )
     assert report.ready, report.diagnostic()
@@ -261,7 +274,13 @@ def test_alerts_are_logged_when_no_sink_is_wired(store, caplog):
 
 def test_reconciler_has_no_way_to_manufacture_a_transaction(store):
     reconciler = Reconciler(store)
-    for forbidden in ("create_fill", "invent_lot", "force_balance", "adjust_cash", "synthesize_trade"):
+    for forbidden in (
+        "create_fill",
+        "invent_lot",
+        "force_balance",
+        "adjust_cash",
+        "synthesize_trade",
+    ):
         assert not hasattr(reconciler, forbidden), (
             f"Reconciler must not expose {forbidden!r} -- it may never manufacture a "
             "transaction merely to make totals match"
@@ -280,4 +299,9 @@ def test_multiple_discrepancies_are_all_reported(store):
         expected_cash=1000.0,
     )
     kinds = {d.kind for d in report.discrepancies}
-    assert {"POSITION_MISMATCH", "POSITION_ONLY_AT_BROKER", "UNKNOWN_BROKER_ORDER", "CASH_MISMATCH"} <= kinds
+    assert {
+        "POSITION_MISMATCH",
+        "POSITION_ONLY_AT_BROKER",
+        "UNKNOWN_BROKER_ORDER",
+        "CASH_MISMATCH",
+    } <= kinds

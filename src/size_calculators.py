@@ -26,15 +26,17 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from src.market_context import MarketContext
 from src.exceptions import ConfigurationError
+from src.market_context import MarketContext
 
 
 class SizingStrategy(ABC):
     """Target-form sizing-strategy contract (architecture_overview.md
     Section 5.2), as of Task 4.1."""
 
-    def _check_grid_trigger(self, context: MarketContext, last_buy_price: float, step: float) -> bool:
+    def _check_grid_trigger(
+        self, context: MarketContext, last_buy_price: float, step: float
+    ) -> bool:
         """Default: identical to the pre-Task-4.1 inline check
         (current_price <= last_buy_price * (1 - step)), now expressed
         against context.price. last_buy_price/step aren't part of
@@ -74,7 +76,7 @@ class FixedPortfolioPercentage(SizingStrategy):
     calculate_trade_value) is unaffected by which name a caller used.
     """
 
-    def __init__(self, allocation_pct: float = None, percentage: float = None):
+    def __init__(self, allocation_pct: float | None = None, percentage: float | None = None):
         """Configure the fixed allocation fraction.
 
         allocation_pct and percentage are two accepted names for the
@@ -83,7 +85,9 @@ class FixedPortfolioPercentage(SizingStrategy):
         (0, 1].
         """
         if allocation_pct is None and percentage is None:
-            raise ConfigurationError("FixedPortfolioPercentage requires allocation_pct (or percentage)")
+            raise ConfigurationError(
+                "FixedPortfolioPercentage requires allocation_pct (or percentage)"
+            )
         if allocation_pct is not None and percentage is not None and allocation_pct != percentage:
             raise ConfigurationError(
                 f"allocation_pct ({allocation_pct!r}) and percentage ({percentage!r}) were both "

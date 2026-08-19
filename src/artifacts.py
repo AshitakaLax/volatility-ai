@@ -33,15 +33,23 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Optional
 
 from src.exceptions import ConfigurationError
 
 # Key substrings that must never appear in artifact content. Checked
 # case-insensitively against every nested key.
-_SECRET_KEY_MARKERS = ("secret", "password", "passwd", "api_key", "apikey", "token", "credential", "private_key")
+_SECRET_KEY_MARKERS = (
+    "secret",
+    "password",
+    "passwd",
+    "api_key",
+    "apikey",
+    "token",
+    "credential",
+    "private_key",
+)
 
 REQUIRED_PROVENANCE_FIELDS = (
     "deployment_id",
@@ -89,7 +97,9 @@ def canonical_json(data) -> str:
     whitespace, NaN/Infinity rejected. Returns a str; callers hashing
     it must encode UTF-8 explicitly (see canonical_hash)."""
     try:
-        return json.dumps(data, sort_keys=True, separators=(",", ":"), allow_nan=False, ensure_ascii=False)
+        return json.dumps(
+            data, sort_keys=True, separators=(",", ":"), allow_nan=False, ensure_ascii=False
+        )
     except ValueError as e:
         raise ConfigurationError(
             f"Cannot canonically serialize artifact content: {e}. NaN/Infinity values are not "
@@ -152,8 +162,8 @@ class DeploymentArtifact:
         experiment_id: str,
         validation_status: str = "pending",
         promotion_status: str = "draft",
-        created_at: Optional[str] = None,
-    ) -> "DeploymentArtifact":
+        created_at: str | None = None,
+    ) -> DeploymentArtifact:
         """created_at defaults to now (UTC) -- pass it explicitly for a
         deterministic artifact, since a wall-clock timestamp would
         otherwise make two artifacts from identical inputs differ."""
@@ -197,7 +207,7 @@ class DeploymentArtifact:
         _assert_no_secret_fields(content)
 
 
-def assert_deployable(artifact: Optional[DeploymentArtifact]) -> None:
+def assert_deployable(artifact: DeploymentArtifact | None) -> None:
     """Live-startup gate (Task 6.3 step 3). Rejects a missing artifact,
     an incomplete one, or one that hasn't actually passed validation --
     'validation_status' being present but "failed"/"pending" is not

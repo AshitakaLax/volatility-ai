@@ -73,9 +73,17 @@ def test_the_three_fields_exist_with_the_documented_safe_defaults():
     """Contract check against overview 5.1. These stay in place; the
     finding is about whether to POPULATE them, not whether to keep them."""
     context = MarketContext(
-        timestamp=None, open=1.0, high=1.0, low=1.0, close=1.0,
-        cash=0.0, equity=0.0, peak_equity=0.0, drawdown=0.0,
-        open_lot_count=0, bar_index=0,
+        timestamp=None,
+        open=1.0,
+        high=1.0,
+        low=1.0,
+        close=1.0,
+        cash=0.0,
+        equity=0.0,
+        peak_equity=0.0,
+        drawdown=0.0,
+        open_lot_count=0,
+        bar_index=0,
     )
     assert context.time_of_day_flag == 0
     assert context.is_macro_event_day is False

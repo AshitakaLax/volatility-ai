@@ -76,7 +76,14 @@ def test_representative_status_mappings(broker_status, expected):
 def test_ambiguous_statuses_map_to_non_terminal_states():
     # Safety principle: a wrongly-terminal mapping loses track of live
     # exposure; a wrongly-working one only costs a redundant query.
-    for ambiguous in ("held", "stopped", "suspended", "calculated", "done_for_day", "pending_cancel"):
+    for ambiguous in (
+        "held",
+        "stopped",
+        "suspended",
+        "calculated",
+        "done_for_day",
+        "pending_cancel",
+    ):
         assert map_broker_status(ambiguous) not in TERMINAL_STATES
 
 
@@ -94,13 +101,20 @@ def test_status_mapping_is_case_insensitive_and_accepts_enums():
 def test_the_specified_transition_table_is_implemented_exactly():
     assert ALLOWED_TRANSITIONS[OrderState.CREATED] == {OrderState.SUBMITTED}
     assert ALLOWED_TRANSITIONS[OrderState.SUBMITTED] == {
-        OrderState.ACCEPTED, OrderState.REJECTED, OrderState.UNKNOWN
+        OrderState.ACCEPTED,
+        OrderState.REJECTED,
+        OrderState.UNKNOWN,
     }
     assert ALLOWED_TRANSITIONS[OrderState.ACCEPTED] == {
-        OrderState.PARTIALLY_FILLED, OrderState.FILLED, OrderState.CANCELED, OrderState.EXPIRED
+        OrderState.PARTIALLY_FILLED,
+        OrderState.FILLED,
+        OrderState.CANCELED,
+        OrderState.EXPIRED,
     }
     assert ALLOWED_TRANSITIONS[OrderState.PARTIALLY_FILLED] == {
-        OrderState.PARTIALLY_FILLED, OrderState.FILLED, OrderState.CANCELED
+        OrderState.PARTIALLY_FILLED,
+        OrderState.FILLED,
+        OrderState.CANCELED,
     }
 
 
@@ -122,14 +136,14 @@ def test_the_happy_path_walks_the_table():
 @pytest.mark.parametrize(
     "from_state,to_state",
     [
-        (OrderState.CREATED, OrderState.ACCEPTED),      # skips SUBMITTED
-        (OrderState.CREATED, OrderState.FILLED),        # skips everything
-        (OrderState.SUBMITTED, OrderState.FILLED),      # skips ACCEPTED
+        (OrderState.CREATED, OrderState.ACCEPTED),  # skips SUBMITTED
+        (OrderState.CREATED, OrderState.FILLED),  # skips everything
+        (OrderState.SUBMITTED, OrderState.FILLED),  # skips ACCEPTED
         (OrderState.SUBMITTED, OrderState.PARTIALLY_FILLED),
-        (OrderState.ACCEPTED, OrderState.SUBMITTED),    # backwards
-        (OrderState.ACCEPTED, OrderState.REJECTED),     # not in the table
+        (OrderState.ACCEPTED, OrderState.SUBMITTED),  # backwards
+        (OrderState.ACCEPTED, OrderState.REJECTED),  # not in the table
         (OrderState.PARTIALLY_FILLED, OrderState.ACCEPTED),  # backwards
-        (OrderState.PARTIALLY_FILLED, OrderState.EXPIRED),   # not in the table
+        (OrderState.PARTIALLY_FILLED, OrderState.EXPIRED),  # not in the table
     ],
 )
 def test_transitions_absent_from_the_table_are_rejected(from_state, to_state):
@@ -153,16 +167,24 @@ def test_invalid_transition_leaves_all_accounting_untouched():
     order.apply_broker_update("partially_filled", filled_qty=4.0, avg_fill_price=150.0)
 
     snapshot = (
-        order.state, order.filled_qty, order.avg_fill_price,
-        order.remaining_qty, order.requested_qty, order.broker_order_id,
+        order.state,
+        order.filled_qty,
+        order.avg_fill_price,
+        order.remaining_qty,
+        order.requested_qty,
+        order.broker_order_id,
     )
 
     with pytest.raises(ExecutionError):
         order.transition_to(OrderState.EXPIRED)  # not allowed from PARTIALLY_FILLED
 
     assert (
-        order.state, order.filled_qty, order.avg_fill_price,
-        order.remaining_qty, order.requested_qty, order.broker_order_id,
+        order.state,
+        order.filled_qty,
+        order.avg_fill_price,
+        order.remaining_qty,
+        order.requested_qty,
+        order.broker_order_id,
     ) == snapshot
 
 

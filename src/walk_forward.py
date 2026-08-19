@@ -66,7 +66,11 @@ class WalkForwardRunner:
         run_sweep's own existing per-combination isolation -- "strategy
         state is reset at the beginning of each fold" is already true
         by construction, nothing extra was needed for that)."""
-        for value, name in ((train_window, "train_window"), (test_window, "test_window"), (step, "step")):
+        for value, name in (
+            (train_window, "train_window"),
+            (test_window, "test_window"),
+            (step, "step"),
+        ):
             if not (isinstance(value, int) and value > 0):
                 raise ConfigurationError(f"{name} must be a positive integer, got {value!r}")
         self.controller_factory = controller_factory
@@ -97,10 +101,14 @@ class WalkForwardRunner:
         while start + self.train_window + self.test_window <= len(full_data):
             train_start = 0 if self.anchored else start
             train_slice = full_data.iloc[train_start : start + self.train_window]
-            test_slice = full_data.iloc[start + self.train_window : start + self.train_window + self.test_window]
+            test_slice = full_data.iloc[
+                start + self.train_window : start + self.train_window + self.test_window
+            ]
 
             train_controller = self.controller_factory(train_slice)
-            train_results = train_controller.run_sweep(grid_steps, profit_targets, strategy_class, strategy_params_grid)
+            train_results = train_controller.run_sweep(
+                grid_steps, profit_targets, strategy_class, strategy_params_grid
+            )
             winner = train_results.sort_values(by=rank_by, ascending=False).iloc[0]
 
             test_controller = self.controller_factory(test_slice)
@@ -108,16 +116,18 @@ class WalkForwardRunner:
                 [winner["Grid Step"]],
                 [winner["Profit Target"]],
                 strategy_class,
-                [{k: winner[k] for k in strategy_params_grid[0].keys()}],
+                [{k: winner[k] for k in strategy_params_grid[0]}],
             )
-            folds.append({
-                "fold_start": start,
-                "train_start": train_slice.index[0],
-                "train_end": train_slice.index[-1],
-                "test_start": test_slice.index[0],
-                "test_end": test_slice.index[-1],
-                **{f"train_{k}": v for k, v in winner.items()},
-                **{f"test_{k}": v for k, v in test_results.iloc[0].items()},
-            })
+            folds.append(
+                {
+                    "fold_start": start,
+                    "train_start": train_slice.index[0],
+                    "train_end": train_slice.index[-1],
+                    "test_start": test_slice.index[0],
+                    "test_end": test_slice.index[-1],
+                    **{f"train_{k}": v for k, v in winner.items()},
+                    **{f"test_{k}": v for k, v in test_results.iloc[0].items()},
+                }
+            )
             start += self.step
         return pd.DataFrame(folds)

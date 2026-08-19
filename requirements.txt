@@ -20,3 +20,10 @@ alpaca-py>=0.20
 
 # Development / test only.
 pytest>=7.0
+
+# Formatting and linting. Configured in pyproject.toml.
+#   ruff format .        -- apply formatting
+#   ruff format --check . -- verify formatting without writing (CI)
+#   ruff check .          -- lint
+#   ruff check --fix .    -- lint and apply safe fixes
+ruff>=0.6

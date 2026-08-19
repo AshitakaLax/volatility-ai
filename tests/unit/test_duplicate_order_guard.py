@@ -36,8 +36,12 @@ def store(tmp_path):
 
 
 DECISION_KWARGS = dict(
-    deployment_id="deploy-1", strategy_id="fixed", symbol="TQQQ",
-    market_event_id="bar-2024-01-01T14:30:00Z", decision_type="grid_buy", sequence_number=1,
+    deployment_id="deploy-1",
+    strategy_id="fixed",
+    symbol="TQQQ",
+    market_event_id="bar-2024-01-01T14:30:00Z",
+    decision_type="grid_buy",
+    sequence_number=1,
 )
 
 
@@ -80,7 +84,10 @@ def test_decision_id_stable_across_processes():
         """
     )
     result = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60,
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
         env={"PYTHONHASHSEED": "random", "PATH": "/usr/bin:/bin"},
     )
     assert result.returncode == 0, result.stderr
@@ -120,7 +127,10 @@ def test_a_real_decision_id_is_accepted_as_an_alpaca_client_order_id():
 
     decision_id = compute_decision_id(**DECISION_KWARGS)
     request = MarketOrderRequest(
-        symbol="TQQQ", qty=1, side=OrderSide.BUY, time_in_force=TimeInForce.DAY,
+        symbol="TQQQ",
+        qty=1,
+        side=OrderSide.BUY,
+        time_in_force=TimeInForce.DAY,
         client_order_id=decision_id,
     )
     assert request.client_order_id == decision_id
@@ -223,10 +233,18 @@ def _alpaca_order(client_order_id: str):
 
     now = datetime(2024, 1, 1, tzinfo=timezone.utc)
     return Order(
-        id=str(uuid.UUID(int=99)), client_order_id=client_order_id,
-        created_at=now, updated_at=now, submitted_at=now,
-        status=OrderStatus.FILLED, qty="10.0", filled_qty="10.0", filled_avg_price="150.00",
-        side=OrderSide.BUY, time_in_force=TimeInForce.DAY, extended_hours=False,
+        id=str(uuid.UUID(int=99)),
+        client_order_id=client_order_id,
+        created_at=now,
+        updated_at=now,
+        submitted_at=now,
+        status=OrderStatus.FILLED,
+        qty="10.0",
+        filled_qty="10.0",
+        filled_avg_price="150.00",
+        side=OrderSide.BUY,
+        time_in_force=TimeInForce.DAY,
+        extended_hours=False,
     )
 
 

@@ -81,5 +81,9 @@ def test_allocation_pct_matches_real_constructor_keyword():
     FixedPortfolioPercentage(allocation_pct=0.05)  # raises TypeError if the kwarg name is wrong
 
     script_text = _extract_script_from_run_instructions()
-    assert re.search(r"allocation_pct", script_text), "Run_Instructions example no longer uses allocation_pct"
-    assert "allocations=" not in script_text, "Run_Instructions example still uses the non-existent allocations= param"
+    assert re.search(r"allocation_pct", script_text), (
+        "Run_Instructions example no longer uses allocation_pct"
+    )
+    assert "allocations=" not in script_text, (
+        "Run_Instructions example still uses the non-existent allocations= param"
+    )

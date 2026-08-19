@@ -11,7 +11,6 @@ Task 4.10 acceptance tests.
 """
 
 import pandas as pd
-import pytest
 
 from optimization_controller import OptimizationController
 from src.idempotency import ProcessedEventStore
@@ -35,7 +34,9 @@ def test_apply_once_runs_side_effect_exactly_once_for_a_repeated_id():
     first = store.apply_once("evt-1", side_effect)
     second = store.apply_once("evt-1", side_effect)  # same ID again
 
-    assert len(calls) == 1, "side_effect must run exactly once despite two apply_once calls with the same ID"
+    assert len(calls) == 1, (
+        "side_effect must run exactly once despite two apply_once calls with the same ID"
+    )
     assert first == second == "result"
 
 
@@ -71,7 +72,9 @@ def test_replaying_an_already_processed_id_after_simulated_restart_is_a_noop():
     # apply_once's own documented contract, this must degrade to None
     # rather than raising.
     store_after_restart = ProcessedEventStore(backend=persisted_backend)
-    replay_result = store_after_restart.apply_once("evt-1", lambda: calls.append("should not happen"))
+    replay_result = store_after_restart.apply_once(
+        "evt-1", lambda: calls.append("should not happen")
+    )
 
     assert calls == ["first"], "Replaying evt-1 after restart must remain a no-op"
     assert replay_result is None

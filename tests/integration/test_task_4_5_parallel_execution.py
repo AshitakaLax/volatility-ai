@@ -41,13 +41,17 @@ def _load_fixture() -> pd.DataFrame:
 
 def test_n_jobs_1_default_matches_baseline():
     df = _load_fixture()
-    result = OptimizationController(historical_data=df).run_sweep(
-        grid_steps=[BASELINE["Grid Step"]],
-        profit_targets=[BASELINE["Profit Target"]],
-        strategy_class=FixedPortfolioPercentage,
-        strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
-        # n_jobs omitted -> default 1, must match exactly.
-    ).iloc[0]
+    result = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+            # n_jobs omitted -> default 1, must match exactly.
+        )
+        .iloc[0]
+    )
     for key, expected in BASELINE.items():
         assert result[key] == expected
 
@@ -60,12 +64,18 @@ def test_n_jobs_greater_than_1_produces_the_same_result_set_as_sequential():
     params_grid = [{"allocation_pct": a} for a in [0.02, 0.05]]
 
     sequential = controller.run_sweep(
-        grid_steps=grid_steps, profit_targets=profit_targets,
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=params_grid, n_jobs=1,
+        grid_steps=grid_steps,
+        profit_targets=profit_targets,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=params_grid,
+        n_jobs=1,
     )
     parallel = controller.run_sweep(
-        grid_steps=grid_steps, profit_targets=profit_targets,
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=params_grid, n_jobs=4,
+        grid_steps=grid_steps,
+        profit_targets=profit_targets,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=params_grid,
+        n_jobs=4,
     )
 
     assert len(sequential) == len(parallel) == 18
@@ -78,8 +88,6 @@ def test_n_jobs_greater_than_1_produces_the_same_result_set_as_sequential():
 def test_error_isolation_holds_across_process_boundaries():
     # Task 4.4's error isolation must still work when a combination
     # fails inside a worker process, not just in the main process.
-    from src.market_context import MarketContext
-    from src.size_calculators import SizingStrategy
 
     df = _load_fixture()
     controller = OptimizationController(historical_data=df)
@@ -115,7 +123,8 @@ def test_invalid_n_jobs_rejected():
     df = _load_fixture()
     with pytest.raises(ConfigurationError, match="n_jobs"):
         OptimizationController(historical_data=df).run_sweep(
-            grid_steps=[0.01], profit_targets=[0.005],
+            grid_steps=[0.01],
+            profit_targets=[0.005],
             strategy_class=FixedPortfolioPercentage,
             strategy_params_grid=[{"allocation_pct": 0.05}],
             n_jobs=0,
@@ -134,7 +143,13 @@ def test_n_jobs_shows_a_real_speedup_on_a_large_sweep():
     closes = 100 * np.cumprod(1 + rng.normal(0, 0.01, n_bars))
     idx = pd.date_range("2020-01-01", periods=n_bars, freq="h", tz="UTC")
     df = pd.DataFrame(
-        {"open": closes, "high": closes * 1.002, "low": closes * 0.998, "close": closes, "volume": 1_000_000},
+        {
+            "open": closes,
+            "high": closes * 1.002,
+            "low": closes * 0.998,
+            "close": closes,
+            "volume": 1_000_000,
+        },
         index=idx,
     )
     controller = OptimizationController(historical_data=df)
@@ -144,15 +159,21 @@ def test_n_jobs_shows_a_real_speedup_on_a_large_sweep():
 
     t0 = time.time()
     controller.run_sweep(
-        grid_steps=grid_steps, profit_targets=profit_targets,
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=params_grid, n_jobs=1,
+        grid_steps=grid_steps,
+        profit_targets=profit_targets,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=params_grid,
+        n_jobs=1,
     )
     sequential_time = time.time() - t0
 
     t0 = time.time()
     controller.run_sweep(
-        grid_steps=grid_steps, profit_targets=profit_targets,
-        strategy_class=FixedPortfolioPercentage, strategy_params_grid=params_grid, n_jobs=os.cpu_count(),
+        grid_steps=grid_steps,
+        profit_targets=profit_targets,
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=params_grid,
+        n_jobs=os.cpu_count(),
     )
     parallel_time = time.time() - t0
 

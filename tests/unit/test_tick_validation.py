@@ -33,9 +33,16 @@ def _live_config() -> BacktestConfig:
 def _context_builder(price: float) -> MarketContext:
     return MarketContext(
         timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
-        open=price, high=price, low=price, close=price,
-        cash=100_000.0, equity=100_000.0, peak_equity=100_000.0,
-        drawdown=0.0, open_lot_count=0, bar_index=0,
+        open=price,
+        high=price,
+        low=price,
+        close=price,
+        cash=100_000.0,
+        equity=100_000.0,
+        peak_equity=100_000.0,
+        drawdown=0.0,
+        open_lot_count=0,
+        bar_index=0,
     )
 
 
@@ -49,7 +56,10 @@ def test_synthetic_stream_rejects_zero_price_and_absurd_spike_only():
     rejected = [(r.price, r.reason) for r in results if not r.accepted]
 
     assert accepted == [100.0, 101.0, 102.0, 103.0], "Surrounding valid ticks must process normally"
-    assert rejected == [(0.0, TickRejectionReason.NON_POSITIVE), (5000.0, TickRejectionReason.IMPLAUSIBLE_MOVE)]
+    assert rejected == [
+        (0.0, TickRejectionReason.NON_POSITIVE),
+        (5000.0, TickRejectionReason.IMPLAUSIBLE_MOVE),
+    ]
     assert validator.accepted_count == 4
     assert validator.rejected_count == 2
 
@@ -60,13 +70,17 @@ def test_rejected_ticks_never_advance_the_last_good_price():
     assert validator.last_good_price == 100.0
 
     validator.validate(0.0)
-    assert validator.last_good_price == 100.0, "A rejected zero-price tick must not become the reference"
+    assert validator.last_good_price == 100.0, (
+        "A rejected zero-price tick must not become the reference"
+    )
 
     validator.validate(5000.0)
     assert validator.last_good_price == 100.0, "A rejected spike must not become the reference"
 
     validator.validate(101.0)
-    assert validator.last_good_price == 101.0, "A valid tick after rejections still advances normally"
+    assert validator.last_good_price == 101.0, (
+        "A valid tick after rejections still advances normally"
+    )
 
 
 def test_a_spike_cannot_walk_the_reference_price_across_repeated_rejections():

@@ -24,7 +24,6 @@ YAML-only schema, per this task's explicit instruction.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from src.cost_models import SlippageCommissionModel, TransactionCostModel, ZeroCostModel
 from src.exceptions import ConfigurationError
@@ -66,9 +65,9 @@ class BacktestSection:
     # placeholders for "date/time range, data settings" rather than
     # omitted, since they're genuinely useful record-keeping even
     # unwired -- but not claimed to do more than that.
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    data_path: Optional[str] = None
+    start_date: str | None = None
+    end_date: str | None = None
+    data_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -117,8 +116,8 @@ class RiskConfig:
     """Maps to src/risk_manager.py (Task 3.1). No drawdown-limit field
     -- RiskManager doesn't implement one; see module docstring."""
 
-    max_concurrent_lots: Optional[int] = None
-    max_total_exposure: Optional[float] = None
+    max_concurrent_lots: int | None = None
+    max_total_exposure: float | None = None
 
     def build(self) -> RiskManager:
         """Construct the real RiskManager this config describes.
@@ -126,7 +125,10 @@ class RiskConfig:
         Both limits default to None (unlimited), so an omitted risk
         section yields an unconstrained manager rather than an error.
         """
-        return RiskManager(max_concurrent_lots=self.max_concurrent_lots, max_total_exposure_pct=self.max_total_exposure)
+        return RiskManager(
+            max_concurrent_lots=self.max_concurrent_lots,
+            max_total_exposure_pct=self.max_total_exposure,
+        )
 
 
 @dataclass(frozen=True)
@@ -137,7 +139,7 @@ class SearchConfig:
     strategy: str = "grid"
     rank_by: str = "Capital Velocity Index"
     direction: str = "maximize"
-    seed: Optional[int] = None
+    seed: int | None = None
 
 
 @dataclass(frozen=True)
@@ -192,7 +194,7 @@ class BacktestConfig:
     live: LiveConfig = field(default_factory=LiveConfig)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "BacktestConfig":
+    def from_dict(cls, data: dict) -> BacktestConfig:
         """Build a config from a nested dict.
 
         `strategy` (with strategy_id) and `grid` are required; every
@@ -265,12 +267,19 @@ class BacktestConfig:
         )
 
         return cls(
-            strategy=strategy, grid=grid, backtest=backtest, costs=costs, risk=risk,
-            search=search, execution=execution, output=output, live=live,
+            strategy=strategy,
+            grid=grid,
+            backtest=backtest,
+            costs=costs,
+            risk=risk,
+            search=search,
+            execution=execution,
+            output=output,
+            live=live,
         )
 
     @classmethod
-    def from_yaml(cls, yaml_source: str, is_path: bool = True) -> "BacktestConfig":
+    def from_yaml(cls, yaml_source: str, is_path: bool = True) -> BacktestConfig:
         """is_path=True (default): yaml_source is a file path, read and
         parsed. is_path=False: yaml_source is the YAML text itself
         (useful for tests/inline config without a real file). Either
@@ -285,7 +294,9 @@ class BacktestConfig:
         else:
             data = yaml.safe_load(yaml_source)
         if not isinstance(data, dict):
-            raise ConfigurationError(f"YAML config must deserialize to a mapping, got {type(data).__name__}")
+            raise ConfigurationError(
+                f"YAML config must deserialize to a mapping, got {type(data).__name__}"
+            )
         return cls.from_dict(data)
 
     def validate(self) -> None:
@@ -312,9 +323,15 @@ class BacktestConfig:
         validate_one_of(self.search.direction, ("maximize", "minimize"), "search.direction")
 
         validate_one_of(
-            self.execution.on_flat_reentry, ("stale_reference", "reset_to_market"), "execution.on_flat_reentry"
+            self.execution.on_flat_reentry,
+            ("stale_reference", "reset_to_market"),
+            "execution.on_flat_reentry",
         )
-        validate_one_of(self.execution.intrabar_priority, ("sell_first", "buy_first"), "execution.intrabar_priority")
+        validate_one_of(
+            self.execution.intrabar_priority,
+            ("sell_first", "buy_first"),
+            "execution.intrabar_priority",
+        )
 
     def to_dict(self) -> dict:
         """Inverse of from_dict() -- round-trips through the same nested
@@ -324,8 +341,14 @@ class BacktestConfig:
         JSON has no tuple type and this needs to be JSON-serializable
         for Task 6.3's configuration hash."""
         return {
-            "strategy": {"strategy_id": self.strategy.strategy_id, "strategy_params": dict(self.strategy.strategy_params)},
-            "grid": {"steps": list(self.grid.steps), "profit_targets": list(self.grid.profit_targets)},
+            "strategy": {
+                "strategy_id": self.strategy.strategy_id,
+                "strategy_params": dict(self.strategy.strategy_params),
+            },
+            "grid": {
+                "steps": list(self.grid.steps),
+                "profit_targets": list(self.grid.profit_targets),
+            },
             "backtest": {
                 "symbol": self.backtest.symbol,
                 "initial_cash": self.backtest.initial_cash,
@@ -338,7 +361,10 @@ class BacktestConfig:
                 "commission_per_trade": self.costs.commission_per_trade,
                 "slippage_bps": self.costs.slippage_bps,
             },
-            "risk": {"max_concurrent_lots": self.risk.max_concurrent_lots, "max_total_exposure": self.risk.max_total_exposure},
+            "risk": {
+                "max_concurrent_lots": self.risk.max_concurrent_lots,
+                "max_total_exposure": self.risk.max_total_exposure,
+            },
             "search": {
                 "strategy": self.search.strategy,
                 "rank_by": self.search.rank_by,
@@ -362,19 +388,19 @@ class BacktestConfig:
         holds strategy_id (a string identifier); this codebase has no
         strategy-id-to-class registry to resolve it automatically, and
         building one is outside this task's scope."""
-        return dict(
-            grid_steps=list(self.grid.steps),
-            profit_targets=list(self.grid.profit_targets),
-            strategy_class=strategy_class,
-            strategy_params_grid=[self.strategy.strategy_params],
-            cost_model=self.costs.build(),
-            risk_manager=self.risk.build(),
-            on_flat_reentry=self.execution.on_flat_reentry,
-            symbol=self.backtest.symbol,
-            initial_cash=self.backtest.initial_cash,
-            search_strategy=self.search.strategy,
-            search_seed=self.search.seed,
-            search_direction=self.search.direction,
-            rank_by=self.search.rank_by,
-            return_full_results=self.output.return_full_results,
-        )
+        return {
+            "grid_steps": list(self.grid.steps),
+            "profit_targets": list(self.grid.profit_targets),
+            "strategy_class": strategy_class,
+            "strategy_params_grid": [self.strategy.strategy_params],
+            "cost_model": self.costs.build(),
+            "risk_manager": self.risk.build(),
+            "on_flat_reentry": self.execution.on_flat_reentry,
+            "symbol": self.backtest.symbol,
+            "initial_cash": self.backtest.initial_cash,
+            "search_strategy": self.search.strategy,
+            "search_seed": self.search.seed,
+            "search_direction": self.search.direction,
+            "rank_by": self.search.rank_by,
+            "return_full_results": self.output.return_full_results,
+        }
