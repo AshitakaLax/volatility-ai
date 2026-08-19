@@ -19,6 +19,7 @@ from src.order_management_system import Mode, OrderManagementSystem
 from src.risk_manager import RiskManager
 from src.secrets import LiveCredentials, load_live_credentials
 from src.size_calculators import SizingStrategy
+from src.tick_validation import TickCheck, TickValidator
 
 
 class LiveBroker(Protocol):
@@ -45,6 +46,7 @@ class LiveExecutionLoop:
         *,
         broker_factory: Callable[[LiveCredentials], LiveBroker] | None = None,
         oms: OrderManagementSystem | None = None,
+        tick_validator: "TickValidator | None" = None,
     ) -> None:
         config.validate()
         if not config.live.enabled:
@@ -60,6 +62,33 @@ class LiveExecutionLoop:
         self.broker: LiveBroker | None = None
         self.last_buy_price = None
         self._started = False
+        # Task 7.6: per-tick sanity check. Owns last_good_price; a
+        # rejected tick never advances it.
+        self.tick_validator = tick_validator or TickValidator()
+
+    def validate_tick(self, price: float) -> TickCheck:
+        """Task 7.6 entry point: check an incoming tick BEFORE building
+        a MarketContext or evaluating strategy. Returns the check;
+        callers must not proceed to decision_cycle on a rejected tick.
+        See process_tick for the guarded path that enforces that."""
+        return self.tick_validator.validate(price)
+
+    def process_tick(
+        self, price: float, context_builder, *, step: float, last_buy_price: float
+    ) -> LiveDecision | None:
+        """Guarded per-tick path: sanity-check first, and only build a
+        context and run the decision cycle if the tick passed.
+
+        Returns None for a rejected tick -- strategy is never
+        evaluated, no order is proposed, and last_good_price is
+        unchanged. context_builder is called only for accepted ticks,
+        so a bad print can't even reach MarketContext construction.
+        """
+        check = self.validate_tick(price)
+        if not check.accepted:
+            return None
+        context = context_builder(check.price)
+        return self.decision_cycle(context, step=step, last_buy_price=last_buy_price)
 
     def start(self) -> None:
         """Validate credentials before attempting any broker/WebSocket work."""
