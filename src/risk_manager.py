@@ -137,6 +137,27 @@ class CircuitBreaker:
             self._alert("AWAITING_MANUAL_RESET", self._reason)
         return self._state
 
+    def halt_for_reconciliation(self, detail: str) -> None:
+        """Halt new buys because reconciliation found an ambiguous
+        discrepancy (Task 7.11 step 4).
+
+        Reuses this breaker rather than introducing a second halt
+        mechanism, so an operator has exactly ONE thing to inspect and
+        reset regardless of which subsystem tripped it. Like every
+        other halt here, it requires an explicit manual_reset and
+        never forces liquidation.
+
+        Already-halted stays halted -- a reconciliation failure must
+        never downgrade or clear an existing halt.
+        """
+        if self._state is CircuitBreakerState.ACTIVE:
+            self._state = CircuitBreakerState.HALTED_NEW_BUYS
+            self._reason = f"reconciliation required: {detail}"
+            self._persist()
+            self._alert("TRIPPED_RECONCILIATION", self._reason)
+        else:
+            self._alert("RECONCILIATION_WHILE_HALTED", f"already {self._state.value}: {detail}")
+
     def manual_reset(self, operator: str, note: str = "") -> None:
         """Explicit human reset -- the ONLY way back to ACTIVE.
 
