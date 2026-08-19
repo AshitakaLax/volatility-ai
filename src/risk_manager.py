@@ -15,7 +15,7 @@ Risk semantics (implementation_task_specs.md Task 3.1):
 from __future__ import annotations
 
 import logging
-from enum import Enum
+from enum import StrEnum
 
 from src.exceptions import ConfigurationError
 from src.validation import validate_positive_int, validate_unit_interval
@@ -27,7 +27,7 @@ HALT_STATE_KEY = "circuit_breaker_state"
 HALT_REASON_KEY = "circuit_breaker_reason"
 
 
-class CircuitBreakerState(str, Enum):
+class CircuitBreakerState(StrEnum):
     """Explicit states per Task 7.8's State contract.
 
     ACTIVE                -- normal operation, new buys permitted.

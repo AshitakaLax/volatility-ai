@@ -17,7 +17,7 @@ recording strategy double captures the exact method/argument sequence
 from each path and asserts they match).
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 import pytest
@@ -82,7 +82,7 @@ def _live_config(enabled: bool = True) -> BacktestConfig:
 
 def _context(close: float, cash: float = 100_000.0, equity: float = 100_000.0) -> MarketContext:
     return MarketContext(
-        timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2024, 1, 1, tzinfo=UTC),
         open=close,
         high=close,
         low=close,

@@ -14,6 +14,7 @@ Acceptance criteria:
 """
 
 import re
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -249,14 +250,14 @@ def test_sell_economics_is_immutable():
 
 
 def test_volatility_aware_cost_model_is_supported_at_the_guard():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from src.cost_models import DynamicSlippageModel
     from src.market_context import MarketContext
 
     _, lot = _lot(buy_price=100.0, shares=10.0)
     context = MarketContext(
-        timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2024, 1, 1, tzinfo=UTC),
         open=105.0,
         high=105.0,
         low=105.0,

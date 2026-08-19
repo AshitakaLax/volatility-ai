@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -9,7 +9,7 @@ from src.size_calculators import FixedPortfolioPercentage
 
 def _context(**overrides) -> MarketContext:
     defaults = dict(
-        timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2024, 1, 1, tzinfo=UTC),
         open=50.0,
         high=50.0,
         low=50.0,

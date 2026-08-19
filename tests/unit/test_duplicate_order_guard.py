@@ -15,7 +15,7 @@ import subprocess
 import sys
 import textwrap
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -231,7 +231,7 @@ def _alpaca_order(client_order_id: str):
     from alpaca.trading.enums import OrderSide, OrderStatus, TimeInForce
     from alpaca.trading.models import Order
 
-    now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    now = datetime(2024, 1, 1, tzinfo=UTC)
     return Order(
         id=str(uuid.UUID(int=99)),
         client_order_id=client_order_id,

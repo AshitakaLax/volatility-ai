@@ -3,10 +3,12 @@ name = "volatility-ai"
 version = "0.1.0"
 description = "Grid-based volatility-harvesting strategy for leveraged ETFs, with backtesting, risk management, and live-execution parity."
 # Every module uses `from __future__ import annotations`, so the modern
-# annotation syntax here does not itself force a newer runtime. 3.10 is a
-# deliberately conservative floor -- note the test suite has only been
-# executed against 3.12, so anything older is untested rather than known-good.
-requires-python = ">=3.10"
+# annotation syntax here does not itself require a newer runtime. The
+# floor is set to 3.12 anyway because that is the only version this
+# suite has actually been executed against in this environment (Python
+# 3.12.3) -- stating it as a requirement rather than leaving it merely
+# untested-below.
+requires-python = ">=3.12"
 
 [tool.ruff]
 # Chosen from the actual codebase rather than taken as a default: p95 of
@@ -14,7 +16,7 @@ requires-python = ">=3.10"
 # all lines while 100 touches ~1.6%. This keeps formatting churn off code
 # that was already readable.
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 extend-exclude = ["build", "dist", ".venv", "venv"]
 
 [tool.ruff.lint]

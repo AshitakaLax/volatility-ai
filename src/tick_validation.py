@@ -24,12 +24,12 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 logger = logging.getLogger("Optimizer")
 
 
-class TickRejectionReason(str, Enum):
+class TickRejectionReason(StrEnum):
     """Why a tick was rejected.
 
     Recorded on every rejection so an operator can distinguish a

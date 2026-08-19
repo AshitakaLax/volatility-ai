@@ -33,12 +33,12 @@ NotImplementedError rather than silently behaving like SIMULATION.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from src.exceptions import ConfigurationError
 
 
-class Mode(str, Enum):
+class Mode(StrEnum):
     """Subclasses str so Mode.SIMULATION == "SIMULATION" and
     Mode.LIVE == "LIVE" -- every existing bare-string mode="SIMULATION"
     call site keeps working unmodified whether callers pass the enum or

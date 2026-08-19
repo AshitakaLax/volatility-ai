@@ -34,7 +34,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.exceptions import ConfigurationError
 
@@ -176,7 +176,7 @@ class DeploymentArtifact:
             dataset_id=dataset_id,
             dataset_hash=dataset_hash,
             experiment_id=experiment_id,
-            created_at=created_at or datetime.now(timezone.utc).isoformat(),
+            created_at=created_at or datetime.now(UTC).isoformat(),
             validation_status=validation_status,
             promotion_status=promotion_status,
         )
