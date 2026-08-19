@@ -1,0 +1,286 @@
+"""
+Tests for cli.py, the Docker image's ENTRYPOINT.
+
+Run as real subprocesses (matching
+tests/integration/test_task_1_1_run_instructions.py's established
+pattern) rather than importing and calling functions directly, since
+what actually matters is the exact invocation a `docker run` would
+perform -- argument parsing, exit codes, and stdout/stderr -- not the
+internal function calls.
+
+Includes a regression test for a real bug caught during manual testing
+before this was committed: `cli.py test -q` (the single most common
+invocation) raised "unrecognized arguments: -q", because
+argparse.REMAINDER cannot reliably capture a leading option-like token
+with no preceding positional. Fixed by forwarding sys.argv directly
+for the `test` subcommand rather than routing it through argparse.
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CLI = REPO_ROOT / "cli.py"
+
+
+def _run(*args, timeout=60):
+    return subprocess.run(
+        [sys.executable, str(CLI), *args],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+@pytest.fixture
+def config_path(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "strategy:\n"
+        "  strategy_id: fixed\n"
+        "  strategy_params:\n"
+        "    allocation_pct: 0.05\n"
+        "grid:\n"
+        "  steps: [0.005, 0.01]\n"
+        "  profit_targets: [0.003, 0.005]\n"
+    )
+    return path
+
+
+@pytest.fixture
+def data_path():
+    return REPO_ROOT / "tests" / "fixtures" / "regression_ohlcv.csv"
+
+
+def test_bare_invocation_shows_usage_and_exits_nonzero():
+    result = _run()
+    assert result.returncode != 0
+    assert "usage" in result.stderr.lower()
+
+
+def test_help_mentions_all_three_subcommands():
+    result = _run("--help")
+    assert result.returncode == 0
+    for name in ("test", "backtest", "live"):
+        assert name in result.stdout
+
+
+def test_test_subcommand_with_a_leading_flag_does_not_crash_argparse():
+    """Regression test for the exact bug found during manual testing:
+    `cli.py test -q` (no preceding positional) previously raised
+    'unrecognized arguments: -q' from the top-level parser, because
+    argparse.REMAINDER only reliably captures a trailing remainder when
+    a positional precedes it. Scoped to one fast, stable file so this
+    stays quick rather than re-running the whole suite recursively."""
+    result = _run("test", "tests/unit/test_no_loss_guard.py", "-q")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "unrecognized arguments" not in result.stderr
+
+
+def test_test_subcommand_forwards_arguments_to_pytest_verbatim():
+    result = _run("test", "tests/unit/test_no_loss_guard.py", "-q")
+    assert "passed" in result.stdout
+    assert "+ " in result.stderr  # the echoed command line
+
+
+def test_test_subcommand_propagates_pytest_failure_exit_code():
+    result = _run("test", "tests/unit/test_no_loss_guard.py::test_this_does_not_exist", "-q")
+    assert result.returncode != 0
+
+
+def test_test_subcommand_help_does_not_crash():
+    result = _run("test", "--help")
+    assert result.returncode == 0
+
+
+def test_backtest_runs_end_to_end_against_the_regression_fixture(config_path, data_path):
+    result = _run("backtest", "--config", str(config_path), "--data", str(data_path))
+    assert result.returncode == 0, result.stderr
+    assert "Grid Step" in result.stdout
+    assert "combination(s) evaluated" in result.stdout
+
+
+def test_backtest_writes_a_loadable_full_results_csv(config_path, data_path, tmp_path):
+    import pandas as pd
+
+    output = tmp_path / "results.csv"
+    result = _run(
+        "backtest", "--config", str(config_path), "--data", str(data_path), "--output", str(output)
+    )
+    assert result.returncode == 0, result.stderr
+    assert output.exists()
+
+    df = pd.read_csv(output)
+    assert len(df) == 4  # 2 grid steps x 2 profit targets
+    assert "Capital Velocity Index" in df.columns
+
+
+def test_backtest_missing_config_file_fails_clearly(data_path):
+    result = _run("backtest", "--config", "/nonexistent/config.yaml", "--data", str(data_path))
+    assert result.returncode == 2
+    assert "not found" in result.stderr.lower()
+
+
+def test_backtest_missing_data_file_fails_clearly(config_path):
+    result = _run("backtest", "--config", str(config_path), "--data", "/nonexistent/data.csv")
+    assert result.returncode == 2
+    assert "not found" in result.stderr.lower()
+
+
+def test_backtest_invalid_config_fails_with_validation_error(tmp_path, data_path):
+    bad_config = tmp_path / "bad.yaml"
+    bad_config.write_text(
+        "strategy:\n  strategy_id: fixed\n  strategy_params: {allocation_pct: 0.05}\n"
+        "grid:\n  steps: [1.5]\n  profit_targets: [0.01]\n"
+    )  # grid step >= 1.0 is invalid
+    result = _run("backtest", "--config", str(bad_config), "--data", str(data_path))
+    assert result.returncode == 2
+    assert "invalid config" in result.stderr.lower()
+
+
+def test_backtest_unknown_strategy_id_fails_clearly(tmp_path, data_path):
+    bad_config = tmp_path / "bad.yaml"
+    bad_config.write_text(
+        "strategy:\n  strategy_id: not_a_real_strategy\ngrid:\n  steps: [0.01]\n  profit_targets: [0.005]\n"
+    )
+    result = _run("backtest", "--config", str(bad_config), "--data", str(data_path))
+    assert result.returncode == 2
+    assert "unknown strategy_id" in result.stderr.lower()
+
+
+def test_backtest_missing_required_flags_fails():
+    result = _run("backtest")
+    assert result.returncode == 2
+
+
+def test_live_with_enabled_false_refuses_cleanly(tmp_path):
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "strategy:\n  strategy_id: fixed\n  strategy_params: {allocation_pct: 0.05}\n"
+        "grid:\n  steps: [0.01]\n  profit_targets: [0.005]\n"
+    )
+    result = _run("live", "--config", str(config), "--state-db", str(tmp_path / "ledger.db"))
+    assert result.returncode == 2
+    assert "live.enabled" in result.stderr
+
+
+def test_live_with_no_credentials_fails_at_credential_loading(tmp_path):
+    """No env vars at all -> fails before ever reaching the
+    broker-adapter question, at credential loading itself."""
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "strategy:\n  strategy_id: fixed\n  strategy_params: {allocation_pct: 0.05}\n"
+        "grid:\n  steps: [0.01]\n  profit_targets: [0.005]\n"
+        "live:\n  enabled: true\n  paper_trading: true\n"
+    )
+    db_path = tmp_path / "ledger.db"
+    env = {"PATH": "/usr/bin:/bin"}  # explicitly no APCA_* credentials
+    result = subprocess.run(
+        [sys.executable, str(CLI), "live", "--config", str(config), "--state-db", str(db_path)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=env,
+    )
+    assert result.returncode == 1
+    assert "RECOVERY_REQUIRED" in result.stdout
+    assert "Missing required live-credential environment variable" in result.stderr
+
+
+def test_live_with_valid_credentials_reaches_the_honest_no_adapter_message(tmp_path):
+    """Credentials present (even fake ones) -> credential loading
+    succeeds, so the failure moves to the real boundary: no broker
+    adapter exists in this codebase."""
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "strategy:\n  strategy_id: fixed\n  strategy_params: {allocation_pct: 0.05}\n"
+        "grid:\n  steps: [0.01]\n  profit_targets: [0.005]\n"
+        "live:\n  enabled: true\n  paper_trading: true\n"
+    )
+    db_path = tmp_path / "ledger.db"
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "APCA_API_KEY_ID": "test-key",
+        "APCA_API_SECRET_KEY": "test-secret",
+    }
+    result = subprocess.run(
+        [sys.executable, str(CLI), "live", "--config", str(config), "--state-db", str(db_path)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=env,
+    )
+    assert result.returncode == 1
+    assert "RECOVERY_REQUIRED" in result.stdout
+    assert "no broker adapter is implemented" in result.stderr
+
+
+def test_live_honest_failure_still_persists_state(tmp_path):
+    """Even though live cannot connect to a real broker, the ledger
+    store it opens along the way must be real and durable -- confirmed
+    by inspecting the SQLite file directly, not just trusting the exit
+    message."""
+    import sqlite3
+
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "strategy:\n  strategy_id: fixed\n  strategy_params: {allocation_pct: 0.05}\n"
+        "grid:\n  steps: [0.01]\n  profit_targets: [0.005]\n"
+        "live:\n  enabled: true\n  paper_trading: true\n"
+    )
+    db_path = tmp_path / "ledger.db"
+    _run("live", "--config", str(config), "--state-db", str(db_path))
+
+    assert db_path.exists()
+    conn = sqlite3.connect(str(db_path))
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    conn.close()
+    for required in ("ledger_lots", "revisions", "processed_events"):
+        assert required in tables
+
+
+def test_live_missing_config_file_fails_clearly(tmp_path):
+    result = _run(
+        "live", "--config", "/nonexistent/config.yaml", "--state-db", str(tmp_path / "l.db")
+    )
+    assert result.returncode == 2
+    assert "not found" in result.stderr.lower()
+
+
+def test_dockerfile_exists_and_uses_the_correct_entrypoint():
+    content = (REPO_ROOT / "Dockerfile").read_text()
+    assert 'ENTRYPOINT ["python", "cli.py"]' in content
+    # Must match pyproject.toml's requires-python floor, not a rounded default.
+    assert "python:3.12-slim" in content
+    assert "VOLUME" in content
+
+
+def test_dockerfile_python_version_matches_pyproject_floor():
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text()
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text()
+    assert 'requires-python = ">=3.12"' in pyproject
+    assert "python:3.12-slim" in dockerfile
+
+
+def test_dockerignore_excludes_secrets_and_state():
+    content = (REPO_ROOT / ".dockerignore").read_text()
+    for pattern in (".env", ".git", "state/", "*.db"):
+        assert pattern in content
+
+
+def test_compose_file_defines_all_three_services_and_uses_env_file_for_live():
+    content = (REPO_ROOT / "docker-compose.yml").read_text()
+    for service in ("test:", "backtest:", "live:"):
+        assert service in content
+    assert "env_file" in content, (
+        "live service must source credentials from an env file, never inline"
+    )
+    assert (
+        ".env" not in content.split("env_file")[0]
+    )  # .env is not committed/baked in above the env_file line

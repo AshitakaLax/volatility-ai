@@ -1,7 +1,15 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 *.egg-info/
 .venv/
 venv/
 .env
+
+# Created locally by the docker-compose.yml bind mounts (state/, data/,
+# output/) or by running the SQLite-backed store directly -- never
+# meant to be committed. Mirrors .dockerignore's own exclusions.
+state/
+output/
+*.db

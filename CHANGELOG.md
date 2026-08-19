@@ -1,5 +1,71 @@
 # Changelog
 
+## Tooling — Docker
+
+The project runs in a container via `cli.py`, a single entrypoint with
+three subcommands. Build once, run any of them:
+
+```
+docker build -t volatility-ai .
+docker run --rm volatility-ai --help
+```
+
+Or via compose, which also wires up the right volumes:
+
+```
+docker compose run --rm test
+docker compose run --rm backtest --config /app/config/config.yaml --data /app/data/TQQQ_historical.csv
+docker compose run --rm live --config /app/config/config.yaml
+```
+
+**`test`** — runs pytest inside the image. Arguments forward straight
+through: `docker compose run --rm test -k my_test -v`.
+
+**`backtest`** — loads a `BacktestConfig` YAML and a historical CSV,
+runs the sweep, prints a summary, and optionally writes full results
+with `--output`. Mount `./data` and `./config` read-only, `./output`
+read-write.
+
+**`live`** — validates config and credentials and runs the Task 7.12
+startup sequence against a persistent SQLite store. **It cannot place
+a real order.** No class in this codebase implements the `LiveBroker`
+protocol against an actual Alpaca connection — confirmed by search
+before writing this, not assumed — so `live` correctly and honestly
+lands in `RECOVERY_REQUIRED` rather than pretending to connect. What
+it does verify for real: config validation, credential presence
+(`APCA_API_KEY_ID` / `APCA_API_SECRET_KEY`, sourced only from the
+environment — see the secret policy above), and that ledger/audit
+state persists to `/app/state` across the run.
+
+Credentials for `live` come from an uncommitted `.env` file passed via
+`env_file:` in `docker-compose.yml` — never baked into the image, and
+excluded from the build context by `.dockerignore` even if one existed
+locally.
+
+State persistence: `/app/state` is a named volume (`state:` in
+compose), not a bind mount, so the SQLite ledger and audit log survive
+`docker compose run` invocations across separate container instances
+— the point of Task 7.3/7.12's design, now actually exercised by the
+container lifecycle rather than only by tests.
+
+**A real bug was caught before this was committed.** The `test`
+subcommand originally routed pytest arguments through
+`argparse.REMAINDER`, which cannot reliably capture a leading
+option-like token with no preceding positional — `cli.py test -q`
+(the single most common invocation) raised `unrecognized arguments:
+-q`, while `cli.py test some/path.py -q` worked fine. Fixed by
+forwarding `sys.argv` directly for that subcommand instead of routing
+it through argparse. Regression-tested in
+`tests/integration/test_cli_docker_entrypoint.py`.
+
+The full build was also simulated without Docker itself (unavailable
+in the authoring sandbox): a clean virtualenv installing only
+`requirements.txt`, against a build context mirrored through the exact
+`.dockerignore` exclusions, running the exact entrypoint commands.
+All 677 tests passed in that simulated environment before any of this
+was committed.
+
+
 ## Tooling — ruff (formatter + linter)
 
 Formatting and linting are both handled by [ruff](https://docs.astral.sh/ruff/),
