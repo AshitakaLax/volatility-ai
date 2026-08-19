@@ -14,10 +14,146 @@ Risk semantics (implementation_task_specs.md Task 3.1):
 
 from __future__ import annotations
 
+import logging
+from enum import Enum
 from typing import Optional
 
 from src.exceptions import ConfigurationError
 from src.validation import validate_positive_int, validate_unit_interval
+
+logger = logging.getLogger("Optimizer")
+
+# Durable key for the halt state (Task 7.3's LedgerStore meta table).
+HALT_STATE_KEY = "circuit_breaker_state"
+HALT_REASON_KEY = "circuit_breaker_reason"
+
+
+class CircuitBreakerState(str, Enum):
+    """Explicit states per Task 7.8's State contract.
+
+    ACTIVE                -- normal operation, new buys permitted.
+    HALTED_NEW_BUYS       -- tripped, and the tripping condition still
+                             holds. No new buy exposure.
+    MANUAL_RESET_REQUIRED -- tripped earlier; the condition has since
+                             recovered, but buying stays blocked until
+                             a human explicitly resets. This state is
+                             what implements the task's step 3 ("don't
+                             auto-resume once the drawdown recovers,
+                             since the point is to force a human look
+                             at what happened") -- without it,
+                             recovery would silently re-enable buying
+                             and nobody would ever review the event.
+
+    Both non-ACTIVE states block new buys identically; they differ only
+    in whether the underlying condition is still breached, which is
+    what an operator needs to know when they come to look.
+    """
+
+    ACTIVE = "ACTIVE"
+    HALTED_NEW_BUYS = "HALTED_NEW_BUYS"
+    MANUAL_RESET_REQUIRED = "MANUAL_RESET_REQUIRED"
+
+
+class CircuitBreaker:
+    """Live-only hard stop on NEW BUY exposure.
+
+    No-loss shutdown invariant (Task 7.8): this NEVER forces
+    liquidation. Its only action is halting new buys plus alerting.
+    Existing lots remain fully eligible for normal profitable harvest,
+    and the no-loss guard still governs every sell. There is
+    deliberately no emergency-liquidation path here -- the task
+    requires that be a separate, explicitly approved policy.
+
+    State ownership: this object owns the halt state. When a `store`
+    (Task 7.3 LedgerStore) is supplied, the store is the durable source
+    of truth and the halt survives a restart; the in-memory attribute
+    is a cache of it.
+    """
+
+    def __init__(self, store=None, alert_sink=None):
+        self._store = store
+        # Canonical observability path when wired (Task 7.14); falls
+        # back to structured logging so a halt is never silent.
+        self._alert_sink = alert_sink
+        self._state = CircuitBreakerState.ACTIVE
+        self._reason = ""
+        if store is not None:
+            persisted = store.get_meta(HALT_STATE_KEY)
+            if persisted:
+                self._state = CircuitBreakerState(persisted)
+                self._reason = store.get_meta(HALT_REASON_KEY) or ""
+
+    @property
+    def state(self) -> CircuitBreakerState:
+        return self._state
+
+    @property
+    def reason(self) -> str:
+        return self._reason
+
+    @property
+    def allows_new_buys(self) -> bool:
+        return self._state is CircuitBreakerState.ACTIVE
+
+    def _persist(self) -> None:
+        if self._store is not None:
+            self._store.set_meta(HALT_STATE_KEY, self._state.value)
+            self._store.set_meta(HALT_REASON_KEY, self._reason)
+
+    def _alert(self, event: str, detail: str) -> None:
+        record = {"event": event, "state": self._state.value, "detail": detail}
+        if self._alert_sink is not None:
+            self._alert_sink(record)
+        else:
+            logger.error(f"CIRCUIT BREAKER {event}: state={self._state.value} -- {detail}")
+
+    def evaluate(self, drawdown: float, threshold: Optional[float]) -> CircuitBreakerState:
+        """Check the current drawdown against the halt threshold.
+
+        Called at the same point as clamp_trade_value but kept distinct
+        from it: the clamp reduces size, this blocks entry outright.
+
+        Once tripped, a recovering drawdown moves HALTED_NEW_BUYS ->
+        MANUAL_RESET_REQUIRED but never back to ACTIVE. Only
+        manual_reset() does that.
+        """
+        if threshold is None:
+            return self._state  # breaker not configured; never auto-trips
+
+        breached = drawdown > threshold
+        if self._state is CircuitBreakerState.ACTIVE:
+            if breached:
+                self._state = CircuitBreakerState.HALTED_NEW_BUYS
+                self._reason = f"drawdown {drawdown:.4%} exceeded halt threshold {threshold:.4%}"
+                self._persist()
+                self._alert("TRIPPED", self._reason)
+        elif self._state is CircuitBreakerState.HALTED_NEW_BUYS and not breached:
+            self._state = CircuitBreakerState.MANUAL_RESET_REQUIRED
+            self._reason = (
+                f"drawdown recovered to {drawdown:.4%} (threshold {threshold:.4%}) after a halt; "
+                "new buys stay blocked pending manual review"
+            )
+            self._persist()
+            self._alert("AWAITING_MANUAL_RESET", self._reason)
+        return self._state
+
+    def manual_reset(self, operator: str, note: str = "") -> None:
+        """Explicit human reset -- the ONLY way back to ACTIVE.
+
+        operator is required and must be non-empty: an anonymous reset
+        would defeat the purpose of forcing a human to look at what
+        happened.
+        """
+        if not operator or not str(operator).strip():
+            raise ConfigurationError(
+                "manual_reset requires a non-empty operator identifier -- an anonymous reset "
+                "defeats the purpose of forcing a human review."
+            )
+        previous = self._state
+        self._state = CircuitBreakerState.ACTIVE
+        self._reason = f"manually reset by {operator}" + (f": {note}" if note else "")
+        self._persist()
+        self._alert("MANUAL_RESET", f"from {previous.value} -- {self._reason}")
 
 
 class RiskManager:
@@ -36,6 +172,7 @@ class RiskManager:
         max_concurrent_lots: Optional[int] = None,
         max_total_exposure_pct: Optional[float] = None,
         max_total_exposure: Optional[float] = None,
+        halt_new_buys_if_drawdown_exceeds: Optional[float] = None,
     ):
         if max_total_exposure_pct is not None and max_total_exposure is not None and max_total_exposure_pct != max_total_exposure:
             raise ConfigurationError(
@@ -49,8 +186,14 @@ class RiskManager:
         if exposure_value is not None:
             validate_unit_interval(exposure_value, "max_total_exposure_pct")
 
+        if halt_new_buys_if_drawdown_exceeds is not None:
+            validate_unit_interval(halt_new_buys_if_drawdown_exceeds, "halt_new_buys_if_drawdown_exceeds")
+
         self.max_concurrent_lots = max_concurrent_lots
         self.max_total_exposure_pct = exposure_value
+        # Task 7.8: live-only hard stop. None (default) means the
+        # breaker never trips -- backtests are entirely unaffected.
+        self.halt_new_buys_if_drawdown_exceeds = halt_new_buys_if_drawdown_exceeds
 
     def clamp_trade_value(self, proposed_value: float, equity: float, cash: float, open_lot_count: int) -> float:
         """Both limits default to None -> unlimited, matching current
