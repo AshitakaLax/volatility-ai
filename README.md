@@ -9,7 +9,7 @@ its own profit target. Its defining constraint is a **no-loss invariant**:
 it never intentionally sells a lot below its cost basis, and that rule is
 enforced structurally rather than by convention.
 
-![tests](https://img.shields.io/badge/tests-699%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-765%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![lint](https://img.shields.io/badge/lint-ruff-orange)
 
@@ -48,19 +48,27 @@ enforced structurally rather than by convention.
 - Durable SQLite persistence, crash recovery, and broker reconciliation
 - A full order lifecycle state machine and audit trail
 - Docker packaging with a single CLI entrypoint
+- **Live/paper trading against Alpaca**, via `src/alpaca_broker.py` and the
+  tick loop in `src/live_trading_loop.py`
 
-**What does not work yet — stated plainly:**
+**What to understand before running it with money:**
 
-> **There is no broker adapter.** No class in this codebase implements the
-> `LiveBroker` protocol against a real Alpaca account. The `live` command
-> validates configuration, verifies credentials, opens persistent storage,
-> and runs the real startup sequence — then correctly halts at
-> `RECOVERY_REQUIRED` rather than pretending to connect. **This system
-> cannot place a real order.** See [Known gaps](#known-gaps).
+> **Paper is the default and real capital is gated.** `live.paper_trading`
+> in the config decides which Alpaca endpoint is used. Reaching `Mode.LIVE`
+> additionally requires a passing `PromotionEvaluation` — there is no
+> boolean shortcut, so real capital is unreachable without recorded
+> evidence that a paper-trading stage met its criteria.
 
-Everything downstream of that boundary — reconciliation, retry
-classification, the promotion gate, the state machine — is implemented and
-tested, and is waiting on the adapter rather than blocked by design.
+> **Only one sizing strategy exists.** `FixedPortfolioPercentage` is the
+> sole implemented strategy. The parameters the loop trades come from
+> `live.step` / `live.profit_target`, which are deliberately separate from
+> the `grid.*` sweep lists — see [Configuration](#configuration).
+
+> **Backtest/live parity is not automatic.** The live loop reuses the
+> backtest's own decision-cycle functions, but it defaults to the free IEX
+> data feed while historical backtests are usually built on SIP. If the
+> parameters were chosen against SIP data, running live on IEX is a real
+> mismatch. Set `live.feed: sip` if you have the subscription.
 
 ---
 
@@ -76,7 +84,7 @@ tested, and is waiting on the adapter rather than blocked by design.
 | `pandas`, `numpy` | Core — everything |
 | `pyyaml` | `BacktestConfig.from_yaml` |
 | `optuna` | Optional — only `search_strategy: bayesian` |
-| `alpaca-py` | Optional — only the live path's type definitions |
+| `alpaca-py` | Required for live/paper trading; unused by backtests |
 | `pytest`, `ruff` | Development only |
 
 Optional dependencies fail *loudly and early* if missing: `BayesianSearch`
@@ -175,7 +183,7 @@ docker compose run --rm backtest \
   --config /app/config/my-config.yaml \
   --data /app/data/TQQQ_historical.csv
 
-docker compose run --rm live --config /app/config/my-config.yaml
+docker compose run --rm live --config /app/config/my-config.yaml --check-only
 ```
 
 **Volumes.** `/app/state` is a *named* volume, not a bind mount, so the
@@ -194,9 +202,23 @@ never baked into the image, and excluded from the build context by
 with isolated state volumes (`state_staging`, `state_production`) so paper
 and real-money ledgers can never mix.
 
-> ⚠️ **Do not `docker compose up -d` these yet.** Without a broker adapter,
-> `live` halts immediately, and `restart: unless-stopped` would simply loop
-> that failure. The scaffolding is in place for when the adapter lands.
+Each needs its own uncommitted env file (`.env.staging`, `.env.production`)
+holding the credentials for that Alpaca account.
+
+```bash
+docker compose up -d live-staging          # paper, 24/7
+docker compose logs -f live-staging
+docker compose stop live-staging           # SIGTERM: finishes the tick, then exits
+```
+
+Both run with `restart: unless-stopped`, and the loop handles `SIGTERM` by
+finishing the current tick and settling in-flight orders before exiting —
+so `docker stop` and a host reboot are both safe.
+
+> ⚠️ **Run `live-staging` first, for long enough to mean something.**
+> `live-production` trades real capital and is additionally gated on
+> promotion evidence. Verify the audit trail and reconciliation on paper
+> before going near it.
 
 ---
 
@@ -248,7 +270,22 @@ output:
 live:
   enabled: false
   paper_trading: true             # true is a hard safety gate, see below
+  step: 0.01                      # required by the trading loop
+  profit_target: 0.005            # required by the trading loop
+  feed: iex                       # iex (free) or sip (paid subscription)
+  poll_interval_seconds: 60.0
+  max_sells_per_tick: 25
 ```
+
+**`live.step` / `live.profit_target` are separate from `grid.*` on
+purpose.** The `grid` lists are a search space a sweep explores. These two
+are the single parameter set the live loop actually trades. Defaulting them
+to `grid.steps[0]` would make the parameters real capital runs an implicit
+side effect of sweep ordering, so the loop refuses to start without them
+being stated. Pick them from a backtest result, deliberately.
+
+They are validated by `LiveTradingLoop`, not by `BacktestConfig.validate()`
+— a config can legitimately set `live.enabled` without running the daemon.
 
 **`strategy_id` requires a manual mapping.** This codebase has no
 id-to-class registry, so you supply one:
@@ -343,6 +380,9 @@ strategies observe the market.
 | `src/secrets.py` | Credential loading and redaction |
 | `src/idempotency.py`, `src/duplicate_order_guard.py` | Event and order deduplication |
 | `src/tick_validation.py` | Per-tick sanity checks |
+| `src/alpaca_broker.py` | The `LiveBroker` implementation — order submission, lookup, snapshot |
+| `src/alpaca_market_data.py` | Latest bar and market clock |
+| `src/live_trading_loop.py` | The tick loop: fills, harvest, buy, persist, shutdown |
 | `src/exceptions.py` | Domain exception hierarchy |
 
 ### Exception hierarchy
@@ -532,6 +572,33 @@ artifact.
 Missing credentials raise `ConfigurationError` naming exactly which
 variables are absent — never a silent fallback to simulation.
 
+Use a **paper** key pair for staging and a **live** key pair for
+production; they are different credentials at Alpaca, and `paper_trading`
+only selects the endpoint — it does not make a live key safe.
+
+### Running the loop
+
+```bash
+# Health check: connect, reconcile, exit. Places no orders.
+python cli.py live --config config/staging.yaml --check-only
+
+# Bounded run, useful for a first supervised session.
+python cli.py live --config config/staging.yaml --max-ticks 20
+
+# Unbounded: what the containers run. Stops on SIGTERM/SIGINT.
+python cli.py live --config config/staging.yaml
+```
+
+Startup walks `STARTING → LOAD_CONFIG → LOAD_STATE → CONNECT_BROKER →
+RECONCILE → VALIDATE_DATA_CLOCK → READY` and refuses to trade unless it
+reaches `READY`. Each tick then: applies confirmed fills, records the tick,
+harvests lots at target, and evaluates the grid trigger for a buy.
+
+**Fills are asynchronous.** Submitting an order mutates nothing; a later
+tick polls the broker and only the confirmed increment moves cash or lots.
+An in-flight order is therefore invisible to sizing — the strategy
+under-counts what it may already own rather than spending twice.
+
 ---
 
 ## Testing
@@ -543,14 +610,15 @@ python cli.py test -k promotion # filtered
 pytest tests/unit -q            # or invoke pytest directly
 ```
 
-**699 passing, 1 skipped** (a parallelism timing test that auto-skips on
-single-core machines).
+**765 passing** (a parallelism timing test auto-skips on single-core
+machines).
 
 | Suite | Count |
 |---|---|
-| `tests/unit` | 600 |
-| `tests/integration` | 96 |
+| `tests/unit` | 631 |
+| `tests/integration` | 130 |
 | Regression baseline | 1 |
+| Live-execution parity | 3 |
 
 ### The regression baseline
 
@@ -670,9 +738,23 @@ working correctly.
 **`BayesianSearch requires the 'optuna' package`.** Install `optuna`, or
 use `search_strategy: grid`.
 
-**`live` exits with `RECOVERY_REQUIRED`.** Expected. Either credentials are
-missing (the message names which variables), or you have reached the
-missing-broker-adapter boundary.
+**`live` exits with `RECOVERY_REQUIRED`.** Startup could not safely
+continue. The stderr message names the stage: missing credentials (it names
+the variables), credentials the broker rejected, or an unreadable ledger.
+
+**`live` exits with `RECONCILIATION_REQUIRED`.** Local state and the broker
+disagree. This is deliberately not self-healing — the diagnostic names the
+specific delta, and a human must resolve it. The circuit-breaker halt
+persists across restarts, so restarting the container will not clear it.
+
+**`live.step and live.profit_target are both required`.** The trading loop
+needs the single parameter set it will trade. They are not defaulted from
+`grid.steps` / `grid.profit_targets`, because those are sweep lists.
+
+**The loop runs but never trades.** Check that the market is open (it skips
+closed sessions), and that the IEX feed is returning bars — on a thin
+symbol IEX can report no bar for an interval, which is logged and skipped
+rather than filled in.
 
 **Sweeps are slow.** Use `n_jobs > 1` for process-level parallelism, or
 `search_strategy: bayesian` to explore a large space with a fraction of the
@@ -695,10 +777,10 @@ volatility-ai/
 ├── config/
 │   ├── staging.yaml           # paper account
 │   └── production.yaml        # real capital
-├── src/                       # 31 modules -- see the module map
+├── src/                       # 34 modules -- see the module map
 └── tests/
-    ├── unit/                  # 600 tests
-    ├── integration/           # 96 tests
+    ├── unit/                  # 631 tests
+    ├── integration/           # 130 tests
     └── fixtures/              # synthetic OHLCV + regression baseline
 ```
 
@@ -712,18 +794,27 @@ anything load-bearing.
 
 Tracked honestly rather than hidden:
 
-1. **No broker adapter.** The single blocker for live trading. Everything
-   downstream is implemented and waiting.
-2. **`ACCEPTED → UNKNOWN` is not a permitted transition.** The order state
+1. **`ACCEPTED → UNKNOWN` is not a permitted transition.** The order state
    machine follows its specified table literally. In practice an accepted
    order *can* become unknown (connection drop, query timeout), and today
    such an order stays recorded as `ACCEPTED`. **This needs a decision
-   before live trading** — it is the difference between knowing you have
-   lost track of an order and believing you have not.
-3. **No strategy registry.** `strategy_id` requires a manual mapping.
-4. **Multi-strategy comparison is manual.** See
+   before trading real capital** — it is the difference between knowing you
+   have lost track of an order and believing you have not.
+2. **No live test against a real Alpaca account.** The broker adapter and
+   trading loop are covered by tests against fakes and against the
+   installed SDK's real request/response models, but nothing here has yet
+   placed an order at Alpaca — not even on paper. Run staging first and
+   read the audit trail before trusting it.
+3. **Fills are polled, not streamed.** The loop queries order status once
+   per tick rather than consuming Alpaca's trade-update websocket. Fills
+   are therefore recognized within one poll interval rather than
+   immediately. Correct, but not the lowest-latency design available.
+4. **No CI.** 765 tests and a clean ruff run, but nothing enforces them
+   automatically on push.
+5. **No strategy registry.** `strategy_id` requires a manual mapping.
+6. **Multi-strategy comparison is manual.** See
    [Extending the system](#extending-the-system).
-5. **Macro/seasonality fields are inert.** `MarketContext` carries
+7. **Macro/seasonality fields are inert.** `MarketContext` carries
    `time_of_day_flag`, `is_macro_event_day`, and `macro_surprise_factor`,
    but nothing consumes them. Investigated and deliberately deferred — see
    `CHANGELOG.md`.
