@@ -20,16 +20,18 @@ do today:
 Kept as one file rather than three, so the Dockerfile has exactly one
 ENTRYPOINT and "run everything" is genuinely one image.
 
-On `live`: this project has no concrete broker adapter (no class
-implements the LiveBroker protocol anywhere in src/ -- confirmed by
-grep before writing this, not assumed). `live` therefore cannot place
-a real order. What it CAN do, honestly, is the part that exists:
-validate the config, verify credentials are present, open persistent
-ledger/audit storage, and run the startup lifecycle (Task 7.12)
-through to its real, correct outcome -- which is RECOVERY_REQUIRED,
-because connecting to a broker is a step this codebase does not
-implement. Reporting that plainly is preferable to stubbing a fake
-connection that would misrepresent what the system can do.
+On `live`: src/alpaca_broker.py implements the LiveBroker protocol
+against a real Alpaca account, so `live` now genuinely connects,
+verifies credentials against an authenticated endpoint, and
+reconciles persisted local state against the broker before reaching
+READY. Whether it talks to the paper or the real-capital endpoint is
+decided by `live.paper_trading` in the config file -- a committed,
+reviewable value rather than a shell flag.
+
+Reaching READY means startup succeeded; it does not by itself mean
+the strategy is trading. Driving ticks through LiveExecutionLoop is
+the caller's job, and Mode.LIVE still requires paper-trading
+promotion evidence (Task 7.7) before real capital is reachable at all.
 """
 
 from __future__ import annotations
@@ -127,13 +129,13 @@ def cmd_backtest(args: argparse.Namespace) -> int:
 
 
 def cmd_live(args: argparse.Namespace) -> int:
-    """Validate config/credentials and run the startup lifecycle.
-
-    Does not and cannot submit a real order -- see module docstring.
-    """
+    """Connect to Alpaca and run the startup lifecycle to READY."""
+    from src.alpaca_broker import AlpacaBroker
     from src.config import BacktestConfig
     from src.exceptions import ConfigurationError
+    from src.order_management_system import Mode
     from src.persistence import LedgerStore
+    from src.reconciliation import Reconciler
     from src.risk_manager import CircuitBreaker
     from src.runtime_lifecycle import RuntimeLifecycle
     from src.secrets import load_live_credentials
@@ -165,31 +167,49 @@ def cmd_live(args: argparse.Namespace) -> int:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     store = LedgerStore(db_path)
     circuit_breaker = CircuitBreaker(store=store)
-    lifecycle = RuntimeLifecycle(store=store, circuit_breaker=circuit_breaker)
+    reconciler = Reconciler(store=store, circuit_breaker=circuit_breaker)
+    lifecycle = RuntimeLifecycle(
+        store=store, circuit_breaker=circuit_breaker, reconciler=reconciler
+    )
+
+    # PAPER vs LIVE comes from the config, not from a CLI flag: routing
+    # real capital must be a reviewable, committed decision rather than
+    # something typed at a shell. Mode.LIVE additionally requires
+    # promotion evidence (Task 7.7), enforced where that gate lives.
+    mode = Mode.PAPER if config.live.paper_trading else Mode.LIVE
+
+    # The broker is built INSIDE connect_broker, not before the
+    # lifecycle starts. Credential loading and the connection check are
+    # both failure modes the lifecycle is designed to absorb into
+    # RECOVERY_REQUIRED -- constructing outside would turn a missing
+    # env var into an uncaught traceback instead, losing the graceful
+    # path and the persisted state that comes with it.
+    connected: dict = {}
 
     def _connect_broker():
-        # Credential presence IS checked here -- that much is real and
-        # required before anything else. What is not implemented is an
-        # actual network connection: no class in this codebase
-        # implements the LiveBroker protocol against a real Alpaca
-        # account. Raising, rather than silently returning, is what
-        # sends the lifecycle honestly into RECOVERY_REQUIRED.
-        load_live_credentials()
-        raise RuntimeError(
-            "Credentials are valid, but no broker adapter is implemented in this "
-            "codebase (no class implements src.live_execution.LiveBroker against a "
-            "real account) -- see CHANGELOG.md. Startup correctly stops here rather "
-            "than pretending to connect."
-        )
+        broker = AlpacaBroker.from_mode(mode, load_live_credentials())
+        # ping() rather than a bare construction: TradingClient does no
+        # I/O in its constructor, so a bad key would otherwise pass
+        # CONNECT_BROKER and only fail at the first real order.
+        broker.ping()
+        connected["broker"] = broker
 
-    final_state = lifecycle.start(connect_broker=_connect_broker)
+    final_state = lifecycle.start(
+        connect_broker=_connect_broker,
+        broker_snapshot_provider=lambda: connected["broker"].snapshot(),
+    )
     store.close()
 
     print(f"Runtime state: {final_state.value}")
+    print(f"Mode: {mode.value}")
     if final_state.value == "READY":
-        print("READY, but no order can actually be submitted (see above).")
+        print("READY -- broker connected and local state reconciles with the broker.")
         return 0
-    print("Did not reach READY -- this is the expected, honest outcome today.")
+    print(
+        "Did not reach READY. The state above names the stage that stopped startup; "
+        "RECONCILIATION_REQUIRED means local and broker state disagree and a human "
+        "must resolve it before trading resumes."
+    )
     return 1
 
 
@@ -215,9 +235,7 @@ def main() -> int:
     )
     p_backtest.set_defaults(func=cmd_backtest)
 
-    p_live = sub.add_parser(
-        "live", help="Validate config/credentials and run startup (no real orders)"
-    )
+    p_live = sub.add_parser("live", help="Connect to Alpaca and run the startup lifecycle")
     p_live.add_argument("--config", required=True, help="Path to a BacktestConfig YAML file")
     p_live.add_argument(
         "--state-db",

@@ -192,10 +192,19 @@ def test_live_with_no_credentials_fails_at_credential_loading(tmp_path):
     assert "Missing required live-credential environment variable" in result.stderr
 
 
-def test_live_with_valid_credentials_reaches_the_honest_no_adapter_message(tmp_path):
-    """Credentials present (even fake ones) -> credential loading
-    succeeds, so the failure moves to the real boundary: no broker
-    adapter exists in this codebase."""
+def test_live_with_rejected_credentials_halts_in_recovery_required(tmp_path):
+    """Credentials present but not valid at the broker -> the adapter
+    connects for real, the broker rejects the key, and startup stops in
+    RECOVERY_REQUIRED rather than trading against an unauthenticated
+    session.
+
+    The credentials are deliberately bogus, so this asserts the failure
+    path only. It must not depend on reaching Alpaca: with network the
+    connection check fails on a 401, without network it fails on a
+    transport error, and RECOVERY_REQUIRED is the correct outcome for
+    both -- which is exactly what makes this assertion safe in an
+    offline CI environment.
+    """
     config = tmp_path / "config.yaml"
     config.write_text(
         "strategy:\n  strategy_id: fixed\n  strategy_params: {allocation_pct: 0.05}\n"
@@ -213,12 +222,13 @@ def test_live_with_valid_credentials_reaches_the_honest_no_adapter_message(tmp_p
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=120,
         env=env,
     )
     assert result.returncode == 1
     assert "RECOVERY_REQUIRED" in result.stdout
-    assert "no broker adapter is implemented" in result.stderr
+    assert "PAPER" in result.stdout, "the mode actually used must be reported"
+    assert "connection check failed" in result.stderr
 
 
 def test_live_honest_failure_still_persists_state(tmp_path):
