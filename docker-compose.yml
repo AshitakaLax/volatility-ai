@@ -18,10 +18,9 @@ services:
   # Credentials come ONLY from the environment (env_file below), per
   # src/secrets.py's policy -- never baked into the image, never
   # committed. See that file's own .gitignore/.dockerignore entries.
-  # See cli.py's module docstring for what `live` can and cannot do:
-  # it validates config and credentials and runs the startup sequence,
-  # but this codebase has no broker adapter, so it cannot place a real
-  # order.
+  # `live` connects to Alpaca via src/alpaca_broker.py and runs the
+  # startup sequence through reconciliation to READY. Paper vs real
+  # capital is decided by live.paper_trading in the config file.
   live:
     build: .
     entrypoint: ["python", "cli.py", "live"]
@@ -32,10 +31,8 @@ services:
       - state:/app/state
 
   # 24/7 staging: Alpaca PAPER account, isolated state volume.
-  # Do NOT `docker compose up -d` this until an AlpacaBroker adapter
-  # implementing src/order_management_system.py's LiveBroker protocol
-  # exists -- until then `live` halts at NotImplementedError, and
-  # restart: unless-stopped would just loop that pointlessly.
+  # Requires real Alpaca paper credentials in .env.staging; startup
+  # stops at RECOVERY_REQUIRED without them rather than trading blind.
   live-staging:
     build: .
     entrypoint: ["python", "cli.py", "live", "--config", "/app/config/staging.yaml"]
@@ -47,9 +44,9 @@ services:
     restart: unless-stopped
 
   # 24/7 production: Alpaca LIVE account (real capital), isolated state
-  # volume. Same NotImplementedError caveat as live-staging above --
-  # additionally gated by src/promotion.py's promotion evidence
-  # requirement before Mode.LIVE will construct at all.
+  # volume. Reaching real capital is additionally gated by
+  # src/promotion.py's promotion evidence -- Mode.LIVE will not
+  # construct without a passing paper-trading record.
   live-production:
     build: .
     entrypoint: ["python", "cli.py", "live", "--config", "/app/config/production.yaml"]
