@@ -31,8 +31,41 @@ services:
       - ./config:/app/config:ro
       - state:/app/state
 
+  # 24/7 staging: Alpaca PAPER account, isolated state volume.
+  # Do NOT `docker compose up -d` this until an AlpacaBroker adapter
+  # implementing src/order_management_system.py's LiveBroker protocol
+  # exists -- until then `live` halts at NotImplementedError, and
+  # restart: unless-stopped would just loop that pointlessly.
+  live-staging:
+    build: .
+    entrypoint: ["python", "cli.py", "live", "--config", "/app/config/staging.yaml"]
+    env_file:
+      - .env.staging  # must define APCA_API_KEY_ID / APCA_API_SECRET_KEY (paper account); not committed
+    volumes:
+      - ./config:/app/config:ro
+      - state_staging:/app/state
+    restart: unless-stopped
+
+  # 24/7 production: Alpaca LIVE account (real capital), isolated state
+  # volume. Same NotImplementedError caveat as live-staging above --
+  # additionally gated by src/promotion.py's promotion evidence
+  # requirement before Mode.LIVE will construct at all.
+  live-production:
+    build: .
+    entrypoint: ["python", "cli.py", "live", "--config", "/app/config/production.yaml"]
+    env_file:
+      - .env.production  # must define APCA_API_KEY_ID / APCA_API_SECRET_KEY (live account); not committed
+    volumes:
+      - ./config:/app/config:ro
+      - state_production:/app/state
+    restart: unless-stopped
+
 volumes:
   # Named volume, not a bind mount: the persistent SQLite ledger
   # (Task 7.3) and audit log (Task 7.14) that must survive a container
   # restart, per Task 7.12's whole design.
   state:
+  # Isolated per-environment state so paper and real-money ledgers/audit
+  # logs can never mix.
+  state_staging:
+  state_production:

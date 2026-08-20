@@ -6,6 +6,7 @@ __pycache__/
 .venv/
 venv/
 .env
+.env.*
 
 # Created locally by the docker-compose.yml bind mounts (state/, data/,
 # output/) or by running the SQLite-backed store directly -- never
