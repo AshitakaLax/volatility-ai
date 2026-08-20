@@ -1,0 +1,34 @@
+# Production: real capital. Requires promotion evidence (Task 7.7) in
+# addition to live.enabled/paper_trading -- see src/promotion.py.
+# Credentials come from .env.production (APCA_API_KEY_ID / APCA_API_SECRET_KEY
+# for the Alpaca LIVE account), never from this file.
+strategy:
+  strategy_id: fixed
+  strategy_params:
+    allocation_pct: 0.05
+grid:
+  steps: [0.005, 0.01, 0.015]
+  profit_targets: [0.003, 0.005, 0.01]
+backtest:
+  symbol: TQQQ
+  initial_cash: 100000.0
+costs:
+  model_type: zero
+  commission_per_trade: 0.0
+  slippage_bps: 0.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: grid
+  rank_by: Capital Velocity Index
+  direction: maximize
+  seed: null
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false
+live:
+  enabled: true
+  paper_trading: false
