@@ -31,3 +31,16 @@ output:
 live:
   enabled: true
   paper_trading: true
+  # The SINGLE parameter set the loop trades. Deliberately separate from
+  # grid.steps/grid.profit_targets above, which are sweep LISTS -- pick
+  # these from a backtest result rather than letting sweep ordering
+  # decide what real capital runs.
+  step: 0.01
+  profit_target: 0.005
+  # iex is free on every account; sip is the full consolidated tape and
+  # needs a paid data subscription. If the backtest that chose the
+  # parameters above used sip data, running live on iex is a real
+  # backtest/live mismatch.
+  feed: iex
+  poll_interval_seconds: 60.0
+  max_sells_per_tick: 25

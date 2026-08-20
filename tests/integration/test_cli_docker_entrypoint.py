@@ -294,3 +294,78 @@ def test_compose_file_defines_all_three_services_and_uses_env_file_for_live():
     assert (
         ".env" not in content.split("env_file")[0]
     )  # .env is not committed/baked in above the env_file line
+
+
+def test_the_shipped_deployment_configs_are_valid_and_complete():
+    """The staging/production configs the containers actually run must
+    stay loadable and carry the live parameters the trading loop needs.
+
+    Guards the deployment specifically: a config change that breaks
+    these would otherwise only surface when a container failed to start
+    in a 24/7 deployment, which is the worst place to find out.
+    """
+    from src.config import BacktestConfig
+
+    for name, expected_paper in (("staging", True), ("production", False)):
+        path = REPO_ROOT / "config" / f"{name}.yaml"
+        assert path.exists(), f"{name}.yaml is referenced by docker-compose.yml"
+        config = BacktestConfig.from_yaml(str(path))
+        config.validate()
+        assert config.live.enabled is True
+        assert config.live.paper_trading is expected_paper
+        assert config.live.step is not None, "the live loop refuses to run without live.step"
+        assert config.live.profit_target is not None
+
+
+def test_production_config_is_the_only_one_routing_real_capital():
+    """A staging config that silently pointed at real capital is the
+    single most expensive configuration mistake available here."""
+    from src.config import BacktestConfig
+
+    staging = BacktestConfig.from_yaml(str(REPO_ROOT / "config" / "staging.yaml"))
+    assert staging.live.paper_trading is True, "staging must never touch real capital"
+
+
+def test_run_trading_loop_drives_ticks_and_shuts_down_cleanly(tmp_path, monkeypatch):
+    """Covers the cli-to-loop seam in-process.
+
+    This wiring is not reachable by the subprocess tests above, because
+    they never get past CONNECT_BROKER with bogus credentials -- and it
+    is exactly where a stale import already slipped through once (the
+    loop referenced load_live_credentials from the wrong scope, which
+    would have crashed the moment a real container reached READY).
+    """
+    import importlib
+
+    from src.persistence import LedgerStore
+    from src.risk_manager import CircuitBreaker
+    from src.runtime_lifecycle import RuntimeLifecycle
+    from tests.integration.test_live_trading_loop import (
+        FakeBroker,
+        FakeMarketData,
+        make_config,
+    )
+
+    cli = importlib.import_module("cli")
+    monkeypatch.setenv("APCA_API_KEY_ID", "k")
+    monkeypatch.setenv("APCA_API_SECRET_KEY", "s")
+
+    market = FakeMarketData()
+    market.push(100.0)
+    monkeypatch.setattr(
+        "src.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
+    )
+
+    store = LedgerStore(str(tmp_path / "ledger.db"))
+    breaker = CircuitBreaker(store=store)
+    lifecycle = RuntimeLifecycle(store=store, circuit_breaker=breaker)
+
+    class Args:
+        max_ticks = 2
+
+    broker = FakeBroker()
+    broker.trading_client = object()
+    rc = cli._run_trading_loop(Args(), make_config(), broker, store, breaker, lifecycle)
+
+    assert rc == 0
+    assert lifecycle.state.value == "STOPPED", "shutdown must complete, not abandon state"

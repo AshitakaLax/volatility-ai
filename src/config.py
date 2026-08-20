@@ -168,10 +168,31 @@ class LiveConfig:
     paper_trading=True (the default) routes to a PAPER-mode OMS that
     cannot touch real capital. Setting it False additionally requires
     passing promotion evidence (Task 7.7); it is not sufficient alone.
+
+    step and profit_target are the SINGLE grid parameters the live loop
+    trades, deliberately separate from grid.steps/grid.profit_targets.
+    Those are lists a sweep explores; taking element [0] of a sweep list
+    would make the parameters real capital trades on an implicit side
+    effect of sweep ordering. They are required whenever enabled=True
+    and validated as such -- there is no default, because there is no
+    safe default for "which strategy is running".
+
+    feed defaults to IEX because it is available on every Alpaca
+    account. SIP covers the full market but requires a paid data
+    subscription; selecting it without one makes every data request
+    fail.
     """
 
     enabled: bool = False
     paper_trading: bool = True
+    step: float | None = None
+    profit_target: float | None = None
+    feed: str = "iex"
+    poll_interval_seconds: float = 60.0
+    # Bounds one tick's harvest work. A tick that tried to place an
+    # unbounded number of sell orders could stall past the next tick;
+    # the remainder is simply picked up on the following pass.
+    max_sells_per_tick: int = 25
 
 
 @dataclass(frozen=True)
@@ -264,6 +285,11 @@ class BacktestConfig:
         live = LiveConfig(
             enabled=live_data.get("enabled", False),
             paper_trading=live_data.get("paper_trading", True),
+            step=live_data.get("step"),
+            profit_target=live_data.get("profit_target"),
+            feed=live_data.get("feed", "iex"),
+            poll_interval_seconds=live_data.get("poll_interval_seconds", 60.0),
+            max_sells_per_tick=live_data.get("max_sells_per_tick", 25),
         )
 
         return cls(
@@ -333,6 +359,25 @@ class BacktestConfig:
             "execution.intrabar_priority",
         )
 
+        # Live parameters are range-checked when SUPPLIED, but their
+        # PRESENCE is not required here. LiveExecutionLoop takes step
+        # per call, so plenty of legitimate live.enabled configs never
+        # need a config-level step at all; only the long-running trading
+        # loop does, and it enforces that itself (see
+        # src/live_trading_loop.py). Demanding them here would reject
+        # configs that are genuinely complete for their use.
+        if self.live.step is not None:
+            validate_positive(self.live.step, "live.step")
+        if self.live.profit_target is not None:
+            validate_positive(self.live.profit_target, "live.profit_target")
+        validate_positive(self.live.poll_interval_seconds, "live.poll_interval_seconds")
+        validate_positive_int(self.live.max_sells_per_tick, "live.max_sells_per_tick")
+        validate_one_of(
+            self.live.feed,
+            ("iex", "sip", "delayed_sip", "otc", "boats", "overnight"),
+            "live.feed",
+        )
+
     def to_dict(self) -> dict:
         """Inverse of from_dict() -- round-trips through the same nested
         shape (BacktestConfig.from_dict(config.to_dict()) == config).
@@ -376,7 +421,15 @@ class BacktestConfig:
                 "intrabar_priority": self.execution.intrabar_priority,
             },
             "output": {"return_full_results": self.output.return_full_results},
-            "live": {"enabled": self.live.enabled, "paper_trading": self.live.paper_trading},
+            "live": {
+                "enabled": self.live.enabled,
+                "paper_trading": self.live.paper_trading,
+                "step": self.live.step,
+                "profit_target": self.live.profit_target,
+                "feed": self.live.feed,
+                "poll_interval_seconds": self.live.poll_interval_seconds,
+                "max_sells_per_tick": self.live.max_sells_per_tick,
+            },
         }
 
     def to_run_sweep_kwargs(self, strategy_class) -> dict:

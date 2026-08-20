@@ -13,9 +13,9 @@ do today:
                                     a separator to strip.
   cli.py backtest --config C --data D [--output O]
                                     Run a parameter sweep.
-  cli.py live --config C            Validate config/credentials and run
-                                    the startup sequence against
-                                    persisted state.
+  cli.py live --config C            Connect, reconcile, then trade until
+                                    signalled. --check-only runs startup
+                                    and exits; --max-ticks bounds the run.
 
 Kept as one file rather than three, so the Dockerfile has exactly one
 ENTRYPOINT and "run everything" is genuinely one image.
@@ -28,10 +28,14 @@ READY. Whether it talks to the paper or the real-capital endpoint is
 decided by `live.paper_trading` in the config file -- a committed,
 reviewable value rather than a shell flag.
 
-Reaching READY means startup succeeded; it does not by itself mean
-the strategy is trading. Driving ticks through LiveExecutionLoop is
-the caller's job, and Mode.LIVE still requires paper-trading
-promotion evidence (Task 7.7) before real capital is reachable at all.
+Once READY, `live` enters src/live_trading_loop.py's tick loop and
+runs until SIGTERM/SIGINT, then shuts down through the Task 7.12
+sequence -- settling in-flight orders and persisting state rather than
+dying mid-fill. That signal handling is what makes a container with
+restart:unless-stopped safe to `docker stop`.
+
+Mode.LIVE still requires paper-trading promotion evidence (Task 7.7)
+before real capital is reachable at all.
 """
 
 from __future__ import annotations
@@ -198,19 +202,98 @@ def cmd_live(args: argparse.Namespace) -> int:
         connect_broker=_connect_broker,
         broker_snapshot_provider=lambda: connected["broker"].snapshot(),
     )
-    store.close()
 
     print(f"Runtime state: {final_state.value}")
     print(f"Mode: {mode.value}")
-    if final_state.value == "READY":
-        print("READY -- broker connected and local state reconciles with the broker.")
+    if final_state.value != "READY":
+        store.close()
+        print(
+            "Did not reach READY. The state above names the stage that stopped startup; "
+            "RECONCILIATION_REQUIRED means local and broker state disagree and a human "
+            "must resolve it before trading resumes."
+        )
+        return 1
+
+    print("READY -- broker connected and local state reconciles with the broker.")
+    if args.check_only:
+        store.close()
         return 0
-    print(
-        "Did not reach READY. The state above names the stage that stopped startup; "
-        "RECONCILIATION_REQUIRED means local and broker state disagree and a human "
-        "must resolve it before trading resumes."
+
+    return _run_trading_loop(args, config, connected["broker"], store, circuit_breaker, lifecycle)
+
+
+def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -> int:
+    """Run the tick loop until a signal stops it, then shut down cleanly.
+
+    Split from cmd_live so the startup path stays readable: everything
+    above this point is "can we safely trade at all", everything below
+    is "trade until told to stop".
+    """
+    import signal
+
+    from src.alpaca_market_data import AlpacaMarketData
+    from src.live_trading_loop import LiveTradingLoop
+    from src.secrets import load_live_credentials
+
+    strategy_class = _load_strategy_registry()[config.strategy.strategy_id]
+    strategy = strategy_class(**config.strategy.strategy_params)
+
+    market_data = AlpacaMarketData(
+        feed=config.live.feed,
+        # The clock is a trading-API endpoint, so it comes from the
+        # connection the broker already authenticated rather than a
+        # second one.
+        trading_client=broker.trading_client,
+        credentials=load_live_credentials(),
     )
-    return 1
+
+    loop = LiveTradingLoop(
+        config=config,
+        strategy=strategy,
+        broker=broker,
+        market_data=market_data,
+        store=store,
+        circuit_breaker=circuit_breaker,
+    )
+
+    # SIGTERM is how `docker stop` asks a container to exit, so handling
+    # it is what makes restart:unless-stopped safe: the loop finishes
+    # the tick it is in, settles in-flight orders, and persists -- rather
+    # than being killed midway through applying a confirmed fill.
+    def _handle_signal(signum, _frame):
+        print(f"\nReceived signal {signum} -- finishing the current tick.", file=sys.stderr)
+        loop.request_stop()
+
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
+    print(
+        f"Trading loop started: symbol={config.backtest.symbol} step={config.live.step} "
+        f"profit_target={config.live.profit_target} feed={config.live.feed} "
+        f"interval={config.live.poll_interval_seconds}s"
+    )
+    exit_code = 0
+    try:
+        ticks = loop.run_forever(max_ticks=args.max_ticks)
+        print(f"Trading loop stopped after {ticks} tick(s).")
+    except Exception as e:
+        # Never exit silently on a trading error -- the shutdown
+        # sequence below still runs so in-flight state is settled and
+        # persisted rather than abandoned.
+        print(f"Trading loop aborted: {type(e).__name__}: {e}", file=sys.stderr)
+        exit_code = 1
+
+    final = lifecycle.shutdown(
+        in_flight_settled=loop.in_flight_settled,
+        persist_state=loop.persist_state,
+        close_connections=store.close,
+    )
+    print(f"Shutdown state: {final.value}")
+    if final.value != "STOPPED":
+        # RECONCILIATION_REQUIRED here means in-flight orders did not
+        # settle in the bounded window; the next startup must reconcile.
+        return 1
+    return exit_code
 
 
 def main() -> int:
@@ -241,6 +324,17 @@ def main() -> int:
         "--state-db",
         default="/app/state/ledger.db",
         help="Path to the persistent SQLite ledger store",
+    )
+    p_live.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Run startup and reconciliation, then exit without trading (health check)",
+    )
+    p_live.add_argument(
+        "--max-ticks",
+        type=int,
+        default=None,
+        help="Stop after N ticks instead of running until signalled",
     )
     p_live.set_defaults(func=cmd_live)
 
