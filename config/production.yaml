@@ -32,3 +32,11 @@ output:
 live:
   enabled: true
   paper_trading: false
+  # The SINGLE parameter set real capital trades. These should be
+  # promoted from a paper-trading run that met src/promotion.py's
+  # criteria, not copied optimistically from a backtest.
+  step: 0.01
+  profit_target: 0.005
+  feed: iex
+  poll_interval_seconds: 60.0
+  max_sells_per_tick: 25

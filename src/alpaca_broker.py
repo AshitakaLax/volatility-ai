@@ -224,6 +224,17 @@ class AlpacaBroker:
             "trading endpoint."
         )
 
+    @property
+    def trading_client(self):
+        """The underlying TradingClient.
+
+        Exposed so AlpacaMarketData can read the market clock (a
+        trading-API endpoint) through the connection this object
+        already holds, rather than opening and authenticating a second
+        one that could drift from it.
+        """
+        return self._client
+
     # --- construction ---
 
     @classmethod
