@@ -1,29 +1,32 @@
 # Core dependencies -- used throughout src/ and optimization_controller.py
 # since the project's original files.
-pandas>=2.0
-numpy>=1.25
+# Floors bumped to the latest mutually-compatible versions as of 2026-08-19,
+# verified together: full test suite (700 tests) + ruff check/format all
+# pass against this exact combination in a clean venv.
+pandas>=3.0.5
+numpy>=2.5.2
 
 # Required for BacktestConfig.from_yaml (Task 6.1).
-pyyaml>=6.0
+pyyaml>=6.0.3
 
 # Optional: only required for search_strategy="bayesian" (Task 5.3).
 # search_strategy="grid" (the default) needs none of this. Without it,
 # BayesianSearch(...) raises a clear ConfigurationError rather than
 # failing at import time or silently falling back to grid search.
-optuna>=3.0
+optuna>=4.9.0
 
 # Optional: only required for live trading against Alpaca (Phase 7).
 # Backtesting needs none of this. src/fill_accounting.py's core
 # arithmetic is SDK-independent; only extract_alpaca_fill() and the
 # live broker path touch alpaca-py types.
-alpaca-py>=0.20
+alpaca-py>=0.44.0
 
 # Development / test only.
-pytest>=7.0
+pytest>=9.1.1
 
 # Formatting and linting. Configured in pyproject.toml.
 #   ruff format .        -- apply formatting
 #   ruff format --check . -- verify formatting without writing (CI)
 #   ruff check .          -- lint
 #   ruff check --fix .    -- lint and apply safe fixes
-ruff>=0.6
+ruff>=0.16.3
