@@ -150,27 +150,50 @@ def test_no_speculative_ingestion_dependency_was_added():
         )
 
 
-def test_the_named_bayesian_strategy_is_still_absent():
-    """The external claim concerned BayesianDualScaleSizing. It is not
-    IMPLEMENTED in this repository, which is part of the evidence that
-    the claim does not describe this codebase. If it is ever added, the
-    'macro' ambiguity noted in this module's docstring should be
-    re-examined at that point.
+def test_the_named_bayesian_strategy_now_exists_and_is_still_not_macroeconomic():
+    """BayesianDualScaleSizing is now IMPLEMENTED, so this test's
+    predecessor has been re-run as it demanded.
 
-    Checks for a class DEFINITION specifically: the name does appear in
-    size_calculators.py's module docstring, which documents that this
-    strategy (and two others) are deliberately NOT implemented. A
-    mention that something is absent is not that thing existing -- an
-    earlier version of this test conflated the two and failed.
+    The earlier version asserted the strategy was absent and required
+    that, "if it is ever added, the 'macro' ambiguity noted in this
+    module's docstring should be re-examined at that point." That
+    re-examination happened when the strategy was written, and the
+    finding is unchanged:
+
+    The two scales in BayesianDualScaleSizing are a FAST and a SLOW
+    Beta posterior over the same latent quantity, differing only in
+    exponential-forgetting half-life. "Macro" is the long-half-life
+    posterior -- a lookback-length distinction, exactly as the task's
+    original context described. It consumes no macroeconomic data.
+
+    The discovery outcome therefore still stands: no consumer of
+    time_of_day_flag / is_macro_event_day / macro_surprise_factor
+    exists. The sibling tests in this module enforce that directly and
+    remain the live gate; this test now guards the narrower claim that
+    the Bayesian strategy did not become such a consumer.
     """
-    source = (REPO_ROOT / "src" / "size_calculators.py").read_text()
-    definitions = re.findall(r"^class\s+(\w+)", source, flags=re.MULTILINE)
-    assert "BayesianDualScaleSizing" not in definitions, (
-        "BayesianDualScaleSizing is now implemented -- re-examine whether its 'macro' "
-        "posterior is a lookback-length distinction or genuinely macroeconomic."
-    )
-    assert "FixedPortfolioPercentage" in definitions
-    assert definitions == ["SizingStrategy", "FixedPortfolioPercentage"], (
-        f"The set of sizing strategies changed to {definitions} -- re-run the discovery gate, "
-        "since a new strategy is exactly where a macro-field consumer would appear."
-    )
+    from src.bayesian_sizing_calculators import BayesianDualScaleSizing
+
+    source = (REPO_ROOT / "src" / "bayesian_sizing_calculators.py").read_text()
+
+    for field in MACRO_FIELDS:
+        assert field not in source, (
+            f"BayesianDualScaleSizing now references {field!r} -- it has become a macro-field "
+            "consumer, so the Task 7.9 discovery gate must be re-run in full (step 3: document "
+            "the source dataset, join semantics, and defaults)."
+        )
+
+    # The sizing inputs are still just price and equity, as they were
+    # when FixedPortfolioPercentage was the only strategy.
+    import inspect
+
+    sizing_src = inspect.getsource(BayesianDualScaleSizing.calculate_trade_value)
+    assert "context.equity" in sizing_src and "context.price" in sizing_src
+
+    ingestion_terms = ("finbert", "transformers", "sentiment", "fomc", "cpi")
+    lowered = source.lower()
+    for term in ingestion_terms:
+        assert term not in lowered, (
+            f"src/bayesian_sizing_calculators.py mentions {term!r} -- the Task 7.9 gate forbids "
+            "adding macro/NLP ingestion to make the strategy appear more capable."
+        )

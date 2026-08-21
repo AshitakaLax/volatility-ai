@@ -58,10 +58,16 @@ STRATEGY_REGISTRY = {}
 
 
 def _load_strategy_registry() -> dict:
-    if not STRATEGY_REGISTRY:
-        from src.size_calculators import FixedPortfolioPercentage
+    """Delegates to src/strategy_registry.py.
 
-        STRATEGY_REGISTRY["fixed"] = FixedPortfolioPercentage
+    Kept as a function so the import stays lazy (the CLI's startup
+    cost matters for `cli.py test`), but the table itself now lives in
+    src/ where the library, not just this entrypoint, can reach it.
+    """
+    if not STRATEGY_REGISTRY:
+        from src.strategy_registry import STRATEGIES
+
+        STRATEGY_REGISTRY.update(STRATEGIES)
     return STRATEGY_REGISTRY
 
 

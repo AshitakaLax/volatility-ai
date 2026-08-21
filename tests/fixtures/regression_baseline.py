@@ -100,9 +100,19 @@ def run_baseline_sweep() -> dict:
 # criteria is that the test passes against real, current behavior,
 # not a placeholder.
 # ----------------------------------------------------------------------
+# DELIBERATE SCHEMA UPDATE: "Strategy" was added when the sizing
+# strategies stopped being a set of one. Before it, rows from a
+# FixedPortfolioPercentage sweep and a BayesianDualScaleSizing sweep
+# were indistinguishable once combined into a single results table.
+#
+# The update was reviewed rather than regenerated on faith: every
+# previously pinned value was confirmed byte-identical first, so this
+# revision adds a column and changes no behavior. If a future edit here
+# also moves a number, that is a regression, not a schema change.
 BASELINE: dict | None = {
     "Grid Step": 0.01,
     "Profit Target": 0.005,
+    "Strategy": "FixedPortfolioPercentage",
     "allocation_pct": 0.05,
     "Final Equity": 100099.81489816227,
     "Total Return %": 0.09981489816226485,

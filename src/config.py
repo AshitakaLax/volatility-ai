@@ -23,6 +23,7 @@ YAML-only schema, per this task's explicit instruction.
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass, field
 
 from src.cost_models import SlippageCommissionModel, TransactionCostModel, ZeroCostModel
@@ -159,6 +160,50 @@ class OutputConfig:
     yields per-combination trade blotters and equity curves."""
 
     return_full_results: bool = False
+
+
+def expand_strategy_params(strategy_params: dict) -> list[dict]:
+    """Turn list-valued strategy params into a grid of concrete kwargs.
+
+    `{"a": [1, 2], "b": 3}` becomes `[{"a": 1, "b": 3}, {"a": 2, "b": 3}]`,
+    mirroring how grid.steps/grid.profit_targets already sweep. Without
+    this the sweep could only ever see ONE strategy parameter set --
+    strategy_params was passed through as a single-element list -- so
+    every tunable a strategy exposed was reachable from the Python API
+    but not from a config file, which is where sweeps are actually
+    defined.
+
+    Scalars pass through untouched, so existing configs produce exactly
+    one combination and are bit-identical to before.
+
+    A list is ALWAYS a sweep axis here, never a literal value. That is a
+    real constraint: a strategy taking a genuine list argument cannot
+    express it in YAML. No current strategy does, and the alternative
+    (a sentinel wrapper key) would add ceremony to every ordinary config
+    to serve a case that does not exist yet.
+    """
+    if not strategy_params:
+        return [{}]
+
+    swept = {k: v for k, v in strategy_params.items() if isinstance(v, list)}
+    if not swept:
+        return [dict(strategy_params)]
+
+    for key, values in swept.items():
+        if not values:
+            raise ConfigurationError(
+                f"strategy_params[{key!r}] is an empty list -- it would produce zero "
+                "combinations and silently sweep nothing."
+            )
+
+    fixed = {k: v for k, v in strategy_params.items() if not isinstance(v, list)}
+    keys = list(swept)
+    combinations = []
+    for values in itertools.product(*(swept[k] for k in keys)):
+        combo = dict(fixed)
+        combo.update(dict(zip(keys, values, strict=True)))
+        combinations.append(combo)
+    return combinations
 
 
 @dataclass(frozen=True)
@@ -438,14 +483,14 @@ class BacktestConfig:
         TransactionCostModel/RiskManager instances via costs.build()/
         risk.build(), not just passes config values through unchanged.
         strategy_class is an explicit argument since BacktestConfig only
-        holds strategy_id (a string identifier); this codebase has no
-        strategy-id-to-class registry to resolve it automatically, and
-        building one is outside this task's scope."""
+        holds strategy_id (a string identifier). src/strategy_registry.py
+        can now resolve one, but this signature stays explicit so a
+        caller can sweep a class the registry does not know about."""
         return {
             "grid_steps": list(self.grid.steps),
             "profit_targets": list(self.grid.profit_targets),
             "strategy_class": strategy_class,
-            "strategy_params_grid": [self.strategy.strategy_params],
+            "strategy_params_grid": expand_strategy_params(self.strategy.strategy_params),
             "cost_model": self.costs.build(),
             "risk_manager": self.risk.build(),
             "on_flat_reentry": self.execution.on_flat_reentry,

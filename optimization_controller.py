@@ -85,6 +85,18 @@ def _resolve_search_strategy(
     )
 
 
+def _strategy_name(strategy_class) -> str:
+    """Human-readable name for whatever run_sweep was handed.
+
+    Deliberately not `strategy_class.__name__`. Despite the parameter
+    name, run_sweep's contract is "a callable that constructs a
+    strategy", and tests legitimately pass factory OBJECTS -- which
+    have no __name__. Falling back to the callable's type keeps those
+    call sites working and still yields something identifiable.
+    """
+    return getattr(strategy_class, "__name__", None) or type(strategy_class).__name__
+
+
 def _run_one_combination(
     controller: "OptimizationController",
     step: float,
@@ -134,11 +146,31 @@ def _run_one_combination(
             risk_manager=risk_manager,
             on_flat_reentry=on_flat_reentry,
         )
-        result_row = {"Grid Step": step, "Profit Target": target, **params, **result.metrics}
+        # Strategy is identified by name rather than by the config's
+        # strategy_id, because run_sweep takes a callable and never
+        # sees the id -- and a row naming something the reader can go
+        # look at beats one naming a registry key. It matters at all
+        # only now that more than one sizing strategy exists: results
+        # from different strategies were previously indistinguishable
+        # once combined.
+        identity = {"Strategy": _strategy_name(strategy_class)}
+        result_row = {
+            "Grid Step": step,
+            "Profit Target": target,
+            **identity,
+            **params,
+            **result.metrics,
+        }
         return result_row, result
     except Exception as e:
         logger.error(f"Combination failed: step={step} target={target} params={params}: {e}")
-        return {"Grid Step": step, "Profit Target": target, **params, "error": str(e)}, None
+        return {
+            "Grid Step": step,
+            "Profit Target": target,
+            "Strategy": _strategy_name(strategy_class),
+            **params,
+            "error": str(e),
+        }, None
 
 
 class OptimizationController:
@@ -408,7 +440,15 @@ class OptimizationController:
             "symbol": symbol,
             "initial_cash": initial_cash,
             "on_flat_reentry": on_flat_reentry,
-            **vars(strategy_instance),
+            # Underscore-prefixed attributes are excluded deliberately.
+            # The intent above is "the strategy's own constructor-derived
+            # attributes"; a stateful strategy's rolling indicator state
+            # is not that. Without the filter, a strategy holding a
+            # bounded price deque or posterior object would attach it to
+            # every SimulationResult, which is both misleading as a
+            # "what configured this run" record and a real memory cost
+            # across a sweep held in return_full_results.
+            **{k: v for k, v in vars(strategy_instance).items() if not k.startswith("_")},
         }
 
         return SimulationResult(
