@@ -1,0 +1,62 @@
+# In-depth adaptive search over every BayesianDualScaleSizing input.
+# Driven by `cli.py search`, which uses Optuna TPE with per-key axes.
+#
+# The space is ~3.8M combinations -- far too large to enumerate, which
+# is the point: TPE spends its first 10 trials sampling randomly, then
+# concentrates on whatever regions look promising. Exhaustive grid
+# search over this would take months.
+#
+# bars_per_day: 326 is MEASURED from the IEX dataset (408k-446k bars
+# over 1253-1525 sessions), not assumed. Every window parameter below
+# is in trading days and converted through it, which is what stops a
+# "252" from silently meaning forty minutes on minute bars.
+#
+# rank_by is Total Return %, NOT the default Capital Velocity Index:
+# CVI is closed_lots/total_lots and saturates at exactly 1.0 on any
+# dataset long enough for every lot to close. A constant objective
+# gives TPE zero gradient, so no convergence could occur even in
+# principle.
+#
+# reference_probability is swept from 0.70 upward because the measured
+# base success rate on this data is ~82-87%. The library default of
+# 0.5 sits below that and pins the sizing multiplier at its ceiling on
+# >99% of bars, silently degenerating the strategy into fixed-percentage
+# sizing -- see BayesianDualScaleSizing.__init__ for the full note.
+strategy:
+  strategy_id: bayesian_dual_scale
+  strategy_params:
+    bars_per_day: 326
+    max_trade_pct: [0.02, 0.05, 0.10]
+    target_return: [0.003, 0.005, 0.0075, 0.01, 0.015, 0.02]
+    horizon_days: [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+    fast_half_life_days: [1.0, 2.0, 5.0, 10.0, 20.0]
+    slow_half_life_days: [30.0, 60.0, 120.0, 250.0]
+    confidence_k: [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+    reference_probability: [0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.99]
+grid:
+  steps: [0.002, 0.003, 0.005, 0.0075, 0.01, 0.015]
+  profit_targets: [0.003, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03]
+backtest:
+  symbol: TQQQ
+  initial_cash: 100000.0
+costs:
+  # Non-zero on purpose. With zero costs, every prior sweep drifted
+  # monotonically toward the edge of whatever grid it was given --
+  # nothing penalized trading more often, so the "optimum" was always
+  # just the most-active corner.
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false

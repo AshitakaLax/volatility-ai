@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Single entrypoint for running this project inside a container (or
-locally). Four subcommands cover everything the project can honestly
+locally). Five subcommands cover everything the project can honestly
 do today:
 
   cli.py test [pytest args...]     Run the test suite. Extra arguments
@@ -15,7 +15,11 @@ do today:
                                     Download historical bars from Alpaca
                                     into a backtest-ready CSV in data/.
   cli.py backtest --config C --data D [--output O]
-                                    Run a parameter sweep.
+                                    Run an exhaustive parameter sweep.
+  cli.py search --config C --data D --trials N
+                                    Adaptive (Optuna TPE) search over a
+                                    space too large to enumerate, logging
+                                    trials in execution order.
   cli.py live --config C            Connect, reconcile, then trade until
                                     signalled. --check-only runs startup
                                     and exits; --max-ticks bounds the run.
@@ -264,6 +268,158 @@ def cmd_fetch_data(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_search(args: argparse.Namespace) -> int:
+    """Adaptive parameter search, logging trials in the order they run.
+
+    Separate from `backtest` for a concrete reason: run_sweep sorts
+    both summary_df and full_results by rank_by before returning, so
+    its output is in RANKED order and the explore-then-exploit
+    progression of an adaptive search is invisible in it. This drives
+    BayesianSearch.suggest()/report() directly -- the same inner loop
+    run_sweep(n_jobs=1) uses -- and records each trial as it happens,
+    before any sorting.
+
+    It also constructs BayesianSearch itself rather than passing
+    search_strategy="bayesian", which is the documented way to set a
+    trial budget: the string form defaults n_trials to the FULL
+    combination count, which is meaningless for a space of millions.
+    """
+    import time
+
+    import pandas as pd
+
+    from optimization_controller import OptimizationController, _run_one_combination
+    from src.config import BacktestConfig, expand_strategy_params
+    from src.exceptions import ConfigurationError
+    from src.search_strategies import BayesianSearch
+    from src.strategy_registry import resolve_strategy
+
+    config_path = Path(args.config)
+    data_path = Path(args.data)
+    for label, path in (("Config", config_path), ("Data", data_path)):
+        if not path.exists():
+            print(f"{label} file not found: {path}", file=sys.stderr)
+            return 2
+
+    config = BacktestConfig.from_yaml(str(config_path))
+    try:
+        config.validate()
+        strategy_class = resolve_strategy(config.strategy.strategy_id)
+    except ConfigurationError as e:
+        print(f"Invalid config: {e}", file=sys.stderr)
+        return 2
+
+    params_grid = expand_strategy_params(config.strategy.strategy_params)
+    grid_steps = list(config.grid.steps)
+    profit_targets = list(config.grid.profit_targets)
+    total_space = len(grid_steps) * len(profit_targets) * len(params_grid)
+
+    search = BayesianSearch(
+        grid_steps,
+        profit_targets,
+        params_grid,
+        rank_by=config.search.rank_by,
+        direction=config.search.direction,
+        n_trials=args.trials,
+        seed=config.search.seed,
+    )
+
+    print(f"Search space : {total_space:,} combinations")
+    print(f"Trial budget : {args.trials} ({100 * args.trials / total_space:.4f}% of the space)")
+    print(f"Objective    : {config.search.rank_by} ({config.search.direction})")
+    print(f"Strategy     : {config.strategy.strategy_id} -> {strategy_class.__name__}")
+    if search.decomposed:
+        print(f"Search axes  : grid_step, profit_target, {', '.join(search.search_axis_names)}")
+    else:
+        # Worth saying loudly: the index fallback cannot converge on
+        # strategy params, so a search that looks like it is not
+        # narrowing is explained by this line rather than by the data.
+        print("Search axes  : grid_step, profit_target, strategy_params (OPAQUE INDEX --")
+        print("               params grid is not a cartesian product, so per-key")
+        print("               search is unavailable and strategy params cannot converge)")
+    print()
+
+    df = pd.read_csv(data_path, parse_dates=["timestamp"]).set_index("timestamp")
+    controller = OptimizationController(historical_data=df)
+    cost_model = config.costs.build()
+    risk_manager = config.risk.build()
+
+    rows, trial_log = [], []
+    started = time.time()
+    trial_number = 0
+    while True:
+        suggestion = search.suggest()
+        if suggestion is None:
+            break
+        trial_number += 1
+        t0 = time.time()
+        row, sim_result = _run_one_combination(
+            controller,
+            suggestion["grid_step"],
+            suggestion["profit_target"],
+            strategy_class,
+            suggestion["strategy_params"],
+            config.backtest.symbol,
+            config.backtest.initial_cash,
+            cost_model,
+            risk_manager,
+            config.execution.on_flat_reentry,
+        )
+        search.report(suggestion, sim_result)
+        rows.append(row)
+
+        objective = None if "error" in row else row.get(config.search.rank_by)
+        trial_log.append(
+            {
+                "trial": trial_number,
+                "objective": objective,
+                "grid_step": suggestion["grid_step"],
+                "profit_target": suggestion["profit_target"],
+                **suggestion["strategy_params"],
+                "elapsed_s": round(time.time() - t0, 3),
+            }
+        )
+        if trial_number % args.log_every == 0 or trial_number <= 10:
+            shown = f"{objective:9.3f}" if objective is not None else "   FAILED"
+            best = max(
+                (t["objective"] for t in trial_log if t["objective"] is not None), default=None
+            )
+            best_str = f"{best:9.3f}" if best is not None else "     n/a"
+            phase = "random" if trial_number <= 10 else "TPE   "
+            print(
+                f"[{trial_number:4d}/{args.trials}] {phase} obj={shown}  best={best_str}  "
+                f"step={suggestion['grid_step']:.4f} target={suggestion['profit_target']:.4f}  "
+                f"({time.time() - started:.0f}s elapsed)"
+            )
+
+    elapsed = time.time() - started
+    print(
+        f"\n{trial_number} trials in {elapsed:.0f}s ({elapsed / max(1, trial_number):.2f}s/trial)"
+    )
+
+    results = pd.DataFrame(rows)
+    ascending = config.search.direction == "minimize"
+    if config.search.rank_by in results.columns:
+        results = results.sort_values(
+            config.search.rank_by, ascending=ascending, na_position="last"
+        ).reset_index(drop=True)
+    pd.set_option("display.width", 250)
+    print(f"\nTop 10 by {config.search.rank_by}:")
+    print(results.head(10).to_string())
+
+    if args.output:
+        out = Path(args.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        results.to_csv(out, index=False)
+        print(f"\nRanked results -> {out}")
+    if args.trial_log:
+        log_path = Path(args.trial_log)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(trial_log).to_csv(log_path, index=False)
+        print(f"Trial-order log -> {log_path}")
+    return 0
+
+
 def cmd_live(args: argparse.Namespace) -> int:
     """Connect to Alpaca and run the startup lifecycle to READY."""
     from src.alpaca_broker import AlpacaBroker
@@ -491,6 +647,28 @@ def main() -> int:
         "--force", action="store_true", help="Overwrite an existing file of the same name"
     )
     p_fetch.set_defaults(func=cmd_fetch_data)
+
+    p_search = sub.add_parser(
+        "search", help="Adaptive (Bayesian/TPE) parameter search with trial-order logging"
+    )
+    p_search.add_argument("--config", required=True, help="Path to a BacktestConfig YAML file")
+    p_search.add_argument("--data", required=True, help="Path to historical OHLCV CSV")
+    p_search.add_argument(
+        "--trials",
+        type=int,
+        default=200,
+        help="Trial budget (default: 200). The first 10 are TPE's random startup phase.",
+    )
+    p_search.add_argument("--output", default=None, help="Path for ranked results CSV")
+    p_search.add_argument(
+        "--trial-log",
+        default=None,
+        help="Path for a CSV of trials in EXECUTION order (shows explore->exploit)",
+    )
+    p_search.add_argument(
+        "--log-every", type=int, default=10, help="Print progress every N trials (default: 10)"
+    )
+    p_search.set_defaults(func=cmd_search)
 
     p_live = sub.add_parser("live", help="Connect to Alpaca and run the startup lifecycle")
     p_live.add_argument("--config", required=True, help="Path to a BacktestConfig YAML file")
