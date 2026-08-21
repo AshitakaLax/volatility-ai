@@ -458,3 +458,17 @@ def test_env_files_stay_out_of_the_docker_build_context():
         assert any(fnmatch.fnmatch(name, p) for p in patterns), (
             f"{name} would enter the Docker build context"
         )
+
+
+def test_backtest_with_return_full_results_does_not_crash(config_path, data_path):
+    """Regression test: output.return_full_results=True makes
+    run_sweep return (summary_df, full_results) instead of a bare
+    DataFrame. cmd_backtest previously called results.head(10)
+    unconditionally and crashed with AttributeError on the tuple --
+    caught while running a real sweep, not a synthetic case."""
+    config = config_path.parent / "config_full.yaml"
+    config.write_text(config_path.read_text() + "output:\n  return_full_results: true\n")
+    result = _run("backtest", "--config", str(config), "--data", str(data_path))
+    assert result.returncode == 0, result.stderr
+    assert "combination(s) evaluated" in result.stdout
+    assert "does not yet write them to disk" in result.stdout

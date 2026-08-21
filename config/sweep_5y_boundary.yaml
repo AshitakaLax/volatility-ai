@@ -1,0 +1,33 @@
+# Follow-up to sweep_5y.yaml. That sweep's best result (step=0.002,
+# profit_target=0.010) sat at the edge of the swept grid in both
+# dimensions, with returns increasing monotonically toward that edge --
+# meaning the sweep found where the search stopped, not a peak. This
+# pushes past that boundary to see whether returns keep climbing or
+# turn over.
+strategy:
+  strategy_id: fixed
+  strategy_params:
+    allocation_pct: 0.05
+grid:
+  steps: [0.001, 0.0015, 0.002, 0.0025]
+  profit_targets: [0.010, 0.015, 0.020, 0.025]
+backtest:
+  symbol: TQQQ
+  initial_cash: 100000.0
+costs:
+  model_type: zero
+  commission_per_trade: 0.0
+  slippage_bps: 0.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: grid
+  rank_by: Total Return %
+  direction: maximize
+  seed: null
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false

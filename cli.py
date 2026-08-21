@@ -123,9 +123,29 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     controller = OptimizationController(historical_data=df)
     results = controller.run_sweep(**config.to_run_sweep_kwargs(strategy_class))
 
+    # output.return_full_results=True makes run_sweep return
+    # (summary_df, full_results) instead of summary_df alone -- a real
+    # config option, not something specific to any one config file.
+    # Unpacking it here (rather than only in the summary-only branch)
+    # is what makes that flag usable from this entrypoint at all; before
+    # this, any config setting it crashed on results.head(10) because
+    # results was the tuple, not the DataFrame.
+    full_results = None
+    if isinstance(results, tuple):
+        results, full_results = results
+
     pd.set_option("display.width", 200)
     print(results.head(10).to_string())
     print(f"\n{len(results)} combination(s) evaluated.")
+    if full_results is not None:
+        # Per-combination blotters/equity curves exist only in memory
+        # here -- cli.py has no writer for them yet. Said plainly rather
+        # than silently discarding what the config asked for.
+        print(
+            f"output.return_full_results is set: {len(full_results)} per-combination result "
+            "object(s) were produced but cli.py does not yet write them to disk. Use the "
+            "Python API (OptimizationController.run_sweep) directly to access them."
+        )
 
     if args.output:
         out_path = Path(args.output)
