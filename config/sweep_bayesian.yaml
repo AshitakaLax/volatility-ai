@@ -1,0 +1,56 @@
+# BayesianDualScaleSizing on 5 years of TQQQ 1-minute bars.
+#
+# bars_per_day: 326 is measured, not assumed -- the IEX dataset in
+# data/ averages 326 bars per session (fewer than 390 because IEX has
+# genuine gaps). Every window below is expressed in TRADING DAYS and
+# converted through that number, which is what stops a "252" from
+# silently meaning forty minutes on minute bars.
+#
+# target_return MIRRORS grid.profit_targets on purpose: the posterior
+# estimates "will a lot bought now reach ITS target", so a mismatch
+# would make the strategy confident about a different question than
+# the one being traded. Both are swept together below.
+#
+# rank_by is Total Return %, not the default Capital Velocity Index --
+# CVI is closed_lots/total_lots and saturates at 1.0 once every lot
+# closes, which makes it a constant on a dataset this long.
+strategy:
+  strategy_id: bayesian_dual_scale
+  strategy_params:
+    max_trade_pct: 0.05
+    bars_per_day: 326
+    target_return: [0.005, 0.01]
+    horizon_days: [0.5, 2.0]
+    fast_half_life_days: 5.0
+    slow_half_life_days: 60.0
+    confidence_k: 2.0
+    # Calibrated, not guessed. Measured on this exact dataset, a 0.5%
+    # target over a half-day horizon succeeds ~82% of the time, so the
+    # 0.5 default pinned the multiplier at its ceiling on 99.7% of bars
+    # and the strategy silently degenerated to fixed-percentage sizing.
+    # These values bracket and exceed the observed base rate so the
+    # posterior can actually discriminate.
+    reference_probability: [0.80, 0.90, 0.95]
+grid:
+  steps: [0.003, 0.005]
+  profit_targets: [0.005, 0.01]
+backtest:
+  symbol: TQQQ
+  initial_cash: 100000.0
+costs:
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: grid
+  rank_by: Total Return %
+  direction: maximize
+  seed: null
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false

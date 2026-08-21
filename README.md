@@ -9,7 +9,7 @@ its own profit target. Its defining constraint is a **no-loss invariant**:
 it never intentionally sells a lot below its cost basis, and that rule is
 enforced structurally rather than by convention.
 
-![tests](https://img.shields.io/badge/tests-807%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-905%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![lint](https://img.shields.io/badge/lint-ruff-orange)
 
@@ -60,8 +60,10 @@ enforced structurally rather than by convention.
 > boolean shortcut, so real capital is unreachable without recorded
 > evidence that a paper-trading stage met its criteria.
 
-> **Only one sizing strategy exists.** `FixedPortfolioPercentage` is the
-> sole implemented strategy. The parameters the loop trades come from
+> **Four sizing strategies exist**, selected by `strategy.strategy_id`:
+> `fixed`, `bell_curve`, `rsi`, and `bayesian_dual_scale`. Only `fixed`
+> has been through the promotion path; the other three are new and
+> unvalidated live. The parameters the loop trades come from
 > `live.step` / `live.profit_target`, which are deliberately separate from
 > the `grid.*` sweep lists — see [Configuration](#configuration).
 
@@ -432,6 +434,9 @@ strategies observe the market.
 | `src/idempotency.py`, `src/duplicate_order_guard.py` | Event and order deduplication |
 | `src/tick_validation.py` | Per-tick sanity checks |
 | `src/historical_data.py` | Bulk bar download -> backtest-ready CSV |
+| `src/sizing_indicators.py` | Incremental rolling max / Wilder RSI, shared by strategies |
+| `src/bayesian_sizing_calculators.py` | `BayesianDualScaleSizing` (dual-timescale Beta posterior) |
+| `src/strategy_registry.py` | `strategy_id` -> sizing-strategy class |
 | `src/alpaca_broker.py` | The `LiveBroker` implementation — order submission, lookup, snapshot |
 | `src/alpaca_market_data.py` | Latest bar and market clock |
 | `src/live_trading_loop.py` | The tick loop: fills, harvest, buy, persist, shutdown |
@@ -668,7 +673,7 @@ python cli.py test -k promotion # filtered
 pytest tests/unit -q            # or invoke pytest directly
 ```
 
-**807 passing** (a parallelism timing test auto-skips on single-core
+**905 passing** (a parallelism timing test auto-skips on single-core
 machines).
 
 | Suite | Count |
@@ -876,7 +881,7 @@ Tracked honestly rather than hidden:
    per tick rather than consuming Alpaca's trade-update websocket. Fills
    are therefore recognized within one poll interval rather than
    immediately. Correct, but not the lowest-latency design available.
-5. **No CI.** 807 tests and a clean ruff run, but nothing enforces them
+5. **No CI.** 905 tests and a clean ruff run, but nothing enforces them
    automatically on push.
 6. **No strategy registry.** `strategy_id` requires a manual mapping.
 7. **Multi-strategy comparison is manual.** See
