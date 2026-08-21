@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Single entrypoint for running this project inside a container (or
-locally). Three subcommands cover everything the project can honestly
+locally). Four subcommands cover everything the project can honestly
 do today:
 
   cli.py test [pytest args...]     Run the test suite. Extra arguments
@@ -11,6 +11,9 @@ do today:
                                     pytest itself treats as "everything
                                     after this is a file path", not as
                                     a separator to strip.
+  cli.py fetch-data --symbol S --days N
+                                    Download historical bars from Alpaca
+                                    into a backtest-ready CSV in data/.
   cli.py backtest --config C --data D [--output O]
                                     Run a parameter sweep.
   cli.py live --config C            Connect, reconcile, then trade until
@@ -129,6 +132,109 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         results.to_csv(out_path, index=False)
         print(f"Full results written to {out_path}")
+    return 0
+
+
+def cmd_fetch_data(args: argparse.Namespace) -> int:
+    """Download historical bars into a CSV the backtest can consume.
+
+    Kept a separate command from `backtest` on purpose. Auto-fetching
+    inside a backtest would put implicit network I/O behind a command
+    whose whole value is reproducibility -- two runs of the same
+    invocation would silently compare different data.
+    """
+    from src.exceptions import ConfigurationError, DataValidationError, TradingSystemError
+    from src.historical_data import (
+        AlpacaHistoricalData,
+        FetchSpec,
+        download,
+        median_bar_interval_seconds,
+        resolve_window,
+    )
+    from src.secrets import load_live_credentials
+
+    try:
+        start, end = resolve_window(days=args.days, start=args.start, end=args.end)
+        credentials = load_live_credentials()
+    except ConfigurationError as e:
+        print(f"{e}", file=sys.stderr)
+        return 2
+
+    spec = FetchSpec(
+        symbol=args.symbol.upper(),
+        start=start,
+        end=end,
+        timeframe=args.timeframe,
+        feed=args.feed,
+        adjustment=args.adjustment,
+        regular_hours_only=not args.include_extended_hours,
+    )
+    print(
+        f"Fetching {spec.symbol} {spec.timeframe} bars "
+        f"{start.date()} -> {end.date()} (feed={spec.feed}, adjustment={spec.adjustment}, "
+        f"{'regular hours only' if spec.regular_hours_only else 'including extended hours'})..."
+    )
+
+    try:
+        report = download(
+            spec,
+            out_path=Path(args.output) if args.output else None,
+            market_data=AlpacaHistoricalData(credentials=credentials),
+            data_dir=Path(args.output_dir),
+            force=args.force,
+        )
+    except DataValidationError as e:
+        print(f"No usable data: {e}", file=sys.stderr)
+        return 2
+    except ConfigurationError as e:
+        print(f"{e}", file=sys.stderr)
+        return 2
+    except TradingSystemError as e:
+        print(f"Download failed: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        # The two failures most likely to land here are worth naming
+        # explicitly rather than leaving the user to decode an APIError.
+        text = str(e)
+        if "subscription" in text.lower():
+            print(
+                f"Market-data subscription error: {e}\n"
+                "The 'sip' feed needs a paid subscription, and free accounts also cannot read "
+                "SIP data from the last 15 minutes. Use --feed iex (the default), which every "
+                "account has -- and which is what the live loop reads anyway.",
+                file=sys.stderr,
+            )
+            return 2
+        if "unauthorized" in text.lower() or "forbidden" in text.lower():
+            print(
+                f"Alpaca rejected the credentials: {e}\n"
+                "Check APCA_API_KEY_ID / APCA_API_SECRET_KEY.",
+                file=sys.stderr,
+            )
+            return 2
+        print(f"Download failed: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
+
+    import pandas as pd
+
+    df = pd.read_csv(report.path, parse_dates=["timestamp"]).set_index("timestamp")
+    interval = median_bar_interval_seconds(df)
+
+    print(f"\nWrote {report.path}  ({report.path.stat().st_size / 1e6:.1f} MB)")
+    print(f"  rows            : {report.rows:,}")
+    print(f"  range           : {report.first_timestamp}  ->  {report.last_timestamp}")
+    print(f"  trading days    : {report.trading_days}")
+    if interval is not None:
+        print(f"  median interval : {interval:.0f}s")
+    if report.dropped_extended_hours:
+        print(f"  dropped (ext hrs): {report.dropped_extended_hours:,}")
+    if report.dropped_duplicates:
+        print(f"  dropped (dupes) : {report.dropped_duplicates:,}")
+    print(f"  sha256          : {report.sha256[:16]}...")
+    print(
+        f"\nRun a sweep against it:\n"
+        f"  python cli.py backtest --config config/staging.yaml --data {report.path}"
+    )
     return 0
 
 
@@ -317,6 +423,48 @@ def main() -> int:
         "--output", default=None, help="Optional path to write full results CSV"
     )
     p_backtest.set_defaults(func=cmd_backtest)
+
+    p_fetch = sub.add_parser("fetch-data", help="Download historical bars for backtesting")
+    p_fetch.add_argument("--symbol", required=True, help="Ticker to download, e.g. TQQQ")
+    window = p_fetch.add_mutually_exclusive_group(required=True)
+    window.add_argument("--days", type=int, help="Look back this many days from now")
+    window.add_argument("--start", help="Window start (ISO 8601); requires --end")
+    p_fetch.add_argument("--end", help="Window end (ISO 8601); used with --start")
+    p_fetch.add_argument(
+        "--timeframe",
+        default="1Min",
+        help="Bar size: 1Min, 5Min, 15Min, 30Min, 1Hour, 1Day (default: 1Min). "
+        "Match this to live.poll_interval_seconds -- grid steps tuned on daily bars "
+        "produce almost no trades on minute bars.",
+    )
+    p_fetch.add_argument(
+        "--feed",
+        default="iex",
+        help="Data feed (default: iex). Use iex unless you hold a paid SIP subscription: "
+        "the live loop can only read iex, so backtesting on sip tunes parameters against "
+        "a tape production cannot see.",
+    )
+    p_fetch.add_argument(
+        "--adjustment",
+        default="all",
+        choices=("raw", "split", "dividend", "all"),
+        help="Corporate-action adjustment (default: all). Anything less than split "
+        "adjustment makes a split look like a ~66%% single-bar crash.",
+    )
+    p_fetch.add_argument(
+        "--include-extended-hours",
+        action="store_true",
+        help="Keep pre/post-market bars. Off by default: the live loop only trades the "
+        "regular session, so those bars are ones it can never act on.",
+    )
+    p_fetch.add_argument("--output", default=None, help="Explicit output CSV path")
+    p_fetch.add_argument(
+        "--output-dir", default="data", help="Directory for output (default: data)"
+    )
+    p_fetch.add_argument(
+        "--force", action="store_true", help="Overwrite an existing file of the same name"
+    )
+    p_fetch.set_defaults(func=cmd_fetch_data)
 
     p_live = sub.add_parser("live", help="Connect to Alpaca and run the startup lifecycle")
     p_live.add_argument("--config", required=True, help="Path to a BacktestConfig YAML file")

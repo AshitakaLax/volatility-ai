@@ -9,7 +9,7 @@ its own profit target. Its defining constraint is a **no-loss invariant**:
 it never intentionally sells a lot below its cost basis, and that rule is
 enforced structurally rather than by convention.
 
-![tests](https://img.shields.io/badge/tests-765%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-807%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![lint](https://img.shields.io/badge/lint-ruff-orange)
 
@@ -20,6 +20,7 @@ enforced structurally rather than by convention.
 - [Status and scope](#status-and-scope)
 - [Requirements](#requirements)
 - [Quickstart](#quickstart)
+- [Getting market data](#getting-market-data)
 - [Docker](#docker)
 - [Configuration](#configuration)
 - [Core concepts](#core-concepts)
@@ -64,11 +65,20 @@ enforced structurally rather than by convention.
 > `live.step` / `live.profit_target`, which are deliberately separate from
 > the `grid.*` sweep lists — see [Configuration](#configuration).
 
-> **Backtest/live parity is not automatic.** The live loop reuses the
-> backtest's own decision-cycle functions, but it defaults to the free IEX
-> data feed while historical backtests are usually built on SIP. If the
-> parameters were chosen against SIP data, running live on IEX is a real
-> mismatch. Set `live.feed: sip` if you have the subscription.
+> **Feed parity is handled, but only if you keep it that way.** Both the
+> live loop and `fetch-data` default to IEX, so backtest and production
+> observe the same tape. That is not merely a preference: SIP's *realtime*
+> endpoint rejects free accounts (`subscription does not permit querying
+> recent SIP data`) even though its *historical* endpoint works, so it is
+> possible to backtest on SIP and then be unable to trade on it. Change
+> one side's feed and you have silently broken parity.
+
+> **The default ranking metric can be uninformative.** `Capital Velocity
+> Index` is `closed_lots / total_lots`, so it saturates at exactly 1.0
+> whenever every lot closes — which is the normal case on a long dataset.
+> When that happens, `search.rank_by` is sorting on a constant and the
+> "top" row is arbitrary. Rank by `Total Return %` instead, and check the
+> spread before trusting any ordering.
 
 ---
 
@@ -105,18 +115,59 @@ pip install -r requirements.txt
 python cli.py test -q
 ```
 
+### Getting market data
+
+`fetch-data` downloads real bars from Alpaca into `data/`:
+
+```bash
+export APCA_API_KEY_ID=... APCA_API_SECRET_KEY=...
+python cli.py fetch-data --symbol TQQQ --days 730
+```
+
+That writes three things — a timestamped CSV, a `..._latest.csv` symlink,
+and a `.meta.json` sidecar recording symbol, window, feed, adjustment, row
+count and SHA-256. The sidecar is what keeps a sweep result traceable to
+the exact data it ran on after you later refresh. `data/` is git-ignored;
+downloads are tens of megabytes.
+
+Three defaults are deliberate and worth knowing:
+
+- **`--feed iex`.** SIP is the full consolidated tape and its *historical*
+  endpoint works on a free account, but SIP *realtime* does not — it
+  returns `subscription does not permit querying recent SIP data`. The
+  live loop can therefore only ever observe IEX, so backtesting on SIP
+  would tune parameters against a tape production cannot see. Match the
+  feed you will trade on.
+- **`--adjustment all`.** An unadjusted split reads as a ~66% single-bar
+  crash (TQQQ split 3:1 in January 2022), which makes a grid strategy fire
+  every rung at a price that never existed. The only thing that would flag
+  it is a `logging.warning` that scrolls past in a sweep.
+- **Regular trading hours only.** The live loop only ticks while Alpaca's
+  clock says the market is open, so extended-hours bars are bars it can
+  never act on. Pass `--include-extended-hours` to keep them.
+
+The downloader runs `data_validation.validate()` *before* writing, so it
+cannot emit a CSV the backtest would later reject.
+
+**One honest limitation:** with regular-hours filtering the 16:00 bar is
+followed by the next day's 09:30 bar, so a routine overnight gap on a 3x
+ETF becomes a single bar-to-bar move that fires several grid rungs at an
+open price nothing traded between. Minute-bar fills at the open are
+therefore systematically optimistic. This is inherent to bar-based
+backtesting, not a bug in the downloader.
+
 ### Run your first backtest
 
-You need a historical OHLCV CSV with this exact schema:
+The CSV schema, which `fetch-data` emits and the backtest expects:
 
 ```csv
 timestamp,open,high,low,close,volume
 2024-01-02T14:30:00+00:00,50.0,50.075,49.925,50.0,12000000
 ```
 
-Timestamps should be UTC-aware and strictly increasing. A 35-bar fixture
+Timestamps must be UTC-aware and strictly increasing. A 35-bar fixture
 ships at `tests/fixtures/regression_ohlcv.csv` if you just want to see it
-run.
+run without downloading anything.
 
 Create `config/my-config.yaml`:
 
@@ -149,7 +200,7 @@ import pandas as pd
 from optimization_controller import OptimizationController
 from src.size_calculators import FixedPortfolioPercentage
 
-df = pd.read_csv("data/TQQQ_historical.csv", parse_dates=["timestamp"])
+df = pd.read_csv("data/TQQQ_1Min_latest.csv", parse_dates=["timestamp"])
 df.set_index("timestamp", inplace=True)
 
 controller = OptimizationController(historical_data=df)
@@ -166,7 +217,7 @@ print(results.head())
 
 ## Docker
 
-One image, one entrypoint, three subcommands.
+One image, one entrypoint, four subcommands.
 
 ```bash
 docker build -t volatility-ai .
@@ -181,7 +232,7 @@ docker compose run --rm test -k my_test -v          # args pass through
 
 docker compose run --rm backtest \
   --config /app/config/my-config.yaml \
-  --data /app/data/TQQQ_historical.csv
+  --data /app/data/TQQQ_1Min_latest.csv
 
 docker compose run --rm live --config /app/config/my-config.yaml --check-only
 ```
@@ -380,6 +431,7 @@ strategies observe the market.
 | `src/secrets.py` | Credential loading and redaction |
 | `src/idempotency.py`, `src/duplicate_order_guard.py` | Event and order deduplication |
 | `src/tick_validation.py` | Per-tick sanity checks |
+| `src/historical_data.py` | Bulk bar download -> backtest-ready CSV |
 | `src/alpaca_broker.py` | The `LiveBroker` implementation — order submission, lookup, snapshot |
 | `src/alpaca_market_data.py` | Latest bar and market clock |
 | `src/live_trading_loop.py` | The tick loop: fills, harvest, buy, persist, shutdown |
@@ -484,7 +536,9 @@ from src.walk_forward import WalkForwardRunner
 
 runner = WalkForwardRunner(
     lambda df_slice: OptimizationController(historical_data=df_slice),
-    train_window=250, test_window=50, step=50,
+    train_window=250,
+    test_window=50,
+    step=50,
 )
 folds = runner.run(
     df,
@@ -506,10 +560,14 @@ from src.monte_carlo import MonteCarloRunner
 
 summary = MonteCarloRunner().run(
     controller_factory=lambda p: OptimizationController(historical_data=p),
-    n_paths=500, block_size=20, step=0.01, target=0.005,
+    n_paths=500,
+    block_size=20,
+    step=0.01,
+    target=0.005,
     strategy_class=FixedPortfolioPercentage,
     strategy_params={"allocation_pct": 0.05},
-    historical_data=df, seed=42,
+    historical_data=df,
+    seed=42,
 )
 ```
 
@@ -610,13 +668,13 @@ python cli.py test -k promotion # filtered
 pytest tests/unit -q            # or invoke pytest directly
 ```
 
-**765 passing** (a parallelism timing test auto-skips on single-core
+**807 passing** (a parallelism timing test auto-skips on single-core
 machines).
 
 | Suite | Count |
 |---|---|
-| `tests/unit` | 631 |
-| `tests/integration` | 130 |
+| `tests/unit` | 660 |
+| `tests/integration` | 143 |
 | Regression baseline | 1 |
 | Live-execution parity | 3 |
 
@@ -669,6 +727,7 @@ Subclass `SizingStrategy` and implement two methods:
 
 ```python
 from src.size_calculators import SizingStrategy
+
 
 class DrawdownScaledSizing(SizingStrategy):
     """Scale in harder as drawdown deepens."""
@@ -777,10 +836,10 @@ volatility-ai/
 ├── config/
 │   ├── staging.yaml           # paper account
 │   └── production.yaml        # real capital
-├── src/                       # 34 modules -- see the module map
+├── src/                       # 35 modules -- see the module map
 └── tests/
-    ├── unit/                  # 631 tests
-    ├── integration/           # 130 tests
+    ├── unit/                  # 660 tests
+    ├── integration/           # 143 tests
     └── fixtures/              # synthetic OHLCV + regression baseline
 ```
 
@@ -794,27 +853,35 @@ anything load-bearing.
 
 Tracked honestly rather than hidden:
 
-1. **`ACCEPTED → UNKNOWN` is not a permitted transition.** The order state
+1. **`Capital Velocity Index` saturates and is the default `rank_by`.**
+   It is `closed_lots / total_lots`, so on any dataset long enough for
+   every lot to close it is exactly 1.0 for every combination and ranks
+   nothing. Verified on 2 years of TQQQ minute bars: all 9 combinations
+   scored 1.0. The metric was implemented from a name with no specified
+   formula (see `src/performance_analyzer.py`'s docstring); it needs
+   either a denominator that does not saturate — time-weighted capital
+   deployed, say — or demotion from the default.
+2. **`ACCEPTED → UNKNOWN` is not a permitted transition.** The order state
    machine follows its specified table literally. In practice an accepted
    order *can* become unknown (connection drop, query timeout), and today
    such an order stays recorded as `ACCEPTED`. **This needs a decision
    before trading real capital** — it is the difference between knowing you
    have lost track of an order and believing you have not.
-2. **No live test against a real Alpaca account.** The broker adapter and
+3. **No live test against a real Alpaca account.** The broker adapter and
    trading loop are covered by tests against fakes and against the
    installed SDK's real request/response models, but nothing here has yet
    placed an order at Alpaca — not even on paper. Run staging first and
    read the audit trail before trusting it.
-3. **Fills are polled, not streamed.** The loop queries order status once
+4. **Fills are polled, not streamed.** The loop queries order status once
    per tick rather than consuming Alpaca's trade-update websocket. Fills
    are therefore recognized within one poll interval rather than
    immediately. Correct, but not the lowest-latency design available.
-4. **No CI.** 765 tests and a clean ruff run, but nothing enforces them
+5. **No CI.** 807 tests and a clean ruff run, but nothing enforces them
    automatically on push.
-5. **No strategy registry.** `strategy_id` requires a manual mapping.
-6. **Multi-strategy comparison is manual.** See
+6. **No strategy registry.** `strategy_id` requires a manual mapping.
+7. **Multi-strategy comparison is manual.** See
    [Extending the system](#extending-the-system).
-7. **Macro/seasonality fields are inert.** `MarketContext` carries
+8. **Macro/seasonality fields are inert.** `MarketContext` carries
    `time_of_day_flag`, `is_macro_event_day`, and `macro_surprise_factor`,
    but nothing consumes them. Investigated and deliberately deferred — see
    `CHANGELOG.md`.

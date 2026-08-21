@@ -5,7 +5,26 @@ services:
     build: .
     entrypoint: ["python", "cli.py", "test"]
 
-  # docker compose run --rm backtest --config /app/config/config.yaml --data /app/data/TQQQ_historical.csv
+  # docker compose run --rm fetch-data --symbol TQQQ --days 730
+  #
+  # The only service that mounts ./data READ-WRITE -- it is the one
+  # thing that writes market data. Everything downstream reads it :ro,
+  # so a backtest cannot corrupt the dataset it is measuring.
+  #
+  # Needs credentials because Alpaca's market-data API is authenticated
+  # even for historical bars. Uses the paper env file: market data is
+  # account-independent, so there is no reason to hand this the live
+  # credentials.
+  fetch-data:
+    build: .
+    entrypoint: ["python", "cli.py", "fetch-data"]
+    env_file:
+      - .env.staging
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+
+  # docker compose run --rm backtest --config /app/config/staging.yaml --data /app/data/TQQQ_1Min_latest.csv
   backtest:
     build: .
     entrypoint: ["python", "cli.py", "backtest"]
@@ -14,7 +33,7 @@ services:
       - ./config:/app/config:ro
       - ./output:/app/output
 
-  # docker compose run --rm live --config /app/config/config.yaml
+  # docker compose run --rm live --config /app/config/staging.yaml
   # Credentials come ONLY from the environment (env_file below), per
   # src/secrets.py's policy -- never baked into the image, never
   # committed. See that file's own .gitignore/.dockerignore entries.

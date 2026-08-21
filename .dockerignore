@@ -15,7 +15,14 @@ venv/
 # Secrets -- must never enter the build context, let alone the image.
 # Credentials belong only in a `docker run -e` / --env-file at runtime
 # (see src/secrets.py's policy). This mirrors .gitignore's own rule.
+#
+# `.env*` rather than `.env` + `*.env`: neither of those matches
+# `.env.staging` or `.env.production`, so the real per-environment
+# credential files were entering the build context and being baked
+# into the image by `COPY . .` -- exactly what the paragraph above
+# says must never happen. They were harmless only while empty.
 .env
+.env*
 *.env
 
 # Local persistent state and user-supplied data -- these are meant to

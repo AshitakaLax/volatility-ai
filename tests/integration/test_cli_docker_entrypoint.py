@@ -369,3 +369,92 @@ def test_run_trading_loop_drives_ticks_and_shuts_down_cleanly(tmp_path, monkeypa
 
     assert rc == 0
     assert lifecycle.state.value == "STOPPED", "shutdown must complete, not abandon state"
+
+
+def test_fetch_data_help_exits_zero():
+    result = _run("fetch-data", "--help")
+    assert result.returncode == 0
+    assert "--symbol" in result.stdout
+
+
+def test_fetch_data_requires_a_window():
+    """--days or --start/--end: without one the window is undefined and
+    the command must refuse rather than guess a default range."""
+    result = _run("fetch-data", "--symbol", "TQQQ")
+    assert result.returncode != 0
+    assert "--days" in result.stderr
+
+
+def test_fetch_data_without_credentials_fails_before_any_network(tmp_path):
+    """Credential loading happens before the first request, so a
+    missing key is a clean exit 2 naming the variable -- not a stack
+    trace from deep inside the SDK."""
+    result = subprocess.run(
+        [sys.executable, str(CLI), "fetch-data", "--symbol", "TQQQ", "--days", "5"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={"PATH": "/usr/bin:/bin"},  # explicitly no APCA_* credentials
+    )
+    assert result.returncode == 2
+    assert "APCA_API_KEY_ID" in result.stderr
+
+
+def test_fetch_data_rejects_an_unknown_timeframe(tmp_path):
+    """Fails on the timeframe before spending a network round trip."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CLI),
+            "fetch-data",
+            "--symbol",
+            "TQQQ",
+            "--days",
+            "5",
+            "--timeframe",
+            "1Fortnight",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={"PATH": "/usr/bin:/bin", "APCA_API_KEY_ID": "k", "APCA_API_SECRET_KEY": "s"},
+    )
+    assert result.returncode == 2
+    assert "1Day" in result.stderr, "the error should list the valid timeframes"
+
+
+def test_the_data_directory_is_git_ignored():
+    """Downloads are tens of MB and must never be committable.
+
+    This guards a real gap: .gitignore's comment claimed to cover data/
+    while the rule was actually missing, so the directory was
+    committable and stayed untracked only by being empty.
+    """
+    result = subprocess.run(
+        ["git", "check-ignore", "-v", "data/TQQQ_1Min_latest.csv"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, "data/ must be git-ignored"
+    assert ".gitignore" in result.stdout
+
+
+def test_env_files_stay_out_of_the_docker_build_context():
+    """.env / *.env do not match .env.staging, so the per-environment
+    credential files were entering the build context and being baked
+    into the image by `COPY . .`. Pin the fix.
+    """
+    patterns = [
+        line.strip()
+        for line in (REPO_ROOT / ".dockerignore").read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    import fnmatch
+
+    for name in (".env", ".env.staging", ".env.production"):
+        assert any(fnmatch.fnmatch(name, p) for p in patterns), (
+            f"{name} would enter the Docker build context"
+        )
