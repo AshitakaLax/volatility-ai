@@ -11,6 +11,12 @@ venv/
 # Created locally by the docker-compose.yml bind mounts (state/, data/,
 # output/) or by running the SQLite-backed store directly -- never
 # meant to be committed. Mirrors .dockerignore's own exclusions.
+#
+# data/ holds downloaded market history (see `cli.py fetch-data`) --
+# tens of MB per symbol-year. It was missing from this list until now
+# even though the comment above always claimed to cover it; the
+# directory stayed untracked only because it happened to be empty.
 state/
+data/
 output/
 *.db
