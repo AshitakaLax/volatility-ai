@@ -84,6 +84,72 @@ class GridSearch(SearchStrategy):
         pass
 
 
+def decompose_params_grid(strategy_params_grid: list[dict]) -> dict[str, list] | None:
+    """Recover per-key candidate lists from an expanded params grid, or
+    None if that cannot be done safely.
+
+    WHY THIS EXISTS. BayesianSearch originally encoded the whole
+    strategy_params dict as ONE categorical index over the expanded
+    grid. Optuna's TPE sampler therefore saw N opaque numbered buckets
+    with no structure -- it could not learn "high confidence_k is bad"
+    independently of "which horizon_days", because as far as it knew
+    bucket 4102 and bucket 4103 were unrelated labels.
+
+    The practical effect was measured: a 100-trial search over an
+    8,640-combination strategy space produced 100 distinct combinations
+    and zero repeats, with no convergence on any strategy parameter --
+    while grid_step and profit_target, which WERE separate categorical
+    axes, converged hard within ~40 trials. Same sampler, same run; the
+    only difference was the encoding.
+
+    Decomposing is only valid when the grid is exactly the cartesian
+    product of its per-key values. src/config.py's
+    expand_strategy_params produces exactly that, so the common path
+    qualifies -- but run_sweep also accepts an arbitrary hand-written
+    list of dicts, and suggesting per-key would then invent
+    combinations the caller never asked for. Hence the checks below and
+    the None fallback, rather than assuming.
+
+    Returns {key: [values...]} preserving first-seen value order (so a
+    seeded search stays reproducible), or None when any of these hold:
+      - the grid is empty
+      - the dicts do not all share the same keys
+      - a value is unhashable (can't be a categorical choice)
+      - the grid is not the full cartesian product (size mismatch)
+      - the grid contains duplicate combinations
+    """
+    if not strategy_params_grid:
+        return None
+
+    keys = set(strategy_params_grid[0])
+    if any(set(d) != keys for d in strategy_params_grid):
+        return None
+
+    per_key: dict[str, list] = {}
+    try:
+        for key in sorted(keys):
+            # dict.fromkeys dedups while preserving first-seen order.
+            per_key[key] = list(dict.fromkeys(d[key] for d in strategy_params_grid))
+    except TypeError:
+        # An unhashable value (a list, say) cannot be a categorical.
+        return None
+
+    expected = 1
+    for values in per_key.values():
+        expected *= len(values)
+    if expected != len(strategy_params_grid):
+        return None
+
+    seen = set()
+    for d in strategy_params_grid:
+        signature = tuple(sorted(d.items()))
+        if signature in seen:
+            return None
+        seen.add(signature)
+
+    return per_key
+
+
 class BayesianSearch(SearchStrategy):
     """Optuna-backed search over the same discrete space GridSearch
     enumerates exhaustively -- every grid_step/profit_target/
@@ -153,10 +219,43 @@ class BayesianSearch(SearchStrategy):
         )
         self.n_trials = n_trials if n_trials is not None else total_combinations
 
+        # Per-key axes when the grid is a true cartesian product, so TPE
+        # can learn each strategy parameter independently instead of
+        # treating the whole dict as one opaque label. See
+        # decompose_params_grid for why this matters and when it is
+        # unsafe; None means fall back to the index encoding.
+        axes = decompose_params_grid(self._strategy_params_grid)
+        if axes is None:
+            self._param_axes = None
+            self._constant_params: dict = {}
+        else:
+            # A single-valued key is a constant, not a search dimension.
+            # Handing it to suggest_categorical would add a useless axis
+            # for TPE to model, so it is applied directly instead.
+            self._param_axes = {k: v for k, v in axes.items() if len(v) > 1}
+            self._constant_params = {k: v[0] for k, v in axes.items() if len(v) == 1}
+
         sampler = optuna.samplers.TPESampler(seed=seed)
         self._study = optuna.create_study(direction=direction, sampler=sampler)
         self._trial_count = 0
         self._pending_trials: dict[int, optuna.trial.Trial] = {}
+
+    @property
+    def decomposed(self) -> bool:
+        """Whether strategy params are being searched per-key.
+
+        Exposed because the difference is invisible in results but
+        decisive for whether a search can converge at all -- a caller
+        that expected per-key search and silently got the index
+        fallback would just see a search that never narrows.
+        """
+        return self._param_axes is not None
+
+    @property
+    def search_axis_names(self) -> list[str]:
+        """Strategy-param keys TPE is actually varying (constants
+        excluded). Empty when running on the index fallback."""
+        return sorted(self._param_axes) if self._param_axes else []
 
     def suggest(self) -> dict | None:
         """Ask Optuna for the next combination, or None once the trial
@@ -171,15 +270,26 @@ class BayesianSearch(SearchStrategy):
         trial = self._study.ask()
         grid_step = trial.suggest_categorical("grid_step", self._grid_steps)
         profit_target = trial.suggest_categorical("profit_target", self._profit_targets)
-        params_index = trial.suggest_categorical(
-            "strategy_params_index", list(range(len(self._strategy_params_grid)))
-        )
+
+        if self._param_axes is not None:
+            # One named categorical per strategy parameter. Prefixed so
+            # a strategy param called "grid_step" could never collide
+            # with the sweep axis of the same name.
+            strategy_params = dict(self._constant_params)
+            for key, values in self._param_axes.items():
+                strategy_params[key] = trial.suggest_categorical(f"param_{key}", values)
+        else:
+            params_index = trial.suggest_categorical(
+                "strategy_params_index", list(range(len(self._strategy_params_grid)))
+            )
+            strategy_params = self._strategy_params_grid[params_index]
+
         self._trial_count += 1
         self._pending_trials[trial.number] = trial
         return {
             "grid_step": grid_step,
             "profit_target": profit_target,
-            "strategy_params": self._strategy_params_grid[params_index],
+            "strategy_params": strategy_params,
             "_trial_number": trial.number,  # internal bookkeeping, ignored by run_sweep when running the combination
         }
 
