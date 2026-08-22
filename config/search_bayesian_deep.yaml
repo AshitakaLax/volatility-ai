@@ -6,10 +6,14 @@
 # concentrates on whatever regions look promising. Exhaustive grid
 # search over this would take months.
 #
-# bars_per_day: 326 is MEASURED from the IEX dataset (408k-446k bars
-# over 1253-1525 sessions), not assumed. Every window parameter below
-# is in trading days and converted through it, which is what stops a
-# "252" from silently meaning forty minutes on minute bars.
+# bars_per_day: 387 is MEASURED from the SIP dataset this config is run
+# against (1,035,087 bars over 2,674 sessions = 387.09), not assumed.
+# It is higher than IEX's 326 because SIP is the consolidated tape
+# (trades across every exchange) while IEX-only sees a sparser slice,
+# so an IEX-derived constant would systematically undercount bars here.
+# Every window parameter below is in trading days and converted through
+# this constant, which is what stops a "252" from silently meaning
+# forty minutes on minute bars.
 #
 # rank_by is Total Return %, NOT the default Capital Velocity Index:
 # CVI is closed_lots/total_lots and saturates at exactly 1.0 on any
@@ -25,7 +29,7 @@
 strategy:
   strategy_id: bayesian_dual_scale
   strategy_params:
-    bars_per_day: 326
+    bars_per_day: 387
     max_trade_pct: [0.02, 0.05, 0.10]
     target_return: [0.003, 0.005, 0.0075, 0.01, 0.015, 0.02]
     horizon_days: [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]

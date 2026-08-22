@@ -1,54 +1,48 @@
 """
 Task 7.9 -- Discovery gate: are macro/seasonality signals required?
 
-DISCOVERY OUTCOME: **Not required / deferred.** No confirmed consumer
-exists. Per the task's step 2 ("If no confirmed consumer exists,
-record that outcome and stop. Do not add an ingestion dependency
-merely to make the task appear implemented"), no ingestion pipeline
-was built and no production behavior was changed.
+DISCOVERY OUTCOME, RE-RUN: **is_macro_event_day now has a confirmed,
+deliberate consumer.** The original finding ("not required / deferred,
+no confirmed consumer exists") held until HighFrequencyLocalReferenceSizing's
+event_day_boost_multiplier was added -- this test module's own job was
+to fail the moment that happened, and it did, which is what triggered
+this re-run and the step 3 documentation below.
 
-These tests make that finding EXECUTABLE rather than a claim in a
-document, which is what the acceptance criteria require. They are
-deliberately written to FAIL if a consumer is ever added -- at which
-point the discovery gate must be re-run and step 3 (documenting the
-consuming strategy, source dataset, join semantics, defaults, and a
-follow-up implementation task) becomes live. A discovery finding that
-silently goes stale is worse than none.
+  Consuming strategy:  src/high_frequency_sizing.py,
+                       HighFrequencyLocalReferenceSizing.calculate_trade_value,
+                       via the event_day_boost_multiplier constructor
+                       parameter (default 1.0 -- a no-op; see that
+                       module's docstring for the full rationale).
+  Source dataset:      src/fomc_calendar.py -- a STATIC, hand-verified
+                       list of FOMC decision dates sourced from
+                       federalreserve.gov's own historical calendar
+                       pages. Not NLP, not sentiment, not a live feed:
+                       FOMC dates are published a year-plus in advance,
+                       so a static calendar is the complete
+                       implementation, not a placeholder for one.
+  Join semantics:      src/fomc_calendar.py:is_fomc_day_at() converts a
+                       bar's timestamp to its Eastern calendar date
+                       (naive input treated as UTC, never host-local)
+                       and does an exact-date-match set lookup. Called
+                       from exactly two places -- optimization_
+                       controller.py's _simulate_single (backtest) and
+                       live_trading_loop.py's _build_context (live) --
+                       so both paths flag the same day identically.
+  Defaults:            is_macro_event_day still defaults to False on
+                       MarketContext itself; a bar not on the FOMC
+                       calendar is indistinguishable from before this
+                       existed. event_day_boost_multiplier defaults to
+                       1.0, so a strategy config that never sets it
+                       gets identical behavior to before this existed.
 
-Evidence gathered (repository-wide search, all three field names):
-
-  src/market_context.py       DEFINES the fields with safe defaults
-                              (0, False, 0.0). A definition, not a consumer.
-  src/live_execution.py       build_context() accepts and FORWARDS them.
-                              Pure pass-through plumbing: it type-coerces
-                              and hands them to the constructor. It never
-                              reads a value to make a decision.
-  src/size_calculators.py     The only real strategy,
-                              FixedPortfolioPercentage, reads exactly
-                              context.price and context.equity. Neither
-                              of the three fields.
-
-  - No conditional logic anywhere in the repository branches on any of
-    the three fields.
-  - No call site ever supplies a non-default value.
-  - No FinBERT / sentiment / transformers / CPI / Federal Reserve /
-    FOMC reference exists anywhere in the repository.
-
-On the external claim that prompted this task: the assertion was that
-FinBERT NLP sentiment and Fed/CPI macro-event awareness were already
-integrated into this system's Bayesian sizing. Nothing in this
-repository supports that. BayesianDualScaleSizing is not implemented
-here at all (FixedPortfolioPercentage is the only sizing strategy that
-exists), and per the task's own context, "macro" in that class's name
-refers to a LONG-WINDOW Bayesian posterior -- a lookback-length
-distinction -- not to macroeconomic events. The two senses of "macro"
-appear to be the source of the confusion.
-
-The fields themselves are harmless and are deliberately left in place:
-they are optional, defaulted, and already part of overview 5.1's
-MarketContext contract. Removing them would be a breaking change for
-no benefit. Populating them with real data would be the speculative
-scope this gate exists to prevent.
+Per the original task's step 4, no NLP/sentiment ingestion dependency
+was added to build this -- confirmed by
+test_no_speculative_ingestion_dependency_was_added below, unchanged and
+still enforced. The remaining tests in this module have been updated
+from "no consumer exists anywhere" to "exactly the one documented
+consumer above exists, and nothing else has started consuming these
+fields" -- still a live canary against silent, undocumented
+proliferation, just no longer claiming zero consumers.
 """
 
 import re
@@ -60,13 +54,23 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 MACRO_FIELDS = ("time_of_day_flag", "is_macro_event_day", "macro_surprise_factor")
 
-# Modules where a genuine CONSUMER would have to live: something that
-# reads a field to change a trading decision.
+# Modules that must STILL have zero consumption of these fields. Every
+# strategy/decision module except the one documented, deliberate
+# consumer (src/high_frequency_sizing.py) belongs here -- this is what
+# keeps the canary live against a SECOND, undocumented consumer
+# appearing, rather than only ever checking the one already known
+# about.
 STRATEGY_MODULES = (
     "src/size_calculators.py",
     "src/decision_cycle.py",
     "src/risk_manager.py",
+    "src/bayesian_sizing_calculators.py",
 )
+
+# The one documented, deliberate consumer (see module docstring's
+# "DISCOVERY OUTCOME, RE-RUN" section for the full step-3 writeup).
+CONFIRMED_CONSUMER_MODULE = "src/high_frequency_sizing.py"
+CONFIRMED_CONSUMER_FIELD = "is_macro_event_day"
 
 
 def test_the_three_fields_exist_with_the_documented_safe_defaults():
@@ -90,14 +94,14 @@ def test_the_three_fields_exist_with_the_documented_safe_defaults():
     assert context.macro_surprise_factor == 0.0
 
 
-def test_no_strategy_or_decision_module_consumes_the_macro_fields():
-    """THE discovery finding, made executable.
+def test_no_other_strategy_or_decision_module_consumes_the_macro_fields():
+    """The narrower, still-live discovery finding: NO consumer other
+    than the one documented one exists.
 
-    If this fails, a consumer has appeared and Task 7.9's discovery
-    gate must be re-run -- step 3 then requires documenting the
-    consuming strategy, required fields, source dataset, timestamp-join
-    semantics, default behavior, and a follow-up implementation task
-    BEFORE any ingestion is built.
+    If this fails, a SECOND consumer has appeared undocumented -- the
+    module docstring's step-3 writeup (consuming strategy, source
+    dataset, join semantics, defaults) must be extended to cover it
+    before any further ingestion is built.
     """
     consumers = []
     for module in STRATEGY_MODULES:
@@ -110,31 +114,43 @@ def test_no_strategy_or_decision_module_consumes_the_macro_fields():
                 consumers.append(f"{module}:{field}")
 
     assert consumers == [], (
-        "A consumer of the macro/seasonality fields now exists: "
-        f"{consumers}. Task 7.9's discovery outcome ('Not required / deferred') is stale -- "
-        "re-run the gate and complete step 3 before building any ingestion."
+        f"An UNDOCUMENTED consumer of the macro/seasonality fields now exists: {consumers}. "
+        "Only src/high_frequency_sizing.py is documented as a consumer (module docstring's "
+        "step-3 writeup) -- extend that documentation before adding another."
     )
 
 
-def test_nothing_branches_on_the_macro_fields():
-    """A pass-through assignment is not consumption. A BRANCH is.
+def test_the_confirmed_consumer_still_exists_exactly_where_documented():
+    """The positive half of the re-run finding: the ONE documented
+    consumer must still be there. If this fails, either the feature
+    was removed (update the docstring) or moved (update this test to
+    match) -- either way the documentation must track reality."""
+    path = REPO_ROOT / CONFIRMED_CONSUMER_MODULE
+    assert path.exists(), f"{CONFIRMED_CONSUMER_MODULE} is documented as the macro-field consumer but no longer exists"
+    assert CONFIRMED_CONSUMER_FIELD in path.read_text(), (
+        f"{CONFIRMED_CONSUMER_MODULE} no longer references {CONFIRMED_CONSUMER_FIELD!r} -- "
+        "either restore it or update this module's docstring and this test"
+    )
 
-    live_execution.build_context forwards these fields into
-    MarketContext, which is plumbing, not a consumer -- so this checks
-    specifically for conditional logic reading them.
-    """
+
+def test_nothing_branches_on_the_macro_fields_outside_the_confirmed_consumer():
+    """A pass-through assignment is not consumption. A BRANCH is --
+    except in the one documented, deliberate consumer, which is
+    supposed to branch on is_macro_event_day."""
     branch_pattern = re.compile(
         r"(if|elif|while|assert)\b[^\n]*\b(" + "|".join(MACRO_FIELDS) + r")\b"
     )
     offenders = []
     for path in (REPO_ROOT / "src").glob("*.py"):
+        if path.name == Path(CONFIRMED_CONSUMER_MODULE).name:
+            continue
         for line_no, line in enumerate(path.read_text().splitlines(), start=1):
             if branch_pattern.search(line):
                 offenders.append(f"{path.name}:{line_no}")
 
     assert offenders == [], (
-        f"Conditional logic now reads the macro fields at {offenders} -- "
-        "a real consumer exists and Task 7.9 must be re-run."
+        f"Conditional logic now reads the macro fields at {offenders}, outside the one "
+        "documented consumer -- extend the module docstring's step-3 writeup to cover it."
     )
 
 

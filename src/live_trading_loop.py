@@ -90,6 +90,7 @@ from src.cost_models import ZeroCostModel
 from src.duplicate_order_guard import DuplicateOrderGuard
 from src.exceptions import ConfigurationError
 from src.fill_accounting import FillTracker, extract_alpaca_fill
+from src.fomc_calendar import is_fomc_day_at
 from src.idempotency import compute_decision_id
 from src.market_context import MarketContext
 from src.no_loss_guard import NoLossViolation, validate_sell
@@ -505,6 +506,7 @@ class LiveTradingLoop:
             drawdown=drawdown,
             open_lot_count=len(self.ledger.open_lots),
             bar_index=0,
+            is_macro_event_day=is_fomc_day_at(timestamp),
         )
 
     # --- order submission ---

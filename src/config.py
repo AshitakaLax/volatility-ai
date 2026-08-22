@@ -26,7 +26,12 @@ from __future__ import annotations
 import itertools
 from dataclasses import dataclass, field
 
-from src.cost_models import SlippageCommissionModel, TransactionCostModel, ZeroCostModel
+from src.cost_models import (
+    DynamicSlippageModel,
+    SlippageCommissionModel,
+    TransactionCostModel,
+    ZeroCostModel,
+)
 from src.exceptions import ConfigurationError
 from src.risk_manager import RiskManager
 from src.validation import (
@@ -87,11 +92,21 @@ class GridConfig:
 class CostConfig:
     """Maps to src/cost_models.py (Task 2.2). model_type="zero"
     (default) builds ZeroCostModel(); "slippage_commission" builds
-    SlippageCommissionModel from commission_per_trade/slippage_bps."""
+    SlippageCommissionModel from commission_per_trade/slippage_bps;
+    "dynamic_slippage" builds DynamicSlippageModel from
+    base_bps/vol_multiplier/commission_per_trade.
+
+    base_bps and vol_multiplier default to 0.0/1.0 -- DynamicSlippageModel's
+    own no-op defaults -- so they only need setting when model_type is
+    actually "dynamic_slippage"; every existing "zero"/"slippage_commission"
+    config round-trips unchanged with these fields simply unused.
+    """
 
     model_type: str = "zero"
     commission_per_trade: float = 0.0
     slippage_bps: float = 0.0
+    base_bps: float = 0.0
+    vol_multiplier: float = 1.0
 
     def build(self) -> TransactionCostModel:
         """Construct the real TransactionCostModel this config describes.
@@ -107,8 +122,15 @@ class CostConfig:
             return SlippageCommissionModel(
                 commission_per_trade=self.commission_per_trade, slippage_bps=self.slippage_bps
             )
+        if self.model_type == "dynamic_slippage":
+            return DynamicSlippageModel(
+                base_bps=self.base_bps,
+                vol_multiplier=self.vol_multiplier,
+                commission_per_trade=self.commission_per_trade,
+            )
         raise ConfigurationError(
-            f"costs.model_type must be 'zero' or 'slippage_commission', got {self.model_type!r}"
+            "costs.model_type must be 'zero', 'slippage_commission', or 'dynamic_slippage', "
+            f"got {self.model_type!r}"
         )
 
 
@@ -147,11 +169,20 @@ class SearchConfig:
 class ExecutionConfig:
     """on_flat_reentry maps to run_sweep (Task 3.3). intrabar_priority
     maps to validate_finalists_intraday/simulate_single_intraday (Task
-    2.3) -- a real, tested parameter in this codebase even though it
-    isn't a run_sweep parameter itself."""
+    2.3) and, since fill_model was added, to run_sweep as well.
+
+    fill_model selects how a bar produces fills: "close" (default,
+    original behavior -- a level must be reached by the bar's CLOSE)
+    or "intrabar" (a level TOUCHED during the bar fills, at that
+    level, modelling the resting limit orders a grid strategy actually
+    uses). See OptimizationController._simulate_single for the
+    measured difference -- roughly 1.85x more fills on both sides on
+    this repo's own minute data -- and for why "close" remains the
+    default despite that."""
 
     on_flat_reentry: str = "stale_reference"
     intrabar_priority: str = "sell_first"
+    fill_model: str = "close"
 
 
 @dataclass(frozen=True)
@@ -301,6 +332,8 @@ class BacktestConfig:
             model_type=costs_data.get("model_type", "zero"),
             commission_per_trade=costs_data.get("commission_per_trade", 0.0),
             slippage_bps=costs_data.get("slippage_bps", 0.0),
+            base_bps=costs_data.get("base_bps", 0.0),
+            vol_multiplier=costs_data.get("vol_multiplier", 1.0),
         )
 
         risk_data = data.get("risk", {})
@@ -321,6 +354,7 @@ class BacktestConfig:
         execution = ExecutionConfig(
             on_flat_reentry=execution_data.get("on_flat_reentry", "stale_reference"),
             intrabar_priority=execution_data.get("intrabar_priority", "sell_first"),
+            fill_model=execution_data.get("fill_model", "close"),
         )
 
         output_data = data.get("output", {})
@@ -381,9 +415,15 @@ class BacktestConfig:
         validate_grid_steps(self.grid.steps)
         validate_profit_targets(self.grid.profit_targets)
 
-        validate_one_of(self.costs.model_type, ("zero", "slippage_commission"), "costs.model_type")
+        validate_one_of(
+            self.costs.model_type,
+            ("zero", "slippage_commission", "dynamic_slippage"),
+            "costs.model_type",
+        )
         validate_non_negative(self.costs.commission_per_trade, "costs.commission_per_trade")
         validate_non_negative(self.costs.slippage_bps, "costs.slippage_bps")
+        validate_non_negative(self.costs.base_bps, "costs.base_bps")
+        validate_non_negative(self.costs.vol_multiplier, "costs.vol_multiplier")
 
         if self.risk.max_concurrent_lots is not None:
             validate_positive_int(self.risk.max_concurrent_lots, "risk.max_concurrent_lots")
@@ -403,6 +443,7 @@ class BacktestConfig:
             ("sell_first", "buy_first"),
             "execution.intrabar_priority",
         )
+        validate_one_of(self.execution.fill_model, ("close", "intrabar"), "execution.fill_model")
 
         # Live parameters are range-checked when SUPPLIED, but their
         # PRESENCE is not required here. LiveExecutionLoop takes step
@@ -450,6 +491,8 @@ class BacktestConfig:
                 "model_type": self.costs.model_type,
                 "commission_per_trade": self.costs.commission_per_trade,
                 "slippage_bps": self.costs.slippage_bps,
+                "base_bps": self.costs.base_bps,
+                "vol_multiplier": self.costs.vol_multiplier,
             },
             "risk": {
                 "max_concurrent_lots": self.risk.max_concurrent_lots,
@@ -464,6 +507,7 @@ class BacktestConfig:
             "execution": {
                 "on_flat_reentry": self.execution.on_flat_reentry,
                 "intrabar_priority": self.execution.intrabar_priority,
+                "fill_model": self.execution.fill_model,
             },
             "output": {"return_full_results": self.output.return_full_results},
             "live": {
@@ -494,6 +538,8 @@ class BacktestConfig:
             "cost_model": self.costs.build(),
             "risk_manager": self.risk.build(),
             "on_flat_reentry": self.execution.on_flat_reentry,
+            "fill_model": self.execution.fill_model,
+            "intrabar_priority": self.execution.intrabar_priority,
             "symbol": self.backtest.symbol,
             "initial_cash": self.backtest.initial_cash,
             "search_strategy": self.search.strategy,

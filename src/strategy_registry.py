@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from src.bayesian_sizing_calculators import BayesianDualScaleSizing
 from src.exceptions import ConfigurationError
+from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.size_calculators import (
     BellCurveProbabilitySizing,
     FixedPortfolioPercentage,
@@ -30,6 +31,7 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     "bell_curve": BellCurveProbabilitySizing,
     "rsi": RsiMomentumSizing,
     "bayesian_dual_scale": BayesianDualScaleSizing,
+    "hf_local_reference": HighFrequencyLocalReferenceSizing,
 }
 
 
