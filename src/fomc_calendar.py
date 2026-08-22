@@ -80,7 +80,8 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
-_EASTERN = ZoneInfo("America/New_York")
+EASTERN_TZ = ZoneInfo("America/New_York")
+_EASTERN = EASTERN_TZ  # module-internal alias; EASTERN_TZ is the exported name
 
 FOMC_DECISION_DATES: frozenset[date] = frozenset(
     date(y, m, d)
