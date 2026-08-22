@@ -21,7 +21,8 @@ import pandas as pd
 from src import data_validation, decision_cycle, intraday_validation
 from src.cost_models import TransactionCostModel, ZeroCostModel
 from src.exceptions import ConfigurationError
-from src.fomc_calendar import is_fomc_day_at
+from src.fomc_calendar import EASTERN_TZ as _EASTERN_TZ
+from src.fomc_calendar import FOMC_DECISION_DATES
 from src.idempotency import ProcessedEventStore
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext, SimulationResult
@@ -225,9 +226,40 @@ class OptimizationController:
         """
         data_validation.validate(historical_data)
         self.data = historical_data
+        # Computed lazily, once per controller, and reused by every
+        # combination in a sweep -- see _fomc_flags. Doing the Eastern
+        # conversion per bar per combination meant 1.03M timezone
+        # conversions x however many combinations the sweep runs.
+        self._fomc_flags_cache = None
         logger.info(
             f"OptimizationController initialized with historical dataset length: {len(historical_data)}"
         )
+
+    @property
+    def _fomc_flags(self):
+        """Per-bar FOMC-decision-day flags for this controller's data.
+
+        Vectorized and cached rather than calling
+        fomc_calendar.is_fomc_day_at() per bar: the dataset is
+        immutable for the controller's lifetime, so the Eastern-date
+        conversion is done once for the whole index and every
+        combination in a sweep reuses it. Profiled at ~0.55s per
+        combination before caching -- trivial once, meaningful when
+        multiplied by a sweep's combination count.
+
+        Uses the same conversion the scalar helper documents (naive
+        index treated as UTC, matched on the Eastern calendar date), so
+        the two cannot disagree; tests/unit/test_fomc_calendar.py pins
+        the scalar semantics and an integration test pins that this
+        path agrees with it.
+        """
+        if self._fomc_flags_cache is None:
+            index = self.data.index
+            if getattr(index, "tz", None) is None:
+                index = index.tz_localize("UTC")
+            eastern_dates = index.tz_convert(_EASTERN_TZ).date
+            self._fomc_flags_cache = [d in FOMC_DECISION_DATES for d in eastern_dates]
+        return self._fomc_flags_cache
 
     def _simulate_single(
         self,
@@ -322,6 +354,7 @@ class OptimizationController:
         # on the first bar (no previous close exists) --
         # DynamicSlippageModel falls back to base_bps in that case.
         prev_close = None
+        fomc_flags = self._fomc_flags
 
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp = row.Index
@@ -350,7 +383,7 @@ class OptimizationController:
                 drawdown=current_dd,
                 open_lot_count=len(ledger.open_lots),
                 bar_index=bar_index,
-                is_macro_event_day=is_fomc_day_at(timestamp),
+                is_macro_event_day=fomc_flags[bar_index],
             )
 
             # Every bar, unconditionally -- B4. Routed through the shared

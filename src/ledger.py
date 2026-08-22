@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 SHARE_EPSILON = 1e-9
 
 
-@dataclass
+@dataclass(eq=False)
 class Lot:
     """A single open or closed position lot.
 
@@ -43,6 +43,22 @@ class Lot:
     and profit_target and does not change afterward -- including across
     partial closes (Task 7.2's State Mutation Scope forbids mutating
     either during a partial split).
+
+    eq=False -- IDENTITY equality, not the dataclass default of
+    field-wise equality. Two reasons, one correctness and one cost.
+
+    Correctness: close_lot asks `if lot not in self.open_lots` and then
+    `self.open_lots.remove(lot)`. Under field-wise equality those match
+    the FIRST lot with equal fields, which is not necessarily the lot
+    passed in -- two lots bought at the same price for the same size
+    with the same target are field-identical and genuinely
+    indistinguishable. A grid strategy produces exactly that
+    constantly. Identity is what those two call sites actually mean.
+
+    Cost: field-wise __eq__ made `in`/`remove` compare every field of
+    every open lot on every close. Profiled on a 60-day minute slice
+    with ~620 concurrent lots, that was 19.6M __eq__ calls and ~55% of
+    total simulation runtime. Identity comparison is a pointer check.
     """
 
     order_id: str

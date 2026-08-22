@@ -56,6 +56,23 @@ def _first_buy_notional(df: pd.DataFrame, **strategy_kwargs) -> float:
     return first_buy["price"] * first_buy["qty"]
 
 
+def test_the_vectorized_flag_cache_agrees_with_the_scalar_helper():
+    """OptimizationController._fomc_flags converts the whole index at
+    once and caches it, instead of calling is_fomc_day_at() per bar.
+    Two implementations of the same rule can drift, so this pins that
+    they agree bar-for-bar -- including across the FOMC/non-FOMC
+    boundary, which is the case that would actually matter."""
+    from src.fomc_calendar import is_fomc_day_at
+
+    df = pd.concat([_one_day_dip_fixture(NON_FOMC_DATE), _one_day_dip_fixture(FOMC_DATE)])
+    controller = OptimizationController(historical_data=df)
+    flags = controller._fomc_flags
+
+    assert len(flags) == len(df)
+    assert flags == [is_fomc_day_at(ts) for ts in df.index]
+    assert any(flags) and not all(flags), "fixture must span both cases to be meaningful"
+
+
 def test_context_is_macro_event_day_is_populated_from_the_real_calendar_through_a_real_run():
     """Without any boost configured, the buy notional on the real FOMC
     date must be UNCHANGED from the non-FOMC date -- proving the flag
