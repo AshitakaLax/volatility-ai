@@ -13,6 +13,7 @@ rather than keeping parallel copies that could drift apart.
 """
 
 import concurrent.futures
+import dataclasses
 import logging
 
 import pandas as pd
@@ -20,6 +21,7 @@ import pandas as pd
 from src import data_validation, decision_cycle, intraday_validation
 from src.cost_models import TransactionCostModel, ZeroCostModel
 from src.exceptions import ConfigurationError
+from src.fomc_calendar import is_fomc_day_at
 from src.idempotency import ProcessedEventStore
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext, SimulationResult
@@ -85,6 +87,34 @@ def _resolve_search_strategy(
     )
 
 
+def _validate_fill_model(fill_model: str, intrabar_priority: str) -> None:
+    """Range-check the fill-model pair. Module-level so run_sweep can
+    front-load it (before any combination runs) and _simulate_single
+    can enforce it for direct callers, without two copies of the
+    rules."""
+    if fill_model not in ("close", "intrabar"):
+        raise ConfigurationError(f"fill_model must be 'close' or 'intrabar', got {fill_model!r}")
+    if intrabar_priority not in ("sell_first", "buy_first"):
+        raise ConfigurationError(
+            f"intrabar_priority must be 'sell_first' or 'buy_first', got {intrabar_priority!r}"
+        )
+    if fill_model == "intrabar" and intrabar_priority == "buy_first":
+        # Raised rather than silently ignored. _simulate_single evaluates
+        # harvest-before-buy in fixed source order (the canonical
+        # execution sequence), so honoring "buy_first" would mean
+        # reordering the two phases -- a real change to a loop the whole
+        # suite pins, not a flag read. Accepting the value and then not
+        # applying it would be the worse failure: a config that says one
+        # thing and does another.
+        # OptimizationController.validate_finalists_intraday ->
+        # intraday_validation.simulate_single_intraday does support
+        # buy_first today, for the finalist replay pass.
+        raise ConfigurationError(
+            "fill_model='intrabar' currently supports intrabar_priority='sell_first' only "
+            "(got 'buy_first'). Use validate_finalists_intraday for a buy_first replay."
+        )
+
+
 def _strategy_name(strategy_class) -> str:
     """Human-readable name for whatever run_sweep was handed.
 
@@ -108,6 +138,8 @@ def _run_one_combination(
     cost_model: TransactionCostModel,
     risk_manager: RiskManager,
     on_flat_reentry: str,
+    fill_model: str = "close",
+    intrabar_priority: str = "sell_first",
 ):
     """
     Task 4.5. Module-level (not a method) so it, and everything passed
@@ -145,6 +177,8 @@ def _run_one_combination(
             cost_model=cost_model,
             risk_manager=risk_manager,
             on_flat_reentry=on_flat_reentry,
+            fill_model=fill_model,
+            intrabar_priority=intrabar_priority,
         )
         # Strategy is identified by name rather than by the config's
         # strategy_id, because run_sweep takes a callable and never
@@ -205,6 +239,8 @@ class OptimizationController:
         cost_model: TransactionCostModel,
         risk_manager: RiskManager,
         on_flat_reentry: str = "stale_reference",
+        fill_model: str = "close",
+        intrabar_priority: str = "sell_first",
     ) -> SimulationResult:
         """
         Task 4.1. One isolated combination: fresh AssetLotLedger and
@@ -217,7 +253,47 @@ class OptimizationController:
         unchanged, per this task's own Non-goals ("this task extracts
         and unifies existing behavior -- it does not change ... logic").
         Threaded through as an extra parameter rather than dropped.
+
+        --------------------------------------------------------------
+        fill_model: "close" (default) or "intrabar".
+
+        "close" is the original, unchanged behavior: a sell needs the
+        bar's CLOSE at or above the lot's target, a buy needs the CLOSE
+        at or below the trigger level, and a buy fills at the close.
+        Every pre-existing caller and config gets exactly this, which is
+        what tests/fixtures/regression_baseline.py pins.
+
+        "intrabar" models the resting LIMIT orders a grid strategy
+        actually works by: a level that the bar TOUCHED (high >= sell
+        target, or low <= buy trigger) fills, and it fills AT that
+        level, not at the close. Measured on this repo's 10-year TQQQ
+        minute data, the close-only model sees roughly HALF the fills
+        the touch model does -- 1.83x-1.91x fewer, consistently across
+        every threshold from 3bps to 50bps -- because median intrabar
+        range (14.5bps) is more than double median close-to-close
+        movement (6.8bps). For a strategy harvesting bps-scale moves
+        that difference is not a refinement, it is most of the
+        behavior.
+
+        This mirrors the fill convention src/intraday_validation.py
+        established for its opt-in replay pass (fill at the touched
+        level, not at high/low/close), so the two agree. Unlike that
+        module, this path routes through decision_cycle and the real
+        RiskManager, and asks the strategy for its own trigger LEVEL
+        (SizingStrategy._grid_trigger_level) rather than assuming the
+        default last_buy_price*(1-step) formula -- which that module
+        hardcodes and which is wrong for any strategy that overrides
+        the trigger.
+
+        intrabar_priority ("sell_first" default / "buy_first") decides
+        the order on bars where BOTH a sell target and a buy trigger
+        were touched and OHLC alone cannot establish which came first
+        -- 14.5% of bars on this dataset at representative thresholds,
+        so not a rare tie-break. Ignored entirely when
+        fill_model="close" (a close is a single price; no ambiguity
+        exists). Same contract and default as intraday_validation's.
         """
+        _validate_fill_model(fill_model, intrabar_priority)
         ledger = AssetLotLedger()
         # mode="SIMULATION" stays a bare string here (Task 4.3): a Mode
         # enum would live in src/order_management_system.py, which isn't
@@ -274,6 +350,7 @@ class OptimizationController:
                 drawdown=current_dd,
                 open_lot_count=len(ledger.open_lots),
                 bar_index=bar_index,
+                is_macro_event_day=is_fomc_day_at(timestamp),
             )
 
             # Every bar, unconditionally -- B4. Routed through the shared
@@ -287,8 +364,13 @@ class OptimizationController:
             equity_curve_timestamps.append(context.timestamp)
             equity_curve_values.append(context.equity)
 
-            # 1. Harvest target checks
-            marketable = ledger.get_marketable_lots(context.price)
+            # 1. Harvest target checks. Under "intrabar", a resting
+            # limit sell fills if the bar's HIGH touched the target,
+            # not only if the close finished above it; the fill price
+            # is the target either way (oms.execute_sell below), so
+            # only the trigger price differs between the two models.
+            harvest_probe = context.price if fill_model == "close" else row.high
+            marketable = ledger.get_marketable_lots(harvest_probe)
             for lot in marketable:
                 exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
                 if exec_res.get("status") != OrderStatus.FILLED:
@@ -360,14 +442,41 @@ class OptimizationController:
             # exactly one place. state.cash (not context.cash) is passed
             # deliberately: it reflects this same bar's harvest proceeds,
             # which have already landed by the time a buy is sized.
-            decision = decision_cycle.evaluate_grid_decision(
-                strategy_instance, risk_manager, context, state.last_buy_price, step, state.cash
-            )
+            #
+            # Under "intrabar" the trigger is a TOUCH of the level by
+            # the bar's low, and both sizing and the fill happen at
+            # that level rather than at the close -- so the level is
+            # asked of the strategy itself (_grid_trigger_level) and
+            # passed through a context whose price is overridden to it.
+            # dataclasses.replace because MarketContext is frozen.
+            if fill_model == "close":
+                buy_fill_price = context.price
+                decision = decision_cycle.evaluate_grid_decision(
+                    strategy_instance, risk_manager, context, state.last_buy_price, step, state.cash
+                )
+            else:
+                trigger_level = strategy_instance._grid_trigger_level(
+                    context, state.last_buy_price, step
+                )
+                buy_fill_price = trigger_level
+                fill_context = dataclasses.replace(
+                    context, close=trigger_level, low=min(row.low, trigger_level)
+                )
+                decision = decision_cycle.evaluate_grid_decision(
+                    strategy_instance,
+                    risk_manager,
+                    context,
+                    state.last_buy_price,
+                    step,
+                    state.cash,
+                    triggered=row.low <= trigger_level,
+                    sizing_context=fill_context,
+                )
             if decision.triggered:
                 trade_value = decision.clamped_trade_value
 
                 if state.cash >= trade_value and trade_value > 0:
-                    order = oms.execute_buy(symbol, trade_value, context.price)
+                    order = oms.execute_buy(symbol, trade_value, buy_fill_price)
                     if order.get("status") != OrderStatus.FILLED:
                         logger.warning(f"Buy not filled: status={order.get('status')}")
                     else:
@@ -387,6 +496,7 @@ class OptimizationController:
                             total_buy_outlay=total_buy_outlay,
                             filled_price=filled_price,
                             filled_qty=filled_qty,
+                            buy_fill_price=buy_fill_price,
                         ):
                             """Side effects of one confirmed buy, applied at most once.
 
@@ -401,7 +511,14 @@ class OptimizationController:
                                 order["id"], symbol, per_share_cost_basis, filled_qty, target
                             )
                             state.cash -= total_buy_outlay
-                            state.last_buy_price = context.price
+                            # The grid reference advances to where this buy
+                            # ACTUALLY filled -- the close under "close",
+                            # the touched limit level under "intrabar".
+                            # Using the close in the intrabar case would
+                            # ratchet the ladder from a price no order
+                            # transacted at, letting the next rung trigger
+                            # from the wrong reference.
+                            state.last_buy_price = buy_fill_price
                             blotter_records.append(
                                 {
                                     "timestamp": context.timestamp,
@@ -440,6 +557,7 @@ class OptimizationController:
             "symbol": symbol,
             "initial_cash": initial_cash,
             "on_flat_reentry": on_flat_reentry,
+            "fill_model": fill_model,
             # Underscore-prefixed attributes are excluded deliberately.
             # The intent above is "the strategy's own constructor-derived
             # attributes"; a stateful strategy's rolling indicator state
@@ -469,6 +587,8 @@ class OptimizationController:
         cost_model: TransactionCostModel = None,
         risk_manager: RiskManager = None,
         on_flat_reentry: str = "stale_reference",
+        fill_model: str = "close",
+        intrabar_priority: str = "sell_first",
         symbol: str = "TQQQ",
         initial_cash: float = 100_000.0,
         n_jobs: int = 1,
@@ -492,6 +612,15 @@ class OptimizationController:
             the next grid trigger compares against that stale reference. "reset_to_market"
             resets last_buy_price to the current bar's price the moment the portfolio goes
             flat, so the next trigger is measured from the price level at which it went flat.
+        :param fill_model: "close" (default, exactly today's behavior) fills a sell only
+            when the bar's CLOSE reaches the lot's target and a buy only when the CLOSE
+            reaches the trigger, filling the buy at that close. "intrabar" models resting
+            LIMIT orders instead: a level TOUCHED during the bar (high >= sell target,
+            low <= buy trigger) fills, at that level. On this repo's 10-year TQQQ minute
+            data the close-only model sees ~1.85x fewer fills on both sides -- see
+            _simulate_single's docstring for the measurements and the rationale.
+        :param intrabar_priority: Only meaningful with fill_model="intrabar"; "sell_first"
+            (default) is the only value currently supported there (see _simulate_single).
         :param symbol: Ticker traded. Defaults to "TQQQ" -- exactly today's behavior.
         :param initial_cash: Starting cash for every combination. Defaults to 100_000.0 --
             exactly today's behavior.
@@ -545,6 +674,14 @@ class OptimizationController:
             on_flat_reentry=on_flat_reentry,
             initial_cash=initial_cash,
         )
+        # Front-loaded for the same reason as everything above it: these
+        # are CONFIG errors, and _simulate_single runs inside
+        # _run_one_combination's per-combination try/except (Task 4.4),
+        # which would turn one bad value into an {"error": ...} row for
+        # every combination in the sweep instead of one clear failure
+        # before any work starts. _simulate_single validates them too,
+        # for callers that reach it directly.
+        _validate_fill_model(fill_model, intrabar_priority)
         cost_model = cost_model if cost_model is not None else ZeroCostModel()
         risk_manager = risk_manager if risk_manager is not None else RiskManager()
         results = []
@@ -586,10 +723,24 @@ class OptimizationController:
                     cost_model,
                     risk_manager,
                     on_flat_reentry,
+                    fill_model,
+                    intrabar_priority,
                 )
                 resolved_search_strategy.report(suggestion, sim_result)
                 results.append(row)
-                full_results.append(sim_result)
+                # Retained ONLY when the caller asked for them. Each
+                # SimulationResult carries a per-bar equity curve (one
+                # entry per bar -- ~1.03M on this repo's 10-year minute
+                # dataset) and a full trade blotter (~540k rows for a
+                # high-frequency combination), i.e. tens of MB EACH.
+                # Appending unconditionally meant a sweep's peak memory
+                # grew with combination count even when the caller only
+                # ever reads summary_df -- which is what exhausted RAM
+                # on a 1,260-combination run here. The search strategy's
+                # report() above consumes sim_result transiently and
+                # does not retain it, so dropping it here is safe.
+                if return_full_results:
+                    full_results.append(sim_result)
         else:
             # One executor reused across every batch (rather than one per
             # batch) -- avoids repeated pool spin-up/teardown overhead.
@@ -617,6 +768,8 @@ class OptimizationController:
                             cost_model,
                             risk_manager,
                             on_flat_reentry,
+                            fill_model,
+                            intrabar_priority,
                         ): s
                         for s in batch
                     }
@@ -625,7 +778,8 @@ class OptimizationController:
                         row, sim_result = future.result()
                         resolved_search_strategy.report(suggestion, sim_result)
                         results.append(row)
-                        full_results.append(sim_result)
+                        if return_full_results:  # see the sequential branch
+                            full_results.append(sim_result)
 
         logger.info("Hyperparameter sweeping logic execution complete.")
 
@@ -662,7 +816,11 @@ class OptimizationController:
         sorted_df = summary_df.sort_values(by=sort_columns, ascending=False, na_position="last")
         sort_order = sorted_df.index
         summary_df = sorted_df.reset_index(drop=True)
-        full_results = [full_results[i] for i in sort_order]
+        # Only populated when return_full_results is set (see above), so
+        # the reorder is guarded to match -- an empty list must stay
+        # empty rather than being indexed by the sorted row positions.
+        if return_full_results:
+            full_results = [full_results[i] for i in sort_order]
 
         if return_full_results:
             return summary_df, full_results

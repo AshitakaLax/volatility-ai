@@ -67,16 +67,32 @@ def evaluate_grid_decision(
     last_buy_price: float,
     step: float,
     cash: float,
+    triggered: bool | None = None,
+    sizing_context: MarketContext | None = None,
 ) -> GridDecision:
     """Phases 2-4: grid-trigger check, then (only if triggered) sizing
     and the risk clamp. Pure with respect to portfolio state -- it
     proposes a value; it does not submit orders, move cash, or touch
-    the ledger. Callers own those effects."""
-    triggered = strategy._check_grid_trigger(context, last_buy_price, step)
+    the ledger. Callers own those effects.
+
+    triggered/sizing_context exist for the intrabar fill model and
+    default to None, which preserves the original behavior exactly
+    (evaluate the trigger against context.price, size against the same
+    context). The intrabar caller has already determined the trigger
+    from the bar's LOW rather than its close, and must size against the
+    touched limit level rather than the close -- so it passes both in
+    rather than having this function re-derive them from a close it
+    isn't using. Keeping the clamp and the call sequence here, rather
+    than letting that caller inline its own copy, is the whole point of
+    this module (see docstring)."""
+    if triggered is None:
+        triggered = strategy._check_grid_trigger(context, last_buy_price, step)
     if not triggered:
         return GridDecision(context=context, triggered=False)
 
-    proposed = strategy.calculate_trade_value(context)
+    proposed = strategy.calculate_trade_value(
+        context if sizing_context is None else sizing_context
+    )
     clamped = risk_manager.clamp_trade_value(proposed, context.equity, cash, context.open_lot_count)
     return GridDecision(
         context=context,

@@ -52,15 +52,41 @@ class SizingStrategy(ABC):
     """Target-form sizing-strategy contract (architecture_overview.md
     Section 5.2), as of Task 4.1."""
 
+    def _grid_trigger_level(
+        self, context: MarketContext, last_buy_price: float, step: float
+    ) -> float:
+        """The price AT OR BELOW WHICH a buy triggers.
+
+        Split out from _check_grid_trigger so the level is a value the
+        caller can inspect, not just a boolean it can evaluate. The
+        intrabar fill model needs exactly that: it compares the level
+        against the bar's LOW (did a resting limit order get touched?)
+        and fills AT the level, which is impossible to do from a
+        boolean alone.
+
+        Before this existed, src/intraday_validation.py recomputed
+        `last_buy_price * (1 - grid_step)` inline -- which silently
+        hardcoded the DEFAULT formula and would have been wrong for any
+        strategy overriding the trigger (HighFrequencyLocalReferenceSizing
+        measures its pullback from max(last_buy_price, rolling_high),
+        not from last_buy_price). Overriding THIS method, rather than
+        _check_grid_trigger, is what keeps the close-only and intrabar
+        paths agreeing on one definition per strategy.
+        """
+        return last_buy_price * (1.0 - step)
+
     def _check_grid_trigger(
         self, context: MarketContext, last_buy_price: float, step: float
     ) -> bool:
         """Default: identical to the pre-Task-4.1 inline check
         (current_price <= last_buy_price * (1 - step)), now expressed
-        against context.price. last_buy_price/step aren't part of
-        MarketContext (they're grid/backtest state, not market state),
-        so they stay as explicit parameters. Overridable per-strategy."""
-        return context.price <= last_buy_price * (1.0 - step)
+        against context.price and routed through _grid_trigger_level so
+        there is one definition of the level per strategy.
+        last_buy_price/step aren't part of MarketContext (they're
+        grid/backtest state, not market state), so they stay as explicit
+        parameters. Overridable per-strategy, though overriding
+        _grid_trigger_level is usually the better seam -- see there."""
+        return context.price <= self._grid_trigger_level(context, last_buy_price, step)
 
     @abstractmethod
     def record_tick(self, context: MarketContext) -> None:

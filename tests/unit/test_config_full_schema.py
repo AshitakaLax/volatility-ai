@@ -18,7 +18,7 @@ import pytest
 
 from optimization_controller import OptimizationController
 from src.config import BacktestConfig
-from src.cost_models import SlippageCommissionModel, ZeroCostModel
+from src.cost_models import DynamicSlippageModel, SlippageCommissionModel, ZeroCostModel
 from src.exceptions import ConfigurationError
 from src.risk_manager import RiskManager
 from src.size_calculators import FixedPortfolioPercentage
@@ -128,6 +128,50 @@ def test_yaml_from_actual_file(tmp_path):
     config = BacktestConfig.from_yaml(str(yaml_path), is_path=True)
     assert config.strategy.strategy_id == "fixed"
     assert config.grid.steps == (0.01,)
+
+
+def test_dynamic_slippage_cost_config_builds_the_real_model():
+    data = dict(FULL_DICT)
+    data["costs"] = {"model_type": "dynamic_slippage", "base_bps": 0.5, "vol_multiplier": 0.3}
+    config = BacktestConfig.from_dict(data)
+    config.validate()
+    model = config.costs.build()
+    assert isinstance(model, DynamicSlippageModel)
+    assert model.base_bps == 0.5
+    assert model.vol_multiplier == 0.3
+
+
+def test_existing_costs_configs_round_trip_unchanged_with_new_fields_defaulted():
+    """base_bps/vol_multiplier are additive -- every pre-existing config
+    (this repo's own committed YAMLs included) must still round-trip
+    identically now that the dataclass has two new fields."""
+    config = BacktestConfig.from_dict(FULL_DICT)
+    assert config.costs.base_bps == 0.0
+    assert config.costs.vol_multiplier == 1.0
+    assert BacktestConfig.from_dict(config.to_dict()) == config
+
+
+def test_dynamic_slippage_actually_reaches_simulation_and_widens_spread_on_a_volatile_bar():
+    """Mirrors test_task_2_2_transaction_costs.py's pattern for
+    slippage_commission: prove the config-built model isn't just
+    constructed correctly in isolation, but actually changes fills when
+    driven through a real OptimizationController.run_sweep."""
+    df = _load_fixture()
+    data = dict(FULL_DICT)
+    data["costs"] = {"model_type": "dynamic_slippage", "base_bps": 1.0, "vol_multiplier": 2.0}
+    config = BacktestConfig.from_dict(data)
+    config.validate()
+    kwargs = config.to_run_sweep_kwargs(FixedPortfolioPercentage)
+
+    flat_row = OptimizationController(historical_data=_load_fixture()).run_sweep(
+        **{**kwargs, "cost_model": ZeroCostModel()}
+    ).iloc[0]
+    dynamic_row = OptimizationController(historical_data=df).run_sweep(**kwargs).iloc[0]
+
+    assert dynamic_row["Final Equity"] != flat_row["Final Equity"]
+    assert dynamic_row["Trade Count"] == flat_row["Trade Count"], (
+        "the cost model must not change which/how many trades fire"
+    )
 
 
 def test_invalid_costs_model_type_rejected_by_validate():

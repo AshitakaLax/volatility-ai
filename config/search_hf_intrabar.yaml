@@ -1,0 +1,97 @@
+# Exhaustive sweep over HighFrequencyLocalReferenceSizing using the
+# INTRABAR (resting-limit-order) fill model.
+#
+# Replaces an earlier close-only config (search_bayesian_hf.yaml, since
+# deleted rather than left runnable, since its parameters are now known
+# to be wrong in the three ways below). That run was stopped at combo
+# 50/1260 once these were measured; its partial output is kept as
+# output/SUPERSEDED_closeonly_partial_* for reference:
+#
+#   1. FILL MODEL. run_sweep filled only when a bar's CLOSE reached a
+#      level. A grid strategy works by resting LIMIT orders, which fill
+#      when a level is TOUCHED. Measured on this dataset, the touch
+#      model fills 1.83x-1.91x more often on both sides at every
+#      threshold from 3bps to 50bps (median intrabar range 14.5bps vs
+#      6.8bps median close-to-close). Confirmed end-to-end: an
+#      otherwise identical combination went from 9,215 to 17,431 trades
+#      (1.89x) once the lot cap below stopped binding.
+#
+#   2. LOT CAP. max_concurrent_lots: 200 was binding in 33% of sampled
+#      combinations, and RiskManager.clamp_trade_value returns 0.0 at
+#      the cap -- buys stop entirely rather than scaling down. Under the
+#      faster-filling intrabar model it was far worse: it cut that same
+#      combination from 17,431 trades to 2,831 (-84%), so the old sweep
+#      would largely have measured where the cap bit rather than the
+#      parameters. It is set non-binding here (see risk below).
+#
+#   3. DEAD PROFIT TARGETS. 5bps and 8bps sat at or below round-trip
+#      cost (dynamic slippage is 0.5 + c2c_bps*0.3 per fill, ~5.1bps
+#      round trip at the median bar and more on volatile bars), so the
+#      no-loss guard rejected those sells -- and rejected them
+#      preferentially on volatile bars, exactly when targets get
+#      touched. Rejected lots stay open forever, consuming lot slots and
+#      feeding defect 2. Both values are dropped below; the sweep now
+#      starts at 10bps, comfortably clear of the cost floor.
+#
+# per_lot_pct is shifted DOWN an order of magnitude from the previous
+# config's 0.001-0.01. Reason, measured: under intrabar the strategy
+# deploys capital about twice as fast, and at per_lot_pct=0.001 the
+# full 10-year run returned +50.09% but with a 66% max drawdown -- far
+# too much for a 3x leveraged instrument. Note this strategy never
+# sells at a loss (src/no_loss_guard.py), so it necessarily rides
+# declines down with every open lot marked to market; the 2022 TQQQ
+# drawdown (~-79%) is inside this dataset. Smaller lots are the
+# available lever, so the sweep explores 2bps-20bps of initial capital
+# per lot and reports Max Drawdown % alongside return for the
+# risk/return tradeoff to be chosen from evidence rather than assumed.
+#
+# event_day_boost_multiplier sweeps [1.0, 2.0] -- 1.0 being the control
+# (a no-op, identical to the feature not existing) so the FOMC-day
+# boost is measured against its own absence on otherwise identical
+# parameters, rather than assumed to help. See
+# src/high_frequency_sizing.py for what the boost is based on
+# (FOMC decision days show 33-37% higher realized intraday volatility
+# on this dataset, Welch t=3.15) and, importantly, what it is NOT based
+# on (net directional drift, which is slightly negative).
+#
+# bars_per_day: 387, measured (1,035,087 bars / 2,674 sessions).
+# rank_by is Total Return %; Capital Velocity Index saturates at 1.0.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: [0.0002, 0.0005, 0.001, 0.002]
+    lookback_days: [0.01, 0.05]
+    event_day_boost_multiplier: [1.0, 2.0]
+grid:
+  steps: [0.0005, 0.001, 0.002]
+  profit_targets: [0.001, 0.0015, 0.002, 0.003]
+backtest:
+  symbol: TQQQ
+  initial_cash: 100000.0
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+risk:
+  # Deliberately non-binding: cash already caps concurrent lots at
+  # 1/per_lot_pct (5,000 at the smallest size swept), and the whole
+  # point of defect 2 above is that a binding cap silently measures
+  # itself instead of the parameters. Left as a finite safety valve
+  # rather than null so a runaway combination still terminates; peak
+  # observed on a full 10-year intrabar run was 391 open lots, so this
+  # has ~15x headroom and should never actually engage.
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+search:
+  strategy: grid
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+output:
+  return_full_results: false
