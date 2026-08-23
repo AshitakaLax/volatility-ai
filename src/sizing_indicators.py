@@ -36,6 +36,7 @@ no default that silently means something different on different data.
 from __future__ import annotations
 
 from collections import deque
+from math import sqrt
 
 from src.exceptions import ConfigurationError
 
@@ -100,6 +101,60 @@ class RollingMax:
         """Observations seen. Lets a caller distinguish a full window
         from a partially-warmed one without a separate flag."""
         return self._index + 1
+
+
+class RollingStdev:
+    """Sample standard deviation over the most recent `window` values.
+
+    O(1) per update via running sum and sum-of-squares, matching
+    RollingMax's "one observation at a time, no re-scan" contract --
+    this runs on every bar of a 1M-bar dataset for every combination in
+    a sweep, so an O(window) recompute per bar is not affordable.
+
+    Sum-of-squares is numerically weaker than a two-pass or Welford
+    formulation, and that is a deliberate, bounded trade here: the
+    inputs are per-bar log returns (order 1e-4), the window is bounded,
+    and the consumer takes a RATIO of two of these, so the small
+    common-mode error largely cancels. Variance is floored at zero so
+    rounding can never produce a negative under the sqrt.
+    """
+
+    def __init__(self, window: int) -> None:
+        if window <= 1:
+            raise ConfigurationError(
+                f"RollingStdev window must be > 1 (a sample stdev of one point is undefined), "
+                f"got {window}"
+            )
+        self.window = window
+        self._values: deque[float] = deque()
+        self._sum = 0.0
+        self._sum_sq = 0.0
+
+    def update(self, value: float) -> float | None:
+        """Add one observation and return the current stdev, or None
+        until at least two observations have been seen."""
+        self._values.append(value)
+        self._sum += value
+        self._sum_sq += value * value
+        if len(self._values) > self.window:
+            old = self._values.popleft()
+            self._sum -= old
+            self._sum_sq -= old * old
+        return self.value
+
+    @property
+    def value(self) -> float | None:
+        """Current sample stdev, or None before two observations."""
+        n = len(self._values)
+        if n < 2:
+            return None
+        variance = (self._sum_sq - self._sum * self._sum / n) / (n - 1)
+        return sqrt(variance) if variance > 0.0 else 0.0
+
+    @property
+    def count(self) -> int:
+        """Observations currently inside the window."""
+        return len(self._values)
 
 
 class WilderRSI:

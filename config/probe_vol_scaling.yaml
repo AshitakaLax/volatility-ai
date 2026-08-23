@@ -1,0 +1,26 @@
+# Controlled probe: everything fixed at the capped run's best admissible
+# configuration, sweeping ONLY vol_scale_exponent across zero. 0.0 is the
+# control (exact no-op), negative sizes down into volatility, positive
+# leans in. Grid, not Bayesian -- this is an experiment, not a search.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: 0.0002
+    lookback_days: 0.03
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_fast_days: 0.5
+    vol_slow_days: 20.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_scale_exponent: [-1.5, -1.0, -0.5, 0.0, 0.5, 1.0]
+grid:
+  steps: [0.00075]
+  profit_targets: [0.002]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: Total Return %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar}
+output: {return_full_results: false}
