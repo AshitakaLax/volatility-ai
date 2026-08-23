@@ -198,6 +198,44 @@ the data.
   Defaults: exponent 0.0, an exact no-op -- and at 0.0 the rolling
   windows are not even constructed, so there is no per-bar cost to
   leaving it off.
+
+--------------------------------------------------------------------
+time_of_day_exponent -- the same idea, on the clock instead
+
+MarketContext.time_of_day_flag was the LAST of Task 7.9's three
+macro/seasonality fields still sitting unpopulated and unconsumed. This
+is its consumer, and it is populated with minutes since 09:30 Eastern
+by optimization_controller (backtest) and live_trading_loop (live),
+through the same window and conversion so the two cannot disagree.
+
+  Source dataset: src/intraday_profile.py -- mean intrabar range per
+  minute-of-session, measured on this repo's own 10-year dataset at
+  2,655 samples per minute and normalized to mean 1.0.
+
+  Why this is worth more than either calendar: it is the largest
+  effect measured anywhere in this project, and unlike an event flag
+  it applies in EVERY session rather than 3% or 11% of them.
+
+      09:30-10:00   +152% vs the all-day average
+      12:00-14:00    -36%
+
+  Why it is not redundant with vol_scale_exponent. That scaler is
+  backward-looking and structurally lags the open: even its shortest
+  window (0.25 days = 97 bars) is still mostly describing yesterday
+  afternoon at 09:30, so it cannot react to the open's volatility
+  until most of the open is already gone. This one is known exactly in
+  advance, from the clock, with no warm-up and no lag. The two are
+  expected to compose, and they multiply.
+
+  Why RANGE rather than close-to-close underlies the profile, and why
+  minute 0 is not the 15.6x outlier a naive measurement reports, are
+  both in src/intraday_profile.py's docstring. Briefly: the fill model
+  fills on intrabar touches, so range is what decides whether a fill
+  happens, and a close-to-close return at 09:30 measures the overnight
+  gap rather than the minute.
+
+  Defaults: 0.0, an exact no-op, and like vol_scale_exponent it costs
+  nothing per bar when off.
 """
 
 from __future__ import annotations
@@ -205,6 +243,7 @@ from __future__ import annotations
 from math import log
 
 from src.exceptions import ConfigurationError
+from src.intraday_profile import relative_range
 from src.market_context import MarketContext
 from src.size_calculators import SizingStrategy
 from src.sizing_indicators import RollingMax, RollingStdev, bars_from_days, clamp
@@ -212,6 +251,11 @@ from src.sizing_indicators import RollingMax, RollingStdev, bars_from_days, clam
 # Below this, a realized-vol estimate is numerical noise rather than a
 # measurement -- see _vol_scale. Per-bar log returns here run ~1e-4.
 _VOL_EPSILON = 1e-9
+
+# Safety rails on the time-of-day multiplier, not tuning knobs -- see
+# _time_of_day_scale. Non-binding for any |exponent| <= 1.
+_TOD_SCALE_FLOOR = 0.1
+_TOD_SCALE_CEIL = 3.0
 
 
 class HighFrequencyLocalReferenceSizing(SizingStrategy):
@@ -230,6 +274,7 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         vol_slow_days: float = 20.0,
         vol_scale_min: float = 0.5,
         vol_scale_max: float = 2.0,
+        time_of_day_exponent: float = 0.0,
     ) -> None:
         if not 0.0 < per_lot_pct <= 1.0:
             raise ConfigurationError(f"per_lot_pct must be in (0, 1], got {per_lot_pct}")
@@ -258,6 +303,8 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         self.vol_slow_days = vol_slow_days
         self.vol_scale_min = vol_scale_min
         self.vol_scale_max = vol_scale_max
+        self.time_of_day_exponent = time_of_day_exponent
+        self._tod_enabled = time_of_day_exponent != 0.0
         # Built ONLY when the feature is on. At exponent 0.0 the scaler
         # is an exact no-op, so constructing the two rolling windows
         # would add a per-bar update on a 1M-bar dataset, for every
@@ -328,6 +375,38 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             self.vol_scale_max,
         )
 
+    def _time_of_day_scale(self, context: MarketContext) -> float:
+        """Size multiplier from WHERE IN THE SESSION this bar falls.
+
+        The static profile (src/intraday_profile.py) is normalized to
+        mean 1.0, so an exponent of 0.0 is an exact no-op and needs no
+        separate enable flag. Negative sizes down where the session is
+        reliably volatile -- the first minutes, 10:00, the close --
+        matching the direction the vol-ratio scaler measured as correct.
+
+        This is deliberately NOT the same signal as _vol_scale. That one
+        is backward-looking and lags: even a 0.25-day fast window is 97
+        bars, so at 09:30 it is still mostly describing yesterday
+        afternoon and cannot see the open's volatility until it is half
+        over. This one is known exactly, in advance, from the clock.
+
+        Outside the regular session the profile returns 1.0, so an
+        extended-hours bar in the live path is left unscaled rather than
+        being scaled by a number measured on a different regime.
+
+        Clamped by fixed rails rather than tunable bounds: the profile's
+        own range is 0.71-2.56, so for any |exponent| <= 1 the rails are
+        not binding at all and exist only to stop an extreme exponent
+        producing an absurd lot. Two more sweepable knobs for a bounded
+        quantity would be noise in a search budget.
+        """
+        if not self._tod_enabled:
+            return 1.0
+        relative = relative_range(context.time_of_day_flag)
+        return clamp(
+            relative**self.time_of_day_exponent, _TOD_SCALE_FLOOR, _TOD_SCALE_CEIL
+        )
+
     def _grid_trigger_level(
         self, context: MarketContext, last_buy_price: float, step: float
     ) -> float:
@@ -379,4 +458,4 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         # right now, measured rather than scheduled -- so a calm FOMC day
         # and a turbulent one are genuinely different situations.
         # _vol_scale is clamped, so the product stays bounded.
-        return value * boost * self._vol_scale()
+        return value * boost * self._vol_scale() * self._time_of_day_scale(context)

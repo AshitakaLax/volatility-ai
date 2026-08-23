@@ -63,6 +63,23 @@ standard.
                        regression baseline's values are unchanged by
                        this addition.
 
+THIRD FIELD: time_of_day_flag, populated at last.
+
+  Consuming strategy:  src/high_frequency_sizing.py, same method, via
+                       the time_of_day_exponent constructor parameter
+                       (default 0.0 -- an exact no-op).
+  Source dataset:      src/intraday_profile.py -- mean intrabar range
+                       per minute-of-session, measured on this repo's
+                       own 10-year dataset (2,655 samples per minute)
+                       and normalized to mean 1.0. Not a live feed.
+  Join semantics:      minutes since 09:30 Eastern, 0-389, -1 outside
+                       the regular session. The vectorized backtest path
+                       and the scalar live path share the same window
+                       and the same Eastern conversion.
+  Defaults:            0 on MarketContext, exponent 0.0 on the strategy.
+                       Verified: the pinned regression baseline is
+                       unchanged by this addition.
+
 Per the original task's step 4, no NLP/sentiment ingestion dependency
 was added to build this -- confirmed by
 test_no_speculative_ingestion_dependency_was_added below, unchanged and
@@ -110,7 +127,14 @@ CONFIRMED_CONSUMER_MODULE = "src/high_frequency_sizing.py"
 # Now two fields, not one: the same strategy branches on both event
 # flags, with a separate multiplier each (see that module's docstring
 # for why they are not folded into a single flag).
-CONFIRMED_CONSUMER_FIELDS = ("is_macro_event_day", "is_earnings_reaction_day")
+CONFIRMED_CONSUMER_FIELDS = (
+    "is_macro_event_day",
+    "is_earnings_reaction_day",
+    # The third and last of Task 7.9's original fields to gain a
+    # consumer. All three are now live inputs; macro_surprise_factor is
+    # the only one of the four still inert.
+    "time_of_day_flag",
+)
 
 
 def test_the_event_fields_exist_with_the_documented_safe_defaults():

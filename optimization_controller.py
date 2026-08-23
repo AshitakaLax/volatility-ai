@@ -25,6 +25,8 @@ from src.exceptions import ConfigurationError
 from src.fomc_calendar import EASTERN_TZ as _EASTERN_TZ
 from src.fomc_calendar import FOMC_DECISION_DATES
 from src.idempotency import ProcessedEventStore
+from src.intraday_profile import SESSION_MINUTES as _SESSION_MINUTES
+from src.intraday_profile import SESSION_OPEN_MINUTE as _SESSION_OPEN_MINUTE
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext, SimulationResult
 from src.no_loss_guard import NoLossViolation, validate_sell
@@ -234,6 +236,8 @@ class OptimizationController:
         self._fomc_flags_cache = None
         self._earnings_flags_cache = None
         self._eastern_dates_cache = None
+        self._eastern_index_cache = None
+        self._minutes_since_open_cache = None
         logger.info(
             f"OptimizationController initialized with historical dataset length: {len(historical_data)}"
         )
@@ -261,22 +265,50 @@ class OptimizationController:
         return self._fomc_flags_cache
 
     @property
+    def _eastern_index(self):
+        """This controller's index converted to Eastern, once.
+
+        Everything time-derived hangs off this: the two calendars need
+        the DATE, the intraday profile needs the MINUTE. Converting
+        separately for each would repeat the ~0.55s-per-combination cost
+        _fomc_flags documents, three times over, for identical results.
+        """
+        if self._eastern_index_cache is None:
+            index = self.data.index
+            if getattr(index, "tz", None) is None:
+                index = index.tz_localize("UTC")
+            self._eastern_index_cache = index.tz_convert(_EASTERN_TZ)
+        return self._eastern_index_cache
+
+    @property
     def _eastern_dates(self):
         """Per-bar Eastern calendar dates for this controller's data.
 
         Factored out of _fomc_flags once a SECOND calendar
-        (earnings_calendar) needed the same conversion: doing it per
-        calendar would repeat the ~0.55s-per-combination cost that
-        property's docstring records, for an identical result. One
-        conversion, shared -- and, like the flag caches, computed once
-        for the controller's lifetime since self.data is immutable.
+        (earnings_calendar) needed the same conversion. Now derived from
+        the shared _eastern_index rather than converting again.
         """
         if self._eastern_dates_cache is None:
-            index = self.data.index
-            if getattr(index, "tz", None) is None:
-                index = index.tz_localize("UTC")
-            self._eastern_dates_cache = index.tz_convert(_EASTERN_TZ).date
+            self._eastern_dates_cache = self._eastern_index.date
         return self._eastern_dates_cache
+
+    @property
+    def _minutes_since_open(self):
+        """Per-bar minutes since 09:30 Eastern, -1 outside the session.
+
+        Vectorized rather than calling intraday_profile.minutes_since_open
+        per bar, for the same reason the calendar flags are: this is
+        1.03M lookups per combination otherwise. Uses the same Eastern
+        conversion and the same 0-389 window as the scalar helper, so
+        backtest and live cannot disagree about which minute a bar is.
+        """
+        if self._minutes_since_open_cache is None:
+            eastern = self._eastern_index
+            offset = eastern.hour * 60 + eastern.minute - _SESSION_OPEN_MINUTE
+            self._minutes_since_open_cache = [
+                int(m) if 0 <= m < _SESSION_MINUTES else -1 for m in offset
+            ]
+        return self._minutes_since_open_cache
 
     @property
     def _earnings_flags(self):
@@ -389,6 +421,7 @@ class OptimizationController:
         prev_close = None
         fomc_flags = self._fomc_flags
         earnings_flags = self._earnings_flags
+        minute_flags = self._minutes_since_open
 
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp = row.Index
@@ -419,6 +452,7 @@ class OptimizationController:
                 bar_index=bar_index,
                 is_macro_event_day=fomc_flags[bar_index],
                 is_earnings_reaction_day=earnings_flags[bar_index],
+                time_of_day_flag=minute_flags[bar_index],
             )
 
             # Every bar, unconditionally -- B4. Routed through the shared
