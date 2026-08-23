@@ -201,12 +201,22 @@ def main():
             tuple(sorted(params.items())),
         )
 
-    # Far below any objective this strategy can actually produce (returns
-    # are percentages), so a capped-out combination ranks beneath every
-    # legitimate one without being told to Optuna as FAILED -- a failure
-    # means "never measured", which would teach the sampler the wrong
-    # thing about a region that WAS measured and was simply too risky.
-    _OVER_CAP_PENALTY = -1e6
+    # Scales the penalty by HOW FAR over the cap a combination is,
+    # rather than flattening every breach to one sentinel value.
+    #
+    # A flat sentinel was tried first and collapsed the search: with 13
+    # of 14 measured points reporting an identical -1e6, TPE had one
+    # real number and thirteen indistinguishable ones, no gradient to
+    # model, and proposed nothing new for 186 consecutive trials. The
+    # graded form keeps breaches ordered among themselves, so the
+    # sampler can still learn "less drawdown is better" and walk back
+    # toward the feasible region instead of being told only "no".
+    #
+    # 1000 per percentage point of excess puts even a 1pp breach
+    # (-1000) far below any return this strategy has produced (the
+    # uncapped run topped out near 193%), so no breaching combination
+    # can outrank an admissible one.
+    _EXCESS_PENALTY_PER_PCT = 1000.0
 
     def _penalize_if_over_cap(row, result):
         """Substitute a penalized objective when a combination breaches
@@ -225,8 +235,12 @@ def main():
         drawdown = row.get("Max Drawdown %")
         if drawdown is None or drawdown <= args.max_drawdown:
             return result
+        objective = result.metrics.get(config.search.rank_by)
+        if objective is None:
+            return result
+        excess = drawdown - args.max_drawdown
         penalized = dict(result.metrics)
-        penalized[config.search.rank_by] = _OVER_CAP_PENALTY
+        penalized[config.search.rank_by] = objective - _EXCESS_PENALTY_PER_PCT * excess
         return _Metrics(penalized)
 
     def record(suggestion, row, result, t0, cached=False):
