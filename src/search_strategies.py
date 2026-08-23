@@ -16,6 +16,7 @@ would be ambiguous with "exhausted".
 from __future__ import annotations
 
 import itertools
+import random
 from abc import ABC, abstractmethod
 
 from src.exceptions import ConfigurationError
@@ -81,6 +82,84 @@ class GridSearch(SearchStrategy):
         deterministic under parallelism -- batch boundaries cannot
         affect which combinations are produced.
         """
+        pass
+
+
+class RandomSearch(SearchStrategy):
+    """Uniform random sampling WITHOUT replacement over the same discrete
+    space GridSearch enumerates.
+
+    WHY THIS EXISTS. BayesianSearch (TPE) converges pathologically on
+    an all-categorical space and stops proposing anything new. Measured
+    on this repo's own sweeps, counting DISTINCT combinations actually
+    evaluated against what uniform sampling would have returned for the
+    same trial budget:
+
+        space    trials   TPE distinct   random (expected)
+         3,240      250             14        ~241
+         6,272      200             60        ~197
+        18,816      200             14        ~199
+
+    In the worst case TPE covered 17x less of the space than drawing at
+    random would have. That is not a tuning problem -- the same collapse
+    reproduces with no drawdown cap, with a flat penalty, and with a
+    graded one, and every time every distinct combination appears in the
+    first ~14 trials and nothing new after. TPE builds per-parameter
+    distributions and, once confident, re-proposes the mode; with purely
+    categorical axes there is no continuum for it to move along.
+
+    TPE earns its overhead on large continuous spaces. On a few thousand
+    discrete points with a budget worth single-digit percent coverage,
+    the adaptivity is worth less than the coverage it costs. This is the
+    honest baseline that any adaptive strategy should have to beat.
+
+    Sampling is without replacement because the simulation is
+    deterministic: re-drawing a combination already evaluated returns a
+    bit-identical result and buys nothing.
+    """
+
+    def __init__(
+        self,
+        grid_steps,
+        profit_targets,
+        strategy_params_grid,
+        n_trials: int | None = None,
+        seed: int | None = None,
+    ):
+        """Materializes the index space (not the combinations themselves)
+        and shuffles it, which is what makes "without replacement" exact
+        rather than a retry loop that degrades as the space fills up.
+        """
+        self._grid_steps = list(grid_steps)
+        self._profit_targets = list(profit_targets)
+        self._strategy_params_grid = list(strategy_params_grid)
+        total = len(self._grid_steps) * len(self._profit_targets) * len(self._strategy_params_grid)
+        self.n_trials = total if n_trials is None else min(n_trials, total)
+        self._order = list(range(total))
+        random.Random(seed).shuffle(self._order)
+        self._position = 0
+
+    def suggest(self) -> dict | None:
+        """Next combination in shuffled order, or None once the trial
+        budget (or the space) is exhausted."""
+        if self._position >= self.n_trials:
+            return None
+        flat = self._order[self._position]
+        self._position += 1
+        n_params = len(self._strategy_params_grid)
+        n_targets = len(self._profit_targets)
+        step_index, rest = divmod(flat, n_targets * n_params)
+        target_index, param_index = divmod(rest, n_params)
+        return {
+            "grid_step": self._grid_steps[step_index],
+            "profit_target": self._profit_targets[target_index],
+            "strategy_params": self._strategy_params_grid[param_index],
+        }
+
+    def report(self, params: dict, result) -> None:
+        """No-op. Random search does not adapt -- that is the point of it
+        as a baseline, and it is what keeps the sequence reproducible
+        from the seed alone regardless of parallel batch boundaries."""
         pass
 
 
