@@ -511,6 +511,7 @@ class LiveTradingLoop:
             is_macro_event_day=is_fomc_day_at(timestamp),
             is_earnings_reaction_day=is_earnings_reaction_day_at(timestamp),
             time_of_day_flag=minutes_since_open(timestamp),
+            volume=float(getattr(bar, "volume", 0.0) or 0.0),
         )
 
     # --- order submission ---

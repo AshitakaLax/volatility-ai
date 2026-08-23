@@ -157,6 +157,46 @@ class RollingStdev:
         return len(self._values)
 
 
+class RollingMean:
+    """Mean over the most recent `window` observations, O(1) per update.
+
+    Same contract and the same reason as RollingStdev: this runs on
+    every bar of a 1M-bar dataset for every combination in a sweep.
+
+    Numerically simpler than RollingStdev -- a running sum has no
+    cancellation term to lose precision to -- so no epsilon guard is
+    needed on the consumer side beyond checking for a non-positive
+    denominator.
+    """
+
+    def __init__(self, window: int) -> None:
+        if window <= 0:
+            raise ConfigurationError(f"RollingMean window must be positive, got {window}")
+        self.window = window
+        self._values: deque[float] = deque()
+        self._sum = 0.0
+
+    def update(self, value: float) -> float:
+        """Add one observation and return the current window mean."""
+        self._values.append(value)
+        self._sum += value
+        if len(self._values) > self.window:
+            self._sum -= self._values.popleft()
+        return self._sum / len(self._values)
+
+    @property
+    def value(self) -> float | None:
+        """Current mean, or None before the first observation."""
+        if not self._values:
+            return None
+        return self._sum / len(self._values)
+
+    @property
+    def count(self) -> int:
+        """Observations currently inside the window."""
+        return len(self._values)
+
+
 class WilderRSI:
     """Wilder's RSI, updated one price at a time.
 

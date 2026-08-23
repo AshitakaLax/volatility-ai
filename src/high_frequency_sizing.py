@@ -260,6 +260,52 @@ through the same window and conversion so the two cannot disagree.
 
   Defaults: 0.0, an exact no-op, and like vol_scale_exponent it costs
   nothing per bar when off.
+
+--------------------------------------------------------------------
+vol_measure -- WHICH volatility, stdev or range
+
+vol_scale_exponent needs a volatility estimate, and the obvious choice
+(standard deviation of close-to-close log returns) is measurably not
+the best one. Tested against the worst forward return over the next 60
+sessions, rank correlation on 2,395 daily observations:
+
+    5d/60d intrabar RANGE ratio    -0.219
+    5d/60d close-to-close ratio    -0.172
+
+Range also matches what the strategy actually experiences: the
+intrabar fill model fills on TOUCHES inside a bar, so bar range is the
+quantity that decides whether a fill happens. It is the same reasoning
+that made src/intraday_profile.py range-based.
+
+Defaults to "stdev" -- NOT because it is better, but because every
+result recorded in this docstring was produced with it, and silently
+switching would leave those numbers describing code that no longer
+exists. Sweep the two against each other and let the backtest decide;
+a rank correlation against forward troughs is a proxy for the thing we
+care about, not the thing itself.
+
+--------------------------------------------------------------------
+volume_scale_exponent -- the input that was always there
+
+Volume has been loaded by historical_data.py since the beginning and
+carried through the audit and Monte Carlo paths, but no strategy could
+see it: MarketContext had no field for it until now. It is the
+cheapest possible new input -- already fetched, already stored, no
+external dependency, no sourcing problem.
+
+It is also WEAK. A volume surge scores -0.095 against forward
+60-session troughs, against -0.219 for the range measure. It is
+included on one specific ground: it is only 0.36-0.49 rank-correlated
+with the volatility signals, so unlike most candidates it is not
+simply those again wearing a different name. Signals that merely
+restate each other add parameters without adding information.
+
+Reuses vol_fast_days/vol_slow_days and vol_scale_min/max rather than
+introducing four more knobs. Adding an axis for its own sake has a
+measured cost here: it once took a sweep from 3.2% coverage to 0.30%.
+
+Defaults: 0.0, an exact no-op, and it should stay there unless a sweep
+shows it earning its place.
 """
 
 from __future__ import annotations
@@ -270,7 +316,7 @@ from src.exceptions import ConfigurationError
 from src.intraday_profile import relative_range
 from src.market_context import MarketContext
 from src.size_calculators import SizingStrategy
-from src.sizing_indicators import RollingMax, RollingStdev, bars_from_days, clamp
+from src.sizing_indicators import RollingMax, RollingMean, RollingStdev, bars_from_days, clamp
 
 # Below this, a realized-vol estimate is numerical noise rather than a
 # measurement -- see _vol_scale. Per-bar log returns here run ~1e-4.
@@ -299,6 +345,8 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         vol_scale_min: float = 0.5,
         vol_scale_max: float = 2.0,
         time_of_day_exponent: float = 0.0,
+        vol_measure: str = "stdev",
+        volume_scale_exponent: float = 0.0,
     ) -> None:
         if not 0.0 < per_lot_pct <= 1.0:
             raise ConfigurationError(f"per_lot_pct must be in (0, 1], got {per_lot_pct}")
@@ -320,9 +368,15 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
                 f"need 0 < vol_scale_min <= vol_scale_max, got "
                 f"{vol_scale_min} and {vol_scale_max}"
             )
+        if vol_measure not in ("stdev", "range"):
+            raise ConfigurationError(
+                f"vol_measure must be 'stdev' or 'range', got {vol_measure!r}"
+            )
         self.event_day_boost_multiplier = event_day_boost_multiplier
         self.earnings_day_boost_multiplier = earnings_day_boost_multiplier
         self.vol_scale_exponent = vol_scale_exponent
+        self.vol_measure = vol_measure
+        self.volume_scale_exponent = volume_scale_exponent
         self.vol_fast_days = vol_fast_days
         self.vol_slow_days = vol_slow_days
         self.vol_scale_min = vol_scale_min
@@ -336,9 +390,25 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         # raised to the power zero.
         self._vol_enabled = vol_scale_exponent != 0.0
         self._prev_price: float | None = None
+        self._volume_enabled = volume_scale_exponent != 0.0
+        fast_bars = max(2, bars_from_days(vol_fast_days, bars_per_day))
+        slow_bars = max(2, bars_from_days(vol_slow_days, bars_per_day))
         if self._vol_enabled:
-            self._fast_vol = RollingStdev(max(2, bars_from_days(vol_fast_days, bars_per_day)))
-            self._slow_vol = RollingStdev(max(2, bars_from_days(vol_slow_days, bars_per_day)))
+            # RollingStdev over log returns for "stdev"; RollingMean over
+            # intrabar range for "range". Both yield a fast/slow ratio,
+            # so _vol_scale is identical downstream either way.
+            make = RollingStdev if vol_measure == "stdev" else RollingMean
+            self._fast_vol = make(fast_bars)
+            self._slow_vol = make(slow_bars)
+        if self._volume_enabled:
+            # Deliberately reuses vol_fast_days/vol_slow_days rather than
+            # adding two more sweepable windows. Volume surges and
+            # volatility surges are the same events on this data (0.36-0.49
+            # rank correlation), so separate horizons would mostly add
+            # search-space dilution -- which measurably cost coverage the
+            # last time an axis was added for its own sake.
+            self._fast_volume = RollingMean(fast_bars)
+            self._slow_volume = RollingMean(slow_bars)
         self._rolling_high = RollingMax(bars_from_days(lookback_days, bars_per_day))
         self._baseline_capital: float | None = None
 
@@ -352,15 +422,29 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         if context.price > 0:
             self._rolling_high.update(context.price)
             if self._vol_enabled:
-                if self._prev_price is not None and self._prev_price > 0:
+                if self.vol_measure == "range":
+                    # Intrabar range, scaled by price so the two windows
+                    # compare across a dataset where TQQQ spans ~8x-90x.
+                    # Measured to predict a forward 60-session trough
+                    # better than the close-to-close form (-0.219 rank
+                    # correlation against -0.172), and it is also what
+                    # the intrabar fill model actually experiences.
+                    self._fast_vol.update((context.high - context.low) / context.price)
+                    self._slow_vol.update((context.high - context.low) / context.price)
+                elif self._prev_price is not None and self._prev_price > 0:
                     # Log return, so the two windows measure the same
-                    # thing at any price level -- TQQQ spans roughly
-                    # 8x-90x across this dataset and a percentage-point
-                    # move is not comparable across that range.
+                    # thing at any price level.
                     log_return = log(context.price / self._prev_price)
                     self._fast_vol.update(log_return)
                     self._slow_vol.update(log_return)
                 self._prev_price = context.price
+            if self._volume_enabled and context.volume > 0:
+                # 0.0 means "unknown" (the MarketContext default), not
+                # "no volume", so an unpopulated feed must not be fed in
+                # as a genuine zero -- that would drag the slow mean
+                # toward nothing and blow the ratio up.
+                self._fast_volume.update(context.volume)
+                self._slow_volume.update(context.volume)
 
     def _vol_scale(self) -> float:
         """Size multiplier from short-horizon realized vol relative to
@@ -395,6 +479,39 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             return 1.0
         return clamp(
             (fast / slow) ** self.vol_scale_exponent,
+            self.vol_scale_min,
+            self.vol_scale_max,
+        )
+
+    def _volume_scale(self) -> float:
+        """Size multiplier from short-horizon volume relative to its own
+        longer-horizon baseline.
+
+        Volume is the one input this project already had and never used:
+        historical_data.py has always loaded it and audit/monte_carlo
+        carry it, but no strategy could see it until MarketContext gained
+        the field.
+
+        It is a WEAK signal on its own -- a volume surge scores -0.095
+        against forward 60-session troughs, versus -0.219 for the range
+        measure -- and it is included because it is only 0.36-0.49
+        correlated with the volatility signals, so it is not merely those
+        again. An exponent of 0.0 (the default) is an exact no-op, which
+        is how it should stay unless a sweep shows it earning its place.
+
+        Shares _vol_scale's clamp bounds rather than introducing its own:
+        both are multipliers on the same lot, and four bound parameters
+        for two bounded quantities would dilute a search budget for
+        nothing.
+        """
+        if not self._volume_enabled:
+            return 1.0
+        fast = self._fast_volume.value
+        slow = self._slow_volume.value
+        if fast is None or slow is None or slow <= 0.0 or fast <= 0.0:
+            return 1.0
+        return clamp(
+            (fast / slow) ** self.volume_scale_exponent,
             self.vol_scale_min,
             self.vol_scale_max,
         )
@@ -482,4 +599,10 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         # right now, measured rather than scheduled -- so a calm FOMC day
         # and a turbulent one are genuinely different situations.
         # _vol_scale is clamped, so the product stays bounded.
-        return value * boost * self._vol_scale() * self._time_of_day_scale(context)
+        return (
+            value
+            * boost
+            * self._vol_scale()
+            * self._time_of_day_scale(context)
+            * self._volume_scale()
+        )

@@ -162,6 +162,7 @@ class LiveExecutionLoop:
         is_macro_event_day: bool = False,
         macro_surprise_factor: float = 0.0,
         is_earnings_reaction_day: bool = False,
+        volume: float = 0.0,
     ) -> MarketContext:
         """Build the per-tick MarketContext the strategy sees.
 
@@ -195,6 +196,7 @@ class LiveExecutionLoop:
             is_macro_event_day=bool(is_macro_event_day),
             macro_surprise_factor=float(macro_surprise_factor),
             is_earnings_reaction_day=bool(is_earnings_reaction_day),
+            volume=float(volume),
         )
 
     def decision_cycle(

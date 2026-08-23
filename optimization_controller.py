@@ -456,6 +456,7 @@ class OptimizationController:
                 is_macro_event_day=fomc_flags[bar_index],
                 is_earnings_reaction_day=earnings_flags[bar_index],
                 time_of_day_flag=minute_flags[bar_index],
+                volume=float(getattr(row, "volume", 0.0) or 0.0),
             )
 
             # Every bar, unconditionally -- B4. Routed through the shared
