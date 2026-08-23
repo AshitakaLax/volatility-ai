@@ -44,7 +44,7 @@ import pandas as pd
 
 from optimization_controller import OptimizationController, _run_one_combination
 from src.config import BacktestConfig, expand_strategy_params
-from src.search_strategies import BayesianSearch
+from src.search_strategies import BayesianSearch, RandomSearch
 from src.strategy_registry import resolve_strategy
 
 logging.disable(logging.WARNING)
@@ -78,7 +78,7 @@ def main():
     parser.add_argument("--limit", type=int, default=None, help="run only the first N combinations")
     parser.add_argument(
         "--search",
-        choices=("grid", "bayesian"),
+        choices=("grid", "bayesian", "random"),
         default=None,
         help="override the config's search.strategy",
     )
@@ -130,11 +130,25 @@ def main():
             config.execution.on_flat_reentry,
             config.execution.fill_model,
             config.execution.intrabar_priority,
+            config.execution.enforce_no_loss,
         )
 
     search = None
     pending = None
-    if mode == "bayesian":
+    if mode == "random":
+        # Uniform sampling without replacement. See RandomSearch's
+        # docstring for why this is the DEFAULT choice for these
+        # discrete spaces rather than a fallback: TPE covered 17x less
+        # of this exact space than random does for the same budget.
+        search = RandomSearch(
+            list(config.grid.steps),
+            list(config.grid.profit_targets),
+            params_grid,
+            n_trials=args.trials,
+            seed=config.search.seed,
+        )
+        total = min(args.trials, space)
+    elif mode == "bayesian":
         search = BayesianSearch(
             list(config.grid.steps),
             list(config.grid.profit_targets),
@@ -157,11 +171,15 @@ def main():
         f"({100 * total / space:.2f}%) | n_jobs={args.n_jobs}\n"
         f"data={args.data} ({len(df):,} bars, {df.index.normalize().nunique():,} sessions)\n"
         f"fill_model={config.execution.fill_model} "
+        f"| enforce_no_loss={config.execution.enforce_no_loss} "
         f"| max_concurrent_lots={config.risk.max_concurrent_lots} "
         f"| rank_by={config.search.rank_by}",
         flush=True,
     )
-    if search is not None and not search.decomposed:
+    # decomposed is a BayesianSearch concept -- per-key vs opaque-index
+    # encoding of the strategy params. RandomSearch has no model to
+    # encode anything into, so the warning simply does not apply.
+    if search is not None and not getattr(search, "decomposed", True):
         print(
             "WARNING: params grid is not a cartesian product -- strategy params "
             "fall back to an OPAQUE INDEX and cannot converge.",

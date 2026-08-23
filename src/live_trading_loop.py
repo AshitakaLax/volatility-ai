@@ -93,6 +93,7 @@ from src.exceptions import ConfigurationError
 from src.fill_accounting import FillTracker, extract_alpaca_fill
 from src.fomc_calendar import is_fomc_day_at
 from src.idempotency import compute_decision_id
+from src.intraday_profile import minutes_since_open
 from src.market_context import MarketContext
 from src.no_loss_guard import NoLossViolation, validate_sell
 from src.order_lifecycle import TERMINAL_STATES, map_broker_status
@@ -509,6 +510,7 @@ class LiveTradingLoop:
             bar_index=0,
             is_macro_event_day=is_fomc_day_at(timestamp),
             is_earnings_reaction_day=is_earnings_reaction_day_at(timestamp),
+            time_of_day_flag=minutes_since_open(timestamp),
         )
 
     # --- order submission ---
