@@ -26,7 +26,7 @@ import pytest
 
 from optimization_controller import OptimizationController
 from src.exceptions import ConfigurationError
-from src.search_strategies import BayesianSearch, GridSearch, SearchStrategy
+from src.search_strategies import BayesianSearch, GridSearch, RandomSearch, SearchStrategy
 from src.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 
@@ -278,3 +278,82 @@ def test_bayesian_search_missing_optuna_raises_configuration_error(monkeypatch):
 def test_grid_search_is_a_search_strategy():
     gs = GridSearch([0.01], [0.005], [{"allocation_pct": 0.05}])
     assert isinstance(gs, SearchStrategy)
+
+
+# --- RandomSearch ---
+
+
+def _drain(search):
+    out = []
+    while True:
+        s = search.suggest()
+        if s is None:
+            return out
+        out.append((s["grid_step"], s["profit_target"], tuple(sorted(s["strategy_params"].items()))))
+
+
+def _space(n_steps=3, n_targets=2, n_params=4):
+    return (
+        [0.001 * (i + 1) for i in range(n_steps)],
+        [0.01 * (i + 1) for i in range(n_targets)],
+        [{"a": i} for i in range(n_params)],
+    )
+
+
+def test_random_search_samples_without_replacement():
+    """The simulation is deterministic, so a repeat draw returns a
+    bit-identical result and buys nothing. This is the property that
+    makes random a serious baseline rather than a coin flip."""
+    steps, targets, params = _space()
+    drawn = _drain(RandomSearch(steps, targets, params, n_trials=100, seed=3))
+    assert len(drawn) == len(set(drawn))
+
+
+def test_random_search_covers_the_whole_space_when_the_budget_allows():
+    steps, targets, params = _space()
+    drawn = _drain(RandomSearch(steps, targets, params, n_trials=1000, seed=3))
+    assert len(drawn) == 3 * 2 * 4
+
+
+def test_random_search_stops_at_the_trial_budget():
+    steps, targets, params = _space(4, 4, 4)  # 64 combinations
+    assert len(_drain(RandomSearch(steps, targets, params, n_trials=10, seed=3))) == 10
+
+
+def test_random_search_is_reproducible_from_the_seed():
+    """Reproducibility must not depend on parallel batch boundaries --
+    report() is a no-op, so the sequence is fixed by the seed alone."""
+    steps, targets, params = _space(4, 4, 4)
+    a = _drain(RandomSearch(steps, targets, params, n_trials=20, seed=7))
+    b = _drain(RandomSearch(steps, targets, params, n_trials=20, seed=7))
+    assert a == b
+    c = _drain(RandomSearch(steps, targets, params, n_trials=20, seed=8))
+    assert a != c
+
+
+def test_random_search_decodes_every_axis_independently():
+    """A flat index must decode back to the right (step, target, params)
+    triple -- an off-by-one in the divmod would silently correlate axes
+    and quietly ruin every sweep that used it."""
+    steps, targets, params = _space(3, 2, 4)
+    drawn = set(_drain(RandomSearch(steps, targets, params, n_trials=1000, seed=1)))
+    expected = {
+        (s, t, tuple(sorted(p.items()))) for s in steps for t in targets for p in params
+    }
+    assert drawn == expected
+
+
+def test_random_search_report_is_a_no_op():
+    steps, targets, params = _space()
+    class _Result:
+        """report() only ever reads .metrics."""
+
+        def __init__(self):
+            self.metrics = {"Total Return %": 999.0}
+
+    r = RandomSearch(steps, targets, params, n_trials=5, seed=1)
+    first = r.suggest()
+    r.report(first, _Result())
+    r2 = RandomSearch(steps, targets, params, n_trials=5, seed=1)
+    r2.suggest()
+    assert r.suggest() == r2.suggest()

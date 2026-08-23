@@ -26,6 +26,7 @@ def ctx(
     open_lots: int = 0,
     is_macro_event_day: bool = False,
     is_earnings_reaction_day: bool = False,
+    minute: int = 0,
 ):
     return MarketContext(
         timestamp=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
@@ -41,6 +42,7 @@ def ctx(
         bar_index=bar,
         is_macro_event_day=is_macro_event_day,
         is_earnings_reaction_day=is_earnings_reaction_day,
+        time_of_day_flag=minute,
     )
 
 
@@ -363,3 +365,70 @@ def test_vol_scaling_multiplies_with_the_event_boost():
 def test_rejects_an_invalid_vol_scale_range(low, high):
     with pytest.raises(ConfigurationError, match="vol_scale_min"):
         hf(vol_scale_min=low, vol_scale_max=high)
+
+
+# --- time-of-day sizing ---
+
+
+def test_time_of_day_defaults_to_an_exact_no_op():
+    """exponent 0.0 must reproduce the unscaled strategy at every minute
+    of the session, not merely on average."""
+    s = hf(per_lot_pct=0.01)
+    s.record_tick(ctx(100.0))
+    for m in (0, 30, 240, 389, -1):
+        assert s.calculate_trade_value(ctx(100.0, minute=m)) == pytest.approx(
+            INITIAL_CASH * 0.01
+        ), f"minute {m} was scaled despite an exponent of 0.0"
+
+
+def test_a_negative_exponent_sizes_down_at_the_open_and_up_at_midday():
+    """The open is the most volatile minute and midday the least, so a
+    negative exponent -- the direction the vol-ratio scaler measured as
+    correct -- must shrink the open lot and grow the midday one."""
+    s = hf(per_lot_pct=0.01, time_of_day_exponent=-1.0)
+    s.record_tick(ctx(100.0))
+    at_open = s.calculate_trade_value(ctx(100.0, minute=0))
+    at_midday = s.calculate_trade_value(ctx(100.0, minute=240))
+    assert at_open < INITIAL_CASH * 0.01 < at_midday
+
+
+def test_a_positive_exponent_reverses_that_ordering():
+    s = hf(per_lot_pct=0.01, time_of_day_exponent=1.0)
+    s.record_tick(ctx(100.0))
+    assert s.calculate_trade_value(ctx(100.0, minute=0)) > s.calculate_trade_value(
+        ctx(100.0, minute=240)
+    )
+
+
+def test_bars_outside_the_regular_session_are_left_unscaled():
+    """time_of_day_flag is -1 outside 09:30-16:00. Scaling such a bar by
+    a profile measured only on regular hours would apply a number from a
+    different regime; live can legitimately see these bars."""
+    s = hf(per_lot_pct=0.01, time_of_day_exponent=-1.0)
+    s.record_tick(ctx(100.0))
+    assert s.calculate_trade_value(ctx(100.0, minute=-1)) == pytest.approx(INITIAL_CASH * 0.01)
+
+
+def test_time_of_day_and_vol_scaling_compose():
+    """They measure different things -- one is the clock, the other is
+    realized volatility -- so they multiply rather than one overriding
+    the other."""
+    common = dict(per_lot_pct=0.01, vol_fast_days=0.1, vol_slow_days=2.0)
+    tod_only = hf(time_of_day_exponent=-1.0, **common)
+    both = hf(time_of_day_exponent=-1.0, vol_scale_exponent=-1.0, **common)
+    for s in (tod_only, both):
+        _vol_feed(s, _calm_then_wild())
+    assert both.calculate_trade_value(ctx(100.0, minute=0)) < tod_only.calculate_trade_value(
+        ctx(100.0, minute=0)
+    )
+
+
+def test_the_time_of_day_multiplier_is_bounded_by_its_safety_rails():
+    """An extreme exponent must not produce an absurd lot. The rails are
+    fixed rather than swept because the profile is already bounded."""
+    s = hf(per_lot_pct=0.01, time_of_day_exponent=-12.0)
+    s.record_tick(ctx(100.0))
+    smallest = min(s.calculate_trade_value(ctx(100.0, minute=m)) for m in range(390))
+    largest = max(s.calculate_trade_value(ctx(100.0, minute=m)) for m in range(390))
+    assert smallest >= INITIAL_CASH * 0.01 * 0.1 - 1e-9
+    assert largest <= INITIAL_CASH * 0.01 * 3.0 + 1e-9

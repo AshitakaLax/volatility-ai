@@ -1,0 +1,83 @@
+# TPE search over HighFrequencyLocalReferenceSizing with CONTINUOUS
+# volatility scaling as the primary axis.
+#
+# Read config/search_hf_intrabar.yaml's header first for the three
+# structural defects (fill model, lot cap, dead profit targets) that all
+# of these configs inherit fixes for.
+#
+# WHAT CHANGED AND WHY. The previous config swept both event-boost
+# multipliers. Measured at the backtest level they are worth ~1-2
+# percentage points each (FOMC +1.66pp on a 166% return; earnings +1.06
+# to +1.68pp across three controlled pairs), and sweeping them tripled
+# the space from 6,272 to 18,816 -- which dropped coverage from 3.2% to
+# 0.30% at a 200-trial budget and caused that run to never even propose
+# the best configuration a smaller earlier sweep had already found.
+# Two axes worth ~3pp combined are not worth two-thirds of the coverage.
+#
+# So both are PINNED here, at the values their own controlled pairs
+# preferred (2.5 and 1.5), and the budget goes to vol scaling instead,
+# which a controlled grid measured at +13.05pp -- roughly 8x either
+# event boost. See src/high_frequency_sizing.py's vol_scale_exponent
+# section for that table.
+#
+# vol_scale_exponent stays NEGATIVE-or-zero. Positive values were
+# measured to be strictly worse than doing nothing (+1.0 returned
+# 23.80% against the 25.94% control), so spending trials there would
+# buy nothing. 0.0 is retained as the control -- an exact no-op -- so
+# the whole feature is still measured against its own absence.
+#
+# vol_fast_days and vol_slow_days were FIXED at 0.5/20.0 in that
+# controlled grid, chosen without testing. They are swept here because
+# the ratio's usefulness plainly depends on the two horizons, and
+# nothing yet establishes those were good choices.
+#
+# The core grid is narrowed to the regions two prior sweeps found
+# productive, rather than re-exploring ground already covered:
+# per_lot_pct stays at the low end where drawdown is survivable (the
+# 0.002 end saturates near 80%), and profit targets stay clear of the
+# ~5.1bps round-trip cost floor.
+#
+# 3 x 3 x 4 x 2 x 5 x 3 x 3 = 3,240 combinations. At a 250-trial budget
+# that is 7.7% coverage, versus 0.30% on the previous config.
+#
+# Run with --max-drawdown 55, not 50: the best vol-scaled result
+# measured 55.61% drawdown, so a 50 cap would exclude the very region
+# this config exists to explore, while 55 still blocks the ~80% corner.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: [0.0002, 0.0003, 0.0005, 0.00075]
+    lookback_days: [0.02, 0.03]
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: [-2.0, -1.5, -1.0, -0.5, 0.0]
+    vol_fast_days: [0.25, 0.5, 1.0]
+    vol_slow_days: [10.0, 20.0, 40.0]
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+grid:
+  steps: [0.00075, 0.001, 0.0015]
+  profit_targets: [0.0015, 0.002, 0.003]
+backtest:
+  symbol: TQQQ
+  initial_cash: 100000.0
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+output:
+  return_full_results: false

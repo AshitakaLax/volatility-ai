@@ -96,3 +96,20 @@ def test_validate_rejects_out_of_range_risk_values():
     config = BacktestConfig.from_dict(data)
     with pytest.raises(ConfigurationError):
         config.validate()
+
+
+def test_enforce_no_loss_defaults_to_true_and_round_trips():
+    """The guard stays ON unless a config explicitly turns it off, so
+    every pre-existing config keeps today's behavior."""
+    from src.config import BacktestConfig
+
+    base = {
+        "strategy": {"strategy_id": "fixed", "strategy_params": {"allocation_pct": 0.05}},
+        "grid": {"steps": [0.01], "profit_targets": [0.005]},
+    }
+    assert BacktestConfig.from_dict(base).execution.enforce_no_loss is True
+
+    off = dict(base, execution={"enforce_no_loss": False})
+    cfg = BacktestConfig.from_dict(off)
+    assert cfg.execution.enforce_no_loss is False
+    assert cfg.to_run_sweep_kwargs(strategy_class=object)["enforce_no_loss"] is False
