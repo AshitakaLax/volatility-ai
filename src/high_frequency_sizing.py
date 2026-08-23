@@ -195,6 +195,30 @@ the data.
   -0.5 buys +3.1pp of return for +0.4pp of drawdown if the cap matters
   more than the return.
 
+  CONFIRMED at scale. A 250-combination random sweep over the wider
+  space (config/search_hf_volscaled.yaml, 3,240 points, drawdown capped
+  at 55%) reproduced it across 85 admissible combinations:
+
+      exponent   n   median return   best return
+        -2.0    11       39.76%         57.06%
+        -1.5    12       31.95%         67.09%
+        -1.0    21       24.38%         53.95%
+        -0.5    17       29.25%         51.51%
+         0.0    24       23.54%         43.27%   <- control
+
+  Best admissible overall was 67.09% return at 49.06% drawdown, against
+  43.27% for the best exponent-0.0 control -- +23.8 percentage points
+  from this parameter alone.
+
+  ON THE WINDOWS: vol_fast_days and vol_slow_days were fixed at 0.5 and
+  20.0 for the controlled grid above, chosen without evidence. That
+  choice was wrong. Swept, 0.5 was the WORST of the three fast windows
+  (median 25.94% against 30.41% at 0.25) and 20.0 the middling slow one.
+  The best configuration uses 0.25 / 10.0 -- and both sit at the SHORTER
+  EDGE of what was swept, so the optimum plausibly lies below both and
+  the range should be extended downward before these are treated as
+  tuned.
+
   Defaults: exponent 0.0, an exact no-op -- and at 0.0 the rolling
   windows are not even constructed, so there is no per-bar cost to
   leaving it off.
