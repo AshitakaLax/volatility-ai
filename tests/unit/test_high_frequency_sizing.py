@@ -25,6 +25,7 @@ def ctx(
     equity: float = INITIAL_CASH,
     open_lots: int = 0,
     is_macro_event_day: bool = False,
+    is_earnings_reaction_day: bool = False,
 ):
     return MarketContext(
         timestamp=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
@@ -39,6 +40,7 @@ def ctx(
         open_lot_count=open_lots,
         bar_index=bar,
         is_macro_event_day=is_macro_event_day,
+        is_earnings_reaction_day=is_earnings_reaction_day,
     )
 
 
@@ -174,6 +176,76 @@ def test_boost_multiplies_trade_value_only_on_an_event_day():
     event = s.calculate_trade_value(ctx(100.0, is_macro_event_day=True))
     assert normal == pytest.approx(INITIAL_CASH * 0.01)
     assert event == pytest.approx(INITIAL_CASH * 0.01 * 3.0)
+
+
+def test_default_earnings_multiplier_is_a_no_op_on_an_earnings_day():
+    """Same guarantee the FOMC boost gives: a config that never sets
+    earnings_day_boost_multiplier behaves exactly as it did before the
+    field existed, even on a flagged session."""
+    s = hf(per_lot_pct=0.01)
+    feed(s, [100.0])
+    normal = s.calculate_trade_value(ctx(100.0, is_earnings_reaction_day=False))
+    earnings = s.calculate_trade_value(ctx(100.0, is_earnings_reaction_day=True))
+    assert normal == earnings == pytest.approx(INITIAL_CASH * 0.01)
+
+
+def test_earnings_boost_applies_only_on_an_earnings_reaction_day():
+    s = hf(per_lot_pct=0.01, earnings_day_boost_multiplier=2.0)
+    feed(s, [100.0])
+    normal = s.calculate_trade_value(ctx(100.0, is_earnings_reaction_day=False))
+    earnings = s.calculate_trade_value(ctx(100.0, is_earnings_reaction_day=True))
+    assert normal == pytest.approx(INITIAL_CASH * 0.01)
+    assert earnings == pytest.approx(INITIAL_CASH * 0.01 * 2.0)
+
+
+def test_the_two_event_boosts_are_independent():
+    """An FOMC-only day must not pick up the earnings multiplier, and
+    vice versa. If these were folded into one flag this would fail."""
+    s = hf(per_lot_pct=0.01, event_day_boost_multiplier=3.0, earnings_day_boost_multiplier=2.0)
+    feed(s, [100.0])
+    fomc_only = s.calculate_trade_value(ctx(100.0, is_macro_event_day=True))
+    earnings_only = s.calculate_trade_value(ctx(100.0, is_earnings_reaction_day=True))
+    assert fomc_only == pytest.approx(INITIAL_CASH * 0.01 * 3.0)
+    assert earnings_only == pytest.approx(INITIAL_CASH * 0.01 * 2.0)
+
+
+@pytest.mark.parametrize(
+    ("fomc_mult", "earnings_mult", "expected_mult"),
+    [
+        (3.0, 2.0, 3.0),  # FOMC larger
+        (1.5, 2.5, 2.5),  # earnings larger
+        (2.0, 2.0, 2.0),  # equal
+    ],
+)
+def test_a_day_flagged_both_ways_takes_the_larger_boost_not_the_product(
+    fomc_mult, earnings_mult, expected_mult
+):
+    """14 sessions in the shipped calendars are both an FOMC decision
+    day and an earnings reaction day. Compounding them would size those
+    at up to 6.25x across the swept range on no evidence -- see
+    calculate_trade_value's docstring."""
+    s = hf(
+        per_lot_pct=0.01,
+        event_day_boost_multiplier=fomc_mult,
+        earnings_day_boost_multiplier=earnings_mult,
+    )
+    feed(s, [100.0])
+    both = s.calculate_trade_value(
+        ctx(100.0, is_macro_event_day=True, is_earnings_reaction_day=True)
+    )
+    assert both == pytest.approx(INITIAL_CASH * 0.01 * expected_mult)
+    # And explicitly NOT the compounded value, which every case here is
+    # strictly larger than since both multipliers exceed 1.0.
+    compounded = INITIAL_CASH * 0.01 * fomc_mult * earnings_mult
+    assert both < compounded
+
+
+@pytest.mark.parametrize("multiplier", [0.0, 0.5, 0.99, -1.0])
+def test_rejects_a_below_one_earnings_boost_multiplier(multiplier):
+    """Same size-up-only rule as the FOMC multiplier: rejected at
+    construction rather than silently ignored."""
+    with pytest.raises(ConfigurationError, match="earnings_day_boost_multiplier"):
+        hf(earnings_day_boost_multiplier=multiplier)
 
 
 def test_boost_never_reduces_trade_value():

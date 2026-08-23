@@ -1,0 +1,95 @@
+# TPE (Bayesian) search over HighFrequencyLocalReferenceSizing using the
+# INTRABAR (resting-limit-order) fill model.
+#
+# Derived from config/search_hf_intrabar.yaml -- read THAT file's header
+# first. Every structural decision it documents (the touch-vs-close fill
+# model, the non-binding lot cap, and dropping profit targets that sat
+# below the cost floor) is carried over here unchanged. This config
+# changes exactly one thing: the SHAPE of the space, not its bounds.
+#
+# WHY A DIFFERENT GRID. search_hf_intrabar.yaml enumerates 192
+# combinations exhaustively, which is the right tool for a space that
+# small -- grid search covers it completely in roughly the same wall
+# time a 200-trial TPE run would take, and returns the true optimum
+# rather than an estimate. Running TPE over 192 points would simply
+# rediscover most of them with extra machinery in the way. So each axis
+# below is DENSIFIED inside the interval the exhaustive sweep already
+# validated, giving 6,272 combinations -- a space where a ~200-trial
+# budget is 3% coverage and adaptive search actually buys something.
+#
+# The BOUNDS are deliberately not widened. They encode measured
+# constraints, not guesses:
+#   - profit_targets still start at 0.001. Anything lower re-enters the
+#     dead zone at/below round-trip cost (~5.1bps at the median bar)
+#     where the no-loss guard rejects sells, lots never close, and lot
+#     slots leak. This is defect 3 from the parent config.
+#   - per_lot_pct still spans 2bps-20bps. The parent config measured
+#     +50.09% return at 0.001 with a 66% max drawdown; smaller lots are
+#     the only available lever on drawdown because this strategy never
+#     sells at a loss (src/no_loss_guard.py) and therefore rides every
+#     decline down fully marked to market.
+#   - max_concurrent_lots stays 6000 (non-binding; peak observed on a
+#     full 10-year intrabar run was 391 open lots).
+#
+# event_day_boost_multiplier keeps 1.0 in the set as the CONTROL. It is
+# a no-op identical to the feature not existing, so TPE can measure the
+# FOMC-day boost against its own absence rather than being forced to
+# assume some boost is applied.
+#
+# earnings_day_boost_multiplier is the second event axis, added once
+# src/earnings_calendar.py existed. 1.0 is again the CONTROL, so the
+# earnings boost is measured against its own absence. Note the two
+# event boosts do NOT compound on the 14 sessions flagged both ways --
+# the larger wins (see src/high_frequency_sizing.py).
+#
+# rank_by stays Total Return %, and that is deliberate. The obvious
+# "fix" for return-only ranking is a ratio like Return/Drawdown, and it
+# does not work on this dataset: measured over the first 200-trial run,
+# it selects 9 of the same top 10 configurations as raw return, and its
+# median RISES with lot size (0.67 at per_lot_pct=0.0002 up to 1.33 at
+# 0.002). The reason is that drawdown SATURATES near 80% on a 3x
+# instrument -- TQQQ itself fell ~79% in 2022 -- while return keeps
+# scaling, so dividing by it barely reorders anything.
+#
+# What actually removes the high-drawdown corner is a hard constraint,
+# so run this with run_hf_sweep.py's --max-drawdown. For example:
+#   --max-drawdown 50
+# still measures every combination and writes its true numbers to the
+# output CSV, but tells the sampler a penalized objective for anything
+# above the cap so it stops exploring there. Return/Drawdown is emitted
+# on every row regardless, for reading the tradeoff after the fact.
+#
+# bars_per_day: 387, measured (1,035,332 bars / 2,674 sessions).
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: [0.0002, 0.0003, 0.0005, 0.00075, 0.001, 0.00125, 0.0015, 0.002]
+    lookback_days: [0.01, 0.02, 0.03, 0.05]
+    event_day_boost_multiplier: [1.0, 1.5, 2.0, 2.5]
+    earnings_day_boost_multiplier: [1.0, 1.5, 2.0]
+grid:
+  steps: [0.0005, 0.00075, 0.001, 0.00125, 0.0015, 0.00175, 0.002]
+  profit_targets: [0.001, 0.00125, 0.0015, 0.00175, 0.002, 0.0025, 0.003]
+backtest:
+  symbol: TQQQ
+  initial_cash: 100000.0
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+output:
+  return_full_results: false

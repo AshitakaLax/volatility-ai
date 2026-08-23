@@ -20,6 +20,7 @@ import pandas as pd
 
 from src import data_validation, decision_cycle, intraday_validation
 from src.cost_models import TransactionCostModel, ZeroCostModel
+from src.earnings_calendar import EARNINGS_REACTION_DATES
 from src.exceptions import ConfigurationError
 from src.fomc_calendar import EASTERN_TZ as _EASTERN_TZ
 from src.fomc_calendar import FOMC_DECISION_DATES
@@ -231,6 +232,8 @@ class OptimizationController:
         # conversion per bar per combination meant 1.03M timezone
         # conversions x however many combinations the sweep runs.
         self._fomc_flags_cache = None
+        self._earnings_flags_cache = None
+        self._eastern_dates_cache = None
         logger.info(
             f"OptimizationController initialized with historical dataset length: {len(historical_data)}"
         )
@@ -254,12 +257,42 @@ class OptimizationController:
         path agrees with it.
         """
         if self._fomc_flags_cache is None:
+            self._fomc_flags_cache = [d in FOMC_DECISION_DATES for d in self._eastern_dates]
+        return self._fomc_flags_cache
+
+    @property
+    def _eastern_dates(self):
+        """Per-bar Eastern calendar dates for this controller's data.
+
+        Factored out of _fomc_flags once a SECOND calendar
+        (earnings_calendar) needed the same conversion: doing it per
+        calendar would repeat the ~0.55s-per-combination cost that
+        property's docstring records, for an identical result. One
+        conversion, shared -- and, like the flag caches, computed once
+        for the controller's lifetime since self.data is immutable.
+        """
+        if self._eastern_dates_cache is None:
             index = self.data.index
             if getattr(index, "tz", None) is None:
                 index = index.tz_localize("UTC")
-            eastern_dates = index.tz_convert(_EASTERN_TZ).date
-            self._fomc_flags_cache = [d in FOMC_DECISION_DATES for d in eastern_dates]
-        return self._fomc_flags_cache
+            self._eastern_dates_cache = index.tz_convert(_EASTERN_TZ).date
+        return self._eastern_dates_cache
+
+    @property
+    def _earnings_flags(self):
+        """Per-bar mega-cap-earnings-reaction-day flags, cached exactly
+        as _fomc_flags is and matching src/earnings_calendar.py's scalar
+        semantics.
+
+        Note these flags mark the session that TRADES the reaction, not
+        the announcement date -- see that module's docstring for the
+        measurement behind that distinction.
+        """
+        if self._earnings_flags_cache is None:
+            self._earnings_flags_cache = [
+                d in EARNINGS_REACTION_DATES for d in self._eastern_dates
+            ]
+        return self._earnings_flags_cache
 
     def _simulate_single(
         self,
@@ -355,6 +388,7 @@ class OptimizationController:
         # DynamicSlippageModel falls back to base_bps in that case.
         prev_close = None
         fomc_flags = self._fomc_flags
+        earnings_flags = self._earnings_flags
 
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp = row.Index
@@ -384,6 +418,7 @@ class OptimizationController:
                 open_lot_count=len(ledger.open_lots),
                 bar_index=bar_index,
                 is_macro_event_day=fomc_flags[bar_index],
+                is_earnings_reaction_day=earnings_flags[bar_index],
             )
 
             # Every bar, unconditionally -- B4. Routed through the shared
@@ -575,6 +610,30 @@ class OptimizationController:
 
         metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, initial_cash)
         metrics["Max Drawdown %"] = state.max_drawdown * 100.0
+        # Assigned here rather than in PerformanceAnalyzer for the same
+        # reason "Max Drawdown %" is: it is derived from the drawdown
+        # this loop tracks per bar, and computing it in two places would
+        # risk two figures under one key.
+        #
+        # Exists so a search can rank on something that PRICES the
+        # drawdown it takes on. Ranking by "Total Return %" alone is
+        # measured to walk straight into the corner of the space where
+        # drawdown saturates near 80% on this dataset, because return
+        # alone has no term pulling the other way.
+        #
+        # A zero-drawdown run is not penalized by a NaN (which
+        # na_position="last" would sink to the bottom of a ranking,
+        # exactly backwards): a positive return with no drawdown is the
+        # best possible outcome and sorts as +inf, while a run that
+        # neither gained nor drew down is a flat 0.0.
+        drawdown_pct = metrics["Max Drawdown %"]
+        total_return_pct = metrics["Total Return %"]
+        if drawdown_pct > 0.0:
+            metrics["Return/Drawdown"] = total_return_pct / drawdown_pct
+        elif total_return_pct > 0.0:
+            metrics["Return/Drawdown"] = float("inf")
+        else:
+            metrics["Return/Drawdown"] = 0.0
 
         # Task 4.6. params captures every input _simulate_single itself
         # actually received -- the strategy's own constructor-derived
