@@ -430,7 +430,7 @@ class BacktestConfig:
         if self.risk.max_total_exposure is not None:
             validate_unit_interval(self.risk.max_total_exposure, "risk.max_total_exposure")
 
-        validate_one_of(self.search.strategy, ("grid", "bayesian"), "search.strategy")
+        validate_one_of(self.search.strategy, ("grid", "bayesian", "random"), "search.strategy")
         validate_one_of(self.search.direction, ("maximize", "minimize"), "search.direction")
 
         validate_one_of(
