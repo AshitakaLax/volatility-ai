@@ -130,14 +130,88 @@ earnings_day_boost_multiplier -- the same idea, second event class
   than the two compounding -- see calculate_trade_value.
 
   Defaults: 1.0 (no-op), same as above.
+
+--------------------------------------------------------------------
+vol_scale_exponent -- CONTINUOUS sizing, measured not scheduled
+
+Both boosts above share a ceiling: they fire on a calendar. FOMC days
+are 2.8% of sessions and earnings reactions 11.1%, and measured at the
+backtest level each moved total return by only ~1-2 percentage points
+(FOMC +1.66pp on a 166% return; earnings +1.06 to +1.68pp across three
+controlled pairs). Identifying volatile days is not the constraint --
+a multiplier that fires on a twentieth of the calendar simply cannot
+move a 10-year result much.
+
+This scales size on EVERY bar instead, by short-horizon realized
+volatility relative to its own longer-horizon baseline:
+
+    multiplier = clamp((fast_vol / slow_vol) ** exponent, min, max)
+
+It also subsumes much of what a calendar would tell us. CPI, payrolls
+and FOMC days are volatile, and this responds to that volatility
+without needing to know why it is there -- which matters because the
+authoritative release calendars for CPI/payrolls are not currently
+obtainable in this environment (bls.gov and fred.stlouisfed.org both
+refuse programmatic access), while realized volatility is already in
+the data.
+
+  Direction is NOT assumed. Unlike the event boosts, which are
+  constrained to >= 1.0 because they encode a measured claim, the
+  exponent is free to be negative: negative sizes DOWN into volatility
+  (classic vol targeting), positive leans IN (consistent with the
+  event boosts). Sweeping across zero measures which is right.
+
+  MEASURED, and the answer is negative. Controlled grid on the full
+  10-year SIP dataset, every other parameter fixed (step=0.00075,
+  target=0.002, per_lot_pct=0.0002, lookback=0.03, fomc=2.5,
+  earnings=1.5), sweeping only this exponent:
+
+      exponent   return   max DD   return/DD
+        -1.5     38.99%   55.61%     0.701
+        -1.0     34.11%   52.47%     0.650
+        -0.5     29.07%   49.55%     0.587
+         0.0     25.94%   49.14%     0.528   <- control, exact no-op
+        +0.5     24.37%   52.08%     0.468
+        +1.0     23.80%   56.88%     0.418
+
+  Monotonic in both directions. Sizing DOWN into volatility is worth
+  +13.05 percentage points of return at -1.5 (a ~50% relative gain)
+  and improves return/drawdown at every step, while leaning IN is
+  strictly worse than doing nothing.
+
+  Note this cuts AGAINST the direction both event boosts assume. They
+  are not strictly contradicted -- a scheduled announcement is not the
+  same thing as a crash, and this exponent responds to realized
+  volatility whenever it appears, which on this dataset is dominated
+  by 2020 and 2022 -- but the premise "size up when volatility is
+  high" does not survive as a general rule here. A plausible
+  explanation is that this strategy never sells at a loss
+  (src/no_loss_guard.py), so deploying MORE capital into a decline
+  buys lots that then ride it down; deploying less preserves cash for
+  lower prices. That explanation is untested.
+
+  The drawdown cost is real: -1.5 also moves max drawdown from 49.14%
+  to 55.61%, so this is a favorable trade rather than a free one, and
+  -0.5 buys +3.1pp of return for +0.4pp of drawdown if the cap matters
+  more than the return.
+
+  Defaults: exponent 0.0, an exact no-op -- and at 0.0 the rolling
+  windows are not even constructed, so there is no per-bar cost to
+  leaving it off.
 """
 
 from __future__ import annotations
 
+from math import log
+
 from src.exceptions import ConfigurationError
 from src.market_context import MarketContext
 from src.size_calculators import SizingStrategy
-from src.sizing_indicators import RollingMax, bars_from_days
+from src.sizing_indicators import RollingMax, RollingStdev, bars_from_days, clamp
+
+# Below this, a realized-vol estimate is numerical noise rather than a
+# measurement -- see _vol_scale. Per-bar log returns here run ~1e-4.
+_VOL_EPSILON = 1e-9
 
 
 class HighFrequencyLocalReferenceSizing(SizingStrategy):
@@ -151,6 +225,11 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         bars_per_day: int,
         event_day_boost_multiplier: float = 1.0,
         earnings_day_boost_multiplier: float = 1.0,
+        vol_scale_exponent: float = 0.0,
+        vol_fast_days: float = 0.5,
+        vol_slow_days: float = 20.0,
+        vol_scale_min: float = 0.5,
+        vol_scale_max: float = 2.0,
     ) -> None:
         if not 0.0 < per_lot_pct <= 1.0:
             raise ConfigurationError(f"per_lot_pct must be in (0, 1], got {per_lot_pct}")
@@ -167,8 +246,28 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         self.per_lot_pct = per_lot_pct
         self.lookback_days = lookback_days
         self.bars_per_day = bars_per_day
+        if vol_scale_min <= 0.0 or vol_scale_max < vol_scale_min:
+            raise ConfigurationError(
+                f"need 0 < vol_scale_min <= vol_scale_max, got "
+                f"{vol_scale_min} and {vol_scale_max}"
+            )
         self.event_day_boost_multiplier = event_day_boost_multiplier
         self.earnings_day_boost_multiplier = earnings_day_boost_multiplier
+        self.vol_scale_exponent = vol_scale_exponent
+        self.vol_fast_days = vol_fast_days
+        self.vol_slow_days = vol_slow_days
+        self.vol_scale_min = vol_scale_min
+        self.vol_scale_max = vol_scale_max
+        # Built ONLY when the feature is on. At exponent 0.0 the scaler
+        # is an exact no-op, so constructing the two rolling windows
+        # would add a per-bar update on a 1M-bar dataset, for every
+        # combination in a sweep, to compute a number that is then
+        # raised to the power zero.
+        self._vol_enabled = vol_scale_exponent != 0.0
+        self._prev_price: float | None = None
+        if self._vol_enabled:
+            self._fast_vol = RollingStdev(max(2, bars_from_days(vol_fast_days, bars_per_day)))
+            self._slow_vol = RollingStdev(max(2, bars_from_days(vol_slow_days, bars_per_day)))
         self._rolling_high = RollingMax(bars_from_days(lookback_days, bars_per_day))
         self._baseline_capital: float | None = None
 
@@ -181,6 +280,53 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             self._baseline_capital = context.equity
         if context.price > 0:
             self._rolling_high.update(context.price)
+            if self._vol_enabled:
+                if self._prev_price is not None and self._prev_price > 0:
+                    # Log return, so the two windows measure the same
+                    # thing at any price level -- TQQQ spans roughly
+                    # 8x-90x across this dataset and a percentage-point
+                    # move is not comparable across that range.
+                    log_return = log(context.price / self._prev_price)
+                    self._fast_vol.update(log_return)
+                    self._slow_vol.update(log_return)
+                self._prev_price = context.price
+
+    def _vol_scale(self) -> float:
+        """Size multiplier from short-horizon realized vol relative to
+        its own longer-horizon baseline.
+
+        Deliberately NOT constrained to >= 1.0, unlike the two event
+        boosts. Those encode a measured claim (specific scheduled days
+        are more volatile) and only ever size up. This encodes an open
+        question -- whether to lean into volatility or away from it --
+        and the evidence so far says drawdown, not return, is this
+        strategy's binding constraint. A NEGATIVE exponent sizes down
+        when volatility spikes, which is the classic vol-targeting
+        direction and the one more likely to help; a positive exponent
+        leans in, matching the event boosts. Sweeping across zero
+        measures which is right instead of assuming.
+
+        Returns 1.0 until both windows have enough observations, so the
+        warm-up period behaves exactly as the unscaled strategy does.
+        """
+        if not self._vol_enabled:
+            return 1.0
+        fast = self._fast_vol.value
+        slow = self._slow_vol.value
+        # Guarded well above zero, not merely at it. RollingStdev's
+        # running sum-of-squares leaves a residue of order 1e-11 on a
+        # perfectly constant series rather than an exact 0.0, which
+        # would clear a `> 0.0` test and then divide into an enormous
+        # ratio that only the clamp contains. A realized vol this small
+        # is not a signal at all -- per-bar log returns on this dataset
+        # run around 1e-4 -- so treat it as "no estimate yet".
+        if fast is None or slow is None or slow < _VOL_EPSILON or fast < _VOL_EPSILON:
+            return 1.0
+        return clamp(
+            (fast / slow) ** self.vol_scale_exponent,
+            self.vol_scale_min,
+            self.vol_scale_max,
+        )
 
     def _grid_trigger_level(
         self, context: MarketContext, last_buy_price: float, step: float
@@ -225,4 +371,12 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             boost = max(boost, self.event_day_boost_multiplier)
         if context.is_earnings_reaction_day:
             boost = max(boost, self.earnings_day_boost_multiplier)
-        return value * boost
+        # The event boost and the vol scaler MULTIPLY, unlike the two
+        # event boosts which take a max of each other. Those two are
+        # alternative labels for the same underlying claim ("today is a
+        # scheduled announcement"), so compounding them would double-count
+        # one effect. This is a different axis -- realized volatility
+        # right now, measured rather than scheduled -- so a calm FOMC day
+        # and a turbulent one are genuinely different situations.
+        # _vol_scale is clamped, so the product stays bounded.
+        return value * boost * self._vol_scale()

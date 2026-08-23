@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 
 from src.exceptions import ConfigurationError
-from src.sizing_indicators import RollingMax, WilderRSI, bars_from_days, clamp
+from src.sizing_indicators import RollingMax, RollingStdev, WilderRSI, bars_from_days, clamp
 
 # --- window conversion ---
 
@@ -152,3 +152,73 @@ def test_rsi_state_is_two_floats_not_a_price_history():
     for i in range(10_000):
         r.update(100.0 + (i % 7))
     assert not any(isinstance(v, (list, tuple, dict, set)) for v in vars(r).values())
+
+
+# --- RollingStdev ---
+
+
+def test_rolling_stdev_matches_the_sample_stdev_of_the_window():
+    """Pinned against statistics.stdev rather than a hand-computed
+    constant, since the point is that the O(1) running form agrees with
+    the textbook two-pass one."""
+    import statistics
+
+    values = [0.001, -0.002, 0.0035, 0.0, -0.0011, 0.0027, -0.0004]
+    r = RollingStdev(4)
+    for i, v in enumerate(values):
+        r.update(v)
+        if i >= 1:
+            expected = statistics.stdev(values[max(0, i - 3) : i + 1])
+            assert r.value == pytest.approx(expected, rel=1e-9, abs=1e-15)
+
+
+def test_rolling_stdev_is_none_until_two_observations():
+    r = RollingStdev(5)
+    assert r.value is None
+    r.update(0.001)
+    assert r.value is None
+    r.update(0.002)
+    assert r.value is not None
+
+
+def test_rolling_stdev_of_a_constant_series_is_non_negative_and_negligible():
+    """Sum-of-squares cancellation can leave a residue on a constant
+    series -- measured at ~3e-11 here, NOT an exact 0.0. What matters is
+    that it is never negative (the sqrt must stay defined) and never
+    large enough to be mistaken for signal; per-bar log returns on real
+    data are ~1e-4, five orders of magnitude above this.
+
+    HighFrequencyLocalReferenceSizing therefore guards its vol ratio at
+    _VOL_EPSILON rather than at zero, so a residue like this cannot
+    divide into a huge ratio."""
+    r = RollingStdev(50)
+    for _ in range(200):
+        r.update(0.0007)
+    assert r.value >= 0.0
+    assert r.value == pytest.approx(0.0, abs=1e-9)
+
+
+def test_rolling_stdev_evicts_beyond_the_window():
+    r = RollingStdev(3)
+    for v in (10.0, 10.0, 10.0):
+        r.update(v)
+    assert r.value == pytest.approx(0.0)
+    r.update(20.0)  # window is now [10, 10, 20]
+    assert r.count == 3
+    assert r.value > 0.0
+
+
+@pytest.mark.parametrize("window", [0, 1, -3])
+def test_rolling_stdev_rejects_a_degenerate_window(window):
+    with pytest.raises(ConfigurationError, match="RollingStdev window"):
+        RollingStdev(window)
+
+
+def test_rolling_stdev_state_stays_bounded():
+    """Same contract RollingMax/WilderRSI are held to: memory must not
+    grow with the number of observations."""
+    r = RollingStdev(32)
+    for i in range(10_000):
+        r.update((i % 5) * 0.0001)
+    assert r.count == 32
+    assert len(r._values) == 32

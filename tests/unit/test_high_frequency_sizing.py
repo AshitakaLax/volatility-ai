@@ -278,3 +278,88 @@ def test_rejects_out_of_range_per_lot_pct(per_lot_pct):
 def test_rejects_invalid_window_configuration(kw):
     with pytest.raises(ConfigurationError):
         hf(**kw)
+
+
+# --- continuous volatility scaling ---
+
+
+def _vol_feed(strategy, prices):
+    """Drive record_tick over a price path so the rolling vol windows fill."""
+    for i, p in enumerate(prices):
+        strategy.record_tick(ctx(p, i))
+
+
+def _calm_then_wild(n_calm=400, n_wild=60):
+    """A long calm stretch followed by a volatile one, so fast_vol rises
+    well above slow_vol without the price level drifting far."""
+    prices = [100.0]
+    for i in range(n_calm):
+        prices.append(prices[-1] * (1.0004 if i % 2 else 0.9996))
+    for i in range(n_wild):
+        prices.append(prices[-1] * (1.010 if i % 2 else 0.990))
+    return prices
+
+
+def test_vol_scaling_defaults_to_an_exact_no_op():
+    """exponent 0.0 must reproduce the unscaled strategy bit for bit,
+    and must not even build the rolling windows."""
+    s = hf(per_lot_pct=0.01)
+    assert s._vol_enabled is False
+    _vol_feed(s, _calm_then_wild())
+    assert s.calculate_trade_value(ctx(100.0)) == pytest.approx(INITIAL_CASH * 0.01)
+
+
+def test_a_negative_exponent_sizes_down_when_volatility_spikes():
+    """Vol-targeting direction: turbulence should shrink the lot."""
+    s = hf(per_lot_pct=0.01, vol_scale_exponent=-1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    _vol_feed(s, _calm_then_wild())
+    assert s.calculate_trade_value(ctx(100.0)) < INITIAL_CASH * 0.01
+
+
+def test_a_positive_exponent_sizes_up_when_volatility_spikes():
+    """Lean-in direction, matching what the event boosts do."""
+    s = hf(per_lot_pct=0.01, vol_scale_exponent=1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    _vol_feed(s, _calm_then_wild())
+    assert s.calculate_trade_value(ctx(100.0)) > INITIAL_CASH * 0.01
+
+
+def test_the_scale_is_clamped_at_both_ends():
+    s = hf(
+        per_lot_pct=0.01,
+        vol_scale_exponent=8.0,  # would explode without the clamp
+        vol_fast_days=0.1,
+        vol_slow_days=2.0,
+        vol_scale_max=1.25,
+    )
+    _vol_feed(s, _calm_then_wild())
+    assert s.calculate_trade_value(ctx(100.0)) <= INITIAL_CASH * 0.01 * 1.25 + 1e-9
+
+
+def test_scale_is_one_until_the_windows_have_warmed():
+    """Before there is any return history the strategy must behave
+    exactly as the unscaled one, not size off a half-formed estimate."""
+    s = hf(per_lot_pct=0.01, vol_scale_exponent=-1.0)
+    s.record_tick(ctx(100.0, 0))
+    assert s.calculate_trade_value(ctx(100.0)) == pytest.approx(INITIAL_CASH * 0.01)
+
+
+def test_vol_scaling_multiplies_with_the_event_boost():
+    """Different axes -- a calm FOMC day and a turbulent one are not the
+    same situation -- so these compound, unlike the two event boosts."""
+    s = hf(
+        per_lot_pct=0.01,
+        event_day_boost_multiplier=2.0,
+        vol_scale_exponent=1.0,
+        vol_fast_days=0.1,
+        vol_slow_days=2.0,
+    )
+    _vol_feed(s, _calm_then_wild())
+    plain = s.calculate_trade_value(ctx(100.0))
+    on_event = s.calculate_trade_value(ctx(100.0, is_macro_event_day=True))
+    assert on_event == pytest.approx(plain * 2.0)
+
+
+@pytest.mark.parametrize(("low", "high"), [(0.0, 2.0), (-1.0, 2.0), (1.5, 1.0)])
+def test_rejects_an_invalid_vol_scale_range(low, high):
+    with pytest.raises(ConfigurationError, match="vol_scale_min"):
+        hf(vol_scale_min=low, vol_scale_max=high)
