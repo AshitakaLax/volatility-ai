@@ -122,6 +122,13 @@ BASELINE: dict | None = {
     "Open Trade Count": 0.0,
     "Capital Velocity Index": 1.0,
     "Max Drawdown %": 0.4430668810465577,
+    # Added when run_sweep began reporting a drawdown-aware ranking
+    # metric. Every other value above is UNCHANGED by that addition and
+    # by the is_earnings_reaction_day wiring alongside it -- both were
+    # re-derived and compared against the previous baseline before this
+    # key was appended, so this file still pins the same behavior it
+    # did before, plus one new column.
+    "Return/Drawdown": 0.2252817857351343,
 }
 
 

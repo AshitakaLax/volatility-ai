@@ -48,6 +48,16 @@ class MarketContext:
     time_of_day_flag: int = 0
     is_macro_event_day: bool = False
     macro_surprise_factor: float = 0.0
+    # A SECOND, independent event flag rather than more values folded
+    # into is_macro_event_day. The two are measured to differ in size --
+    # FOMC decision days run +34.1% on realized intraday vol against
+    # +11.4% for mega-cap earnings reactions (see src/earnings_calendar.py's
+    # MEASURED EFFECT section) -- so a strategy must be able to price
+    # them separately. Sharing one flag would force one shared
+    # multiplier and average two effects that are not the same size.
+    # Defaulted like the fields above so every existing call site is
+    # unaffected.
+    is_earnings_reaction_day: bool = False
 
     @property
     def price(self) -> float:
