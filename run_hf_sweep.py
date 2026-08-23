@@ -394,6 +394,7 @@ def main():
             "lookback_days",
             "event_day_boost_multiplier",
             "earnings_day_boost_multiplier",
+            "vol_scale_exponent",
             "Trade Count",
             "Closed Trade Count",
             "Total Return %",
@@ -407,18 +408,27 @@ def main():
         # trial (including cache hits), which is the honest record of
         # what the search did, but a leaderboard that lists the same
         # configuration fifteen times tells the reader nothing.
-        axis_cols = [
-            c
-            for c in [
-                "Grid Step",
-                "Profit Target",
-                "per_lot_pct",
-                "lookback_days",
-                "event_day_boost_multiplier",
-                "earnings_day_boost_multiplier",
-            ]
-            if c in results.columns
-        ]
+        #
+        # Axes are derived by SUBTRACTING the known metric columns
+        # rather than listed explicitly. A hardcoded list silently
+        # under-counts the moment a strategy gains a parameter: adding
+        # vol_scale_exponent collapsed a 6-row controlled experiment to
+        # "1 distinct combination", because the differing column was not
+        # in the list. Subtraction cannot go stale that way.
+        metric_cols = {
+            "Strategy",
+            "Final Equity",
+            "Total Return %",
+            "Realized PnL",
+            "Trade Count",
+            "Closed Trade Count",
+            "Open Trade Count",
+            "Capital Velocity Index",
+            "Max Drawdown %",
+            "Return/Drawdown",
+            "error",
+        }
+        axis_cols = [c for c in results.columns if c not in metric_cols]
         distinct = results.drop_duplicates(subset=axis_cols) if axis_cols else results
         admissible = distinct
         if args.max_drawdown is not None and "Max Drawdown %" in distinct.columns:
