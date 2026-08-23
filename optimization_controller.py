@@ -29,7 +29,7 @@ from src.intraday_profile import SESSION_MINUTES as _SESSION_MINUTES
 from src.intraday_profile import SESSION_OPEN_MINUTE as _SESSION_OPEN_MINUTE
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext, SimulationResult
-from src.no_loss_guard import NoLossViolation, validate_sell
+from src.no_loss_guard import NoLossViolation, compute_sell_economics, validate_sell
 from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 from src.risk_manager import RiskManager
@@ -144,6 +144,7 @@ def _run_one_combination(
     on_flat_reentry: str,
     fill_model: str = "close",
     intrabar_priority: str = "sell_first",
+    enforce_no_loss: bool = True,
 ):
     """
     Task 4.5. Module-level (not a method) so it, and everything passed
@@ -182,6 +183,7 @@ def _run_one_combination(
             risk_manager=risk_manager,
             on_flat_reentry=on_flat_reentry,
             fill_model=fill_model,
+            enforce_no_loss=enforce_no_loss,
             intrabar_priority=intrabar_priority,
         )
         # Strategy is identified by name rather than by the config's
@@ -338,6 +340,7 @@ class OptimizationController:
         on_flat_reentry: str = "stale_reference",
         fill_model: str = "close",
         intrabar_priority: str = "sell_first",
+        enforce_no_loss: bool = True,
     ) -> SimulationResult:
         """
         Task 4.1. One isolated combination: fresh AssetLotLedger and
@@ -498,7 +501,22 @@ class OptimizationController:
                         prev_close=prev_close,
                     )
                 except NoLossViolation:
-                    continue  # already logged by the guard
+                    if enforce_no_loss:
+                        continue  # already logged by the guard
+                    # Guard disabled via execution.enforce_no_loss=false.
+                    # The sell proceeds, so the economics have to be
+                    # recomputed without the raise. compute_sell_economics
+                    # is the very formula validate_sell wraps -- it is
+                    # exposed separately for exactly this case -- so the
+                    # permitted path cannot drift from the guarded one.
+                    economics = compute_sell_economics(
+                        lot,
+                        filled_qty,
+                        filled_price,
+                        cost_model,
+                        context=context,
+                        prev_close=prev_close,
+                    )
                 net_sell_proceeds = economics.net_sell_proceeds
 
                 def _apply_sell_fill(
@@ -684,6 +702,7 @@ class OptimizationController:
             "initial_cash": initial_cash,
             "on_flat_reentry": on_flat_reentry,
             "fill_model": fill_model,
+            "enforce_no_loss": enforce_no_loss,
             # Underscore-prefixed attributes are excluded deliberately.
             # The intent above is "the strategy's own constructor-derived
             # attributes"; a stateful strategy's rolling indicator state
@@ -715,6 +734,7 @@ class OptimizationController:
         on_flat_reentry: str = "stale_reference",
         fill_model: str = "close",
         intrabar_priority: str = "sell_first",
+        enforce_no_loss: bool = True,
         symbol: str = "TQQQ",
         initial_cash: float = 100_000.0,
         n_jobs: int = 1,
@@ -851,6 +871,7 @@ class OptimizationController:
                     on_flat_reentry,
                     fill_model,
                     intrabar_priority,
+                    enforce_no_loss,
                 )
                 resolved_search_strategy.report(suggestion, sim_result)
                 results.append(row)
@@ -896,6 +917,7 @@ class OptimizationController:
                             on_flat_reentry,
                             fill_model,
                             intrabar_priority,
+                            enforce_no_loss,
                         ): s
                         for s in batch
                     }

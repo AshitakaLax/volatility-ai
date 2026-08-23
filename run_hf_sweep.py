@@ -130,6 +130,7 @@ def main():
             config.execution.on_flat_reentry,
             config.execution.fill_model,
             config.execution.intrabar_priority,
+            config.execution.enforce_no_loss,
         )
 
     search = None
@@ -170,6 +171,7 @@ def main():
         f"({100 * total / space:.2f}%) | n_jobs={args.n_jobs}\n"
         f"data={args.data} ({len(df):,} bars, {df.index.normalize().nunique():,} sessions)\n"
         f"fill_model={config.execution.fill_model} "
+        f"| enforce_no_loss={config.execution.enforce_no_loss} "
         f"| max_concurrent_lots={config.risk.max_concurrent_lots} "
         f"| rank_by={config.search.rank_by}",
         flush=True,

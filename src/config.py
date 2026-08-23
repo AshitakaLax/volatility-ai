@@ -183,6 +183,25 @@ class ExecutionConfig:
     on_flat_reentry: str = "stale_reference"
     intrabar_priority: str = "sell_first"
     fill_model: str = "close"
+    # Task 7.15's no-loss guard, made switchable rather than absolute.
+    # TRUE (default) preserves today's behavior exactly: a sell whose
+    # net proceeds would not cover the lot's allocated cost basis is
+    # rejected. FALSE permits it.
+    #
+    # The guard is not arbitrary caution -- it encodes a real retail
+    # edge. An institution is periodically FORCED to liquidate
+    # (redemptions, mandates, risk limits); a retail book is not, so
+    # declining to realize a loss is a structural advantage genuinely
+    # available here. The cost is that lots accumulate through a decline
+    # and ride it fully marked to market, which is why max drawdown
+    # saturates near 80% on this dataset.
+    #
+    # NOTE this flag alone does not sell losers. Sells are only ever
+    # ATTEMPTED on lots whose profit target has been touched, so
+    # disabling the guard permits marginally-unprofitable target sells
+    # (the cost-floor case) -- it does not create a capitulation exit.
+    # See max_lot_age_days for that.
+    enforce_no_loss: bool = True
 
 
 @dataclass(frozen=True)
@@ -355,6 +374,7 @@ class BacktestConfig:
             on_flat_reentry=execution_data.get("on_flat_reentry", "stale_reference"),
             intrabar_priority=execution_data.get("intrabar_priority", "sell_first"),
             fill_model=execution_data.get("fill_model", "close"),
+            enforce_no_loss=bool(execution_data.get("enforce_no_loss", True)),
         )
 
         output_data = data.get("output", {})
@@ -508,6 +528,7 @@ class BacktestConfig:
                 "on_flat_reentry": self.execution.on_flat_reentry,
                 "intrabar_priority": self.execution.intrabar_priority,
                 "fill_model": self.execution.fill_model,
+                "enforce_no_loss": self.execution.enforce_no_loss,
             },
             "output": {"return_full_results": self.output.return_full_results},
             "live": {
@@ -540,6 +561,7 @@ class BacktestConfig:
             "on_flat_reentry": self.execution.on_flat_reentry,
             "fill_model": self.execution.fill_model,
             "intrabar_priority": self.execution.intrabar_priority,
+            "enforce_no_loss": self.execution.enforce_no_loss,
             "symbol": self.backtest.symbol,
             "initial_cash": self.backtest.initial_cash,
             "search_strategy": self.search.strategy,
