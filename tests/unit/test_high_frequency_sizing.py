@@ -27,12 +27,15 @@ def ctx(
     is_macro_event_day: bool = False,
     is_earnings_reaction_day: bool = False,
     minute: int = 0,
+    volume: float = 0.0,
+    high: float | None = None,
+    low: float | None = None,
 ):
     return MarketContext(
         timestamp=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
         open=price,
-        high=price,
-        low=price,
+        high=price if high is None else high,
+        low=price if low is None else low,
         close=price,
         cash=equity,
         equity=equity,
@@ -43,6 +46,7 @@ def ctx(
         is_macro_event_day=is_macro_event_day,
         is_earnings_reaction_day=is_earnings_reaction_day,
         time_of_day_flag=minute,
+        volume=volume,
     )
 
 
@@ -432,3 +436,92 @@ def test_the_time_of_day_multiplier_is_bounded_by_its_safety_rails():
     largest = max(s.calculate_trade_value(ctx(100.0, minute=m)) for m in range(390))
     assert smallest >= INITIAL_CASH * 0.01 * 0.1 - 1e-9
     assert largest <= INITIAL_CASH * 0.01 * 3.0 + 1e-9
+
+
+# --- vol_measure: stdev vs intrabar range ---
+
+
+def _wide_bars(strategy, n=300, widen_from=250):
+    """Closes follow a fixed repeating pattern while high/low widen late.
+    Close-to-close volatility is therefore UNCHANGED throughout, and only
+    the intrabar range moves -- which is exactly what separates the two
+    measures."""
+    for i in range(n):
+        p = 100.0 + (i % 3)
+        wide = i >= widen_from
+        strategy.record_tick(
+            ctx(p, i, high=p * (1.02 if wide else 1.0005), low=p * (0.98 if wide else 0.9995))
+        )
+
+
+def test_range_measure_reacts_to_widening_bars_that_stdev_cannot_see():
+    """The two measures are genuinely different quantities, not two
+    spellings of one. With closes held to a fixed pattern, close-to-close
+    vol is flat while intrabar range triples."""
+    common = dict(per_lot_pct=0.01, vol_scale_exponent=-1.0, vol_fast_days=0.05, vol_slow_days=0.5)
+    by_stdev = hf(vol_measure="stdev", **common)
+    by_range = hf(vol_measure="range", **common)
+    _wide_bars(by_stdev)
+    _wide_bars(by_range)
+    probe = ctx(100.0, high=102.0, low=98.0)
+    assert by_stdev.calculate_trade_value(probe) == pytest.approx(INITIAL_CASH * 0.01, rel=0.05)
+    assert by_range.calculate_trade_value(probe) < INITIAL_CASH * 0.01 * 0.8
+
+
+def test_vol_measure_defaults_to_stdev():
+    """Defaulting to the measured-worse option is deliberate: every
+    number in the module docstring was produced with it."""
+    assert hf().vol_measure == "stdev"
+
+
+@pytest.mark.parametrize("measure", ["", "STDEV", "variance", None])
+def test_rejects_an_unknown_vol_measure(measure):
+    with pytest.raises(ConfigurationError, match="vol_measure"):
+        hf(vol_measure=measure)
+
+
+# --- volume scaling ---
+
+
+def test_volume_scaling_defaults_to_an_exact_no_op():
+    s = hf(per_lot_pct=0.01)
+    for i in range(50):
+        s.record_tick(ctx(100.0, i, volume=1000.0 * (5 if i > 40 else 1)))
+    assert s.calculate_trade_value(ctx(100.0, volume=5000.0)) == pytest.approx(INITIAL_CASH * 0.01)
+
+
+def test_a_negative_volume_exponent_sizes_down_into_a_volume_surge():
+    s = hf(
+        per_lot_pct=0.01,
+        volume_scale_exponent=-1.0,
+        vol_fast_days=0.05,
+        vol_slow_days=0.5,
+    )
+    for i in range(300):
+        s.record_tick(ctx(100.0, i, volume=5000.0 if i > 250 else 1000.0))
+    assert s.calculate_trade_value(ctx(100.0, volume=5000.0)) < INITIAL_CASH * 0.01
+
+
+def test_unpopulated_volume_is_treated_as_unknown_not_as_zero():
+    """MarketContext.volume defaults to 0.0. Feeding that in as a real
+    observation would drag the slow mean toward nothing and blow the
+    ratio up, so a strategy configured for volume scaling must simply
+    stay neutral on a feed that does not supply it."""
+    s = hf(per_lot_pct=0.01, volume_scale_exponent=-1.0)
+    for i in range(300):
+        s.record_tick(ctx(100.0, i))  # volume defaults to 0.0
+    assert s.calculate_trade_value(ctx(100.0)) == pytest.approx(INITIAL_CASH * 0.01)
+
+
+def test_volume_and_vol_scaling_compose():
+    """Different inputs -- one is trade activity, the other price
+    movement -- and they are only partly correlated, so they multiply."""
+    common = dict(per_lot_pct=0.01, vol_fast_days=0.05, vol_slow_days=0.5)
+    vol_only = hf(vol_scale_exponent=-1.0, **common)
+    both = hf(vol_scale_exponent=-1.0, volume_scale_exponent=-1.0, **common)
+    for s in (vol_only, both):
+        for i in range(300):
+            p = 100.0 + (i % 3) * (4 if i > 250 else 1)
+            s.record_tick(ctx(p, i, volume=5000.0 if i > 250 else 1000.0))
+    probe = ctx(100.0, volume=5000.0)
+    assert both.calculate_trade_value(probe) < vol_only.calculate_trade_value(probe)
