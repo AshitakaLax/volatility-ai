@@ -35,6 +35,34 @@ this re-run and the step 3 documentation below.
                        1.0, so a strategy config that never sets it
                        gets identical behavior to before this existed.
 
+SECOND EVENT CLASS, SAME GATE: MarketContext.is_earnings_reaction_day
+was added alongside the above and is documented to the same step-3
+standard.
+
+  Consuming strategy:  src/high_frequency_sizing.py, same method, via
+                       the earnings_day_boost_multiplier constructor
+                       parameter (default 1.0 -- a no-op). On a session
+                       flagged as BOTH an FOMC day and an earnings
+                       reaction day the larger multiplier wins; the two
+                       do not compound.
+  Source dataset:      src/earnings_calendar.py -- a STATIC list of the
+                       sessions that TRADE a mega-cap earnings reaction,
+                       generated once from Yahoo Finance and NOT a
+                       runtime dependency. Note this flags the reaction
+                       session, not the announcement date: 381 of 385
+                       announcements land after the close, and that
+                       mapping was verified against per-constituent
+                       overnight gaps rather than assumed.
+  Join semantics:      src/earnings_calendar.py:is_earnings_reaction_day_at()
+                       -- identical Eastern-date conversion to the FOMC
+                       helper, whose EASTERN_TZ it imports rather than
+                       redefining, called from the same two places.
+  Defaults:            False on MarketContext, 1.0 on the multiplier --
+                       a config that never sets it behaves exactly as
+                       before this existed. Verified: the pinned
+                       regression baseline's values are unchanged by
+                       this addition.
+
 Per the original task's step 4, no NLP/sentiment ingestion dependency
 was added to build this -- confirmed by
 test_no_speculative_ingestion_dependency_was_added below, unchanged and
@@ -52,7 +80,16 @@ from src.market_context import MarketContext
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-MACRO_FIELDS = ("time_of_day_flag", "is_macro_event_day", "macro_surprise_factor")
+MACRO_FIELDS = (
+    "time_of_day_flag",
+    "is_macro_event_day",
+    "macro_surprise_factor",
+    # Added when MarketContext gained a second event flag. It is watched
+    # by the same canary as the original three deliberately: a new event
+    # field that nothing guards is exactly the "silent, undocumented
+    # proliferation" this module exists to catch.
+    "is_earnings_reaction_day",
+)
 
 # Modules that must STILL have zero consumption of these fields. Every
 # strategy/decision module except the one documented, deliberate
@@ -70,10 +107,13 @@ STRATEGY_MODULES = (
 # The one documented, deliberate consumer (see module docstring's
 # "DISCOVERY OUTCOME, RE-RUN" section for the full step-3 writeup).
 CONFIRMED_CONSUMER_MODULE = "src/high_frequency_sizing.py"
-CONFIRMED_CONSUMER_FIELD = "is_macro_event_day"
+# Now two fields, not one: the same strategy branches on both event
+# flags, with a separate multiplier each (see that module's docstring
+# for why they are not folded into a single flag).
+CONFIRMED_CONSUMER_FIELDS = ("is_macro_event_day", "is_earnings_reaction_day")
 
 
-def test_the_three_fields_exist_with_the_documented_safe_defaults():
+def test_the_event_fields_exist_with_the_documented_safe_defaults():
     """Contract check against overview 5.1. These stay in place; the
     finding is about whether to POPULATE them, not whether to keep them."""
     context = MarketContext(
@@ -92,6 +132,7 @@ def test_the_three_fields_exist_with_the_documented_safe_defaults():
     assert context.time_of_day_flag == 0
     assert context.is_macro_event_day is False
     assert context.macro_surprise_factor == 0.0
+    assert context.is_earnings_reaction_day is False
 
 
 def test_no_other_strategy_or_decision_module_consumes_the_macro_fields():
@@ -127,8 +168,10 @@ def test_the_confirmed_consumer_still_exists_exactly_where_documented():
     match) -- either way the documentation must track reality."""
     path = REPO_ROOT / CONFIRMED_CONSUMER_MODULE
     assert path.exists(), f"{CONFIRMED_CONSUMER_MODULE} is documented as the macro-field consumer but no longer exists"
-    assert CONFIRMED_CONSUMER_FIELD in path.read_text(), (
-        f"{CONFIRMED_CONSUMER_MODULE} no longer references {CONFIRMED_CONSUMER_FIELD!r} -- "
+    source = path.read_text()
+    missing = [f for f in CONFIRMED_CONSUMER_FIELDS if f not in source]
+    assert missing == [], (
+        f"{CONFIRMED_CONSUMER_MODULE} no longer references {missing!r} -- "
         "either restore it or update this module's docstring and this test"
     )
 

@@ -103,6 +103,33 @@ confirmed-and-scoped state rather than silently going stale):
 
   Defaults: 1.0 (no-op). A config that doesn't set this gets
   IDENTICAL behavior to before this existed.
+
+--------------------------------------------------------------------
+earnings_day_boost_multiplier -- the same idea, second event class
+
+  Source dataset: src/earnings_calendar.py, a static list of the
+  sessions that TRADE a mega-cap earnings reaction (not the
+  announcement dates -- 381 of 385 announcements land after the close,
+  so the move is the next morning's; that module documents the gap
+  measurement behind the distinction).
+
+  Why a separate multiplier rather than more dates in
+  MarketContext.is_macro_event_day: the two effects are measured to be
+  different sizes on this repo's dataset -- +34.1% realized intraday
+  vol for FOMC decision days (74 sessions) against +11.4% for earnings
+  reactions (296 sessions, Welch t=2.89). One shared flag would force
+  one shared multiplier and average them.
+
+  Why boost rather than reduce: identical reasoning to the FOMC case
+  above -- the confirmed half of the finding is volatility, and a
+  grid/harvest strategy profits from swings regardless of direction.
+  Same caveat too: validated at the raw-price level, not yet at the
+  strategy/backtest level.
+
+  On a session flagged BOTH ways, the larger multiplier wins rather
+  than the two compounding -- see calculate_trade_value.
+
+  Defaults: 1.0 (no-op), same as above.
 """
 
 from __future__ import annotations
@@ -123,6 +150,7 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         lookback_days: float,
         bars_per_day: int,
         event_day_boost_multiplier: float = 1.0,
+        earnings_day_boost_multiplier: float = 1.0,
     ) -> None:
         if not 0.0 < per_lot_pct <= 1.0:
             raise ConfigurationError(f"per_lot_pct must be in (0, 1], got {per_lot_pct}")
@@ -131,10 +159,16 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
                 f"event_day_boost_multiplier must be >= 1.0 (this strategy only sizes UP on "
                 f"an FOMC day, never down -- see module docstring), got {event_day_boost_multiplier}"
             )
+        if earnings_day_boost_multiplier < 1.0:
+            raise ConfigurationError(
+                f"earnings_day_boost_multiplier must be >= 1.0 (same size-up-only rule as "
+                f"event_day_boost_multiplier), got {earnings_day_boost_multiplier}"
+            )
         self.per_lot_pct = per_lot_pct
         self.lookback_days = lookback_days
         self.bars_per_day = bars_per_day
         self.event_day_boost_multiplier = event_day_boost_multiplier
+        self.earnings_day_boost_multiplier = earnings_day_boost_multiplier
         self._rolling_high = RollingMax(bars_from_days(lookback_days, bars_per_day))
         self._baseline_capital: float | None = None
 
@@ -171,11 +205,24 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         small lots instead of exhausting cash after a handful of buys.
 
         Scaled up by event_day_boost_multiplier on an FOMC decision day
-        (see module docstring's Task 7.9 section for why this is a
-        boost, not a reduction, and what it's based on)."""
+        and by earnings_day_boost_multiplier on a mega-cap earnings
+        reaction day (see module docstring's Task 7.9 section for why
+        these are boosts, not reductions, and what they're based on).
+
+        The two are combined with max(), NOT by multiplying. 14 sessions
+        in this repo's dataset are both, and compounding would size
+        those at up to 6.25x on the swept range while no measurement
+        supports treating a doubly-flagged day as that much more
+        volatile than a singly-flagged one -- the two effects overlap
+        (both are "a scheduled announcement moves the index") rather
+        than stacking. max() keeps a both-flags day at the larger of the
+        two boosts, which is the conservative reading."""
         if self._baseline_capital is None or self._baseline_capital <= 0:
             return 0.0
         value = self._baseline_capital * self.per_lot_pct
+        boost = 1.0
         if context.is_macro_event_day:
-            value *= self.event_day_boost_multiplier
-        return value
+            boost = max(boost, self.event_day_boost_multiplier)
+        if context.is_earnings_reaction_day:
+            boost = max(boost, self.earnings_day_boost_multiplier)
+        return value * boost

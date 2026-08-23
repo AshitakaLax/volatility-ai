@@ -161,6 +161,7 @@ class LiveExecutionLoop:
         time_of_day_flag: int = 0,
         is_macro_event_day: bool = False,
         macro_surprise_factor: float = 0.0,
+        is_earnings_reaction_day: bool = False,
     ) -> MarketContext:
         """Build the per-tick MarketContext the strategy sees.
 
@@ -168,10 +169,13 @@ class LiveExecutionLoop:
         a broker feed supplying local-naive times is common and silently
         mixing zones is the worse failure.
 
-        The three macro fields are accepted and forwarded but are not
-        consumed by any strategy in this repository -- see Task 7.9's
-        discovery outcome in CHANGELOG.md. They default to the safe
-        values from overview 5.1.
+        The event/macro fields are accepted and forwarded, and default to
+        the safe values from overview 5.1. Two of them are now live
+        inputs rather than the inert ones Task 7.9's discovery outcome
+        recorded in CHANGELOG.md: HighFrequencyLocalReferenceSizing
+        consumes is_macro_event_day and is_earnings_reaction_day to
+        scale its per-lot size. macro_surprise_factor remains unconsumed
+        and is still never populated by the backtest path.
         """
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
@@ -190,6 +194,7 @@ class LiveExecutionLoop:
             time_of_day_flag=int(time_of_day_flag),
             is_macro_event_day=bool(is_macro_event_day),
             macro_surprise_factor=float(macro_surprise_factor),
+            is_earnings_reaction_day=bool(is_earnings_reaction_day),
         )
 
     def decision_cycle(

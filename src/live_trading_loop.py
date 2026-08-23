@@ -88,6 +88,7 @@ from src import decision_cycle
 from src.config import BacktestConfig
 from src.cost_models import ZeroCostModel
 from src.duplicate_order_guard import DuplicateOrderGuard
+from src.earnings_calendar import is_earnings_reaction_day_at
 from src.exceptions import ConfigurationError
 from src.fill_accounting import FillTracker, extract_alpaca_fill
 from src.fomc_calendar import is_fomc_day_at
@@ -507,6 +508,7 @@ class LiveTradingLoop:
             open_lot_count=len(self.ledger.open_lots),
             bar_index=0,
             is_macro_event_day=is_fomc_day_at(timestamp),
+            is_earnings_reaction_day=is_earnings_reaction_day_at(timestamp),
         )
 
     # --- order submission ---
