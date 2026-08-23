@@ -1,0 +1,32 @@
+# Controlled probe: everything pinned at the best configuration the
+# 250-combination random sweep found (67.09% return @ 49.06% drawdown),
+# sweeping ONLY volume_scale_exponent across zero. 0.0 is the control
+# and an exact no-op. Grid, not random -- this is an experiment.
+#
+# Volume is the weakest signal measured (-0.095 against forward
+# 60-session troughs, versus -0.219 for the range measure) and was
+# deliberately kept OUT of the main sweep so it could not dilute
+# coverage. This is what decides whether it belongs at all.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: 0.0002
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    volume_scale_exponent: [-1.5, -1.0, -0.5, 0.0, 0.5]
+grid:
+  steps: [0.00075]
+  profit_targets: [0.003]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: Total Return %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar}
+output: {return_full_results: false}
