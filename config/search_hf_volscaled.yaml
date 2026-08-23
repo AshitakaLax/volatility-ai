@@ -59,13 +59,38 @@
 # stays "stdev" because every number recorded so far was produced with
 # it; this sweep is what decides whether to switch.
 #
-# volume_scale_exponent is PINNED at 0.0 (off) despite now existing.
-# It is the weakest candidate measured (-0.095) and adding it would
-# have taken this space to 17,280 -- 1.4% coverage at this budget. The
-# last time an axis was added for its own sake, coverage fell from
-# 3.2% to 0.30% and the sweep failed to find a configuration a smaller
-# earlier run had already located. It gets its own controlled probe
-# instead, which is how vol scaling was validated in the first place.
+# volume_scale_exponent is PINNED at 0.0 (off) here, but NOT because it
+# is worthless -- its controlled probe says the opposite, and that is
+# worth stating plainly because it contradicts what the correlation
+# analysis predicted. Volume scored -0.095 against forward troughs, the
+# weakest of every candidate, yet on top of an ALREADY-TUNED vol scaler
+# (exponent -1.5) it is worth:
+#
+#     volume exp   return    max DD
+#       -1.5      102.86%    65.44%
+#       -1.0       92.05%    61.66%
+#       -0.5       78.12%    54.77%
+#        0.0       67.09%    49.06%   <- control
+#       +0.5       60.06%    45.73%
+#
+# So rank correlation against forward troughs is a WEAK predictor of
+# backtest value, and should not be used to pre-filter candidates on
+# its own again.
+#
+# It is excluded from THIS sweep purely for budget: adding three values
+# takes the space to 11,520 and coverage to 2.6%, and the last time an
+# axis was added for its own sake coverage fell from 3.2% to 0.30% and
+# the sweep failed to find a configuration a smaller earlier run had
+# already located. The windows and vol_measure are settled here first;
+# volume joins the next sweep. That is coordinate descent, which is the
+# right shape for signals this correlated (volume and volatility run
+# 0.36-0.49 together).
+#
+# CAVEAT on that probe, untested: because the two are correlated, some
+# of volume's gain may be the vol scaler acting through a second
+# channel rather than new information. vol_scale_exponent was only
+# swept to -2.0; whether -3.0 with volume off matches -1.5 with volume
+# at -1.5 has not been checked.
 #
 # The core grid is narrowed further on the same principle: profit
 # targets drop 0.0015 and per_lot_pct drops 0.0005/0.00075, both of
