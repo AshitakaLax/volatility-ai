@@ -724,6 +724,30 @@ class OptimizationController:
         else:
             metrics["Return/Drawdown"] = 0.0
 
+        # Annualized (compound) return. Ranking by this is IDENTICAL to
+        # ranking by Total Return % over a fixed dataset -- it is a
+        # monotonic transform of it -- so this exists to be READ, not to
+        # change any ordering. It is reported because "192.91% over ten
+        # and a half years" and "10.64% a year" are the same fact, and
+        # only the second one can be compared against a benchmark, a
+        # bond yield, or an expectation without arithmetic in the reader's
+        # head.
+        #
+        # Span comes from the data's own index rather than a constant, so
+        # it stays correct if the dataset is extended or a shorter slice
+        # is passed.
+        span_days = (self.data.index[-1] - self.data.index[0]).days
+        years = span_days / 365.25 if span_days > 0 else 0.0
+        growth = 1.0 + total_return_pct / 100.0
+        if years > 0.0 and growth > 0.0:
+            metrics["CAGR %"] = ((growth ** (1.0 / years)) - 1.0) * 100.0
+        else:
+            # A total loss (growth <= 0) has no real annualized rate, and
+            # a zero-length span has no rate at all. -100% is the honest
+            # reading of the first; the second cannot arise from a
+            # validated dataset but must not raise here.
+            metrics["CAGR %"] = -100.0 if growth <= 0.0 else 0.0
+
         # Task 4.6. params captures every input _simulate_single itself
         # actually received -- the strategy's own constructor-derived
         # attributes (e.g. allocation_pct) are merged in via vars(),
