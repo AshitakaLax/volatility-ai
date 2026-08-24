@@ -85,14 +85,22 @@ def _top_configs(cap: float | None, limit: int):
 
 
 def _annual(series: pd.Series) -> pd.Series:
-    """Calendar-year percentage returns from an equity or price series."""
+    """Calendar-year percentage returns from an equity or price series.
+
+    The first year is measured from the series' own start rather than
+    from a prior year that does not exist, so a partial first year is
+    reported honestly instead of as NaN.
+
+    Written plainly on purpose. The first version of this reindexed a
+    concatenated shifted series and produced badly misaligned results --
+    it reported TQQQ down 37% in 2023, a year it roughly tripled. A
+    year-over-year return is one shift; anything more elaborate is a
+    place for an off-by-one to hide.
+    """
     yearly = series.resample("YE").last()
-    first = series.iloc[0]
-    prev = pd.concat([pd.Series([first], index=[yearly.index[0]]), yearly]).shift(1)[
-        : len(yearly)
-    ]
-    prev.index = yearly.index
-    return ((yearly / prev.values) - 1.0) * 100.0
+    prev = yearly.shift(1)
+    prev.iloc[0] = series.iloc[0]
+    return ((yearly / prev) - 1.0) * 100.0
 
 
 def main():
@@ -114,7 +122,7 @@ def main():
         params = {
             k: row[k]
             for k in row.index
-            if k not in _METRIC_COLS and pd.notna(row[k]) and k != "enforce_no_loss"
+            if k not in _NON_PARAM_COLS and pd.notna(row[k])
         }
         # bars_per_day and the like arrive as floats from CSV round-trip.
         for int_key in ("bars_per_day",):
