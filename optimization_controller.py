@@ -244,6 +244,42 @@ class OptimizationController:
             f"OptimizationController initialized with historical dataset length: {len(historical_data)}"
         )
 
+    # Every per-bar cache below is DERIVED from self.data and is one
+    # element per bar -- five of them, at 1.03M bars on the real dataset.
+    _DERIVED_CACHES = (
+        "_fomc_flags_cache",
+        "_earnings_flags_cache",
+        "_eastern_dates_cache",
+        "_eastern_index_cache",
+        "_minutes_since_open_cache",
+    )
+
+    def __getstate__(self):
+        """Drop the derived per-bar caches before pickling.
+
+        This object is sent to a worker on EVERY task submission when
+        n_jobs > 1, so anything on it is paid for per combination, not
+        once. The caches exist to avoid recomputing an Eastern-time
+        conversion per bar per combination -- they were never meant to
+        be shipped.
+
+        Measured: warming them inflated the pickle by 48% on a 2,000-bar
+        fixture, and they scale one-for-one with bar count, so on the
+        1.03M-bar dataset they dwarf the DataFrame they were derived
+        from. That is a pure loss -- the receiving worker unpickles a
+        FRESH controller per task and would rebuild them lazily anyway,
+        so transferring them buys nothing and costs the transfer.
+
+        Caught by test_n_jobs_shows_a_real_speedup_on_a_large_sweep,
+        which measures sequential against parallel on the same
+        controller: the sequential leg warms the caches, and the
+        parallel leg then pays to ship them.
+        """
+        state = self.__dict__.copy()
+        for name in self._DERIVED_CACHES:
+            state[name] = None
+        return state
+
     @property
     def _fomc_flags(self):
         """Per-bar FOMC-decision-day flags for this controller's data.
