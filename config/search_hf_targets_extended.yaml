@@ -1,0 +1,65 @@
+# How far does the profit target keep paying?
+#
+# The previous exhaustive sweep found the axis monotonic all the way to
+# its ceiling, and the winner sat ON that ceiling:
+#
+#     target   median return   best return   best CAGR
+#     0.003        64.53%         252.81%      12.59%
+#     0.006       132.52%         452.49%      17.44%
+#     0.012       229.15%         841.81%      23.49%
+#     0.025       414.08%       1,749.02%      31.58%
+#     0.050       601.96%       2,139.93%      33.97%   <- boundary
+#
+# A winner on the boundary is not a result, it is an unfinished search.
+# This extends to 0.30 to find where the curve actually turns.
+#
+# It has to turn somewhere. As the target widens the strategy harvests
+# less and holds longer, converging on buy-and-hold -- which on this
+# data returns 39.15% CAGR at 81.68% max drawdown. So the interesting
+# question is not whether return keeps rising but whether it rises
+# FASTER than drawdown, and where the risk-adjusted optimum sits before
+# the strategy dissolves into just holding.
+#
+# 0.05 is repeated deliberately as an overlap point: it must reproduce
+# the previous run's numbers, which is a check that nothing else drifted
+# between the two.
+#
+# Grid steps widen alongside the targets -- a 30% target reached in
+# 7.5bps increments would open lots far faster than it could ever close
+# them -- and the extra step values probe whether the two need to scale
+# together.
+#
+# 5 x 6 x 2 x 2 = 120 combinations, run EXHAUSTIVELY rather than
+# sampled. Vol scaling is pinned at the values two sweeps agreed on
+# (exponent -1.5, fast 0.25, slow 10.0, stdev) so this measures the
+# target axis and not a moving background.
+#
+# rank_by is CAGR %, which is now a reported metric. Over a fixed
+# dataset that ranks identically to Total Return % -- it is a monotonic
+# transform -- so this changes no ordering. It is set here because the
+# question being asked is an annualized one and the output should read
+# that way.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: [0.0002, 0.001]
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: [0.0, -1.0]
+grid:
+  steps: [0.00075, 0.0015, 0.003, 0.006, 0.012]
+  profit_targets: [0.05, 0.075, 0.10, 0.15, 0.20, 0.30]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: CAGR %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}
