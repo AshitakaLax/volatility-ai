@@ -1,0 +1,59 @@
+# Two open questions, run together.
+#
+# 1. WHERE DOES THE TARGET CURVE TURN? Two exhaustive sweeps have now
+#    found the profit-target axis monotonic to their ceiling, and both
+#    times the winner sat ON that ceiling (0.05, then 0.30). A winner on
+#    a boundary is an unfinished search. This goes to 1.00 -- a target
+#    that only sells when a lot has DOUBLED -- which is far enough that
+#    the strategy must degenerate into buy-and-hold before reaching it.
+#    The turn has to be in here somewhere.
+#
+#    Evidence it is close: step-over-step median CAGR gains across the
+#    last sweep were +2.94, +0.71, +0.34, +0.27, +0.68 -- flattening
+#    hard -- while median drawdown climbed 41.09% to 48.41%. And at
+#    target 0.30 the best configuration already reached 37.11% CAGR
+#    against buy-and-hold's 39.15%, on 49,395 trades instead of 900,000.
+#
+# 2. WHAT IS THE RIGHT LOT SIZE NOW? per_lot_pct was tuned when targets
+#    were capped at 0.003 and the strategy closed nearly every lot it
+#    opened. At these targets it closes far fewer, so capital stays
+#    deployed for much longer and the same lot size means something
+#    completely different. Every configuration in the last two sweeps
+#    used 0.0002 or 0.001 because those were inherited, not retested.
+#    This sweeps 0.0002 to 0.002 against the new target range.
+#
+# The two interact, which is why they are swept together rather than in
+# sequence: a wider target and a larger lot both increase how much
+# capital sits deployed, so tuning either alone would mis-attribute the
+# effect to whichever moved.
+#
+# target 0.30 is repeated as an overlap point and must reproduce the
+# previous run exactly, as 0.05 did (max delta 0.0000000000pp across 16
+# matched configurations).
+#
+# 4 x 4 x 2 x 2 = 64 combinations, exhaustive. Vol scaling pinned at the
+# values three sweeps have agreed on.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: [0.0002, 0.0005, 0.001, 0.002]
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: [0.0, -1.0]
+grid:
+  steps: [0.00075, 0.0015]
+  profit_targets: [0.30, 0.50, 0.75, 1.00]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: CAGR %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}
