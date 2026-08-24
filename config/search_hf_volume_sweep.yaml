@@ -1,0 +1,169 @@
+# Volume-inclusive sweep -- the follow-up the previous config deferred.
+#
+# search_hf_volscaled.yaml pinned volume_scale_exponent OFF purely for
+# budget, while its own controlled probe showed volume worth +11pp at
+# cap-compliant settings and +35.8pp uncapped, ON TOP of an already
+# tuned vol scaler. This brings it in as a real axis.
+#
+# Room is made by fixing lookback_days at 0.02 (present in nearly every
+# admissible leader) and dropping vol_scale_exponent=-2.0 (never won).
+# That is coordinate descent: settle the axes the last sweep resolved,
+# spend the freed budget on the one it could not afford.
+#
+# OPEN QUESTION this is meant to help answer: volume and volatility run
+# 0.36-0.49 rank-correlated, so some of volume's measured gain may be
+# the vol scaler acting through a second channel rather than new
+# information. With both swept together, a run that picks volume=-1.0
+# alongside vol_scale=-0.5 in preference to vol_scale=-1.5 alone would
+# be evidence they are genuinely additive.
+#
+# ORIGINAL HEADER FOLLOWS.
+#
+# TPE search over HighFrequencyLocalReferenceSizing with CONTINUOUS
+# volatility scaling as the primary axis.
+#
+# Read config/search_hf_intrabar.yaml's header first for the three
+# structural defects (fill model, lot cap, dead profit targets) that all
+# of these configs inherit fixes for.
+#
+# WHAT CHANGED AND WHY. The previous config swept both event-boost
+# multipliers. Measured at the backtest level they are worth ~1-2
+# percentage points each (FOMC +1.66pp on a 166% return; earnings +1.06
+# to +1.68pp across three controlled pairs), and sweeping them tripled
+# the space from 6,272 to 18,816 -- which dropped coverage from 3.2% to
+# 0.30% at a 200-trial budget and caused that run to never even propose
+# the best configuration a smaller earlier sweep had already found.
+# Two axes worth ~3pp combined are not worth two-thirds of the coverage.
+#
+# So both are PINNED here, at the values their own controlled pairs
+# preferred (2.5 and 1.5), and the budget goes to vol scaling instead,
+# which a controlled grid measured at +13.05pp -- roughly 8x either
+# event boost. See src/high_frequency_sizing.py's vol_scale_exponent
+# section for that table.
+#
+# vol_scale_exponent stays NEGATIVE-or-zero. Positive values were
+# measured to be strictly worse than doing nothing (+1.0 returned
+# 23.80% against the 25.94% control), so spending trials there would
+# buy nothing. 0.0 is retained as the control -- an exact no-op -- so
+# the whole feature is still measured against its own absence.
+#
+# vol_fast_days and vol_slow_days were FIXED at 0.5/20.0 in that
+# controlled grid, chosen without testing. They are swept here because
+# the ratio's usefulness plainly depends on the two horizons, and
+# nothing yet establishes those were good choices.
+#
+# The core grid is narrowed to the regions two prior sweeps found
+# productive, rather than re-exploring ground already covered:
+# per_lot_pct stays at the low end where drawdown is survivable (the
+# 0.002 end saturates near 80%), and profit targets stay clear of the
+# ~5.1bps round-trip cost floor.
+#
+# 3 x 3 x 4 x 2 x 5 x 3 x 3 = 3,240 combinations. At a 250-trial budget
+# that is 7.7% coverage, versus 0.30% on the previous config.
+#
+# SECOND REVISION, after the 250-combination random sweep.
+#
+# The windows were the surprise. vol_fast_days and vol_slow_days had
+# been FIXED at 0.5 / 20.0 for the controlled grid, chosen with no
+# evidence. Swept, 0.5 turned out to be the WORST of three fast windows
+# and 20.0 the middling slow one -- and the winning 0.25 / 10.0 sat at
+# the SHORTER EDGE of both ranges, meaning the optimum plausibly lay
+# outside what was searched. Both ranges are therefore extended
+# downward here (to 0.05 and 2.0) rather than re-searching ground
+# already covered.
+#
+# vol_measure is a new axis and the highest-value one. Against the
+# worst forward return over the next 60 sessions, an intrabar RANGE
+# ratio scores -0.219 rank correlation where the close-to-close form
+# scores -0.172. Range is also what the intrabar fill model actually
+# experiences, since fills happen on TOUCHES inside a bar. The default
+# stays "stdev" because every number recorded so far was produced with
+# it; this sweep is what decides whether to switch.
+#
+# volume_scale_exponent is PINNED at 0.0 (off) here, but NOT because it
+# is worthless -- its controlled probe says the opposite, and that is
+# worth stating plainly because it contradicts what the correlation
+# analysis predicted. Volume scored -0.095 against forward troughs, the
+# weakest of every candidate, yet on top of an ALREADY-TUNED vol scaler
+# (exponent -1.5) it is worth:
+#
+#     volume exp   return    max DD
+#       -1.5      102.86%    65.44%
+#       -1.0       92.05%    61.66%
+#       -0.5       78.12%    54.77%
+#        0.0       67.09%    49.06%   <- control
+#       +0.5       60.06%    45.73%
+#
+# So rank correlation against forward troughs is a WEAK predictor of
+# backtest value, and should not be used to pre-filter candidates on
+# its own again.
+#
+# It is excluded from THIS sweep purely for budget: adding three values
+# takes the space to 11,520 and coverage to 2.6%, and the last time an
+# axis was added for its own sake coverage fell from 3.2% to 0.30% and
+# the sweep failed to find a configuration a smaller earlier run had
+# already located. The windows and vol_measure are settled here first;
+# volume joins the next sweep. That is coordinate descent, which is the
+# right shape for signals this correlated (volume and volatility run
+# 0.36-0.49 together).
+#
+# CAVEAT on that probe, untested: because the two are correlated, some
+# of volume's gain may be the vol scaler acting through a second
+# channel rather than new information. vol_scale_exponent was only
+# swept to -2.0; whether -3.0 with volume off matches -1.5 with volume
+# at -1.5 has not been checked.
+#
+# The core grid is narrowed further on the same principle: profit
+# targets drop 0.0015 and per_lot_pct drops 0.0005/0.00075, both of
+# which were absent from the admissible leaders. 3 x 2 x 2 x 2 x 5 x 4
+# x 4 x 2 = 3,840 combinations; at a 300-trial budget that is 7.8%
+# coverage, holding the 7.7% the last successful sweep had.
+#
+# Run with --search random, NOT bayesian. Measured on this exact
+# space, TPE evaluated 14 distinct combinations out of 250 trials
+# where random evaluates 250 -- see src/search_strategies.py's
+# RandomSearch docstring.
+#
+# Run with --max-drawdown 55, not 50: the best vol-scaled result
+# measured 55.61% drawdown, so a 50 cap would exclude the very region
+# this config exists to explore, while 55 still blocks the ~80% corner.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: [0.0002, 0.0003]
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: [-1.5, -1.0, -0.5, 0.0]
+    vol_fast_days: [0.05, 0.1, 0.25, 0.5]
+    vol_slow_days: [2.0, 5.0, 10.0, 20.0]
+    vol_measure: [stdev, range]
+    volume_scale_exponent: [0.0, -0.5, -1.0]
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+grid:
+  steps: [0.00075, 0.001, 0.0015]
+  profit_targets: [0.002, 0.003]
+backtest:
+  symbol: TQQQ
+  initial_cash: 100000.0
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+output:
+  return_full_results: false
