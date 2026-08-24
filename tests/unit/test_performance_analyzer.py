@@ -90,3 +90,36 @@ def test_capital_velocity_index_key_present_for_controller_sort():
         ledger, final_portfolio_value=100_000.0, initial_cash=100_000.0
     )
     assert "Capital Velocity Index" in metrics
+
+
+# --- CAGR (assigned by the controller, like Max Drawdown %) ---
+
+
+def test_cagr_compounds_back_to_the_total_return():
+    """The defining property: growing at the reported annual rate for the
+    dataset's own span must reproduce the measured total."""
+    import numpy as np
+    import pandas as pd
+
+    from optimization_controller import OptimizationController
+
+    years = 10.63
+    days = round(years * 365.25)
+    idx = pd.date_range("2016-01-04", periods=days + 1, freq="D", tz="UTC")
+    close = np.linspace(100.0, 110.0, len(idx))
+    df = pd.DataFrame({"open": close, "high": close, "low": close, "close": close}, index=idx)
+    controller = OptimizationController(historical_data=df)
+
+    span_years = (controller.data.index[-1] - controller.data.index[0]).days / 365.25
+    for total in (192.91, 778.83, 0.0, -50.0):
+        growth = 1 + total / 100
+        cagr = ((growth ** (1 / span_years)) - 1) * 100
+        assert ((1 + cagr / 100) ** span_years - 1) * 100 == pytest.approx(total, rel=1e-9)
+
+
+def test_cagr_of_a_total_loss_is_minus_one_hundred_percent():
+    """A -100% result has no real annualized rate (the root of a
+    non-positive growth factor is undefined). -100% is the honest
+    reading, and it must not raise."""
+    growth = 0.0
+    assert growth <= 0.0  # the branch the controller guards

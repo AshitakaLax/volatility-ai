@@ -129,6 +129,11 @@ BASELINE: dict | None = {
     # key was appended, so this file still pins the same behavior it
     # did before, plus one new column.
     "Return/Drawdown": 0.2252817857351343,
+    # Added alongside the drawdown-aware metric. Annualizing is a
+    # monotonic transform of Total Return %, so this changes no ranking
+    # and no other pinned value -- all twelve above were re-derived and
+    # compared before it was appended.
+    "CAGR %": 1.0775051531105362,
 }
 
 
