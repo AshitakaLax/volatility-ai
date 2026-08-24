@@ -23,6 +23,7 @@ difference between this running comfortably and exhausting memory.
 
 import argparse
 import glob
+import inspect
 import logging
 
 import pandas as pd
@@ -60,10 +61,27 @@ _METRIC_COLS = {
     "error",
 }
 
-# _NON_PARAM_COLS is "what must not be passed to the strategy
-# constructor" -- the metrics, plus the two sweep axes handled
-# positionally, plus the execution flag recorded in params.
-_NON_PARAM_COLS = _METRIC_COLS | {"Grid Step", "Profit Target", "enforce_no_loss"}
+def _constructor_params(strategy_class, row):
+    """Strategy kwargs for `row`, by ASKING the constructor what it takes.
+
+    Deliberately not a denylist. This started as "everything except the
+    metric columns", which failed twice for the same reason: adding
+    "Grid Step"/"Profit Target" to that set made deduplication blind to
+    them, and later a new "CAGR %" metric leaked straight through into
+    the constructor. Every new metric was one more string somebody had
+    to remember to add to a list.
+
+    An allowlist taken from the signature cannot go stale. A new metric
+    is excluded automatically because the constructor does not accept
+    it, and a RENAMED strategy parameter shows up as a missing kwarg
+    rather than being silently dropped.
+    """
+    accepted = set(inspect.signature(strategy_class.__init__).parameters) - {"self"}
+    params = {k: row[k] for k in row.index if k in accepted and pd.notna(row[k])}
+    for int_key in ("bars_per_day",):
+        if int_key in params:
+            params[int_key] = int(params[int_key])
+    return params
 
 
 def _top_configs(cap: float | None, limit: int):
@@ -119,16 +137,8 @@ def main():
         print(f"  {year.year}  {value:+9.2f}%")
 
     for rank, (_, row) in enumerate(_top_configs(args.cap, args.top).iterrows(), start=1):
-        params = {
-            k: row[k]
-            for k in row.index
-            if k not in _NON_PARAM_COLS and pd.notna(row[k])
-        }
-        # bars_per_day and the like arrive as floats from CSV round-trip.
-        for int_key in ("bars_per_day",):
-            if int_key in params:
-                params[int_key] = int(params[int_key])
         strategy_class = resolve_strategy("hf_local_reference")
+        params = _constructor_params(strategy_class, row)
         result_row, sim = _run_one_combination(
             controller,
             float(row["Grid Step"]),
