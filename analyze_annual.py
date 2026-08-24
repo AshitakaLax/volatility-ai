@@ -170,6 +170,49 @@ def main():
             1 for y in strat.index if pd.notna(benchmark.get(y)) and strat[y] > benchmark[y]
         )
         print(f"  strategy beat buy-and-hold in {wins} of {len(strat)} calendar years")
+        _by_regime(equity, df["close"])
+
+
+def _by_regime(equity: pd.Series, price: pd.Series) -> None:
+    """Strategy vs buy-and-hold bucketed by what the MARKET did.
+
+    Calendar years are a crude proxy for regime. None of the eleven in
+    this dataset is a clean flat-and-choppy market -- 2018, the closest,
+    was three rising quarters followed by a Q4 crash -- so a year-by-year
+    table cannot answer "does this design earn its keep in a sideways
+    market with frequent small corrections", which is the actual claim a
+    grid/harvest strategy makes for itself.
+
+    Monthly buckets, keyed on the benchmark's own return, can. The
+    SIDEWAYS bucket (-3% to +3%) is the one that matters: if the design
+    works as intended, that is where it should beat holding. If it loses
+    there too, the strategy is not a volatility harvester regardless of
+    what the whole-period number says.
+    """
+    strat_m = equity.resample("ME").last().pct_change().dropna() * 100
+    bench_m = price.resample("ME").last().pct_change().dropna() * 100
+    joined = pd.DataFrame({"strategy": strat_m, "benchmark": bench_m}).dropna()
+
+    buckets = [
+        ("crash      (< -15%)", joined["benchmark"] < -15),
+        ("down       (-15..-3%)", (joined["benchmark"] >= -15) & (joined["benchmark"] < -3)),
+        ("SIDEWAYS   (-3..+3%)", (joined["benchmark"] >= -3) & (joined["benchmark"] <= 3)),
+        ("up         (+3..+15%)", (joined["benchmark"] > 3) & (joined["benchmark"] <= 15)),
+        ("rally      (> +15%)", joined["benchmark"] > 15),
+    ]
+    print()
+    print("  --- monthly returns bucketed by what the MARKET did ---")
+    print(f"  {'regime':<24}{'n':>4}{'strategy':>11}{'TQQQ B&H':>11}{'diff':>10}{'win rate':>10}")
+    for label, mask in buckets:
+        sub = joined[mask]
+        if sub.empty:
+            continue
+        win = (sub["strategy"] > sub["benchmark"]).mean() * 100
+        print(
+            f"  {label:<24}{len(sub):>4}{sub['strategy'].mean():>10.2f}%"
+            f"{sub['benchmark'].mean():>10.2f}%"
+            f"{sub['strategy'].mean() - sub['benchmark'].mean():>9.2f}%{win:>9.0f}%"
+        )
 
 
 if __name__ == "__main__":
