@@ -1,18 +1,17 @@
 # BEST KNOWN CONFIGURATION as of 2026-08-24, on the 10.63-year TQQQ SIP
 # dataset (2016-01-04 to 2026-08-21, 1,035,332 bars, 2,674 sessions).
 #
-#   total return   778.83%
-#   CAGR            22.69%
-#   max drawdown    37.07%
-#   trades         367,883
+#   total return  1007.08%
+#   CAGR            25.38%
+#   max drawdown    45.57%
+#   trades          86,087
 #
 # For comparison, on identical data:
 #   TQQQ buy-and-hold   39.15% CAGR at 81.68% max drawdown
-#   previous best       10.64% CAGR at 79.47% max drawdown
+#   earlier best        10.64% CAGR at 79.47% max drawdown
 #
-# So this roughly DOUBLES the previous CAGR while more than halving the
-# drawdown, and reaches 58% of buy-and-hold's return at 45% of its
-# drawdown.
+# 65% of buy-and-hold's annual return at 56% of its drawdown, and a
+# better return-per-unit-drawdown ratio (0.557 against 0.479).
 #
 # --------------------------------------------------------------------
 # WHAT ACTUALLY CHANGED: profit_target
@@ -34,8 +33,30 @@
 #     0.025       414.08%       1,749.02%      31.58%
 #     0.050       601.96%       2,139.93%      33.97%
 #
-# 0.05 is at the EDGE of what was swept, so the optimum may lie beyond
-# it. This is not a tuned value; it is the best of what has been tried.
+# UPDATED after extending the sweep to 0.30. The axis STILL had not
+# turned -- median CAGR rose at every step to the new ceiling -- but the
+# gains flatten sharply, and drawdown rises with them:
+#
+#     target   median CAGR   best CAGR   median DD
+#     0.050       18.24%       33.98%      41.09%
+#     0.075       21.18%       35.43%      41.36%
+#     0.100       21.89%       35.98%      43.90%
+#     0.150       22.23%       35.94%      45.97%
+#     0.200       22.50%       36.76%      46.47%
+#     0.300       23.18%       37.11%      48.41%
+#
+# 0.30 is again on the boundary, so this is still the best of what has
+# been tried rather than a located optimum. But the curve is clearly
+# converging on buy-and-hold: at target 0.30 the best configuration
+# reaches 37.11% CAGR against buy-and-hold's 39.15%, and the strategy
+# makes 49,395 trades rather than 900,000. Pushing further mostly buys
+# a more expensive way to hold.
+#
+# The target chosen here is 0.30 at per_lot_pct 0.0002, which is the
+# best configuration under a 50% drawdown cap rather than the best
+# outright. The unconstrained winner reaches 37.11% CAGR but at 72.76%
+# drawdown -- nearly buy-and-hold's risk for slightly less than
+# buy-and-hold's return, which is not a trade worth making.
 #
 # --------------------------------------------------------------------
 # WHY A WIDER TARGET HELPS SO MUCH
@@ -89,7 +110,7 @@ strategy:
     volume_scale_exponent: -1.0
 grid:
   steps: [0.00075]
-  profit_targets: [0.05]
+  profit_targets: [0.3]
 backtest: {symbol: TQQQ, initial_cash: 100000.0}
 costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
 risk: {max_concurrent_lots: 6000, max_total_exposure: null}
