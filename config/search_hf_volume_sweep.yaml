@@ -1,3 +1,24 @@
+# Volume-inclusive sweep -- the follow-up the previous config deferred.
+#
+# search_hf_volscaled.yaml pinned volume_scale_exponent OFF purely for
+# budget, while its own controlled probe showed volume worth +11pp at
+# cap-compliant settings and +35.8pp uncapped, ON TOP of an already
+# tuned vol scaler. This brings it in as a real axis.
+#
+# Room is made by fixing lookback_days at 0.02 (present in nearly every
+# admissible leader) and dropping vol_scale_exponent=-2.0 (never won).
+# That is coordinate descent: settle the axes the last sweep resolved,
+# spend the freed budget on the one it could not afford.
+#
+# OPEN QUESTION this is meant to help answer: volume and volatility run
+# 0.36-0.49 rank-correlated, so some of volume's measured gain may be
+# the vol scaler acting through a second channel rather than new
+# information. With both swept together, a run that picks volume=-1.0
+# alongside vol_scale=-0.5 in preference to vol_scale=-1.5 alone would
+# be evidence they are genuinely additive.
+#
+# ORIGINAL HEADER FOLLOWS.
+#
 # TPE search over HighFrequencyLocalReferenceSizing with CONTINUOUS
 # volatility scaling as the primary axis.
 #
@@ -111,14 +132,14 @@ strategy:
   strategy_params:
     bars_per_day: 387
     per_lot_pct: [0.0002, 0.0003]
-    lookback_days: [0.02, 0.03]
+    lookback_days: 0.02
     event_day_boost_multiplier: 2.5
     earnings_day_boost_multiplier: 1.5
-    vol_scale_exponent: [-2.0, -1.5, -1.0, -0.5, 0.0]
+    vol_scale_exponent: [-1.5, -1.0, -0.5, 0.0]
     vol_fast_days: [0.05, 0.1, 0.25, 0.5]
     vol_slow_days: [2.0, 5.0, 10.0, 20.0]
     vol_measure: [stdev, range]
-    volume_scale_exponent: 0.0
+    volume_scale_exponent: [0.0, -0.5, -1.0]
     vol_scale_min: 0.25
     vol_scale_max: 3.0
 grid:

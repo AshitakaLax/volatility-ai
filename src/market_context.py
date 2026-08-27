@@ -58,6 +58,17 @@ class MarketContext:
     # Defaulted like the fields above so every existing call site is
     # unaffected.
     is_earnings_reaction_day: bool = False
+    # Present in every dataset this project loads (historical_data.py's
+    # BACKTEST_COLUMNS has always included it) and carried through the
+    # audit and Monte Carlo paths, but never until now visible to a
+    # strategy. Measured against forward 60-session troughs a volume
+    # surge scores -0.095 -- weak, but only 0.36-0.49 correlated with
+    # the volatility signals, so it is not simply those again.
+    #
+    # Defaulted to 0.0 like the fields above, so every existing call
+    # site is unaffected. A strategy must treat 0.0 as "unknown"
+    # rather than "no volume".
+    volume: float = 0.0
 
     @property
     def price(self) -> float:

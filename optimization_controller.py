@@ -244,6 +244,42 @@ class OptimizationController:
             f"OptimizationController initialized with historical dataset length: {len(historical_data)}"
         )
 
+    # Every per-bar cache below is DERIVED from self.data and is one
+    # element per bar -- five of them, at 1.03M bars on the real dataset.
+    _DERIVED_CACHES = (
+        "_fomc_flags_cache",
+        "_earnings_flags_cache",
+        "_eastern_dates_cache",
+        "_eastern_index_cache",
+        "_minutes_since_open_cache",
+    )
+
+    def __getstate__(self):
+        """Drop the derived per-bar caches before pickling.
+
+        This object is sent to a worker on EVERY task submission when
+        n_jobs > 1, so anything on it is paid for per combination, not
+        once. The caches exist to avoid recomputing an Eastern-time
+        conversion per bar per combination -- they were never meant to
+        be shipped.
+
+        Measured: warming them inflated the pickle by 48% on a 2,000-bar
+        fixture, and they scale one-for-one with bar count, so on the
+        1.03M-bar dataset they dwarf the DataFrame they were derived
+        from. That is a pure loss -- the receiving worker unpickles a
+        FRESH controller per task and would rebuild them lazily anyway,
+        so transferring them buys nothing and costs the transfer.
+
+        Caught by test_n_jobs_shows_a_real_speedup_on_a_large_sweep,
+        which measures sequential against parallel on the same
+        controller: the sequential leg warms the caches, and the
+        parallel leg then pays to ship them.
+        """
+        state = self.__dict__.copy()
+        for name in self._DERIVED_CACHES:
+            state[name] = None
+        return state
+
     @property
     def _fomc_flags(self):
         """Per-bar FOMC-decision-day flags for this controller's data.
@@ -456,6 +492,7 @@ class OptimizationController:
                 is_macro_event_day=fomc_flags[bar_index],
                 is_earnings_reaction_day=earnings_flags[bar_index],
                 time_of_day_flag=minute_flags[bar_index],
+                volume=float(getattr(row, "volume", 0.0) or 0.0),
             )
 
             # Every bar, unconditionally -- B4. Routed through the shared
@@ -686,6 +723,30 @@ class OptimizationController:
             metrics["Return/Drawdown"] = float("inf")
         else:
             metrics["Return/Drawdown"] = 0.0
+
+        # Annualized (compound) return. Ranking by this is IDENTICAL to
+        # ranking by Total Return % over a fixed dataset -- it is a
+        # monotonic transform of it -- so this exists to be READ, not to
+        # change any ordering. It is reported because "192.91% over ten
+        # and a half years" and "10.64% a year" are the same fact, and
+        # only the second one can be compared against a benchmark, a
+        # bond yield, or an expectation without arithmetic in the reader's
+        # head.
+        #
+        # Span comes from the data's own index rather than a constant, so
+        # it stays correct if the dataset is extended or a shorter slice
+        # is passed.
+        span_days = (self.data.index[-1] - self.data.index[0]).days
+        years = span_days / 365.25 if span_days > 0 else 0.0
+        growth = 1.0 + total_return_pct / 100.0
+        if years > 0.0 and growth > 0.0:
+            metrics["CAGR %"] = ((growth ** (1.0 / years)) - 1.0) * 100.0
+        else:
+            # A total loss (growth <= 0) has no real annualized rate, and
+            # a zero-length span has no rate at all. -100% is the honest
+            # reading of the first; the second cannot arise from a
+            # validated dataset but must not raise here.
+            metrics["CAGR %"] = -100.0 if growth <= 0.0 else 0.0
 
         # Task 4.6. params captures every input _simulate_single itself
         # actually received -- the strategy's own constructor-derived

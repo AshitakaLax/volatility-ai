@@ -13,7 +13,14 @@ import pandas as pd
 import pytest
 
 from src.exceptions import ConfigurationError
-from src.sizing_indicators import RollingMax, RollingStdev, WilderRSI, bars_from_days, clamp
+from src.sizing_indicators import (
+    RollingMax,
+    RollingMean,
+    RollingStdev,
+    WilderRSI,
+    bars_from_days,
+    clamp,
+)
 
 # --- window conversion ---
 
@@ -222,3 +229,42 @@ def test_rolling_stdev_state_stays_bounded():
         r.update((i % 5) * 0.0001)
     assert r.count == 32
     assert len(r._values) == 32
+
+
+# --- RollingMean ---
+
+
+def test_rolling_mean_matches_pandas_on_random_data():
+    rng = np.random.default_rng(11)
+    values = rng.normal(100, 5, 2000)
+    rm = RollingMean(50)
+    mine = [rm.update(v) for v in values]
+    reference = pd.Series(values).rolling(50, min_periods=1).mean().tolist()
+    assert np.allclose(mine, reference)
+
+
+def test_rolling_mean_is_none_before_any_observation():
+    assert RollingMean(10).value is None
+
+
+def test_rolling_mean_evicts_beyond_the_window():
+    rm = RollingMean(3)
+    for v in (10.0, 10.0, 10.0):
+        rm.update(v)
+    assert rm.value == pytest.approx(10.0)
+    rm.update(40.0)  # window is now [10, 10, 40]
+    assert rm.value == pytest.approx(20.0)
+    assert rm.count == 3
+
+
+@pytest.mark.parametrize("window", [0, -3])
+def test_rolling_mean_rejects_a_degenerate_window(window):
+    with pytest.raises(ConfigurationError, match="RollingMean window"):
+        RollingMean(window)
+
+
+def test_rolling_mean_state_stays_bounded():
+    rm = RollingMean(32)
+    for i in range(10_000):
+        rm.update(float(i % 7))
+    assert rm.count == 32

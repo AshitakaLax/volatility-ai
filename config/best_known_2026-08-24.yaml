@@ -1,0 +1,119 @@
+# BEST KNOWN CONFIGURATION as of 2026-08-24, on the 10.63-year TQQQ SIP
+# dataset (2016-01-04 to 2026-08-21, 1,035,332 bars, 2,674 sessions).
+#
+#   total return  1007.08%
+#   CAGR            25.38%
+#   max drawdown    45.57%
+#   trades          86,087
+#
+# For comparison, on identical data:
+#   TQQQ buy-and-hold   39.15% CAGR at 81.68% max drawdown
+#   earlier best        10.64% CAGR at 79.47% max drawdown
+#
+# 65% of buy-and-hold's annual return at 56% of its drawdown, and a
+# better return-per-unit-drawdown ratio (0.557 against 0.479).
+#
+# --------------------------------------------------------------------
+# WHAT ACTUALLY CHANGED: profit_target
+#
+# Every sweep in this project before 2026-08-23 held profit targets at
+# or below 0.003. That ceiling was inherited from
+# search_hf_intrabar.yaml, whose concern was the OPPOSITE problem --
+# targets below the ~5.1bps cost floor, which the no-loss guard
+# rejected outright. The lower bound was carefully reasoned; the upper
+# bound was never questioned, and it silently capped every result in
+# this project.
+#
+# Swept exhaustively, the axis is monotonic and dominant:
+#
+#     target   median return   best return   best CAGR
+#     0.003        64.53%         252.81%      12.59%
+#     0.006       132.52%         452.49%      17.44%
+#     0.012       229.15%         841.81%      23.49%
+#     0.025       414.08%       1,749.02%      31.58%
+#     0.050       601.96%       2,139.93%      33.97%
+#
+# UPDATED after extending the sweep to 0.30. The axis STILL had not
+# turned -- median CAGR rose at every step to the new ceiling -- but the
+# gains flatten sharply, and drawdown rises with them:
+#
+#     target   median CAGR   best CAGR   median DD
+#     0.050       18.24%       33.98%      41.09%
+#     0.075       21.18%       35.43%      41.36%
+#     0.100       21.89%       35.98%      43.90%
+#     0.150       22.23%       35.94%      45.97%
+#     0.200       22.50%       36.76%      46.47%
+#     0.300       23.18%       37.11%      48.41%
+#
+# 0.30 is again on the boundary, so this is still the best of what has
+# been tried rather than a located optimum. But the curve is clearly
+# converging on buy-and-hold: at target 0.30 the best configuration
+# reaches 37.11% CAGR against buy-and-hold's 39.15%, and the strategy
+# makes 49,395 trades rather than 900,000. Pushing further mostly buys
+# a more expensive way to hold.
+#
+# The target chosen here is 0.30 at per_lot_pct 0.0002, which is the
+# best configuration under a 50% drawdown cap rather than the best
+# outright. The unconstrained winner reaches 37.11% CAGR but at 72.76%
+# drawdown -- nearly buy-and-hold's risk for slightly less than
+# buy-and-hold's return, which is not a trade worth making.
+#
+# --------------------------------------------------------------------
+# WHY A WIDER TARGET HELPS SO MUCH
+#
+# At 0.003 the strategy sold every position for +0.3% in a market that
+# rose 33x, continuously clipping trivial gains and re-buying higher
+# while slippage on ~900k trades ate the margin. Regime analysis showed
+# it LOSING in flat months (-0.69pp against buy-and-hold, 42% win rate)
+# purely to cost drag.
+#
+# At 0.05 it makes ~368k trades instead of ~900k and holds winners long
+# enough to participate. Flat months flip positive (+0.80 to +1.24pp,
+# 47-63% win rate) and the whole payoff shape changes.
+#
+# --------------------------------------------------------------------
+# KEEP enforce_no_loss TRUE
+#
+# Tested directly: 80 configurations run with the guard on and off,
+# paired on identical parameters. The guard was better in 80 of 80.
+# Mean effect of disabling it was -26.52pp of return AND +1.45pp MORE
+# drawdown -- it costs on both axes, never trades one for the other.
+# The retail edge it encodes (never being FORCED to liquidate) is real
+# and measurable.
+#
+# --------------------------------------------------------------------
+# REGIME BEHAVIOUR (monthly, vs TQQQ buy-and-hold)
+#
+#     crash    (< -15%)   +3.3 to +8.4pp   94% win rate
+#     down     (-15..-3%) +1.0 to +2.0pp   87-91% win rate
+#     sideways (-3..+3%)  +0.7 to +1.2pp   47-63% win rate
+#     up       (+3..+15%) -1.2 to -2.4pp   17-23% win rate
+#     rally    (> +15%)   -4.4 to -8.5pp   3-9% win rate
+#
+# It is a DOWNSIDE DAMPENER that now also holds its own in flat tape.
+# It still gives back ground in rising markets, which is intrinsic to
+# selling at a fixed target.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: 0.0002
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+grid:
+  steps: [0.00075]
+  profit_targets: [0.3]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: Total Return %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}
