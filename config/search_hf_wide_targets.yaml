@@ -1,0 +1,54 @@
+# Does the PROFIT TARGET cap the strategy's upside?
+#
+# Every sweep in this project has held profit targets at or below 0.003
+# (30bps), inherited from search_hf_intrabar.yaml where the concern was
+# the opposite problem -- targets BELOW the ~5.1bps cost floor, which
+# the no-loss guard rejected outright. Nothing has ever tested the upper
+# end.
+#
+# It matters because the whole-period result looks like a capped-upside
+# payoff. The best configuration returns 10.64% CAGR against TQQQ
+# buy-and-hold's 39.15% on the same data, while taking 79.47% drawdown
+# against buy-and-hold's 81.68% -- almost all of the downside for a
+# quarter of the upside. Selling every position at +0.3% during a decade
+# where the instrument rose 33x is a mechanical explanation for exactly
+# that shape, and it has never been measured because the axis was never
+# swept.
+#
+# Targets here run from the previous ceiling (0.003) out to 0.05, and
+# grid steps widen with them -- a 5% target reached in 75bps increments
+# would open lots far faster than it closes them, so the two axes have
+# to move together to stay meaningful.
+#
+# Vol scaling is PINNED at the values the 250-combination sweep found
+# best (exponent -1.5, fast 0.25, slow 10.0). This experiment is about
+# the target, and leaving the tuned scaler in place keeps it comparable
+# to the results it is being compared against.
+#
+# 4 x 5 x 2 x 2 = 80 combinations -- small enough to run EXHAUSTIVELY
+# with grid search rather than sampled. No drawdown cap: the point is to
+# see the whole risk/return shape, including whether wider targets buy
+# return by taking more drawdown or by taking less.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: [0.0002, 0.001]
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    volume_scale_exponent: [0.0, -1.0]
+grid:
+  steps: [0.00075, 0.0015, 0.003, 0.006]
+  profit_targets: [0.003, 0.006, 0.012, 0.025, 0.05]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: Total Return %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar}
+output: {return_full_results: false}
