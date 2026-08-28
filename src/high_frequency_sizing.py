@@ -306,6 +306,46 @@ measured cost here: it once took a sweep from 3.2% coverage to 0.30%.
 
 Defaults: 0.0, an exact no-op, and it should stay there unless a sweep
 shows it earning its place.
+--------------------------------------------------------------------
+SYNTHETIC BARS, AND WHY THE VOL WINDOWS ARE GATED BY VOLUME TOO
+
+src/historical_data.resample_to_uniform_minutes exists for the
+extended-hours dataset, where real bar density drifted 2.08x from 2016
+to 2026 as pre/post-market liquidity grew -- a problem bars_per_day
+cannot express since it is one constant for the whole backtest. The fix
+gives every session the same bar count by inserting flat, zero-volume
+bars into quiet minutes: open==high==low==close of the last real print,
+volume==0.0.
+
+Measured on that dataset: 52.2% of 2016's bars are synthetic against
+0.6% of 2026's. Before this gate, record_tick fed every one of those
+into _fast_vol/_slow_vol. A flat bar is a genuine zero under EITHER
+vol_measure -- zero intrabar range, and a zero log return against an
+unchanged price -- so realized vol read low precisely through the
+years with the most synthetic filler, and with a NEGATIVE
+vol_scale_exponent (this strategy's measured direction, see above)
+that means sizing UP more in 2016-2019 than 2022-2026: an artifact of
+the fill pattern, not a market signal.
+
+The detector is NOT context.volume > 0, even though that is what gates
+the volume windows just below for an unrelated reason. It was the
+first thing tried, and it is wrong: on the live path context.volume is
+ALWAYS 0.0 (LiveBar carries no volume field), so gating vol scaling on
+it would not merely skip synthetic bars, it would disable this
+strategy's primary measured lever -- vol_scale_exponent -- in live
+trading permanently, including on the config running in production as
+this was written.
+
+The actual detector is structural: a bar is treated as synthetic when
+it is flat (high == low == price) AND unchanged from the previous real
+price, which is exactly what a carried-forward fabricated bar is by
+construction. This is a heuristic, not an exact test -- 2-5% of
+genuinely real bars on the extended-hours dataset are also flat and
+unchanged (thin liquidity), and those get skipped too. Measured across
+every year, that rate does not track the 52% -> 0.6% ramp the
+synthetic bars themselves produce, so it does not reintroduce a
+year-correlated bias; it is small, roughly flat noise instead. See
+record_tick for the exact condition and the year-by-year numbers.
 """
 
 from __future__ import annotations
@@ -436,7 +476,36 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             self._baseline_capital = context.equity
         if context.price > 0:
             self._rolling_high.update(context.price)
-            if self._vol_enabled:
+            # A fabricated bar from resample_to_uniform_minutes (see
+            # module docstring's "SYNTHETIC BARS" section) is flat --
+            # high==low==price -- AND unchanged from the previous real
+            # print, because that is exactly what it carries forward.
+            # Both conditions together are the detector, deliberately
+            # NOT context.volume==0: on the live path volume is ALWAYS
+            # 0.0 (LiveBar has no volume field), so gating on volume
+            # would silently disable vol scaling in live trading
+            # forever, not just on resampled backtests.
+            #
+            # This is a heuristic, not an exact test, and was measured
+            # rather than assumed: on the real (non-resampled) extended-
+            # hours dataset, 2.9% of genuine bars are ALSO flat and
+            # unchanged (thin extended-hours liquidity, mostly), so this
+            # skips a small number of real observations too. That is a
+            # different, much smaller problem than the one this exists
+            # to fix -- the false-positive rate is 2-5% in every year
+            # measured (2016: 2.1%, 2019: 5.0%, 2023: 5.2%, 2026: 0.7%),
+            # not the 52% -> 0.6% ramp the synthetic bars produced, so it
+            # does not reintroduce a year-correlated bias. The correct
+            # fix is giving the live path real volume (LiveBar has no
+            # volume field today -- a separate, pre-existing gap), which
+            # would let this reuse context.volume directly; not done
+            # here because it touches the live data adapter.
+            is_synthetic_bar = (
+                context.high == context.low
+                and self._prev_price is not None
+                and context.price == self._prev_price
+            )
+            if self._vol_enabled and not is_synthetic_bar:
                 if self.vol_measure == "range":
                     # Intrabar range, scaled by price so the two windows
                     # compare across a dataset where TQQQ spans ~8x-90x.
@@ -452,7 +521,14 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
                     log_return = log(context.price / self._prev_price)
                     self._fast_vol.update(log_return)
                     self._slow_vol.update(log_return)
-                self._prev_price = context.price
+            # Advances on every REAL price (this whole block is already
+            # inside `if context.price > 0`) regardless of whether the
+            # vol window updated -- kept outside the volume gate above
+            # so a synthetic bar's flat price still becomes the
+            # reference the NEXT real return is measured from, rather
+            # than silently skipping a price update and measuring that
+            # next return against a stale, older price.
+            self._prev_price = context.price
             if self._volume_enabled and context.volume > 0:
                 # 0.0 means "unknown" (the MarketContext default), not
                 # "no volume", so an unpopulated feed must not be fed in
