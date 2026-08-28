@@ -525,3 +525,42 @@ def test_volume_and_vol_scaling_compose():
             s.record_tick(ctx(p, i, volume=5000.0 if i > 250 else 1000.0))
     probe = ctx(100.0, volume=5000.0)
     assert both.calculate_trade_value(probe) < vol_only.calculate_trade_value(probe)
+
+
+# --- synthetic-bar exclusion from vol windows ---
+
+
+def test_a_flat_unchanged_bar_does_not_update_the_vol_windows():
+    """The resample_to_uniform_minutes signature: high==low==price,
+    unchanged from the previous real print."""
+    s = hf(per_lot_pct=0.01, vol_scale_exponent=-1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    real = _calm_then_wild()
+    _vol_feed(s, real)
+    before = s.calculate_trade_value(ctx(real[-1]))
+
+    # 50 synthetic bars: flat, at the last real price.
+    last = real[-1]
+    for i in range(50):
+        s.record_tick(ctx(last, len(real) + i, high=last, low=last))
+    after = s.calculate_trade_value(ctx(real[-1]))
+
+    assert after == pytest.approx(before)
+
+
+def test_a_real_flat_bar_with_no_prior_price_still_counts():
+    """The very first tick has no prev_price to compare against, so it
+    must not be misread as synthetic and silently dropped."""
+    s = hf(per_lot_pct=0.01, vol_scale_exponent=-1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    s.record_tick(ctx(100.0, 0))
+    assert s._prev_price == pytest.approx(100.0)
+
+
+def test_vol_scaling_is_unaffected_by_context_volume_being_zero():
+    """The live path's context.volume is ALWAYS 0.0 (LiveBar has no
+    volume field) -- vol scaling must not be gated on it, or it would
+    silently disable itself forever in live trading."""
+    s = hf(per_lot_pct=0.01, vol_scale_exponent=-1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    for i, p in enumerate(_calm_then_wild()):
+        s.record_tick(ctx(p, i, volume=0.0))  # volume=0.0 is the ctx() default too
+    assert s._fast_vol.value is not None
+    assert s.calculate_trade_value(ctx(100.0)) < INITIAL_CASH * 0.01
