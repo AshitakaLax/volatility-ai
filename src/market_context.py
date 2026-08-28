@@ -69,6 +69,28 @@ class MarketContext:
     # site is unaffected. A strategy must treat 0.0 as "unknown"
     # rather than "no volume".
     volume: float = 0.0
+    # Weighted, minute-precise event signal -- src/event_calendar.py.
+    # is_macro_event_day/is_earnings_reaction_day are calendar-DATE
+    # booleans with no notion of which company or how much of the index
+    # it moves; these two exist to carry lead time and index weight,
+    # which a same-day boolean structurally cannot.
+    #
+    # event_intensity: sum of INDEX_WEIGHTS_PCT (src/index_weights.py)
+    # over every event currently inside its lead-time window. 0.0 means
+    # no tracked constituent has a release pending or in its reaction
+    # window right now -- the overwhelming majority of bars. Deliberately
+    # a SUM, not a max: two overlapping reporters (rare, but real -- see
+    # src/earnings_calendar.py on FOMC/earnings overlap for the same
+    # pattern at day granularity) should read as more exposure than
+    # either alone, the way actual index risk would.
+    event_intensity: float = 0.0
+    # Minutes until the nearest tracked event's release, or -1 once that
+    # release has passed and its reaction window has closed. Sentinel
+    # -1 rather than 0.0, following time_of_day_flag's convention
+    # (src/intraday_profile.py), because 0 is a real, meaningful value
+    # here -- "the release is this minute" -- and must not collide with
+    # "no event is scheduled."
+    minutes_to_event: float = -1.0
 
     @property
     def price(self) -> float:

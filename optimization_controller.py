@@ -21,7 +21,7 @@ import pandas as pd
 from src import data_validation, decision_cycle, intraday_validation
 from src.cost_models import TransactionCostModel, ZeroCostModel
 from src.earnings_calendar import EARNINGS_REACTION_DATES
-from src.exceptions import ConfigurationError
+from src.exceptions import ConfigurationError, DataValidationError
 from src.fomc_calendar import EASTERN_TZ as _EASTERN_TZ
 from src.fomc_calendar import FOMC_DECISION_DATES
 from src.idempotency import ProcessedEventStore
@@ -240,6 +240,8 @@ class OptimizationController:
         self._eastern_dates_cache = None
         self._eastern_index_cache = None
         self._minutes_since_open_cache = None
+        self._event_intensity_cache = None
+        self._minutes_to_event_cache = None
         logger.info(
             f"OptimizationController initialized with historical dataset length: {len(historical_data)}"
         )
@@ -252,6 +254,8 @@ class OptimizationController:
         "_eastern_dates_cache",
         "_eastern_index_cache",
         "_minutes_since_open_cache",
+        "_event_intensity_cache",
+        "_minutes_to_event_cache",
     )
 
     def __getstate__(self):
@@ -364,6 +368,47 @@ class OptimizationController:
             ]
         return self._earnings_flags_cache
 
+    def _load_event_table(self):
+        """The minute-precision event table, or None if it is not built.
+
+        data/earnings_releases_derived.csv (src/event_calendar.py's
+        source) is a generated artifact, not a committed one -- a fresh
+        checkout that has not run build_earnings_calendar.py lacks it.
+        Falling back to "no events" rather than raising keeps a sweep
+        runnable without it: every strategy's weighted_event_boost_
+        multiplier defaults to 1.0, so an all-zero event_intensity array
+        changes nothing regardless.
+        """
+        try:
+            from src.event_calendar import EarningsEventTable
+
+            return EarningsEventTable.from_csv()
+        except (FileNotFoundError, DataValidationError):
+            return None
+
+    @property
+    def _event_intensity(self):
+        """Per-bar weighted event-intensity, cached exactly as
+        _fomc_flags is. See src/event_calendar.py."""
+        if self._event_intensity_cache is None:
+            table = self._load_event_table()
+            if table is None:
+                self._event_intensity_cache = [0.0] * len(self.data)
+                self._minutes_to_event_cache = [-1.0] * len(self.data)
+            else:
+                intensity, minutes = table.vectorized(self.data.index)
+                self._event_intensity_cache = intensity
+                self._minutes_to_event_cache = minutes
+        return self._event_intensity_cache
+
+    @property
+    def _minutes_to_event(self):
+        """Companion array to _event_intensity -- populated by the same
+        call, so this triggers that computation if it has not run yet."""
+        if self._minutes_to_event_cache is None:
+            self._event_intensity  # noqa: B018 -- populates both caches
+        return self._minutes_to_event_cache
+
     def _simulate_single(
         self,
         step: float,
@@ -461,6 +506,8 @@ class OptimizationController:
         fomc_flags = self._fomc_flags
         earnings_flags = self._earnings_flags
         minute_flags = self._minutes_since_open
+        event_intensity = self._event_intensity
+        minutes_to_event = self._minutes_to_event
 
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp = row.Index
@@ -493,6 +540,8 @@ class OptimizationController:
                 is_earnings_reaction_day=earnings_flags[bar_index],
                 time_of_day_flag=minute_flags[bar_index],
                 volume=float(getattr(row, "volume", 0.0) or 0.0),
+                event_intensity=float(event_intensity[bar_index]),
+                minutes_to_event=float(minutes_to_event[bar_index]),
             )
 
             # Every bar, unconditionally -- B4. Routed through the shared

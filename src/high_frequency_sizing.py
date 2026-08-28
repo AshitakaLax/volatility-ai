@@ -307,6 +307,34 @@ measured cost here: it once took a sweep from 3.2% coverage to 0.30%.
 Defaults: 0.0, an exact no-op, and it should stay there unless a sweep
 shows it earning its place.
 --------------------------------------------------------------------
+weighted_event_boost_multiplier -- minute precision, step 3
+
+MarketContext.event_intensity is a NEW field, not one of Task 7.9's
+original four -- see src/market_context.py's own comment on it. This is
+its consumer, so per the same discovery-gate process:
+
+Source dataset: src/event_calendar.py's EarningsEventTable, built from
+data/earnings_releases_derived.csv (676 release timestamps across 16
+tickers, RECOVERED from the tape -- see that module's docstring for
+the method and why recovering a scheduled, publicly-announced time is
+not lookahead) and src/index_weights.py's single 2026-08-13 QQQ-holdings
+snapshot (documented there as lookahead bias applied to all history,
+pending quarterly snapshots).
+
+Join semantics: EarningsEventTable.vectorized (backtest) and .scalar
+(live) share one window definition -- [release - lead_minutes, release
++ reaction_minutes), lead_minutes=15.0 by default -- and are pinned
+equal on every bar by
+tests/unit/test_event_calendar.py::test_scalar_and_vectorized_agree_on_every_bar.
+event_intensity is the SUM of index weight over every event whose
+window currently contains the bar (not max -- see that module's
+docstring on why two overlapping releases are independent exposure,
+unlike the day-level flags above).
+
+Defaults: weighted_event_boost_multiplier=1.0, an exact no-op --
+event_intensity being populated changes nothing until a config sets
+this above 1.0.
+--------------------------------------------------------------------
 SYNTHETIC BARS, AND WHY THE VOL WINDOWS ARE GATED BY VOLUME TOO
 
 src/historical_data.resample_to_uniform_minutes exists for the
@@ -390,6 +418,7 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         volume_scale_exponent: float = 0.0,
         trail_pct: float | None = None,
         trail_min_profit_target: float = 0.001,
+        weighted_event_boost_multiplier: float = 1.0,
     ) -> None:
         if not 0.0 < per_lot_pct <= 1.0:
             raise ConfigurationError(f"per_lot_pct must be in (0, 1], got {per_lot_pct}")
@@ -403,6 +432,12 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
                 f"earnings_day_boost_multiplier must be >= 1.0 (same size-up-only rule as "
                 f"event_day_boost_multiplier), got {earnings_day_boost_multiplier}"
             )
+        if weighted_event_boost_multiplier < 1.0:
+            raise ConfigurationError(
+                f"weighted_event_boost_multiplier must be >= 1.0 (same size-up-only rule as "
+                f"the other event boosts), got {weighted_event_boost_multiplier}"
+            )
+        self.weighted_event_boost_multiplier = weighted_event_boost_multiplier
         self.per_lot_pct = per_lot_pct
         self.lookback_days = lookback_days
         self.bars_per_day = bars_per_day
@@ -698,6 +733,26 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             boost = max(boost, self.event_day_boost_multiplier)
         if context.is_earnings_reaction_day:
             boost = max(boost, self.earnings_day_boost_multiplier)
+        # event_intensity (src/event_calendar.py) is a minute-precise,
+        # index-weighted REFINEMENT of the same claim
+        # is_earnings_reaction_day makes at day granularity -- "an
+        # earnings-moving event is happening" -- not a new axis, so it
+        # combines with max(), same as the other two above, rather than
+        # multiplying (which would double-count a day this project has
+        # BOTH day-level and minute-level knowledge of).
+        #
+        # Graded by weight, not a step function: at
+        # weighted_event_boost_multiplier's default of 1.0 this is an
+        # exact no-op; at the configured multiplier, event_intensity's
+        # own scale (index-weight percent, e.g. NVDA alone = 8.50) sets
+        # how much of that multiplier applies. A single non-tracked
+        # symbol's release contributes 0.0 intensity and this evaluates
+        # to boost's floor, same as an ordinary bar.
+        if context.event_intensity > 0:
+            weighted = 1.0 + (self.weighted_event_boost_multiplier - 1.0) * min(
+                context.event_intensity, 100.0
+            ) / 100.0
+            boost = max(boost, weighted)
         # The event boost and the vol scaler MULTIPLY, unlike the two
         # event boosts which take a max of each other. Those two are
         # alternative labels for the same underlying claim ("today is a
