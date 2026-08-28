@@ -526,6 +526,22 @@ class LiveTradingLoop:
         picked up next tick.
         """
         submitted = 0
+        # Trailing exits, through the shared helper the backtest paths
+        # also call. Lots with a sell in flight are excluded: that order
+        # is resting at the lot's current target, so moving the target
+        # would leave our ledger and the broker's live order disagreeing
+        # about one lot's price.
+        retargeted = decision_cycle.adjust_open_lot_targets(
+            self.strategy, self.ledger, context, skip_order_ids=self.state.sells_in_flight
+        )
+        # Persist immediately, before any sell is submitted off the new
+        # target. A crash between retargeting and the durable write would
+        # otherwise restart with the OLD target while the broker may
+        # already hold an order placed against the new one -- and
+        # load_ledger's derivation check cannot catch that, since both
+        # fields moved together and stay self-consistent.
+        for lot in retargeted:
+            self.store.record_open_lot(lot)
         marketable = self.ledger.get_marketable_lots(context.price)
         for lot in marketable[: self.config.live.max_sells_per_tick]:
             if lot.order_id in self.state.sells_in_flight:

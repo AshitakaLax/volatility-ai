@@ -1,0 +1,39 @@
+# Comparative sweep: RSI strategy
+# Sizes aggressively as RSI enters oversold territory
+# Testing period, threshold, and aggression curve
+strategy:
+  strategy_id: rsi
+  strategy_params:
+    max_trade_pct: [0.05, 0.08, 0.10]
+    period: [12, 14, 20]
+    oversold_threshold: [25, 30, 35]
+    baseline_multiplier: 1.0
+    aggression_factor: [0.3, 0.6, 0.9]
+    exponent: 2.0
+    inverse_scale_kappa: 2.0
+grid:
+  steps: [0.005, 0.01, 0.015]
+  profit_targets: [0.003, 0.005, 0.008]
+backtest:
+  symbol: TQQQ
+  initial_cash: 100000.0
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: grid
+  rank_by: CAGR %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: close
+  enforce_no_loss: true
+output:
+  return_full_results: false

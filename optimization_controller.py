@@ -506,6 +506,11 @@ class OptimizationController:
             equity_curve_timestamps.append(context.timestamp)
             equity_curve_values.append(context.equity)
 
+            # Trailing exits, if the strategy implements them. No-op by
+            # default, so a strategy that does not override
+            # adjust_profit_target reproduces prior results exactly.
+            decision_cycle.adjust_open_lot_targets(strategy_instance, ledger, context)
+
             # 1. Harvest target checks. Under "intrabar", a resting
             # limit sell fills if the bar's HIGH touched the target,
             # not only if the close finished above it; the fill price

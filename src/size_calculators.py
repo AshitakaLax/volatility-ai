@@ -88,6 +88,27 @@ class SizingStrategy(ABC):
         _grid_trigger_level is usually the better seam -- see there."""
         return context.price <= self._grid_trigger_level(context, last_buy_price, step)
 
+    def adjust_profit_target(self, lot, context: MarketContext) -> float | None:
+        """The profit_target `lot` should now carry, or None to leave it.
+
+        Default: None for every lot, so a strategy that does not
+        override this keeps the original fixed-at-entry behavior
+        exactly -- no existing strategy, config, or recorded sweep
+        result changes because this hook exists.
+
+        Called once per open lot per bar, BEFORE that bar's marketable
+        check, by decision_cycle.adjust_open_lot_targets -- which is
+        what keeps backtest and live applying it at the same point in
+        the sequence rather than in two places that could drift.
+
+        Overriding this cannot make a losing sell possible.
+        src/no_loss_guard.py evaluates against buy_price and rejects
+        independently of any target; see src/ledger.Lot.retarget.
+        Compose src/trailing_target.TrailingTargetPolicy here rather
+        than writing peak-tracking by hand.
+        """
+        return None
+
     @abstractmethod
     def record_tick(self, context: MarketContext) -> None:
         """Called once per bar in the target execution sequence
