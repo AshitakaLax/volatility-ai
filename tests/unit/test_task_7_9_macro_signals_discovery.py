@@ -80,6 +80,58 @@ THIRD FIELD: time_of_day_flag, populated at last.
                        Verified: the pinned regression baseline is
                        unchanged by this addition.
 
+FOURTH AND FIFTH FIELDS: event_intensity and minutes_to_event, added
+together for minute-precision, index-weighted event awareness -- NOT
+one of Task 7.9's original four, so this is a first run for these two,
+not a re-run.
+
+  Consuming strategy:  src/high_frequency_sizing.py, same method, via
+                       the weighted_event_boost_multiplier constructor
+                       parameter (default 1.0 -- a no-op). Combines
+                       with is_macro_event_day/is_earnings_reaction_day
+                       via max(), not multiply -- event_intensity is a
+                       minute-precise REFINEMENT of the same claim
+                       those make at day granularity, not an
+                       independent axis; multiplying would double-count
+                       a day this project has knowledge of at both
+                       granularities. minutes_to_event has NO consumer
+                       yet -- event_intensity's own lead-time window
+                       already carries the "aware N minutes before"
+                       property the countdown would otherwise add, so
+                       there was no separate use for it in this pass.
+                       It is guarded here anyway, watched for the same
+                       reason macro_surprise_factor already is: an
+                       unguarded field is exactly the silent
+                       proliferation this module exists to catch, even
+                       before anything consumes it.
+  Source dataset:      src/event_calendar.py's EarningsEventTable, over
+                       data/earnings_releases_derived.csv -- 676 release
+                       timestamps across 16 tickers, RECOVERED from the
+                       tape (found the day from the next session's
+                       opening gap, the minute from that day's peak
+                       post-close volume; see that module's docstring
+                       for why recovering a scheduled, publicly
+                       announced time is not lookahead), weighted by
+                       src/index_weights.py's single 2026-08-13
+                       QQQ-holdings snapshot -- documented there as
+                       lookahead bias applied to all history, pending
+                       quarterly snapshots.
+  Join semantics:      EarningsEventTable.vectorized (backtest) and
+                       .scalar (live) share one window definition --
+                       [release - lead_minutes, release +
+                       reaction_minutes), 15/30 minutes by default --
+                       and are pinned to agree on every bar by
+                       tests/unit/test_event_calendar.py::test_scalar_and_vectorized_agree_on_every_bar.
+                       event_intensity SUMS index weight over every
+                       currently-active event rather than taking a max,
+                       because two different companies reporting in the
+                       same window are independent exposure, unlike the
+                       day-level flags' max() above.
+  Defaults:            event_intensity=0.0, minutes_to_event=-1.0 on
+                       MarketContext; weighted_event_boost_multiplier=1.0
+                       on the strategy -- a config that never sets it
+                       behaves exactly as before this existed.
+
 Per the original task's step 4, no NLP/sentiment ingestion dependency
 was added to build this -- confirmed by
 test_no_speculative_ingestion_dependency_was_added below, unchanged and
@@ -106,6 +158,13 @@ MACRO_FIELDS = (
     # field that nothing guards is exactly the "silent, undocumented
     # proliferation" this module exists to catch.
     "is_earnings_reaction_day",
+    # Fourth and fifth fields, minute-precision event awareness -- see
+    # module docstring's "FOURTH AND FIFTH FIELDS" section.
+    # minutes_to_event has no consumer yet and is watched anyway, same
+    # reasoning as macro_surprise_factor: guard the field before
+    # anything reads it, not after.
+    "event_intensity",
+    "minutes_to_event",
 )
 
 # Modules that must STILL have zero consumption of these fields. Every
@@ -134,6 +193,13 @@ CONFIRMED_CONSUMER_FIELDS = (
     # consumer. All three are now live inputs; macro_surprise_factor is
     # the only one of the four still inert.
     "time_of_day_flag",
+    # Fourth field, first run rather than a re-run -- see module
+    # docstring. minutes_to_event is deliberately NOT here: it has no
+    # consumer (event_intensity's own lead window already carries the
+    # lead-time property), so it must not appear in the confirmed
+    # consumer's source, and test_nothing_branches_on_the_macro_fields_...
+    # would catch it branching anywhere else.
+    "event_intensity",
 )
 
 
@@ -157,6 +223,8 @@ def test_the_event_fields_exist_with_the_documented_safe_defaults():
     assert context.is_macro_event_day is False
     assert context.macro_surprise_factor == 0.0
     assert context.is_earnings_reaction_day is False
+    assert context.event_intensity == 0.0
+    assert context.minutes_to_event == -1.0
 
 
 def test_no_other_strategy_or_decision_module_consumes_the_macro_fields():
