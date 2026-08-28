@@ -54,6 +54,7 @@ from typing import Literal
 
 import pandas as pd
 
+from src import decision_cycle
 from src.cost_models import TransactionCostModel, ZeroCostModel
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext
@@ -123,6 +124,10 @@ def simulate_single_intraday(
         is a real fill that a close-only backtest never sees.
         """
         nonlocal cash
+        # Trailing exits, through the same shared helper the daily and
+        # live paths call, so all three retarget at the identical point
+        # in the sequence. No-op unless the strategy overrides the hook.
+        decision_cycle.adjust_open_lot_targets(sizing_engine, ledger, context)
         marketable = [lot for lot in ledger.open_lots if context.high >= lot.target_sell_price]
         for lot in marketable:
             exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)

@@ -78,6 +78,41 @@ It does not sell, harvest, or reason about existing lots. Sizing
 governs new exposure only; src/no_loss_guard.py owns the exit
 invariant and src/risk_manager.py owns portfolio exposure. A strategy
 that is confident is still clamped by both.
+--------------------------------------------------------------------
+THE OPTIONAL RETRIGGER, AND WHY IT WAS ADDED
+
+Like every SizingStrategy that does not override the trigger, this one
+originally relied on the DEFAULT _check_grid_trigger (src/size_
+calculators.py): a buy fires only when price falls `step` below
+`last_buy_price`, a scalar that only moves on a real fill. Measured
+directly on this repo's 10.63-year TQQQ SIP dataset: over that whole
+window this strategy (like FixedPortfolioPercentage, BellCurve, and
+RSI) fired exactly 54 trades, because TQQQ mostly trended up and the
+stale reference was rarely revisited. That is not a sizing problem --
+the posterior never got evaluated against more than 54 opportunities
+to size.
+
+lookback_days, when set, fixes this the same way
+HighFrequencyLocalReferenceSizing did: _grid_trigger_level measures the
+pullback from max(last_buy_price, rolling_high) instead of
+last_buy_price alone, so a buy can retrigger on any local dip. It
+defaults to None (off), which reproduces the exact original monotonic
+behavior -- every existing config keeps its measured results unchanged
+unless it opts in.
+
+This is purely an entry-timing change. It shares no state with
+record_tick's posterior machinery -- the rolling high is updated
+unconditionally every bar, same as the pending-trial queue, but the
+two are independent: retriggering more often changes how often
+calculate_trade_value is called, never what the posteriors believe or
+when a trial resolves. The lookahead trap above is untouched.
+
+One consequence, not a defect: sizing here is still equity*max_trade_
+pct*posterior_multiplier, not HighFrequencyLocalReferenceSizing's fixed
+dollar-per-lot. Frequent retriggering can exhaust cash after a handful
+of buys during one decline, same as it would for any equity-fraction
+strategy -- max_trade_pct will typically need to be swept smaller
+alongside enabling lookback_days.
 """
 
 from __future__ import annotations
@@ -181,6 +216,7 @@ class BayesianDualScaleSizing(SizingStrategy):
         reference_probability: float = 0.5,
         prior_alpha: float = 1.0,
         prior_beta: float = 1.0,
+        lookback_days: float | None = None,
     ) -> None:
         """Configure the model.
 
@@ -192,6 +228,10 @@ class BayesianDualScaleSizing(SizingStrategy):
         mismatch means the strategy is confident about a different
         question than the one being traded. A deliberate mismatch is
         legitimate; an accidental one is a silent modelling error.
+
+        lookback_days is None by default -- see the module docstring's
+        "THE OPTIONAL RETRIGGER" section. Set it to enable the same
+        local-pullback retrigger HighFrequencyLocalReferenceSizing uses.
         """
         if not 0.0 < max_trade_pct <= 1.0:
             raise ConfigurationError(f"max_trade_pct must be in (0, 1], got {max_trade_pct}")
@@ -203,6 +243,8 @@ class BayesianDualScaleSizing(SizingStrategy):
             raise ConfigurationError(
                 f"reference_probability must be in (0, 1], got {reference_probability}"
             )
+        if lookback_days is not None and lookback_days <= 0:
+            raise ConfigurationError(f"lookback_days must be positive, got {lookback_days}")
 
         self.max_trade_pct = max_trade_pct
         self.target_return = target_return
@@ -214,6 +256,7 @@ class BayesianDualScaleSizing(SizingStrategy):
         self.reference_probability = reference_probability
         self.prior_alpha = prior_alpha
         self.prior_beta = prior_beta
+        self.lookback_days = lookback_days
 
         self._horizon_bars = bars_from_days(horizon_days, bars_per_day)
         # Half-lives are configured in DAYS but consumed in TRIALS, and
@@ -241,6 +284,15 @@ class BayesianDualScaleSizing(SizingStrategy):
         # took minutes per sweep combination.
         self._window_max = RollingMax(self._horizon_bars)
         self._bars_seen = 0
+        # Independent of the horizon-scoring window above: this one
+        # feeds only _grid_trigger_level's entry timing, never the
+        # posteriors. None (the default) means the retrigger is off --
+        # see the module docstring's "THE OPTIONAL RETRIGGER" section.
+        self._rolling_high = (
+            RollingMax(bars_from_days(lookback_days, bars_per_day))
+            if lookback_days is not None
+            else None
+        )
 
     def record_tick(self, context: MarketContext) -> None:
         """Open a trial for this bar and resolve any that have matured.
@@ -254,6 +306,8 @@ class BayesianDualScaleSizing(SizingStrategy):
         if price <= 0 or not math.isfinite(price):
             return
         self._bars_seen += 1
+        if self._rolling_high is not None:
+            self._rolling_high.update(price)
 
         # After this call the window covers bars [i-H+1 .. i], which is
         # precisely the scoring window of the trial opened at bar i-H.
@@ -267,6 +321,21 @@ class BayesianDualScaleSizing(SizingStrategy):
             success = window_max >= entry_price * (1.0 + self.target_return)
             self._fast.update(success)
             self._slow.update(success)
+
+    def _grid_trigger_level(
+        self, context: MarketContext, last_buy_price: float, step: float
+    ) -> float:
+        """last_buy_price OR the local rolling high, whichever is
+        higher, is the reference a pullback is measured from -- only
+        when lookback_days is set. See the module docstring's "THE
+        OPTIONAL RETRIGGER" section, and
+        HighFrequencyLocalReferenceSizing._grid_trigger_level, which
+        this mirrors exactly."""
+        if self._rolling_high is None:
+            return super()._grid_trigger_level(context, last_buy_price, step)
+        rolling_high = self._rolling_high.value
+        reference = last_buy_price if rolling_high is None else max(last_buy_price, rolling_high)
+        return reference * (1.0 - step)
 
     def _conservative_probability(self) -> float:
         """Lower bound on p that BOTH timescales support."""

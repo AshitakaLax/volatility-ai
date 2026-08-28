@@ -340,15 +340,37 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def session_scope_tag(regular_hours_only: bool) -> str:
+    """Filename component naming which session a dataset covers.
+
+    "rth" is spelled out rather than left implicit so the two scopes
+    sort together and neither is the silent default on disk.
+    """
+    return "rth" if regular_hours_only else "ext"
+
+
 def default_output_path(spec: FetchSpec, data_dir: Path) -> Path:
     """Timestamped filename carrying the parameters that change meaning.
 
     feed and adjustment are in the name because a raw file and an
     adjusted file of the same symbol and window are different data, and
     confusing them silently corrupts a backtest.
+
+    SESSION SCOPE is in the name for a stronger version of the same
+    reason. Without it a regular-hours and an extended-hours download of
+    the same symbol/window/feed/adjustment produce the IDENTICAL
+    filename, so the second either aborts on write_csv's exists-check or,
+    with --force, overwrites the first -- and data/ is git-ignored, so
+    that loss is unrecoverable. The two files also differ in a way
+    nothing downstream detects: bars_per_day is a hand-set strategy
+    parameter (387 for this repo's regular-hours SIP data, ~757 with
+    extended hours) and src/sizing_indicators.bars_from_days validates
+    only that it is positive. Feeding an extended-hours file to a config
+    pinning 387 silently halves every window this project tunes.
     """
     return Path(data_dir) / (
         f"{spec.symbol}_{spec.timeframe}_{spec.feed}_{spec.adjustment}"
+        f"_{session_scope_tag(spec.regular_hours_only)}"
         f"_{spec.start.date().isoformat()}_{spec.end.date().isoformat()}.csv"
     )
 
@@ -387,15 +409,25 @@ def write_sidecar(csv_path: Path, spec: FetchSpec, report_fields: dict) -> Path:
     return meta_path
 
 
-def update_latest_symlink(csv_path: Path) -> Path | None:
+def update_latest_symlink(csv_path: Path, *, regular_hours_only: bool = True) -> Path | None:
     """Point <SYMBOL>_<TF>_latest.csv at the newest download.
 
     A RELATIVE symlink, so it still resolves inside the container when
     data/ is bind-mounted at /app/data -- an absolute host path would
     dangle there.
+
+    Extended-hours downloads get their OWN link
+    (<SYMBOL>_<TF>_ext_latest.csv) rather than sharing one. A single
+    shared link would mean the last download of either scope silently
+    redefines what every `--data data/TQQQ_1Min_latest.csv` invocation
+    reads, and the two datasets need different bars_per_day -- see
+    default_output_path for why that particular swap is invisible
+    downstream. Defaults to the regular-hours name so existing callers
+    keep the link they already reference.
     """
     parts = csv_path.name.split("_")
-    link = csv_path.parent / f"{parts[0]}_{parts[1]}_latest.csv"
+    suffix = "latest" if regular_hours_only else "ext_latest"
+    link = csv_path.parent / f"{parts[0]}_{parts[1]}_{suffix}.csv"
     try:
         if link.is_symlink() or link.exists():
             link.unlink()
@@ -512,7 +544,7 @@ def download(
                 "sha256": digest,
             },
         )
-    update_latest_symlink(path)
+    update_latest_symlink(path, regular_hours_only=spec.regular_hours_only)
     return report
 
 

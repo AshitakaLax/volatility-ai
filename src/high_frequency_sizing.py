@@ -317,6 +317,7 @@ from src.intraday_profile import relative_range
 from src.market_context import MarketContext
 from src.size_calculators import SizingStrategy
 from src.sizing_indicators import RollingMax, RollingMean, RollingStdev, bars_from_days, clamp
+from src.trailing_target import TrailingTargetPolicy
 
 # Below this, a realized-vol estimate is numerical noise rather than a
 # measurement -- see _vol_scale. Per-bar log returns here run ~1e-4.
@@ -347,6 +348,8 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         time_of_day_exponent: float = 0.0,
         vol_measure: str = "stdev",
         volume_scale_exponent: float = 0.0,
+        trail_pct: float | None = None,
+        trail_min_profit_target: float = 0.001,
     ) -> None:
         if not 0.0 < per_lot_pct <= 1.0:
             raise ConfigurationError(f"per_lot_pct must be in (0, 1], got {per_lot_pct}")
@@ -411,6 +414,18 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             self._slow_volume = RollingMean(slow_bars)
         self._rolling_high = RollingMax(bars_from_days(lookback_days, bars_per_day))
         self._baseline_capital: float | None = None
+        # None (the default) leaves exits exactly as they were: fixed at
+        # entry from grid.profit_targets. Set it and each lot's target
+        # instead trails the peak that lot has reached -- see
+        # src/trailing_target.py for why that matters at the wide
+        # targets this strategy's sweeps selected.
+        self.trail_pct = trail_pct
+        self.trail_min_profit_target = trail_min_profit_target
+        self._trailing = (
+            TrailingTargetPolicy(trail_pct, min_profit_target=trail_min_profit_target)
+            if trail_pct is not None
+            else None
+        )
 
     def record_tick(self, context: MarketContext) -> None:
         """Advance the rolling high and capture the capital baseline,
@@ -547,6 +562,22 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         return clamp(
             relative**self.time_of_day_exponent, _TOD_SCALE_FLOOR, _TOD_SCALE_CEIL
         )
+
+    def adjust_profit_target(self, lot, context: MarketContext) -> float | None:
+        """Trail this lot's exit target, when trail_pct is configured.
+
+        Returns None (leave the target alone) when trailing is off,
+        which is the default -- so this override changes nothing for any
+        existing config or recorded sweep result."""
+        if self._trailing is None:
+            return None
+        return self._trailing.propose(lot, context.price)
+
+    def retain_lots(self, open_order_ids) -> None:
+        """Release peak state for lots that have closed. See
+        decision_cycle.adjust_open_lot_targets."""
+        if self._trailing is not None:
+            self._trailing.retain_lots(open_order_ids)
 
     def _grid_trigger_level(
         self, context: MarketContext, last_buy_price: float, step: float

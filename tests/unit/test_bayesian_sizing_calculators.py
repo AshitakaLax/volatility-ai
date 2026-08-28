@@ -283,6 +283,8 @@ def test_public_attributes_are_configuration_only():
         ({"reference_probability": 1.5}, "reference_probability"),
         ({"horizon_days": 0.0}, "positive"),
         ({"bars_per_day": 0}, "bars_per_day"),
+        ({"lookback_days": 0.0}, "lookback_days"),
+        ({"lookback_days": -1.0}, "lookback_days"),
     ],
 )
 def test_invalid_configuration_is_rejected_at_construction(kw, match):
@@ -369,3 +371,76 @@ def test_record_tick_cost_does_not_scale_with_the_horizon():
         f"a 50x larger horizon took {long / short:.1f}x longer -- record_tick is scaling "
         "with the horizon again"
     )
+
+
+# --- the optional local-pullback retrigger ---
+#
+# Mirrors tests/unit/test_high_frequency_sizing.py's own trigger tests,
+# since this override copies HighFrequencyLocalReferenceSizing's logic
+# exactly -- see BayesianDualScaleSizing._grid_trigger_level and the
+# module docstring's "THE OPTIONAL RETRIGGER" section.
+
+
+def test_lookback_days_none_reproduces_the_default_trigger():
+    """The default (off) behavior must be byte-for-byte the base
+    class's formula -- every existing config's measured results must
+    stay unchanged."""
+    from src.size_calculators import SizingStrategy
+
+    s = make(lookback_days=None)
+    feed(s, [100.0, 101.0, 102.0])
+    last_buy_price = 99.0
+    context = ctx(100.9)
+
+    default_level = SizingStrategy._grid_trigger_level(s, context, last_buy_price, 0.01)
+    actual_level = s._grid_trigger_level(context, last_buy_price, 0.01)
+    assert actual_level == pytest.approx(default_level)
+    assert actual_level == pytest.approx(99.0 * 0.99)
+
+
+def test_retriggers_on_a_local_pullback_after_price_recovered_above_last_buy():
+    """The scenario the default (last_buy_price-only) trigger cannot
+    handle: price dips (buy fires, last_buy_price updates), recovers
+    back above the original reference, then dips again by `step` from
+    the NEW local high rather than from the stale last_buy_price."""
+    s = make(lookback_days=1.0, bars_per_day=10)  # ~10-bar window
+    step = 0.01
+    last_buy_price = 99.0  # a fill already happened at 99
+    feed(s, [99.0, 100.0, 101.0, 102.0])  # price recovers to a new local high of 102
+
+    # A default (last_buy_price-only) trigger would need price <= 99 * 0.99 = 98.01.
+    # This one should fire off the new local high instead: 102 * 0.99 = 100.98.
+    assert s._check_grid_trigger(ctx(100.9), last_buy_price, step) is True
+    assert s._check_grid_trigger(ctx(101.0), last_buy_price, step) is False
+
+
+def test_last_buy_price_is_not_undercut_by_a_decayed_rolling_high():
+    """A short rolling window forgets an older high once enough bars
+    have passed. last_buy_price still knows about that earlier real
+    fill, and max() must use it -- otherwise a decayed window would
+    silently make the strategy LESS responsive than intended."""
+    s = make(lookback_days=0.5, bars_per_day=10)  # ~5-bar window
+    feed(s, [99.0, 98.0, 97.0, 96.0, 95.0, 94.0, 93.0, 92.0, 91.0, 90.0])
+    assert s._rolling_high.value == pytest.approx(94.0)  # window has forgotten prices before it
+
+    last_buy_price = 100.0  # an earlier real fill, outside the rolling window's memory
+    step = 0.01
+    # Rolling-high-only threshold would be 94 * 0.99 = 93.06 -- 95 would NOT trigger.
+    # max(last_buy_price, rolling_high) = 100, so the threshold is 99 -- 95 DOES trigger.
+    assert s._check_grid_trigger(ctx(95.0), last_buy_price, step) is True
+
+
+def test_retrigger_does_not_perturb_the_posterior_or_the_lookahead_property():
+    """The retrigger changes entry timing only. Feeding the identical
+    price series with lookback_days on vs. off must produce identical
+    posteriors -- record_tick's trial logic is untouched by this
+    override."""
+    prices = [100.0 * (1.001**i) for i in range(500)]
+    off = make(lookback_days=None)
+    on = make(lookback_days=1.0, bars_per_day=10)
+    feed(off, prices)
+    feed(on, prices)
+    assert off._fast.mean == pytest.approx(on._fast.mean)
+    assert off._slow.mean == pytest.approx(on._slow.mean)
+    assert off._bars_seen == on._bars_seen
+    assert len(off._pending) == len(on._pending)
