@@ -179,3 +179,119 @@ def test_regular_hours_filtering_uses_the_shared_implementation():
     assert dropped == 2
     eastern = df.index.tz_convert("America/New_York")
     assert [t.strftime("%H:%M") for t in eastern] == ["09:30", "15:59"]
+
+
+# --- uniform-grid resampling ---
+
+
+def uniform_frame(times, closes=None, volumes=None):
+    """A one-session frame in UTC, from Eastern wall-clock times."""
+    import pandas as pd
+
+    idx = pd.DatetimeIndex(
+        [pd.Timestamp(f"2024-06-03 {t}", tz="America/New_York") for t in times]
+    ).tz_convert("UTC")
+    n = len(times)
+    closes = closes or [100.0] * n
+    volumes = volumes or [1000.0] * n
+    return pd.DataFrame(
+        {
+            "open": closes,
+            "high": closes,
+            "low": closes,
+            "close": closes,
+            "volume": volumes,
+        },
+        index=idx,
+    )
+
+
+def test_every_session_gets_the_same_bar_count():
+    from src.historical_data import resample_to_uniform_minutes
+
+    df = uniform_frame(["09:30", "09:33", "16:05"])
+    out, synth = resample_to_uniform_minutes(df)
+
+    assert len(out) == 960  # 04:00-20:00
+    assert synth == 957
+    eastern = out.index.tz_convert("America/New_York")
+    assert eastern[0].strftime("%H:%M") == "04:00"
+    assert eastern[-1].strftime("%H:%M") == "19:59"
+
+
+def test_synthesized_bars_are_flat_and_zero_volume():
+    """They must claim 'nothing traded, price stood', never a move."""
+    from src.historical_data import resample_to_uniform_minutes
+
+    df = uniform_frame(["09:30", "09:33"], closes=[100.0, 105.0])
+    out, _ = resample_to_uniform_minutes(df)
+    eastern = out.tz_convert("America/New_York")
+
+    gap = eastern.loc["2024-06-03 09:31":"2024-06-03 09:32"]
+    assert (gap["volume"] == 0).all()
+    # Carried forward from 09:30, not interpolated toward 105.
+    assert (gap["close"] == 100.0).all()
+    assert (gap["open"] == gap["high"]).all()
+    assert (gap["high"] == gap["low"]).all()
+
+
+def test_a_flat_synthetic_bar_cannot_manufacture_an_intrabar_fill():
+    """high == low means it reaches no level it was not already at."""
+    from src.historical_data import resample_to_uniform_minutes
+
+    df = uniform_frame(["09:30", "09:35"], closes=[100.0, 100.0])
+    out, _ = resample_to_uniform_minutes(df)
+    synthetic = out[out["volume"] == 0]
+
+    assert len(synthetic) > 0
+    assert (synthetic["high"] == synthetic["low"]).all()
+
+
+def test_real_bars_are_left_untouched():
+    from src.historical_data import resample_to_uniform_minutes
+
+    df = uniform_frame(["09:30", "09:31"], closes=[100.0, 101.0], volumes=[5.0, 7.0])
+    out, _ = resample_to_uniform_minutes(df)
+    eastern = out.tz_convert("America/New_York")
+
+    assert eastern.loc["2024-06-03 09:30", "close"] == 100.0
+    assert eastern.loc["2024-06-03 09:30", "volume"] == 5.0
+    assert eastern.loc["2024-06-03 09:31", "close"] == 101.0
+    assert eastern.loc["2024-06-03 09:31", "volume"] == 7.0
+
+
+def test_absent_sessions_are_never_invented():
+    """Only minutes inside a session that already traded are filled --
+    a weekend or holiday must not appear."""
+    from src.historical_data import resample_to_uniform_minutes
+
+    df = uniform_frame(["09:30"])
+    out, _ = resample_to_uniform_minutes(df)
+    dates = {t.date() for t in out.index.tz_convert("America/New_York")}
+
+    assert len(dates) == 1
+
+
+def test_off_grid_prints_outside_the_window_are_dropped():
+    """A 03:59 print would otherwise survive as an off-grid row and
+    break the exact bar count."""
+    from src.historical_data import resample_to_uniform_minutes
+
+    df = uniform_frame(["03:59", "09:30"])
+    out, _ = resample_to_uniform_minutes(df)
+
+    assert len(out) == 960
+    eastern = out.index.tz_convert("America/New_York")
+    assert eastern[0].strftime("%H:%M") == "04:00"
+
+
+def test_an_empty_frame_is_returned_unchanged():
+    import pandas as pd
+
+    from src.historical_data import resample_to_uniform_minutes
+
+    empty = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    empty.index = pd.DatetimeIndex([], tz="UTC")
+    out, synth = resample_to_uniform_minutes(empty)
+
+    assert out.empty and synth == 0

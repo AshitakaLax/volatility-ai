@@ -51,11 +51,23 @@ corporate action they are identical; over years they are not. That is
 why the adjustment is recorded in both the filename and the sidecar --
 a raw file must never be mistakable for an adjusted one.
 --------------------------------------------------------------------
-WHAT THIS MODULE WILL NOT DO: fill gaps, forward-fill, or resample to
-a uniform grid. Missing minutes are real -- IEX simply had no print --
-and fabricated bars pass validate() cleanly (finite, positive,
-monotonic, unique). The sweep would then trade invented prices with
-zero warning. Gaps are honest; synthetic bars are not.
+GAP FILLING IS OFF BY DEFAULT AND OPT-IN ONLY. Missing minutes are
+real -- IEX simply had no print -- and fabricated bars pass validate()
+cleanly (finite, positive, monotonic, unique), so a sweep would trade
+invented prices with zero warning. Gaps are honest; synthetic bars are
+not, and nothing here fills one unless a caller explicitly asks.
+
+resample_to_uniform_minutes() is that explicit ask, added for the
+extended-hours dataset where leaving gaps turned out to be the worse
+of two bad options. Measured on 04:00-20:00 TQQQ: bar density ran 459
+per session in 2016 against 954 in 2026, a 2.08x drift, purely because
+pre/post-market liquidity grew. Every window in this project is
+expressed in DAYS and converted to bars through one bars_per_day
+constant, so that drift silently makes "0.25 days" mean twice as much
+real time at one end of the backtest as the other -- the same class of
+bug bars_from_days was written to prevent. A uniform grid trades
+honest gaps for an honest constant. Read that function's docstring for
+what the fabricated bars do and do not claim.
 """
 
 from __future__ import annotations
@@ -234,6 +246,91 @@ def filter_regular_trading_hours(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     # that last bar is the post-close print, not part of the session.
     kept = local.between_time(MARKET_OPEN_ET, MARKET_CLOSE_ET, inclusive="left")
     return kept.tz_convert("UTC"), len(df) - len(kept)
+
+
+def resample_to_uniform_minutes(
+    df: pd.DataFrame,
+    *,
+    session_start: str = "04:00",
+    session_end: str = "20:00",
+) -> tuple[pd.DataFrame, int]:
+    """Give every session the same number of minute bars.
+
+    Returns (frame, bars_synthesized).
+
+    WHAT A SYNTHESIZED BAR CLAIMS, precisely: "no trade occurred in this
+    minute, and the last price still stood." It carries
+    open=high=low=close of the previous real close, and volume=0. It
+    does NOT claim a price moved, and it cannot manufacture a fill --
+    the intrabar model fills a resting order when the bar's high or low
+    reaches a level, and a bar whose high equals its low reaches
+    nothing it did not already sit on.
+
+    WHAT IT COSTS, stated plainly rather than buried:
+
+      - Realized volatility reads LOWER through thin stretches, because
+        a flat bar contributes a zero log-return to RollingStdev and a
+        zero range to the range measure. That is defensible (a minute
+        with no trades had no realized volatility) but it is not
+        neutral, and thin stretches are commoner in early years, so the
+        effect is not evenly spread across the backtest.
+      - Early closes (Thanksgiving, Christmas Eve -- roughly eight
+        sessions a year) get filled out to the full window, so those
+        days carry several hours of flat synthetic bars. Uniformity is
+        the point, and exempting them would reintroduce a variable bar
+        count for the sake of 3% of sessions.
+
+    volume=0 on these bars sits deliberately against
+    MarketContext.volume's "0.0 means unknown, not no-volume"
+    convention. On a uniform grid that convention inverts: zero is now
+    a measurement, not a default. The existing consumer already does
+    the right thing either way --
+    HighFrequencyLocalReferenceSizing.record_tick guards its volume
+    windows with `context.volume > 0`, so synthetic bars are skipped
+    rather than dragging the rolling mean toward zero.
+    """
+    if df.empty:
+        return df, 0
+
+    local = df.tz_convert(EXCHANGE_TZ)
+    start_h, start_m = (int(p) for p in session_start.split(":"))
+    end_h, end_m = (int(p) for p in session_end.split(":"))
+
+    # One contiguous minute index per session actually present. Sessions
+    # absent from the data (weekends, holidays) are never invented --
+    # only minutes WITHIN a session that already traded.
+    spans = []
+    for day in sorted({ts.date() for ts in local.index}):
+        spans.append(
+            pd.date_range(
+                start=pd.Timestamp(day).replace(hour=start_h, minute=start_m),
+                end=pd.Timestamp(day).replace(hour=end_h, minute=end_m)
+                - pd.Timedelta(minutes=1),
+                freq="1min",
+                tz=EXCHANGE_TZ,
+            )
+        )
+    full = pd.DatetimeIndex([]).append(spans) if spans else pd.DatetimeIndex([])
+
+    # Keep only real bars that fall inside the declared window; a print
+    # at 03:59 would otherwise survive as an off-grid row.
+    local = local[local.index.isin(full)]
+    reindexed = local.reindex(full)
+
+    missing = reindexed["close"].isna()
+    synthesized = int(missing.sum())
+
+    reindexed["close"] = reindexed["close"].ffill()
+    # A session whose first minutes never traded has nothing to carry
+    # forward; back-fill only those, so the frame opens on a real price.
+    reindexed["close"] = reindexed["close"].bfill()
+    for col in ("open", "high", "low"):
+        reindexed[col] = reindexed[col].where(~missing, reindexed["close"])
+    reindexed["volume"] = reindexed["volume"].where(~missing, 0.0)
+
+    out = reindexed.tz_convert("UTC")
+    out.index.name = df.index.name
+    return out, synthesized
 
 
 def to_backtest_frame(
