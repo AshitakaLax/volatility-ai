@@ -90,6 +90,7 @@ class FakeMarketData:
                 high=kw.get("high", close),
                 low=kw.get("low", close),
                 close=close,
+                volume=kw.get("volume", 0.0),
             )
         )
 
@@ -129,10 +130,10 @@ def store(tmp_path):
     s.close()
 
 
-def make_loop(store, broker=None, market=None, config=None, **kw):
+def make_loop(store, broker=None, market=None, config=None, strategy=None, **kw):
     return LiveTradingLoop(
         config=config or make_config(),
-        strategy=FixedPortfolioPercentage(allocation_pct=0.05),
+        strategy=strategy or FixedPortfolioPercentage(allocation_pct=0.05),
         broker=broker or FakeBroker(),
         market_data=market or FakeMarketData(),
         store=store,
@@ -218,6 +219,26 @@ def test_a_grid_trigger_submits_exactly_one_buy(store):
     assert symbol == "TQQQ"
     assert trade_value > 0
     assert cid, "a client_order_id must be supplied for broker-side dedup"
+
+
+def test_bar_volume_reaches_the_strategy_as_context_volume(store):
+    """End-to-end regression for the LiveBar volume fix: a real volume
+    figure on the source bar must reach the strategy's context, not the
+    always-0.0 default that shipped for the whole life of this loop
+    until src/alpaca_market_data.py's LiveBar gained a volume field."""
+    seen = []
+
+    class RecordingStrategy(FixedPortfolioPercentage):
+        def record_tick(self, context):
+            seen.append(context.volume)
+            super().record_tick(context)
+
+    market = FakeMarketData()
+    market.push(100.0, volume=54321.0)
+    loop = make_loop(store, market=market, strategy=RecordingStrategy(allocation_pct=0.05))
+    loop.run_once()
+
+    assert seen == [54321.0]
 
 
 def test_submitting_a_buy_does_not_move_cash_until_it_fills(store):

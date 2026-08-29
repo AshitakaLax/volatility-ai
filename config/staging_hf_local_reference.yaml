@@ -1,0 +1,84 @@
+# Staging: routes to a PAPER-mode OMS against Alpaca's paper endpoint.
+# Credentials come from the environment (APCA_API_KEY_ID / APCA_API_SECRET_KEY
+# for the Alpaca PAPER account), never from this file.
+#
+# strategy_params and live.step/live.profit_target below are the
+# best <=50% max-drawdown configuration found across every sweep run
+# to date: output/search_hf_targets_frontier.csv, row
+# step=0.00075/target=0.75/per_lot_pct=0.0002 -> 26.15% CAGR,
+# 48.25% Max Drawdown %, 39,478 backtested trades over the 10.63-year
+# TQQQ SIP dataset.
+#
+# KNOWN GAP: hf_local_reference has never been run live or on paper
+# before -- see README's "Known gaps" #3 ("No live test against a real
+# Alpaca account"). This config is the first attempt.
+#
+# KNOWN FEED MISMATCH RISK: the backtest above ran on SIP data
+# (data/TQQQ_1Min_sip_all_...csv). feed: iex below is set because SIP's
+# REALTIME endpoint rejects free Alpaca accounts even though its
+# historical endpoint works -- see README's "Getting market data"
+# section. Running live on iex while the winning parameters were tuned
+# on sip is a real backtest/live mismatch: vol_scale_exponent,
+# volume_scale_exponent, and the grid retrigger itself all react to the
+# tape's actual bar-by-bar shape, which IEX's thinner tape will not
+# reproduce exactly. This is a genuine open question, not a solved one.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    per_lot_pct: 0.0002
+    lookback_days: 0.02
+    bars_per_day: 387
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+grid:
+  steps: [0.00075]
+  profit_targets: [0.75]
+backtest:
+  symbol: TQQQ
+  # MUST match this paper account's real cash balance -- LiveTradingLoop
+  # seeds its local cash/peak_equity tracking from this value on first
+  # construction (src/live_trading_loop.py:234-237) whenever the state
+  # db has no persisted live.cash yet. A mismatch here creates a
+  # permanent offset between locally-tracked cash and the broker's real
+  # cash that never closes (both decrease by the same real dollar
+  # amount per fill), which trips _reconcile_cash's CASH_MISMATCH check
+  # and halts on every subsequent restart. Confirmed via account.cash
+  # on this account: 274000.0.
+  initial_cash: 274000.0
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+search:
+  strategy: grid
+  rank_by: CAGR %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  enforce_no_loss: true
+output:
+  return_full_results: false
+live:
+  enabled: true
+  paper_trading: true
+  # The SINGLE parameter set the loop trades -- mirrors the winning
+  # backtest row exactly.
+  step: 0.00075
+  profit_target: 0.75
+  feed: iex
+  poll_interval_seconds: 60.0
+  max_sells_per_tick: 25

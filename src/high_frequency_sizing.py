@@ -306,6 +306,74 @@ measured cost here: it once took a sweep from 3.2% coverage to 0.30%.
 
 Defaults: 0.0, an exact no-op, and it should stay there unless a sweep
 shows it earning its place.
+--------------------------------------------------------------------
+weighted_event_boost_multiplier -- minute precision, step 3
+
+MarketContext.event_intensity is a NEW field, not one of Task 7.9's
+original four -- see src/market_context.py's own comment on it. This is
+its consumer, so per the same discovery-gate process:
+
+Source dataset: src/event_calendar.py's EarningsEventTable, built from
+data/earnings_releases_derived.csv (676 release timestamps across 16
+tickers, RECOVERED from the tape -- see that module's docstring for
+the method and why recovering a scheduled, publicly-announced time is
+not lookahead) and src/index_weights.py's single 2026-08-13 QQQ-holdings
+snapshot (documented there as lookahead bias applied to all history,
+pending quarterly snapshots).
+
+Join semantics: EarningsEventTable.vectorized (backtest) and .scalar
+(live) share one window definition -- [release - lead_minutes, release
++ reaction_minutes), lead_minutes=15.0 by default -- and are pinned
+equal on every bar by
+tests/unit/test_event_calendar.py::test_scalar_and_vectorized_agree_on_every_bar.
+event_intensity is the SUM of index weight over every event whose
+window currently contains the bar (not max -- see that module's
+docstring on why two overlapping releases are independent exposure,
+unlike the day-level flags above).
+
+Defaults: weighted_event_boost_multiplier=1.0, an exact no-op --
+event_intensity being populated changes nothing until a config sets
+this above 1.0.
+--------------------------------------------------------------------
+SYNTHETIC BARS, AND WHY THE VOL WINDOWS ARE GATED BY VOLUME TOO
+
+src/historical_data.resample_to_uniform_minutes exists for the
+extended-hours dataset, where real bar density drifted 2.08x from 2016
+to 2026 as pre/post-market liquidity grew -- a problem bars_per_day
+cannot express since it is one constant for the whole backtest. The fix
+gives every session the same bar count by inserting flat, zero-volume
+bars into quiet minutes: open==high==low==close of the last real print,
+volume==0.0.
+
+Measured on that dataset: 52.2% of 2016's bars are synthetic against
+0.6% of 2026's. Before this gate, record_tick fed every one of those
+into _fast_vol/_slow_vol. A flat bar is a genuine zero under EITHER
+vol_measure -- zero intrabar range, and a zero log return against an
+unchanged price -- so realized vol read low precisely through the
+years with the most synthetic filler, and with a NEGATIVE
+vol_scale_exponent (this strategy's measured direction, see above)
+that means sizing UP more in 2016-2019 than 2022-2026: an artifact of
+the fill pattern, not a market signal.
+
+The detector is NOT context.volume > 0, even though that is what gates
+the volume windows just below for an unrelated reason. It was the
+first thing tried, and it is wrong: on the live path context.volume is
+ALWAYS 0.0 (LiveBar carries no volume field), so gating vol scaling on
+it would not merely skip synthetic bars, it would disable this
+strategy's primary measured lever -- vol_scale_exponent -- in live
+trading permanently, including on the config running in production as
+this was written.
+
+The actual detector is structural: a bar is treated as synthetic when
+it is flat (high == low == price) AND unchanged from the previous real
+price, which is exactly what a carried-forward fabricated bar is by
+construction. This is a heuristic, not an exact test -- 2-5% of
+genuinely real bars on the extended-hours dataset are also flat and
+unchanged (thin liquidity), and those get skipped too. Measured across
+every year, that rate does not track the 52% -> 0.6% ramp the
+synthetic bars themselves produce, so it does not reintroduce a
+year-correlated bias; it is small, roughly flat noise instead. See
+record_tick for the exact condition and the year-by-year numbers.
 """
 
 from __future__ import annotations
@@ -317,6 +385,7 @@ from src.intraday_profile import relative_range
 from src.market_context import MarketContext
 from src.size_calculators import SizingStrategy
 from src.sizing_indicators import RollingMax, RollingMean, RollingStdev, bars_from_days, clamp
+from src.trailing_target import TrailingTargetPolicy
 
 # Below this, a realized-vol estimate is numerical noise rather than a
 # measurement -- see _vol_scale. Per-bar log returns here run ~1e-4.
@@ -347,6 +416,9 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         time_of_day_exponent: float = 0.0,
         vol_measure: str = "stdev",
         volume_scale_exponent: float = 0.0,
+        trail_pct: float | None = None,
+        trail_min_profit_target: float = 0.001,
+        weighted_event_boost_multiplier: float = 1.0,
     ) -> None:
         if not 0.0 < per_lot_pct <= 1.0:
             raise ConfigurationError(f"per_lot_pct must be in (0, 1], got {per_lot_pct}")
@@ -360,6 +432,12 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
                 f"earnings_day_boost_multiplier must be >= 1.0 (same size-up-only rule as "
                 f"event_day_boost_multiplier), got {earnings_day_boost_multiplier}"
             )
+        if weighted_event_boost_multiplier < 1.0:
+            raise ConfigurationError(
+                f"weighted_event_boost_multiplier must be >= 1.0 (same size-up-only rule as "
+                f"the other event boosts), got {weighted_event_boost_multiplier}"
+            )
+        self.weighted_event_boost_multiplier = weighted_event_boost_multiplier
         self.per_lot_pct = per_lot_pct
         self.lookback_days = lookback_days
         self.bars_per_day = bars_per_day
@@ -411,6 +489,18 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             self._slow_volume = RollingMean(slow_bars)
         self._rolling_high = RollingMax(bars_from_days(lookback_days, bars_per_day))
         self._baseline_capital: float | None = None
+        # None (the default) leaves exits exactly as they were: fixed at
+        # entry from grid.profit_targets. Set it and each lot's target
+        # instead trails the peak that lot has reached -- see
+        # src/trailing_target.py for why that matters at the wide
+        # targets this strategy's sweeps selected.
+        self.trail_pct = trail_pct
+        self.trail_min_profit_target = trail_min_profit_target
+        self._trailing = (
+            TrailingTargetPolicy(trail_pct, min_profit_target=trail_min_profit_target)
+            if trail_pct is not None
+            else None
+        )
 
     def record_tick(self, context: MarketContext) -> None:
         """Advance the rolling high and capture the capital baseline,
@@ -421,7 +511,36 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             self._baseline_capital = context.equity
         if context.price > 0:
             self._rolling_high.update(context.price)
-            if self._vol_enabled:
+            # A fabricated bar from resample_to_uniform_minutes (see
+            # module docstring's "SYNTHETIC BARS" section) is flat --
+            # high==low==price -- AND unchanged from the previous real
+            # print, because that is exactly what it carries forward.
+            # Both conditions together are the detector, deliberately
+            # NOT context.volume==0: on the live path volume is ALWAYS
+            # 0.0 (LiveBar has no volume field), so gating on volume
+            # would silently disable vol scaling in live trading
+            # forever, not just on resampled backtests.
+            #
+            # This is a heuristic, not an exact test, and was measured
+            # rather than assumed: on the real (non-resampled) extended-
+            # hours dataset, 2.9% of genuine bars are ALSO flat and
+            # unchanged (thin extended-hours liquidity, mostly), so this
+            # skips a small number of real observations too. That is a
+            # different, much smaller problem than the one this exists
+            # to fix -- the false-positive rate is 2-5% in every year
+            # measured (2016: 2.1%, 2019: 5.0%, 2023: 5.2%, 2026: 0.7%),
+            # not the 52% -> 0.6% ramp the synthetic bars produced, so it
+            # does not reintroduce a year-correlated bias. The correct
+            # fix is giving the live path real volume (LiveBar has no
+            # volume field today -- a separate, pre-existing gap), which
+            # would let this reuse context.volume directly; not done
+            # here because it touches the live data adapter.
+            is_synthetic_bar = (
+                context.high == context.low
+                and self._prev_price is not None
+                and context.price == self._prev_price
+            )
+            if self._vol_enabled and not is_synthetic_bar:
                 if self.vol_measure == "range":
                     # Intrabar range, scaled by price so the two windows
                     # compare across a dataset where TQQQ spans ~8x-90x.
@@ -437,7 +556,14 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
                     log_return = log(context.price / self._prev_price)
                     self._fast_vol.update(log_return)
                     self._slow_vol.update(log_return)
-                self._prev_price = context.price
+            # Advances on every REAL price (this whole block is already
+            # inside `if context.price > 0`) regardless of whether the
+            # vol window updated -- kept outside the volume gate above
+            # so a synthetic bar's flat price still becomes the
+            # reference the NEXT real return is measured from, rather
+            # than silently skipping a price update and measuring that
+            # next return against a stale, older price.
+            self._prev_price = context.price
             if self._volume_enabled and context.volume > 0:
                 # 0.0 means "unknown" (the MarketContext default), not
                 # "no volume", so an unpopulated feed must not be fed in
@@ -548,6 +674,22 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             relative**self.time_of_day_exponent, _TOD_SCALE_FLOOR, _TOD_SCALE_CEIL
         )
 
+    def adjust_profit_target(self, lot, context: MarketContext) -> float | None:
+        """Trail this lot's exit target, when trail_pct is configured.
+
+        Returns None (leave the target alone) when trailing is off,
+        which is the default -- so this override changes nothing for any
+        existing config or recorded sweep result."""
+        if self._trailing is None:
+            return None
+        return self._trailing.propose(lot, context.price)
+
+    def retain_lots(self, open_order_ids) -> None:
+        """Release peak state for lots that have closed. See
+        decision_cycle.adjust_open_lot_targets."""
+        if self._trailing is not None:
+            self._trailing.retain_lots(open_order_ids)
+
     def _grid_trigger_level(
         self, context: MarketContext, last_buy_price: float, step: float
     ) -> float:
@@ -591,6 +733,26 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             boost = max(boost, self.event_day_boost_multiplier)
         if context.is_earnings_reaction_day:
             boost = max(boost, self.earnings_day_boost_multiplier)
+        # event_intensity (src/event_calendar.py) is a minute-precise,
+        # index-weighted REFINEMENT of the same claim
+        # is_earnings_reaction_day makes at day granularity -- "an
+        # earnings-moving event is happening" -- not a new axis, so it
+        # combines with max(), same as the other two above, rather than
+        # multiplying (which would double-count a day this project has
+        # BOTH day-level and minute-level knowledge of).
+        #
+        # Graded by weight, not a step function: at
+        # weighted_event_boost_multiplier's default of 1.0 this is an
+        # exact no-op; at the configured multiplier, event_intensity's
+        # own scale (index-weight percent, e.g. NVDA alone = 8.50) sets
+        # how much of that multiplier applies. A single non-tracked
+        # symbol's release contributes 0.0 intensity and this evaluates
+        # to boost's floor, same as an ordinary bar.
+        if context.event_intensity > 0:
+            weighted = 1.0 + (self.weighted_event_boost_multiplier - 1.0) * min(
+                context.event_intensity, 100.0
+            ) / 100.0
+            boost = max(boost, weighted)
         # The event boost and the vol scaler MULTIPLY, unlike the two
         # event boosts which take a max of each other. Those two are
         # alternative labels for the same underlying claim ("today is a

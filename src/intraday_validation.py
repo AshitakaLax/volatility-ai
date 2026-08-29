@@ -54,7 +54,12 @@ from typing import Literal
 
 import pandas as pd
 
+from src import decision_cycle
 from src.cost_models import TransactionCostModel, ZeroCostModel
+from src.earnings_calendar import is_earnings_reaction_day_at
+from src.exceptions import DataValidationError
+from src.fomc_calendar import is_fomc_day_at
+from src.intraday_profile import minutes_since_open
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext
 from src.no_loss_guard import NoLossViolation, validate_sell
@@ -109,6 +114,23 @@ def simulate_single_intraday(
     sizing_engine = strategy_class(**strategy_params)
     oms = OrderManagementSystem(mode="SIMULATION")
 
+    # This function previously populated NONE of MarketContext's event
+    # fields -- every bar silently took the dataclass defaults
+    # (is_macro_event_day=False, time_of_day_flag=0, ...), so a finalist
+    # re-simulated here saw a different (blinder) market than the same
+    # bars saw in optimization_controller.py's main sweep, which HAS
+    # populated these since Task 7.9. That divergence is fixed here,
+    # using the same scalar helpers live_trading_loop.py calls -- this
+    # loop runs over one finalist's window, not a multi-million-bar
+    # sweep, so there is no case for the vectorized/cached form
+    # optimization_controller.py needs.
+    try:
+        from src.event_calendar import EarningsEventTable
+
+        event_table = EarningsEventTable.from_csv()
+    except (FileNotFoundError, DataValidationError):
+        event_table = None
+
     start_price = intraday_data["close"].iloc[0]
     cash = initial_cash
     last_buy_price = start_price
@@ -123,6 +145,10 @@ def simulate_single_intraday(
         is a real fill that a close-only backtest never sees.
         """
         nonlocal cash
+        # Trailing exits, through the same shared helper the daily and
+        # live paths call, so all three retarget at the identical point
+        # in the sequence. No-op unless the strategy overrides the hook.
+        decision_cycle.adjust_open_lot_targets(sizing_engine, ledger, context)
         marketable = [lot for lot in ledger.open_lots if context.high >= lot.target_sell_price]
         for lot in marketable:
             exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
@@ -187,6 +213,11 @@ def simulate_single_intraday(
         if current_dd > max_drawdown:
             max_drawdown = current_dd
 
+        if event_table is not None:
+            event_intensity, minutes_to_event = event_table.scalar(pd.Timestamp(timestamp))
+        else:
+            event_intensity, minutes_to_event = 0.0, -1.0
+
         context = MarketContext(
             timestamp=timestamp,
             open=row["open"],
@@ -199,6 +230,12 @@ def simulate_single_intraday(
             drawdown=current_dd,
             open_lot_count=len(ledger.open_lots),
             bar_index=bar_index,
+            is_macro_event_day=is_fomc_day_at(timestamp),
+            is_earnings_reaction_day=is_earnings_reaction_day_at(timestamp),
+            time_of_day_flag=minutes_since_open(timestamp),
+            volume=float(row.get("volume", 0.0) or 0.0),
+            event_intensity=event_intensity,
+            minutes_to_event=minutes_to_event,
         )
 
         sizing_engine.record_tick(context)

@@ -21,12 +21,18 @@ from src.market_context import MarketContext
 EQUITY = 100_000.0
 
 
-def ctx(price: float, bar: int = 0, equity: float = EQUITY) -> MarketContext:
+def ctx(
+    price: float,
+    bar: int = 0,
+    equity: float = EQUITY,
+    high: float | None = None,
+    low: float | None = None,
+) -> MarketContext:
     return MarketContext(
         timestamp=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
         open=price,
-        high=price,
-        low=price,
+        high=price if high is None else high,
+        low=price if low is None else low,
         close=price,
         cash=equity,
         equity=equity,
@@ -283,6 +289,11 @@ def test_public_attributes_are_configuration_only():
         ({"reference_probability": 1.5}, "reference_probability"),
         ({"horizon_days": 0.0}, "positive"),
         ({"bars_per_day": 0}, "bars_per_day"),
+        ({"lookback_days": 0.0}, "lookback_days"),
+        ({"lookback_days": -1.0}, "lookback_days"),
+        ({"vol_scale_min": 0.0}, "vol_scale_min"),
+        ({"vol_scale_min": 2.0, "vol_scale_max": 1.0}, "vol_scale_min"),
+        ({"vol_measure": "bogus"}, "vol_measure"),
     ],
 )
 def test_invalid_configuration_is_rejected_at_construction(kw, match):
@@ -369,3 +380,311 @@ def test_record_tick_cost_does_not_scale_with_the_horizon():
         f"a 50x larger horizon took {long / short:.1f}x longer -- record_tick is scaling "
         "with the horizon again"
     )
+
+
+# --- the optional local-pullback retrigger ---
+#
+# Mirrors tests/unit/test_high_frequency_sizing.py's own trigger tests,
+# since this override copies HighFrequencyLocalReferenceSizing's logic
+# exactly -- see BayesianDualScaleSizing._grid_trigger_level and the
+# module docstring's "THE OPTIONAL RETRIGGER" section.
+
+
+def test_lookback_days_none_reproduces_the_default_trigger():
+    """The default (off) behavior must be byte-for-byte the base
+    class's formula -- every existing config's measured results must
+    stay unchanged."""
+    from src.size_calculators import SizingStrategy
+
+    s = make(lookback_days=None)
+    feed(s, [100.0, 101.0, 102.0])
+    last_buy_price = 99.0
+    context = ctx(100.9)
+
+    default_level = SizingStrategy._grid_trigger_level(s, context, last_buy_price, 0.01)
+    actual_level = s._grid_trigger_level(context, last_buy_price, 0.01)
+    assert actual_level == pytest.approx(default_level)
+    assert actual_level == pytest.approx(99.0 * 0.99)
+
+
+def test_retriggers_on_a_local_pullback_after_price_recovered_above_last_buy():
+    """The scenario the default (last_buy_price-only) trigger cannot
+    handle: price dips (buy fires, last_buy_price updates), recovers
+    back above the original reference, then dips again by `step` from
+    the NEW local high rather than from the stale last_buy_price."""
+    s = make(lookback_days=1.0, bars_per_day=10)  # ~10-bar window
+    step = 0.01
+    last_buy_price = 99.0  # a fill already happened at 99
+    feed(s, [99.0, 100.0, 101.0, 102.0])  # price recovers to a new local high of 102
+
+    # A default (last_buy_price-only) trigger would need price <= 99 * 0.99 = 98.01.
+    # This one should fire off the new local high instead: 102 * 0.99 = 100.98.
+    assert s._check_grid_trigger(ctx(100.9), last_buy_price, step) is True
+    assert s._check_grid_trigger(ctx(101.0), last_buy_price, step) is False
+
+
+def test_last_buy_price_is_not_undercut_by_a_decayed_rolling_high():
+    """A short rolling window forgets an older high once enough bars
+    have passed. last_buy_price still knows about that earlier real
+    fill, and max() must use it -- otherwise a decayed window would
+    silently make the strategy LESS responsive than intended."""
+    s = make(lookback_days=0.5, bars_per_day=10)  # ~5-bar window
+    feed(s, [99.0, 98.0, 97.0, 96.0, 95.0, 94.0, 93.0, 92.0, 91.0, 90.0])
+    assert s._rolling_high.value == pytest.approx(94.0)  # window has forgotten prices before it
+
+    last_buy_price = 100.0  # an earlier real fill, outside the rolling window's memory
+    step = 0.01
+    # Rolling-high-only threshold would be 94 * 0.99 = 93.06 -- 95 would NOT trigger.
+    # max(last_buy_price, rolling_high) = 100, so the threshold is 99 -- 95 DOES trigger.
+    assert s._check_grid_trigger(ctx(95.0), last_buy_price, step) is True
+
+
+def test_retrigger_does_not_perturb_the_posterior_or_the_lookahead_property():
+    """The retrigger changes entry timing only. Feeding the identical
+    price series with lookback_days on vs. off must produce identical
+    posteriors -- record_tick's trial logic is untouched by this
+    override."""
+    prices = [100.0 * (1.001**i) for i in range(500)]
+    off = make(lookback_days=None)
+    on = make(lookback_days=1.0, bars_per_day=10)
+    feed(off, prices)
+    feed(on, prices)
+    assert off._fast.mean == pytest.approx(on._fast.mean)
+    assert off._slow.mean == pytest.approx(on._slow.mean)
+    assert off._bars_seen == on._bars_seen
+    assert len(off._pending) == len(on._pending)
+
+
+# --- the optional vol scale ---
+
+
+def _calm_then_wild(n_calm=400, n_wild=60):
+    """Mirrors test_high_frequency_sizing.py's own helper of the same
+    name: a long calm stretch then a volatile one, so fast_vol rises
+    well above slow_vol without the price level drifting far."""
+    prices = [100.0]
+    for i in range(n_calm):
+        prices.append(prices[-1] * (1.0004 if i % 2 else 0.9996))
+    for i in range(n_wild):
+        prices.append(prices[-1] * (1.010 if i % 2 else 0.990))
+    return prices
+
+
+def test_vol_scaling_defaults_to_an_exact_no_op():
+    s = make()
+    assert s._vol_enabled is False
+    feed(s, _calm_then_wild())
+    plain = make()
+    feed(plain, _calm_then_wild())
+    assert s.calculate_trade_value(ctx(100.0)) == pytest.approx(
+        plain.calculate_trade_value(ctx(100.0))
+    )
+
+
+def test_a_negative_exponent_sizes_down_when_volatility_spikes():
+    calm_config = dict(vol_scale_exponent=-1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    with_vol = make(**calm_config)
+    without_vol = make()
+    feed(with_vol, _calm_then_wild())
+    feed(without_vol, _calm_then_wild())
+
+    scaled = with_vol.calculate_trade_value(ctx(100.0))
+    unscaled = without_vol.calculate_trade_value(ctx(100.0))
+    assert scaled < unscaled
+
+
+def test_the_scale_is_clamped():
+    s = make(
+        vol_scale_exponent=8.0,  # would explode without the clamp
+        vol_fast_days=0.1,
+        vol_slow_days=2.0,
+        vol_scale_max=1.25,
+    )
+    feed(s, _calm_then_wild())
+    assert s._vol_scale() <= 1.25 + 1e-9
+
+
+def test_scale_is_one_until_the_windows_have_warmed():
+    s = make(vol_scale_exponent=-1.0)
+    s.record_tick(ctx(100.0, 0))
+    assert s._vol_scale() == pytest.approx(1.0)
+
+
+def test_vol_measure_defaults_to_stdev():
+    assert make()._vol_scale.__self__.vol_measure == "stdev"
+
+
+def test_a_flat_unchanged_bar_does_not_update_the_vol_windows():
+    """The resample_to_uniform_minutes signature: high==low==price,
+    unchanged from the previous real print -- copied guard from
+    HighFrequencyLocalReferenceSizing.record_tick, verified equal here."""
+    s = make(vol_scale_exponent=-1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    real = _calm_then_wild()
+    feed(s, real)
+    before = s._vol_scale()
+
+    last = real[-1]
+    for i in range(50):
+        s.record_tick(ctx(last, len(real) + i, high=last, low=last))
+    after = s._vol_scale()
+
+    assert after == pytest.approx(before)
+
+
+def test_vol_scale_multiplies_independently_of_the_posterior():
+    """The two ideas compose: a saturated (fully confident) posterior
+    still gets scaled down by turbulence."""
+    prices = [100.0 * (1.002**i) for i in range(300)]  # a strong uptrend -> high success rate
+    s = make(
+        reference_probability=0.01,  # trivially satisfied -> posterior saturates
+        vol_scale_exponent=-1.0,
+        vol_fast_days=0.1,
+        vol_slow_days=2.0,
+    )
+    feed(s, prices + _calm_then_wild())
+    assert s.diagnostics(ctx(100.0))["saturated"] is True
+    assert s.calculate_trade_value(ctx(100.0)) < EQUITY * s.max_trade_pct
+
+
+# --- the optional trailing target (enhancement 1/3) ---
+
+
+def a_lot_ledger():
+    from src.ledger import AssetLotLedger
+
+    return AssetLotLedger()
+
+
+def test_trailing_defaults_to_off_and_preserves_the_fixed_target():
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s = make(trail_pct=None)
+    assert s.adjust_profit_target(lot, ctx(150.0)) is None
+    assert lot.profit_target == pytest.approx(0.30)
+
+
+def test_trailing_does_not_activate_on_a_lots_first_tick():
+    """Regression for the bug fixed in src/trailing_target.py this same
+    session -- pinned here too, since this is a second, independent
+    call site that could reintroduce it if TrailingTargetPolicy were
+    ever inlined instead of composed."""
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s = make(trail_pct=0.05, trail_min_profit_target=0.10)
+    assert s.adjust_profit_target(lot, ctx(100.0)) is None
+    assert lot.profit_target == pytest.approx(0.30)
+
+
+def test_trailing_lowers_the_target_after_a_real_gain():
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s = make(trail_pct=0.05, trail_min_profit_target=0.10)
+    s.adjust_profit_target(lot, ctx(100.0))  # seed the peak, no-op
+    proposed = s.adjust_profit_target(lot, ctx(130.0))  # a real 30% gain
+    assert proposed is not None
+    assert proposed < 0.30
+
+
+def test_trailing_is_independent_of_the_posteriors_target_return():
+    """target_return still governs what the posterior estimates;
+    trail_pct governs the real exit price. Trailing a lot down must not
+    touch the posterior's own state."""
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s = make(trail_pct=0.05, trail_min_profit_target=0.10, target_return=0.01)
+    feed(s, [100.0 * (1.001**i) for i in range(50)])
+    before = (s._fast.alpha, s._fast.beta)
+    s.adjust_profit_target(lot, ctx(100.0))
+    s.adjust_profit_target(lot, ctx(130.0))
+    assert (s._fast.alpha, s._fast.beta) == before
+    assert s.target_return == pytest.approx(0.01)
+
+
+def test_retain_lots_forwards_to_the_trailing_policy():
+    """Pruning itself is lazy by design (TrailingTargetPolicy.retain_lots
+    only rebuilds once dead entries exceed 2*len(open)+64 -- a
+    performance guard, tested in tests/unit/test_trailing_target.py).
+    This only confirms the CALL is forwarded, using enough entries to
+    actually cross that threshold."""
+    s = make(trail_pct=0.05)
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s.adjust_profit_target(lot, ctx(150.0))
+    for i in range(100):  # simulate 100 closed lots' leftover peaks
+        s._trailing._peaks[f"closed-{i}"] = 100.0
+    s.retain_lots({lot.order_id})
+    assert lot.order_id in s._trailing._peaks
+    assert len(s._trailing._peaks) == 1
+
+
+def test_retain_lots_is_a_no_op_when_trailing_is_off():
+    s = make()  # trail_pct=None
+    s.retain_lots(set())  # must not raise
+
+
+def test_decision_cycle_drives_bayesian_trailing_the_same_way_as_hf():
+    """End-to-end through the shared helper every harvest path calls --
+    not just the strategy's own method in isolation."""
+    from src import decision_cycle
+
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s = make(trail_pct=0.05, trail_min_profit_target=0.10)
+
+    decision_cycle.adjust_open_lot_targets(s, ledger, ctx(100.0))
+    changed = decision_cycle.adjust_open_lot_targets(s, ledger, ctx(130.0))
+
+    assert changed == [lot]
+    assert lot.profit_target < 0.30
+
+
+# --- the cost buffer (enhancement 3/3) ---
+
+
+def test_cost_buffer_defaults_to_an_exact_no_op():
+    s = make()
+    assert s.cost_buffer_pct == 0.0
+
+
+def test_a_touch_that_only_clears_the_raw_target_fails_with_a_cost_buffer():
+    """The regression this exists to fix: a raw touch of target_return
+    used to count as a win regardless of costs. With a buffer, a touch
+    that clears target_return but NOT target_return+buffer must fail."""
+    no_buffer = make(horizon_days=1.0, bars_per_day=5, target_return=0.01)
+    with_buffer = make(horizon_days=1.0, bars_per_day=5, target_return=0.01, cost_buffer_pct=0.02)
+    # +1.5%: clears the raw 1% target but not 1%+2%=3%.
+    prices = [100.0, 100.5, 101.5, 101.0, 101.0, 101.0]
+    feed(no_buffer, prices)
+    feed(with_buffer, prices)
+    assert no_buffer._fast.mean > 0.5, "sanity check: the raw touch is a win without a buffer"
+    assert with_buffer._fast.mean < 0.5
+
+
+def test_a_touch_that_clears_target_plus_buffer_still_succeeds():
+    s = make(horizon_days=1.0, bars_per_day=5, target_return=0.01, cost_buffer_pct=0.01)
+    # +5%: clears 1%+1%=2% with room to spare.
+    feed(s, [100.0, 101.0, 105.0, 103.0, 103.0, 103.0])
+    assert s._fast.mean > 0.5
+
+
+def test_cost_buffer_does_not_affect_target_return_itself():
+    """The mismatch cross-check (optimization_controller._run_one_combination)
+    reads target_return directly -- cost_buffer_pct must not alter it."""
+    s = make(target_return=0.01, cost_buffer_pct=0.02)
+    assert s.target_return == pytest.approx(0.01)
+
+
+def test_a_negative_cost_buffer_is_rejected():
+    with pytest.raises(ConfigurationError, match="cost_buffer_pct"):
+        make(cost_buffer_pct=-0.01)
+
+
+def test_cost_buffer_does_not_affect_the_lookahead_property():
+    """Still resolves at exactly horizon+1, still cannot see the future
+    -- the buffer changes WHAT counts as success, not WHEN it resolves."""
+    s = make(horizon_days=1.0, bars_per_day=5, cost_buffer_pct=0.01)
+    for i in range(5):
+        s.record_tick(ctx(100.0, i))
+        assert s._fast.effective_sample_size == 0.0
+    s.record_tick(ctx(100.0, 5))
+    assert s._fast.effective_sample_size > 0.0

@@ -51,11 +51,23 @@ corporate action they are identical; over years they are not. That is
 why the adjustment is recorded in both the filename and the sidecar --
 a raw file must never be mistakable for an adjusted one.
 --------------------------------------------------------------------
-WHAT THIS MODULE WILL NOT DO: fill gaps, forward-fill, or resample to
-a uniform grid. Missing minutes are real -- IEX simply had no print --
-and fabricated bars pass validate() cleanly (finite, positive,
-monotonic, unique). The sweep would then trade invented prices with
-zero warning. Gaps are honest; synthetic bars are not.
+GAP FILLING IS OFF BY DEFAULT AND OPT-IN ONLY. Missing minutes are
+real -- IEX simply had no print -- and fabricated bars pass validate()
+cleanly (finite, positive, monotonic, unique), so a sweep would trade
+invented prices with zero warning. Gaps are honest; synthetic bars are
+not, and nothing here fills one unless a caller explicitly asks.
+
+resample_to_uniform_minutes() is that explicit ask, added for the
+extended-hours dataset where leaving gaps turned out to be the worse
+of two bad options. Measured on 04:00-20:00 TQQQ: bar density ran 459
+per session in 2016 against 954 in 2026, a 2.08x drift, purely because
+pre/post-market liquidity grew. Every window in this project is
+expressed in DAYS and converted to bars through one bars_per_day
+constant, so that drift silently makes "0.25 days" mean twice as much
+real time at one end of the backtest as the other -- the same class of
+bug bars_from_days was written to prevent. A uniform grid trades
+honest gaps for an honest constant. Read that function's docstring for
+what the fabricated bars do and do not claim.
 """
 
 from __future__ import annotations
@@ -236,6 +248,91 @@ def filter_regular_trading_hours(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     return kept.tz_convert("UTC"), len(df) - len(kept)
 
 
+def resample_to_uniform_minutes(
+    df: pd.DataFrame,
+    *,
+    session_start: str = "04:00",
+    session_end: str = "20:00",
+) -> tuple[pd.DataFrame, int]:
+    """Give every session the same number of minute bars.
+
+    Returns (frame, bars_synthesized).
+
+    WHAT A SYNTHESIZED BAR CLAIMS, precisely: "no trade occurred in this
+    minute, and the last price still stood." It carries
+    open=high=low=close of the previous real close, and volume=0. It
+    does NOT claim a price moved, and it cannot manufacture a fill --
+    the intrabar model fills a resting order when the bar's high or low
+    reaches a level, and a bar whose high equals its low reaches
+    nothing it did not already sit on.
+
+    WHAT IT COSTS, stated plainly rather than buried:
+
+      - Realized volatility reads LOWER through thin stretches, because
+        a flat bar contributes a zero log-return to RollingStdev and a
+        zero range to the range measure. That is defensible (a minute
+        with no trades had no realized volatility) but it is not
+        neutral, and thin stretches are commoner in early years, so the
+        effect is not evenly spread across the backtest.
+      - Early closes (Thanksgiving, Christmas Eve -- roughly eight
+        sessions a year) get filled out to the full window, so those
+        days carry several hours of flat synthetic bars. Uniformity is
+        the point, and exempting them would reintroduce a variable bar
+        count for the sake of 3% of sessions.
+
+    volume=0 on these bars sits deliberately against
+    MarketContext.volume's "0.0 means unknown, not no-volume"
+    convention. On a uniform grid that convention inverts: zero is now
+    a measurement, not a default. The existing consumer already does
+    the right thing either way --
+    HighFrequencyLocalReferenceSizing.record_tick guards its volume
+    windows with `context.volume > 0`, so synthetic bars are skipped
+    rather than dragging the rolling mean toward zero.
+    """
+    if df.empty:
+        return df, 0
+
+    local = df.tz_convert(EXCHANGE_TZ)
+    start_h, start_m = (int(p) for p in session_start.split(":"))
+    end_h, end_m = (int(p) for p in session_end.split(":"))
+
+    # One contiguous minute index per session actually present. Sessions
+    # absent from the data (weekends, holidays) are never invented --
+    # only minutes WITHIN a session that already traded.
+    spans = []
+    for day in sorted({ts.date() for ts in local.index}):
+        spans.append(
+            pd.date_range(
+                start=pd.Timestamp(day).replace(hour=start_h, minute=start_m),
+                end=pd.Timestamp(day).replace(hour=end_h, minute=end_m)
+                - pd.Timedelta(minutes=1),
+                freq="1min",
+                tz=EXCHANGE_TZ,
+            )
+        )
+    full = pd.DatetimeIndex([]).append(spans) if spans else pd.DatetimeIndex([])
+
+    # Keep only real bars that fall inside the declared window; a print
+    # at 03:59 would otherwise survive as an off-grid row.
+    local = local[local.index.isin(full)]
+    reindexed = local.reindex(full)
+
+    missing = reindexed["close"].isna()
+    synthesized = int(missing.sum())
+
+    reindexed["close"] = reindexed["close"].ffill()
+    # A session whose first minutes never traded has nothing to carry
+    # forward; back-fill only those, so the frame opens on a real price.
+    reindexed["close"] = reindexed["close"].bfill()
+    for col in ("open", "high", "low"):
+        reindexed[col] = reindexed[col].where(~missing, reindexed["close"])
+    reindexed["volume"] = reindexed["volume"].where(~missing, 0.0)
+
+    out = reindexed.tz_convert("UTC")
+    out.index.name = df.index.name
+    return out, synthesized
+
+
 def to_backtest_frame(
     barset_df: pd.DataFrame, symbol: str, *, regular_hours_only: bool = True
 ) -> tuple[pd.DataFrame, int, int]:
@@ -340,15 +437,37 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def session_scope_tag(regular_hours_only: bool) -> str:
+    """Filename component naming which session a dataset covers.
+
+    "rth" is spelled out rather than left implicit so the two scopes
+    sort together and neither is the silent default on disk.
+    """
+    return "rth" if regular_hours_only else "ext"
+
+
 def default_output_path(spec: FetchSpec, data_dir: Path) -> Path:
     """Timestamped filename carrying the parameters that change meaning.
 
     feed and adjustment are in the name because a raw file and an
     adjusted file of the same symbol and window are different data, and
     confusing them silently corrupts a backtest.
+
+    SESSION SCOPE is in the name for a stronger version of the same
+    reason. Without it a regular-hours and an extended-hours download of
+    the same symbol/window/feed/adjustment produce the IDENTICAL
+    filename, so the second either aborts on write_csv's exists-check or,
+    with --force, overwrites the first -- and data/ is git-ignored, so
+    that loss is unrecoverable. The two files also differ in a way
+    nothing downstream detects: bars_per_day is a hand-set strategy
+    parameter (387 for this repo's regular-hours SIP data, ~757 with
+    extended hours) and src/sizing_indicators.bars_from_days validates
+    only that it is positive. Feeding an extended-hours file to a config
+    pinning 387 silently halves every window this project tunes.
     """
     return Path(data_dir) / (
         f"{spec.symbol}_{spec.timeframe}_{spec.feed}_{spec.adjustment}"
+        f"_{session_scope_tag(spec.regular_hours_only)}"
         f"_{spec.start.date().isoformat()}_{spec.end.date().isoformat()}.csv"
     )
 
@@ -387,15 +506,25 @@ def write_sidecar(csv_path: Path, spec: FetchSpec, report_fields: dict) -> Path:
     return meta_path
 
 
-def update_latest_symlink(csv_path: Path) -> Path | None:
+def update_latest_symlink(csv_path: Path, *, regular_hours_only: bool = True) -> Path | None:
     """Point <SYMBOL>_<TF>_latest.csv at the newest download.
 
     A RELATIVE symlink, so it still resolves inside the container when
     data/ is bind-mounted at /app/data -- an absolute host path would
     dangle there.
+
+    Extended-hours downloads get their OWN link
+    (<SYMBOL>_<TF>_ext_latest.csv) rather than sharing one. A single
+    shared link would mean the last download of either scope silently
+    redefines what every `--data data/TQQQ_1Min_latest.csv` invocation
+    reads, and the two datasets need different bars_per_day -- see
+    default_output_path for why that particular swap is invisible
+    downstream. Defaults to the regular-hours name so existing callers
+    keep the link they already reference.
     """
     parts = csv_path.name.split("_")
-    link = csv_path.parent / f"{parts[0]}_{parts[1]}_latest.csv"
+    suffix = "latest" if regular_hours_only else "ext_latest"
+    link = csv_path.parent / f"{parts[0]}_{parts[1]}_{suffix}.csv"
     try:
         if link.is_symlink() or link.exists():
             link.unlink()
@@ -512,7 +641,7 @@ def download(
                 "sha256": digest,
             },
         )
-    update_latest_symlink(path)
+    update_latest_symlink(path, regular_hours_only=spec.regular_hours_only)
     return report
 
 

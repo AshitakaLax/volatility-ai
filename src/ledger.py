@@ -75,10 +75,43 @@ class Lot:
         """Derive the exit target once, at creation.
 
         Computed here rather than on each access so it is fixed for the
-        lot's lifetime: partial closes must not move an existing lot's
-        exit price.
+        lot's lifetime unless retarget() is called explicitly: partial
+        closes must not move an existing lot's exit price.
         """
         self.target_sell_price = self.buy_price * (1.0 + self.profit_target)
+
+    def retarget(self, new_profit_target: float) -> None:
+        """Move this lot's exit target. The ONLY sanctioned mutation of
+        profit_target/target_sell_price after creation.
+
+        Exists for trailing-target strategies (see src/trailing_target.py):
+        an absolute target fixed at entry can leave a lot unsellable
+        forever, while a target that trails the price it has already
+        reached converts an unrealized peak into a reachable exit.
+
+        WHY BOTH FIELDS MOVE TOGETHER, and why that is load-bearing:
+        src/persistence.py's load_ledger asserts the persisted
+        target_sell_price still equals buy_price * (1 + profit_target)
+        and raises PersistenceError otherwise. That assertion is a real
+        drift check worth keeping, so this method preserves the
+        derivation rather than breaking it -- writing target_sell_price
+        alone would make every restart fail on every retargeted lot.
+
+        buy_price and shares are NEVER touched here. The cost basis is
+        what src/no_loss_guard.py evaluates against, so moving a target
+        can never permit a losing sell: the guard recomputes economics
+        at the real fill price and rejects independently of whatever
+        this lot claims its target is. A target is an ELIGIBILITY
+        signal; the guard is the safety boundary.
+        """
+        if new_profit_target <= 0:
+            raise ValueError(
+                f"new_profit_target must be positive, got {new_profit_target}. A "
+                "non-positive target would mark a lot marketable at or below its own "
+                "cost basis, where the no-loss guard rejects every sell anyway."
+            )
+        self.profit_target = new_profit_target
+        self.target_sell_price = self.buy_price * (1.0 + new_profit_target)
 
 
 class AssetLotLedger:
