@@ -1,0 +1,44 @@
+# Enhancement 4/5: is max_concurrent_lots the binding constraint?
+#
+# EVERY sweep to date has landed pinned at exactly 6,000 open lots --
+# all 64/64 rows in output/search_hf_targets_frontier.csv, and the
+# single-combo smoke test for retune_uniform_extended_v2.yaml
+# (target=0.30, per_lot_pct=0.001) also hit Open Trade Count=6000
+# exactly. Every CAGR/drawdown conclusion drawn so far is therefore
+# partly a measurement of this cap, not purely of the swept parameters.
+#
+# This isolates the cap alone: ONE combination (the v1 retune's best --
+# target=1.00, untrailed, per_lot_pct=0.001, on the uniform
+# extended-hours dataset), repeated across
+# config/lotcap_test_{6000,12000,20000,unlimited}.yaml with only
+# risk.max_concurrent_lots changed. max_concurrent_lots is a risk-
+# section scalar, not a strategy_params entry, so it cannot be
+# expressed as a grid.* sweep axis -- hence four files instead of one
+# sweep config.
+#
+# 6000 here reproduces the current cap exactly, as the baseline the
+# other three files are compared against.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 960
+    per_lot_pct: 0.001
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+grid:
+  steps: [0.00075]
+  profit_targets: [1.00]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: CAGR %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}
