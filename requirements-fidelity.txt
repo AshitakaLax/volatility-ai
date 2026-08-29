@@ -1,0 +1,57 @@
+# Fidelity live-trading dependencies -- OPT-IN, install separately:
+#
+#     pip install -r requirements-fidelity.txt
+#     playwright install firefox
+#
+# Kept out of requirements.txt on purpose: Dockerfile installs that file
+# for every image, and this stack is useless in a backtest container
+# (and useless anywhere without the second command above, which fetches
+# the ~100MB browser binary these packages drive).
+#
+# Nothing in src/ imports any of this except the Fidelity broker path.
+# Backtesting and Alpaca live trading need none of it.
+#
+# --------------------------------------------------------------------
+# EXACT PINS, deliberately -- unlike requirements.txt, which uses floors
+#
+# fidelity-api declares its own dependencies completely unpinned
+# (`install_requires=["playwright", "playwright-sm", "pyotp"]`), and one
+# of them warrants more care than a floor.
+#
+# playwright-sm is a SINGLE release (0.0.1, 2025-11-06) from a solo
+# maintainer, republishing a fork chain of playwright_stealth
+# (MaxxRK <- alexstewartja <- AtuboDad). The published artifact was
+# inspected directly and IS CLEAN -- only stealth JS shims, no eval /
+# exec / pickle / subprocess / network calls. But it runs in-process
+# with an AUTHENTICATED brokerage browser context, and an unpinned
+# floating dependency there would auto-adopt any future release with no
+# review. Hence `==`, not `>=`.
+#
+# It also installs a top-level package literally named
+# `playwright_stealth`, which COLLIDES with the canonical
+# playwright-stealth distribution. Never install both -- which one wins
+# is nondeterministic.
+#
+# playwright==1.52.0 is stated explicitly even though playwright-sm
+# already hard-pins exactly that version transitively. Written out so
+# the constraint is visible here rather than discovered during a
+# dependency resolve.
+#
+# Re-audit before moving any of these pins. The security assessment
+# behind them checked these exact versions; a bump is a new audit.
+# --------------------------------------------------------------------
+#
+# On fidelity-api's source: the PyPI package and
+# github.com/AshitakaLax/fidelity-api are byte-identical at the time of
+# writing -- the GitHub compare API reports status "identical", 0
+# commits ahead, 0 behind, 0 files changed against upstream
+# kennyboy106/fidelity-api. PyPI is preferred over a git URL because it
+# is an immutable, Trusted-Publishing-signed artifact. If the fork ever
+# genuinely diverges, switch to:
+#     fidelity-api @ git+https://github.com/AshitakaLax/fidelity-api@<pinned-sha>
+# and re-run the audit against that SHA.
+
+fidelity-api==0.0.17
+playwright-sm==0.0.1
+playwright==1.52.0
+pyotp==2.10.0

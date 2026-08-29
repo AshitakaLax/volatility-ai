@@ -580,6 +580,91 @@ def test_env_files_stay_out_of_the_docker_build_context():
         )
 
 
+FIDELITY_ARTIFACTS = (
+    # Playwright storage_state: cookies + localStorage for an
+    # AUTHENTICATED brokerage session, plaintext. fidelity-api writes it
+    # into the CWD on every close_browser() unless save_state=False.
+    "Fidelity.json",
+    "Fidelity_staging.json",
+    # Playwright trace, written when debug=True -- records .fill()
+    # arguments, i.e. the username and password in cleartext.
+    "fidelity_trace.zip",
+    "fidelity_tracestaging.zip",
+    # Downloaded holdings/statements.
+    "Portfolio_Positions_Aug-29-2026.csv",
+)
+
+
+def test_fidelity_session_artifacts_are_git_ignored():
+    """fidelity-api writes credential-equivalent files into the working
+    directory by default. The real fix is save_state=False and an
+    explicit profile_path outside the repo -- this pins the defense in
+    depth, so a mistake there is still not committable."""
+    import subprocess
+
+    for name in FIDELITY_ARTIFACTS:
+        result = subprocess.run(
+            ["git", "check-ignore", "-v", name],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"{name} is NOT git-ignored -- it could be committed"
+
+
+def test_fidelity_session_artifacts_stay_out_of_the_docker_build_context():
+    """Same artifacts, same reasoning as the .env case above: `COPY . .`
+    would otherwise bake a live brokerage session into the image."""
+    patterns = [
+        line.strip()
+        for line in (REPO_ROOT / ".dockerignore").read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    import fnmatch
+
+    for name in FIDELITY_ARTIFACTS:
+        assert any(fnmatch.fnmatch(name, p) for p in patterns), (
+            f"{name} would enter the Docker build context"
+        )
+
+
+def test_fidelity_dependencies_are_exactly_pinned():
+    """Unlike requirements.txt's floors. playwright-sm in particular is
+    a single-release, solo-maintainer package that runs in-process with
+    an authenticated brokerage browser context -- a floating version
+    there would auto-adopt any future release unreviewed."""
+    content = (REPO_ROOT / "requirements-fidelity.txt").read_text()
+    pinned = [
+        line.strip()
+        for line in content.splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    assert pinned, "requirements-fidelity.txt declares no dependencies"
+    for line in pinned:
+        assert "==" in line, f"{line!r} is not exactly pinned"
+    for package in ("fidelity-api", "playwright-sm", "playwright", "pyotp"):
+        assert any(line.startswith(package + "==") for line in pinned), (
+            f"{package} missing an exact pin"
+        )
+
+
+def test_playwright_is_not_in_the_main_requirements():
+    """It would be installed into every Docker image by the Dockerfile's
+    `pip install -r requirements.txt`, for containers that only run
+    backtests -- and be unusable there anyway without a separate
+    `playwright install` for the browser binary."""
+    main_requirements = (REPO_ROOT / "requirements.txt").read_text()
+    declared = [
+        line.strip()
+        for line in main_requirements.splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    for line in declared:
+        assert not line.lower().startswith(("playwright", "fidelity-api", "pyotp")), (
+            f"{line!r} belongs in requirements-fidelity.txt, not requirements.txt"
+        )
+
+
 def test_backtest_with_return_full_results_does_not_crash(config_path, data_path):
     """Regression test: output.return_full_results=True makes
     run_sweep return (summary_df, full_results) instead of a bare
