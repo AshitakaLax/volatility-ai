@@ -1,0 +1,50 @@
+# Re-tune v3: fixes the confound in retune_uniform_extended_v2.yaml.
+#
+# v2 fixed trail_min_profit_target's absolute value (0.001 -> 0.10) but left
+# it FIXED across all four swept profit_targets (0.30-1.00). Once a lot
+# gains enough for propose() to fire at all (the v2 first-tick-collapse fix
+# in TrailingTargetPolicy requires trailed_price > buy_price), the floor at
+# 0.10 sits below EVERY target in the sweep, so a modest pullback still
+# ratchets every lot down toward the same ~10% floor regardless of its
+# original target -- verified directly: all four profit_targets converged
+# to target_sell_price=110.00 once trailing engaged. The comparison across
+# profit_targets was uninformative by construction.
+#
+# Fix: run one config PER target, with trail_min_profit_target scaled to
+# that target (50% of it) instead of one shared absolute floor. This is a
+# per-file split rather than one combined YAML because grid.profit_targets
+# and strategy_params lists are independent cartesian axes -- there is no
+# way to pair "this target with this floor" inside a single sweep file.
+#
+# null (untrailed) is dropped from this sweep -- v1 already established
+# firm untrailed baselines per target (see below), and re-running it here
+# would just re-pay ~1400-9700s per combo for a known answer.
+#
+# v1 untrailed baseline for THIS target (0.30): 36.98% CAGR, 73.5% DD.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 960
+    per_lot_pct: 0.001
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    trail_pct: [0.05, 0.10, 0.20]
+    trail_min_profit_target: 0.15
+    weighted_event_boost_multiplier: 2.5
+grid:
+  steps: [0.00075]
+  profit_targets: [0.30]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: CAGR %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}
