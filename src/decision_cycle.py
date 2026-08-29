@@ -60,6 +60,77 @@ def record_tick(strategy, context: MarketContext) -> None:
     strategy.record_tick(context)
 
 
+def adjust_open_lot_targets(
+    strategy,
+    ledger,
+    context: MarketContext,
+    skip_order_ids=frozenset(),
+) -> list:
+    """Phase 1b: let the strategy move open lots' exit targets, before
+    this bar's marketable check. Returns the lots actually changed.
+
+    Placed BETWEEN record_tick and the harvest deliberately. After
+    record_tick, so a trailing policy reading the strategy's own rolling
+    state sees this bar included; before the marketable check, so a
+    target lowered on this bar can be harvested on this bar rather than
+    waiting for the next one -- which on a 60s live poll would be a
+    real, and silent, delay.
+
+    Lives here for the same reason record_tick does: the backtest, the
+    intrabar replay, and the live loop must apply this at the identical
+    point in the sequence. Three copies of "loop the open lots and
+    retarget" would be three chances to disagree about ordering, which
+    is exactly the divergence this module exists to prevent.
+
+    skip_order_ids lets the live loop exclude lots with a sell already
+    in flight -- their resting order was submitted at the current
+    target, so moving it would leave the ledger and the broker
+    disagreeing about one lot's price. Backtests pass nothing.
+
+    Returns the changed lots (not a count) because the live caller has
+    to re-persist exactly those rows, and rediscovering which ones
+    changed would mean either re-running the policy or writing every
+    open lot every tick.
+    """
+    # getattr rather than a direct call: SizingStrategy supplies a
+    # default, but strategy_class is only duck-typed at the
+    # _simulate_single boundary -- test doubles and any externally
+    # supplied strategy need not subclass it. Treating the hook as
+    # optional keeps those working, the same way diagnostics() is
+    # deliberately outside the contract.
+    hook = getattr(strategy, "adjust_profit_target", None)
+    if hook is None:
+        return []
+
+    changed = []
+    open_ids = set()
+    # list() because retarget mutates lots while we iterate, and a
+    # caller is free to close lots in the harvest that follows.
+    for lot in list(ledger.open_lots):
+        open_ids.add(lot.order_id)
+        if lot.order_id in skip_order_ids:
+            continue
+        proposed = hook(lot, context)
+        if proposed is None:
+            continue
+        if proposed == lot.profit_target:
+            continue
+        lot.retarget(proposed)
+        changed.append(lot)
+
+    # Let a strategy holding per-lot state release what has closed. A
+    # trailing policy keeps one peak per lot it has ever seen, and a
+    # live daemon closes lots indefinitely -- without this the map is a
+    # slow leak for exactly the deployment that runs longest. Collected
+    # from the loop above rather than a second pass, so this costs a set
+    # insert per open lot and changes no asymptotics.
+    retain = getattr(strategy, "retain_lots", None)
+    if retain is not None:
+        retain(open_ids)
+
+    return changed
+
+
 def evaluate_grid_decision(
     strategy,
     risk_manager,

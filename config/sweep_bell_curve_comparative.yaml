@@ -1,0 +1,38 @@
+# Comparative sweep: BELL_CURVE strategy
+# Sizes inversely to price dislocation (relative to rolling high)
+# Testing lookback window and Gaussian parameters
+strategy:
+  strategy_id: bell_curve
+  strategy_params:
+    max_trade_pct: [0.05, 0.08, 0.10]
+    lookback_days: [10, 20, 30]
+    bars_per_day: 387
+    mu: [0.0]
+    sigma: [0.03, 0.05, 0.08]
+    inverse_scale_kappa: 2.0
+grid:
+  steps: [0.005, 0.01, 0.015]
+  profit_targets: [0.003, 0.005, 0.008]
+backtest:
+  symbol: TQQQ
+  initial_cash: 100000.0
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: grid
+  rank_by: CAGR %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: close
+  enforce_no_loss: true
+output:
+  return_full_results: false

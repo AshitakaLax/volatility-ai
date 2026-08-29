@@ -30,6 +30,8 @@ def ctx(
     volume: float = 0.0,
     high: float | None = None,
     low: float | None = None,
+    event_intensity: float = 0.0,
+    minutes_to_event: float = -1.0,
 ):
     return MarketContext(
         timestamp=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
@@ -47,6 +49,8 @@ def ctx(
         is_earnings_reaction_day=is_earnings_reaction_day,
         time_of_day_flag=minute,
         volume=volume,
+        event_intensity=event_intensity,
+        minutes_to_event=minutes_to_event,
     )
 
 
@@ -525,3 +529,107 @@ def test_volume_and_vol_scaling_compose():
             s.record_tick(ctx(p, i, volume=5000.0 if i > 250 else 1000.0))
     probe = ctx(100.0, volume=5000.0)
     assert both.calculate_trade_value(probe) < vol_only.calculate_trade_value(probe)
+
+
+# --- synthetic-bar exclusion from vol windows ---
+
+
+def test_a_flat_unchanged_bar_does_not_update_the_vol_windows():
+    """The resample_to_uniform_minutes signature: high==low==price,
+    unchanged from the previous real print."""
+    s = hf(per_lot_pct=0.01, vol_scale_exponent=-1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    real = _calm_then_wild()
+    _vol_feed(s, real)
+    before = s.calculate_trade_value(ctx(real[-1]))
+
+    # 50 synthetic bars: flat, at the last real price.
+    last = real[-1]
+    for i in range(50):
+        s.record_tick(ctx(last, len(real) + i, high=last, low=last))
+    after = s.calculate_trade_value(ctx(real[-1]))
+
+    assert after == pytest.approx(before)
+
+
+def test_a_real_flat_bar_with_no_prior_price_still_counts():
+    """The very first tick has no prev_price to compare against, so it
+    must not be misread as synthetic and silently dropped."""
+    s = hf(per_lot_pct=0.01, vol_scale_exponent=-1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    s.record_tick(ctx(100.0, 0))
+    assert s._prev_price == pytest.approx(100.0)
+
+
+def test_vol_scaling_is_unaffected_by_context_volume_being_zero():
+    """The live path's context.volume is ALWAYS 0.0 (LiveBar has no
+    volume field) -- vol scaling must not be gated on it, or it would
+    silently disable itself forever in live trading."""
+    s = hf(per_lot_pct=0.01, vol_scale_exponent=-1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    for i, p in enumerate(_calm_then_wild()):
+        s.record_tick(ctx(p, i, volume=0.0))  # volume=0.0 is the ctx() default too
+    assert s._fast_vol.value is not None
+    assert s.calculate_trade_value(ctx(100.0)) < INITIAL_CASH * 0.01
+
+
+# --- weighted event boost (event_intensity) ---
+
+
+def test_weighted_event_boost_defaults_to_an_exact_no_op():
+    s = hf(per_lot_pct=0.01)
+    assert s.weighted_event_boost_multiplier == 1.0
+    feed(s, [100.0])
+    value = s.calculate_trade_value(
+        ctx(100.0, event_intensity=8.5, minutes_to_event=3.0)
+    )
+    assert value == pytest.approx(INITIAL_CASH * 0.01)
+
+
+def test_event_intensity_scales_the_boost_by_its_own_weight():
+    """8.5 out of the 0-100 scale gets 8.5% of the configured boost."""
+    s = hf(per_lot_pct=0.01, weighted_event_boost_multiplier=2.0)
+    feed(s, [100.0])
+    value = s.calculate_trade_value(ctx(100.0, event_intensity=8.5))
+    expected_multiplier = 1.0 + (2.0 - 1.0) * (8.5 / 100.0)
+    assert value == pytest.approx(INITIAL_CASH * 0.01 * expected_multiplier)
+
+
+def test_full_scale_event_intensity_applies_the_full_boost():
+    s = hf(per_lot_pct=0.01, weighted_event_boost_multiplier=2.5)
+    feed(s, [100.0])
+    value = s.calculate_trade_value(ctx(100.0, event_intensity=100.0))
+    assert value == pytest.approx(INITIAL_CASH * 0.01 * 2.5)
+
+
+def test_weighted_boost_combines_with_day_flags_by_max_not_multiply():
+    """Same underlying claim at two granularities -- must not compound."""
+    s = hf(
+        per_lot_pct=0.01,
+        earnings_day_boost_multiplier=1.5,
+        weighted_event_boost_multiplier=3.0,
+    )
+    feed(s, [100.0])
+    value = s.calculate_trade_value(
+        ctx(100.0, is_earnings_reaction_day=True, event_intensity=8.5)
+    )
+    # weighted contributes 1 + 2*0.085 = 1.17, day flag contributes 1.5 --
+    # max wins, not 1.5 * 1.17.
+    assert value == pytest.approx(INITIAL_CASH * 0.01 * 1.5)
+
+
+def test_rejects_a_weighted_boost_below_one():
+    with pytest.raises(ConfigurationError, match="weighted_event_boost_multiplier"):
+        hf(weighted_event_boost_multiplier=0.5)
+
+
+def test_weighted_event_boost_multiplies_with_vol_scale():
+    """Different axis from vol, same convention as the day-level boosts."""
+    s = hf(
+        per_lot_pct=0.01,
+        weighted_event_boost_multiplier=2.0,
+        vol_scale_exponent=1.0,
+        vol_fast_days=0.1,
+        vol_slow_days=2.0,
+    )
+    _vol_feed(s, _calm_then_wild())
+    plain = s.calculate_trade_value(ctx(100.0))
+    on_event = s.calculate_trade_value(ctx(100.0, event_intensity=100.0))
+    assert on_event == pytest.approx(plain * 2.0)

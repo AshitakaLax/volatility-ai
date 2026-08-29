@@ -54,6 +54,16 @@ class LiveBar:
     high: float
     low: float
     close: float
+    # Alpaca's Bar model has always carried this (verified against the
+    # installed SDK: Bar.model_fields includes 'volume'). It was simply
+    # never read here, which meant context.volume was ALWAYS 0.0 on the
+    # live path regardless of what the feed actually reported --
+    # MarketContext.volume's own convention treats 0.0 as "unknown," so
+    # HighFrequencyLocalReferenceSizing's volume_scale_exponent silently
+    # never activates live no matter what a config sets it to. Defaults
+    # to 0.0 (not None) so a feed that ever omits it degrades to the
+    # existing "unknown" behavior rather than raising.
+    volume: float = 0.0
 
 
 def _require_alpaca_data():
@@ -143,6 +153,7 @@ class AlpacaMarketData:
             high=float(bar.high),
             low=float(bar.low),
             close=float(bar.close),
+            volume=float(getattr(bar, "volume", 0.0) or 0.0),
         )
 
     def is_open(self) -> bool:

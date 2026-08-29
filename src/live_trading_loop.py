@@ -212,6 +212,21 @@ class LiveTradingLoop:
         self.step = float(config.live.step)
         self.profit_target = float(config.live.profit_target)
         self.deployment_id = deployment_id
+        # Loaded once at startup, not per tick -- src/event_calendar.py's
+        # from_csv parses ~700 rows, cheap once but wasteful at a
+        # 60s poll interval over a multi-day deployment. Falls back to
+        # None (no events) if the generated CSV is absent, matching
+        # optimization_controller.py's and intraday_validation.py's
+        # same fallback -- see EarningsEventTable._load_event_table's
+        # docstring pattern.
+        try:
+            from src.event_calendar import EarningsEventTable
+            from src.exceptions import DataValidationError as _DataValidationError
+
+            self._event_table = EarningsEventTable.from_csv()
+        except (FileNotFoundError, _DataValidationError) as e:
+            logger.warning(f"No earnings event table loaded ({e}); event_intensity stays 0.0.")
+            self._event_table = None
         self._sleep = sleep
         self._stop_requested = False
 
@@ -496,6 +511,11 @@ class LiveTradingLoop:
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
 
+        if self._event_table is not None:
+            event_intensity, minutes_to_event = self._event_table.scalar(timestamp)
+        else:
+            event_intensity, minutes_to_event = 0.0, -1.0
+
         return MarketContext(
             timestamp=timestamp,
             open=bar.open,
@@ -512,6 +532,8 @@ class LiveTradingLoop:
             is_earnings_reaction_day=is_earnings_reaction_day_at(timestamp),
             time_of_day_flag=minutes_since_open(timestamp),
             volume=float(getattr(bar, "volume", 0.0) or 0.0),
+            event_intensity=event_intensity,
+            minutes_to_event=minutes_to_event,
         )
 
     # --- order submission ---
@@ -526,6 +548,22 @@ class LiveTradingLoop:
         picked up next tick.
         """
         submitted = 0
+        # Trailing exits, through the shared helper the backtest paths
+        # also call. Lots with a sell in flight are excluded: that order
+        # is resting at the lot's current target, so moving the target
+        # would leave our ledger and the broker's live order disagreeing
+        # about one lot's price.
+        retargeted = decision_cycle.adjust_open_lot_targets(
+            self.strategy, self.ledger, context, skip_order_ids=self.state.sells_in_flight
+        )
+        # Persist immediately, before any sell is submitted off the new
+        # target. A crash between retargeting and the durable write would
+        # otherwise restart with the OLD target while the broker may
+        # already hold an order placed against the new one -- and
+        # load_ledger's derivation check cannot catch that, since both
+        # fields moved together and stay self-consistent.
+        for lot in retargeted:
+            self.store.record_open_lot(lot)
         marketable = self.ledger.get_marketable_lots(context.price)
         for lot in marketable[: self.config.live.max_sells_per_tick]:
             if lot.order_id in self.state.sells_in_flight:
