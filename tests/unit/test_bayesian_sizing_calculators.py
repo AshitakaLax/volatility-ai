@@ -544,3 +544,147 @@ def test_vol_scale_multiplies_independently_of_the_posterior():
     feed(s, prices + _calm_then_wild())
     assert s.diagnostics(ctx(100.0))["saturated"] is True
     assert s.calculate_trade_value(ctx(100.0)) < EQUITY * s.max_trade_pct
+
+
+# --- the optional trailing target (enhancement 1/3) ---
+
+
+def a_lot_ledger():
+    from src.ledger import AssetLotLedger
+
+    return AssetLotLedger()
+
+
+def test_trailing_defaults_to_off_and_preserves_the_fixed_target():
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s = make(trail_pct=None)
+    assert s.adjust_profit_target(lot, ctx(150.0)) is None
+    assert lot.profit_target == pytest.approx(0.30)
+
+
+def test_trailing_does_not_activate_on_a_lots_first_tick():
+    """Regression for the bug fixed in src/trailing_target.py this same
+    session -- pinned here too, since this is a second, independent
+    call site that could reintroduce it if TrailingTargetPolicy were
+    ever inlined instead of composed."""
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s = make(trail_pct=0.05, trail_min_profit_target=0.10)
+    assert s.adjust_profit_target(lot, ctx(100.0)) is None
+    assert lot.profit_target == pytest.approx(0.30)
+
+
+def test_trailing_lowers_the_target_after_a_real_gain():
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s = make(trail_pct=0.05, trail_min_profit_target=0.10)
+    s.adjust_profit_target(lot, ctx(100.0))  # seed the peak, no-op
+    proposed = s.adjust_profit_target(lot, ctx(130.0))  # a real 30% gain
+    assert proposed is not None
+    assert proposed < 0.30
+
+
+def test_trailing_is_independent_of_the_posteriors_target_return():
+    """target_return still governs what the posterior estimates;
+    trail_pct governs the real exit price. Trailing a lot down must not
+    touch the posterior's own state."""
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s = make(trail_pct=0.05, trail_min_profit_target=0.10, target_return=0.01)
+    feed(s, [100.0 * (1.001**i) for i in range(50)])
+    before = (s._fast.alpha, s._fast.beta)
+    s.adjust_profit_target(lot, ctx(100.0))
+    s.adjust_profit_target(lot, ctx(130.0))
+    assert (s._fast.alpha, s._fast.beta) == before
+    assert s.target_return == pytest.approx(0.01)
+
+
+def test_retain_lots_forwards_to_the_trailing_policy():
+    """Pruning itself is lazy by design (TrailingTargetPolicy.retain_lots
+    only rebuilds once dead entries exceed 2*len(open)+64 -- a
+    performance guard, tested in tests/unit/test_trailing_target.py).
+    This only confirms the CALL is forwarded, using enough entries to
+    actually cross that threshold."""
+    s = make(trail_pct=0.05)
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s.adjust_profit_target(lot, ctx(150.0))
+    for i in range(100):  # simulate 100 closed lots' leftover peaks
+        s._trailing._peaks[f"closed-{i}"] = 100.0
+    s.retain_lots({lot.order_id})
+    assert lot.order_id in s._trailing._peaks
+    assert len(s._trailing._peaks) == 1
+
+
+def test_retain_lots_is_a_no_op_when_trailing_is_off():
+    s = make()  # trail_pct=None
+    s.retain_lots(set())  # must not raise
+
+
+def test_decision_cycle_drives_bayesian_trailing_the_same_way_as_hf():
+    """End-to-end through the shared helper every harvest path calls --
+    not just the strategy's own method in isolation."""
+    from src import decision_cycle
+
+    ledger = a_lot_ledger()
+    lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)
+    s = make(trail_pct=0.05, trail_min_profit_target=0.10)
+
+    decision_cycle.adjust_open_lot_targets(s, ledger, ctx(100.0))
+    changed = decision_cycle.adjust_open_lot_targets(s, ledger, ctx(130.0))
+
+    assert changed == [lot]
+    assert lot.profit_target < 0.30
+
+
+# --- the cost buffer (enhancement 3/3) ---
+
+
+def test_cost_buffer_defaults_to_an_exact_no_op():
+    s = make()
+    assert s.cost_buffer_pct == 0.0
+
+
+def test_a_touch_that_only_clears_the_raw_target_fails_with_a_cost_buffer():
+    """The regression this exists to fix: a raw touch of target_return
+    used to count as a win regardless of costs. With a buffer, a touch
+    that clears target_return but NOT target_return+buffer must fail."""
+    no_buffer = make(horizon_days=1.0, bars_per_day=5, target_return=0.01)
+    with_buffer = make(horizon_days=1.0, bars_per_day=5, target_return=0.01, cost_buffer_pct=0.02)
+    # +1.5%: clears the raw 1% target but not 1%+2%=3%.
+    prices = [100.0, 100.5, 101.5, 101.0, 101.0, 101.0]
+    feed(no_buffer, prices)
+    feed(with_buffer, prices)
+    assert no_buffer._fast.mean > 0.5, "sanity check: the raw touch is a win without a buffer"
+    assert with_buffer._fast.mean < 0.5
+
+
+def test_a_touch_that_clears_target_plus_buffer_still_succeeds():
+    s = make(horizon_days=1.0, bars_per_day=5, target_return=0.01, cost_buffer_pct=0.01)
+    # +5%: clears 1%+1%=2% with room to spare.
+    feed(s, [100.0, 101.0, 105.0, 103.0, 103.0, 103.0])
+    assert s._fast.mean > 0.5
+
+
+def test_cost_buffer_does_not_affect_target_return_itself():
+    """The mismatch cross-check (optimization_controller._run_one_combination)
+    reads target_return directly -- cost_buffer_pct must not alter it."""
+    s = make(target_return=0.01, cost_buffer_pct=0.02)
+    assert s.target_return == pytest.approx(0.01)
+
+
+def test_a_negative_cost_buffer_is_rejected():
+    with pytest.raises(ConfigurationError, match="cost_buffer_pct"):
+        make(cost_buffer_pct=-0.01)
+
+
+def test_cost_buffer_does_not_affect_the_lookahead_property():
+    """Still resolves at exactly horizon+1, still cannot see the future
+    -- the buffer changes WHAT counts as success, not WHEN it resolves."""
+    s = make(horizon_days=1.0, bars_per_day=5, cost_buffer_pct=0.01)
+    for i in range(5):
+        s.record_tick(ctx(100.0, i))
+        assert s._fast.effective_sample_size == 0.0
+    s.record_tick(ctx(100.0, 5))
+    assert s._fast.effective_sample_size > 0.0

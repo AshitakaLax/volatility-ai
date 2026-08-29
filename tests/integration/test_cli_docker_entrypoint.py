@@ -366,6 +366,126 @@ def test_run_trading_loop_drives_ticks_and_shuts_down_cleanly(tmp_path, monkeypa
     broker = FakeBroker()
     broker.trading_client = object()
     rc = cli._run_trading_loop(Args(), make_config(), broker, store, breaker, lifecycle)
+    assert rc == 0
+
+
+def _bayesian_live_config(target_return, profit_target, **strategy_extra):
+    from src.config import BacktestConfig
+
+    return BacktestConfig.from_dict(
+        {
+            "strategy": {
+                "strategy_id": "bayesian_dual_scale",
+                "strategy_params": {
+                    "max_trade_pct": 0.05,
+                    "target_return": target_return,
+                    "horizon_days": 1.0,
+                    "bars_per_day": 100,
+                    "fast_half_life_days": 1.0,
+                    "slow_half_life_days": 5.0,
+                    **strategy_extra,
+                },
+            },
+            "grid": {"steps": [0.003], "profit_targets": [profit_target]},
+            "backtest": {"symbol": "TQQQ", "initial_cash": 100_000.0},
+            "live": {
+                "enabled": True,
+                "paper_trading": True,
+                "step": 0.01,
+                "profit_target": profit_target,
+                "poll_interval_seconds": 1.0,
+            },
+        }
+    )
+
+
+def test_a_live_target_return_mismatch_is_rejected_before_the_loop_starts(monkeypatch):
+    """Same cross-check as the sweep path, applied to the single
+    parameter set real capital would actually trade."""
+    import importlib
+
+    from src.exceptions import ConfigurationError
+    from tests.integration.test_live_trading_loop import FakeBroker, FakeMarketData
+
+    cli = importlib.import_module("cli")
+    market = FakeMarketData()
+    monkeypatch.setattr(
+        "src.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
+    )
+
+    class Args:
+        max_ticks = 1
+
+    broker = FakeBroker()
+    broker.trading_client = object()
+    config = _bayesian_live_config(target_return=0.02, profit_target=0.005)
+
+    with pytest.raises(ConfigurationError, match="target_return=0.02"):
+        cli._run_trading_loop(Args(), config, broker, None, None, None)
+
+
+def test_a_matching_live_target_return_starts_the_loop(monkeypatch):
+    import importlib
+
+    from src.persistence import LedgerStore
+    from src.risk_manager import CircuitBreaker
+    from src.runtime_lifecycle import RuntimeLifecycle
+    from tests.integration.test_live_trading_loop import FakeBroker, FakeMarketData
+
+    cli = importlib.import_module("cli")
+    monkeypatch.setenv("APCA_API_KEY_ID", "k")
+    monkeypatch.setenv("APCA_API_SECRET_KEY", "s")
+    market = FakeMarketData()
+    market.push(100.0)
+    monkeypatch.setattr(
+        "src.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
+    )
+
+    class Args:
+        max_ticks = 1
+
+    broker = FakeBroker()
+    broker.trading_client = object()
+    config = _bayesian_live_config(target_return=0.005, profit_target=0.005)
+    store = LedgerStore(":memory:")
+    breaker = CircuitBreaker(store=store)
+    lifecycle = RuntimeLifecycle(store=store, circuit_breaker=breaker)
+
+    rc = cli._run_trading_loop(Args(), config, broker, store, breaker, lifecycle)
+    assert rc == 0
+
+
+def test_allow_target_return_mismatch_lets_a_live_deployment_start(monkeypatch):
+    import importlib
+
+    from src.persistence import LedgerStore
+    from src.risk_manager import CircuitBreaker
+    from src.runtime_lifecycle import RuntimeLifecycle
+    from tests.integration.test_live_trading_loop import FakeBroker, FakeMarketData
+
+    cli = importlib.import_module("cli")
+    monkeypatch.setenv("APCA_API_KEY_ID", "k")
+    monkeypatch.setenv("APCA_API_SECRET_KEY", "s")
+    market = FakeMarketData()
+    market.push(100.0)
+    monkeypatch.setattr(
+        "src.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
+    )
+
+    class Args:
+        max_ticks = 1
+
+    broker = FakeBroker()
+    broker.trading_client = object()
+    config = _bayesian_live_config(
+        target_return=0.02, profit_target=0.005, allow_target_return_mismatch=True
+    )
+    store = LedgerStore(":memory:")
+    breaker = CircuitBreaker(store=store)
+    lifecycle = RuntimeLifecycle(store=store, circuit_breaker=breaker)
+
+    rc = cli._run_trading_loop(Args(), config, broker, store, breaker, lifecycle)
+    assert rc == 0
 
     assert rc == 0
     assert lifecycle.state.value == "STOPPED", "shutdown must complete, not abandon state"

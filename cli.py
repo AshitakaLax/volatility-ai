@@ -526,6 +526,38 @@ def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -
     strategy_class = _load_strategy_registry()[config.strategy.strategy_id]
     strategy = strategy_class(**config.strategy.strategy_params)
 
+    # Same cross-check optimization_controller._run_one_combination
+    # applies per sweep combination -- see BayesianDualScaleSizing's
+    # module docstring, "THE TARGET_RETURN / PROFIT_TARGET CROSS-CHECK".
+    # Here it is target_return against the SINGLE parameter the live
+    # loop actually trades (config.live.profit_target), not a sweep
+    # value -- real capital confidently estimating the probability of
+    # hitting the wrong number is the same silent failure, live.
+    from src.exceptions import ConfigurationError
+
+    # live.profit_target can still be None here -- BacktestConfig.validate()
+    # deliberately does not require it (a config may set live.enabled
+    # without running the daemon), and LiveTradingLoop.__init__ below is
+    # what raises the clearer "both required" error for that case. Guard
+    # against it here so a missing value isn't misreported as a
+    # "mismatch" against None.
+    declared_target = getattr(strategy, "target_return", None)
+    mismatch_allowed = getattr(strategy, "allow_target_return_mismatch", False)
+    if (
+        declared_target is not None
+        and config.live.profit_target is not None
+        and declared_target != config.live.profit_target
+        and not mismatch_allowed
+    ):
+        raise ConfigurationError(
+            f"{config.strategy.strategy_id}'s target_return={declared_target} does not match "
+            f"live.profit_target={config.live.profit_target} -- the posterior would be "
+            "confidently estimating the probability of hitting a different price than the one "
+            "this deployment actually trades. Set target_return to match live.profit_target, "
+            "or pass allow_target_return_mismatch=True in strategy_params to confirm the "
+            "mismatch is deliberate."
+        )
+
     market_data = AlpacaMarketData(
         feed=config.live.feed,
         # The clock is a trading-API endpoint, so it comes from the
