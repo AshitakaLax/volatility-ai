@@ -184,7 +184,22 @@ class HFMarketData:
                     f"HF Market Data returned HTTP {e.code} for {path}. "
                     "Check the asset type and ticker."
                 ) from e
-            except (urllib.error.URLError, TimeoutError) as e:
+            except OSError as e:
+                # Broad on purpose, and safe because of except-clause
+                # ORDER: urllib.error.HTTPError is itself an OSError
+                # subclass (verified directly), so it would otherwise
+                # be swallowed here too and retried pointlessly -- but
+                # Python tries except clauses in order and the HTTPError
+                # clause above already claims it first. This clause
+                # exists because a second, DIFFERENT unhandled
+                # exception surfaced live, the same way TimeoutError
+                # did originally: ConnectionResetError (also an OSError
+                # subclass, also NOT a urllib.error.URLError subclass)
+                # killed an instrument-screen run outright with zero
+                # retries. Catching the whole OSError family once,
+                # rather than adding one more name to a list each time
+                # a new transient failure mode appears, is the fix that
+                # generalizes instead of chasing the next one.
                 if attempt >= self.max_retries:
                     reason = getattr(e, "reason", e)
                     raise DataValidationError(
