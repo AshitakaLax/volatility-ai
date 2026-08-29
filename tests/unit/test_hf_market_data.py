@@ -370,3 +370,29 @@ def test_an_http_error_is_not_retried():
     with pytest.raises(DataValidationError, match="HTTP 400"):
         HFMarketData(opener=opener, max_retries=3, sleep=lambda _: None).fetch_bars(spec())
     assert len(opener.calls) == 1
+
+
+def test_a_connection_reset_is_retried_too():
+    """The exact failure that slipped through before this fix: a
+    DIFFERENT OSError subclass than TimeoutError, not previously caught
+    at all, killed an instrument-screen run with zero retries."""
+    opener = flaky_opener(
+        [ConnectionResetError("connection reset"), {"count": 1, "data": [bar("2024-06-03 09:30:00")]}]
+    )
+    df, _, _ = HFMarketData(opener=opener, max_retries=3, sleep=lambda _: None).fetch_bars(spec())
+    assert len(df) == 1
+
+
+def test_http_error_is_still_not_retried_even_though_it_is_an_oserror_subclass():
+    """The safety property the broad OSError catch depends on:
+    HTTPError is itself an OSError subclass (verified), so this only
+    stays correct because Python tries except clauses in order and the
+    HTTPError clause is listed first."""
+    import urllib.error
+
+    opener = flaky_opener(
+        [urllib.error.HTTPError("url", 500, "server error", {}, None), {"count": 1, "data": []}]
+    )
+    with pytest.raises(DataValidationError, match="HTTP 500"):
+        HFMarketData(opener=opener, max_retries=3, sleep=lambda _: None).fetch_bars(spec())
+    assert len(opener.calls) == 1
