@@ -18,23 +18,27 @@ say() {
 echo "===== LOT CAP TEST =====" > "$LOG"
 echo "Started: $(date)" >> "$LOG"
 
-# run_hf_sweep.py only writes its output CSV on completion (or on the
-# periodic checkpoint it takes mid-run for a multi-hour sweep -- see
-# README's "Running the HF parameter sweeps" section), so this file's
-# presence is a more reliable completion signal on this environment
-# than a process-name match: this Git Bash install has no pgrep, and
-# `ps aux` here does not expose command-line arguments to grep against
-# (verified: every python process shows only the bare interpreter
-# path, config filenames included).
-V2_OUTPUT="output/retune_uniform_extended_v2.csv"
-if [ ! -f "$V2_OUTPUT" ]; then
-    say "Waiting for retune_uniform_extended_v2 to write $V2_OUTPUT (memory contention otherwise)..."
-    while [ ! -f "$V2_OUTPUT" ]; do
+# CORRECTED (this script's first version checked for the OUTPUT CSV's
+# existence, which was wrong and caused a real incident: run_hf_sweep.py
+# checkpoints that file every 10 combos mid-run -- see its own `done %
+# 10 == 0` block -- with no accompanying log line, so the file existed
+# hours before the sweep actually finished. This script then started
+# its first combo while v2 still had 6 of 16 left, taking free memory
+# from 2.6GB to 1.9GB alongside the live trading process. Caught by
+# checking memory directly, not by a test -- there is no automated test
+# for "does this script's gate actually gate.")
+#
+# The real, provably-once signal is run_hf_sweep.py's own final line,
+# printed exactly once (run_hf_sweep.py:403, `print(f"Wrote {args.output}")`)
+# after its main loop is fully exhausted -- never at a mid-run
+# checkpoint. Grepping the LOG for this, not the CSV's existence.
+V2_LOG="output/retune_uniform_extended_v2_20260828_2223.log"
+V2_DONE_MARKER="Wrote output/retune_uniform_extended_v2.csv"
+if ! grep -qF "$V2_DONE_MARKER" "$V2_LOG" 2>/dev/null; then
+    say "Waiting for retune_uniform_extended_v2 to finish (checking $V2_LOG for completion)..."
+    while ! grep -qF "$V2_DONE_MARKER" "$V2_LOG" 2>/dev/null; do
         sleep 60
     done
-    # The sweep driver writes the file, prints a results table, THEN
-    # exits -- give it a few seconds' margin so this doesn't race a
-    # still-running process for the same CPU/memory it's trying to wait for.
     sleep 10
 fi
 
