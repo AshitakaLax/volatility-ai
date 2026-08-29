@@ -173,6 +173,32 @@ def _run_one_combination(
     """
     try:
         sizing_engine = strategy_class(**params)
+        # BayesianDualScaleSizing's target_return is a SEPARATE value
+        # from `target` (this combination's real profit_target/exit
+        # price) -- its own module docstring already called the
+        # mismatch case out as "a silent modelling error" but nothing
+        # anywhere enforced it: grepped optimization_controller.py,
+        # decision_cycle.py, and config.py, zero cross-checks existed.
+        # A sweep varying grid.profit_targets with target_return fixed
+        # in strategy_params would silently run every combination but
+        # one with a posterior confidently estimating the probability
+        # of hitting the WRONG number, and every metric it produced
+        # would look completely ordinary. Checked here via getattr,
+        # not an isinstance check, so this generalizes to any future
+        # strategy that declares the same convention without this
+        # function needing to know its type.
+        declared_target = getattr(sizing_engine, "target_return", None)
+        mismatch_allowed = getattr(sizing_engine, "allow_target_return_mismatch", False)
+        if declared_target is not None and declared_target != target and not mismatch_allowed:
+            raise ConfigurationError(
+                f"{_strategy_name(strategy_class)}'s target_return={declared_target} does not "
+                f"match this combination's profit_target={target}. The posterior estimates "
+                "P(reach target_return within horizon), so a mismatch means it is confidently "
+                "answering a different question than the one being traded -- see "
+                "BayesianDualScaleSizing's own module docstring. Set target_return to mirror "
+                "grid.profit_targets, or pass allow_target_return_mismatch=True to confirm the "
+                "mismatch is deliberate."
+            )
         result = controller._simulate_single(
             step=step,
             target=target,
