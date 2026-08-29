@@ -119,30 +119,64 @@ def test_the_target_only_ratchets_down_never_back_up():
 
 def test_a_new_peak_does_not_raise_an_already_lowered_target():
     """The ratchet holds even when the peak legitimately rises."""
-    policy = TrailingTargetPolicy(trail_pct=0.50)
+    policy = TrailingTargetPolicy(trail_pct=0.30)
     _, lot = a_lot(buy_price=100.0, profit_target=0.75)
 
     policy.observe(lot, 160.0)
-    lot.retarget(policy.propose(lot, 100.0))  # peak 160, trail 50% -> 80 -> floored
+    lot.retarget(policy.propose(lot, 100.0))  # peak 160, trail 30% -> 112, above cost
     lowered = lot.target_sell_price
 
-    # A much higher peak would trail to 250, far above the lowered
+    # A much higher peak would trail to 350, far above the lowered
     # target -- it must be refused rather than applied.
     assert policy.propose(lot, 500.0) is None
     assert lot.target_sell_price == pytest.approx(lowered)
 
 
 def test_the_floor_stops_the_target_falling_to_the_cost_basis():
-    policy = TrailingTargetPolicy(trail_pct=0.90, min_profit_target=0.01)
+    policy = TrailingTargetPolicy(trail_pct=0.50, min_profit_target=0.01)
     _, lot = a_lot(buy_price=100.0, profit_target=0.75)
 
-    # Peak 100 (the buy price) trailed by 90% would be 10 -- far below
-    # cost. The floor must win.
-    proposed = policy.propose(lot, 100.0)
+    # Peak 201 (a real 101% gain, so trailing is genuinely active --
+    # see test_trailing_does_not_activate_from_a_degenerate_peak)
+    # trailed by 50% is 100.5 -- barely above cost, below the 1% floor.
+    # The floor must win.
+    proposed = policy.propose(lot, 201.0)
     assert proposed == pytest.approx(0.01)
     lot.retarget(proposed)
     assert lot.target_sell_price == pytest.approx(101.0)
     assert lot.target_sell_price > lot.buy_price
+
+
+def test_trailing_does_not_activate_from_a_degenerate_peak():
+    """The regression this exists to pin: observe() seeds a fresh lot's
+    peak from buy_price, so on the FIRST call, before price has moved
+    at all, trailed_price = buy_price * (1 - trail_pct) is already
+    BELOW cost for any trail_pct > 0. Without the guard,
+    max(trailed_price, floor_price) picks floor_price unconditionally
+    on that first call -- collapsing profit_target=0.30 straight to
+    whatever the floor is, regardless of trail_pct, regardless of
+    whether price ever moved, and the ratchet-down-only rule then locks
+    it there permanently. Verified directly before this fix existed:
+    propose(lot, 100.0) with buy_price=100.0 proposed 0.10 immediately."""
+    for trail_pct in (0.05, 0.10, 0.20):
+        policy = TrailingTargetPolicy(trail_pct=trail_pct, min_profit_target=0.10)
+        _, lot = a_lot(buy_price=100.0, profit_target=0.30)
+        assert policy.propose(lot, 100.0) is None, (
+            f"trail_pct={trail_pct} activated on the very first tick, price unchanged"
+        )
+        assert lot.profit_target == pytest.approx(0.30)
+
+
+def test_trailing_activates_once_the_peak_shows_a_real_gain():
+    """The other half of the same fix: it must still activate once
+    there IS something to trail from."""
+    policy = TrailingTargetPolicy(trail_pct=0.05, min_profit_target=0.10)
+    _, lot = a_lot(buy_price=100.0, profit_target=0.30)
+    policy.observe(lot, 100.0)  # no gain yet
+
+    proposed = policy.propose(lot, 116.0)  # 16% gain -- trail(5%) clears cost
+    assert proposed is not None
+    assert proposed < 0.30
 
 
 def test_the_peak_is_seeded_from_buy_price_not_the_first_observation():

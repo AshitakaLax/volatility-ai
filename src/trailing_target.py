@@ -31,6 +31,20 @@ converted back into a profit_target so src/ledger.Lot.retarget can keep
 target_sell_price and profit_target consistent (see that method for why
 the derivation must be preserved).
 
+TRAILING ONLY ENGAGES ONCE THERE IS A REAL GAIN TO TRAIL. observe()
+seeds a fresh lot's peak from buy_price, so trailed_price on a lot's
+very first tick -- before price has moved at all -- is buy_price * (1
+- trail_pct), already BELOW cost for any trail_pct > 0. Combined with
+ratchet-down-only below, an earlier version of this method proposed
+collapsing straight to the floor on that first tick, regardless of
+trail_pct or whether price had moved, and the ratchet then locked it
+there permanently -- verified directly against a config sweep before
+being caught: every profit_target from 0.30 to 1.00 produced identical
+results once any trail_pct was set. propose() now requires
+trailed_price > buy_price before proposing anything at all, so a lot
+sits at its full original target, exactly as if trailing were off,
+until its peak has genuinely earned that.
+
 --------------------------------------------------------------------
 RATCHET-DOWN ONLY, which is the safety property that makes this simple
 
@@ -124,6 +138,26 @@ class TrailingTargetPolicy:
         peak = self.observe(lot, price)
 
         trailed_price = peak * (1.0 - self.trail_pct)
+
+        # NOT YET ACTIVE: observe() seeds a fresh lot's peak from
+        # buy_price (see that method's docstring -- a lot that only
+        # ever falls should trail from what it cost, not wherever it
+        # was first looked at). That means on a lot's very first tick,
+        # BEFORE price has moved at all, trailed_price is buy_price *
+        # (1 - trail_pct) -- already BELOW cost for any trail_pct > 0.
+        # Without this guard, max(trailed_price, floor_price) would
+        # pick floor_price on that very first call regardless of
+        # trail_pct or how wide the original target was, and the
+        # ratchet-down-only rule would lock every lot there permanently
+        # -- verified directly: with profit_target=0.30, this proposed
+        # collapsing to a 0.10 floor on tick one, price unchanged from
+        # buy_price. Trailing must only engage once the peak has risen
+        # enough that trailing off it would still clear cost basis --
+        # i.e. there is an actual gain to protect -- not from a
+        # peak that is, so far, just the entry price relabeled.
+        if trailed_price <= lot.buy_price:
+            return None
+
         floor_price = lot.buy_price * (1.0 + self.min_profit_target)
         new_target_price = max(trailed_price, floor_price)
 
