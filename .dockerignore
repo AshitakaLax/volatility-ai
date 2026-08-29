@@ -25,6 +25,19 @@ venv/
 .env*
 *.env
 
+# fidelity-api writes these into the working directory, and two of them
+# are credential-equivalent: Fidelity*.json is the Playwright
+# storage_state for an AUTHENTICATED brokerage session (cookies +
+# localStorage, plaintext), and fidelity_trace*.zip is a Playwright
+# trace that records .fill() arguments -- the username and password in
+# cleartext. `COPY . .` would bake either straight into the image.
+# Mirrors .gitignore; see there for the full reasoning.
+Fidelity.json
+Fidelity_*.json
+fidelity_trace*.zip
+Statements/
+Portfolio_Positions*.csv
+
 # Local persistent state and user-supplied data -- these are meant to
 # be bind-mounted at runtime (see the Dockerfile's VOLUME and
 # docker-compose.yml), never baked into the image.
