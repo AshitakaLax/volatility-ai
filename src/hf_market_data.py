@@ -67,6 +67,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -131,7 +132,10 @@ class HFMarketData:
         base_url: str = BASE_URL,
         page_limit: int = DEFAULT_PAGE_LIMIT,
         timeout: float = 60.0,
+        max_retries: int = 3,
+        retry_backoff_seconds: float = 5.0,
         opener=None,
+        sleep=None,
     ) -> None:
         """Configure the source.
 
@@ -142,27 +146,57 @@ class HFMarketData:
 
         opener is injectable so tests exercise the pagination and
         timezone logic against a double rather than the network.
+
+        max_retries/retry_backoff_seconds exist because a plain read
+        TIMEOUT does not raise urllib.error.URLError -- verified
+        directly: TimeoutError is not a URLError subclass, so before
+        this was added, a slow or overloaded server made _get raise an
+        unhandled TimeoutError instead of the DataValidationError every
+        other failure mode here produces. Retried with linear backoff
+        because a provider-side slowdown (observed directly: this
+        provider went unresponsive on every endpoint, including ones
+        confirmed working minutes earlier, while unrelated hosts stayed
+        reachable throughout) is exactly the kind of transient
+        condition a retry is for, not a hard failure to surface
+        immediately.
         """
         if page_limit <= 0:
             raise ConfigurationError(f"page_limit must be positive, got {page_limit}")
+        if max_retries < 0:
+            raise ConfigurationError(f"max_retries must be >= 0, got {max_retries}")
         self.asset = asset
         self.base_url = base_url.rstrip("/")
         self.page_limit = int(page_limit)
         self.timeout = timeout
+        self.max_retries = int(max_retries)
+        self.retry_backoff_seconds = retry_backoff_seconds
         self._opener = opener or urllib.request.urlopen
+        self._sleep = sleep or time.sleep
 
     def _get(self, path: str, params: dict) -> dict:
         url = f"{self.base_url}{path}?{urllib.parse.urlencode(params)}"
-        try:
-            with self._opener(url, timeout=self.timeout) as response:
-                return json.load(response)
-        except urllib.error.HTTPError as e:
-            raise DataValidationError(
-                f"HF Market Data returned HTTP {e.code} for {path}. "
-                "Check the asset type and ticker."
-            ) from e
-        except urllib.error.URLError as e:
-            raise DataValidationError(f"HF Market Data unreachable: {e.reason}") from e
+        for attempt in range(self.max_retries + 1):
+            try:
+                with self._opener(url, timeout=self.timeout) as response:
+                    return json.load(response)
+            except urllib.error.HTTPError as e:
+                raise DataValidationError(
+                    f"HF Market Data returned HTTP {e.code} for {path}. "
+                    "Check the asset type and ticker."
+                ) from e
+            except (urllib.error.URLError, TimeoutError) as e:
+                if attempt >= self.max_retries:
+                    reason = getattr(e, "reason", e)
+                    raise DataValidationError(
+                        f"HF Market Data unreachable after {attempt + 1} attempt(s) for "
+                        f"{path}: {reason}"
+                    ) from e
+                logger.warning(
+                    f"HF Market Data request failed ({e!r}), "
+                    f"retrying ({attempt + 1}/{self.max_retries})..."
+                )
+                self._sleep(self.retry_backoff_seconds * (attempt + 1))
+        raise AssertionError("unreachable")  # the loop always returns or raises above
 
     def _fetch_pages(self, symbol: str, spec: FetchSpec) -> list[dict]:
         """Walk the range forward, one page at a time.

@@ -295,3 +295,78 @@ def test_an_empty_frame_is_returned_unchanged():
     out, synth = resample_to_uniform_minutes(empty)
 
     assert out.empty and synth == 0
+
+
+# --- retry on transient failures ---
+
+
+def flaky_opener(exceptions_then_page):
+    """Raises each exception in order, then serves the final page."""
+    import io as _io
+
+    calls = []
+    queue = list(exceptions_then_page)
+
+    @contextmanager
+    def opener(url, timeout=None):
+        calls.append(url)
+        item = queue.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        yield _io.BytesIO(json.dumps(item).encode())
+
+    opener.calls = calls
+    return opener
+
+
+def test_a_timeout_is_retried_not_left_unhandled():
+    """TimeoutError is NOT a urllib.error.URLError subclass -- verified
+    directly -- so before this was handled explicitly, a slow server
+    raised an unhandled TimeoutError instead of DataValidationError."""
+    opener = flaky_opener([TimeoutError("timed out"), {"count": 1, "data": [bar("2024-06-03 09:30:00")]}])
+    sleeps = []
+    df, _, _ = HFMarketData(opener=opener, max_retries=3, sleep=sleeps.append).fetch_bars(spec())
+    assert len(df) == 1
+    assert len(opener.calls) == 2
+    assert len(sleeps) == 1  # one retry, one backoff sleep
+
+
+def test_retries_are_exhausted_and_reported_as_a_data_validation_error():
+    opener = flaky_opener([TimeoutError("t1"), TimeoutError("t2"), TimeoutError("t3")])
+    with pytest.raises(DataValidationError, match="unreachable after 3 attempt"):
+        HFMarketData(opener=opener, max_retries=2, sleep=lambda _: None).fetch_bars(spec())
+
+
+def test_backoff_increases_with_each_attempt():
+    opener = flaky_opener(
+        [TimeoutError("t1"), TimeoutError("t2"), {"count": 1, "data": [bar("2024-06-03 09:30:00")]}]
+    )
+    sleeps = []
+    HFMarketData(
+        opener=opener, max_retries=3, retry_backoff_seconds=2.0, sleep=sleeps.append
+    ).fetch_bars(spec())
+    assert sleeps == [2.0, 4.0]
+
+
+def test_zero_retries_means_the_first_failure_raises_immediately():
+    opener = flaky_opener([TimeoutError("t1")])
+    with pytest.raises(DataValidationError, match="unreachable after 1 attempt"):
+        HFMarketData(opener=opener, max_retries=0, sleep=lambda _: None).fetch_bars(spec())
+
+
+def test_a_negative_max_retries_is_rejected():
+    with pytest.raises(ConfigurationError, match="max_retries"):
+        HFMarketData(max_retries=-1)
+
+
+def test_an_http_error_is_not_retried():
+    """HTTPError means the server answered (e.g. a bad request) --
+    retrying an unchanging request is pointless, unlike a timeout."""
+    import urllib.error
+
+    opener = flaky_opener(
+        [urllib.error.HTTPError("url", 400, "bad request", {}, None), {"count": 1, "data": []}]
+    )
+    with pytest.raises(DataValidationError, match="HTTP 400"):
+        HFMarketData(opener=opener, max_retries=3, sleep=lambda _: None).fetch_bars(spec())
+    assert len(opener.calls) == 1
