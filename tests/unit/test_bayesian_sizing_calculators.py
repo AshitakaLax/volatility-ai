@@ -21,12 +21,18 @@ from src.market_context import MarketContext
 EQUITY = 100_000.0
 
 
-def ctx(price: float, bar: int = 0, equity: float = EQUITY) -> MarketContext:
+def ctx(
+    price: float,
+    bar: int = 0,
+    equity: float = EQUITY,
+    high: float | None = None,
+    low: float | None = None,
+) -> MarketContext:
     return MarketContext(
         timestamp=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
         open=price,
-        high=price,
-        low=price,
+        high=price if high is None else high,
+        low=price if low is None else low,
         close=price,
         cash=equity,
         equity=equity,
@@ -285,6 +291,9 @@ def test_public_attributes_are_configuration_only():
         ({"bars_per_day": 0}, "bars_per_day"),
         ({"lookback_days": 0.0}, "lookback_days"),
         ({"lookback_days": -1.0}, "lookback_days"),
+        ({"vol_scale_min": 0.0}, "vol_scale_min"),
+        ({"vol_scale_min": 2.0, "vol_scale_max": 1.0}, "vol_scale_min"),
+        ({"vol_measure": "bogus"}, "vol_measure"),
     ],
 )
 def test_invalid_configuration_is_rejected_at_construction(kw, match):
@@ -444,3 +453,94 @@ def test_retrigger_does_not_perturb_the_posterior_or_the_lookahead_property():
     assert off._slow.mean == pytest.approx(on._slow.mean)
     assert off._bars_seen == on._bars_seen
     assert len(off._pending) == len(on._pending)
+
+
+# --- the optional vol scale ---
+
+
+def _calm_then_wild(n_calm=400, n_wild=60):
+    """Mirrors test_high_frequency_sizing.py's own helper of the same
+    name: a long calm stretch then a volatile one, so fast_vol rises
+    well above slow_vol without the price level drifting far."""
+    prices = [100.0]
+    for i in range(n_calm):
+        prices.append(prices[-1] * (1.0004 if i % 2 else 0.9996))
+    for i in range(n_wild):
+        prices.append(prices[-1] * (1.010 if i % 2 else 0.990))
+    return prices
+
+
+def test_vol_scaling_defaults_to_an_exact_no_op():
+    s = make()
+    assert s._vol_enabled is False
+    feed(s, _calm_then_wild())
+    plain = make()
+    feed(plain, _calm_then_wild())
+    assert s.calculate_trade_value(ctx(100.0)) == pytest.approx(
+        plain.calculate_trade_value(ctx(100.0))
+    )
+
+
+def test_a_negative_exponent_sizes_down_when_volatility_spikes():
+    calm_config = dict(vol_scale_exponent=-1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    with_vol = make(**calm_config)
+    without_vol = make()
+    feed(with_vol, _calm_then_wild())
+    feed(without_vol, _calm_then_wild())
+
+    scaled = with_vol.calculate_trade_value(ctx(100.0))
+    unscaled = without_vol.calculate_trade_value(ctx(100.0))
+    assert scaled < unscaled
+
+
+def test_the_scale_is_clamped():
+    s = make(
+        vol_scale_exponent=8.0,  # would explode without the clamp
+        vol_fast_days=0.1,
+        vol_slow_days=2.0,
+        vol_scale_max=1.25,
+    )
+    feed(s, _calm_then_wild())
+    assert s._vol_scale() <= 1.25 + 1e-9
+
+
+def test_scale_is_one_until_the_windows_have_warmed():
+    s = make(vol_scale_exponent=-1.0)
+    s.record_tick(ctx(100.0, 0))
+    assert s._vol_scale() == pytest.approx(1.0)
+
+
+def test_vol_measure_defaults_to_stdev():
+    assert make()._vol_scale.__self__.vol_measure == "stdev"
+
+
+def test_a_flat_unchanged_bar_does_not_update_the_vol_windows():
+    """The resample_to_uniform_minutes signature: high==low==price,
+    unchanged from the previous real print -- copied guard from
+    HighFrequencyLocalReferenceSizing.record_tick, verified equal here."""
+    s = make(vol_scale_exponent=-1.0, vol_fast_days=0.1, vol_slow_days=2.0)
+    real = _calm_then_wild()
+    feed(s, real)
+    before = s._vol_scale()
+
+    last = real[-1]
+    for i in range(50):
+        s.record_tick(ctx(last, len(real) + i, high=last, low=last))
+    after = s._vol_scale()
+
+    assert after == pytest.approx(before)
+
+
+def test_vol_scale_multiplies_independently_of_the_posterior():
+    """The two ideas compose: a saturated (fully confident) posterior
+    still gets scaled down by turbulence."""
+    prices = [100.0 * (1.002**i) for i in range(300)]  # a strong uptrend -> high success rate
+    s = make(
+        reference_probability=0.01,  # trivially satisfied -> posterior saturates
+        vol_scale_exponent=-1.0,
+        vol_fast_days=0.1,
+        vol_slow_days=2.0,
+    )
+    feed(s, prices + _calm_then_wild())
+    assert s.diagnostics(ctx(100.0))["saturated"] is True
+    assert s.calculate_trade_value(ctx(100.0)) < EQUITY * s.max_trade_pct

@@ -113,6 +113,31 @@ dollar-per-lot. Frequent retriggering can exhaust cash after a handful
 of buys during one decline, same as it would for any equity-fraction
 strategy -- max_trade_pct will typically need to be swept smaller
 alongside enabling lookback_days.
+--------------------------------------------------------------------
+THE OPTIONAL VOL SCALE
+
+Every HF sweep to date picked a negative vol_scale_exponent (size DOWN
+into realized volatility) as its single most consistent finding --
+this strategy had no way to do that at all: reference_probability
+governs how confident the posterior must be, not how large a position
+is once confident. This adds the same ratio-of-rolling-windows scaler
+HighFrequencyLocalReferenceSizing uses, as an independent multiplier on
+top of the posterior, so the two ideas compose rather than compete: the
+posterior decides WHETHER to size up, this decides how much smaller a
+position should be given current turbulence, regardless of how
+confident the posterior is.
+
+Deliberately NOT shared code with HighFrequencyLocalReferenceSizing's
+_vol_scale -- that method is exercised directly by the currently-
+running live deployment, and refactoring it to share an implementation
+with a change landing here would risk the live strategy over a
+convenience save. The formula is copied, not imported: same ratio,
+same clamp, same warm-up-returns-1.0 behavior, same synthetic-bar
+guard (see record_tick) -- verified equal in
+tests/unit/test_bayesian_sizing_calculators.py.
+
+Defaults: vol_scale_exponent=0.0, an exact no-op -- existing configs
+and search_bayesian_deep.yaml's already-recorded results are unaffected.
 """
 
 from __future__ import annotations
@@ -123,7 +148,7 @@ from collections import deque
 from src.exceptions import ConfigurationError
 from src.market_context import MarketContext
 from src.size_calculators import SizingStrategy
-from src.sizing_indicators import RollingMax, bars_from_days, clamp
+from src.sizing_indicators import RollingMax, RollingMean, RollingStdev, bars_from_days, clamp
 
 
 class DecayedBetaPosterior:
@@ -217,6 +242,12 @@ class BayesianDualScaleSizing(SizingStrategy):
         prior_alpha: float = 1.0,
         prior_beta: float = 1.0,
         lookback_days: float | None = None,
+        vol_scale_exponent: float = 0.0,
+        vol_fast_days: float = 0.5,
+        vol_slow_days: float = 20.0,
+        vol_scale_min: float = 0.5,
+        vol_scale_max: float = 2.0,
+        vol_measure: str = "stdev",
     ) -> None:
         """Configure the model.
 
@@ -245,6 +276,13 @@ class BayesianDualScaleSizing(SizingStrategy):
             )
         if lookback_days is not None and lookback_days <= 0:
             raise ConfigurationError(f"lookback_days must be positive, got {lookback_days}")
+        if vol_scale_min <= 0.0 or vol_scale_max < vol_scale_min:
+            raise ConfigurationError(
+                f"need 0 < vol_scale_min <= vol_scale_max, got "
+                f"{vol_scale_min} and {vol_scale_max}"
+            )
+        if vol_measure not in ("stdev", "range"):
+            raise ConfigurationError(f"vol_measure must be 'stdev' or 'range', got {vol_measure!r}")
 
         self.max_trade_pct = max_trade_pct
         self.target_return = target_return
@@ -257,6 +295,12 @@ class BayesianDualScaleSizing(SizingStrategy):
         self.prior_alpha = prior_alpha
         self.prior_beta = prior_beta
         self.lookback_days = lookback_days
+        self.vol_scale_exponent = vol_scale_exponent
+        self.vol_fast_days = vol_fast_days
+        self.vol_slow_days = vol_slow_days
+        self.vol_scale_min = vol_scale_min
+        self.vol_scale_max = vol_scale_max
+        self.vol_measure = vol_measure
 
         self._horizon_bars = bars_from_days(horizon_days, bars_per_day)
         # Half-lives are configured in DAYS but consumed in TRIALS, and
@@ -293,6 +337,19 @@ class BayesianDualScaleSizing(SizingStrategy):
             if lookback_days is not None
             else None
         )
+        # Built only when enabled, matching HighFrequencyLocalReferenceSizing's
+        # own reasoning: at exponent 0.0 this is an exact no-op, so
+        # constructing the windows would add a per-bar update, for every
+        # combination in a sweep, to compute a number raised to the
+        # power zero.
+        self._vol_enabled = vol_scale_exponent != 0.0
+        self._prev_price: float | None = None
+        if self._vol_enabled:
+            fast_bars = max(2, bars_from_days(vol_fast_days, bars_per_day))
+            slow_bars = max(2, bars_from_days(vol_slow_days, bars_per_day))
+            make = RollingStdev if vol_measure == "stdev" else RollingMean
+            self._fast_vol = make(fast_bars)
+            self._slow_vol = make(slow_bars)
 
     def record_tick(self, context: MarketContext) -> None:
         """Open a trial for this bar and resolve any that have matured.
@@ -308,6 +365,30 @@ class BayesianDualScaleSizing(SizingStrategy):
         self._bars_seen += 1
         if self._rolling_high is not None:
             self._rolling_high.update(price)
+
+        if self._vol_enabled:
+            # Same structural synthetic-bar guard
+            # HighFrequencyLocalReferenceSizing.record_tick uses, copied
+            # rather than shared -- see that method's comment for the
+            # exact reasoning and the measured false-positive rate. A
+            # fabricated bar from resample_to_uniform_minutes is flat
+            # (high==low==price) AND unchanged from the previous real
+            # print; skip it so realized vol does not read low through
+            # synthetic filler.
+            is_synthetic_bar = (
+                context.high == context.low
+                and self._prev_price is not None
+                and price == self._prev_price
+            )
+            if not is_synthetic_bar:
+                if self.vol_measure == "range":
+                    self._fast_vol.update((context.high - context.low) / price)
+                    self._slow_vol.update((context.high - context.low) / price)
+                elif self._prev_price is not None and self._prev_price > 0:
+                    log_return = math.log(price / self._prev_price)
+                    self._fast_vol.update(log_return)
+                    self._slow_vol.update(log_return)
+            self._prev_price = price
 
         # After this call the window covers bars [i-H+1 .. i], which is
         # precisely the scoring window of the trial opened at bar i-H.
@@ -336,6 +417,28 @@ class BayesianDualScaleSizing(SizingStrategy):
         rolling_high = self._rolling_high.value
         reference = last_buy_price if rolling_high is None else max(last_buy_price, rolling_high)
         return reference * (1.0 - step)
+
+    _VOL_EPSILON = 1e-9
+
+    def _vol_scale(self) -> float:
+        """Size multiplier from short-horizon realized vol relative to
+        its own longer-horizon baseline -- see the module docstring's
+        "THE OPTIONAL VOL SCALE" section for why this exists and why it
+        is a copy of HighFrequencyLocalReferenceSizing's formula rather
+        than a shared one.
+
+        Returns 1.0 until both windows have enough observations and
+        whenever disabled, so the unscaled strategy's behavior is
+        reproduced exactly in both cases.
+        """
+        if not self._vol_enabled:
+            return 1.0
+        fast = self._fast_vol.value
+        slow = self._slow_vol.value
+        if fast is None or slow is None or slow <= self._VOL_EPSILON:
+            return 1.0
+        ratio = fast / slow
+        return clamp(ratio**self.vol_scale_exponent, self.vol_scale_min, self.vol_scale_max)
 
     def _conservative_probability(self) -> float:
         """Lower bound on p that BOTH timescales support."""
@@ -373,7 +476,16 @@ class BayesianDualScaleSizing(SizingStrategy):
         multiplier = clamp(self._conservative_probability() / self.reference_probability, 0.0, 1.0)
         if not math.isfinite(multiplier):
             return 0.0
-        return clamp(ceiling * multiplier, 0.0, ceiling)
+        # vol_scale multiplies ON TOP of the posterior-derived value,
+        # rather than being folded into ceiling -- see module docstring:
+        # the posterior decides whether to size up, this decides how
+        # much smaller given current turbulence, independently. No
+        # further clamp needed: _vol_scale() is already bounded to
+        # [vol_scale_min, vol_scale_max] and the base value to
+        # [0, ceiling], matching HighFrequencyLocalReferenceSizing's own
+        # calculate_trade_value, which does not reclamp after its
+        # multiplier chain either.
+        return clamp(ceiling * multiplier, 0.0, ceiling) * self._vol_scale()
 
     def diagnostics(self, context: MarketContext | None = None) -> dict:
         """Why the strategy sized the way it did.
