@@ -19,6 +19,8 @@ hand-rolled stand-ins.
 """
 
 import random
+import sys
+import types
 
 import pytest
 import requests.exceptions as rex
@@ -322,3 +324,102 @@ def test_invalid_retry_config_is_rejected():
     for kwargs in ({"max_attempts": 0}, {"base_delay": 0}, {"multiplier": 0.5}, {"jitter": 1.0}):
         with pytest.raises(ValueError):
             RetryConfig(**kwargs)
+
+
+# --- optional broker dependencies (Fidelity plan, item G) -------------
+#
+# Both broker stacks are OPTIONAL and pull in different trees: alpaca-py
+# (with requests) from requirements.txt, playwright from
+# requirements-fidelity.txt, which the Docker image never installs.
+# classify_error used to import alpaca unconditionally, so a
+# Fidelity-only deployment needed alpaca-py installed purely to classify
+# a Playwright error.
+
+
+def _hide_packages(monkeypatch, *prefixes):
+    """Make the named top-level packages un-importable, as they would be
+    in a deployment that never installed them."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if any(name == p or name.startswith(p + ".") for p in prefixes):
+            raise ImportError(f"No module named {name!r}")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    for name in list(sys.modules):
+        if any(name == p or name.startswith(p + ".") for p in prefixes):
+            monkeypatch.delitem(sys.modules, name, raising=False)
+
+
+def test_classify_works_without_alpaca_installed(monkeypatch):
+    """A Fidelity-only deployment must not need alpaca-py."""
+    _hide_packages(monkeypatch, "alpaca")
+    assert classify_error(TimeoutError("t")) is ErrorClass.RETRYABLE
+    assert (
+        classify_error(TimeoutError("t"), after_submission=True)
+        is ErrorClass.AMBIGUOUS
+    )
+
+
+def test_classify_works_without_requests_installed(monkeypatch):
+    _hide_packages(monkeypatch, "requests")
+    assert classify_error(ConnectionError("c")) is ErrorClass.RETRYABLE
+
+
+def test_classify_works_with_no_broker_packages_at_all(monkeypatch):
+    """The degenerate case: builtin transport errors must still classify
+    on their own, and an unknown error must not raise ImportError from
+    inside error handling."""
+    _hide_packages(monkeypatch, "alpaca", "requests", "playwright")
+    assert classify_error(ConnectionError("c")) is ErrorClass.RETRYABLE
+    assert classify_error(ValueError("?")) is ErrorClass.NON_RETRYABLE
+    assert classify_error(ValueError("?"), after_submission=True) is ErrorClass.AMBIGUOUS
+
+
+def test_a_playwright_timeout_is_retryable_before_submission(monkeypatch):
+    """Playwright's TimeoutError inherits from its own Error(Exception),
+    NOT from the builtin TimeoutError and not from OSError -- verified
+    against playwright/_impl/_errors.py. Without an explicit entry it
+    fell through to NON_RETRYABLE, quietly dropping a legitimate retry
+    on a transient browser timeout."""
+    fake = types.ModuleType("playwright")
+    sync_api = types.ModuleType("playwright.sync_api")
+
+    class PlaywrightError(Exception):
+        pass
+
+    class PlaywrightTimeoutError(PlaywrightError):
+        pass
+
+    sync_api.TimeoutError = PlaywrightTimeoutError
+    fake.sync_api = sync_api
+    monkeypatch.setitem(sys.modules, "playwright", fake)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+
+    assert not issubclass(PlaywrightTimeoutError, TimeoutError)
+    assert not issubclass(PlaywrightTimeoutError, OSError)
+    assert classify_error(PlaywrightTimeoutError("t")) is ErrorClass.RETRYABLE
+
+
+def test_a_playwright_timeout_after_submission_is_ambiguous(monkeypatch):
+    """The safety property. This already held via the catch-all at the
+    end of classify_error even before Playwright was recognised -- pinned
+    here so it stays true for the stated reason rather than by luck."""
+    fake = types.ModuleType("playwright")
+    sync_api = types.ModuleType("playwright.sync_api")
+
+    class PlaywrightTimeoutError(Exception):
+        pass
+
+    sync_api.TimeoutError = PlaywrightTimeoutError
+    fake.sync_api = sync_api
+    monkeypatch.setitem(sys.modules, "playwright", fake)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+
+    assert (
+        classify_error(PlaywrightTimeoutError("t"), after_submission=True)
+        is ErrorClass.AMBIGUOUS
+    )
