@@ -620,6 +620,105 @@ def test_rejects_a_weighted_boost_below_one():
         hf(weighted_event_boost_multiplier=0.5)
 
 
+# --- drawdown regime throttle ---
+
+
+def test_dd_throttle_defaults_to_an_exact_no_op():
+    """dd_throttle_start=None must reproduce the unscaled strategy bit
+    for bit, at any drawdown level -- including one deep enough that an
+    enabled throttle would floor it."""
+    s = hf(per_lot_pct=0.01)
+    assert s._dd_throttle_enabled is False
+    feed(s, [100.0])
+    for dd in (0.0, 0.3, 0.6, 0.9):
+        assert s.calculate_trade_value(ctx(100.0, equity=INITIAL_CASH)) == pytest.approx(
+            INITIAL_CASH * 0.01
+        ), f"drawdown {dd} scaled trade value despite dd_throttle_start being unset"
+
+
+def test_size_is_unaffected_below_the_start_threshold():
+    s = hf(per_lot_pct=0.01, dd_throttle_start=0.30, dd_throttle_full=0.60, dd_throttle_floor=0.25)
+    feed(s, [100.0])
+    context = MarketContext(
+        timestamp=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
+        open=100.0, high=100.0, low=100.0, close=100.0,
+        cash=INITIAL_CASH, equity=INITIAL_CASH, peak_equity=INITIAL_CASH,
+        drawdown=0.30, open_lot_count=0, bar_index=1,
+    )
+    assert s.calculate_trade_value(context) == pytest.approx(INITIAL_CASH * 0.01)
+
+
+def _dd_context(drawdown: float) -> MarketContext:
+    return MarketContext(
+        timestamp=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
+        open=100.0, high=100.0, low=100.0, close=100.0,
+        cash=INITIAL_CASH, equity=INITIAL_CASH, peak_equity=INITIAL_CASH,
+        drawdown=drawdown, open_lot_count=0, bar_index=1,
+    )
+
+
+def test_size_reaches_the_floor_at_and_beyond_full_drawdown():
+    s = hf(per_lot_pct=0.01, dd_throttle_start=0.30, dd_throttle_full=0.60, dd_throttle_floor=0.25)
+    feed(s, [100.0])
+    for dd in (0.60, 0.75, 0.99):
+        assert s.calculate_trade_value(_dd_context(dd)) == pytest.approx(
+            INITIAL_CASH * 0.01 * 0.25
+        )
+
+
+def test_size_ramps_linearly_between_start_and_full():
+    s = hf(per_lot_pct=0.01, dd_throttle_start=0.30, dd_throttle_full=0.60, dd_throttle_floor=0.0)
+    feed(s, [100.0])
+    # Halfway between 0.30 and 0.60 (dd=0.45) should land halfway between
+    # 1.0 and the floor (0.0) -- i.e. exactly half size.
+    halfway = s.calculate_trade_value(_dd_context(0.45))
+    assert halfway == pytest.approx(INITIAL_CASH * 0.01 * 0.5)
+
+
+def test_size_is_monotonically_non_increasing_as_drawdown_deepens():
+    s = hf(per_lot_pct=0.01, dd_throttle_start=0.20, dd_throttle_full=0.70, dd_throttle_floor=0.1)
+    feed(s, [100.0])
+    values = [s.calculate_trade_value(_dd_context(dd)) for dd in (0.0, 0.2, 0.3, 0.5, 0.7, 0.9)]
+    assert values == sorted(values, reverse=True)
+    assert values[-1] == pytest.approx(INITIAL_CASH * 0.01 * 0.1)
+
+
+def test_dd_throttle_composes_with_vol_scale():
+    """Different axes -- a calm bar deep in a drawdown and a turbulent
+    one are not the same situation -- so these multiply."""
+    s = hf(
+        per_lot_pct=0.01,
+        dd_throttle_start=0.20,
+        dd_throttle_full=0.70,
+        dd_throttle_floor=0.5,
+        vol_scale_exponent=1.0,
+        vol_fast_days=0.1,
+        vol_slow_days=2.0,
+    )
+    _vol_feed(s, _calm_then_wild())
+    calm_no_dd = s.calculate_trade_value(_dd_context(0.0))
+    calm_deep_dd = s.calculate_trade_value(_dd_context(0.70))
+    assert calm_deep_dd == pytest.approx(calm_no_dd * 0.5)
+
+
+@pytest.mark.parametrize("start", [0.0, -0.1, 1.0, 1.5])
+def test_rejects_an_out_of_range_start_threshold(start):
+    with pytest.raises(ConfigurationError, match="dd_throttle_start"):
+        hf(dd_throttle_start=start)
+
+
+@pytest.mark.parametrize(("start", "full"), [(0.5, 0.5), (0.5, 0.3), (0.5, 1.5)])
+def test_rejects_a_full_threshold_not_above_start_or_above_one(start, full):
+    with pytest.raises(ConfigurationError, match="dd_throttle_full"):
+        hf(dd_throttle_start=start, dd_throttle_full=full)
+
+
+@pytest.mark.parametrize("floor", [-0.1, 1.1])
+def test_rejects_an_out_of_range_floor(floor):
+    with pytest.raises(ConfigurationError, match="dd_throttle_floor"):
+        hf(dd_throttle_start=0.3, dd_throttle_floor=floor)
+
+
 def test_weighted_event_boost_multiplies_with_vol_scale():
     """Different axis from vol, same convention as the day-level boosts."""
     s = hf(

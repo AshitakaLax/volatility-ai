@@ -307,6 +307,64 @@ measured cost here: it once took a sweep from 3.2% coverage to 0.30%.
 Defaults: 0.0, an exact no-op, and it should stay there unless a sweep
 shows it earning its place.
 --------------------------------------------------------------------
+dd_throttle_start / dd_throttle_full / dd_throttle_floor -- sizing DOWN
+into an extended drawdown, not just a volatile bar
+
+Every lever above reacts to something LOCAL -- a calendar day, a
+realized-vol ratio over a handful of hours, the clock. None of them
+know whether the strategy is already deep in a multi-month drawdown.
+That gap shows up in the numbers: max drawdown sits at 73-82% across
+essentially every sweep run against this strategy on the full 10-year
+dataset -- vol scaling, volume scaling, wide-target sweeps, Bayesian
+comparisons, and the trailing-target sweeps (config/retune_trailing_v3
+and its predecessors) all land in that same band regardless of which
+of the other knobs moved. No lever tried so far targets the drawdown
+number itself.
+
+This one does, directly, using MarketContext.drawdown -- the SAME
+peak-equity/drawdown figure optimization_controller.py already tracks
+every bar (see its "Peaks/drawdown every bar (B3)" comment) and reports
+as "Max Drawdown %". Reusing it here means this throttle sees exactly
+the metric it exists to improve, computed once, not a second estimate
+that could disagree with it.
+
+    multiplier = 1.0                                   if dd <= start
+                 floor                                  if dd >= full
+                 linear ramp from 1.0 down to floor      in between
+
+This is deliberately a threshold-and-ramp, not the exponent form
+vol_scale_exponent uses. That form fits a ratio that is centered on
+1.0 and can go either direction; drawdown is bounded in [0, 1) and this
+lever is size-DOWN only by design -- there is no direction to sweep
+across zero the way there was for vol_scale_exponent, only how early
+(dd_throttle_start) and how hard (dd_throttle_full, dd_throttle_floor)
+to de-risk. A no-loss strategy (src/no_loss_guard.py) that keeps buying
+dips all the way down is, by construction, accumulating lots that can
+only be closed once the price recovers past their own cost basis --
+each additional lot bought deep in a drawdown adds another position
+that needs a larger recovery to exit. Buying LESS once already deep in
+one is the direct lever against that, independent of anything vol_scale_
+exponent's backward-looking ratio measures.
+
+Composes by multiplication with every other scaler above, same as
+vol_scale_exponent and volume_scale_exponent -- a calm bar deep in a
+drawdown and a volatile bar deep in the same drawdown are not the same
+situation, so this stacks rather than overriding them.
+
+Defaults: dd_throttle_start=None, an exact no-op -- a config that never
+sets it gets IDENTICAL behavior to before this existed, and costs
+nothing per bar (context.drawdown is already computed by the controller
+for every strategy; this only adds one multiply-and-clamp when enabled).
+
+UNMEASURED as of this writing -- this is a new lever, not yet swept.
+The next sweep should hold every other parameter at this strategy's
+best known configuration (config/retune_uniform_extended_v2.yaml's
+target=1.00, untrailed: 38.61% CAGR, 82.4% max DD) and vary
+dd_throttle_start/full/floor to see whether de-risking during a deep
+drawdown actually trades return for a lower max DD, or whether -- like
+vol_scale_exponent leaning IN, or the trailing-target floor -- the
+straightforward-sounding direction turns out not to hold on this data.
+--------------------------------------------------------------------
 weighted_event_boost_multiplier -- minute precision, step 3
 
 MarketContext.event_intensity is a NEW field, not one of Task 7.9's
@@ -419,6 +477,9 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         trail_pct: float | None = None,
         trail_min_profit_target: float = 0.001,
         weighted_event_boost_multiplier: float = 1.0,
+        dd_throttle_start: float | None = None,
+        dd_throttle_full: float = 0.60,
+        dd_throttle_floor: float = 0.25,
     ) -> None:
         if not 0.0 < per_lot_pct <= 1.0:
             raise ConfigurationError(f"per_lot_pct must be in (0, 1], got {per_lot_pct}")
@@ -501,6 +562,28 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             if trail_pct is not None
             else None
         )
+        # See the module docstring's "dd_throttle_start / dd_throttle_full
+        # / dd_throttle_floor" section. None (the default) is an exact
+        # no-op, same convention as trail_pct above.
+        self._dd_throttle_enabled = dd_throttle_start is not None
+        if self._dd_throttle_enabled:
+            if not 0.0 < dd_throttle_start < 1.0:
+                raise ConfigurationError(
+                    f"dd_throttle_start must be in (0, 1), got {dd_throttle_start}"
+                )
+            if not dd_throttle_start < dd_throttle_full <= 1.0:
+                raise ConfigurationError(
+                    f"dd_throttle_full must be in (dd_throttle_start, 1], got "
+                    f"{dd_throttle_full} with dd_throttle_start={dd_throttle_start}"
+                )
+            if not 0.0 <= dd_throttle_floor <= 1.0:
+                raise ConfigurationError(
+                    f"dd_throttle_floor must be in [0, 1] -- this lever only sizes DOWN, "
+                    f"got {dd_throttle_floor}"
+                )
+        self.dd_throttle_start = dd_throttle_start
+        self.dd_throttle_full = dd_throttle_full
+        self.dd_throttle_floor = dd_throttle_floor
 
     def record_tick(self, context: MarketContext) -> None:
         """Advance the rolling high and capture the capital baseline,
@@ -674,6 +757,31 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             relative**self.time_of_day_exponent, _TOD_SCALE_FLOOR, _TOD_SCALE_CEIL
         )
 
+    def _dd_throttle_scale(self, context: MarketContext) -> float:
+        """Size multiplier from how deep INTO an extended drawdown the
+        strategy already is, using context.drawdown -- the same
+        peak-equity/drawdown figure optimization_controller.py tracks
+        every bar and reports as "Max Drawdown %". See the module
+        docstring's dd_throttle section for why this is a threshold-and-
+        ramp rather than an exponent form, and why it only ever sizes
+        down.
+
+        Returns 1.0 (no-op) while off, and while the drawdown has not
+        yet reached dd_throttle_start -- so a config that leaves this
+        unset, or a run that never draws down past the threshold,
+        behaves exactly as it did before this existed.
+        """
+        if not self._dd_throttle_enabled:
+            return 1.0
+        dd = context.drawdown
+        if dd <= self.dd_throttle_start:
+            return 1.0
+        if dd >= self.dd_throttle_full:
+            return self.dd_throttle_floor
+        span = self.dd_throttle_full - self.dd_throttle_start
+        frac = (dd - self.dd_throttle_start) / span
+        return 1.0 - frac * (1.0 - self.dd_throttle_floor)
+
     def adjust_profit_target(self, lot, context: MarketContext) -> float | None:
         """Trail this lot's exit target, when trail_pct is configured.
 
@@ -767,4 +875,5 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             * self._vol_scale()
             * self._time_of_day_scale(context)
             * self._volume_scale()
+            * self._dd_throttle_scale(context)
         )
