@@ -592,6 +592,10 @@ FIDELITY_ARTIFACTS = (
     "fidelity_tracestaging.zip",
     # Downloaded holdings/statements.
     "Portfolio_Positions_Aug-29-2026.csv",
+    # fidelity_recon.py's traffic dump: captured authenticated-session
+    # traffic. Written to ~/.fidelity_recon by default, but --artifact-dir
+    # can point at the repo.
+    "recon_20260829_153000.json",
 )
 
 
