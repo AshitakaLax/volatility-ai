@@ -134,6 +134,18 @@ BASELINE: dict | None = {
     # and no other pinned value -- all twelve above were re-derived and
     # compared before it was appended.
     "CAGR %": 1.0775051531105362,
+    # Added when run_sweep began reporting calendar-year return spread
+    # (Average/Best/Worst) alongside the single whole-period CAGR. This
+    # fixture's data spans under one calendar year, so there is exactly
+    # one annual_returns() bucket -- meaning all three of these are
+    # necessarily identical to each other AND to Total Return % itself
+    # (see test_a_single_year_is_simultaneously_average_best_and_worst
+    # in test_performance_analyzer.py for why that is correct, not a
+    # degenerate baseline). All fourteen values above were re-derived
+    # and confirmed byte-identical before these three were appended.
+    "Average Annual Return %": 0.09981489816226485,
+    "Best Year Return %": 0.09981489816226485,
+    "Worst Year Return %": 0.09981489816226485,
 }
 
 

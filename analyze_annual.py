@@ -30,6 +30,7 @@ import pandas as pd
 
 from optimization_controller import OptimizationController, _run_one_combination
 from src.cost_models import DynamicSlippageModel
+from src.performance_analyzer import annual_returns
 from src.risk_manager import RiskManager
 from src.strategy_registry import resolve_strategy
 
@@ -58,6 +59,10 @@ _METRIC_COLS = {
     "Capital Velocity Index",
     "Max Drawdown %",
     "Return/Drawdown",
+    "CAGR %",
+    "Average Annual Return %",
+    "Best Year Return %",
+    "Worst Year Return %",
     "error",
 }
 
@@ -102,25 +107,6 @@ def _top_configs(cap: float | None, limit: int):
     return allrows.nlargest(limit, "Total Return %")
 
 
-def _annual(series: pd.Series) -> pd.Series:
-    """Calendar-year percentage returns from an equity or price series.
-
-    The first year is measured from the series' own start rather than
-    from a prior year that does not exist, so a partial first year is
-    reported honestly instead of as NaN.
-
-    Written plainly on purpose. The first version of this reindexed a
-    concatenated shifted series and produced badly misaligned results --
-    it reported TQQQ down 37% in 2023, a year it roughly tripled. A
-    year-over-year return is one shift; anything more elaborate is a
-    place for an off-by-one to hide.
-    """
-    yearly = series.resample("YE").last()
-    prev = yearly.shift(1)
-    prev.iloc[0] = series.iloc[0]
-    return ((yearly / prev) - 1.0) * 100.0
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", default="data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv")
@@ -131,10 +117,15 @@ def main():
     df = pd.read_csv(args.data, parse_dates=["timestamp"]).set_index("timestamp")
     controller = OptimizationController(historical_data=df)
 
-    benchmark = _annual(df["close"])
+    benchmark = annual_returns(df["close"])
     print(f"\n{'=' * 78}\nTQQQ BUY-AND-HOLD, annual\n{'=' * 78}")
     for year, value in benchmark.items():
         print(f"  {year.year}  {value:+9.2f}%")
+    print(
+        f"  avg year {benchmark.mean():+.2f}%  "
+        f"best year {benchmark.max():+.2f}%  "
+        f"worst year {benchmark.min():+.2f}%"
+    )
 
     for rank, (_, row) in enumerate(_top_configs(args.cap, args.top).iterrows(), start=1):
         strategy_class = resolve_strategy("hf_local_reference")
@@ -161,11 +152,17 @@ def main():
         metrics = dict(sim.metrics)
         del sim  # drop the blotter before the next iteration
 
-        strat = _annual(equity)
+        strat = annual_returns(equity)
         print(f"\n{'=' * 78}")
         print(
             f"#{rank}  total {metrics['Total Return %']:.2f}%  "
+            f"CAGR {metrics['CAGR %']:.2f}%  "
             f"maxDD {metrics['Max Drawdown %']:.2f}%  trades {metrics['Trade Count']:,.0f}"
+        )
+        print(
+            f"     avg year {metrics['Average Annual Return %']:+.2f}%  "
+            f"best year {metrics['Best Year Return %']:+.2f}%  "
+            f"worst year {metrics['Worst Year Return %']:+.2f}%"
         )
         print("     " + "  ".join(f"{k}={v}" for k, v in sorted(params.items())))
         print(f"{'=' * 78}")

@@ -421,6 +421,10 @@ def main():
             "Trade Count",
             "Closed Trade Count",
             "Total Return %",
+            "CAGR %",
+            "Average Annual Return %",
+            "Best Year Return %",
+            "Worst Year Return %",
             "Max Drawdown %",
             "Return/Drawdown",
         ]
@@ -449,6 +453,17 @@ def main():
             "Capital Velocity Index",
             "Max Drawdown %",
             "Return/Drawdown",
+            # CAGR % predates this set and was already missing from it --
+            # harmless in practice since it is a deterministic function of
+            # Total Return %, which already distinguishes rows, but it is
+            # exactly the "new metric leaks through as an axis column"
+            # pattern analyze_annual.py's _constructor_params docstring
+            # describes. Added here alongside the three new metrics below
+            # rather than left to repeat.
+            "CAGR %",
+            "Average Annual Return %",
+            "Best Year Return %",
+            "Worst Year Return %",
             "error",
         }
         axis_cols = [c for c in results.columns if c not in metric_cols]

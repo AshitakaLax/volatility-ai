@@ -31,7 +31,7 @@ from src.ledger import AssetLotLedger
 from src.market_context import MarketContext, SimulationResult
 from src.no_loss_guard import NoLossViolation, compute_sell_economics, validate_sell
 from src.order_management_system import OrderManagementSystem, OrderStatus
-from src.performance_analyzer import PerformanceAnalyzer
+from src.performance_analyzer import PerformanceAnalyzer, annual_returns
 from src.risk_manager import RiskManager
 from src.search_strategies import BayesianSearch, GridSearch, SearchStrategy
 from src.size_calculators import SizingStrategy
@@ -828,6 +828,42 @@ class OptimizationController:
             # validated dataset but must not raise here.
             metrics["CAGR %"] = -100.0 if growth <= 0.0 else 0.0
 
+        # Built once here and reused for SimulationResult.equity_curve
+        # below, rather than constructed twice from the same lists.
+        equity_curve = pd.Series(
+            data=equity_curve_values, index=pd.Index(equity_curve_timestamps, name="timestamp")
+        )
+
+        # Calendar-year returns, alongside the single whole-period CAGR
+        # above. CAGR alone hides exactly the thing a grid/harvest
+        # strategy needs shown: it is one smoothed number over a span
+        # that can contain both a strategy's best regime and its worst,
+        # and two runs with the same CAGR can have gotten there by wildly
+        # different paths -- one steady, one one great year carrying ten
+        # flat ones. Average/best/worst make that visible without having
+        # to re-run analyze_annual.py's full year-by-year table.
+        #
+        # "Average Annual Return %" is the plain mean of calendar-year
+        # returns, NOT a second annualization of the total -- it can
+        # legitimately differ from CAGR %, and that gap is itself
+        # informative (a mean pulled up by one outlier year while CAGR
+        # stays modest says something CAGR alone cannot).
+        #
+        # A single-year dataset produces one calendar-year return, which
+        # is simultaneously the average, the best, and the worst -- not a
+        # bug, just what "best" and "worst" mean over one data point.
+        yearly_returns = annual_returns(equity_curve)
+        if len(yearly_returns) > 0:
+            metrics["Average Annual Return %"] = float(yearly_returns.mean())
+            metrics["Best Year Return %"] = float(yearly_returns.max())
+            metrics["Worst Year Return %"] = float(yearly_returns.min())
+        else:
+            # Only reachable with an empty dataset, which validation
+            # rejects upstream -- guarded rather than assumed unreachable.
+            metrics["Average Annual Return %"] = 0.0
+            metrics["Best Year Return %"] = 0.0
+            metrics["Worst Year Return %"] = 0.0
+
         # Task 4.6. params captures every input _simulate_single itself
         # actually received -- the strategy's own constructor-derived
         # attributes (e.g. allocation_pct) are merged in via vars(),
@@ -858,9 +894,7 @@ class OptimizationController:
         return SimulationResult(
             metrics=metrics,
             trade_blotter=pd.DataFrame(blotter_records),
-            equity_curve=pd.Series(
-                data=equity_curve_values, index=pd.Index(equity_curve_timestamps, name="timestamp")
-            ),
+            equity_curve=equity_curve,
             params=params,
         )
 
