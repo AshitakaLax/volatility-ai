@@ -256,6 +256,60 @@ def expand_strategy_params(strategy_params: dict) -> list[dict]:
     return combinations
 
 
+def _as_account_tuple(value) -> tuple:
+    """Coerce an allowed_accounts value to a tuple of strings.
+
+    A bare string is REJECTED rather than coerced: tuple("Z12345678")
+    yields nine single-character entries, and an allowlist that silently
+    became nine one-character accounts would still be non-empty, still
+    pass every emptiness check, and match nothing -- or, worse, match
+    something. That is precisely the quiet misconfiguration an allowlist
+    exists to prevent, so it fails loudly instead.
+    """
+    if isinstance(value, str):
+        raise ConfigurationError(
+            "live.fidelity.allowed_accounts must be a LIST of account "
+            f"numbers, not a bare string (got {value!r}). A string would be "
+            "read as one entry per character."
+        )
+    try:
+        return tuple(str(item) for item in value)
+    except TypeError as exc:
+        raise ConfigurationError(
+            f"live.fidelity.allowed_accounts must be a list, got {type(value).__name__}"
+        ) from exc
+
+
+@dataclass(frozen=True)
+class FidelityConfig:
+    """Fidelity-venue settings. Only meaningful when live.broker == "fidelity".
+
+    allowed_accounts is the user's explicit requirement and the reason
+    this type exists at all. fidelity-api provides no allowlist and no
+    validation: it selects an account with a case-insensitive SUBSTRING
+    match against dropdown text. That fails closed on ambiguity
+    (Playwright strict mode raises on 2+ matches) and on zero matches (a
+    timeout), which is good -- but a truncated account number that
+    uniquely matches the WRONG button would simply be clicked. So the
+    allowlist is enforced here, before anything reaches the library, and
+    matched exactly rather than by substring.
+
+    Held as a tuple for the same reason GridConfig's lists are: the
+    config must stay immutable and hashable for artifact hashing.
+
+    dry_run defaults to True and flipping it is the deliberate go-live
+    act. It is a separate switch from live.paper_trading because they
+    mean different things: paper_trading selects a PAPER-mode OMS, while
+    dry_run controls whether the browser stops at the order preview.
+    A Fidelity account has no paper mode, so dry_run is the only thing
+    standing between a preview and a real order.
+    """
+
+    allowed_accounts: tuple = ()
+    account: str | None = None
+    dry_run: bool = True
+
+
 @dataclass(frozen=True)
 class LiveConfig:
     """Live-trading switches.
@@ -275,13 +329,20 @@ class LiveConfig:
     feed defaults to IEX because it is available on every Alpaca
     account. SIP covers the full market but requires a paid data
     subscription; selecting it without one makes every data request
-    fail.
+    fail. The feed whitelist is ALPACA's -- it is only validated when
+    broker == "alpaca", since those names mean nothing to another venue.
+
+    broker defaults to "alpaca" so that every config written before
+    Fidelity existed keeps its exact previous meaning. A second venue
+    must be opted into by name, never arrived at by default.
     """
 
     enabled: bool = False
     paper_trading: bool = True
     step: float | None = None
     profit_target: float | None = None
+    broker: str = "alpaca"
+    fidelity: FidelityConfig | None = None
     feed: str = "iex"
     poll_interval_seconds: float = 60.0
     # Bounds one tick's harvest work. A tick that tried to place an
@@ -381,11 +442,27 @@ class BacktestConfig:
         output = OutputConfig(return_full_results=output_data.get("return_full_results", False))
 
         live_data = data.get("live", {})
+        fidelity_data = live_data.get("fidelity")
+        fidelity = None
+        if fidelity_data is not None:
+            fidelity = FidelityConfig(
+                # tuple() for immutability/hashability, matching
+                # GridConfig. A bare string would silently become a
+                # tuple of CHARACTERS, so it is rejected rather than
+                # coerced -- allowed_accounts: "Z123" reading as eight
+                # single-character accounts is exactly the kind of quiet
+                # misconfiguration an allowlist must not have.
+                allowed_accounts=_as_account_tuple(fidelity_data.get("allowed_accounts", ())),
+                account=fidelity_data.get("account"),
+                dry_run=bool(fidelity_data.get("dry_run", True)),
+            )
         live = LiveConfig(
             enabled=live_data.get("enabled", False),
             paper_trading=live_data.get("paper_trading", True),
             step=live_data.get("step"),
             profit_target=live_data.get("profit_target"),
+            broker=live_data.get("broker", "alpaca"),
+            fidelity=fidelity,
             feed=live_data.get("feed", "iex"),
             poll_interval_seconds=live_data.get("poll_interval_seconds", 60.0),
             max_sells_per_tick=live_data.get("max_sells_per_tick", 25),
@@ -478,11 +555,54 @@ class BacktestConfig:
             validate_positive(self.live.profit_target, "live.profit_target")
         validate_positive(self.live.poll_interval_seconds, "live.poll_interval_seconds")
         validate_positive_int(self.live.max_sells_per_tick, "live.max_sells_per_tick")
-        validate_one_of(
-            self.live.feed,
-            ("iex", "sip", "delayed_sip", "otc", "boats", "overnight"),
-            "live.feed",
-        )
+        validate_one_of(self.live.broker, ("alpaca", "fidelity"), "live.broker")
+
+        # The feed whitelist is ALPACA's -- "iex"/"sip" are names of
+        # Alpaca data feeds and mean nothing at another venue, so
+        # applying it to a Fidelity deployment would reject a config for
+        # failing to name a feed it does not have. A Fidelity deployment
+        # still needs a market-data source, but that is a separate
+        # connection from the trading venue (see the plan's section H).
+        if self.live.broker == "alpaca":
+            validate_one_of(
+                self.live.feed,
+                ("iex", "sip", "delayed_sip", "otc", "boats", "overnight"),
+                "live.feed",
+            )
+
+        if self.live.broker == "fidelity":
+            if self.live.fidelity is None:
+                raise ConfigurationError(
+                    "live.broker='fidelity' requires a live.fidelity section "
+                    "naming allowed_accounts -- there is no safe default for "
+                    "which brokerage account real orders go to."
+                )
+            if not self.live.fidelity.allowed_accounts:
+                raise ConfigurationError(
+                    "live.fidelity.allowed_accounts must not be empty. The "
+                    "library selects accounts by case-insensitive SUBSTRING "
+                    "match on dropdown text, so an unconstrained account "
+                    "string could match the wrong account."
+                )
+
+        if self.live.fidelity is not None:
+            # Checked whenever the section is PRESENT, not only when the
+            # broker is active: a config that names an account outside
+            # its own allowlist is wrong however it is later used, and
+            # catching it here means a broker switch cannot turn a latent
+            # contradiction into a live order against the wrong account.
+            for account in self.live.fidelity.allowed_accounts:
+                if not str(account).strip():
+                    raise ConfigurationError(
+                        "live.fidelity.allowed_accounts contains a blank entry"
+                    )
+            account = self.live.fidelity.account
+            if account is not None and account not in self.live.fidelity.allowed_accounts:
+                raise ConfigurationError(
+                    f"live.fidelity.account={account!r} is not in "
+                    f"allowed_accounts={list(self.live.fidelity.allowed_accounts)!r}. "
+                    "Exact match is required -- never a substring or a nickname."
+                )
 
     def to_dict(self) -> dict:
         """Inverse of from_dict() -- round-trips through the same nested
@@ -536,6 +656,25 @@ class BacktestConfig:
                 "paper_trading": self.live.paper_trading,
                 "step": self.live.step,
                 "profit_target": self.live.profit_target,
+                "broker": self.live.broker,
+                # Omitted entirely when absent rather than emitted as
+                # None, so that from_dict(to_dict(c)) == c holds for
+                # every Alpaca config: from_dict builds a FidelityConfig
+                # for any non-None value, and a None round-trips back to
+                # None either way -- but an explicit null in the emitted
+                # YAML would suggest a section that was configured and
+                # left blank, rather than one that does not apply.
+                **(
+                    {
+                        "fidelity": {
+                            "allowed_accounts": list(self.live.fidelity.allowed_accounts),
+                            "account": self.live.fidelity.account,
+                            "dry_run": self.live.fidelity.dry_run,
+                        }
+                    }
+                    if self.live.fidelity is not None
+                    else {}
+                ),
                 "feed": self.live.feed,
                 "poll_interval_seconds": self.live.poll_interval_seconds,
                 "max_sells_per_tick": self.live.max_sells_per_tick,
