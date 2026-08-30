@@ -132,19 +132,81 @@ def test_a_new_peak_does_not_raise_an_already_lowered_target():
     assert lot.target_sell_price == pytest.approx(lowered)
 
 
-def test_the_floor_stops_the_target_falling_to_the_cost_basis():
+def test_the_floor_is_a_bound_not_a_destination():
+    """A trailed price below the floor produces NO proposal -- the lot
+    keeps its original target rather than being dragged down to the
+    floor.
+
+    This previously asserted the opposite (clamp to the floor), which is
+    what made the floor an attractor: see
+    test_the_floor_does_not_swallow_the_difference_between_trail_pcts
+    for the failure that behavior caused."""
     policy = TrailingTargetPolicy(trail_pct=0.50, min_profit_target=0.01)
     _, lot = a_lot(buy_price=100.0, profit_target=0.75)
 
-    # Peak 201 (a real 101% gain, so trailing is genuinely active --
-    # see test_trailing_does_not_activate_from_a_degenerate_peak)
-    # trailed by 50% is 100.5 -- barely above cost, below the 1% floor.
-    # The floor must win.
-    proposed = policy.propose(lot, 201.0)
-    assert proposed == pytest.approx(0.01)
-    lot.retarget(proposed)
-    assert lot.target_sell_price == pytest.approx(101.0)
-    assert lot.target_sell_price > lot.buy_price
+    # Peak 201 trailed by 50% is 100.5 -- above cost, but below the
+    # 1% floor at 101. Nothing to propose.
+    assert policy.propose(lot, 201.0) is None
+    assert lot.target_sell_price == pytest.approx(175.0)
+
+
+def test_no_proposal_ever_lands_below_the_floor():
+    """The floor's actual job, stated as an invariant over a wide sweep
+    of peaks rather than a single case."""
+    policy = TrailingTargetPolicy(trail_pct=0.20, min_profit_target=0.10)
+    for peak in range(101, 400):
+        _, lot = a_lot(buy_price=100.0, profit_target=3.0)
+        proposed = policy.propose(lot, float(peak))
+        if proposed is not None:
+            assert proposed >= 0.10
+
+
+def test_the_floor_does_not_swallow_the_difference_between_trail_pcts():
+    """THE REGRESSION THIS FILE EXISTS FOR, second occurrence.
+
+    With `new_target = max(trailed_price, floor_price)` and a guard that
+    only required trailed_price > buy_price, the guard released while
+    trailed_price was still far below the floor -- so max() returned the
+    floor, and ratchet-down-only locked the lot there. Every trail_pct
+    produced an IDENTICAL target, differing only in when it snapped.
+
+    Caught from sweep output twice, a month apart: first with a fixed
+    0.10 floor across profit_targets 0.30-1.00 (all four byte-identical),
+    then again after scaling the floor per-target, where trail_pct 0.05
+    and 0.10 still returned identical results -- 2621.31% return, 91,608
+    trades, to the digit. Scaling an attractor just moves it.
+
+    A tighter trail must give up on the original target EARLIER and land
+    HIGHER than a looser one. If these ever coincide, the floor is
+    swallowing the parameter again and every sweep over trail_pct is
+    measuring nothing."""
+    targets = {}
+    for trail_pct in (0.05, 0.10, 0.20):
+        policy = TrailingTargetPolicy(trail_pct=trail_pct, min_profit_target=0.15)
+        _, lot = a_lot(buy_price=100.0, profit_target=0.30)
+        # Walk the price up one dollar at a time, applying whatever the
+        # policy proposes -- exactly what adjust_open_lot_targets does.
+        for price in range(100, 130):
+            proposed = policy.propose(lot, float(price))
+            if proposed is not None:
+                lot.retarget(proposed)
+        targets[trail_pct] = lot.target_sell_price
+
+    assert len(set(targets.values())) == 3, (
+        f"trail_pct made no difference to the final target: {targets}"
+    )
+    # Among the trails that engaged, a tighter one lands higher.
+    assert targets[0.05] > targets[0.10]
+    # 0.20 never engages here, and that is correct rather than a gap: a
+    # 20% trail cannot clear a 15% floor until the peak reaches 143.75,
+    # by which point the lot has long since passed its own 30% target at
+    # 130 and sold. A trail wider than the distance between the floor and
+    # the target is inert by construction -- worth pinning, because a
+    # sweep row showing "trailing did nothing" is a real finding about
+    # the parameterisation and not a bug to go hunting for.
+    assert targets[0.20] == pytest.approx(130.0)
+    # None of them is the floor itself -- that is the attractor signature.
+    assert all(t != pytest.approx(115.0) for t in targets.values())
 
 
 def test_trailing_does_not_activate_from_a_degenerate_peak():
