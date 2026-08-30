@@ -38,6 +38,12 @@ fidelity_trace*.zip
 Statements/
 Portfolio_Positions*.csv
 
+# fidelity_recon.py's traffic dumps -- captured authenticated-session
+# traffic (tokens, account numbers). Written outside the repo by default;
+# excluded here for the same reason as the files above. Mirrors .gitignore.
+.fidelity_recon/
+recon_*.json
+
 # Local persistent state and user-supplied data -- these are meant to
 # be bind-mounted at runtime (see the Dockerfile's VOLUME and
 # docker-compose.yml), never baked into the image.

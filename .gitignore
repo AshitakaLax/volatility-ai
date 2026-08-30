@@ -50,3 +50,12 @@ Fidelity_*.json
 fidelity_trace*.zip
 Statements/
 Portfolio_Positions*.csv
+
+# fidelity_recon.py's traffic dumps. Written to ~/.fidelity_recon by
+# default -- outside the repo entirely -- but --artifact-dir can point
+# anywhere, so the pattern is listed here too. The dump holds captured
+# traffic from an AUTHENTICATED session: session tokens and account
+# numbers. TrafficCapture scrubs the literal credential values and
+# redacts secret-looking JSON keys, which is mitigation, not elimination.
+.fidelity_recon/
+recon_*.json
