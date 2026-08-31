@@ -300,10 +300,25 @@ def run_recon(args: argparse.Namespace, credentials: FidelityCredentials | None)
     # optional dependencies (requirements-fidelity.txt), absent from the
     # Docker image and from every backtest environment.
     try:
-        from fidelity import FidelityAutomation
+        # NOT `from fidelity import FidelityAutomation`. fidelity-api's
+        # package __init__.py is only:
+        #     from . import fidelity
+        #     __all__ = ["fidelity"]
+        # It never re-exports the class, so the package-level import
+        # raises ImportError even when fidelity-api is installed
+        # perfectly. This was found the hard way -- the short form was
+        # written from the plan rather than from the installed package,
+        # and the first real run failed on it.
+        from fidelity.fidelity import FidelityAutomation
     except ImportError as exc:
+        # The underlying error is interpolated deliberately. The previous
+        # version reported a flat "fidelity-api is not installed", which
+        # is exactly what it said when the package WAS installed and only
+        # the import path was wrong -- sending the reader off to reinstall
+        # a dependency that was already there. Never hide the cause.
         raise ConfigurationError(
-            "fidelity-api is not installed. This is an opt-in dependency:\n"
+            f"Could not import FidelityAutomation from fidelity-api: {exc}\n"
+            "If the package is genuinely missing, it is an opt-in dependency:\n"
             "    pip install -r requirements-fidelity.txt\n"
             "    playwright install firefox"
         ) from exc

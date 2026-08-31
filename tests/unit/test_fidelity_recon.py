@@ -18,6 +18,8 @@ recon script into one that can place a real order.
 
 from __future__ import annotations
 
+import ast
+import importlib.util
 import json
 import os
 import subprocess
@@ -99,11 +101,28 @@ class FakeFidelityAutomation:
 
 @pytest.fixture
 def fake_fidelity(monkeypatch):
-    """Inject a fake `fidelity` module for run_recon's deferred import."""
+    """Inject a fake `fidelity` package for run_recon's deferred import.
+
+    MIRRORS THE REAL PACKAGE LAYOUT, and that matters. fidelity-api ships
+    a package whose __init__.py is only `from . import fidelity` with
+    __all__ = ["fidelity"] -- the class lives in the `fidelity.fidelity`
+    SUBMODULE and is never re-exported at package level.
+
+    An earlier version of this fixture registered a single flat module
+    exposing FidelityAutomation directly, which made
+    `from fidelity import FidelityAutomation` pass here while failing
+    against the real library. The double was shaped to the assumption
+    instead of to the package, so the entire suite went green on an
+    import that could not work -- and the bug surfaced only on the first
+    real run. Registering both names keeps the double honest.
+    """
     FakeFidelityAutomation.instances = []
-    module = type(sys)("fidelity")
-    module.FidelityAutomation = FakeFidelityAutomation
-    monkeypatch.setitem(sys.modules, "fidelity", module)
+    package = type(sys)("fidelity")
+    submodule = type(sys)("fidelity.fidelity")
+    submodule.FidelityAutomation = FakeFidelityAutomation
+    package.fidelity = submodule
+    monkeypatch.setitem(sys.modules, "fidelity", package)
+    monkeypatch.setitem(sys.modules, "fidelity.fidelity", submodule)
     return FakeFidelityAutomation
 
 
@@ -259,7 +278,7 @@ def test_an_empty_account_list_refuses_rather_than_proceeding(fake_fidelity, tmp
             self.accounts = None
             fid_holder["fid"] = self
 
-    sys.modules["fidelity"].FidelityAutomation = NoAccounts
+    sys.modules["fidelity.fidelity"].FidelityAutomation = NoAccounts
     with pytest.raises(ConfigurationError, match="not present"):
         fidelity_recon.run_recon(args, CREDENTIALS)
     assert fid_holder["fid"].transactions == []
@@ -276,7 +295,7 @@ def test_a_failed_login_stops_before_any_account_work(fake_fidelity, tmp_path):
             super().__init__(**kwargs)
             self.login_result = (False, False)
 
-    sys.modules["fidelity"].FidelityAutomation = FailedLogin
+    sys.modules["fidelity.fidelity"].FidelityAutomation = FailedLogin
     with pytest.raises(ConfigurationError, match="Login failed"):
         fidelity_recon.run_recon(_args(tmp_path), CREDENTIALS)
 
@@ -309,7 +328,7 @@ def test_capture_is_attached_before_login(fake_fidelity, tmp_path):
             order.append("login")
             return super().login(**kwargs)
 
-    sys.modules["fidelity"].FidelityAutomation = Ordered
+    sys.modules["fidelity.fidelity"].FidelityAutomation = Ordered
     fidelity_recon.run_recon(_args(tmp_path), CREDENTIALS)
 
     assert order.index("attach") < order.index("login")
@@ -381,7 +400,7 @@ def test_credentials_never_reach_the_dump(fake_fidelity, tmp_path):
                 handler(Resp())
             return super().login(**kwargs)
 
-    sys.modules["fidelity"].FidelityAutomation = Chatty
+    sys.modules["fidelity.fidelity"].FidelityAutomation = Chatty
     fidelity_recon.run_recon(_args(tmp_path), CREDENTIALS)
 
     text = next(tmp_path.glob("recon_*.json")).read_text(encoding="utf-8")
@@ -559,11 +578,11 @@ def test_manual_login_waits_while_still_on_the_signin_page(fake_fidelity, tmp_pa
         inst.page.url_sequence = list(fid_page_urls)
         return inst
 
-    sys.modules["fidelity"].FidelityAutomation = _make
+    sys.modules["fidelity.fidelity"].FidelityAutomation = _make
     try:
         fidelity_recon.run_recon(args, None)
     finally:
-        sys.modules["fidelity"].FidelityAutomation = FakeFidelityAutomation
+        sys.modules["fidelity.fidelity"].FidelityAutomation = FakeFidelityAutomation
     # It kept reading the URL until the sign-in path went away, rather
     # than proceeding on the first look.
     assert FakeFidelityAutomation.instances[-1].page._url_reads >= 4
@@ -581,12 +600,12 @@ def test_manual_login_times_out_with_an_actionable_message(fake_fidelity, tmp_pa
         inst.page.url_sequence = [SIGNIN]  # never leaves the login page
         return inst
 
-    sys.modules["fidelity"].FidelityAutomation = _make
+    sys.modules["fidelity.fidelity"].FidelityAutomation = _make
     try:
         with pytest.raises(ConfigurationError, match="login-timeout"):
             fidelity_recon.run_recon(args, None)
     finally:
-        sys.modules["fidelity"].FidelityAutomation = FakeFidelityAutomation
+        sys.modules["fidelity.fidelity"].FidelityAutomation = FakeFidelityAutomation
 
 
 def test_wait_helper_raises_if_the_browser_window_is_closed():
@@ -605,3 +624,68 @@ def test_the_login_url_matches_the_librarys_own():
     assert fidelity_recon.FIDELITY_LOGIN_URL == SIGNIN
     assert fidelity_recon._SIGNIN_PATH_MARKER in SIGNIN
     assert fidelity_recon._SIGNIN_PATH_MARKER not in SIGNED_IN
+
+
+# -- the import path, checked against the REAL package -------------------
+
+_FIDELITY_INSTALLED = importlib.util.find_spec("fidelity") is not None
+
+
+@pytest.mark.skipif(
+    not _FIDELITY_INSTALLED,
+    reason="fidelity-api is an opt-in dependency (requirements-fidelity.txt)",
+)
+def test_the_import_path_works_against_the_really_installed_package():
+    """The test that was missing, and whose absence let a broken import
+    ship green.
+
+    Every other test here drives a DOUBLE, so they only ever proved the
+    script agrees with the fake. The original code did
+    `from fidelity import FidelityAutomation`, the fake exposed exactly
+    that, and the suite passed -- while the real package raises
+    ImportError, because its __init__.py is only `from . import fidelity`
+    and never re-exports the class.
+
+    This asserts against the installed library instead, so a wrong path
+    fails here rather than on someone's first real brokerage login. It
+    skips cleanly where the optional dependency is absent (the Docker
+    image, every backtest environment).
+    """
+    import ast
+
+    source = Path(fidelity_recon.__file__).read_text(encoding="utf-8")
+    imports = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.ImportFrom)
+        and node.module
+        and node.module.split(".")[0] == "fidelity"
+    ]
+    assert imports, "fidelity_recon no longer imports FidelityAutomation at all"
+
+    for node in imports:
+        module = importlib.import_module(node.module)
+        for alias in node.names:
+            assert hasattr(module, alias.name), (
+                f"fidelity_recon does `from {node.module} import {alias.name}`, but the "
+                f"installed package has no such attribute. Real layout: the class lives "
+                f"in the fidelity.fidelity submodule and is NOT re-exported at package level."
+            )
+
+
+def test_a_missing_class_reports_the_real_cause_not_a_reinstall_instruction(
+    monkeypatch, tmp_path
+):
+    """The first failed run said 'fidelity-api is not installed' when it
+    WAS installed and only the import path was wrong -- sending the
+    reader off to reinstall a dependency already present. The underlying
+    ImportError must reach the message."""
+    package = type(sys)("fidelity")
+    submodule = type(sys)("fidelity.fidelity")  # deliberately has no FidelityAutomation
+    package.fidelity = submodule
+    monkeypatch.setitem(sys.modules, "fidelity", package)
+    monkeypatch.setitem(sys.modules, "fidelity.fidelity", submodule)
+
+    with pytest.raises(ConfigurationError, match="FidelityAutomation") as excinfo:
+        fidelity_recon.run_recon(_args(tmp_path), CREDENTIALS)
+    assert "Could not import" in str(excinfo.value)
