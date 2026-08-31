@@ -75,6 +75,7 @@ import json
 import os
 import stat
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -139,6 +140,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Log in and enumerate accounts only -- do not open an order "
         "ticket. Answers question 2 without touching a trade screen.",
+    )
+    parser.add_argument(
+        "--manual-login",
+        action="store_true",
+        help="Open the browser to Fidelity's sign-in page and wait for YOU to "
+        "log in by hand, instead of driving the login with credentials. "
+        "Requires no FIDELITY_USERNAME/PASSWORD/TOTP_SECRET at all. Implies "
+        "--no-headless (you cannot type into a hidden browser). Capture is "
+        "attached AFTER login in this mode -- see the module docstring for "
+        "why that is deliberate.",
+    )
+    parser.add_argument(
+        "--login-timeout",
+        type=float,
+        default=300.0,
+        help="Seconds to wait for a manual login to complete (default: 300). "
+        "Only meaningful with --manual-login.",
     )
     parser.add_argument(
         "--i-understand-this-logs-into-my-real-brokerage-account",
@@ -209,7 +227,74 @@ def _assert_account_allowed(
     return accounts
 
 
-def run_recon(args: argparse.Namespace, credentials: FidelityCredentials) -> int:
+# Read from the library's own login(), not guessed: it navigates to
+# https://digital.fidelity.com/prgw/digital/signin/retail, while every
+# authenticated page it later visits (the transfers page
+# get_list_of_accounts scrapes, the trade ticket) lives under
+# /ftgw/digital/. So "the URL no longer contains the sign-in path" is a
+# source-derived signal that login finished, not a guess about Fidelity's
+# routing.
+FIDELITY_LOGIN_URL = "https://digital.fidelity.com/prgw/digital/signin/retail"
+_SIGNIN_PATH_MARKER = "/prgw/digital/signin"
+
+
+def _wait_for_manual_login(page, timeout_seconds: float, poll_seconds: float = 2.0) -> None:
+    """Park on the sign-in page until the human has logged in.
+
+    Detection is by URL rather than by prompting on stdin: this script
+    is routinely run through a wrapper that attaches stdin to the null
+    device, where input() would raise EOFError instantly and turn a
+    perfectly good session into a crash. Watching the page needs no
+    stdin at all.
+
+    A URL check alone is a heuristic, so it is not the only guard --
+    _assert_account_allowed runs straight afterwards and fails loudly
+    if the session is not actually authenticated. This wait exists to
+    give the human time, not to prove authentication.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    print(
+        "\n"
+        "==================================================================\n"
+        "  LOG IN IN THE BROWSER WINDOW THAT JUST OPENED.\n"
+        "\n"
+        "  Nothing is being typed for you and no credentials were read.\n"
+        "  Take as long as you need, 2FA included.\n"
+        f"  Waiting up to {timeout_seconds:.0f}s for you to reach a\n"
+        "  signed-in page, then reconnaissance continues automatically.\n"
+        "==================================================================\n",
+        file=sys.stderr,
+        flush=True,
+    )
+    last_reported = ""
+    while time.monotonic() < deadline:
+        try:
+            current = page.url
+        except Exception as exc:  # noqa: BLE001 -- a closed page is a real answer
+            raise ConfigurationError(
+                f"The browser window went away while waiting for login: {exc}"
+            ) from exc
+        if current != last_reported:
+            print(f"[recon]   at {current}", file=sys.stderr, flush=True)
+            last_reported = current
+        if _SIGNIN_PATH_MARKER not in current:
+            # Let the landing page settle before anything navigates away
+            # from it, so the first captured requests are whole.
+            try:
+                page.wait_for_load_state("load")
+            except Exception:  # noqa: BLE001 -- best effort; the guard below is the real one
+                pass
+            print("[recon] login detected.", file=sys.stderr, flush=True)
+            return
+        time.sleep(poll_seconds)
+    raise ConfigurationError(
+        f"Timed out after {timeout_seconds:.0f}s waiting for a manual login "
+        f"(still at {last_reported!r}). Re-run with a larger --login-timeout "
+        "if you need more time."
+    )
+
+
+def run_recon(args: argparse.Namespace, credentials: FidelityCredentials | None) -> int:
     # Imported here, not at module scope, so that `--help` and the unit
     # tests work without playwright or fidelity-api installed. Those are
     # optional dependencies (requirements-fidelity.txt), absent from the
@@ -227,7 +312,9 @@ def run_recon(args: argparse.Namespace, credentials: FidelityCredentials) -> int
     stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     dump_path = artifact_dir / f"recon_{stamp}.json"
 
-    capture = TrafficCapture(secret_values=credentials.secret_values())
+    capture = TrafficCapture(
+        secret_values=credentials.secret_values() if credentials is not None else ()
+    )
 
     fid = FidelityAutomation(
         headless=args.headless,
@@ -238,35 +325,62 @@ def run_recon(args: argparse.Namespace, credentials: FidelityCredentials) -> int
     )
 
     try:
-        # BEFORE login. The constructor launches the browser without
-        # navigating anywhere (login() is a separate call), and Playwright
-        # only delivers events for activity after a listener is attached --
-        # so this is the one moment at which the whole session, login
-        # round-trip included, is capturable.
-        capture.attach(fid.page)
-
-        print(f"[recon] logging in (headless={args.headless})...", file=sys.stderr)
-        logged_in, needs_2fa_code = fid.login(
-            username=credentials.username,
-            password=credentials.password,
-            totp_secret=credentials.totp_secret,
-            # Never persist a 2FA-bypass token for a recon run.
-            save_device=False,
-        )
-        if not logged_in:
-            raise ConfigurationError(
-                "Login failed. Nothing was captured beyond the login attempt."
-            )
-        if not needs_2fa_code:
-            # login() returns (True, False) on the SMS path and then waits
-            # for an out-of-band code. There is no callback or hook to
-            # supply one, so an unattended run stalls here rather than
-            # failing -- worth saying out loud rather than letting it hang.
+        if args.manual_login:
+            # CAPTURE IS ATTACHED AFTER LOGIN HERE, AND THAT INVERSION IS
+            # THE WHOLE POINT. In the credentialed path below, attaching
+            # first is safe because we hold the exact secret strings and
+            # TrafficCapture scrubs them out of every recorded payload.
+            # In manual mode we deliberately never learn the password --
+            # which is the entire security benefit -- so we could not
+            # scrub it if we captured the login POST that carries it.
+            # Recording a credential we cannot redact would be strictly
+            # worse than not recording it.
+            #
+            # Nothing of value is lost: all three reconnaissance
+            # questions (submit round-trip IDs, an orders-list endpoint,
+            # a client-reference field) concern traffic AFTER
+            # authentication. The login round-trip was never the target.
             print(
-                "[recon] WARNING: login reported the SMS 2FA path, not TOTP. "
-                "Supply FIDELITY_TOTP_SECRET for an unattended run.",
+                "[recon] manual login: opening Fidelity's sign-in page...",
                 file=sys.stderr,
             )
+            fid.page.goto(url=FIDELITY_LOGIN_URL)
+            _wait_for_manual_login(fid.page, args.login_timeout)
+            capture.attach(fid.page)
+            print(
+                "[recon] capture attached (post-login, so no password is recorded).",
+                file=sys.stderr,
+            )
+        else:
+            # BEFORE login. The constructor launches the browser without
+            # navigating anywhere (login() is a separate call), and Playwright
+            # only delivers events for activity after a listener is attached --
+            # so this is the one moment at which the whole session, login
+            # round-trip included, is capturable.
+            capture.attach(fid.page)
+
+            print(f"[recon] logging in (headless={args.headless})...", file=sys.stderr)
+            logged_in, needs_2fa_code = fid.login(
+                username=credentials.username,
+                password=credentials.password,
+                totp_secret=credentials.totp_secret,
+                # Never persist a 2FA-bypass token for a recon run.
+                save_device=False,
+            )
+            if not logged_in:
+                raise ConfigurationError(
+                    "Login failed. Nothing was captured beyond the login attempt."
+                )
+            if not needs_2fa_code:
+                # login() returns (True, False) on the SMS path and then waits
+                # for an out-of-band code. There is no callback or hook to
+                # supply one, so an unattended run stalls here rather than
+                # failing -- worth saying out loud rather than letting it hang.
+                print(
+                    "[recon] WARNING: login reported the SMS 2FA path, not TOTP. "
+                    "Supply FIDELITY_TOTP_SECRET for an unattended run.",
+                    file=sys.stderr,
+                )
 
         print("[recon] enumerating accounts...", file=sys.stderr)
         _assert_account_allowed(fid, args.account)
@@ -373,7 +487,25 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     try:
-        credentials = load_fidelity_credentials()
+        if args.manual_login:
+            # Not merely "credentials are optional here" -- they are never
+            # read at all, so a stale or wrong FIDELITY_PASSWORD in the
+            # environment cannot be picked up and cannot be sent anywhere.
+            # The human types into the browser directly.
+            #
+            # Forced visible: you cannot type into a headless browser, and
+            # silently honouring --headless would hang until --login-timeout
+            # with no indication of why.
+            if args.headless:
+                print(
+                    "[recon] --manual-login implies a visible browser; "
+                    "ignoring the headless default.",
+                    file=sys.stderr,
+                )
+                args.headless = False
+            credentials = None
+        else:
+            credentials = load_fidelity_credentials()
         return run_recon(args, credentials)
     except ConfigurationError as exc:
         print(f"[recon] {exc}", file=sys.stderr)

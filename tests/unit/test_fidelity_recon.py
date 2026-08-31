@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -33,8 +34,35 @@ from src.secrets import FidelityCredentials
 class FakePage:
     def __init__(self) -> None:
         self.handlers: dict[str, list] = {}
+        self.goto_urls: list[str] = []
+        self.load_state_waits = 0
+        # url_sequence lets a manual-login test drive the page from the
+        # sign-in page to a signed-in one. Each read of `.url` advances
+        # by one until the last entry, which then repeats -- so a test
+        # can say "still signing in, still signing in, now done".
+        self.url_sequence: list[str] = [
+            "https://digital.fidelity.com/ftgw/digital/portfolio/summary"
+        ]
+        self._url_reads = 0
+        # Snapshot of how much had happened at the moment capture
+        # attached, so a test can prove ordering rather than infer it.
+        self.attached_after_gotos: int | None = None
+
+    @property
+    def url(self) -> str:
+        value = self.url_sequence[min(self._url_reads, len(self.url_sequence) - 1)]
+        self._url_reads += 1
+        return value
+
+    def goto(self, url=None, **kwargs):
+        self.goto_urls.append(url)
+
+    def wait_for_load_state(self, *args, **kwargs):
+        self.load_state_waits += 1
 
     def on(self, event, handler):
+        if self.attached_after_gotos is None:
+            self.attached_after_gotos = len(self.goto_urls)
         self.handlers.setdefault(event, []).append(handler)
 
 
@@ -379,14 +407,201 @@ def test_parse_args_requires_an_account():
 
 
 def test_importing_the_module_does_not_require_playwright():
-    """The module is imported at the top of this file and playwright is
-    not installed in this environment -- so reaching here proves it. The
-    Docker image installs only requirements.txt."""
-    assert "playwright" not in sys.modules
-    assert fidelity_recon.main is not None
+    """The property under test is that fidelity_recon's OWN imports stay
+    free of playwright, so it works in the Docker image (which installs
+    only requirements.txt).
+
+    Checked in a fresh interpreter rather than by inspecting this
+    process's sys.modules. The original version asserted
+    `"playwright" not in sys.modules` and relied on playwright simply
+    being absent from the environment -- which stopped being true the
+    moment the Fidelity extras were installed, and was in any case
+    polluted by any earlier test that imported playwright
+    (test_retry_policy.py does, via _broker_error_types). That made a
+    passing result depend on install state and test ordering rather than
+    on the thing actually being asserted.
+    """
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import fidelity_recon, sys; "
+            "print('LOADED' if 'playwright' in sys.modules else 'CLEAN')",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=Path(fidelity_recon.__file__).parent,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "CLEAN", (
+        "importing fidelity_recon pulled playwright in at module scope -- it must "
+        "stay a deferred import inside run_recon"
+    )
 
 
 def test_a_missing_fidelity_api_gives_an_actionable_error(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "fidelity", None)
     with pytest.raises(ConfigurationError, match="requirements-fidelity.txt"):
         fidelity_recon.run_recon(_args(tmp_path), CREDENTIALS)
+
+
+# -- manual login: the human types, the script never learns the password --
+
+SIGNIN = "https://digital.fidelity.com/prgw/digital/signin/retail"
+SIGNED_IN = "https://digital.fidelity.com/ftgw/digital/portfolio/summary"
+
+
+def _manual_args(tmp_path: Path, **overrides):
+    argv = [
+        "--account",
+        "Z12345678",
+        "--artifact-dir",
+        str(tmp_path),
+        "--manual-login",
+        "--i-understand-this-logs-into-my-real-brokerage-account",
+    ]
+    for key, value in overrides.items():
+        argv.append("--" + key.replace("_", "-"))
+        if value is not None:
+            argv.append(str(value))
+    return fidelity_recon.parse_args(argv)
+
+
+def test_manual_login_never_calls_login(fake_fidelity, tmp_path):
+    """The credentialed path is not merely skipped by convention -- the
+    library's login() must never be invoked, because invoking it is what
+    would require a password to exist."""
+    args = _manual_args(tmp_path)
+    args.headless = False
+    fidelity_recon.run_recon(args, None)
+    fid = fake_fidelity.instances[-1]
+    assert not hasattr(fid, "login_kwargs"), "login() was called in manual mode"
+    assert SIGNIN in fid.page.goto_urls
+
+
+def test_manual_login_reads_no_credentials_at_all(monkeypatch, fake_fidelity, tmp_path):
+    """A stale FIDELITY_PASSWORD in the environment must not be picked
+    up -- not loaded, not scrubbed against, not sent anywhere."""
+    called = []
+    monkeypatch.setattr(
+        fidelity_recon, "load_fidelity_credentials", lambda: called.append(1)
+    )
+    fidelity_recon.main(
+        [
+            "--account",
+            "Z12345678",
+            "--artifact-dir",
+            str(tmp_path),
+            "--manual-login",
+            "--i-understand-this-logs-into-my-real-brokerage-account",
+        ]
+    )
+    assert called == [], "credentials were loaded despite --manual-login"
+
+
+def test_capture_attaches_only_after_the_login_page_is_left(fake_fidelity, tmp_path):
+    """THE security property of this mode. We never learn the password,
+    so we could not scrub it from a captured login POST -- therefore the
+    login round-trip must not be captured at all. Attaching after the
+    navigation to the sign-in page proves the ordering."""
+    args = _manual_args(tmp_path)
+    args.headless = False
+    fidelity_recon.run_recon(args, None)
+    page = fake_fidelity.instances[-1].page
+    assert page.attached_after_gotos == 1, (
+        "capture attached before the sign-in navigation -- the login POST "
+        "carrying the password would be recorded unredacted"
+    )
+
+
+def test_the_credentialed_path_still_attaches_before_login(fake_fidelity, tmp_path):
+    """Contrast, so the inversion above cannot silently spread: with
+    credentials we DO hold the secret strings and can scrub them, so
+    capturing the whole session including login stays correct."""
+    fidelity_recon.run_recon(_args(tmp_path), CREDENTIALS)
+    page = fake_fidelity.instances[-1].page
+    assert page.attached_after_gotos == 0
+
+
+def test_manual_login_still_cannot_place_an_order(fake_fidelity, tmp_path):
+    args = _manual_args(tmp_path)
+    args.headless = False
+    fidelity_recon.run_recon(args, None)
+    for call in fake_fidelity.instances[-1].transactions:
+        assert call["dry"] is True
+
+
+def test_manual_login_forces_a_visible_browser(fake_fidelity, tmp_path, capsys):
+    """You cannot type into a headless browser. Honouring the headless
+    default would hang until the timeout with no stated reason."""
+    fidelity_recon.main(
+        [
+            "--account",
+            "Z12345678",
+            "--artifact-dir",
+            str(tmp_path),
+            "--manual-login",
+            "--i-understand-this-logs-into-my-real-brokerage-account",
+        ]
+    )
+    assert fake_fidelity.instances[-1].init_kwargs["headless"] is False
+    assert "visible browser" in capsys.readouterr().err
+
+
+def test_manual_login_waits_while_still_on_the_signin_page(fake_fidelity, tmp_path):
+    args = _manual_args(tmp_path)
+    args.headless = False
+    fid_page_urls = [SIGNIN, SIGNIN, SIGNIN, SIGNED_IN]
+
+    def _make(**kwargs):
+        inst = FakeFidelityAutomation(**kwargs)
+        inst.page.url_sequence = list(fid_page_urls)
+        return inst
+
+    sys.modules["fidelity"].FidelityAutomation = _make
+    try:
+        fidelity_recon.run_recon(args, None)
+    finally:
+        sys.modules["fidelity"].FidelityAutomation = FakeFidelityAutomation
+    # It kept reading the URL until the sign-in path went away, rather
+    # than proceeding on the first look.
+    assert FakeFidelityAutomation.instances[-1].page._url_reads >= 4
+
+
+def test_manual_login_times_out_with_an_actionable_message(fake_fidelity, tmp_path):
+    """A human who walks away must get a stated reason and the knob to
+    fix it, not a silent hang."""
+    args = _manual_args(tmp_path)
+    args.headless = False
+    args.login_timeout = 0.2
+
+    def _make(**kwargs):
+        inst = FakeFidelityAutomation(**kwargs)
+        inst.page.url_sequence = [SIGNIN]  # never leaves the login page
+        return inst
+
+    sys.modules["fidelity"].FidelityAutomation = _make
+    try:
+        with pytest.raises(ConfigurationError, match="login-timeout"):
+            fidelity_recon.run_recon(args, None)
+    finally:
+        sys.modules["fidelity"].FidelityAutomation = FakeFidelityAutomation
+
+
+def test_wait_helper_raises_if_the_browser_window_is_closed():
+    class Gone:
+        @property
+        def url(self):
+            raise RuntimeError("Target page, context or browser has been closed")
+
+    with pytest.raises(ConfigurationError, match="browser window went away"):
+        fidelity_recon._wait_for_manual_login(Gone(), timeout_seconds=5.0)
+
+
+def test_the_login_url_matches_the_librarys_own():
+    """Derived from fidelity.py's login(), not guessed. If upstream moves
+    it, this is the single place to correct."""
+    assert fidelity_recon.FIDELITY_LOGIN_URL == SIGNIN
+    assert fidelity_recon._SIGNIN_PATH_MARKER in SIGNIN
+    assert fidelity_recon._SIGNIN_PATH_MARKER not in SIGNED_IN
