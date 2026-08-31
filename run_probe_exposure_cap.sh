@@ -35,15 +35,20 @@ say() {
 echo "===== PROBE EXPOSURE CAP =====" > "$LOG"
 echo "Started: $(date)" >> "$LOG"
 
-DD_LOG="output/probe_dd_exposure_20260831_0652.log"
-DD_DONE_MARKER="===== PROBE DD EXPOSURE COMPLETE ====="
-if ! grep -qF "$DD_DONE_MARKER" "$DD_LOG" 2>/dev/null; then
-    say "Waiting for the dd_exposure probe to finish (checking $DD_LOG)..."
-    while ! grep -qF "$DD_DONE_MARKER" "$DD_LOG" 2>/dev/null; do
-        sleep 60
-    done
-    sleep 10
-fi
+# UNGATED. The gate this script originally carried waited on
+# run_probe_dd_exposure.sh's completion marker. That probe was
+# terminated early on purpose -- its config 1 (start=0.30, full=0.60,
+# floor_pct=0.0, i.e. new buying fully closed once 60% underwater)
+# moved CAGR by 0.0002pp and the worst year by 0.00001pp against the
+# uncapped baseline, establishing the null; configs 2-4 were the same
+# mechanism at similar or weaker settings. See that log's own
+# TERMINATED EARLY block. It never wrote a completion marker (correctly
+# -- it did not complete), so the gate is removed rather than satisfied
+# by a marker that would have been a lie.
+#
+# Verified before this ran: no python.exe processes remained, so the
+# memory-overlap hazard the gate existed to prevent does not apply.
+say "Running ungated -- the dd_exposure probe it used to wait on was terminated early."
 
 for cap in 30 50 70 90; do
     say "max_total_exposure=0.${cap}"
