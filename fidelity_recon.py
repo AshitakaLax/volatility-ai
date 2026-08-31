@@ -88,6 +88,10 @@ from src.secrets import FidelityCredentials, load_fidelity_credentials
 # them up even if every other defense fails.
 DEFAULT_ARTIFACT_DIR = Path.home() / ".fidelity_recon"
 
+# A different front end from the classic pages fidelity-api drives, with
+# its own API surface, and the one an active trader actually uses.
+TRADERPLUS_URL = "https://digital.fidelity.com/ftgw/digital/traderplus"
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -157,6 +161,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=300.0,
         help="Seconds to wait for a manual login to complete (default: 300). "
         "Only meaningful with --manual-login.",
+    )
+    parser.add_argument(
+        "--no-traderplus",
+        dest="visit_traderplus",
+        action="store_false",
+        help="Skip the Trader+ visit. By default a manual-login run loads "
+        f"{TRADERPLUS_URL} after sign-in, because it is a different front "
+        "end from the one the library drives and is the likeliest place to "
+        "find real order/position endpoints.",
+    )
+    parser.set_defaults(visit_traderplus=True)
+    parser.add_argument(
+        "--settle-ms",
+        type=int,
+        default=8000,
+        help="Milliseconds to keep recording after a page reports idle "
+        "(default: 8000). WebSocket traffic often starts only after the "
+        "initial load settles, so leaving this at zero can miss exactly "
+        "the traffic this script exists to find.",
     )
     parser.add_argument(
         "--i-understand-this-logs-into-my-real-brokerage-account",
@@ -236,21 +259,49 @@ def _assert_account_allowed(
 # routing.
 FIDELITY_LOGIN_URL = "https://digital.fidelity.com/prgw/digital/signin/retail"
 _SIGNIN_PATH_MARKER = "/prgw/digital/signin"
+# POSITIVE signal for "authenticated", not merely "no longer on the
+# sign-in page". Every signed-in Fidelity surface observed so far lives
+# under /ftgw/digital/ -- the transfers page get_list_of_accounts
+# scrapes, the portfolio summary, and Trader+
+# (/ftgw/digital/traderplus). Requiring the authenticated marker rather
+# than the absence of the sign-in one means an interstitial, an error
+# page, or about:blank cannot be mistaken for a completed login.
+_AUTHENTICATED_PATH_MARKER = "/ftgw/digital/"
 
 
-def _wait_for_manual_login(page, timeout_seconds: float, poll_seconds: float = 2.0) -> None:
-    """Park on the sign-in page until the human has logged in.
+def _context_pages(context) -> list:
+    """Every live page in the context, newest last. Tolerates a context
+    double that does not implement `.pages`."""
+    try:
+        return list(getattr(context, "pages", []) or [])
+    except Exception:  # noqa: BLE001 -- a torn-down context is handled by the caller
+        return []
+
+
+def _wait_for_manual_login(context, timeout_seconds: float, poll_seconds: float = 2.0):
+    """Wait until the human has logged in, watching EVERY page.
+
+    Returns the page that reached an authenticated URL.
+
+    WATCHES THE WHOLE CONTEXT, NOT ONE PAGE, and that is the entire
+    lesson of the first real run. The original version polled the single
+    page object the library created at construction. Fidelity's sign-in
+    moved the human to a different page, that original page sat on the
+    sign-in URL forever, and the wait timed out after ten minutes while
+    a perfectly good authenticated session sat in the next tab. Capture
+    attaches only after this returns, so the run also recorded nothing:
+    a dump with zero records and no errors in it, which looks exactly
+    like "Fidelity sends no traffic" and is not that at all.
 
     Detection is by URL rather than by prompting on stdin: this script
-    is routinely run through a wrapper that attaches stdin to the null
-    device, where input() would raise EOFError instantly and turn a
-    perfectly good session into a crash. Watching the page needs no
-    stdin at all.
+    is routinely run through wrappers that attach stdin to the null
+    device, where input() would raise EOFError instantly. Watching pages
+    needs no stdin.
 
-    A URL check alone is a heuristic, so it is not the only guard --
-    _assert_account_allowed runs straight afterwards and fails loudly
-    if the session is not actually authenticated. This wait exists to
-    give the human time, not to prove authentication.
+    A URL check is still a heuristic, so it is not the only guard --
+    _assert_account_allowed runs straight afterwards and fails loudly if
+    the session is not really authenticated. This wait exists to give
+    the human time, not to prove authentication.
     """
     deadline = time.monotonic() + timeout_seconds
     print(
@@ -260,37 +311,45 @@ def _wait_for_manual_login(page, timeout_seconds: float, poll_seconds: float = 2
         "\n"
         "  Nothing is being typed for you and no credentials were read.\n"
         "  Take as long as you need, 2FA included.\n"
-        f"  Waiting up to {timeout_seconds:.0f}s for you to reach a\n"
-        "  signed-in page, then reconnaissance continues automatically.\n"
+        "  A new tab is fine -- every tab is being watched.\n"
+        f"  Waiting up to {timeout_seconds:.0f}s for a signed-in page,\n"
+        "  then reconnaissance continues automatically.\n"
         "==================================================================\n",
         file=sys.stderr,
         flush=True,
     )
-    last_reported = ""
+    reported: set[str] = set()
     while time.monotonic() < deadline:
-        try:
-            current = page.url
-        except Exception as exc:  # noqa: BLE001 -- a closed page is a real answer
+        pages = _context_pages(context)
+        if not pages:
             raise ConfigurationError(
-                f"The browser window went away while waiting for login: {exc}"
-            ) from exc
-        if current != last_reported:
-            print(f"[recon]   at {current}", file=sys.stderr, flush=True)
-            last_reported = current
-        if _SIGNIN_PATH_MARKER not in current:
-            # Let the landing page settle before anything navigates away
-            # from it, so the first captured requests are whole.
+                "The browser has no open pages left -- the window was closed "
+                "before login completed."
+            )
+        for page in pages:
             try:
-                page.wait_for_load_state("load")
-            except Exception:  # noqa: BLE001 -- best effort; the guard below is the real one
-                pass
-            print("[recon] login detected.", file=sys.stderr, flush=True)
-            return
+                current = page.url
+            except Exception:  # noqa: BLE001 -- one dead tab must not end the wait
+                continue
+            if current not in reported:
+                print(f"[recon]   tab at {current}", file=sys.stderr, flush=True)
+                reported.add(current)
+            if _AUTHENTICATED_PATH_MARKER in current:
+                try:
+                    page.wait_for_load_state("load")
+                except Exception:  # noqa: BLE001 -- best effort
+                    pass
+                print(
+                    f"[recon] login detected on {current}", file=sys.stderr, flush=True
+                )
+                return page
         time.sleep(poll_seconds)
+    seen = ", ".join(sorted(reported)) or "(no pages seen)"
     raise ConfigurationError(
-        f"Timed out after {timeout_seconds:.0f}s waiting for a manual login "
-        f"(still at {last_reported!r}). Re-run with a larger --login-timeout "
-        "if you need more time."
+        f"Timed out after {timeout_seconds:.0f}s waiting for a manual login. "
+        f"No tab reached a URL containing {_AUTHENTICATED_PATH_MARKER!r}. "
+        f"Tabs seen: {seen}. Re-run with a larger --login-timeout if you "
+        "simply need more time."
     )
 
 
@@ -360,12 +419,41 @@ def run_recon(args: argparse.Namespace, credentials: FidelityCredentials | None)
                 file=sys.stderr,
             )
             fid.page.goto(url=FIDELITY_LOGIN_URL)
-            _wait_for_manual_login(fid.page, args.login_timeout)
-            capture.attach(fid.page)
+            landed = _wait_for_manual_login(fid.context, args.login_timeout)
+            # attach_context, not attach(page): the login may well have
+            # moved the human to a page that did not exist when this run
+            # started, and any later tab must be captured too.
+            capture.attach_context(fid.context)
             print(
-                "[recon] capture attached (post-login, so no password is recorded).",
+                f"[recon] capture attached to {capture.attached_page_count} page(s) "
+                "(post-login, so no password is recorded).",
                 file=sys.stderr,
             )
+            # The library drives the classic UI, but Trader+ is a
+            # different front end with its own API surface, and it is
+            # the one an active trader actually uses. Visiting it is the
+            # cheapest way to find out whether it exposes the
+            # order/position endpoints the classic pages do not -- which
+            # is reconnaissance question 2, the one worth the most.
+            if args.visit_traderplus:
+                try:
+                    print(
+                        f"[recon] visiting Trader+ ({TRADERPLUS_URL})...",
+                        file=sys.stderr,
+                    )
+                    landed.goto(url=TRADERPLUS_URL)
+                    landed.wait_for_load_state("networkidle")
+                except Exception as exc:  # noqa: BLE001 -- recon must not die here
+                    print(
+                        f"[recon] Trader+ visit did not complete: {exc}",
+                        file=sys.stderr,
+                    )
+                # Give any lazily-loaded XHR/WebSocket traffic a moment
+                # to arrive; networkidle can fire before a socket opens.
+                try:
+                    landed.wait_for_timeout(args.settle_ms)
+                except Exception:  # noqa: BLE001
+                    pass
         else:
             # BEFORE login. The constructor launches the browser without
             # navigating anywhere (login() is a separate call), and Playwright
@@ -453,7 +541,25 @@ def _report(capture: TrafficCapture, dump_path: Path) -> None:
     """Print the inventory a human needs to answer the three questions."""
     summary = capture.summary()
     print("\n===== RECON SUMMARY =====")
-    print(f"frames={summary['frames']} responses={summary['responses']}")
+    print(
+        f"frames={summary['frames']} responses={summary['responses']} "
+        f"attached_pages={capture.attached_page_count}"
+    )
+    # An empty dump has two completely different causes that look
+    # identical in the file: "Fidelity sent nothing" and "we were not
+    # listening". The first real run produced the second and was read as
+    # the first. Say which it was.
+    if capture.attached_page_count == 0:
+        print(
+            "  NOTE: capture was never attached to any page, so an empty result "
+            "here says nothing about what Fidelity sends."
+        )
+    elif not summary["frames"] and not summary["responses"]:
+        print(
+            f"  NOTE: attached to {capture.attached_page_count} page(s) and still "
+            "recorded nothing -- that IS a finding about the traffic, not a "
+            "wiring failure."
+        )
     if summary["dropped_records"]:
         print(f"DROPPED {summary['dropped_records']} records (hit the cap)")
     if summary["handler_errors"]:

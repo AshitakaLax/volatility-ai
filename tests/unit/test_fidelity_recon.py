@@ -62,10 +62,38 @@ class FakePage:
     def wait_for_load_state(self, *args, **kwargs):
         self.load_state_waits += 1
 
+    def wait_for_timeout(self, ms):
+        self.settle_ms = ms
+
     def on(self, event, handler):
         if self.attached_after_gotos is None:
             self.attached_after_gotos = len(self.goto_urls)
         self.handlers.setdefault(event, []).append(handler)
+
+
+class FakeContext:
+    """Mirrors the BrowserContext surface the script actually uses.
+
+    Exists because the real bug was invisible without it: the script
+    used to watch a single page, and the fake only had a single page, so
+    the fake could not express the situation that broke a real run --
+    login moving the human to a DIFFERENT page while the original sat on
+    the sign-in URL forever.
+    """
+
+    def __init__(self, *pages):
+        self.pages = list(pages)
+        self.handlers: dict[str, list] = {}
+
+    def on(self, event, handler):
+        self.handlers.setdefault(event, []).append(handler)
+
+    def open_page(self, page):
+        """Simulate a new tab appearing, as a login redirect does."""
+        self.pages.append(page)
+        for handler in self.handlers.get("page", []):
+            handler(page)
+        return page
 
 
 class FakeFidelityAutomation:
@@ -76,6 +104,7 @@ class FakeFidelityAutomation:
     def __init__(self, **kwargs):
         self.init_kwargs = kwargs
         self.page = FakePage()
+        self.context = FakeContext(self.page)
         self.transactions: list[dict] = []
         self.closed = False
         self.accounts = {"Z12345678": {"withdrawal_balance": 1000.0}}
@@ -608,14 +637,56 @@ def test_manual_login_times_out_with_an_actionable_message(fake_fidelity, tmp_pa
         sys.modules["fidelity.fidelity"].FidelityAutomation = FakeFidelityAutomation
 
 
-def test_wait_helper_raises_if_the_browser_window_is_closed():
-    class Gone:
+def test_wait_helper_raises_if_every_tab_is_closed():
+    """A context with no pages means the human closed the window. That is
+    a real answer, not something to keep waiting on."""
+    with pytest.raises(ConfigurationError, match="no open pages"):
+        fidelity_recon._wait_for_manual_login(FakeContext(), timeout_seconds=5.0)
+
+
+def test_a_single_dead_tab_does_not_abort_the_wait():
+    """One tab raising on .url must not end the wait -- a background tab
+    can die while the human is mid-login in another. The earlier version
+    treated any raising page as fatal."""
+
+    class DeadTab:
         @property
         def url(self):
             raise RuntimeError("Target page, context or browser has been closed")
 
-    with pytest.raises(ConfigurationError, match="browser window went away"):
-        fidelity_recon._wait_for_manual_login(Gone(), timeout_seconds=5.0)
+    live = FakePage()
+    live.url_sequence = [SIGNED_IN]
+    context = FakeContext(DeadTab(), live)
+    assert fidelity_recon._wait_for_manual_login(context, timeout_seconds=5.0) is live
+
+
+def test_login_is_detected_on_a_tab_that_did_not_exist_at_start():
+    """THE regression this whole change exists for. Fidelity's sign-in
+    moved the human to a different page; the original sat on the sign-in
+    URL forever and the wait timed out after ten minutes beside a
+    perfectly good authenticated session."""
+    original = FakePage()
+    original.url_sequence = [SIGNIN]  # never leaves the login page, ever
+    context = FakeContext(original)
+
+    new_tab = FakePage()
+    new_tab.url_sequence = [SIGNED_IN]
+    context.open_page(new_tab)
+
+    found = fidelity_recon._wait_for_manual_login(context, timeout_seconds=5.0)
+    assert found is new_tab, "login on a second tab was not detected"
+
+
+def test_an_interstitial_is_not_mistaken_for_a_completed_login():
+    """Detection requires the POSITIVE authenticated marker. Testing only
+    for 'no longer on the sign-in path' would accept about:blank, an
+    error page, or a redirect stop-over."""
+    page = FakePage()
+    page.url_sequence = ["about:blank"]
+    with pytest.raises(ConfigurationError, match="Timed out"):
+        fidelity_recon._wait_for_manual_login(
+            FakeContext(page), timeout_seconds=0.2, poll_seconds=0.05
+        )
 
 
 def test_the_login_url_matches_the_librarys_own():

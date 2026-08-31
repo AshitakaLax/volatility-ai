@@ -165,7 +165,15 @@ class TrafficCapture:
         self.handler_errors: list[str] = []
         self.dropped_records = 0
 
-        self._attached_to: object | None = None
+        # A LIST, not a single page. The original design assumed one
+        # page for the whole session and refused a second attach. That
+        # assumption cost a real recon run: Fidelity's sign-in moves the
+        # user to a different page object, so a capture bound to the
+        # original tab recorded nothing at all while the human browsed a
+        # fully authenticated session next to it. Pages are now tracked
+        # individually and attaching to several is the normal case.
+        self._attached_pages: list[Any] = []
+        self._attached_context: Any | None = None
 
     # -- attachment ----------------------------------------------------
 
@@ -173,19 +181,51 @@ class TrafficCapture:
         """Register listeners on a Playwright Page.
 
         Idempotent per page: attaching twice would double-record every
-        frame, which is not obviously wrong when reading a dump, so it is
-        refused rather than tolerated.
+        frame, which is not obviously wrong when reading a dump, so a
+        repeat attach to the SAME page is ignored. Attaching to several
+        DIFFERENT pages is supported and expected -- see attach_context.
         """
-        if self._attached_to is page:
-            return
-        if self._attached_to is not None:
-            raise RuntimeError(
-                "TrafficCapture is already attached to a different page; "
-                "use one capture per page."
-            )
+        for existing in self._attached_pages:
+            if existing is page:
+                return
         page.on("websocket", self._on_websocket)
         page.on("response", self._on_response)
-        self._attached_to = page
+        self._attached_pages.append(page)
+
+    def attach_context(self, context: Any) -> None:
+        """Attach to every page in a BrowserContext, now and in future.
+
+        This is the one that matches how a real browsing session behaves.
+        A login flow, a popup, or a "open in new tab" all produce page
+        objects that did not exist when capture started, and traffic on
+        them is invisible to a listener bound to the original page.
+
+        Registering for the context's own "page" event means a tab opened
+        after this call is captured from its first byte, rather than from
+        whenever someone noticed it was missing.
+        """
+        if self._attached_context is context:
+            return
+        for page in list(getattr(context, "pages", []) or []):
+            self.attach(page)
+        try:
+            context.on("page", self._on_new_page)
+        except Exception as exc:  # never propagate into page interaction
+            self._note_error("context", exc)
+        self._attached_context = context
+
+    def _on_new_page(self, page: Any) -> None:
+        try:
+            self.attach(page)
+        except Exception as exc:  # never propagate into page interaction
+            self._note_error("newpage", exc)
+
+    @property
+    def attached_page_count(self) -> int:
+        """How many pages are being recorded -- surfaced so a caller can
+        report it, since 'captured nothing' and 'attached to nothing' look
+        identical in a dump and have completely different causes."""
+        return len(self._attached_pages)
 
     # -- handlers ------------------------------------------------------
 

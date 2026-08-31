@@ -86,6 +86,24 @@ class FakePage:
             handler(response)
 
 
+class FakeContext:
+    """Minimal stand-in for a Playwright BrowserContext."""
+
+    def __init__(self, *pages: FakePage) -> None:
+        self.pages = list(pages)
+        self._handlers: dict[str, list] = {}
+
+    def on(self, event: str, handler) -> None:
+        self._handlers.setdefault(event, []).append(handler)
+
+    def open_page(self, page: FakePage) -> FakePage:
+        """Simulate a tab appearing after capture already started."""
+        self.pages.append(page)
+        for handler in self._handlers.get("page", []):
+            handler(page)
+        return page
+
+
 def _attached(**kwargs) -> tuple[TrafficCapture, FakePage]:
     capture = TrafficCapture(**kwargs)
     page = FakePage()
@@ -110,10 +128,72 @@ def test_attaching_the_same_page_twice_is_a_no_op():
     assert len(page._handlers["websocket"]) == 1
 
 
-def test_attaching_a_second_page_is_refused():
-    capture, _ = _attached()
-    with pytest.raises(RuntimeError, match="already attached"):
-        capture.attach(FakePage())
+def test_attaching_a_second_page_is_supported():
+    """This replaces a test that asserted the OPPOSITE, and that earlier
+    assertion encoded the bug rather than a requirement.
+
+    Refusing a second page seemed tidy -- one capture, one page. Then a
+    real recon run recorded nothing at all: Fidelity's sign-in moved the
+    session to a page that did not exist when capture started, and a
+    capture bound to the original tab watched an idle tab for ten
+    minutes. Multiple pages are the normal case for any real browsing
+    session, so they are now supported."""
+    capture, first = _attached()
+    second = FakePage()
+    capture.attach(second)
+
+    assert capture.attached_page_count == 2
+    assert "response" in second._handlers
+    # And the first page is still recorded -- not replaced.
+    assert "response" in first._handlers
+
+
+def test_attach_context_covers_pages_that_already_exist():
+    capture = TrafficCapture()
+    pages = [FakePage(), FakePage()]
+    capture.attach_context(FakeContext(*pages))
+
+    assert capture.attached_page_count == 2
+    for page in pages:
+        assert "response" in page._handlers
+
+
+def test_attach_context_covers_a_tab_opened_later():
+    """A login redirect, a popup, or 'open in new tab' all create pages
+    after capture starts. They must be recorded from their first byte,
+    not from whenever someone notices they are missing."""
+    capture = TrafficCapture()
+    context = FakeContext()
+    capture.attach_context(context)
+    assert capture.attached_page_count == 0
+
+    late = context.open_page(FakePage())
+    assert capture.attached_page_count == 1
+    assert "response" in late._handlers
+
+
+def test_attaching_the_same_context_twice_is_a_no_op():
+    capture = TrafficCapture()
+    page = FakePage()
+    context = FakeContext(page)
+    capture.attach_context(context)
+    capture.attach_context(context)
+    assert capture.attached_page_count == 1
+    assert len(page._handlers["websocket"]) == 1
+
+
+def test_a_context_that_cannot_register_handlers_is_recorded_not_raised():
+    """Handlers must never propagate into page interaction -- a capture
+    problem must not become a trading problem."""
+
+    class Hostile(FakeContext):
+        def on(self, event, handler):
+            raise RuntimeError("no listeners for you")
+
+    capture = TrafficCapture()
+    capture.attach_context(Hostile(FakePage()))
+    assert capture.attached_page_count == 1  # existing page still attached
+    assert any("context" in err for err in capture.handler_errors)
 
 
 # -- websocket frames --------------------------------------------------
