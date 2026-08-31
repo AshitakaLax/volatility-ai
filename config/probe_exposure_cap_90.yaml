@@ -1,0 +1,65 @@
+# Probe: the static max_total_exposure cap -- the one risk control in
+# this repo that has NEVER been turned on.
+#
+# grep max_total_exposure config/*.yaml -> `null` in all 30+ configs,
+# every sweep ever recorded here. It is implemented (src/risk_manager.py
+# clamp_trade_value), wired through RiskConfig, and completely untested.
+#
+# WHY IT IS THE MOST DIRECT LEVER ON THE WORST YEAR. The champion
+# configuration's worst calendar year is -78.96%. TQQQ buy-and-hold's
+# worst year (2022) is -79.09%. Those being the same number is the
+# finding: in its worst year this strategy provides essentially zero
+# downside protection, because enforce_no_loss means lots can never be
+# sold at a loss, so through a year-long decline nothing is harvested
+# and the accumulated book simply tracks the index down.
+#
+# For equity to fall 79% in a year, the portfolio must be close to
+# fully deployed when the decline starts -- if only 30% were in lots,
+# even a total loss on those lots caps the year at -30%. That is what
+# this cap addresses directly: capital held as cash cannot fall.
+#
+# max_total_exposure caps deployed market value (equity - cash) as a
+# fraction of CURRENT equity, so unlike the fixed-dollar per-lot sizing
+# it scales with the portfolio as it compounds.
+#
+# THIS SWEEP IS ALSO THE MEASUREMENT. If a 0.30 cap changes nothing,
+# then deployment never exceeded 30% and the -79% has some other cause
+# -- which would itself be the useful result. A large change confirms
+# near-full deployment during the 2022 decline.
+#
+# Baseline to beat (uncapped, otherwise identical -- already pinned,
+# not re-run here):
+#   38.605871% CAGR | 82.367648% max DD | 19402 trades
+#   avg year +56.39% | best year +195.15% | worst year -78.96%
+#
+# This variant: max_total_exposure = 0.90
+#
+# Every strategy parameter is held exactly at the champion
+# configuration; only risk.max_total_exposure differs.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 960
+    per_lot_pct: 0.001
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    weighted_event_boost_multiplier: 2.5
+grid:
+  steps: [0.00075]
+  profit_targets: [1.00]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: 0.90
+search: {strategy: grid, rank_by: CAGR %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}
