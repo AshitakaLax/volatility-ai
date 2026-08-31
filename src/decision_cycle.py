@@ -164,7 +164,9 @@ def evaluate_grid_decision(
     proposed = strategy.calculate_trade_value(
         context if sizing_context is None else sizing_context
     )
-    clamped = risk_manager.clamp_trade_value(proposed, context.equity, cash, context.open_lot_count)
+    clamped = risk_manager.clamp_trade_value(
+        proposed, context.equity, cash, context.open_lot_count, context.drawdown
+    )
     return GridDecision(
         context=context,
         triggered=True,

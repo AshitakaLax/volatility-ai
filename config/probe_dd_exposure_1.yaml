@@ -1,0 +1,47 @@
+# Probe 1/4 of the RiskManager-level drawdown exposure throttle
+# (src/risk_manager.py's dd_exposure_start/full/floor_pct). See
+# src/risk_manager.py's clamp_trade_value docstring, "WHY THIS BELONGS
+# HERE, NOT ON A SizingStrategy" -- the earlier per-strategy attempt
+# (dd_throttle_* on HighFrequencyLocalReferenceSizing, see
+# config/probe_dd_throttle.yaml) shrank a FIXED DOLLAR per-lot size and
+# measured as having essentially no effect (max 0.001pp CAGR movement
+# across 12 combinations). This throttle instead caps deployed capital
+# as a percentage of CURRENT equity, which does not have that problem.
+#
+# Baseline to beat (unchanged from before, no risk-level throttle):
+#   38.605871% CAGR, 82.367648% max DD, 19402 trades
+#
+# This variant: start=0.30, full=0.60, floor_pct=0.0 -- moderate onset,
+# fully closes new exposure once 60%+ deep in drawdown. Every strategy
+# param held exactly at the champion configuration; only the risk
+# section differs from the untrailed baseline.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 960
+    per_lot_pct: 0.001
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    weighted_event_boost_multiplier: 2.5
+grid:
+  steps: [0.00075]
+  profit_targets: [1.00]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+  dd_exposure_start: 0.30
+  dd_exposure_full: 0.60
+  dd_exposure_floor_pct: 0.0
+search: {strategy: grid, rank_by: CAGR %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}

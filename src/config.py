@@ -136,21 +136,33 @@ class CostConfig:
 
 @dataclass(frozen=True)
 class RiskConfig:
-    """Maps to src/risk_manager.py (Task 3.1). No drawdown-limit field
-    -- RiskManager doesn't implement one; see module docstring."""
+    """Maps to src/risk_manager.py (Task 3.1), plus the
+    dd_exposure_start/full/floor_pct drawdown-conditioned exposure
+    throttle. Deliberately still omits halt_new_buys_if_drawdown_exceeds
+    (the live-only CircuitBreaker threshold) -- that remains
+    programmatic-only, unrelated to this config-driven throttle, which
+    runs identically in both live and backtest."""
 
     max_concurrent_lots: int | None = None
     max_total_exposure: float | None = None
+    dd_exposure_start: float | None = None
+    dd_exposure_full: float = 0.60
+    dd_exposure_floor_pct: float = 0.0
 
     def build(self) -> RiskManager:
         """Construct the real RiskManager this config describes.
 
-        Both limits default to None (unlimited), so an omitted risk
-        section yields an unconstrained manager rather than an error.
+        Both static limits default to None (unlimited), and
+        dd_exposure_start defaults to None (no-op throttle), so an
+        omitted risk section yields an unconstrained manager rather than
+        an error.
         """
         return RiskManager(
             max_concurrent_lots=self.max_concurrent_lots,
             max_total_exposure_pct=self.max_total_exposure,
+            dd_exposure_start=self.dd_exposure_start,
+            dd_exposure_full=self.dd_exposure_full,
+            dd_exposure_floor_pct=self.dd_exposure_floor_pct,
         )
 
 
@@ -420,6 +432,9 @@ class BacktestConfig:
         risk = RiskConfig(
             max_concurrent_lots=risk_data.get("max_concurrent_lots"),
             max_total_exposure=risk_data.get("max_total_exposure"),
+            dd_exposure_start=risk_data.get("dd_exposure_start"),
+            dd_exposure_full=risk_data.get("dd_exposure_full", 0.60),
+            dd_exposure_floor_pct=risk_data.get("dd_exposure_floor_pct", 0.0),
         )
 
         search_data = data.get("search", {})
@@ -526,6 +541,11 @@ class BacktestConfig:
             validate_positive_int(self.risk.max_concurrent_lots, "risk.max_concurrent_lots")
         if self.risk.max_total_exposure is not None:
             validate_unit_interval(self.risk.max_total_exposure, "risk.max_total_exposure")
+        # dd_exposure_start/full/floor_pct: validated by attempting to
+        # build the real RiskManager rather than re-deriving its
+        # ordering/ramp-base logic a second time here -- see
+        # src/risk_manager.py's constructor for the authoritative checks.
+        self.risk.build()
 
         validate_one_of(self.search.strategy, ("grid", "bayesian", "random"), "search.strategy")
         validate_one_of(self.search.direction, ("maximize", "minimize"), "search.direction")
@@ -637,6 +657,9 @@ class BacktestConfig:
             "risk": {
                 "max_concurrent_lots": self.risk.max_concurrent_lots,
                 "max_total_exposure": self.risk.max_total_exposure,
+                "dd_exposure_start": self.risk.dd_exposure_start,
+                "dd_exposure_full": self.risk.dd_exposure_full,
+                "dd_exposure_floor_pct": self.risk.dd_exposure_floor_pct,
             },
             "search": {
                 "strategy": self.search.strategy,
