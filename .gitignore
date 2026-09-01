@@ -59,3 +59,10 @@ Portfolio_Positions*.csv
 # redacts secret-looking JSON keys, which is mitigation, not elimination.
 .fidelity_recon/
 recon_*.json
+
+# HAR exports from browser DevTools. A HAR of an authenticated session
+# contains live Cookie/Authorization headers -- credential-equivalent
+# for a brokerage login -- plus account numbers and balances. Never
+# committable. See analyze_har.py, which reads these and offers
+# --redact to produce a scrubbed copy.
+*.har
