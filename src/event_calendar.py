@@ -18,7 +18,7 @@ and this module is additive, not a migration.
 --------------------------------------------------------------------
 THE DATA
 
-data/earnings_releases_derived.csv, from build_earnings_calendar.py:
+data/earnings_releases_derived.csv, from tools/build_earnings_calendar.py:
 676 release timestamps across 16 tickers, RECOVERED FROM THE TAPE
 rather than transcribed -- found the day from the next session's
 opening gap (release timing is a scheduled, publicly announced fact;
