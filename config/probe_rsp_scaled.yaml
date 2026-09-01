@@ -1,0 +1,72 @@
+# First RSP probe -- parameters SCALED to the instrument, not inherited.
+#
+# WHY NOTHING FROM THE TQQQ CHAMPION CONFIG TRANSFERS DIRECTLY.
+# Measured on this repo's own data, regular hours, real bars only:
+#
+#                     |close-to-close|         intrabar range
+#                   med    p75    p90        med    p75    p90
+#   TQQQ (3x)       6.8   13.6   24.0       14.5   24.4   38.2   bps
+#   RSP  (1x)       1.7    3.5    6.3        2.3    4.4    7.5   bps
+#
+# TQQQ moves 4.0x more per bar close-to-close and 6.3x more by intrabar
+# range. That is more than the 3x leverage alone: TQQQ is 3x the
+# Nasdaq-100 while RSP is 1x the EQUAL-WEIGHT S&P 500, and equal-weight
+# is calmer than cap-weighted before any leverage is applied.
+#
+# GRID STEP. The champion step of 0.00075 sits at ~1.1x TQQQ's median
+# bar (6.8bps). The same relationship on RSP is ~1.9bps, so the centre
+# of this sweep is 0.0002. Running TQQQ's 0.00075 unchanged would sit at
+# 4.4x RSP's median bar and would simply trigger far less often -- it
+# would measure the wrong thing and look like the strategy failing.
+# 0.0004 is included as the "too wide" arm so that failure mode is
+# visible rather than assumed.
+#
+# PROFIT TARGET. The champion's 1.00 (a lot exits only after a 100%
+# gain) is calibrated to an instrument that went 1.40 -> 87.02 over the
+# decade (62x). RSP went 56.77 -> 222.77 (3.9x), so a 100% target would
+# almost never be reached and the run would be a buy-and-hold with extra
+# steps. Swept an order of magnitude lower.
+#
+# DATASET. RTH-uniform, NOT the extended-hours grid the TQQQ work used.
+# RSP prints 94% of regular-hours minutes but almost nothing outside
+# them, so the 04:00-20:00 grid is 60.9% fabricated bars against 6.1%
+# for 09:30-16:00. bars_per_day must therefore be 390, not 960.
+#
+# lookback_days 0.05 = 19.5 bars at 390/day, matching the ~19-bar
+# rolling-high window the champion had at 0.02 x 960. Held fixed here so
+# this probe varies only step and target; it is a candidate for the
+# follow-up sweep.
+#
+# Reference points (NOT re-run here):
+#   RSP buy-and-hold 2016-2026: +292% total, worst year -11.62% (2022),
+#     max drawdown 39.03%
+#   TQQQ champion:  38.61% CAGR, 82.37% max DD, worst year -78.96%
+#
+# 3 steps x 4 targets = 12 combinations.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 390
+    per_lot_pct: 0.001
+    lookback_days: 0.05
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    weighted_event_boost_multiplier: 2.5
+grid:
+  steps: [0.0001, 0.0002, 0.0004]
+  profit_targets: [0.05, 0.10, 0.20, 0.40]
+backtest: {symbol: RSP, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+search: {strategy: grid, rank_by: CAGR %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}
