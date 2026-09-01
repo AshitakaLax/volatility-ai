@@ -399,7 +399,7 @@ class OptimizationController:
 
         data/earnings_releases_derived.csv (src/event_calendar.py's
         source) is a generated artifact, not a committed one -- a fresh
-        checkout that has not run build_earnings_calendar.py lacks it.
+        checkout that has not run tools/build_earnings_calendar.py lacks it.
         Falling back to "no events" rather than raising keeps a sweep
         runnable without it: every strategy's weighted_event_boost_
         multiplier defaults to 1.0, so an all-zero event_intensity array
