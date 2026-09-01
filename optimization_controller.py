@@ -622,7 +622,13 @@ class OptimizationController:
             # Peaks/drawdown every bar (B3), before constructing context,
             # since MarketContext.equity/peak_equity/drawdown need this
             # bar's values.
-            open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
+            # price * total_shares, not sum(shares * price). Every lot is
+            # the same symbol at the same bar, so the price is a common
+            # factor, and the share total only changes on a fill. The
+            # generator form profiled at 65% of runtime here -- 62.7M
+            # steps over a ~522-lot book -- to compute a number that one
+            # multiply gives. See AssetLotLedger.total_open_shares.
+            open_assets_val = current_price * ledger.total_open_shares
             total_equity = state.cash + open_assets_val
             if total_equity > state.peak_equity:
                 state.peak_equity = total_equity

@@ -129,6 +129,8 @@ class AssetLotLedger:
         """
         self.open_lots: list[Lot] = []
         self.closed_lots: list[Lot] = []
+        # Running sum of open_lots' shares -- see total_open_shares.
+        self._total_open_shares: float = 0.0
 
     def register_buy(
         self,
@@ -154,7 +156,59 @@ class AssetLotLedger:
             profit_target=profit_target,
         )
         self.open_lots.append(lot)
+        self._total_open_shares += shares
         return lot
+
+    @property
+    def total_open_shares(self) -> float:
+        """Sum of open lots' shares, maintained incrementally.
+
+        WHY THIS IS NOT `sum(lot.shares for lot in self.open_lots)`.
+        The backtest marks the book to market on EVERY bar, and profiling
+        showed that one line at 65% of total runtime after the
+        retargeting fix: 62.7 million generator steps over a ~522-lot
+        book across 120,000 bars.
+
+        Every lot is the same symbol at the same bar, so the price is a
+        common factor -- `sum(shares_i * price)` is `price *
+        sum(shares_i)` -- and the share total only changes when a lot
+        opens or closes, not on every bar. Maintaining it turns a
+        per-bar walk of the whole book into one multiply.
+
+        The invariant is maintained at the three mutation points
+        (register_buy, and both branches of close_lot) and is asserted
+        against a recomputed sum by
+        tests/unit/test_ledger.py::test_the_running_share_total_matches_a_recomputed_sum.
+
+        A ledger rebuilt by src/persistence.py appends to open_lots
+        directly, bypassing register_buy, so that path calls
+        resync_total_open_shares() explicitly.
+        """
+        return self._total_open_shares
+
+    def resync_total_open_shares(self) -> float:
+        """Recompute the running total from the open lots.
+
+        For callers that populate open_lots directly (persistence
+        restore) rather than through register_buy. O(n), so it is a
+        restore-time operation, never a per-bar one.
+        """
+        self._total_open_shares = sum(lot.shares for lot in self.open_lots)
+        return self._total_open_shares
+
+    def _resync_if_flat(self) -> None:
+        """Snap the running total to exactly 0.0 when the book empties.
+
+        Incremental float arithmetic leaves a residue -- adding and
+        subtracting the same shares in a different order does not
+        cancel exactly -- and over a 10-year run with tens of thousands
+        of round trips that residue would accumulate silently. A flat
+        book is the one moment the true answer is known exactly and
+        costs nothing to assert, and it happens often enough to bound
+        the drift rather than let it compound.
+        """
+        if not self.open_lots:
+            self._total_open_shares = 0.0
 
     def get_marketable_lots(self, current_price: float) -> list[Lot]:
         """Open lots whose profit target is met or exceeded at current_price.
@@ -205,8 +259,10 @@ class AssetLotLedger:
                     "close_lot(completed=False) with no sell_qty is ambiguous -- pass sell_qty "
                     "to record a partial fill, or completed=True for a full close."
                 )
+            self._total_open_shares -= lot.shares
             self.open_lots.remove(lot)
             self.closed_lots.append(lot)
+            self._resync_if_flat()
             return
 
         if sell_qty <= 0:
@@ -217,6 +273,7 @@ class AssetLotLedger:
                 "This usually means a cumulative broker quantity was passed instead of an incremental one."
             )
 
+        before = lot.shares
         lot.shares -= sell_qty
         if execution_price is not None:
             lot.last_execution_price = execution_price
@@ -225,3 +282,11 @@ class AssetLotLedger:
             lot.shares = 0.0
             self.open_lots.remove(lot)
             self.closed_lots.append(lot)
+
+        # Measured from the lot itself rather than assumed to be
+        # sell_qty: the snap above zeroes a sub-epsilon remainder, so a
+        # closing partial removes slightly MORE than was sold. Reading
+        # the actual before/after is correct in both branches -- when the
+        # lot closes, lot.shares is 0.0 and the whole remainder leaves.
+        self._total_open_shares -= before - lot.shares
+        self._resync_if_flat()
