@@ -227,6 +227,7 @@ from src.exceptions import ConfigurationError
 from src.market_context import MarketContext
 from src.size_calculators import SizingStrategy
 from src.sizing_indicators import RollingMax, RollingMean, RollingStdev, bars_from_days, clamp
+from src.synthetic_bars import is_synthetic_bar
 from src.trailing_target import TrailingTargetPolicy
 
 
@@ -479,12 +480,10 @@ class BayesianDualScaleSizing(SizingStrategy):
             # (high==low==price) AND unchanged from the previous real
             # print; skip it so realized vol does not read low through
             # synthetic filler.
-            is_synthetic_bar = (
-                context.high == context.low
-                and self._prev_price is not None
-                and price == self._prev_price
+            synthetic = is_synthetic_bar(
+                context.high, context.low, price, self._prev_price
             )
-            if not is_synthetic_bar:
+            if not synthetic:
                 if self.vol_measure == "range":
                     self._fast_vol.update((context.high - context.low) / price)
                     self._slow_vol.update((context.high - context.low) / price)

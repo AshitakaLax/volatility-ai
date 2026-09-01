@@ -98,14 +98,18 @@ if _REPO_ROOT not in _sys.path:
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from src.fomc_calendar import EASTERN_TZ  # noqa: E402
+from tools.session_bars import (  # noqa: E402
+    OPEN_WINDOW_END,
+    SESSION_CLOSE,
+    SESSION_OPEN,
+    minute_of_day,
+    session_dates,
+)
 
 DEFAULT_PRIMARY = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 DEFAULT_SIGNAL = "data/VIXY_1Min_sip_all_ext_2016-01-01_2026-09-01.csv"
 
 SESSION_MINUTES = 390
-OPEN_START_MIN = 570  # 09:30 Eastern
-OPEN_END_MIN = 630  # 10:30 Eastern
 
 
 # ------------------------------------------------------------ measures
@@ -116,13 +120,12 @@ def session_frame(path: str, *, regular_hours_only: bool = True) -> pd.DataFrame
     df = pd.read_csv(
         path, parse_dates=["timestamp"], usecols=["timestamp", "close"]
     ).set_index("timestamp")
-    eastern = df.index.tz_convert(EASTERN_TZ)
-    minute_of_day = eastern.hour * 60 + eastern.minute
+    minutes = minute_of_day(df.index)
     if regular_hours_only:
-        keep = (minute_of_day >= OPEN_START_MIN) & (minute_of_day < 960)
-        df, eastern, minute_of_day = df[keep], eastern[keep], minute_of_day[keep]
+        keep = (minutes >= SESSION_OPEN) & (minutes < SESSION_CLOSE)
+        df, minutes = df[keep], minutes[keep]
 
-    dates = np.array(eastern.date)
+    dates = session_dates(df.index)
     log_ret = np.log(df["close"] / df["close"].shift(1))
     # Cross-session returns are the overnight gap, not a traded minute.
     # Dropped here deliberately: tools/measure_event_effects.py showed the
@@ -134,7 +137,7 @@ def session_frame(path: str, *, regular_hours_only: bool = True) -> pd.DataFrame
     intraday = log_ret.where(same)
     scale = np.sqrt(SESSION_MINUTES) * 100.0
 
-    in_open = same & (minute_of_day >= OPEN_START_MIN) & (minute_of_day < OPEN_END_MIN)
+    in_open = same & (minutes >= SESSION_OPEN) & (minutes < OPEN_WINDOW_END)
     out = pd.DataFrame(
         {
             "vol": intraday.groupby(dates).std() * scale,

@@ -504,6 +504,7 @@ from src.exceptions import ConfigurationError
 from src.intraday_profile import relative_range
 from src.market_context import MarketContext
 from src.size_calculators import SizingStrategy
+from src.synthetic_bars import is_synthetic_bar
 from src.sizing_indicators import RollingMax, RollingMean, RollingStdev, bars_from_days, clamp
 from src.trailing_target import TrailingTargetPolicy
 
@@ -694,12 +695,10 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             # volume field today -- a separate, pre-existing gap), which
             # would let this reuse context.volume directly; not done
             # here because it touches the live data adapter.
-            is_synthetic_bar = (
-                context.high == context.low
-                and self._prev_price is not None
-                and context.price == self._prev_price
+            synthetic = is_synthetic_bar(
+                context.high, context.low, context.price, self._prev_price
             )
-            if self._vol_enabled and not is_synthetic_bar:
+            if self._vol_enabled and not synthetic:
                 if self.vol_measure == "range":
                     # Intrabar range, scaled by price so the two windows
                     # compare across a dataset where TQQQ spans ~8x-90x.

@@ -98,7 +98,7 @@ if _REPO_ROOT not in _sys.path:
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from src.fomc_calendar import EASTERN_TZ  # noqa: E402
+from tools.session_bars import session_bars  # noqa: E402
 
 SQQQ = "data/SQQQ_1Min_sip_all_ext_2016-01-01_2026-09-01.csv"
 TQQQ = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
@@ -110,27 +110,6 @@ DEFAULT_COST_PCT = 0.0015
 
 # Below this a bucket's hit rate is noise dressed as a finding.
 MIN_BUCKET = 60
-
-
-def session_bars(path: str) -> pd.DataFrame:
-    """Regular-hours OHLC aggregated to one row per session."""
-    df = pd.read_csv(
-        path, parse_dates=["timestamp"], usecols=["timestamp", "high", "low", "close"]
-    ).set_index("timestamp")
-    eastern = df.index.tz_convert(EASTERN_TZ)
-    minute = eastern.hour * 60 + eastern.minute
-    keep = (minute >= 570) & (minute < 960)
-    df = df[keep]
-    dates = np.array(df.index.tz_convert(EASTERN_TZ).date)
-    out = pd.DataFrame(
-        {
-            "high": df["high"].groupby(dates).max(),
-            "low": df["low"].groupby(dates).min(),
-            "close": df["close"].groupby(dates).last(),
-        }
-    )
-    out.index.name = "session"
-    return out
 
 
 def rsi(series: pd.Series, period: int = 14) -> pd.Series:

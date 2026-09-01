@@ -992,10 +992,10 @@ volatility-ai/
 ├── config/
 │   ├── staging.yaml           # paper account
 │   └── production.yaml        # real capital
-├── src/                       # 35 modules -- see the module map
+├── src/                       # see the module map
 └── tests/
-    ├── unit/                  # 660 tests
-    ├── integration/           # 143 tests
+    ├── unit/                  # fast, isolated
+    ├── integration/           # cross-module, end-to-end
     └── fixtures/              # synthetic OHLCV + regression baseline
 ```
 
@@ -1032,15 +1032,22 @@ Tracked honestly rather than hidden:
    per tick rather than consuming Alpaca's trade-update websocket. Fills
    are therefore recognized within one poll interval rather than
    immediately. Correct, but not the lowest-latency design available.
-5. **No CI.** 905 tests and a clean ruff run, but nothing enforces them
+5. **No CI.** The full suite and a clean ruff run, but nothing enforces them
    automatically on push.
-6. **No strategy registry.** `strategy_id` requires a manual mapping.
-7. **Multi-strategy comparison is manual.** See
+6. **Multi-strategy comparison is manual.** See
    [Extending the system](#extending-the-system).
-8. **Macro/seasonality fields are inert.** `MarketContext` carries
-   `time_of_day_flag`, `is_macro_event_day`, and `macro_surprise_factor`,
-   but nothing consumes them. Investigated and deliberately deferred — see
-   `CHANGELOG.md`.
+7. **One `MarketContext` field is still inert.** `macro_surprise_factor`
+   is defined on `MarketContext` but is never populated by any
+   construction path and never read. It is guarded by
+   `tests/unit/test_task_7_9_macro_signals_discovery.py` so it cannot be
+   consumed undocumented; it should be either populated or removed.
+
+   The other macro/seasonality fields are **no longer inert** —
+   `time_of_day_flag`, `is_macro_event_day`, `is_earnings_reaction_day`,
+   `event_intensity` and `implied_vol_change` are all consumed by
+   `HighFrequencyLocalReferenceSizing`, and `config/best_known_*.yaml`
+   ships `event_day_boost_multiplier` in production. `minutes_to_event`
+   is populated but deliberately unconsumed.
 
 ---
 

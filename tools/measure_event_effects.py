@@ -110,6 +110,12 @@ import pandas as pd  # noqa: E402
 
 from src.earnings_calendar import EARNINGS_REACTION_DATES  # noqa: E402
 from src.fomc_calendar import EASTERN_TZ, FOMC_DECISION_DATES  # noqa: E402
+from tools.session_bars import (  # noqa: E402
+    OPEN_WINDOW_END,
+    SESSION_OPEN,
+    minute_of_day,
+    session_dates,
+)
 
 DEFAULT_DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 
@@ -191,9 +197,8 @@ def load_session_metrics(path: str) -> pd.DataFrame:
     if df.index.tz is None:
         raise SystemExit(f"{path} has timezone-naive timestamps; refusing to guess.")
 
-    eastern = df.index.tz_convert(EASTERN_TZ)
-    dates = np.array(eastern.date)
-    minute_of_day = eastern.hour * 60 + eastern.minute
+    dates = session_dates(df.index)
+    minutes = minute_of_day(df.index)
 
     log_ret = np.log(df["close"] / df["close"].shift(1))
     # A return spanning two sessions is the overnight gap, not a minute
@@ -204,8 +209,8 @@ def load_session_metrics(path: str) -> pd.DataFrame:
     intraday = log_ret.where(same_session)
 
     scale = np.sqrt(SESSION_MINUTES) * 100.0
-    in_open = same_session & (minute_of_day >= 570) & (minute_of_day < 630)
-    in_rest = same_session & (minute_of_day >= 630)
+    in_open = same_session & (minutes >= SESSION_OPEN) & (minutes < OPEN_WINDOW_END)
+    in_rest = same_session & (minutes >= OPEN_WINDOW_END)
 
     metrics = pd.DataFrame(
         {
