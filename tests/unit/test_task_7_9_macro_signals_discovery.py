@@ -132,6 +132,60 @@ not a re-run.
                        on the strategy -- a config that never sets it
                        behaves exactly as before this existed.
 
+SIXTH FIELD -- implied_vol_change. The first input here sourced from
+an instrument OTHER than the one being traded, which is exactly why it
+is guarded: an external series is the easiest kind of thing to add
+casually.
+
+  Consuming strategy:  src/high_frequency_sizing.py, via the
+                       implied_vol_exponent constructor parameter
+                       (default 0.0 -- an exact no-op) in
+                       _implied_vol_scale. MULTIPLIES with the other
+                       scalers rather than max()-ing with the event
+                       boosts, because it is a genuinely independent
+                       axis and that was MEASURED, not asserted:
+                       holding trailing realized vol fixed it still
+                       scores partial rank correlation +0.257 against
+                       next-session opening volatility. Clamped, so the
+                       product stays bounded.
+  Source dataset:      src/implied_vol_signal.py over an implied-vol
+                       instrument's minute bars, joined by
+                       src/external_index_series.py (which existed,
+                       tested, with no consumer until now). Currently
+                       VIXY -- a PROXY on two axes: VIX (S&P 500) not
+                       VXN (Nasdaq-100), and VIX futures via an ETF
+                       wrapper not spot. VXN's provider was unreachable
+                       when this was written. Re-measure against real
+                       VXN before trusting tuned parameters.
+  Join semantics:      session-over-session percentage change in the
+                       series' CLOSE, published to the as-of series at
+                       midnight Eastern the day AFTER the session that
+                       produced it, so every bar of the next session --
+                       pre-market included -- reads a value that was
+                       already history when that session opened. The
+                       no-lookahead property is asserted directly in
+                       tests/unit/test_implied_vol_signal.py rather than
+                       inferred, and scalar/vectorized are pinned equal
+                       there on every bar, the same discipline
+                       event_calendar.py established.
+  Defaults:            implied_vol_change=0.0 on MarketContext;
+                       implied_vol_exponent=0.0 on the strategy. A
+                       config that never sets it, and a deployment with
+                       no implied-vol file at all, both reproduce prior
+                       behavior bit for bit -- the pinned regression
+                       baseline is unchanged by this field existing.
+
+  Why it earns an axis when the day-level calendars barely did: it is
+  not scheduled. It fires every session rather than on a twentieth of
+  them, which is the exact ceiling the FOMC/earnings boosts hit
+  (~1-2pp each). And being sourced from a different instrument, it is
+  the only signal here that can be non-redundant with
+  vol_scale_exponent by construction. tools/measure_vol_signal.py
+  rejected the implied LEVEL (roll-decay drift, not signal) and the
+  implied fast/slow RATIO (collapsed to -0.039 once controlled for
+  trailing realized vol -- it was re-encoding persistence the strategy
+  already had) before this one survived.
+
 Per the original task's step 4, no NLP/sentiment ingestion dependency
 was added to build this -- confirmed by
 test_no_speculative_ingestion_dependency_was_added below, unchanged and
@@ -165,6 +219,11 @@ MACRO_FIELDS = (
     # anything reads it, not after.
     "event_intensity",
     "minutes_to_event",
+    # Sixth field -- see the module docstring's "SIXTH FIELD" section.
+    # The first signal here sourced from an instrument OTHER than the one
+    # being traded, which is precisely why it is guarded: an external
+    # series is the easiest kind of input to add casually.
+    "implied_vol_change",
 )
 
 # Modules that must STILL have zero consumption of these fields. Every
@@ -200,6 +259,11 @@ CONFIRMED_CONSUMER_FIELDS = (
     # consumer's source, and test_nothing_branches_on_the_macro_fields_...
     # would catch it branching anywhere else.
     "event_intensity",
+    # Sixth field. Unlike minutes_to_event, this one DOES have a
+    # consumer from the moment it exists -- it was wired only because a
+    # measurement justified it, so there was never a stage at which it
+    # was populated and unread.
+    "implied_vol_change",
 )
 
 

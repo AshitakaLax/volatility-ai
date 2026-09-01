@@ -163,6 +163,9 @@ class LiveExecutionLoop:
         macro_surprise_factor: float = 0.0,
         is_earnings_reaction_day: bool = False,
         volume: float = 0.0,
+        event_intensity: float = 0.0,
+        minutes_to_event: float = -1.0,
+        implied_vol_change: float = 0.0,
     ) -> MarketContext:
         """Build the per-tick MarketContext the strategy sees.
 
@@ -177,6 +180,15 @@ class LiveExecutionLoop:
         consumes is_macro_event_day and is_earnings_reaction_day to
         scale its per-lot size. macro_surprise_factor remains unconsumed
         and is still never populated by the backtest path.
+
+        event_intensity, minutes_to_event and implied_vol_change are
+        accepted here too. They were previously ABSENT from this
+        signature while the three other MarketContext construction sites
+        (optimization_controller, live_trading_loop, intraday_validation)
+        all populated them -- so a caller of this shim silently built a
+        context blinder than the one every other path produces. That
+        asymmetry is the bug this signature existed to avoid, so a new
+        field goes in all four places or none.
         """
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
@@ -197,6 +209,9 @@ class LiveExecutionLoop:
             macro_surprise_factor=float(macro_surprise_factor),
             is_earnings_reaction_day=bool(is_earnings_reaction_day),
             volume=float(volume),
+            event_intensity=float(event_intensity),
+            minutes_to_event=float(minutes_to_event),
+            implied_vol_change=float(implied_vol_change),
         )
 
     def decision_cycle(

@@ -732,3 +732,105 @@ def test_weighted_event_boost_multiplies_with_vol_scale():
     plain = s.calculate_trade_value(ctx(100.0))
     on_event = s.calculate_trade_value(ctx(100.0, event_intensity=100.0))
     assert on_event == pytest.approx(plain * 2.0)
+
+
+# --- implied-vol change scaling ---
+
+
+def _iv_ctx(change: float):
+    return MarketContext(
+        timestamp=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
+        open=100.0, high=100.0, low=100.0, close=100.0,
+        cash=INITIAL_CASH, equity=INITIAL_CASH, peak_equity=INITIAL_CASH,
+        drawdown=0.0, open_lot_count=0, bar_index=1,
+        implied_vol_change=change,
+    )
+
+
+def test_implied_vol_scaling_defaults_to_an_exact_no_op():
+    """A config that never sets the exponent, and a deployment with no
+    implied-vol file, must both reproduce prior behavior bit for bit."""
+    s = hf(per_lot_pct=0.01)
+    feed(s, [100.0])
+    for change in (-40.0, -5.0, 0.0, 5.0, 40.0):
+        assert s.calculate_trade_value(_iv_ctx(change)) == pytest.approx(
+            INITIAL_CASH * 0.01
+        ), f"change {change} scaled despite an exponent of 0.0"
+
+
+def test_a_negative_exponent_sizes_down_after_implied_vol_jumps():
+    """Vol-targeting direction -- the one _vol_scale measured as correct
+    for realized vol. Whether it is right here is for a sweep to say."""
+    s = hf(per_lot_pct=0.01, implied_vol_exponent=-1.0)
+    feed(s, [100.0])
+    assert s.calculate_trade_value(_iv_ctx(20.0)) < INITIAL_CASH * 0.01
+    assert s.calculate_trade_value(_iv_ctx(-20.0)) > INITIAL_CASH * 0.01
+
+
+def test_a_positive_exponent_leans_into_an_implied_vol_jump():
+    s = hf(per_lot_pct=0.01, implied_vol_exponent=1.0)
+    feed(s, [100.0])
+    assert s.calculate_trade_value(_iv_ctx(20.0)) > INITIAL_CASH * 0.01
+
+
+def test_the_response_is_linear_in_the_change():
+    """Linear, NOT an exponent on a ratio: the input is a signed change
+    centred on zero, and a negative base to a fractional power is
+    undefined."""
+    s = hf(per_lot_pct=0.01, implied_vol_exponent=0.5)
+    feed(s, [100.0])
+    # 1 + 0.5 * (10/100) = 1.05
+    assert s.calculate_trade_value(_iv_ctx(10.0)) == pytest.approx(
+        INITIAL_CASH * 0.01 * 1.05
+    )
+    # 1 + 0.5 * (-10/100) = 0.95
+    assert s.calculate_trade_value(_iv_ctx(-10.0)) == pytest.approx(
+        INITIAL_CASH * 0.01 * 0.95
+    )
+
+
+def test_a_large_negative_change_cannot_invert_the_lot_size():
+    """The clamp is load-bearing: an unclamped linear response goes
+    NEGATIVE at a large enough exponent x change, which would flip a buy
+    into a nonsense value rather than merely a small one."""
+    s = hf(per_lot_pct=0.01, implied_vol_exponent=5.0, implied_vol_scale_min=0.25)
+    feed(s, [100.0])
+    value = s.calculate_trade_value(_iv_ctx(-80.0))  # 1 + 5*(-0.8) = -3.0 unclamped
+    assert value > 0
+    assert value == pytest.approx(INITIAL_CASH * 0.01 * 0.25)
+
+
+def test_the_scale_is_clamped_at_the_top_too():
+    s = hf(per_lot_pct=0.01, implied_vol_exponent=5.0, implied_vol_scale_max=1.5)
+    feed(s, [100.0])
+    assert s.calculate_trade_value(_iv_ctx(90.0)) == pytest.approx(
+        INITIAL_CASH * 0.01 * 1.5
+    )
+
+
+def test_a_zero_change_is_neutral_whatever_the_exponent():
+    """0.0 means both 'the index was flat' and 'no reading available',
+    and leaving size unchanged is the right answer to both."""
+    for exponent in (-2.0, -0.5, 0.5, 2.0):
+        s = hf(per_lot_pct=0.01, implied_vol_exponent=exponent)
+        feed(s, [100.0])
+        assert s.calculate_trade_value(_iv_ctx(0.0)) == pytest.approx(INITIAL_CASH * 0.01)
+
+
+def test_implied_vol_scaling_composes_with_vol_scaling():
+    """Independent axes -- measured as such (partial rho +0.257 holding
+    trailing realized vol fixed) -- so they multiply."""
+    common = dict(per_lot_pct=0.01, vol_fast_days=0.1, vol_slow_days=2.0)
+    vol_only = hf(vol_scale_exponent=-1.0, **common)
+    both = hf(vol_scale_exponent=-1.0, implied_vol_exponent=-1.0, **common)
+    for s in (vol_only, both):
+        _vol_feed(s, _calm_then_wild())
+    assert both.calculate_trade_value(_iv_ctx(30.0)) < vol_only.calculate_trade_value(
+        _iv_ctx(30.0)
+    )
+
+
+@pytest.mark.parametrize(("low", "high"), [(0.0, 2.0), (-1.0, 2.0), (1.5, 1.0)])
+def test_rejects_an_invalid_implied_vol_scale_range(low, high):
+    with pytest.raises(ConfigurationError, match="implied_vol_scale_min"):
+        hf(implied_vol_scale_min=low, implied_vol_scale_max=high)

@@ -393,6 +393,68 @@ Defaults: weighted_event_boost_multiplier=1.0, an exact no-op --
 event_intensity being populated changes nothing until a config sets
 this above 1.0.
 --------------------------------------------------------------------
+implied_vol_exponent -- the first FORWARD-looking volatility input
+
+Task 7.9 step-3 writeup for MarketContext.implied_vol_change:
+
+  Consuming strategy: this one, HighFrequencyLocalReferenceSizing, via
+  _implied_vol_scale. It is the only consumer.
+
+  Source dataset: src/implied_vol_signal.py, built from an
+  implied-volatility instrument's own minute bars and joined by
+  src/external_index_series.py's as-of lookup. Currently VIXY (Alpaca,
+  sip, adjustment=all). The RIGHT series is VXN -- Nasdaq-100 implied
+  vol, the index TQQQ tracks 3x -- from hfmarketdata.io, which was
+  unreachable when this was written (HTTP 000 after 25s while control
+  hosts answered in 1.5s; src/hf_market_data.py documents that same
+  outage mode). VIXY substitutes VIX for VXN and VIX FUTURES via an ETF
+  wrapper for spot, so it is a proxy on two axes. Re-measure against
+  real VXN before trusting tuned parameters.
+
+  Join semantics: session-over-session percentage change in the series'
+  CLOSE, published to the as-of series at midnight Eastern on the day
+  AFTER the session that produced it. Every bar of the following
+  session -- pre-market included -- therefore reads a value that was
+  already history when that session opened, so there is no lookahead;
+  tests/unit/test_implied_vol_signal.py asserts that directly rather
+  than inferring it from the construction. Absent file, or bars before
+  the series starts, yield 0.0.
+
+  Defaults: implied_vol_exponent=0.0, an exact no-op. A config that
+  does not set it, and a deployment with no implied-vol file, both
+  reproduce prior behavior bit for bit.
+
+WHY THE CHANGE AND NOT THE LEVEL OR THE RATIO -- measured, and the
+obvious answer was wrong. tools/measure_vol_signal.py, 2,671 sessions,
+partial rank correlation against next-session OPENING volatility:
+
+                        raw    partial|rv_ratio   partial|rv_fast
+    implied level     -0.180        -0.188            -0.085
+    implied 1d change +0.119        +0.136            +0.257
+    implied 5/60 ratio+0.429        +0.277            -0.039
+
+The RATIO looks like the winner against the realized 5/60 ratio and
+collapses to nothing against trailing realized vol -- the first control
+is much the weaker predictor (rho +0.41 vs +0.79), so the ratio was
+only re-encoding volatility persistence this strategy already has. The
+LEVEL is negatively correlated because a VIX-futures ETF carries roll
+decay, which is drift, not signal. Only the CHANGE strengthens under
+the harder control, which is what an input carrying genuinely new
+information looks like.
+
+WHY THIS EARNS AN AXIS WHEN THE CALENDARS DID NOT. It is not scheduled
+-- it fires on every session, not on a twentieth of them, which is the
+exact ceiling the event boosts hit above. And it is the only signal
+here that is not derived from TQQQ's own past bars, so it is the only
+one that can be non-redundant with vol_scale_exponent by construction.
+
+WHY LINEAR RATHER THAN AN EXPONENT. _vol_scale raises a strictly
+positive RATIO to a power. This input is a signed CHANGE centred on
+zero, and a negative base to a fractional power is undefined -- so the
+ratio form is not merely awkward here, it is wrong. See
+_implied_vol_scale.
+
+--------------------------------------------------------------------
 SYNTHETIC BARS, AND WHY THE VOL WINDOWS ARE GATED BY VOLUME TOO
 
 src/historical_data.resample_to_uniform_minutes exists for the
@@ -480,6 +542,9 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         dd_throttle_start: float | None = None,
         dd_throttle_full: float = 0.60,
         dd_throttle_floor: float = 0.25,
+        implied_vol_exponent: float = 0.0,
+        implied_vol_scale_min: float = 0.5,
+        implied_vol_scale_max: float = 2.0,
     ) -> None:
         if not 0.0 < per_lot_pct <= 1.0:
             raise ConfigurationError(f"per_lot_pct must be in (0, 1], got {per_lot_pct}")
@@ -584,6 +649,17 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         self.dd_throttle_start = dd_throttle_start
         self.dd_throttle_full = dd_throttle_full
         self.dd_throttle_floor = dd_throttle_floor
+        # See the module docstring's implied_vol_exponent section. 0.0 is
+        # an exact no-op, so every existing config and recorded result is
+        # unaffected.
+        if implied_vol_scale_min <= 0.0 or implied_vol_scale_max < implied_vol_scale_min:
+            raise ConfigurationError(
+                f"need 0 < implied_vol_scale_min <= implied_vol_scale_max, got "
+                f"{implied_vol_scale_min} and {implied_vol_scale_max}"
+            )
+        self.implied_vol_exponent = implied_vol_exponent
+        self.implied_vol_scale_min = implied_vol_scale_min
+        self.implied_vol_scale_max = implied_vol_scale_max
 
     def record_tick(self, context: MarketContext) -> None:
         """Advance the rolling high and capture the capital baseline,
@@ -782,6 +858,38 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         frac = (dd - self.dd_throttle_start) / span
         return 1.0 - frac * (1.0 - self.dd_throttle_floor)
 
+    def _implied_vol_scale(self, context: MarketContext) -> float:
+        """Size multiplier from the last closed session's change in
+        implied volatility -- context.implied_vol_change, in percent.
+
+        A LINEAR response, not the exponent-on-a-ratio form _vol_scale
+        uses, because the input is a signed CHANGE centred on zero
+        rather than a strictly-positive ratio centred on one. Raising a
+        possibly-negative number to a fractional power is undefined, so
+        the ratio form is not merely awkward here, it is wrong:
+
+            multiplier = clamp(1 + exponent * (change / 100), min, max)
+
+        Sign is not assumed, exactly as _vol_scale's is not. A NEGATIVE
+        exponent sizes down after implied vol jumps (the vol-targeting
+        direction, and the one _vol_scale measured as correct for
+        realized vol); a positive one leans in. Sweeping across zero
+        measures which is right rather than encoding a guess.
+
+        Returns 1.0 when the exponent is 0.0 (the default), and when no
+        reading is available -- context.implied_vol_change is 0.0 both
+        for "the index was flat" and for "no implied-vol file is
+        configured", and leaving size unchanged is the right answer to
+        both.
+        """
+        if self.implied_vol_exponent == 0.0:
+            return 1.0
+        return clamp(
+            1.0 + self.implied_vol_exponent * (context.implied_vol_change / 100.0),
+            self.implied_vol_scale_min,
+            self.implied_vol_scale_max,
+        )
+
     def adjust_profit_target(self, lot, context: MarketContext) -> float | None:
         """Trail this lot's exit target, when trail_pct is configured.
 
@@ -876,4 +984,12 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             * self._time_of_day_scale(context)
             * self._volume_scale()
             * self._dd_throttle_scale(context)
+            # MULTIPLIES rather than max()-ing with the event boosts. It
+            # is a genuinely independent axis, and that was measured, not
+            # asserted: holding trailing realized vol fixed, this change
+            # still scores partial rho +0.257 against next-session
+            # opening volatility (tools/measure_vol_signal.py). It says
+            # something the other scalers do not. Clamped, so the product
+            # stays bounded.
+            * self._implied_vol_scale(context)
         )

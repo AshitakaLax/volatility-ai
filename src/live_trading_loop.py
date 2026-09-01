@@ -93,6 +93,7 @@ from src.exceptions import ConfigurationError
 from src.fill_accounting import FillTracker, extract_alpaca_fill
 from src.fomc_calendar import is_fomc_day_at
 from src.idempotency import compute_decision_id
+from src.implied_vol_signal import change_at
 from src.intraday_profile import minutes_since_open
 from src.market_context import MarketContext
 from src.no_loss_guard import NoLossViolation, validate_sell
@@ -227,6 +228,22 @@ class LiveTradingLoop:
         except (FileNotFoundError, _DataValidationError) as e:
             logger.warning(f"No earnings event table loaded ({e}); event_intensity stays 0.0.")
             self._event_table = None
+        # Implied-vol change series -- same optional-artifact fallback as
+        # the event table above, and for the same reason: the consuming
+        # exponent defaults to 0.0, so its absence is an exact no-op
+        # rather than something worth refusing to start over.
+        self._implied_vol_series = None
+        implied_vol_path = getattr(getattr(config, "live", None), "implied_vol_path", None)
+        if implied_vol_path:
+            try:
+                from src.implied_vol_signal import load_implied_vol_change
+
+                self._implied_vol_series = load_implied_vol_change(implied_vol_path)
+            except (FileNotFoundError, _DataValidationError) as e:
+                logger.warning(
+                    f"No implied-vol series loaded from {implied_vol_path} ({e}); "
+                    "implied_vol_change stays 0.0."
+                )
         self._sleep = sleep
         self._stop_requested = False
 
@@ -534,6 +551,7 @@ class LiveTradingLoop:
             volume=float(getattr(bar, "volume", 0.0) or 0.0),
             event_intensity=event_intensity,
             minutes_to_event=minutes_to_event,
+            implied_vol_change=change_at(self._implied_vol_series, timestamp),
         )
 
     # --- order submission ---
