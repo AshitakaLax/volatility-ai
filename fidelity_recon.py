@@ -146,6 +146,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "ticket. Answers question 2 without touching a trade screen.",
     )
     parser.add_argument(
+        "--cdp-url",
+        default=None,
+        help="Attach to an ALREADY-RUNNING Chromium browser (Edge or Chrome) over "
+        "the DevTools protocol, e.g. http://localhost:9222. Uses your real "
+        "browser, real profile and real session -- nothing is launched, no "
+        "credentials are read, and the library is not used at all. This is the "
+        "mode that works when Fidelity refuses a Playwright-launched browser. "
+        "See the module docstring for how to start the browser with debugging "
+        "enabled.",
+    )
+    parser.add_argument(
+        "--capture-seconds",
+        type=float,
+        default=300.0,
+        help="With --cdp-url: how long to keep recording while you browse "
+        "(default: 300). Recording stops early if you close every tab.",
+    )
+    parser.add_argument(
         "--manual-login",
         action="store_true",
         help="Open the browser to Fidelity's sign-in page and wait for YOU to "
@@ -351,6 +369,141 @@ def _wait_for_manual_login(context, timeout_seconds: float, poll_seconds: float 
         f"Tabs seen: {seen}. Re-run with a larger --login-timeout if you "
         "simply need more time."
     )
+
+
+def run_cdp_recon(args: argparse.Namespace) -> int:
+    """Record traffic from a browser the USER is already running.
+
+    This mode exists because Fidelity refuses a Playwright-launched
+    browser outright -- a fresh automated profile with no cookies and no
+    history is answered with "Sorry, we can't complete this action right
+    now", while the same person logs in fine in their ordinary browser.
+
+    Nothing here defeats that check; it removes the reason for it. The
+    browser is the user's own, the profile is their own, the login is
+    performed by them by hand. We only listen. That also makes this a
+    STRICTLY better recon record than the launched-browser path would
+    have produced: a real session rather than a synthetic one.
+
+    Deliberately does NOT use FidelityAutomation. The library owns a
+    browser it launched itself, which is the thing that does not work
+    here; and reconnaissance needs no library at all, only listeners.
+    Account enumeration is skipped for the same reason -- the human can
+    simply open the Accounts page, and that navigation is captured like
+    any other.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise ConfigurationError(
+            f"playwright is not installed: {exc}\n"
+            "    pip install -r requirements-fidelity.txt"
+        ) from exc
+
+    artifact_dir = _prepare_artifact_dir(args.artifact_dir)
+    stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    dump_path = artifact_dir / f"recon_{stamp}.json"
+
+    # No secret_values: this mode never sees a password, so there is
+    # nothing to scrub by exact match. Key-based redaction still applies
+    # to every payload (see TrafficCapture / redact_secrets).
+    capture = TrafficCapture()
+
+    playwright = sync_playwright().start()
+    browser = None
+    try:
+        print(f"[recon] connecting to {args.cdp_url} ...", file=sys.stderr)
+        try:
+            browser = playwright.chromium.connect_over_cdp(args.cdp_url)
+        except Exception as exc:  # noqa: BLE001 -- the actionable part is the advice
+            raise ConfigurationError(
+                f"Could not attach to a browser at {args.cdp_url}: {exc}\n"
+                "\n"
+                "Start Edge with remote debugging FIRST, using a separate profile "
+                "directory:\n"
+                '    & "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" '
+                "--remote-debugging-port=9222 "
+                '--user-data-dir="C:\\Users\\%USERNAME%\\edge-debug-profile"\n'
+                "\n"
+                "--user-data-dir is REQUIRED, not optional: current Chrome and Edge "
+                "refuse to enable remote debugging on the DEFAULT profile. Omitting "
+                "it looks like the browser simply ignored the flag."
+            ) from exc
+
+        contexts = list(browser.contexts)
+        if not contexts:
+            raise ConfigurationError(
+                "Attached, but the browser reports no contexts -- it has no open "
+                "windows. Open a tab and re-run."
+            )
+        for context in contexts:
+            capture.attach_context(context)
+
+        print(
+            f"[recon] attached to {capture.attached_page_count} page(s) across "
+            f"{len(contexts)} context(s).",
+            file=sys.stderr,
+        )
+        print(
+            "\n"
+            "==================================================================\n"
+            "  RECORDING. Use the browser normally.\n"
+            "\n"
+            "  To answer the questions that matter, visit:\n"
+            "    * Trader+            " + TRADERPLUS_URL + "\n"
+            "    * your Orders / Activity page  (question 2: is there an\n"
+            "      orders-list endpoint?)\n"
+            "    * Positions\n"
+            "\n"
+            "  Do NOT place an order. Opening a trade ticket is fine and is\n"
+            "  worth doing -- filling one in without submitting shows what a\n"
+            "  preview round-trip looks like.\n"
+            f"\n  Recording for up to {args.capture_seconds:.0f}s.\n"
+            "==================================================================\n",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        deadline = time.monotonic() + args.capture_seconds
+        last_report = 0.0
+        while time.monotonic() < deadline:
+            time.sleep(2.0)
+            # Surface progress, so a silent run is distinguishable from a
+            # stalled one without waiting out the whole timer.
+            elapsed = args.capture_seconds - (deadline - time.monotonic())
+            if elapsed - last_report >= 30.0:
+                summary = capture.summary()
+                print(
+                    f"[recon]   {elapsed:5.0f}s  frames={summary['frames']} "
+                    f"responses={summary['responses']} "
+                    f"pages={capture.attached_page_count}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                last_report = elapsed
+            still_open = any(_context_pages(ctx) for ctx in browser.contexts)
+            if not still_open:
+                print(
+                    "[recon] every tab was closed; stopping early.", file=sys.stderr
+                )
+                break
+    finally:
+        try:
+            _write_dump(capture, dump_path)
+            print(f"[recon] wrote {dump_path}", file=sys.stderr)
+        except OSError as exc:
+            print(f"[recon] FAILED to write dump: {exc}", file=sys.stderr)
+        # NEVER browser.close() here. This browser belongs to the user
+        # and they are still using it -- closing it would discard their
+        # session and, on a brokerage site, quite possibly their
+        # patience. Dropping the connection is all that is wanted.
+        try:
+            playwright.stop()
+        except Exception as exc:  # noqa: BLE001 -- teardown must not mask
+            print(f"[recon] playwright.stop() raised: {exc}", file=sys.stderr)
+
+    _report(capture, dump_path)
+    return 0
 
 
 def run_recon(args: argparse.Namespace, credentials: FidelityCredentials | None) -> int:
@@ -608,6 +761,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     try:
+        if args.cdp_url:
+            # No credentials, no library, no launched browser -- see
+            # run_cdp_recon's docstring. --account is still required by
+            # the parser, but nothing here selects or acts on an account:
+            # the human drives their own browser, and this only listens.
+            return run_cdp_recon(args)
         if args.manual_login:
             # Not merely "credentials are optional here" -- they are never
             # read at all, so a stale or wrong FIDELITY_PASSWORD in the

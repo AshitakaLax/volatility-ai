@@ -760,3 +760,135 @@ def test_a_missing_class_reports_the_real_cause_not_a_reinstall_instruction(
     with pytest.raises(ConfigurationError, match="FidelityAutomation") as excinfo:
         fidelity_recon.run_recon(_args(tmp_path), CREDENTIALS)
     assert "Could not import" in str(excinfo.value)
+
+
+# -- CDP mode: attach to the user's OWN running browser ------------------
+
+
+class FakeCDPBrowser:
+    """Stand-in for a browser reached via connect_over_cdp."""
+
+    def __init__(self, *contexts):
+        self.contexts = list(contexts)
+        self.close_calls = 0
+
+    def close(self):
+        self.close_calls += 1
+
+
+class FakePlaywright:
+    def __init__(self, browser=None, connect_error=None):
+        self._browser = browser
+        self._connect_error = connect_error
+        self.stopped = False
+        self.chromium = self
+
+    def connect_over_cdp(self, url):
+        self.cdp_url = url
+        if self._connect_error is not None:
+            raise self._connect_error
+        return self._browser
+
+    def stop(self):
+        self.stopped = True
+
+
+def _install_fake_playwright(monkeypatch, fake):
+    module = type(sys)("playwright")
+    sync_api = type(sys)("playwright.sync_api")
+    sync_api.sync_playwright = lambda: type("S", (), {"start": lambda _self: fake})()
+    module.sync_api = sync_api
+    monkeypatch.setitem(sys.modules, "playwright", module)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+    return fake
+
+
+def _cdp_args(tmp_path, **overrides):
+    argv = [
+        "--account",
+        "Z12345678",
+        "--artifact-dir",
+        str(tmp_path),
+        "--cdp-url",
+        "http://localhost:9222",
+        "--capture-seconds",
+        "0",
+        "--i-understand-this-logs-into-my-real-brokerage-account",
+    ]
+    args = fidelity_recon.parse_args(argv)
+    for k, v in overrides.items():
+        setattr(args, k, v)
+    return args
+
+
+def test_cdp_mode_never_closes_the_users_browser(monkeypatch, tmp_path):
+    """THE safety property of this mode. The browser belongs to the user
+    and they are still using it -- closing it would discard their live
+    brokerage session. Only the connection may be dropped."""
+    page = FakePage()
+    browser = FakeCDPBrowser(FakeContext(page))
+    fake = _install_fake_playwright(monkeypatch, FakePlaywright(browser=browser))
+
+    assert fidelity_recon.run_cdp_recon(_cdp_args(tmp_path)) == 0
+    assert browser.close_calls == 0, "run_cdp_recon closed the user's real browser"
+    assert fake.stopped is True, "the playwright connection was not released"
+
+
+def test_cdp_mode_uses_no_credentials_and_no_library(monkeypatch, tmp_path):
+    """It must not import fidelity-api at all: the library owns a browser
+    it launches itself, which is precisely what does not work here."""
+    called = []
+    monkeypatch.setattr(
+        fidelity_recon, "load_fidelity_credentials", lambda: called.append(1)
+    )
+    monkeypatch.setitem(sys.modules, "fidelity", None)  # any use would raise
+    page = FakePage()
+    _install_fake_playwright(
+        monkeypatch, FakePlaywright(browser=FakeCDPBrowser(FakeContext(page)))
+    )
+
+    argv = [
+        "--account",
+        "Z12345678",
+        "--artifact-dir",
+        str(tmp_path),
+        "--cdp-url",
+        "http://localhost:9222",
+        "--capture-seconds",
+        "0",
+        "--i-understand-this-logs-into-my-real-brokerage-account",
+    ]
+    assert fidelity_recon.main(argv) == 0
+    assert called == [], "CDP mode read credentials"
+
+
+def test_cdp_mode_attaches_to_every_context(monkeypatch, tmp_path):
+    pages = [FakePage(), FakePage(), FakePage()]
+    browser = FakeCDPBrowser(FakeContext(pages[0], pages[1]), FakeContext(pages[2]))
+    _install_fake_playwright(monkeypatch, FakePlaywright(browser=browser))
+
+    args = _cdp_args(tmp_path)
+    assert fidelity_recon.run_cdp_recon(args) == 0
+    dumps = sorted(Path(tmp_path).glob("recon_*.json"))
+    assert dumps, "no dump was written"
+
+
+def test_a_failed_cdp_connection_names_the_user_data_dir_requirement(
+    monkeypatch, tmp_path
+):
+    """Current Chrome and Edge silently refuse remote debugging on the
+    DEFAULT profile. Without that detail the failure looks like the flag
+    was ignored, which is the single likeliest way to get stuck here."""
+    _install_fake_playwright(
+        monkeypatch, FakePlaywright(connect_error=RuntimeError("ECONNREFUSED"))
+    )
+    with pytest.raises(ConfigurationError, match="user-data-dir"):
+        fidelity_recon.run_cdp_recon(_cdp_args(tmp_path))
+
+
+def test_a_browser_with_no_contexts_is_reported_clearly(monkeypatch, tmp_path):
+    _install_fake_playwright(
+        monkeypatch, FakePlaywright(browser=FakeCDPBrowser())
+    )
+    with pytest.raises(ConfigurationError, match="no contexts"):
+        fidelity_recon.run_cdp_recon(_cdp_args(tmp_path))
