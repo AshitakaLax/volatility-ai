@@ -1,0 +1,348 @@
+"""
+An authenticated Fidelity session, driven through a browser the USER owns.
+
+--------------------------------------------------------------------
+WHY THIS EXISTS INSTEAD OF fidelity-api
+
+The reconnaissance (2026-09-01, from a DevTools HAR of a real session)
+established that everything this project needs is plain JSON:
+
+    POST /ftgw/digital/trade-equity/previewSrvc        -> mints confNum
+    POST /ftgw/digital/trade-equity/placeOrder         -> takes/echoes confNum
+    POST /ftgw/digital/trade-equity/cancelPlaceOrder   -> cancel by confNum
+    POST /ftgw/digital/activityapi/api/v1/transactions/pending -> order list
+    POST /ftgw/digital/traderplus-api/api/positions/v1 -> positions
+    POST /ftgw/digital/trade-equity/balance            -> cash/settled
+
+fidelity-api reads none of that. It clicks buttons and then waits up to
+10 seconds for the literal DOM string "Order received", which is why it
+can surface no order ID, no cancel, and no order status -- and why it
+returns False for an order that is live at Fidelity if the confirmation
+merely renders slowly. The JSON layer has all three, so the DOM layer is
+simply the wrong place to be standing.
+
+--------------------------------------------------------------------
+WHY IT RUNS INSIDE THE USER'S OWN BROWSER
+
+Fidelity refuses a Playwright-launched browser outright ("Sorry, we
+can't complete this action right now"); the account is behind Akamai Bot
+Manager, visible in the capture as sensor POSTs to an obfuscated path.
+The same person signs in by hand without trouble.
+
+So this attaches over CDP to a Chromium browser the user is already
+running and already logged into, and issues every request with
+`fetch()` executed INSIDE that authenticated page. Consequences, all of
+which matter:
+
+  * Session cookies are attached by the browser. This code never sees,
+    stores, or transmits a credential -- there is nothing here to leak.
+  * Requests are same-origin, so no CORS preflight and no header the
+    page could not have sent itself.
+  * What Akamai observes is the real browser making the same calls
+    Trader+ makes, because that is precisely what is happening.
+
+Nothing here defeats a bot check. It removes the reason for one.
+
+--------------------------------------------------------------------
+THE CSRF TOKEN IS SNIFFED, NOT CONFIGURED
+
+Authenticated calls require `x-csrf-token`, plus `appid`/`appname`. The
+token appears in no response body -- it is session-scoped and minted
+somewhere in the page. Rather than hardcode a captured value (which
+expires at the next login, turning a config into a time bomb), this
+watches the page's own outgoing requests and lifts the headers from one.
+That self-heals across rotation and requires no knowledge of Fidelity's
+internals.
+
+The cost is honest: a fresh session has no token until the page has made
+at least one authenticated XHR. `wait_for_credentials` blocks for that
+rather than issuing a request that would fail in a confusing way, and
+`prime()` provokes one by navigating.
+
+--------------------------------------------------------------------
+SAFETY: READ-ONLY BY DEFAULT, ENFORCED BY AN ALLOWLIST
+
+`post_json` refuses any endpoint outside READ_ONLY_ENDPOINTS unless the
+session was constructed with `allow_order_endpoints=True`. This is not
+decoration. A generic "POST arbitrary JSON to Fidelity" helper is one
+typo away from submitting an order, and the plan this implements is
+explicit that order placement stays gated behind a deliberate act. The
+default must therefore be the safe one, and the unsafe one must be
+spelled out at the construction site where a human can see it.
+
+Session expiry raises FidelitySessionExpired rather than returning
+something falsy. A semi-attended deployment -- the intended one -- must
+halt and alert on expiry, never guess, and never let an auth failure be
+mistaken for "no orders found".
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from typing import Any
+
+from src.exceptions import ConfigurationError
+
+FIDELITY_ORIGIN = "https://digital.fidelity.com"
+
+# Read-only endpoints. Everything the strategy needs in order to observe
+# state lives here; nothing here can create, modify, or cancel an order.
+READ_ONLY_ENDPOINTS = frozenset(
+    {
+        "/ftgw/digital/activityapi/api/v1/transactions/pending",
+        "/ftgw/digital/traderplus-api/api/positions/v1",
+        "/ftgw/digital/traderplus-api/api/quotes/v1",
+        "/ftgw/digital/trade-equity/balance",
+        "/ftgw/digital/trade-equity/positions",
+        "/ftgw/digital/trade-equity/getquote",
+    }
+)
+
+# State-changing endpoints, permitted only with allow_order_endpoints=True.
+# cancelPlaceOrder is included deliberately: cancelling is state-changing
+# and belongs behind the same gate, even though it only ever REDUCES
+# exposure. A gate you can reason about beats one with exceptions in it.
+ORDER_ENDPOINTS = frozenset(
+    {
+        "/ftgw/digital/trade-equity/previewSrvc",
+        "/ftgw/digital/trade-equity/placeOrder",
+        "/ftgw/digital/trade-equity/cancelPreviewOrder",
+        "/ftgw/digital/trade-equity/cancelPlaceOrder",
+    }
+)
+
+# Headers lifted from an observed request and replayed on ours. Only
+# these three: everything else (cookies, sec-*, user-agent) is supplied
+# by the browser itself, and overriding those from script would be both
+# unnecessary and a way to look different from the real page.
+_SNIFFED_HEADERS = ("x-csrf-token", "appid", "appname")
+
+# A page whose URL matches this is the sign-in flow, not a session.
+_SIGNIN_MARKER = "/prgw/digital/signin"
+_AUTHENTICATED_MARKER = "/ftgw/digital/"
+
+
+class FidelitySessionError(RuntimeError):
+    """Base for session problems that are not configuration mistakes."""
+
+
+class FidelitySessionExpired(FidelitySessionError):
+    """The browser session is no longer authenticated.
+
+    Distinct from a transport error on purpose. The correct response is
+    to halt new buys and alert a human to log in again -- not to retry,
+    which cannot succeed, and not to treat the failure as an empty
+    result, which would make "session expired" indistinguishable from
+    "you have no open orders" at exactly the moment that distinction
+    matters most.
+    """
+
+
+class FidelitySession:
+    """Issues authenticated JSON calls from inside the user's own page."""
+
+    def __init__(
+        self,
+        page: Any,
+        *,
+        allow_order_endpoints: bool = False,
+        request_timeout_ms: int = 30_000,
+    ) -> None:
+        self._page = page
+        self._allow_order_endpoints = bool(allow_order_endpoints)
+        self._request_timeout_ms = request_timeout_ms
+        self._headers: dict[str, str] = {}
+        self._attached = False
+
+    # -- credential sniffing -------------------------------------------
+
+    def attach(self) -> None:
+        """Start watching the page's own requests for the auth headers."""
+        if self._attached:
+            return
+        self._page.on("request", self._on_request)
+        self._attached = True
+
+    def _on_request(self, request: Any) -> None:
+        """Lift auth headers from any authenticated call the page makes.
+
+        Never raises: this runs inside a Playwright event handler, where
+        an exception would surface in the middle of whatever page
+        interaction happened to be in flight.
+        """
+        try:
+            headers = request.headers or {}
+            lowered = {str(k).lower(): str(v) for k, v in headers.items()}
+            if "x-csrf-token" not in lowered:
+                return
+            for name in _SNIFFED_HEADERS:
+                if lowered.get(name):
+                    self._headers[name] = lowered[name]
+        except Exception:  # noqa: BLE001 -- a sniffing failure must not break the page
+            return
+
+    @property
+    def has_credentials(self) -> bool:
+        return "x-csrf-token" in self._headers
+
+    @property
+    def csrf_token(self) -> str | None:
+        return self._headers.get("x-csrf-token")
+
+    def wait_for_credentials(self, timeout_seconds: float = 60.0) -> None:
+        """Block until the page has made an authenticated request.
+
+        Better than issuing a call that would fail with an opaque 403:
+        the reason we cannot proceed yet is "no token seen", and that is
+        what the error should say.
+        """
+        if not self._attached:
+            raise ConfigurationError(
+                "attach() must be called before wait_for_credentials(); nothing "
+                "is watching the page's requests yet."
+            )
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if self.has_credentials:
+                return
+            time.sleep(0.5)
+        raise FidelitySessionError(
+            f"No authenticated request observed within {timeout_seconds:.0f}s, so no "
+            "x-csrf-token could be captured. The page may be idle -- call prime(), "
+            "or interact with Trader+ so it issues a request."
+        )
+
+    def prime(self, url: str | None = None) -> None:
+        """Provoke an authenticated request so headers can be sniffed.
+
+        Navigating is the least surprising way to do it: it is what the
+        human would do, and it is what the page is built to respond to.
+        """
+        target = url or f"{FIDELITY_ORIGIN}/ftgw/digital/traderplus"
+        self._page.goto(target)
+        try:
+            self._page.wait_for_load_state("networkidle")
+        except Exception:  # noqa: BLE001 -- best effort; wait_for_credentials is the real gate
+            pass
+
+    # -- session validity ----------------------------------------------
+
+    def assert_authenticated(self) -> None:
+        """Raise if the page is sitting on the sign-in flow."""
+        try:
+            url = str(self._page.url)
+        except Exception as exc:  # noqa: BLE001
+            raise FidelitySessionExpired(f"The page is gone: {exc}") from exc
+        if _SIGNIN_MARKER in url:
+            raise FidelitySessionExpired(
+                f"The browser is on Fidelity's sign-in page ({url}). Log in again; "
+                "this session cannot issue authenticated calls."
+            )
+
+    # -- the request itself ---------------------------------------------
+
+    def post_json(self, path: str, payload: dict) -> Any:
+        """POST JSON to `path` from inside the authenticated page.
+
+        `path` is a site-relative path, never a full URL: this can only
+        ever talk to Fidelity's own origin, and accepting a full URL
+        would make that a matter of the caller getting it right.
+        """
+        if not path.startswith("/"):
+            raise ConfigurationError(
+                f"path must be site-relative and start with '/', got {path!r}"
+            )
+        if path in ORDER_ENDPOINTS and not self._allow_order_endpoints:
+            raise ConfigurationError(
+                f"{path} is an order endpoint and this session was created read-only. "
+                "Construct FidelitySession(..., allow_order_endpoints=True) to permit "
+                "it -- deliberately, at a call site a human can see."
+            )
+        if path not in READ_ONLY_ENDPOINTS and path not in ORDER_ENDPOINTS:
+            raise ConfigurationError(
+                f"{path} is not a known Fidelity endpoint. Add it to "
+                "READ_ONLY_ENDPOINTS or ORDER_ENDPOINTS in src/fidelity_session.py "
+                "after confirming from a capture what it does -- an allowlist that "
+                "silently accepts anything is not an allowlist."
+            )
+        if not self.has_credentials:
+            raise FidelitySessionError(
+                "No x-csrf-token captured yet -- call attach() then "
+                "wait_for_credentials() (or prime()) first."
+            )
+
+        self.assert_authenticated()
+
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            **{k: v for k, v in self._headers.items() if k in _SNIFFED_HEADERS},
+        }
+        # Executed in the PAGE, so the browser attaches cookies and the
+        # request is same-origin. credentials:"same-origin" is explicit
+        # rather than relying on the fetch default, which has changed
+        # across specification revisions.
+        script = """
+        async ([path, payload, headers, timeoutMs]) => {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const response = await fetch(path, {
+                    method: "POST",
+                    headers: headers,
+                    body: JSON.stringify(payload),
+                    credentials: "same-origin",
+                    signal: controller.signal,
+                });
+                const text = await response.text();
+                return {status: response.status, url: response.url, body: text};
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+        """
+        try:
+            result = self._page.evaluate(
+                script, [path, payload, headers, self._request_timeout_ms]
+            )
+        except Exception as exc:  # noqa: BLE001 -- classified by the caller's retry policy
+            raise FidelitySessionError(f"POST {path} failed in the page: {exc}") from exc
+
+        return self._interpret(path, result)
+
+    def _interpret(self, path: str, result: dict) -> Any:
+        status = int(result.get("status", 0))
+        body = result.get("body") or ""
+        final_url = str(result.get("url") or "")
+
+        # An expired session most often shows up as a redirect INTO the
+        # sign-in flow with a 200, not as a 401 -- which is exactly how a
+        # naive caller ends up parsing a login page as though it were an
+        # empty order list.
+        if _SIGNIN_MARKER in final_url:
+            raise FidelitySessionExpired(
+                f"POST {path} was redirected to the sign-in flow ({final_url}); "
+                "the session has expired. Log in again."
+            )
+        if status in (401, 403):
+            raise FidelitySessionExpired(
+                f"POST {path} returned {status}. The session or CSRF token is no "
+                "longer valid; log in again."
+            )
+        if status >= 400:
+            raise FidelitySessionError(
+                f"POST {path} returned {status}: {body[:300]}"
+            )
+
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError as exc:
+            # HTML where JSON was expected is nearly always an interstitial
+            # or an error page, so say that rather than reporting a parse
+            # error at column 1.
+            hint = " (looks like HTML, not JSON)" if body.lstrip()[:1] == "<" else ""
+            raise FidelitySessionError(
+                f"POST {path} returned {status} but the body did not parse as "
+                f"JSON{hint}: {body[:200]}"
+            ) from exc
