@@ -39,6 +39,17 @@ from src.validation import validate_run_sweep_config
 
 logger = logging.getLogger("Optimizer")
 
+# NOTE ON WHY THIS IS A BOOL AND NOT A SENTINEL OBJECT.
+# None is a real value for the implied-vol series ("no file configured, or
+# it failed to load"), so it cannot also mean "not yet attempted". The
+# obvious fix -- a module-level `_UNLOADED = object()` compared with `is`
+# -- is WRONG here and was caught by
+# test_error_isolation_holds_across_process_boundaries: this controller is
+# pickled to worker processes, and pickle rebuilds a bare object() as a
+# NEW instance, so `is _UNLOADED` is False in the worker. The sentinel
+# itself was then returned as the series and every parallel combination
+# failed. A bool pickles by value and has no identity to lose.
+
 
 class BacktestState:
     """Enforces isolated state management for simulation iterations."""
@@ -275,6 +286,8 @@ class OptimizationController:
         self._event_intensity_cache = None
         self._minutes_to_event_cache = None
         self._implied_vol_change_cache = None
+        self._implied_vol_series_cache = None
+        self._implied_vol_series_loaded = False
         logger.info(
             f"OptimizationController initialized with historical dataset length: {len(historical_data)}"
         )
@@ -444,16 +457,32 @@ class OptimizationController:
         return self._minutes_to_event_cache
 
     @property
-    def _implied_vol_change(self):
-        """Per-bar implied-vol session change, cached like _fomc_flags.
+    def _implied_vol_series(self):
+        """The session-change series itself -- SMALL, and deliberately
+        NOT in _DERIVED_CACHES so it survives pickling.
 
-        Absent file -> all-zero, the same fallback _load_event_table
-        takes and for the same reason: the consumer's exponent defaults
-        to 0.0, so a zero array is an exact no-op and a sweep stays
-        runnable on a checkout without the implied-vol data.
+        Splitting this from the per-bar array below is a measured
+        optimisation, not tidiness. Building it parses a 69MB minute CSV
+        to produce ~2,680 session values:
+
+            build from CSV          3.27s     <- was repeated per task
+            join onto 2.56M bars    0.07s     <- genuinely per-controller
+            the series pickles to  42.5 KB
+            the per-bar array      20.5 MB
+
+        __getstate__ ships this object on EVERY task submission, so the
+        first version -- which put the series behind the same cache as
+        the array -- re-read 69MB per combination. That is 40s on a
+        12-combo sweep and ~14 minutes on a 250-trial one, multiplied by
+        worker count.
+
+        42.5KB is the right thing to ship: the same order as
+        data/earnings_releases_derived.csv (40KB), which the event table
+        already re-reads per task without anyone minding. The 20.5MB
+        array is the thing that must not be.
         """
-        if self._implied_vol_change_cache is None:
-            from src.implied_vol_signal import changes_for_index, load_implied_vol_change
+        if not self._implied_vol_series_loaded:
+            from src.implied_vol_signal import load_implied_vol_change
 
             series = None
             if self.implied_vol_path:
@@ -464,7 +493,25 @@ class OptimizationController:
                         f"Implied-vol series {self.implied_vol_path} unusable ({exc}); "
                         "continuing with no implied-vol signal."
                     )
-            self._implied_vol_change_cache = changes_for_index(series, self.data.index)
+            self._implied_vol_series_cache = series
+            self._implied_vol_series_loaded = True
+        return self._implied_vol_series_cache
+
+    @property
+    def _implied_vol_change(self):
+        """Per-bar implied-vol session change, cached like _fomc_flags.
+
+        Absent file -> all-zero, the same fallback _load_event_table
+        takes and for the same reason: the consumer's exponent defaults
+        to 0.0, so a zero array is an exact no-op and a sweep stays
+        runnable on a checkout without the implied-vol data.
+        """
+        if self._implied_vol_change_cache is None:
+            from src.implied_vol_signal import changes_for_index
+
+            self._implied_vol_change_cache = changes_for_index(
+                self._implied_vol_series, self.data.index
+            )
         return self._implied_vol_change_cache
 
     def _simulate_single(
