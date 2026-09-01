@@ -146,3 +146,99 @@ def test_partial_close_rejects_non_positive_sell_qty():
         with pytest.raises(ValueError):
             ledger.close_lot(lot, sell_qty=bad)
     assert lot.shares == pytest.approx(10.0)
+
+
+# --- the incremental share total (a performance invariant) ---
+
+
+def _recomputed(ledger) -> float:
+    return sum(lot.shares for lot in ledger.open_lots)
+
+
+def test_the_running_share_total_matches_a_recomputed_sum():
+    """THE invariant the optimisation rests on. total_open_shares
+    replaces a per-bar walk of the whole book, so if it ever disagrees
+    with the truth the backtest silently marks to market at the wrong
+    value -- and nothing else would notice."""
+    ledger = AssetLotLedger()
+    for i in range(20):
+        ledger.register_buy(f"L{i}", "TQQQ", 100.0 + i, 1.5 + i * 0.1, 0.05)
+    assert ledger.total_open_shares == pytest.approx(_recomputed(ledger))
+
+    # A partial, a full close, and another partial on the same lot.
+    ledger.close_lot(ledger.open_lots[3], sell_qty=0.5, completed=False)
+    assert ledger.total_open_shares == pytest.approx(_recomputed(ledger))
+
+    ledger.close_lot(ledger.open_lots[0], completed=True)
+    assert ledger.total_open_shares == pytest.approx(_recomputed(ledger))
+
+    ledger.close_lot(ledger.open_lots[5], sell_qty=0.25, completed=False)
+    assert ledger.total_open_shares == pytest.approx(_recomputed(ledger))
+
+
+def test_a_closing_partial_removes_the_whole_remainder_not_just_sell_qty():
+    """The subtle case. close_lot snaps a sub-epsilon remainder to zero
+    before removing the lot, so a closing partial takes slightly MORE out
+    of the book than was sold. Subtracting sell_qty would leave a
+    permanent phantom holding."""
+    ledger = AssetLotLedger()
+    lot = ledger.register_buy("L1", "TQQQ", 100.0, 2.0, 0.05)
+    ledger.close_lot(lot, sell_qty=2.0 - 1e-12, completed=False)
+
+    assert lot not in ledger.open_lots, "fixture must actually trigger the snap"
+    assert ledger.total_open_shares == pytest.approx(_recomputed(ledger))
+    assert ledger.total_open_shares == 0.0
+
+
+def test_an_empty_book_reads_exactly_zero_not_a_float_residue():
+    """Incremental arithmetic does not cancel exactly. Over a 10-year run
+    with tens of thousands of round trips that residue would compound, so
+    a flat book -- the one moment the answer is known exactly -- resyncs."""
+    ledger = AssetLotLedger()
+    for i in range(50):
+        lot = ledger.register_buy(f"L{i}", "TQQQ", 100.0, 0.1 + i * 0.017, 0.05)
+        ledger.close_lot(lot, completed=True)
+
+    assert ledger.open_lots == []
+    assert ledger.total_open_shares == 0.0, "a flat book must be exactly zero"
+
+
+def test_a_fresh_ledger_starts_at_zero():
+    assert AssetLotLedger().total_open_shares == 0.0
+
+
+def test_resync_recovers_a_ledger_populated_directly():
+    """src/persistence.py rebuilds a ledger by appending to open_lots,
+    bypassing register_buy. Without the explicit resync it calls, a
+    restored book would mark to market as zero."""
+    ledger = AssetLotLedger()
+    ledger.open_lots.append(
+        Lot(order_id="R1", symbol="TQQQ", buy_price=100.0, shares=3.0, profit_target=0.05)
+    )
+    assert ledger.total_open_shares == 0.0, "the direct append is invisible, as expected"
+
+    assert ledger.resync_total_open_shares() == pytest.approx(3.0)
+    assert ledger.total_open_shares == pytest.approx(_recomputed(ledger))
+
+
+def test_the_total_survives_a_long_random_sequence():
+    """Property test over interleaved buys and partial/full closes -- the
+    shape a real run produces, which no hand-written case covers."""
+    import random
+
+    rng = random.Random(7)
+    ledger = AssetLotLedger()
+    for step in range(400):
+        if not ledger.open_lots or rng.random() < 0.5:
+            ledger.register_buy(f"L{step}", "TQQQ", 100.0, rng.uniform(0.1, 5.0), 0.05)
+        else:
+            lot = rng.choice(ledger.open_lots)
+            if rng.random() < 0.5:
+                ledger.close_lot(lot, completed=True)
+            else:
+                ledger.close_lot(
+                    lot, sell_qty=min(lot.shares, rng.uniform(0.05, 2.0)), completed=False
+                )
+        assert ledger.total_open_shares == pytest.approx(_recomputed(ledger), abs=1e-9), (
+            f"drifted at step {step}"
+        )
