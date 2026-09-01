@@ -32,12 +32,21 @@ HOW TO PRODUCE THE INPUT
   5. Right-click anywhere in the request list -> "Save All As HAR".
   6. Run:  python analyze_har.py --input <that-file>.har
 
-WHAT A HAR DOES NOT CONTAIN: WebSocket frame payloads. Firefox shows
-them in DevTools (click the WS request, "Response" tab) but does not
-serialise them into the export. This script therefore reports which
-WebSocket connections were OPENED, so you know whether to go look --
-and says so rather than letting their absence read as "no WebSocket
-traffic exists".
+WEBSOCKET FRAMES: it depends on the browser, and the difference matters.
+
+The HAR *specification* has no place for WebSocket payloads. But
+Chromium DevTools (Chrome, Edge) writes them anyway, into a
+non-standard `_webSocketMessages` array on the socket's entry -- the
+leading underscore is the spec's own extension convention. Firefox does
+not. So a HAR from Edge normally DOES carry the frames, and one from
+Firefox does not.
+
+This script reads `_webSocketMessages` when present and says explicitly
+when a socket was opened but carries no recorded frames -- because
+"this format cannot show me X" and "X did not happen" are different
+statements, and conflating them has already produced one wrong
+conclusion on this project ("Fidelity uses no WebSockets", drawn from a
+Firefox HAR that could not have shown one).
 
 A HAR OF AN AUTHENTICATED SESSION IS CREDENTIAL-EQUIVALENT. It contains
 Cookie and Authorization headers for a live brokerage login. This script
@@ -171,14 +180,17 @@ def analyze(entries: list[dict], host_filter: str) -> dict:
         response = entry.get("response", {}) or {}
         url = str(request.get("url", ""))
 
-        if url.startswith("ws://") or url.startswith("wss://"):
-            websockets.append(url)
-            continue
-        # Firefox also records an upgraded HTTP request for a socket.
-        if str(response.get("status", "")) == "101" or _header(
-            request, "upgrade"
-        ).lower() == "websocket":
-            websockets.append(url)
+        is_socket = (
+            url.startswith("ws://")
+            or url.startswith("wss://")
+            or str(response.get("status", "")) == "101"
+            or _header(request, "upgrade").lower() == "websocket"
+        )
+        if is_socket:
+            # _webSocketMessages is Chromium DevTools' extension field;
+            # absent from Firefox exports and from the HAR spec itself.
+            messages = entry.get("_webSocketMessages") or []
+            websockets.append({"url": url, "messages": messages})
             continue
 
         endpoints[f"{request.get('method', '?')} {endpoint_of(url)}"] += 1
@@ -216,6 +228,56 @@ def analyze(entries: list[dict], host_filter: str) -> dict:
     }
 
 
+def analyze_socket_frames(sockets: list[dict]) -> dict:
+    """Summarise WebSocket frames: direction counts, and which frames
+    carry ID-shaped keys.
+
+    The question this exists to answer is narrow and consequential: does
+    the stream carry ORDER UPDATES, or only market data? Order updates
+    would replace polling transactions/pending with push. Market data
+    duplicates what this project already gets from Alpaca and is worth
+    little.
+
+    Chromium records direction as `type`: "send" (browser -> server) and
+    "receive" (server -> browser).
+    """
+    sent = received = 0
+    id_frames: list[dict] = []
+    samples: list[dict] = []
+
+    for socket in sockets:
+        for message in socket.get("messages") or []:
+            direction = str(message.get("type", "")).lower()
+            if direction == "send":
+                sent += 1
+            else:
+                received += 1
+            data = message.get("data")
+            if not isinstance(data, str) or not data:
+                continue
+            found = _find_id_keys(data)
+            if found:
+                id_frames.append(
+                    {
+                        "url": socket["url"],
+                        "direction": direction,
+                        "keys": found,
+                        "data": data,
+                    }
+                )
+            elif len(samples) < 6:
+                samples.append(
+                    {"url": socket["url"], "direction": direction, "data": data}
+                )
+
+    return {
+        "sent": sent,
+        "received": received,
+        "id_frames": id_frames,
+        "samples": samples,
+    }
+
+
 def redact(path: Path, out_path: Path) -> int:
     """Write a copy with authenticating headers stripped. Returns the
     number of header values removed."""
@@ -243,21 +305,54 @@ def report(result: dict, args: argparse.Namespace) -> None:
     print("\n===== HAR RECON SUMMARY =====")
     print(f"entries: {result['total']} total, {result['kept']} matching the host filter")
 
-    print("\n-- WebSocket connections (question 1) --")
-    if result["websockets"]:
-        for url in Counter(result["websockets"]).most_common():
-            print(f"  {url[1]:4d}  {url[0]}")
-        print(
-            "\n  NOTE: a HAR does NOT contain WebSocket frame payloads. Firefox has\n"
-            "  them -- click the socket in DevTools -> Response tab -- but they are\n"
-            "  not exported. The connections above tell you where to look."
-        )
+    sockets = result["websockets"]
+    print("\n-- WebSocket connections --")
+    if sockets:
+        for socket in sockets:
+            n = len(socket.get("messages") or [])
+            print(f"  {n:5d} frames  {socket['url']}")
+
+        frames = analyze_socket_frames(sockets)
+        total = frames["sent"] + frames["received"]
+        if total == 0:
+            print(
+                "\n  Sockets were opened but NO frames are recorded in this file.\n"
+                "  That is a property of the EXPORT, not of Fidelity: only Chromium\n"
+                "  DevTools (Chrome/Edge) writes _webSocketMessages. Re-export from\n"
+                "  Edge to capture payloads -- do not read this as 'the stream is\n"
+                "  silent'."
+            )
+        else:
+            print(f"\n  frames: {frames['sent']} sent, {frames['received']} received")
+            hits = frames["id_frames"]
+            print(f"\n  -- frames carrying ID-shaped keys ({len(hits)}) --")
+            for hit in hits[:15]:
+                print(f"    [{hit['direction']:7s}] keys: {','.join(hit['keys'][:8])}")
+                if args.show_bodies:
+                    print(f"              {hit['data'][: args.show_bodies]}")
+            if hits:
+                print(
+                    "\n  ORDER UPDATES OVER THE STREAM look likely -- that would replace\n"
+                    "  polling transactions/pending with push."
+                )
+            else:
+                print(
+                    "    (none)\n"
+                    "\n  No order-ID-shaped keys in any frame. Consistent with a\n"
+                    "  MARKET-DATA-only stream, which duplicates what this project\n"
+                    "  already gets from Alpaca and is worth little here."
+                )
+            if frames["samples"]:
+                print("\n  -- sample frames (to judge what the stream actually is) --")
+                for sample in frames["samples"]:
+                    print(f"    [{sample['direction']:7s}] {sample['data'][:180]}")
     else:
         print(
             "  (no WebSocket connections in this capture)\n"
-            "  That is only meaningful if you actually exercised the pages that would\n"
-            "  open one -- a quote stream usually opens on a trade ticket, not on a\n"
-            "  portfolio summary."
+            "  Note this says nothing on its own if the export came from Firefox,\n"
+            "  which omits WebSocket entries. It is also only meaningful if you\n"
+            "  exercised a page that opens one -- a quote stream usually starts on a\n"
+            "  trade ticket, not a portfolio summary."
         )
 
     print(f"\n-- Endpoints, most-called first (top {args.top}) --")
