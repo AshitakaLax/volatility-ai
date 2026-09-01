@@ -91,6 +91,33 @@ class MarketContext:
     # here -- "the release is this minute" -- and must not collide with
     # "no event is scheduled."
     minutes_to_event: float = -1.0
+    # Session-over-session percentage change in an implied-volatility
+    # series, as of the last CLOSED session -- src/implied_vol_signal.py.
+    #
+    # NOT a restatement of anything already here, and that was measured
+    # rather than argued. Every other volatility input in this project
+    # (vol_scale_exponent's fast/slow ratio, volume_scale_exponent) is
+    # derived from the traded instrument's own past bars and is therefore
+    # backward-looking; high_frequency_sizing.py's own docstring concedes
+    # the ratio "cannot react to the open's volatility until most of the
+    # open is already gone". This is the market's forward estimate, known
+    # before the session starts.
+    #
+    # tools/measure_vol_signal.py, 2,671 sessions, against next-session
+    # OPENING volatility: partial rank correlation holding trailing
+    # realized vol fixed is +0.257 for this change, against -0.039 for
+    # the implied fast/slow RATIO and -0.085 for the implied LEVEL. The
+    # ratio and level were rejected on that evidence -- the ratio merely
+    # re-encoded volatility persistence, and the level carries an ETF
+    # roll-decay drift that is not signal. Only the change survived.
+    #
+    # 0.0 means "no change known" -- the first session of the series, or
+    # a deployment with no implied-vol file at all. It is the correct
+    # no-op: the consumer's multiplier is exactly 1.0 there. Unlike
+    # minutes_to_event, 0.0 needs no sentinel of its own, because "the
+    # index was flat" and "we have no reading" both warrant leaving size
+    # unchanged.
+    implied_vol_change: float = 0.0
 
     @property
     def price(self) -> float:

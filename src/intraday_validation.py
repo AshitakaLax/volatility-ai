@@ -59,6 +59,7 @@ from src.cost_models import TransactionCostModel, ZeroCostModel
 from src.earnings_calendar import is_earnings_reaction_day_at
 from src.exceptions import DataValidationError
 from src.fomc_calendar import is_fomc_day_at
+from src.implied_vol_signal import change_at
 from src.intraday_profile import minutes_since_open
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext
@@ -99,6 +100,7 @@ def simulate_single_intraday(
     cost_model: TransactionCostModel = None,
     intrabar_priority: Literal["sell_first", "buy_first"] = "sell_first",
     initial_cash: float = 100_000.0,
+    implied_vol_path: str | None = None,
 ) -> dict:
     """One finalist combination, re-simulated bar-by-bar against
     minute data. Fill-status validation (Task 1.5), the no-loss
@@ -130,6 +132,18 @@ def simulate_single_intraday(
         event_table = EarningsEventTable.from_csv()
     except (FileNotFoundError, DataValidationError):
         event_table = None
+
+    # Same reasoning as the event table directly above: this path must
+    # not see a blinder market than the sweep does. Defaults to None ->
+    # an exact no-op, so an existing caller is unaffected.
+    implied_vol_series = None
+    if implied_vol_path:
+        try:
+            from src.implied_vol_signal import load_implied_vol_change
+
+            implied_vol_series = load_implied_vol_change(implied_vol_path)
+        except (FileNotFoundError, DataValidationError):
+            implied_vol_series = None
 
     start_price = intraday_data["close"].iloc[0]
     cash = initial_cash
@@ -236,6 +250,7 @@ def simulate_single_intraday(
             volume=float(row.get("volume", 0.0) or 0.0),
             event_intensity=event_intensity,
             minutes_to_event=minutes_to_event,
+            implied_vol_change=change_at(implied_vol_series, timestamp),
         )
 
         sizing_engine.record_tick(context)

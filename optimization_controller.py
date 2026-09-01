@@ -247,16 +247,22 @@ class OptimizationController:
     scored against identical data.
     """
 
-    def __init__(self, historical_data: pd.DataFrame):
+    def __init__(self, historical_data: pd.DataFrame, implied_vol_path: str | None = None):
         """Validate and retain the historical dataset.
 
         Validation happens here rather than at sweep time so malformed
         data fails immediately, before any combination runs. Raises
         DataValidationError (Task 2.1) on empty, non-finite,
         non-positive, unsorted, or duplicate-timestamped input.
+
+        implied_vol_path is optional and defaults to None, which yields
+        an all-zero implied-vol signal -- an exact no-op, so every
+        existing caller and recorded result is unaffected. See
+        src/implied_vol_signal.py.
         """
         data_validation.validate(historical_data)
         self.data = historical_data
+        self.implied_vol_path = implied_vol_path
         # Computed lazily, once per controller, and reused by every
         # combination in a sweep -- see _fomc_flags. Doing the Eastern
         # conversion per bar per combination meant 1.03M timezone
@@ -268,6 +274,7 @@ class OptimizationController:
         self._minutes_since_open_cache = None
         self._event_intensity_cache = None
         self._minutes_to_event_cache = None
+        self._implied_vol_change_cache = None
         logger.info(
             f"OptimizationController initialized with historical dataset length: {len(historical_data)}"
         )
@@ -282,6 +289,7 @@ class OptimizationController:
         "_minutes_since_open_cache",
         "_event_intensity_cache",
         "_minutes_to_event_cache",
+        "_implied_vol_change_cache",
     )
 
     def __getstate__(self):
@@ -435,6 +443,30 @@ class OptimizationController:
             self._event_intensity  # noqa: B018 -- populates both caches
         return self._minutes_to_event_cache
 
+    @property
+    def _implied_vol_change(self):
+        """Per-bar implied-vol session change, cached like _fomc_flags.
+
+        Absent file -> all-zero, the same fallback _load_event_table
+        takes and for the same reason: the consumer's exponent defaults
+        to 0.0, so a zero array is an exact no-op and a sweep stays
+        runnable on a checkout without the implied-vol data.
+        """
+        if self._implied_vol_change_cache is None:
+            from src.implied_vol_signal import changes_for_index, load_implied_vol_change
+
+            series = None
+            if self.implied_vol_path:
+                try:
+                    series = load_implied_vol_change(self.implied_vol_path)
+                except (FileNotFoundError, DataValidationError) as exc:
+                    logger.warning(
+                        f"Implied-vol series {self.implied_vol_path} unusable ({exc}); "
+                        "continuing with no implied-vol signal."
+                    )
+            self._implied_vol_change_cache = changes_for_index(series, self.data.index)
+        return self._implied_vol_change_cache
+
     def _simulate_single(
         self,
         step: float,
@@ -534,6 +566,7 @@ class OptimizationController:
         minute_flags = self._minutes_since_open
         event_intensity = self._event_intensity
         minutes_to_event = self._minutes_to_event
+        implied_vol_change = self._implied_vol_change
 
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp = row.Index
@@ -568,6 +601,7 @@ class OptimizationController:
                 volume=float(getattr(row, "volume", 0.0) or 0.0),
                 event_intensity=float(event_intensity[bar_index]),
                 minutes_to_event=float(minutes_to_event[bar_index]),
+                implied_vol_change=float(implied_vol_change[bar_index]),
             )
 
             # Every bar, unconditionally -- B4. Routed through the shared

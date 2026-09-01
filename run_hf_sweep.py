@@ -77,6 +77,14 @@ def main():
     parser.add_argument("--output", default="output/search_hf_intrabar_2026-08-22.csv")
     parser.add_argument("--limit", type=int, default=None, help="run only the first N combinations")
     parser.add_argument(
+        "--implied-vol",
+        dest="implied_vol",
+        default=None,
+        help="Minute CSV for an implied-vol series (e.g. VIXY). Enables "
+        "MarketContext.implied_vol_change; without it that field stays 0.0 "
+        "and implied_vol_exponent is inert.",
+    )
+    parser.add_argument(
         "--search",
         choices=("grid", "bayesian", "random"),
         default=None,
@@ -109,7 +117,13 @@ def main():
     mode = args.search or config.search.strategy
 
     df = pd.read_csv(args.data, parse_dates=["timestamp"]).set_index("timestamp")
-    controller = OptimizationController(historical_data=df)
+    # Optional: an implied-vol series for MarketContext.implied_vol_change.
+    # None (the default) yields an all-zero signal, which is an exact no-op
+    # because implied_vol_exponent defaults to 0.0 -- so every config that
+    # predates this flag reproduces its recorded result unchanged.
+    controller = OptimizationController(
+        historical_data=df, implied_vol_path=args.implied_vol
+    )
     cost_model = config.costs.build()
     risk_manager = config.risk.build()
 
