@@ -242,3 +242,92 @@ def test_the_total_survives_a_long_random_sequence():
         assert ledger.total_open_shares == pytest.approx(_recomputed(ledger), abs=1e-9), (
             f"drifted at step {step}"
         )
+
+
+# --- the marketable-price bound (a correctness-critical optimisation) ---
+
+
+def _brute_force_marketable(ledger, price):
+    return [lot for lot in ledger.open_lots if price >= lot.target_sell_price]
+
+
+def test_the_bound_never_hides_a_marketable_lot_under_random_activity():
+    """THE invariant. get_marketable_lots skips scanning when the price
+    is below every open target. If that bound is ever too HIGH it
+    silently returns [] while a lot is genuinely sellable -- capital
+    locked in a position that should have closed, in the one code path
+    the no-loss invariant depends on. Nothing downstream would notice.
+
+    Brute-forces the answer after every mutation, at prices deliberately
+    straddling the targets."""
+    import random
+
+    rng = random.Random(11)
+    ledger = AssetLotLedger()
+    for step in range(300):
+        roll = rng.random()
+        if not ledger.open_lots or roll < 0.45:
+            ledger.register_buy(
+                f"L{step}", "TQQQ", rng.uniform(50.0, 150.0), 1.0, rng.uniform(0.01, 0.5)
+            )
+        elif roll < 0.70:
+            # Retarget DIRECTLY on the lot -- the path that bypasses the
+            # ledger entirely and broke the first version of the bound.
+            rng.choice(ledger.open_lots).retarget(rng.uniform(0.01, 0.5))
+        else:
+            ledger.close_lot(rng.choice(ledger.open_lots), completed=True)
+
+        for price in (40.0, 75.0, 100.0, 125.0, 200.0):
+            assert ledger.get_marketable_lots(price) == _brute_force_marketable(
+                ledger, price
+            ), f"bound disagreed with a full scan at price {price}, step {step}"
+
+
+def test_a_direct_retarget_is_seen_by_the_ledger():
+    """Lot.retarget is public and callable by anyone. The notification
+    lives inside it, not at the call sites, so a future caller cannot
+    forget."""
+    ledger = AssetLotLedger()
+    lot = ledger.register_buy("L1", "TQQQ", 100.0, 1.0, 0.75)
+    assert ledger.get_marketable_lots(120.0) == []
+
+    lot.retarget(0.20)  # target 175 -> 120
+
+    assert ledger.get_marketable_lots(120.0) == [lot]
+
+
+def test_the_bound_tightens_after_a_scan_finds_nothing():
+    """A stale-low bound is safe but slow. When a scan finds nothing
+    marketable every target is above the price, so the smallest is the
+    true minimum -- captured in the pass already paid for."""
+    ledger = AssetLotLedger()
+    ledger.register_buy("A", "TQQQ", 100.0, 1.0, 0.10)  # target 110
+    ledger.register_buy("B", "TQQQ", 100.0, 1.0, 0.50)  # target 150
+    ledger.close_lot(ledger.open_lots[0], completed=True)  # removes the low one
+
+    # Removal leaves the bound stale-low at 110; the next miss tightens it.
+    assert ledger.get_marketable_lots(120.0) == []
+    assert ledger._min_target_sell_price == pytest.approx(150.0)
+
+
+def test_an_emptied_book_rejects_every_price():
+    ledger = AssetLotLedger()
+    lot = ledger.register_buy("A", "TQQQ", 100.0, 1.0, 0.10)
+    ledger.close_lot(lot, completed=True)
+    assert ledger.get_marketable_lots(1e9) == []
+
+
+def test_a_restored_lot_still_notifies_on_retarget(tmp_path):
+    """A lot rebuilt by persistence is appended directly, so it has no
+    back-reference until resync attaches one. Without that, a live
+    restart would retarget silently and the bound would skip a sale."""
+    ledger = AssetLotLedger()
+    ledger.open_lots.append(
+        Lot(order_id="R1", symbol="TQQQ", buy_price=100.0, shares=1.0, profit_target=0.75)
+    )
+    ledger.resync_total_open_shares()
+    assert ledger.get_marketable_lots(120.0) == []
+
+    ledger.open_lots[0].retarget(0.20)
+
+    assert ledger.get_marketable_lots(120.0) == ledger.open_lots

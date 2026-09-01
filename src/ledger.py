@@ -70,6 +70,17 @@ class Lot:
     # Audit-only: the price of the most recent confirmed fill applied to
     # this lot. Never feeds cost basis or the exit target.
     last_execution_price: float | None = field(default=None, init=False)
+    # The ledger holding this lot, set by register_buy. Exists so
+    # retarget() can tell it that a target moved DOWN -- see
+    # AssetLotLedger.get_marketable_lots' price bound. Without it a lot
+    # retargeted through any path other than the ledger would leave that
+    # bound above a now-reachable target and SILENTLY SKIP A SALE, which
+    # a test caught the moment the bound was introduced.
+    #
+    # repr=False and compare=False: Lot already uses identity equality
+    # (see the class docstring), and a back-reference in a repr would
+    # recurse through the whole book.
+    _ledger: object | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Derive the exit target once, at creation.
@@ -112,6 +123,12 @@ class Lot:
             )
         self.profit_target = new_profit_target
         self.target_sell_price = self.buy_price * (1.0 + new_profit_target)
+        # Notify the owning ledger, whoever called this. Doing it here
+        # rather than at the call sites is what makes the bound safe: a
+        # future caller cannot forget, because there is nothing to
+        # remember.
+        if self._ledger is not None:
+            self._ledger.note_target_lowered(self.target_sell_price)
 
 
 class AssetLotLedger:
@@ -131,6 +148,10 @@ class AssetLotLedger:
         self.closed_lots: list[Lot] = []
         # Running sum of open_lots' shares -- see total_open_shares.
         self._total_open_shares: float = 0.0
+        # A LOWER BOUND on every open lot's target_sell_price -- see
+        # get_marketable_lots. inf means "no open lots", which correctly
+        # makes the guard reject every price.
+        self._min_target_sell_price: float = float("inf")
 
     def register_buy(
         self,
@@ -155,8 +176,11 @@ class AssetLotLedger:
             shares=shares,
             profit_target=profit_target,
         )
+        lot._ledger = self
         self.open_lots.append(lot)
         self._total_open_shares += shares
+        if lot.target_sell_price < self._min_target_sell_price:
+            self._min_target_sell_price = lot.target_sell_price
         return lot
 
     @property
@@ -187,13 +211,24 @@ class AssetLotLedger:
         return self._total_open_shares
 
     def resync_total_open_shares(self) -> float:
-        """Recompute the running total from the open lots.
+        """Rebuild ALL derived state from the open lots.
 
         For callers that populate open_lots directly (persistence
         restore) rather than through register_buy. O(n), so it is a
         restore-time operation, never a per-bar one.
+
+        Restores three things, not one: the share total, the
+        target-price bound, and each lot's back-reference to this ledger.
+        The back-reference matters most -- a restored lot without it
+        would retarget silently, leaving the bound stale-high and
+        skipping a sale on a live account after a restart.
         """
         self._total_open_shares = sum(lot.shares for lot in self.open_lots)
+        self._min_target_sell_price = min(
+            (lot.target_sell_price for lot in self.open_lots), default=float("inf")
+        )
+        for lot in self.open_lots:
+            lot._ledger = self
         return self._total_open_shares
 
     def _resync_if_flat(self) -> None:
@@ -209,15 +244,73 @@ class AssetLotLedger:
         """
         if not self.open_lots:
             self._total_open_shares = 0.0
+            # No lots means no reachable target; inf makes the bound
+            # reject every price, which is exactly right for an empty
+            # book and stops a stale low bound surviving it.
+            self._min_target_sell_price = float("inf")
 
     def get_marketable_lots(self, current_price: float) -> list[Lot]:
         """Open lots whose profit target is met or exceeded at current_price.
 
-        Returned in FIFO (registration) order. Does not mutate state --
-        callers are expected to close_lot() each one after a confirmed
-        sell fill.
+        Returned in FIFO (registration) order. Does not mutate the LOTS
+        -- callers are expected to close_lot() each one after a confirmed
+        sell fill. It does maintain the internal price bound below.
+
+        THE BOUND. This walked the entire open book on every bar and
+        profiled at 30% of runtime once the bigger costs were removed --
+        on a 200,000-bar slice with profit_target=1.00 it scanned a
+        several-hundred-lot book 200,000 times and returned a sale on
+        ZERO of them. `_min_target_sell_price` is a lower bound on every
+        open lot's target, so a price below it cannot possibly make
+        anything marketable and the scan is skipped outright.
+
+        The bound is only ever allowed to be TOO LOW, never too high.
+        Too low costs a scan that finds nothing; too high would skip a
+        real sale, which the no-loss invariant makes the most dangerous
+        error this class could commit. So:
+
+          * register_buy lowers it when a new lot undercuts it.
+          * retarget lowers it via note_target_lowered -- trailing
+            ratchets targets DOWN, and a bound that did not hear about
+            that would be too high, so decision_cycle notifies.
+          * REMOVING a lot can only raise the true minimum, so the bound
+            is simply left stale-low and self-heals below.
+
+        When a scan finds nothing marketable, every open lot's target is
+        above current_price, so the smallest of them is the exact
+        minimum -- computed in the same pass that was already paid for,
+        and stored. That is what keeps a stale-low bound from degrading
+        back into a full scan every bar.
         """
-        return [lot for lot in self.open_lots if current_price >= lot.target_sell_price]
+        if current_price < self._min_target_sell_price:
+            return []
+
+        marketable = []
+        lowest_unsold = float("inf")
+        for lot in self.open_lots:
+            target = lot.target_sell_price
+            if current_price >= target:
+                marketable.append(lot)
+            elif target < lowest_unsold:
+                lowest_unsold = target
+
+        if not marketable:
+            # Nothing qualified, so lowest_unsold is the true minimum
+            # across the whole book. Tighten to it.
+            self._min_target_sell_price = lowest_unsold
+        return marketable
+
+    def note_target_lowered(self, new_target: float) -> None:
+        """Tell the ledger a lot's exit target moved DOWN.
+
+        Called by decision_cycle after a trailing policy retargets, so
+        the bound in get_marketable_lots cannot end up above a target
+        that is now reachable -- which would silently skip a sale.
+        Accepts any value and takes the minimum, so a caller that
+        reports a RAISED target does no harm.
+        """
+        if new_target < self._min_target_sell_price:
+            self._min_target_sell_price = new_target
 
     def close_lot(
         self,
