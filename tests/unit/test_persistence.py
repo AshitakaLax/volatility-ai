@@ -230,3 +230,59 @@ def test_corrupted_target_sell_price_is_detected_on_load(db_path):
         store._conn.commit()
         with pytest.raises(PersistenceError, match="disagrees"):
             store.load_ledger()
+
+
+def test_a_restored_ledger_reports_the_right_share_total(tmp_path):
+    """The LIVE-path safety property for the incremental share total.
+
+    load_ledger populates open_lots by direct append, bypassing
+    register_buy, so the ledger's running total never sees any of it.
+    Without the explicit resync load_ledger calls, a restarted live
+    daemon would mark its entire book to market as ZERO -- reporting no
+    exposure while holding real positions, which is materially worse
+    than a slow backtest.
+
+    Tested end to end through the real store rather than by calling
+    resync directly, because the bug would be a MISSING call, and a
+    direct test of resync cannot catch that.
+    """
+    store = LedgerStore(str(tmp_path / "ledger.db"))
+    ledger = AssetLotLedger()
+
+    a = ledger.register_buy("A", "TQQQ", 100.0, 2.0, 0.05)
+    store.record_open_lot(a)
+    b = ledger.register_buy("B", "TQQQ", 101.0, 3.5, 0.05)
+    store.record_open_lot(b)
+    c = ledger.register_buy("C", "TQQQ", 102.0, 1.0, 0.05)
+    store.record_open_lot(c)
+    ledger.close_lot(c, completed=True)
+    store.record_lot_shares(c, is_open=False)
+
+    restored = store.load_ledger()
+    recomputed = sum(lot.shares for lot in restored.open_lots)
+
+    assert len(restored.open_lots) == 2
+    assert recomputed == pytest.approx(5.5)
+    assert restored.total_open_shares == pytest.approx(recomputed), (
+        "restored ledger's running share total disagrees with its own lots -- "
+        "load_ledger is not resyncing"
+    )
+    assert restored.total_open_shares == pytest.approx(ledger.total_open_shares)
+
+
+def test_a_restored_ledger_with_a_partially_filled_lot_totals_correctly(tmp_path):
+    """Partial closes mutate lot.shares in place, so the persisted value
+    is the REMAINDER. The restored total must reflect that, not the
+    original size."""
+    store = LedgerStore(str(tmp_path / "ledger.db"))
+    ledger = AssetLotLedger()
+    lot = ledger.register_buy("A", "TQQQ", 100.0, 4.0, 0.05)
+    store.record_open_lot(lot)
+    ledger.close_lot(lot, sell_qty=1.5, completed=False)
+    store.record_lot_shares(lot, is_open=True)
+
+    restored = store.load_ledger()
+    assert restored.total_open_shares == pytest.approx(2.5)
+    assert restored.total_open_shares == pytest.approx(
+        sum(lot.shares for lot in restored.open_lots)
+    )

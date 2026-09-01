@@ -147,6 +147,21 @@ def adjust_open_lot_targets(
     if retain is not None:
         retain(open_ids)
 
+    # Tell the ledger a target moved DOWN. get_marketable_lots keeps a
+    # lower bound on every open target so it can skip scanning the book
+    # on a price that cannot possibly trigger a sale; a bound that never
+    # heard about a ratcheted-down target would sit ABOVE a target that
+    # is now reachable and silently skip a real sale. Trailing only
+    # ratchets down, but the ledger takes a min, so reporting a raised
+    # target is harmless.
+    #
+    # Duck-typed like the hooks above: a ledger double in a test need not
+    # implement it.
+    if changed:
+        note = getattr(ledger, "note_target_lowered", None)
+        if note is not None:
+            note(min(lot.target_sell_price for lot in changed))
+
     return changed
 
 
