@@ -102,6 +102,25 @@ def adjust_open_lot_targets(
     if hook is None:
         return []
 
+    # EARLY-OUT WHEN RETARGETING IS INERT. Profiled on a 120,000-bar
+    # slice, this function was 63% of total runtime: 62.6 MILLION calls
+    # to adjust_profit_target, ~522 open lots re-examined on every bar,
+    # plus a list copy and 62.6M set.add calls to build open_ids.
+    #
+    # In the default configuration all of it does nothing. trail_pct
+    # defaults to None, so adjust_profit_target returns None immediately
+    # and retain_lots is a no-op -- the champion config and most sweeps
+    # pay the full cost for zero effect.
+    #
+    # Duck-typed and defaulting to True, so a strategy that does not
+    # implement it (a test double, an externally supplied strategy)
+    # keeps today's behavior exactly. A strategy answering False is
+    # promising that BOTH adjust_profit_target and retain_lots are
+    # inert, since this skips both.
+    wants = getattr(strategy, "wants_lot_retargeting", None)
+    if wants is not None and not wants():
+        return []
+
     changed = []
     open_ids = set()
     # list() because retarget mutates lots while we iterate, and a

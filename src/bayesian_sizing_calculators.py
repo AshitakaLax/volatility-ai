@@ -512,6 +512,21 @@ class BayesianDualScaleSizing(SizingStrategy):
             self._fast.update(success)
             self._slow.update(success)
 
+    def wants_lot_retargeting(self) -> bool:
+        """False when trailing is off, so decision_cycle can skip walking
+        every open lot on every bar.
+
+        Not a micro-optimisation: that walk profiled at 63% of total
+        runtime, doing nothing, whenever trail_pct is unset -- which is
+        the default and the champion configuration. See
+        decision_cycle.adjust_open_lot_targets.
+
+        Answering False promises that adjust_profit_target AND
+        retain_lots are both inert, which is exactly what
+        `self._trailing is None` means here.
+        """
+        return self._trailing is not None
+
     def adjust_profit_target(self, lot, context: MarketContext) -> float | None:
         """Trail this lot's exit target, when trail_pct is configured.
 
