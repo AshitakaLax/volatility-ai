@@ -228,7 +228,18 @@ def test_live_with_rejected_credentials_halts_in_recovery_required(tmp_path):
     assert result.returncode == 1
     assert "RECOVERY_REQUIRED" in result.stdout
     assert "PAPER" in result.stdout, "the mode actually used must be reported"
-    assert "connection check failed" in result.stderr
+    # BOTH wordings, because the docstring above already says both paths
+    # are correct: "with network the connection check fails on a 401,
+    # without network it fails on a transport error". The assertion used
+    # to accept only the online phrasing, so it contradicted the contract
+    # it was written to enforce and failed offline for the one reason the
+    # docstring says is fine. Widened to match the stated contract, not
+    # loosened to go green -- returncode, RECOVERY_REQUIRED and PAPER are
+    # all still asserted exactly.
+    accepted = ("connection check failed", "broker connection failed")
+    assert any(phrase in result.stderr for phrase in accepted), (
+        f"stderr must name a connection failure; got: {result.stderr[:300]!r}"
+    )
 
 
 def test_live_honest_failure_still_persists_state(tmp_path):
