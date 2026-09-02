@@ -104,7 +104,14 @@ from src.reconciliation import BrokerSnapshot
 logger = logging.getLogger("Optimizer")
 
 PENDING_PATH = "/ftgw/digital/activityapi/api/v1/transactions/pending"
-POSITIONS_PATH = "/ftgw/digital/traderplus-api/api/positions/v1"
+# trade-equity/positions, NOT traderplus-api/api/positions/v1. Both are
+# in the allowlist and only this one is safe: the traderplus response
+# nests TWELVE accounts under acctDetails[], and its positionDetail rows
+# carry symbol and quantity but NO acctNum -- so a key-search over it
+# silently sums every account the user owns into one snapshot. This
+# endpoint takes {"acctNum": ...} and returns a flat, already-scoped
+# list. Verified from captured traffic, not assumed.
+POSITIONS_PATH = "/ftgw/digital/trade-equity/positions"
 BALANCE_PATH = "/ftgw/digital/trade-equity/balance"
 QUOTE_PATH = "/ftgw/digital/trade-equity/getquote"
 PREVIEW_PATH = "/ftgw/digital/trade-equity/previewSrvc"
@@ -422,11 +429,24 @@ class FidelityBroker:
             )
 
     def get_quote(self, symbol: str) -> float:
-        """Last price for symbol, for notional -> share conversion."""
-        response = self._session.post_json(QUOTE_PATH, {"symbol": symbol})
-        for key in ("lastPrice", "last", "askPrice", "bidPrice"):
-            value = _find_first(response, key)
-            price = _as_float(value)
+        """Current price for symbol, for notional -> share conversion.
+
+        ASK is preferred over LAST, deliberately. This price converts a
+        dollar amount into a share count for a BUY, and the ask is what a
+        buy actually pays -- sizing against a lower last price would buy
+        more shares than the cash covers. Same conservative direction as
+        flooring the share count.
+
+        Field names are Fidelity's, from captured traffic:
+        QUOTE_DATA.ASK_PRICE / LAST_PRICE / BID_PRICE -- UPPER_SNAKE and
+        string-valued. An earlier version looked for lastPrice / last /
+        askPrice / bidPrice, camelCase names that appear NOWHERE in the
+        response, so it could never have returned a price and every order
+        would have died at "No usable price for ...".
+        """
+        response = self._session.post_json(QUOTE_PATH, {"symbols": symbol})
+        for key in ("ASK_PRICE", "LAST_PRICE", "BID_PRICE"):
+            price = _as_float(_find_first(response, key))
             if price > 0:
                 return price
         raise ExecutionError(
@@ -480,7 +500,23 @@ class FidelityBroker:
 
     def _orders(self) -> list[dict]:
         account = self._check_account(self._account)
-        response = self._session.post_json(PENDING_PATH, {"acctNum": account})
+        # Filter shape is Fidelity's own, from a captured request. A bare
+        # {"acctNum": ...} is NOT what this endpoint takes.
+        response = self._session.post_json(
+            PENDING_PATH,
+            {
+                "filter": {
+                    "accounts": [{"acctNum": account}],
+                    "types": {
+                        "orders": True,
+                        "transfers": False,
+                        "billpays": False,
+                        "cryptoTOAs": False,
+                        "alts": False,
+                    },
+                }
+            },
+        )
         return [
             o
             for o in _find_all_with_key(response, "orderNum")
@@ -488,11 +524,19 @@ class FidelityBroker:
         ]
 
     def _positions(self) -> dict:
+        """Share positions for this account. CASH IS NOT A POSITION.
+
+        The core money-market fund appears here as an ordinary row --
+        SPAXX, 27,336.03 "shares", securityType "Core", isCash true.
+        Counting it would tell reconciliation the account holds tens of
+        thousands of shares of something the strategy has never traded,
+        which is worse than reporting nothing at all.
+        """
         account = self._check_account(self._account)
         response = self._session.post_json(POSITIONS_PATH, {"acctNum": account})
         positions: dict[str, float] = {}
         for row in _find_all_with_key(response, "symbol"):
-            if not _account_matches(row, account):
+            if not _account_matches(row, account) or _is_cash_row(row):
                 continue
             qty = _as_float(row.get("quantity") or row.get("qty"))
             symbol = row.get("symbol")
@@ -509,7 +553,8 @@ class FidelityBroker:
         conservative number is the correct one to reconcile against.
         """
         account = self._check_account(self._account)
-        response = self._session.post_json(BALANCE_PATH, {"acctNum": account})
+        # A LIST of account objects, not a single object. Fidelity's shape.
+        response = self._session.post_json(BALANCE_PATH, [{"acctNum": account}])
         for key in ("settledAmt", "cashAvailableToTrade", "cash"):
             value = _find_first(response, key)
             if value is not None:
@@ -566,6 +611,22 @@ def _find_all_with_key(node: Any, key: str) -> list[dict]:
         for item in node:
             out.extend(_find_all_with_key(item, key))
     return out
+
+
+def _is_cash_row(row: dict) -> bool:
+    """True for the core money-market sweep, which is cash, not a holding.
+
+    Three independent markers, because any one could be renamed: the
+    explicit isCash flag, securityType "Core", and brokerageHoldingType.
+    Cash misreported as a position is the failure that matters, so this
+    errs toward excluding.
+    """
+    detail = row.get("securityDetail") or {}
+    if detail.get("isCash") is True:
+        return True
+    if str(row.get("securityType", "")).strip().lower() == "core":
+        return True
+    return str(detail.get("brokerageHoldingType", "")).strip().lower() == "cash"
 
 
 def _account_matches(row: dict, account: str) -> bool:

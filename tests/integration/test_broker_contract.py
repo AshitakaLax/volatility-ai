@@ -59,11 +59,12 @@ def _alpaca(orders=(), positions=(), cash="1000.00"):
 
 def _fidelity(orders=(), positions=(), cash=1000.00):
     session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": {"lastPrice": 100.0},
+        "/ftgw/digital/trade-equity/getquote":
+            {"QUOTE_DATA": {"ASK_PRICE": "100.00", "LAST_PRICE": "100.00"}},
         PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "2C50H6WV"}}},
         "/ftgw/digital/activityapi/api/v1/transactions/pending":
             {"data": {"orders": list(orders)}},
-        "/ftgw/digital/traderplus-api/api/positions/v1": {"positions": list(positions)},
+        "/ftgw/digital/trade-equity/positions": list(positions),
         "/ftgw/digital/trade-equity/balance": {"cashDetail": {"settledAmt": cash}},
     })
     return FidelityBroker(session, ACCOUNT, (ACCOUNT,))
@@ -181,7 +182,7 @@ def test_an_absent_order_is_none_not_an_exception(build):
         pytest.param(
             lambda: _fidelity(
                 orders=[FILLED],
-                positions=[{"symbol": "TQQQ", "quantity": 2.0, "acctNum": ACCOUNT}],
+                positions=[{"symbol": "TQQQ", "quantity": 2.0}],
             ),
             id="fidelity",
         ),

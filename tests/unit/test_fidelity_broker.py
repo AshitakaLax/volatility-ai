@@ -61,6 +61,23 @@ PARTIAL = {
 }
 
 
+# Fidelity's real quote payload: UPPER_SNAKE keys, STRING values,
+# nested under QUOTE_DATA. Transcribed from a capture. The previous
+# fixture used {"lastPrice": 69.50}, a shape that appears nowhere in
+# Fidelity's responses -- so it agreed with the adapter's wrong guess
+# and the pair of them hid a get_quote that could never work.
+QUOTE = {"QUOTE_DATA": {"ASK_PRICE": "69.54", "BID_PRICE": "69.53",
+                        "LAST_PRICE": "69.5376", "OPEN_PRICE": "68.969"}}
+
+# trade-equity/positions returns a FLAT LIST already scoped to the
+# requested account. SPAXX is the core money-market sweep and is CASH,
+# not a holding -- it is in every real response and must not be counted.
+SPAXX_ROW = {
+    "symbol": "SPAXX", "securityType": "Core", "quantity": 27336.03,
+    "securityDescription": "FIDELITY GOVERNMENT MONEY MARKET",
+    "securityDetail": {"brokerageHoldingType": "Cash", "isCash": True},
+}
+
 class FakeSession:
     """Records what was asked for and replays canned JSON."""
 
@@ -146,7 +163,7 @@ def test_a_previewed_order_is_never_reported_as_submitted():
     """Third layer. A caller that ignored everything above still cannot
     mistake a preview for a live order."""
     session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": {"lastPrice": 69.50},
+        "/ftgw/digital/trade-equity/getquote": QUOTE,
         PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "2C50QMK4"}}},
     })
     order = _broker(session).submit_buy("TQQQ", 200.0, client_order_id="dec-1")
@@ -160,7 +177,7 @@ def test_a_preview_without_a_confnum_is_a_failure_not_a_success():
     found or cancelled. Accepting a preview without one would recreate
     the ambiguity window reconnaissance closed."""
     session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": {"lastPrice": 69.50},
+        "/ftgw/digital/trade-equity/getquote": QUOTE,
         PREVIEW_PATH: {"preview": {"ok": True}},
     })
     with pytest.raises(ExecutionError, match="no confNum"):
@@ -197,7 +214,7 @@ def test_an_account_echoed_back_differently_aborts_the_order():
     """The request naming the right account is not proof the venue
     applied it."""
     session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": {"lastPrice": 69.50},
+        "/ftgw/digital/trade-equity/getquote": QUOTE,
         PREVIEW_PATH: {"preview": {"orderConfirmDetail": {
             "confNum": "2C50QMK4", "acctNum": OTHER}}},
     })
@@ -209,7 +226,7 @@ def test_orders_belonging_to_another_account_are_dropped_from_the_snapshot():
     stray = dict(FILLED, orderNum="2C5OTHER", acctNum=OTHER)
     session = FakeSession({
         "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([FILLED, stray]),
-        "/ftgw/digital/traderplus-api/api/positions/v1": {},
+        "/ftgw/digital/trade-equity/positions": [],
         "/ftgw/digital/trade-equity/balance": {"cashDetail": {"settledAmt": 1000.0}},
     })
     snap = _broker(session).snapshot()
@@ -283,18 +300,18 @@ def test_an_order_claiming_Open_while_not_cancelable_is_unknown():
 
 def test_share_conversion_rounds_down_so_it_cannot_overspend():
     session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": {"lastPrice": 69.50},
+        "/ftgw/digital/trade-equity/getquote": QUOTE,
         PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "C1"}}},
     })
-    _broker(session).submit_buy("TQQQ", 209.0)  # 209/69.50 = 3.007
+    _broker(session).submit_buy("TQQQ", 209.0)  # 209 / 69.54 (ASK) = 3.005
     ticket = session.calls[-1][1]["orderDetails"]
     assert ticket["qty"] == 3
-    assert ticket["qty"] * 69.50 <= 209.0
+    assert ticket["qty"] * 69.54 <= 209.0
 
 
 def test_a_trade_value_under_one_share_refuses_rather_than_rounding_to_zero():
     session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": {"lastPrice": 69.50},
+        "/ftgw/digital/trade-equity/getquote": QUOTE,
     })
     with pytest.raises(ValueError, match="one whole share"):
         _broker(session).submit_buy("TQQQ", 40.0)
@@ -311,7 +328,7 @@ def test_every_ticket_carries_an_explicit_limit_price():
     limit branch -- and a market order in a thin session is the one thing
     a grid strategy must never emit."""
     session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": {"lastPrice": 69.50},
+        "/ftgw/digital/trade-equity/getquote": QUOTE,
         PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "C1"}}},
     })
     broker = _broker(session)
@@ -333,8 +350,8 @@ def test_snapshot_feeds_the_reconciler_without_adaptation():
     session = FakeSession({
         "/ftgw/digital/activityapi/api/v1/transactions/pending":
             _pending([FILLED, WORKING, PARTIAL]),
-        "/ftgw/digital/traderplus-api/api/positions/v1":
-            {"positions": [{"symbol": "TQQQ", "quantity": 12.0, "acctNum": ACCOUNT}]},
+        "/ftgw/digital/trade-equity/positions":
+            [SPAXX_ROW, {"symbol": "TQQQ", "quantity": 12.0}],
         "/ftgw/digital/trade-equity/balance": {"cashDetail": {"settledAmt": 4321.55}},
     })
     snap = _broker(session).snapshot()
@@ -350,7 +367,7 @@ def test_cash_prefers_settled_because_this_is_a_cash_account():
     account and is NOT tradeable without a good-faith violation."""
     session = FakeSession({
         "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
-        "/ftgw/digital/traderplus-api/api/positions/v1": {},
+        "/ftgw/digital/trade-equity/positions": [],
         "/ftgw/digital/trade-equity/balance": {
             "cash": 9999.99, "cashDetail": {"settledAmt": 100.00}},
     })
@@ -362,7 +379,7 @@ def test_an_order_is_findable_by_our_decision_id_after_preview():
     confNum map is written at PREVIEW time -- before anything could be
     committed, so it is never a guess made after the fact."""
     session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": {"lastPrice": 69.50},
+        "/ftgw/digital/trade-equity/getquote": QUOTE,
         PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "2C50H6WV"}}},
         "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([FILLED]),
     })
@@ -381,7 +398,7 @@ def test_an_order_placed_by_hand_still_appears_in_the_snapshot():
     unrecognised order, not have it silently hidden."""
     session = FakeSession({
         "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([WORKING]),
-        "/ftgw/digital/traderplus-api/api/positions/v1": {},
+        "/ftgw/digital/trade-equity/positions": [],
         "/ftgw/digital/trade-equity/balance": {},
     })
     snap = _broker(session).snapshot()
@@ -393,7 +410,105 @@ def test_a_missing_balance_is_none_rather_than_zero():
     reconcile against."""
     session = FakeSession({
         "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
-        "/ftgw/digital/traderplus-api/api/positions/v1": {},
+        "/ftgw/digital/trade-equity/positions": [],
         "/ftgw/digital/trade-equity/balance": {},
     })
     assert _broker(session).snapshot().cash is None
+
+
+# ======================================================================
+# Regressions found by reading captured traffic, not by these tests
+# ======================================================================
+#
+# Every bug below was invisible because the FIXTURES encoded the same
+# wrong beliefs as the code. They agreed with each other and were both
+# wrong about Fidelity. The fixtures above are now transcriptions of
+# real payloads, and these assert the specific things that were broken.
+
+
+def test_the_core_money_market_sweep_is_not_a_position():
+    """SPAXX appears in every real positions response with a quantity in
+    the tens of thousands. Counted, it tells reconciliation the account
+    holds 27,336 shares of something the strategy has never traded."""
+    session = FakeSession({
+        "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
+        "/ftgw/digital/trade-equity/positions": [SPAXX_ROW,
+                                                 {"symbol": "TQQQ", "quantity": 5.0}],
+        "/ftgw/digital/trade-equity/balance": {},
+    })
+    assert _broker(session).snapshot().positions == {"TQQQ": 5.0}
+
+
+@pytest.mark.parametrize("row", [
+    {"symbol": "X", "quantity": 1.0, "securityDetail": {"isCash": True}},
+    {"symbol": "X", "quantity": 1.0, "securityType": "Core"},
+    {"symbol": "X", "quantity": 1.0, "securityDetail": {"brokerageHoldingType": "Cash"}},
+])
+def test_cash_is_excluded_on_any_of_its_three_markers(row):
+    """Any one marker could be renamed; cash misreported as a position is
+    the failure that matters, so this errs toward excluding."""
+    session = FakeSession({
+        "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
+        "/ftgw/digital/trade-equity/positions": [row],
+        "/ftgw/digital/trade-equity/balance": {},
+    })
+    assert _broker(session).snapshot().positions == {}
+
+
+def test_the_quote_reads_fidelitys_own_field_names():
+    """get_quote previously looked for lastPrice/last/askPrice/bidPrice --
+    camelCase names that appear NOWHERE in a Fidelity quote. It could
+    never have returned a price, and every order would have died at
+    'No usable price'. The real shape is QUOTE_DATA.ASK_PRICE, upper
+    snake case, string-valued."""
+    assert _broker(FakeSession({"/ftgw/digital/trade-equity/getquote": QUOTE})
+                   ).get_quote("TQQQ") == 69.54
+
+
+def test_the_quote_prefers_the_ask_because_a_buy_pays_it():
+    """Sizing a dollar amount against a lower last price would buy more
+    shares than the cash covers."""
+    session = FakeSession({"/ftgw/digital/trade-equity/getquote": {
+        "QUOTE_DATA": {"ASK_PRICE": "70.00", "LAST_PRICE": "69.00", "BID_PRICE": "68.00"}}})
+    assert _broker(session).get_quote("TQQQ") == 70.00
+
+
+def test_the_adapter_never_calls_the_multi_account_positions_endpoint():
+    """traderplus-api/api/positions/v1 nests TWELVE accounts and its rows
+    carry no acctNum, so a key-search over it sums every account the user
+    owns. No row-level predicate can recover an account the row does not
+    name -- the only fix was to stop calling it."""
+    import ast
+
+    source = Path("src/fidelity_broker.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    docs = {ast.get_docstring(n, clean=False) for n in ast.walk(tree)
+            if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef))}
+    literals = [n.value for n in ast.walk(tree)
+                if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                and n.value not in docs and "traderplus-api" in n.value]
+    assert literals == [], f"multi-account endpoint reachable: {literals}"
+
+
+@pytest.mark.parametrize("method,path,check", [
+    ("_orders", "/ftgw/digital/activityapi/api/v1/transactions/pending",
+     lambda payload: "filter" in payload and "accounts" in payload["filter"]),
+    ("_positions", "/ftgw/digital/trade-equity/positions",
+     lambda payload: payload.get("acctNum") == ACCOUNT),
+    ("_cash", "/ftgw/digital/trade-equity/balance",
+     lambda payload: isinstance(payload, list) and payload[0]["acctNum"] == ACCOUNT),
+])
+def test_each_read_endpoint_is_sent_the_body_fidelity_actually_expects(
+    method, path, check
+):
+    """Every one of these was wrong. Request shapes were never captured
+    from real traffic -- only responses were -- so all three were
+    invented, and the adapter would have failed on its first real call."""
+    session = FakeSession({
+        "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
+        "/ftgw/digital/trade-equity/positions": [],
+        "/ftgw/digital/trade-equity/balance": {},
+    })
+    getattr(_broker(session), method)()
+    sent = next(p for called, p in session.calls if called == path)
+    assert check(sent), f"{path} was sent {sent!r}"
