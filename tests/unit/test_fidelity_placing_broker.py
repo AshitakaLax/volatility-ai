@@ -49,7 +49,8 @@ class SpyJournal:
 
 def _session(conf="2C50CWH1", place_conf=None, place_raises=None):
     return FakeSession({
-        "/ftgw/digital/trade-equity/getquote": {"lastPrice": PRICE},
+        "/ftgw/digital/trade-equity/getquote":
+            {"QUOTE_DATA": {"ASK_PRICE": str(PRICE), "LAST_PRICE": str(PRICE)}},
         PREVIEW: {"preview": {"orderConfirmDetail": {"confNum": conf}}},
         PLACE_PATH: (_raise(place_raises) if place_raises else
                      {"place": {"orderConfirmDetail":
