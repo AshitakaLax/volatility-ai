@@ -214,6 +214,17 @@ class ExecutionConfig:
     # (the cost-floor case) -- it does not create a capitulation exit.
     # See max_lot_age_days for that.
     enforce_no_loss: bool = True
+    # Permits a strategy to close a lot for a reason unrelated to price
+    # -- a regime flip, a shutdown -- realising a loss if the lot is
+    # underwater. See src/no_loss_guard.SellReason.
+    #
+    # HALF of a two-part gate, and deliberately useless alone: a loss can
+    # only be realised when this is True AND the strategy implements
+    # lots_to_liquidate. Neither condition on its own changes anything,
+    # so switching this on cannot by itself alter a single result.
+    #
+    # Defaults False, which reproduces every recorded result exactly.
+    allow_signal_exit: bool = False
 
 
 @dataclass(frozen=True)
@@ -451,6 +462,7 @@ class BacktestConfig:
             intrabar_priority=execution_data.get("intrabar_priority", "sell_first"),
             fill_model=execution_data.get("fill_model", "close"),
             enforce_no_loss=bool(execution_data.get("enforce_no_loss", True)),
+            allow_signal_exit=bool(execution_data.get("allow_signal_exit", False)),
         )
 
         output_data = data.get("output", {})
@@ -672,6 +684,8 @@ class BacktestConfig:
                 "intrabar_priority": self.execution.intrabar_priority,
                 "fill_model": self.execution.fill_model,
                 "enforce_no_loss": self.execution.enforce_no_loss,
+            "allow_signal_exit": self.execution.allow_signal_exit,
+                "allow_signal_exit": self.execution.allow_signal_exit,
             },
             "output": {"return_full_results": self.output.return_full_results},
             "live": {

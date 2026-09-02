@@ -96,7 +96,7 @@ from src.idempotency import compute_decision_id
 from src.implied_vol_signal import change_at
 from src.intraday_profile import minutes_since_open
 from src.market_context import MarketContext
-from src.no_loss_guard import NoLossViolation, validate_sell
+from src.no_loss_guard import NoLossViolation, SellReason, validate_sell
 from src.order_lifecycle import TERMINAL_STATES, map_broker_status
 from src.retry_policy import AmbiguousSubmissionError
 from src.risk_manager import CircuitBreaker, RiskManager
@@ -144,6 +144,14 @@ class _TrackedOrder:
     lot_order_id: str | None = None
     trigger_price: float = 0.0
     profit_target: float = 0.0
+    # WHY the sell was submitted, carried from submission to fill.
+    # Unlike the backtest, live splits those into two ticks: the guard
+    # runs in _apply_sell_fill, long after _maybe_sell decided. Without
+    # this field the fill handler cannot tell a harvest from a signal
+    # exit, would refuse to book the loss, and would leave a position
+    # the broker has already sold still open in our ledger -- the exact
+    # divergence reconciliation exists to catch, manufactured by us.
+    sell_reason: SellReason = SellReason.PROFIT_TARGET
 
 
 @dataclass
@@ -481,6 +489,7 @@ class LiveTradingLoop:
                 delta.avg_price,
                 self.cost_model,
                 prev_close=self.state.prev_close,
+                reason=tracked.sell_reason,
             )
         except NoLossViolation:
             # Already logged by the guard. Deliberately not applied:
@@ -583,26 +592,64 @@ class LiveTradingLoop:
         for lot in retargeted:
             self.store.record_open_lot(lot)
         marketable = self.ledger.get_marketable_lots(context.price)
-        for lot in marketable[: self.config.live.max_sells_per_tick]:
+
+        # Signal exits, through the shared helper the backtest paths call,
+        # with the same in-flight exclusion retargeting uses: a lot whose
+        # sell is already resting must not get a second order.
+        #
+        # Priced at context.price rather than at the lot's target. A
+        # signal exit that rested above the market would simply not fill,
+        # which is the one outcome it must not have -- the strategy asked
+        # to be OUT. It stays a limit order (never a market order) so a
+        # thin book cannot fill it arbitrarily far away; it is marketable
+        # at submission, and an unfilled remainder is re-offered next
+        # tick at the new price rather than chased.
+        liquidations = decision_cycle.collect_liquidations(
+            self.strategy,
+            self.ledger,
+            context,
+            allow_signal_exit=self.config.execution.allow_signal_exit,
+            skip_order_ids=self.state.sells_in_flight,
+        )
+        exits = [(lot, context.price, SellReason.SIGNAL_EXIT) for lot in liquidations]
+        if liquidations:
+            condemned = {lot.order_id for lot in liquidations}
+            marketable = [lot for lot in marketable if lot.order_id not in condemned]
+        exits.extend((lot, lot.target_sell_price, SellReason.PROFIT_TARGET) for lot in marketable)
+
+        # The per-tick bound applies to the COMBINED list, not to each
+        # kind separately, because it exists to keep one tick inside the
+        # poll interval and the broker does not care why an order was
+        # sent. Signal exits are ordered first, so a harvest large enough
+        # to fill the budget defers other harvests rather than the exit a
+        # strategy asked for.
+        for lot, sell_price, sell_reason in exits[: self.config.live.max_sells_per_tick]:
             if lot.order_id in self.state.sells_in_flight:
                 continue
             decision_id = self._decision_id("SELL", context.timestamp, lot.order_id)
             outcome = self.guard.submit_once(
                 decision_id,
-                lambda cid, lot=lot: str(
+                lambda cid, lot=lot, sell_price=sell_price: str(
                     self.broker.submit_sell(
-                        self.symbol, lot.shares, lot.target_sell_price, client_order_id=cid
+                        self.symbol, lot.shares, sell_price, client_order_id=cid
                     ).id
                 ),
                 event_kind="sell_submission",
             )
             if not outcome.submitted_now:
                 continue
+            if sell_reason is SellReason.SIGNAL_EXIT:
+                logger.warning(
+                    f"SIGNAL EXIT submitted for lot {lot.order_id} "
+                    f"({lot.shares} @ {sell_price}, bought at {lot.buy_price}): "
+                    "this sell is permitted to realize a loss."
+                )
             self.state.open_orders[decision_id] = _TrackedOrder(
                 client_order_id=decision_id,
                 kind="sell",
                 tracker=FillTracker(decision_id),
                 lot_order_id=lot.order_id,
+                sell_reason=sell_reason,
             )
             self.state.sells_in_flight.add(lot.order_id)
             submitted += 1

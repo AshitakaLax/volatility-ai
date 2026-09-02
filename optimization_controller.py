@@ -29,7 +29,12 @@ from src.intraday_profile import SESSION_MINUTES as _SESSION_MINUTES
 from src.intraday_profile import SESSION_OPEN_MINUTE as _SESSION_OPEN_MINUTE
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext, SimulationResult
-from src.no_loss_guard import NoLossViolation, compute_sell_economics, validate_sell
+from src.no_loss_guard import (
+    NoLossViolation,
+    SellReason,
+    compute_sell_economics,
+    validate_sell,
+)
 from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer, annual_returns
 from src.risk_manager import RiskManager
@@ -156,6 +161,7 @@ def _run_one_combination(
     fill_model: str = "close",
     intrabar_priority: str = "sell_first",
     enforce_no_loss: bool = True,
+    allow_signal_exit: bool = False,
 ):
     """
     Task 4.5. Module-level (not a method) so it, and everything passed
@@ -221,6 +227,7 @@ def _run_one_combination(
             on_flat_reentry=on_flat_reentry,
             fill_model=fill_model,
             enforce_no_loss=enforce_no_loss,
+            allow_signal_exit=allow_signal_exit,
             intrabar_priority=intrabar_priority,
         )
         # Strategy is identified by name rather than by the config's
@@ -527,6 +534,7 @@ class OptimizationController:
         fill_model: str = "close",
         intrabar_priority: str = "sell_first",
         enforce_no_loss: bool = True,
+        allow_signal_exit: bool = False,
     ) -> SimulationResult:
         """
         Task 4.1. One isolated combination: fresh AssetLotLedger and
@@ -597,6 +605,13 @@ class OptimizationController:
 
         # Task 4.6: opt-in trade blotter / equity curve capture.
         blotter_records = []
+        # Boxed in a list because _apply_sell_fill is a closure that has
+        # to MUTATE this, and it binds its per-iteration values as
+        # default arguments -- a plain int would be rebound locally and
+        # the count would stay zero. Incremented inside that closure, not
+        # at the call site, so a de-duplicated fill event (Task 4.10's
+        # apply_once) cannot count one exit twice.
+        signal_exit_count = [0]
         equity_curve_timestamps = []
         equity_curve_values = []
 
@@ -680,8 +695,32 @@ class OptimizationController:
             # only the trigger price differs between the two models.
             harvest_probe = context.price if fill_model == "close" else row.high
             marketable = ledger.get_marketable_lots(harvest_probe)
-            for lot in marketable:
-                exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
+
+            # Signal exits, if the strategy asks for them AND config
+            # permits. Empty on both defaults, so this reproduces prior
+            # results exactly -- see decision_cycle.collect_liquidations
+            # for why both conditions are required.
+            #
+            # Ordered FIRST and de-duplicated against the harvest so a
+            # lot that is both condemned and marketable sells once. The
+            # sale that fires is this one, at context.price rather than
+            # at the target: a strategy saying "close this now" means
+            # now, and letting the harvest win would silently convert a
+            # signal exit into a price-contingent one that might never
+            # fill on a later bar.
+            liquidations = decision_cycle.collect_liquidations(
+                strategy_instance, ledger, context, allow_signal_exit=allow_signal_exit
+            )
+            exits = [(lot, context.price, SellReason.SIGNAL_EXIT) for lot in liquidations]
+            if liquidations:
+                condemned = {lot.order_id for lot in liquidations}
+                marketable = [lot for lot in marketable if lot.order_id not in condemned]
+            exits.extend(
+                (lot, lot.target_sell_price, SellReason.PROFIT_TARGET) for lot in marketable
+            )
+
+            for lot, sell_price, sell_reason in exits:
+                exec_res = oms.execute_sell(lot.symbol, lot.shares, sell_price)
                 if exec_res.get("status") != OrderStatus.FILLED:
                     logger.warning(
                         f"Sell not filled for lot {lot.order_id}: status={exec_res.get('status')}"
@@ -703,6 +742,7 @@ class OptimizationController:
                         cost_model,
                         context=context,
                         prev_close=prev_close,
+                        reason=sell_reason,
                     )
                 except NoLossViolation:
                     if enforce_no_loss:
@@ -725,6 +765,7 @@ class OptimizationController:
 
                 def _apply_sell_fill(
                     lot=lot,
+                    sell_reason=sell_reason,
                     context=context,
                     net_sell_proceeds=net_sell_proceeds,
                     filled_price=filled_price,
@@ -746,6 +787,8 @@ class OptimizationController:
                     """
                     state.cash += net_sell_proceeds
                     ledger.close_lot(lot)
+                    if sell_reason is SellReason.SIGNAL_EXIT:
+                        signal_exit_count[0] += 1
                     blotter_records.append(
                         {
                             "timestamp": context.timestamp,
@@ -866,6 +909,14 @@ class OptimizationController:
 
         metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, initial_cash)
         metrics["Max Drawdown %"] = state.max_drawdown * 100.0
+        # Reported ALWAYS, not only when the feature is on. A column that
+        # appears conditionally is one an analysis script silently reads
+        # as absent-means-zero; a constant 0 says "measured, none
+        # happened". These are the only sells in the system that can
+        # realize a loss, so a results row that did not name them would
+        # make a strategy quietly dumping inventory look like one that
+        # simply performed worse.
+        metrics["Signal Exit Count"] = signal_exit_count[0]
         # Assigned here rather than in PerformanceAnalyzer for the same
         # reason "Max Drawdown %" is: it is derived from the drawdown
         # this loop tracks per bar, and computing it in two places would
@@ -967,6 +1018,7 @@ class OptimizationController:
             "on_flat_reentry": on_flat_reentry,
             "fill_model": fill_model,
             "enforce_no_loss": enforce_no_loss,
+            "allow_signal_exit": allow_signal_exit,
             # Underscore-prefixed attributes are excluded deliberately.
             # The intent above is "the strategy's own constructor-derived
             # attributes"; a stateful strategy's rolling indicator state
@@ -997,6 +1049,7 @@ class OptimizationController:
         fill_model: str = "close",
         intrabar_priority: str = "sell_first",
         enforce_no_loss: bool = True,
+        allow_signal_exit: bool = False,
         symbol: str = "TQQQ",
         initial_cash: float = 100_000.0,
         n_jobs: int = 1,
@@ -1134,6 +1187,7 @@ class OptimizationController:
                     fill_model,
                     intrabar_priority,
                     enforce_no_loss,
+                    allow_signal_exit,
                 )
                 resolved_search_strategy.report(suggestion, sim_result)
                 results.append(row)
@@ -1180,6 +1234,7 @@ class OptimizationController:
                             fill_model,
                             intrabar_priority,
                             enforce_no_loss,
+                            allow_signal_exit,
                         ): s
                         for s in batch
                     }
