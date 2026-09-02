@@ -64,6 +64,22 @@ is treated as a display label only. That also supplies filled_avg_price
 and filled_qty directly, and gives partial fills for free.
 
 --------------------------------------------------------------------
+EXCEPTION TYPES, AND WHY THEY ARE SPLIT
+
+ValueError for a bad ARGUMENT -- a non-positive quantity, a trade value
+too small to buy a share. ExecutionError for a bad VENUE RESPONSE -- a
+preview with no confNum, an account echoed back wrong, a quote with no
+usable price.
+
+This is not a stylistic preference. AlpacaBroker already raises
+ValueError for exactly these argument cases and its tests pin that, so
+the first run of tests/integration/test_broker_contract.py caught this
+module diverging from it. Two adapters that reject the same bad input
+with different exception types is precisely the divergence that
+conformance test exists to find, and the older, live-money path is the
+one that sets the convention.
+
+--------------------------------------------------------------------
 ACCOUNT SAFETY
 
 The account is checked THREE times before any request carries it:
@@ -269,11 +285,11 @@ class FidelityBroker:
         never overspend the intended amount.
         """
         if trade_value <= 0:
-            raise ExecutionError(f"trade_value must be positive, got {trade_value}")
+            raise ValueError(f"trade_value must be positive, got {trade_value}")
         price = self.get_quote(symbol)
         qty = int(trade_value // price)
         if qty < 1:
-            raise ExecutionError(
+            raise ValueError(
                 f"${trade_value:.2f} does not buy one whole share of {symbol} at "
                 f"${price:.2f}. Fidelity orders here are whole-share "
                 "(qtyTypeCode 'S'); fractional sizing is not modelled."
@@ -294,7 +310,7 @@ class FidelityBroker:
         the guard lives in exactly one place.
         """
         if qty <= 0:
-            raise ExecutionError(f"qty must be positive, got {qty}")
+            raise ValueError(f"qty must be positive, got {qty}")
         return self._preview(symbol, "sell", qty, target_price, client_order_id)
 
     def _preview(

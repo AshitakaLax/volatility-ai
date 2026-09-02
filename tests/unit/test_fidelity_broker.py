@@ -296,7 +296,7 @@ def test_a_trade_value_under_one_share_refuses_rather_than_rounding_to_zero():
     session = FakeSession({
         "/ftgw/digital/trade-equity/getquote": {"lastPrice": 69.50},
     })
-    with pytest.raises(ExecutionError, match="one whole share"):
+    with pytest.raises(ValueError, match="one whole share"):
         _broker(session).submit_buy("TQQQ", 40.0)
 
 
