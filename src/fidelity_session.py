@@ -99,18 +99,37 @@ READ_ONLY_ENDPOINTS = frozenset(
     }
 )
 
-# State-changing endpoints, permitted only with allow_order_endpoints=True.
+# PREVIEW is separated from PLACE, and the split is load-bearing.
+#
+# Reconnaissance established that previewSrvc mints the confNum and
+# commits nothing -- placeOrder takes that confNum as an INPUT. So a
+# dry-run adapter needs preview and must never reach place, and a single
+# allow_order_endpoints boolean covering both would have forced it to
+# hold the capability it must not have. Splitting them lets dry-run be
+# enforced by the TRANSPORT rather than by the adapter remembering not
+# to call something.
+#
+# cancelPreviewOrder sits with preview: it only ever discards a preview.
+PREVIEW_ENDPOINTS = frozenset(
+    {
+        "/ftgw/digital/trade-equity/previewSrvc",
+        "/ftgw/digital/trade-equity/cancelPreviewOrder",
+    }
+)
+
+# Endpoints that put a real order into, or take one out of, the market.
 # cancelPlaceOrder is included deliberately: cancelling is state-changing
 # and belongs behind the same gate, even though it only ever REDUCES
 # exposure. A gate you can reason about beats one with exceptions in it.
-ORDER_ENDPOINTS = frozenset(
+PLACE_ENDPOINTS = frozenset(
     {
-        "/ftgw/digital/trade-equity/previewSrvc",
         "/ftgw/digital/trade-equity/placeOrder",
-        "/ftgw/digital/trade-equity/cancelPreviewOrder",
         "/ftgw/digital/trade-equity/cancelPlaceOrder",
     }
 )
+
+# Every state-changing endpoint, for the "is this known at all" check.
+ORDER_ENDPOINTS = PREVIEW_ENDPOINTS | PLACE_ENDPOINTS
 
 # Headers lifted from an observed request and replayed on ours. Only
 # these three: everything else (cookies, sec-*, user-agent) is supplied
@@ -147,10 +166,17 @@ class FidelitySession:
         page: Any,
         *,
         allow_order_endpoints: bool = False,
+        allow_preview_endpoints: bool = False,
         request_timeout_ms: int = 30_000,
     ) -> None:
         self._page = page
         self._allow_order_endpoints = bool(allow_order_endpoints)
+        # Placing implies previewing -- placeOrder needs a confNum that
+        # only previewSrvc mints -- so granting the stronger capability
+        # grants the weaker one. The reverse is never true.
+        self._allow_preview_endpoints = bool(
+            allow_preview_endpoints or allow_order_endpoints
+        )
         self._request_timeout_ms = request_timeout_ms
         self._headers: dict[str, str] = {}
         self._attached = False
@@ -253,11 +279,20 @@ class FidelitySession:
             raise ConfigurationError(
                 f"path must be site-relative and start with '/', got {path!r}"
             )
-        if path in ORDER_ENDPOINTS and not self._allow_order_endpoints:
+        if path in PLACE_ENDPOINTS and not self._allow_order_endpoints:
             raise ConfigurationError(
-                f"{path} is an order endpoint and this session was created read-only. "
-                "Construct FidelitySession(..., allow_order_endpoints=True) to permit "
-                "it -- deliberately, at a call site a human can see."
+                f"{path} PLACES OR CANCELS A REAL ORDER and this session does not "
+                "permit that. Construct FidelitySession(..., "
+                "allow_order_endpoints=True) to allow it -- deliberately, at a call "
+                "site a human can see. A dry-run caller wants "
+                "allow_preview_endpoints=True instead, which can never reach here."
+            )
+        if path in PREVIEW_ENDPOINTS and not self._allow_preview_endpoints:
+            raise ConfigurationError(
+                f"{path} is an order-preview endpoint and this session was created "
+                "read-only. Construct FidelitySession(..., "
+                "allow_preview_endpoints=True) to permit it. Preview commits "
+                "nothing, but it does open a ticket against a real account."
             )
         if path not in READ_ONLY_ENDPOINTS and path not in ORDER_ENDPOINTS:
             raise ConfigurationError(

@@ -24,6 +24,8 @@ import pytest
 
 from src.exceptions import ConfigurationError
 from src.fidelity_session import (
+    PLACE_ENDPOINTS,
+    PREVIEW_ENDPOINTS,
     FIDELITY_ORIGIN,
     ORDER_ENDPOINTS,
     READ_ONLY_ENDPOINTS,
@@ -88,9 +90,14 @@ def _ready(**kw):
     return session, page
 
 
-def _ready_with(result=None, allow_orders=False, url=SIGNED_IN, raises=None):
+def _ready_with(result=None, allow_orders=False, url=SIGNED_IN, raises=None,
+                allow_preview=False):
     page = FakePage(url=url, result=result, raises=raises)
-    session = FidelitySession(page, allow_order_endpoints=allow_orders)
+    session = FidelitySession(
+        page,
+        allow_order_endpoints=allow_orders,
+        allow_preview_endpoints=allow_preview,
+    )
     session.attach()
     page.emit_request(AUTH_HEADERS)
     return session, page
@@ -175,9 +182,46 @@ def test_prime_navigates_to_traderplus_to_provoke_a_request():
 
 @pytest.mark.parametrize("path", sorted(ORDER_ENDPOINTS))
 def test_order_endpoints_are_refused_on_a_read_only_session(path):
+    """Every state-changing endpoint, preview and place alike.
+
+    Matches on the refusal, not on the wording: preview and place now
+    give different messages because they are different capabilities, and
+    pinning the prose would make this test about the sentence rather
+    than about the gate.
+    """
     session, _ = _ready_with()
-    with pytest.raises(ConfigurationError, match="read-only"):
+    with pytest.raises(ConfigurationError):
         session.post_json(path, {})
+
+
+@pytest.mark.parametrize("path", sorted(PLACE_ENDPOINTS))
+def test_preview_permission_never_unlocks_placing(path):
+    """THE POINT OF THE SPLIT.
+
+    A dry-run adapter holds allow_preview_endpoints and must not be one
+    typo away from submitting. Preview mints the confNum and commits
+    nothing; place takes that confNum and commits. Granting the first
+    must never grant the second.
+    """
+    session, _ = _ready_with(allow_preview=True)
+    with pytest.raises(ConfigurationError, match="PLACES OR CANCELS A REAL ORDER"):
+        session.post_json(path, {})
+
+
+@pytest.mark.parametrize("path", sorted(PREVIEW_ENDPOINTS))
+def test_preview_permission_allows_previewing(path):
+    session, page = _ready_with(allow_preview=True)
+    session.post_json(path, {})
+    assert page.evaluated[0][0] == path
+
+
+@pytest.mark.parametrize("path", sorted(PREVIEW_ENDPOINTS))
+def test_place_permission_implies_preview_permission(path):
+    """Placing needs a confNum only preview can mint, so the stronger
+    capability has to carry the weaker one or nothing could ever place."""
+    session, page = _ready_with(allow_orders=True)
+    session.post_json(path, {})
+    assert page.evaluated[0][0] == path
 
 
 @pytest.mark.parametrize("path", sorted(ORDER_ENDPOINTS))
