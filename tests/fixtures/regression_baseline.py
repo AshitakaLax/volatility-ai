@@ -122,6 +122,14 @@ BASELINE: dict | None = {
     "Open Trade Count": 0.0,
     "Capital Velocity Index": 1.0,
     "Max Drawdown %": 0.4430668810465577,
+    # Added with signal exits (src/no_loss_guard.SellReason). It is
+    # pinned at 0 on purpose and that zero is the whole point: it proves
+    # the new sell path RAN on this sweep and produced nothing, which is
+    # stronger evidence than omitting the column would be. Every other
+    # value in this dict was re-derived and compared before this key was
+    # appended and none moved -- this file still pins exactly the
+    # behavior it did before, plus one new column reading zero.
+    "Signal Exit Count": 0,
     # Added when run_sweep began reporting a drawdown-aware ranking
     # metric. Every other value above is UNCHANGED by that addition and
     # by the is_earnings_reaction_day wiring alongside it -- both were

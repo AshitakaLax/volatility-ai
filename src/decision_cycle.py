@@ -165,6 +165,86 @@ def adjust_open_lot_targets(
     return changed
 
 
+def collect_liquidations(
+    strategy,
+    ledger,
+    context: MarketContext,
+    *,
+    allow_signal_exit: bool,
+    skip_order_ids=frozenset(),
+) -> list:
+    """Phase 1c: the open lots a strategy wants closed on signal, not price.
+
+    Returns lots the caller must sell at this bar's price REGARDLESS of
+    whether they are profitable. Every other exit in this system happens
+    because price reached a target; this is the only one that does not,
+    and closing an underwater lot is a normal outcome of it rather than
+    an error -- see src/no_loss_guard.SellReason.SIGNAL_EXIT.
+
+    TWO INDEPENDENT CONDITIONS, both checked here. `allow_signal_exit`
+    comes from config; the hook comes from the strategy. Either one
+    missing returns empty, so neither a config flag flipped without a
+    strategy that uses it, nor a strategy dropped into a default config,
+    can realize a single loss. Both are cheap and both are checked every
+    bar rather than cached, because a cached authorization is one
+    refactor away from being the only authorization.
+
+    Ordering: after adjust_open_lot_targets, before the marketable
+    check. After, so a strategy that both retargets and liquidates sees
+    a consistent book. Before, so a lot that is BOTH marketable and
+    condemned exits once -- the caller drops it from the harvest -- and
+    the exit that actually fires is the profitable one, since the caller
+    processes liquidations first and get_marketable_lots then no longer
+    sees the lot. A lot cannot be sold twice in a bar.
+
+    Lives here rather than in the three sell sites for the reason the
+    whole module exists: backtest, intrabar replay, and live must make
+    the identical decision, and "loop the open lots and ask" copied
+    three times is three chances to disagree.
+
+    skip_order_ids mirrors adjust_open_lot_targets: the live loop
+    excludes lots with a sell already in flight, since condemning a lot
+    whose order is resting would submit a second one.
+    """
+    if not allow_signal_exit:
+        return []
+
+    # Duck-typed and optional for the same reason adjust_profit_target
+    # is: strategy_class is only duck-typed at the _simulate_single
+    # boundary, so test doubles and externally supplied strategies need
+    # not subclass SizingStrategy.
+    hook = getattr(strategy, "lots_to_liquidate", None)
+    if hook is None:
+        return []
+
+    open_lots = list(ledger.open_lots)
+    if not open_lots:
+        return []
+
+    requested = hook(open_lots, context)
+    if not requested:
+        return []
+
+    # Filter against the book we just read rather than trusting the
+    # returned list. A strategy holding a stale reference to an
+    # already-closed lot would otherwise sell shares that are gone --
+    # silently, since the ledger would happily record a second close.
+    # Identity, not order_id: two lots can share neither, but a lot
+    # object not in this bar's open book is not sellable this bar.
+    live = {id(lot) for lot in open_lots if lot.order_id not in skip_order_ids}
+    condemned = [lot for lot in requested if id(lot) in live]
+
+    # Deduplicate while preserving the strategy's order -- a hook that
+    # returns the same lot twice must not produce two sells.
+    seen = set()
+    unique = []
+    for lot in condemned:
+        if id(lot) not in seen:
+            seen.add(id(lot))
+            unique.append(lot)
+    return unique
+
+
 def evaluate_grid_decision(
     strategy,
     risk_manager,
