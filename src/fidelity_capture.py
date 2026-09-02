@@ -64,6 +64,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict, dataclass
+from urllib.parse import urlparse
 from datetime import UTC, datetime
 from typing import Any
 
@@ -87,6 +88,19 @@ _TRUNCATION_MARKER = "...[TRUNCATED]"
 # xhr/fetch; everything else on a brokerage page is JS bundles, fonts,
 # images, and CSS, which are megabytes of noise with no recon value.
 DEFAULT_RESOURCE_TYPES = frozenset({"xhr", "fetch"})
+
+# Hosts whose WebSocket frames are worth recording. Observed in a real
+# session (2026-09-02):
+#   spservice.fidelity.com/event/realtime  -- ORDER LIFECYCLE EVENTS, the
+#       reason this capture exists at all. accounts.orders.updated /
+#       accounts.orders.canceled, keyed by CONFIRMATION_NUM.
+#   mdds-i-tc.fidelity.com                 -- the quote stream. 3,057 of
+#       3,058 frames in one session were market data this project already
+#       gets from Alpaca. Allowed anyway: it is Fidelity's, it is cheap to
+#       drop later, and excluding it would make "no quotes seen" ambiguous.
+#   prod-presence-1.glance.net             -- NOT LISTED. A third-party
+#       co-browsing vendor. See _on_websocket for why that matters.
+DEFAULT_WEBSOCKET_HOSTS = frozenset({"fidelity.com"})
 
 # Key names that MIGHT carry an order identifier. Used only by
 # candidate_id_fields() to point a human at interesting payloads -- this is
@@ -150,6 +164,7 @@ class TrafficCapture:
         resource_types: frozenset[str] | None = None,
         max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
         max_records: int = DEFAULT_MAX_RECORDS,
+        websocket_host_allowlist: frozenset[str] | None = None,
     ) -> None:
         # Empty strings are dropped: `"" in payload` is always True, so a
         # blank credential would scrub every payload down to nothing.
@@ -159,6 +174,17 @@ class TrafficCapture:
         )
         self._max_payload_bytes = max_payload_bytes
         self._max_records = max_records
+        self._ws_hosts = (
+            DEFAULT_WEBSOCKET_HOSTS
+            if websocket_host_allowlist is None
+            else websocket_host_allowlist
+        )
+
+        # Recorded by URL only, never by content, so a dump still SHOWS
+        # that a socket was skipped. "No frames from X" and "X was never
+        # opened" look identical otherwise, and this project has already
+        # mistaken an absent record for an absent thing once.
+        self._out_of_scope_websockets: list[str] = []
 
         self.frames: list[CapturedFrame] = []
         self.responses: list[CapturedResponse] = []
@@ -232,6 +258,16 @@ class TrafficCapture:
     def _on_websocket(self, ws: Any) -> None:
         try:
             url = str(getattr(ws, "url", ""))
+            if not self._websocket_in_scope(url):
+                # NOT a size optimisation. A real Fidelity session opens a
+                # socket to prod-presence-1.glance.net, a third-party
+                # co-browsing vendor, and recording it would write another
+                # company's traffic into a dump that already carries this
+                # session's secrets. Recon should collect what it came for
+                # and nothing else -- the same discipline the REST endpoint
+                # allowlists already apply.
+                self._out_of_scope_websockets.append(url)
+                return
             ws.on("framesent", lambda payload: self._on_frame("sent", url, payload))
             ws.on(
                 "framereceived",
@@ -239,6 +275,20 @@ class TrafficCapture:
             )
         except Exception as exc:  # never propagate into page interaction
             self._note_error("websocket", exc)
+
+    def _websocket_in_scope(self, url: str) -> bool:
+        """True when `url`'s host ends with an allowlisted domain.
+
+        Suffix match on the HOST, not a substring match on the whole URL:
+        "fidelity.com" appears in a query string as easily as in a host,
+        and `evil-fidelity.com.attacker.net` would pass a naive `in` test.
+        """
+        try:
+            host = urlparse(url).hostname or ""
+        except ValueError:
+            return False
+        host = host.lower()
+        return any(host == d or host.endswith("." + d) for d in self._ws_hosts)
 
     def _on_frame(self, direction: str, url: str, payload: Any) -> None:
         try:

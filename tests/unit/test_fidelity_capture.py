@@ -214,7 +214,7 @@ def test_records_frames_in_both_directions():
 def test_binary_frames_are_decoded_not_dropped():
     """A JSON body sent as bytes is common and perfectly readable."""
     capture, page = _attached()
-    ws = FakeWebSocket("wss://x/y")
+    ws = FakeWebSocket("wss://digital.fidelity.com/ws")
     page.emit_websocket(ws)
     ws.emit("framereceived", b'{"orderId": "ABC"}')
 
@@ -225,7 +225,7 @@ def test_binary_frames_are_decoded_not_dropped():
 
 def test_undecodable_bytes_do_not_raise():
     capture, page = _attached()
-    ws = FakeWebSocket("wss://x/y")
+    ws = FakeWebSocket("wss://digital.fidelity.com/ws")
     page.emit_websocket(ws)
     ws.emit("framereceived", b"\xff\xfe\x00garbage")
 
@@ -277,7 +277,7 @@ def test_an_unreadable_body_is_recorded_rather_than_dropped():
 
 def test_literal_credentials_are_scrubbed_from_frames():
     capture, page = _attached(secret_values=["hunter2", "my-username"])
-    ws = FakeWebSocket("wss://x/y")
+    ws = FakeWebSocket("wss://digital.fidelity.com/ws")
     page.emit_websocket(ws)
     ws.emit("framesent", '{"user": "my-username", "pw": "hunter2"}')
 
@@ -346,7 +346,7 @@ def test_malformed_json_does_not_raise():
 
 def test_oversized_payloads_are_truncated_and_marked():
     capture, page = _attached(max_payload_bytes=100)
-    ws = FakeWebSocket("wss://x/y")
+    ws = FakeWebSocket("wss://digital.fidelity.com/ws")
     page.emit_websocket(ws)
     ws.emit("framereceived", "z" * 500)
 
@@ -358,7 +358,7 @@ def test_oversized_payloads_are_truncated_and_marked():
 
 def test_record_cap_stops_growth_and_counts_drops():
     capture, page = _attached(max_records=3)
-    ws = FakeWebSocket("wss://x/y")
+    ws = FakeWebSocket("wss://digital.fidelity.com/ws")
     page.emit_websocket(ws)
     for _ in range(10):
         ws.emit("framereceived", "x")
@@ -380,7 +380,7 @@ def test_a_broken_websocket_object_does_not_propagate():
     bug."""
 
     class ExplodingWebSocket:
-        url = "wss://x/y"
+        url = "wss://digital.fidelity.com/ws"
 
         def on(self, event, handler):
             raise RuntimeError("boom")
@@ -405,7 +405,7 @@ def test_a_broken_response_object_does_not_propagate():
 
 def test_handler_error_list_is_bounded():
     class ExplodingWebSocket:
-        url = "wss://x/y"
+        url = "wss://digital.fidelity.com/ws"
 
         def on(self, event, handler):
             raise RuntimeError("boom")
@@ -422,7 +422,7 @@ def test_handler_error_list_is_bounded():
 
 def test_candidate_id_fields_finds_id_shaped_keys():
     capture, page = _attached()
-    ws = FakeWebSocket("wss://x/y")
+    ws = FakeWebSocket("wss://digital.fidelity.com/ws")
     page.emit_websocket(ws)
     ws.emit("framereceived", json.dumps({"data": {"orderId": "ABC123"}}))
     page.emit_response(
@@ -454,7 +454,7 @@ def test_summary_inventories_endpoints_without_query_strings():
 
 def test_to_dict_is_json_serializable():
     capture, page = _attached(secret_values=["hunter2"])
-    ws = FakeWebSocket("wss://x/y")
+    ws = FakeWebSocket("wss://digital.fidelity.com/ws")
     page.emit_websocket(ws)
     ws.emit("framereceived", '{"orderId": "1", "pw": "hunter2"}')
     page.emit_response(FakeResponse("https://x/y"))
@@ -462,3 +462,45 @@ def test_to_dict_is_json_serializable():
     text = json.dumps(capture.to_dict())
     assert "hunter2" not in text
     assert "orderId" in text
+
+
+# --- WebSocket host scoping ---
+#
+# A real Fidelity session opens a socket to prod-presence-1.glance.net, a
+# third-party co-browsing vendor. Recording it would write another
+# company's traffic into a dump that already carries session secrets.
+
+
+def test_third_party_websockets_are_not_recorded():
+    capture = TrafficCapture()
+    assert capture._websocket_in_scope("wss://spservice.fidelity.com/event/realtime")
+    assert capture._websocket_in_scope("wss://mdds-i-tc.fidelity.com/?productId=x")
+    assert not capture._websocket_in_scope("wss://prod-presence-1.glance.net/visitorws")
+
+
+def test_the_host_filter_cannot_be_spoofed_by_a_lookalike_domain():
+    """Suffix match on the HOST, not a substring match on the URL."""
+    capture = TrafficCapture()
+    assert not capture._websocket_in_scope("wss://evil-fidelity.com.attacker.net/x")
+    assert not capture._websocket_in_scope("wss://attacker.net/?ref=fidelity.com")
+    assert not capture._websocket_in_scope("wss://notfidelity.com/ws")
+
+
+def test_a_skipped_socket_is_still_noted_by_url():
+    """'No frames from X' and 'X was never opened' must not look identical.
+
+    This project has already mistaken an absent record for an absent
+    thing once -- the retracted "Fidelity uses no WebSockets" claim.
+    """
+    capture = TrafficCapture()
+
+    class _WS:
+        url = "wss://prod-presence-1.glance.net/visitorws"
+
+        def on(self, *_args):  # pragma: no cover - must never be reached
+            raise AssertionError("a skipped socket must not be subscribed to")
+
+    capture._on_websocket(_WS())
+    assert capture._out_of_scope_websockets == ["wss://prod-presence-1.glance.net/visitorws"]
+    assert capture.frames == []
+    assert capture.handler_errors == []
