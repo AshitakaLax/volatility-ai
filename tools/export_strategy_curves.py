@@ -42,6 +42,7 @@ from src.risk_manager import RiskManager  # noqa: E402
 from tools.probe_bull_capture import RegimeHold  # noqa: E402
 from tools.probe_downturn_tactics import Escalating  # noqa: E402
 from tools.probe_regime_integrated import RegimeSwitched  # noqa: E402
+from tools.probe_vol_filtered_regime import VolFilteredRegime, build_signal  # noqa: E402
 
 DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 SWITCH_COST = 0.0015
@@ -146,8 +147,17 @@ def main(argv=None) -> int:
         ("Dip escalating .05/.04", Escalating,
          dict(base, per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75),
          0.05, 0.04, 0.50, False, "the downturn winner, run over the whole period"),
+        ("Vol-filtered, hold bull", VolFilteredRegime,
+         dict(base, per_lot_pct=0.02, signal=None, bull_step=0.005, bear_step=0.05,
+              bear_target=0.04, bull_lot_scale=2.0, max_mult=400.0, dd_ref=0.75,
+              hold_in_bull=True, use_dip_in_bear=False),
+         0.05, 0.04, 1.00, True,
+         "SMA200 AND calm volatility; holds the trend, cash otherwise"),
     ]
+    signal = build_signal(price, trend=200, vol_win=20, lookback=250, q=0.75)
     for label, cls, params, step, target, cap, exits, note in specs:
+        if "signal" in params:
+            params = dict(params, signal=signal)
         print(f"running {label} ...", flush=True)
         equity, n_exits = run(controller, cfg, cls, params,
                               step=step, target=target, cap=cap, signal_exits=exits)
