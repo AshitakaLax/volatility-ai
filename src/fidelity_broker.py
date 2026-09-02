@@ -231,8 +231,12 @@ class FidelityBroker:
         allowed_accounts: tuple[str, ...] | list[str],
         *,
         symbol: str = "TQQQ",
+        account_name: str | None = None,
+        account_type_code: str | None = None,
     ) -> None:
         self._session = session
+        self._account_name = account_name
+        self._account_type_code = account_type_code
         self._allowed = tuple(str(a) for a in allowed_accounts)
         self._account = self._check_account(account)
         self._symbol = symbol
@@ -329,26 +333,10 @@ class FidelityBroker:
         thin pre/post session is the one thing a grid strategy must
         never emit.
         """
-        account = self._check_account(self._account)
-        payload = {
-            "orderDetails": {
-                "acctNum": account,
-                "symbol": symbol,
-                "orderAction": _ACTION[side],
-                "orderActionCode": _ACTION[side],
-                "priceTypeCode": "L",
-                "limitPrice": round(float(limit_price), 2),
-                "stopPrice": None,
-                "qty": int(qty),
-                "qtyTypeCode": "S",
-                "tifCode": "D",
-                "condition": "N",
-                "routeCode": None,
-                "previewInd": True,
-                "confInd": False,
-            }
-        }
-        response = self._session.post_json(PREVIEW_PATH, payload)
+        response = self._session.post_json(
+            PREVIEW_PATH, {"orderDetails": self.build_ticket(symbol, side, qty, limit_price)}
+        )
+        account = self._account
         conf = _find_first(response, "confNum")
         if not conf:
             raise ExecutionError(
@@ -371,6 +359,51 @@ class FidelityBroker:
             qty=float(qty),
             raw={"preview": True},
         )
+
+    def build_ticket(
+        self, symbol: str, side: str, qty: float, limit_price: float
+    ) -> dict:
+        """The order ticket, field for field as the site's own page sends it.
+
+        Transcribed from captured previewSrvc requests rather than
+        designed. Two fields look wrong and are not: `previewInd` and
+        `confInd` are BOTH true on a preview AND on a place -- what
+        distinguishes them is the ENDPOINT and the presence of confNum,
+        not these flags. An earlier version of this method set
+        confInd=False on the reasoning that a preview is not a
+        confirmation; the capture says otherwise, and matching the real
+        client is worth more than a payload that reads sensibly.
+
+        Exposed rather than private because the placing adapter builds
+        the identical ticket and appends confNum. Two copies of a payload
+        this fiddly is two chances to drift.
+        """
+        account = self._check_account(self._account)
+        ticket = {
+            "acctNum": account,
+            "symbol": symbol,
+            "orderAction": _ACTION[side],
+            "orderActionCode": _ACTION[side],
+            "priceTypeCode": "L",
+            "limitPrice": round(float(limit_price), 2),
+            "stopPrice": None,
+            "qty": int(qty),
+            "qtyTypeCode": "S",
+            "tifCode": "D",
+            "condition": "N",
+            "routeCode": None,
+            "isTradeTypeAvailable": False,
+            "previewInd": True,
+            "confInd": True,
+        }
+        # Present in every captured request. Passed through only when the
+        # caller supplied them: inventing an acctTypeCode would be
+        # guessing at a field that identifies the account.
+        if self._account_name is not None:
+            ticket["acctName"] = self._account_name
+        if self._account_type_code is not None:
+            ticket["acctTypeCode"] = self._account_type_code
+        return ticket
 
     def _assert_echoed_account(self, response: Any, expected: str) -> None:
         """Read the account back out of Fidelity's own reply and compare.
