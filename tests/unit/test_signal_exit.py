@@ -379,3 +379,97 @@ def test_every_sell_site_names_the_reason_it_is_selling():
         assert calls, f"{name} no longer calls validate_sell at all"
         for call in calls:
             assert "reason=" in call, f"{name} calls validate_sell without a reason"
+
+
+# --- T+N settlement ----------------------------------------------------
+#
+# Lives here rather than in its own file because it shares _sweep and the
+# same "default is byte-identical" discipline. The measurement of what it
+# costs is tools/probe_settlement_drag.py.
+
+
+def test_settlement_defaults_to_instant_and_changes_nothing():
+    on = _sweep(FixedPortfolioPercentage, dict(STRATEGY_PARAMS), settlement_days=0)
+    off = _sweep(FixedPortfolioPercentage, dict(STRATEGY_PARAMS))
+    assert on == off
+
+
+def test_settlement_is_not_monotonic_and_this_is_expected():
+    """DELIBERATELY asserts no ordering, because none holds.
+
+    The first version of this test asserted that T+1 can only reduce
+    trade count and equity -- "a tighter constraint cannot help". It
+    passed on this fixture and is FALSE on the real dataset: the regime
+    book goes from 24,648 trades at T+0 to 24,675 at T+1, and its 2022
+    improves from +3.6% to +3.7%.
+
+    The reason is path dependence. A buy that cannot be funded today
+    does not merely vanish -- it leaves last_buy_price and the rolling
+    grid reference where they were, which changes every subsequent
+    trigger. Removing one trade early can produce more trades later.
+
+    So the invariant worth pinning is that the constraint is APPLIED,
+    not that the outcome moves in a particular direction. That is
+    covered by the buying-power tests below, which check the mechanism
+    directly rather than inferring it from an aggregate.
+    """
+    instant = _sweep(FixedPortfolioPercentage, dict(STRATEGY_PARAMS), settlement_days=0)
+    delayed = _sweep(FixedPortfolioPercentage, dict(STRATEGY_PARAMS), settlement_days=1)
+    assert set(instant) == set(delayed), "same columns either way"
+    assert delayed["Final Equity"] > 0, "a T+1 run still completes"
+
+
+def test_a_buy_cannot_be_funded_from_unsettled_proceeds():
+    """The mechanism, checked directly.
+
+    This is what "settlement is applied" actually means, and it is
+    asserted here rather than inferred from a sweep aggregate -- see
+    test_settlement_is_not_monotonic_and_this_is_expected for why an
+    aggregate cannot carry that claim.
+    """
+    from optimization_controller import BacktestState
+
+    state = BacktestState(0.0, 50.0)
+    state.advance_session(1000)
+    state.credit_sale(1_000.0, settlement_days=1)
+    assert state.cash == 1_000.0
+    assert state.buying_power == 0.0, "nothing spendable on the sale day"
+    state.advance_session(1001)
+    assert state.buying_power == 1_000.0, "spendable on the next session"
+
+
+def test_unsettled_proceeds_still_count_as_equity():
+    """They are really yours -- they just cannot be SPENT yet. Excluding
+    them from equity would understate the account and corrupt drawdown."""
+    from optimization_controller import BacktestState
+
+    state = BacktestState(1_000.0, 50.0)
+    state.credit_sale(500.0, settlement_days=1)
+    assert state.cash == 1_500.0, "equity uses total cash"
+    assert state.buying_power == 1_000.0, "only settled cash is spendable"
+
+
+def test_buying_power_floors_at_zero_rather_than_going_negative():
+    """A buy debits total cash while unsettled is unchanged, so cash can
+    legitimately fall below unsettled. That means nothing spendable, and
+    a negative would silently invert the comparison at the buy gate."""
+    from optimization_controller import BacktestState
+
+    state = BacktestState(100.0, 50.0)
+    state.credit_sale(900.0, settlement_days=1)
+    state.cash -= 150.0
+    assert state.buying_power == 0.0
+
+
+def test_proceeds_settle_on_a_later_session_not_a_later_bar():
+    """T+1 means the next TRADING DAY, not the next minute."""
+    from optimization_controller import BacktestState
+
+    state = BacktestState(0.0, 50.0)
+    state.advance_session(1000)
+    state.credit_sale(500.0, settlement_days=1)
+    assert state.buying_power == 0.0
+    state.advance_session(1000)  # same session again
+    assert state.buying_power == 0.0
+    state.advance_session(1001)
+    assert state.buying_power == 500.0
