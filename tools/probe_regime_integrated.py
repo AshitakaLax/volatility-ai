@@ -45,17 +45,39 @@ run below is the first honest measurement of the strategy as designed.
                           trend exit and the reason it needs the flag.
 
 --------------------------------------------------------------------
-THE REGIME SIGNAL
+THE REGIME SIGNAL, AND A WARMUP BUG THIS HEADER USED TO ASSERT AWAY
 
-A 200-session simple moving average, maintained on minute bars
-(200 x bars_per_day). Before it is warm the regime reads BEAR, matching
-what the daily study did -- pandas produced NaN there, and `NaN >` is
-False, so that run was in cash for its first 200 sessions too. Keeping
-the same convention is what makes the two comparable.
+A 200-session simple moving average. The regime is read from a price
+against the average of the prices BEFORE it, so there is no lookahead:
+the average never includes the price it judges.
 
-The regime is read from the CURRENT bar's own price against the average
-of the bars before it, so there is no lookahead: the average never
-includes a price the strategy has not already seen.
+This header previously claimed: "Before it is warm the regime reads
+BEAR, matching what the daily study did -- pandas produced NaN there,
+and `NaN >` is False, so that run was in cash for its first 200
+sessions too. Keeping the same convention is what makes the two
+comparable."
+
+**That was false, and it mattered.** RollingMean.value returns a
+PARTIAL mean from the second observation onward -- it is None only
+before the very first one. So the regime was never cold: from bar two
+it compared each price against an average of however few prices had
+been seen, which early on is a nearly meaningless number that the price
+crosses constantly. The strategy then traded on it.
+
+The damage was concentrated and measurable. The dataset starts
+2016-01-04 and the 200th session is 2016-10-17, so 79.4% OF 2016 SAT
+INSIDE THE WARMUP. That year printed -7.70% and was reported as the
+strategy's worst -- while the 34.55% benchmark it was being compared
+against really was in cash for the same window, earning 0%. The
+headline "worst year" was largely an artifact of trading a signal that
+did not exist yet.
+
+Fixed here in the way the header had only claimed: no signal until the
+window is FULL, and while there is no signal the strategy stands aside
+(calculate_trade_value returns 0, which the engine's `trade_value > 0`
+gate turns into no trade). --trade-during-warmup restores the old
+behaviour so the size of the artifact stays visible rather than being
+quietly corrected away.
 """
 
 from __future__ import annotations
@@ -90,6 +112,7 @@ class RegimeSwitched(HighFrequencyLocalReferenceSizing):
         *args,
         regime_days: int = 200,
         daily_signal: bool = False,
+        stand_aside_until_warm: bool = True,
         bull_step: float = 0.01,
         bear_step: float = 0.10,
         max_mult: float = 400.0,
@@ -111,6 +134,7 @@ class RegimeSwitched(HighFrequencyLocalReferenceSizing):
         self._regime_mean = RollingMean(
             max(2, regime_days if daily_signal else regime_days * self.bars_per_day)
         )
+        self.stand_aside_until_warm = stand_aside_until_warm
         self._session: object | None = None
         self._prior_close: float | None = None
         self._price_peak: float | None = None
@@ -134,16 +158,14 @@ class RegimeSwitched(HighFrequencyLocalReferenceSizing):
             elif session != self._session:
                 self._session = session
                 if self._prior_close is not None:
-                    average = self._regime_mean.value
-                    self._is_bull = average is not None and self._prior_close > average
+                    self._is_bull = self._read_regime(self._prior_close)
                     self._regime_mean.update(self._prior_close)
             self._prior_close = price
         else:
             # Read the regime BEFORE folding this bar in, so the average
             # is strictly of prior bars and cannot contain the price it
             # judges.
-            average = self._regime_mean.value
-            self._is_bull = average is not None and price > average
+            self._is_bull = self._read_regime(price)
             self._regime_mean.update(price)
         # Latch the EDGE, not the level. Liquidating on every bear bar
         # would re-condemn each lot the deep-dip leg opens on the way
@@ -151,6 +173,28 @@ class RegimeSwitched(HighFrequencyLocalReferenceSizing):
         # Only the transition closes the book.
         self._flipped_to_bear = was_bull and not self._is_bull
         self._price_peak = price if self._price_peak is None else max(self._price_peak, price)
+
+    @property
+    def _warm(self) -> bool:
+        """True once the average is over a FULL window.
+
+        RollingMean.value is a partial mean before that, not None, so
+        this is the only honest warmth test -- see the header.
+        """
+        return self._regime_mean.count >= self._regime_mean.window
+
+    def _read_regime(self, price: float) -> bool:
+        """Bull/bear from `price` against the prior average.
+
+        Reads BEAR while cold. That is what the header always claimed
+        and what the benchmark actually does; combined with
+        stand_aside_until_warm it means no position rather than a short
+        one, since this strategy has no short leg.
+        """
+        if not self._warm and self.stand_aside_until_warm:
+            return False
+        average = self._regime_mean.value
+        return average is not None and price > average
 
     def _grid_trigger_level(self, context, last_buy_price: float, step: float) -> float:
         """Regime decides how far price must fall before a buy fires.
@@ -175,6 +219,11 @@ class RegimeSwitched(HighFrequencyLocalReferenceSizing):
         return list(open_lots) if self._flipped_to_bear else []
 
     def calculate_trade_value(self, context) -> float:
+        # No signal, no position. The engine's `trade_value > 0` gate
+        # turns a zero into no trade at all, which is what the 34.55%
+        # benchmark does for its own first 200 sessions.
+        if self.stand_aside_until_warm and not self._warm:
+            return 0.0
         base = super().calculate_trade_value(context)
         if self._is_bull or not self._price_peak:
             return base
@@ -185,7 +234,17 @@ class RegimeSwitched(HighFrequencyLocalReferenceSizing):
 
 
 def run(
-    controller, cfg, *, cap, bull_step, bear_step, per_lot, max_mult, target, daily_signal=False
+    controller,
+    cfg,
+    *,
+    cap,
+    bull_step,
+    bear_step,
+    per_lot,
+    max_mult,
+    target,
+    daily_signal=False,
+    stand_aside_until_warm=True,
 ):
     params = dict(cfg.strategy.strategy_params)
     params.update(
@@ -196,6 +255,7 @@ def run(
         dd_ref=0.75,
         regime_days=200,
         daily_signal=daily_signal,
+        stand_aside_until_warm=stand_aside_until_warm,
     )
     summary, full = controller.run_sweep(
         grid_steps=[bear_step],  # ignored by the override; kept for the results row
@@ -216,7 +276,7 @@ def run(
     return row, yearly
 
 
-def _print_row(controller, cfg, bull_step, cap, daily_signal):
+def _print_row(controller, cfg, bull_step, cap, daily_signal, warm_gate):
     row, yearly = run(
         controller,
         cfg,
@@ -227,6 +287,7 @@ def _print_row(controller, cfg, bull_step, cap, daily_signal):
         max_mult=400.0,
         target=0.04,
         daily_signal=daily_signal,
+        stand_aside_until_warm=warm_gate,
     )
     y2022 = yearly[[i.year == 2022 for i in yearly.index]].iloc[0]
     print(
@@ -238,9 +299,22 @@ def _print_row(controller, cfg, bull_step, cap, daily_signal):
     print("       " + "  ".join(f"{ts.year}:{v:+.1f}%" for ts, v in yearly.items()))
 
 
+BLOCKS = (
+    # label, daily_signal, stand_aside_until_warm
+    ("regime read every minute, traded through warmup (the original)", False, False),
+    ("regime read once per session, traded through warmup", True, False),
+    ("regime read once per session, STANDS ASIDE until warm", True, True),
+)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Integrated regime-switched backtest.")
     parser.add_argument("--quiet", action="store_true", default=True)
+    parser.add_argument(
+        "--trade-during-warmup",
+        action="store_true",
+        help="Also run the pre-fix variants that traded a partial moving average.",
+    )
     args = parser.parse_args(argv)
     if args.quiet:
         logging.disable(logging.WARNING)
@@ -251,16 +325,16 @@ def main(argv=None) -> int:
 
     print("ONE ledger. Signal exits ON: the book is closed at every bull->bear flip.")
     print("Benchmark to beat: 34.55% CAGR / -19.8% worst year (SMA200-else-cash).")
-    for daily_signal in (False, True):
-        cadence = "once per session" if daily_signal else "every minute"
-        print(f"\n--- regime evaluated {cadence} ---")
+    blocks = BLOCKS if args.trade_during_warmup else BLOCKS[-1:]
+    for label, daily_signal, warm_gate in blocks:
+        print(f"\n--- {label} ---")
         print(
             f"{'bull':>6} {'bear':>6} {'cap':>5} {'CAGR':>8} {'maxDD':>7} {'worst':>8} "
             f"{'neg':>6} {'2022':>8} {'exits':>7}"
         )
         for bull_step in (0.005, 0.02):
             for cap in (0.50, 1.00):
-                _print_row(controller, cfg, bull_step, cap, daily_signal)
+                _print_row(controller, cfg, bull_step, cap, daily_signal, warm_gate)
     return 0
 
 
