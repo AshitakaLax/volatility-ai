@@ -225,6 +225,19 @@ class ExecutionConfig:
     #
     # Defaults False, which reproduces every recorded result exactly.
     allow_signal_exit: bool = False
+    # Sessions between a sale and its proceeds becoming spendable.
+    #
+    # 0 (default) is instant redeployment, which is what every recorded
+    # result in this project was produced with. 1 is T+1, which is what
+    # a CASH account actually imposes -- and the target deployment is
+    # one: a Fidelity Traditional IRA, where buying with unsettled
+    # proceeds is a good-faith violation.
+    #
+    # This does not model the violation RULE, it models the CASH. A
+    # strategy that cannot fund a buy simply does not make it, which is
+    # the conservative direction and the one that reveals how much of a
+    # result depended on money that would not have been there.
+    settlement_days: int = 0
 
 
 @dataclass(frozen=True)
@@ -463,6 +476,7 @@ class BacktestConfig:
             fill_model=execution_data.get("fill_model", "close"),
             enforce_no_loss=bool(execution_data.get("enforce_no_loss", True)),
             allow_signal_exit=bool(execution_data.get("allow_signal_exit", False)),
+            settlement_days=int(execution_data.get("settlement_days", 0)),
         )
 
         output_data = data.get("output", {})
@@ -543,6 +557,9 @@ class BacktestConfig:
             self.costs.model_type,
             ("zero", "slippage_commission", "dynamic_slippage"),
             "costs.model_type",
+        )
+        validate_non_negative(
+            self.execution.settlement_days, "execution.settlement_days"
         )
         validate_non_negative(self.costs.commission_per_trade, "costs.commission_per_trade")
         validate_non_negative(self.costs.slippage_bps, "costs.slippage_bps")
@@ -685,7 +702,9 @@ class BacktestConfig:
                 "fill_model": self.execution.fill_model,
                 "enforce_no_loss": self.execution.enforce_no_loss,
             "allow_signal_exit": self.execution.allow_signal_exit,
+            "settlement_days": self.execution.settlement_days,
                 "allow_signal_exit": self.execution.allow_signal_exit,
+                "settlement_days": self.execution.settlement_days,
             },
             "output": {"return_full_results": self.output.return_full_results},
             "live": {

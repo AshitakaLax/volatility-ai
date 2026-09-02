@@ -73,6 +73,62 @@ class BacktestState:
         self.peak_equity = initial_cash
         self.max_drawdown = 0.0
 
+        # T+N SETTLEMENT. `cash` stays TOTAL cash so equity is unaffected
+        # -- unsettled proceeds are really yours, they just cannot be
+        # spent yet. `unsettled` is the part of it that has not settled,
+        # and buying_power is the difference.
+        #
+        # This models the constraint a CASH ACCOUNT actually imposes, and
+        # the target deployment is one: a Traditional IRA where proceeds
+        # settle T+1 and buying with unsettled funds is a good-faith
+        # violation. Every recorded result in this project was produced
+        # with settlement_days=0, i.e. assuming proceeds redeploy
+        # instantly -- across roughly 2,000 trades a year.
+        self.unsettled = 0.0
+        self._pending: list[tuple[int, float]] = []
+        self.session = 0
+
+    @property
+    def buying_power(self) -> float:
+        """Cash that can actually be spent right now.
+
+        Floored at zero rather than allowed negative: a buy debits total
+        cash while unsettled is unchanged, so cash can legitimately fall
+        below unsettled. That means "nothing spendable", not "negative
+        spendable", and letting it go negative would silently invert
+        comparisons at the buy gate.
+        """
+        return max(0.0, self.cash - self.unsettled)
+
+    def credit_sale(self, amount: float, settlement_days: int) -> None:
+        """Book sale proceeds, settling `settlement_days` sessions later."""
+        self.cash += amount
+        if settlement_days <= 0:
+            return
+        self.unsettled += amount
+        # session is a day ORDINAL, so maturity is an ordinal too. A
+        # weekend or holiday between the trade and its settlement date
+        # therefore settles it on the next day PRESENT IN THE DATA rather
+        # than on a calendar day that never trades, because
+        # advance_session only fires on days the loop actually sees.
+        self._pending.append((self.session + settlement_days, amount))
+
+    def advance_session(self, session: int) -> None:
+        """Move to a new trading session and settle what has matured."""
+        self.session = session
+        if not self._pending:
+            return
+        still_pending = []
+        for settles_on, amount in self._pending:
+            if settles_on <= session:
+                self.unsettled -= amount
+            else:
+                still_pending.append((settles_on, amount))
+        self._pending = still_pending
+        # Floating-point residue only; a real imbalance would be a bug.
+        if not self._pending:
+            self.unsettled = 0.0
+
 
 def _resolve_search_strategy(
     search_strategy,
@@ -162,6 +218,7 @@ def _run_one_combination(
     intrabar_priority: str = "sell_first",
     enforce_no_loss: bool = True,
     allow_signal_exit: bool = False,
+    settlement_days: int = 0,
 ):
     """
     Task 4.5. Module-level (not a method) so it, and everything passed
@@ -228,6 +285,7 @@ def _run_one_combination(
             fill_model=fill_model,
             enforce_no_loss=enforce_no_loss,
             allow_signal_exit=allow_signal_exit,
+            settlement_days=settlement_days,
             intrabar_priority=intrabar_priority,
         )
         # Strategy is identified by name rather than by the config's
@@ -535,6 +593,7 @@ class OptimizationController:
         intrabar_priority: str = "sell_first",
         enforce_no_loss: bool = True,
         allow_signal_exit: bool = False,
+        settlement_days: int = 0,
     ) -> SimulationResult:
         """
         Task 4.1. One isolated combination: fresh AssetLotLedger and
@@ -633,6 +692,21 @@ class OptimizationController:
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp = row.Index
             current_price = row.close
+
+            # SESSION BOUNDARY, for T+N settlement only. Guarded on the
+            # flag so the default path pays one integer comparison per
+            # bar rather than a date extraction over ~1M bars -- the
+            # same discipline wants_lot_retargeting exists for.
+            #
+            # Counts CALENDAR days present in the data, not sessions in
+            # the exchange sense. On a continuous minute series those are
+            # the same thing for settlement purposes: what matters is
+            # that a sale on one trading day is spendable on the next
+            # one, and a day absent from the data cannot host a trade.
+            if settlement_days > 0:
+                day = timestamp.toordinal()
+                if day != state.session:
+                    state.advance_session(day)
 
             # Peaks/drawdown every bar (B3), before constructing context,
             # since MarketContext.equity/peak_equity/drawdown need this
@@ -785,7 +859,7 @@ class OptimizationController:
                     lot's economics. Binding removes that failure mode
                     outright instead of relying on the caller's timing.
                     """
-                    state.cash += net_sell_proceeds
+                    state.credit_sale(net_sell_proceeds, settlement_days)
                     ledger.close_lot(lot)
                     if sell_reason is SellReason.SIGNAL_EXIT:
                         signal_exit_count[0] += 1
@@ -819,7 +893,12 @@ class OptimizationController:
             if fill_model == "close":
                 buy_fill_price = context.price
                 decision = decision_cycle.evaluate_grid_decision(
-                    strategy_instance, risk_manager, context, state.last_buy_price, step, state.cash
+                    strategy_instance,
+                    risk_manager,
+                    context,
+                    state.last_buy_price,
+                    step,
+                    state.buying_power,
                 )
             else:
                 trigger_level = strategy_instance._grid_trigger_level(
@@ -842,7 +921,7 @@ class OptimizationController:
             if decision.triggered:
                 trade_value = decision.clamped_trade_value
 
-                if state.cash >= trade_value and trade_value > 0:
+                if state.buying_power >= trade_value and trade_value > 0:
                     order = oms.execute_buy(symbol, trade_value, buy_fill_price)
                     if order.get("status") != OrderStatus.FILLED:
                         logger.warning(f"Buy not filled: status={order.get('status')}")
@@ -1019,6 +1098,7 @@ class OptimizationController:
             "fill_model": fill_model,
             "enforce_no_loss": enforce_no_loss,
             "allow_signal_exit": allow_signal_exit,
+            "settlement_days": settlement_days,
             # Underscore-prefixed attributes are excluded deliberately.
             # The intent above is "the strategy's own constructor-derived
             # attributes"; a stateful strategy's rolling indicator state
@@ -1050,6 +1130,7 @@ class OptimizationController:
         intrabar_priority: str = "sell_first",
         enforce_no_loss: bool = True,
         allow_signal_exit: bool = False,
+        settlement_days: int = 0,
         symbol: str = "TQQQ",
         initial_cash: float = 100_000.0,
         n_jobs: int = 1,
@@ -1188,6 +1269,7 @@ class OptimizationController:
                     intrabar_priority,
                     enforce_no_loss,
                     allow_signal_exit,
+                    settlement_days,
                 )
                 resolved_search_strategy.report(suggestion, sim_result)
                 results.append(row)
@@ -1235,6 +1317,7 @@ class OptimizationController:
                             intrabar_priority,
                             enforce_no_loss,
                             allow_signal_exit,
+                            settlement_days,
                         ): s
                         for s in batch
                     }
