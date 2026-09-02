@@ -439,8 +439,15 @@ def test_a_sell_below_cost_basis_is_never_booked(store):
     assert len(loop.ledger.open_lots) == 1, "the lot must stay open"
 
 
-def test_nothing_in_this_module_can_force_a_liquidation(store):
-    """Structural: a halt must not sell anything."""
+def test_a_halt_never_liquidates(store):
+    """A halt stops trading; it does not unwind the book.
+
+    Renamed from test_nothing_in_this_module_can_force_a_liquidation.
+    That name outlived its truth: signal exits mean a STRATEGY can now
+    force one (see the signal-exit tests below). What this actually
+    asserted, and still asserts, is narrower and unaffected -- the
+    circuit breaker is not a liquidation trigger.
+    """
     broker = FakeBroker()
     market = FakeMarketData()
     loop = _loop_with_an_open_lot(store, broker, market)
@@ -536,3 +543,129 @@ def test_in_flight_settled_reports_outstanding_orders(store):
     market.push(98.0, ts=BASE_TS + timedelta(minutes=1))
     loop.run_once()
     assert loop.in_flight_settled() is False, "a submitted order is still in flight"
+
+
+# --- signal exits, end to end through the live loop ---
+#
+# The backtest decides and fills within one bar; live splits that across
+# ticks, so the REASON a sell was submitted has to survive the gap on
+# _TrackedOrder. These exercise the whole path -- _harvest submits, the
+# broker fills later, _apply_sell_fill books it -- rather than asserting
+# that the source contains the right function names, which is all
+# tests/unit/test_signal_exit.py can do for this module.
+#
+# This is the path that spends real money, so the negative cases come
+# first.
+
+
+class _LiquidatesBelow(FixedPortfolioPercentage):
+    """Asks to close every open lot once price drops under `trip`.
+
+    A trip price rather than "always", so the setup ticks that OPEN the
+    lot do not also condemn it. The first version of this had no trip
+    and fired during setup, which made three tests below pass while
+    measuring a bar other than the one they named.
+    """
+
+    def __init__(self, *args, trip=95.0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.trip = trip
+
+    def lots_to_liquidate(self, open_lots, context):
+        return list(open_lots) if context.price < self.trip else []
+
+
+def _liquidating_loop(store, broker, market, *, allow, buy_price=98.0, qty=10.0):
+    """An open lot, held by a strategy that wants out below 95, under a
+    config that either permits signal exits or does not.
+
+    Returns with the lot open, nothing condemned, and no sell in flight
+    -- every setup tick runs at buy_price (98), above the trip.
+    """
+    config = make_config()
+    object.__setattr__(config.execution, "allow_signal_exit", allow)
+    market.push(100.0)
+    loop = make_loop(store, broker, market, config=config,
+                     strategy=_LiquidatesBelow(allocation_pct=0.05))
+    loop.run_once()
+    market.push(buy_price, ts=BASE_TS + timedelta(minutes=1))
+    loop.run_once()
+    _, _, cid = broker.buys[0]
+    broker.fill(cid, qty=qty, price=buy_price)
+    market.push(buy_price, ts=BASE_TS + timedelta(minutes=2))
+    loop.run_once()
+    assert broker.sells == [], "setup must not have condemned anything yet"
+    return loop
+
+
+def test_a_strategy_wanting_out_sells_nothing_without_the_config_flag(store):
+    """The gate, in the place where it costs money to be wrong."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    loop = _liquidating_loop(store, broker, market, allow=False)
+
+    market.push(90.0, ts=BASE_TS + timedelta(minutes=3))  # well below basis
+    outcome = loop.run_once()
+
+    assert broker.sells == [], "no config flag, no signal exit"
+    assert outcome.sells_submitted == 0
+    assert len(loop.ledger.open_lots) == 1
+
+
+def test_a_signal_exit_is_submitted_at_the_market_not_the_lot_target(store):
+    """An exit resting above the market would not fill, which is the one
+    outcome a 'get me out' instruction must not have."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    loop = _liquidating_loop(store, broker, market, allow=True)
+    lot = loop.ledger.open_lots[0]
+
+    market.push(90.0, ts=BASE_TS + timedelta(minutes=3))
+    outcome = loop.run_once()
+
+    assert outcome.sells_submitted == 1
+    symbol, qty, price, _cid = broker.sells[0]
+    assert symbol == "TQQQ"
+    assert qty == lot.shares
+    assert price == 90.0, "priced at the current bar, not the lot's target"
+    assert price < lot.target_sell_price
+
+
+def test_a_signal_exit_books_the_loss_that_a_harvest_would_refuse(store):
+    """The end-to-end claim. The identical fill is refused as a harvest
+    (test_a_sell_below_cost_basis_is_never_booked, 50.0 against a 98.0
+    basis) and accepted as a signal exit -- so this pins the REASON as
+    the thing that decides, not the price."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    loop = _liquidating_loop(store, broker, market, allow=True)
+    cash_before = loop.state.cash
+
+    market.push(90.0, ts=BASE_TS + timedelta(minutes=3))
+    loop.run_once()
+    _, qty, _, sell_cid = broker.sells[0]
+    broker.fill(sell_cid, qty=qty, price=90.0)  # 8.00/share below basis
+
+    market.push(90.0, ts=BASE_TS + timedelta(minutes=4))
+    loop.run_once()
+
+    assert loop.ledger.open_lots == [], "the lot must actually close"
+    assert loop.state.cash == pytest.approx(cash_before + qty * 90.0), (
+        "proceeds credited at the real fill price, loss and all"
+    )
+
+
+def test_a_lot_with_a_sell_in_flight_is_not_condemned_twice(store):
+    """A resting order plus a signal exit would be two sells against one
+    position."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    loop = _liquidating_loop(store, broker, market, allow=True)
+
+    market.push(90.0, ts=BASE_TS + timedelta(minutes=3))
+    loop.run_once()
+    assert len(broker.sells) == 1
+
+    market.push(89.0, ts=BASE_TS + timedelta(minutes=4))
+    loop.run_once()
+    assert len(broker.sells) == 1, "the in-flight lot must not be re-offered"
