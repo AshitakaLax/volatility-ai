@@ -349,10 +349,18 @@ def report(result: dict, args: argparse.Namespace) -> None:
     else:
         print(
             "  (no WebSocket connections in this capture)\n"
-            "  Note this says nothing on its own if the export came from Firefox,\n"
-            "  which omits WebSocket entries. It is also only meaningful if you\n"
-            "  exercised a page that opens one -- a quote stream usually starts on a\n"
-            "  trade ticket, not a portfolio summary."
+            "  THIS IS NOT EVIDENCE OF ABSENCE, whichever browser exported it.\n"
+            "  Firefox omits WebSocket entries from a HAR entirely. Chrome/Edge\n"
+            "  DevTools ('WebInspector') shows WS traffic in the Network panel but\n"
+            "  does not reliably serialise frames into the export either, so a\n"
+            "  capture with no ws:// entries and no _webSocketMessages is equally\n"
+            "  consistent with 'no socket was opened' and 'the export dropped it'.\n"
+            "  This tool cannot tell those apart -- do not let it be read as a\n"
+            "  finding, which is a mistake this project has already made once.\n"
+            "  It is also only meaningful if you exercised a page that opens one:\n"
+            "  a quote stream usually starts on a trade ticket, not a summary.\n"
+            "  Settle it with fidelity_recon.py --cdp-url, which registers\n"
+            "  page.on('websocket') and records frames directly."
         )
 
     print(f"\n-- Endpoints, most-called first (top {args.top}) --")
