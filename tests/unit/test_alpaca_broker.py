@@ -467,3 +467,118 @@ def test_alpaca_order_still_exposes_every_field_the_snapshot_reads():
     for field in ("symbol", "qty"):
         assert field in Position.model_fields, f"snapshot() reads Position.{field}"
     assert "cash" in TradeAccount.model_fields
+
+
+# --- extended hours: the buy changes SHAPE, not just a flag -----------
+#
+# Alpaca will not execute a market order outside regular hours, and its
+# own OrderRequest docstring says notional "only works with MarketOrders"
+# and "does not work with qty". Those two facts together mean an
+# extended-hours buy cannot be notional AND cannot be a market order --
+# so enabling extended hours has to change the order the adapter builds,
+# not merely set a flag on the one it already built.
+#
+# The previous code set extended_hours on the SELL only and documented
+# the buy as impossible. The observation was right; the conclusion was
+# not.
+
+
+def _ext(**kw):
+    return broker(extended_hours=True, **kw)
+
+
+def test_a_regular_hours_buy_is_still_a_notional_market_order():
+    """The default path must not move. limit_price is accepted and
+    ignored, so callers pass it unconditionally."""
+    client = FakeClient()
+    broker(client).submit_buy("TQQQ", 100.0, client_order_id="cid", limit_price=50.0)
+    request = client.submitted[0]
+    assert request.notional == 100.0
+    assert getattr(request, "limit_price", None) is None
+    assert getattr(request, "qty", None) is None
+
+
+def test_an_extended_hours_buy_is_a_share_sized_limit_order():
+    client = FakeClient()
+    _ext(client=client).submit_buy("TQQQ", 100.0, client_order_id="cid", limit_price=20.0)
+    request = client.submitted[0]
+    assert request.qty == 5
+    assert float(request.limit_price) == 20.0
+    assert request.notional is None, "notional does not work with qty"
+    assert request.extended_hours is True
+    assert request.time_in_force.value == "day", "Alpaca requires DAY with extended_hours"
+
+
+def test_an_extended_hours_buy_without_a_limit_price_is_refused():
+    """THE IMPORTANT REFUSAL. Falling back to a market order would build
+    an order the venue rejects at 4:30pm, and the deployment would look
+    like it was trading extended hours while placing nothing."""
+    client = FakeClient()
+    with pytest.raises(ConfigurationError, match="no limit_price"):
+        _ext(client=client).submit_buy("TQQQ", 100.0, client_order_id="cid")
+    assert client.submitted == [], "nothing may reach the venue"
+
+
+def test_the_buy_limit_floors_so_the_cost_basis_never_rises():
+    """Mirror of the sell limit's ceiling, for the same invariant. A buy
+    fill BECOMES the cost basis every later sell is validated against,
+    so rounding a buy limit up would raise the bar the lot must clear."""
+    client = FakeClient()
+    _ext(client=client).submit_buy("TQQQ", 100.0, client_order_id="cid", limit_price=20.999)
+    assert float(client.submitted[0].limit_price) == 20.99
+
+
+def test_the_share_count_floors_so_cost_stays_inside_the_budget():
+    """trade_value is RiskManager's approved ceiling; the order may cost
+    less than it, never more."""
+    client = FakeClient()
+    _ext(client=client).submit_buy("TQQQ", 100.0, client_order_id="cid", limit_price=30.0)
+    request = client.submitted[0]
+    assert request.qty == 3
+    assert request.qty * float(request.limit_price) <= 100.0
+
+
+def test_an_extended_hours_buy_is_whole_shares_never_fractional():
+    """Fractional trading is a regular-hours facility at Alpaca. Sizing
+    to whole shares here beats discovering it as a venue rejection."""
+    client = FakeClient()
+    _ext(client=client).submit_buy("TQQQ", 100.0, client_order_id="cid", limit_price=30.0)
+    assert float(client.submitted[0].qty).is_integer()
+
+
+def test_a_budget_too_small_for_one_share_says_so_rather_than_rounding_to_zero():
+    client = FakeClient()
+    with pytest.raises(ValueError, match="one whole share"):
+        _ext(client=client).submit_buy("TQQQ", 10.0, client_order_id="cid", limit_price=20.0)
+    assert client.submitted == []
+
+
+def test_extended_hours_still_reaches_the_sell_side():
+    """The flag's original job has not been lost in the rework."""
+    client = FakeClient()
+    _ext(client=client).submit_sell("TQQQ", 2.0, 25.0, client_order_id="cid")
+    assert client.submitted[0].extended_hours is True
+
+
+@pytest.mark.parametrize("bad", [0.0, -1.0])
+def test_a_non_positive_limit_price_is_refused(bad):
+    client = FakeClient()
+    with pytest.raises(ValueError, match="limit_price must be positive"):
+        _ext(client=client).submit_buy("TQQQ", 100.0, client_order_id="cid", limit_price=bad)
+    assert client.submitted == []
+
+
+def test_extended_hours_comes_from_the_deployment_config_not_a_caller_kwarg():
+    """It changes the SHAPE of every buy, so the file that describes the
+    deployment must be what decides it."""
+    from types import SimpleNamespace
+
+    from src.broker_selection import build_broker
+
+    config = SimpleNamespace(
+        live=SimpleNamespace(
+            broker="alpaca", paper_trading=True, extended_hours=True, fidelity=None
+        )
+    )
+    built = build_broker(config, credentials=CREDS, client=FakeClient())
+    assert built.extended_hours is True

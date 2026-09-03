@@ -262,3 +262,44 @@ def test_only_the_fidelity_adapter_is_preview_only():
     alpaca_order = _alpaca().submit_buy("TQQQ", 500.0)
     assert alpaca_order.status is not None
     assert str(getattr(alpaca_order.status, "value", alpaca_order.status)) != "CREATED"
+
+
+# --- the loop's actual call shape --------------------------------------
+#
+# The five-method check above proves the methods EXIST. It does not
+# prove the loop can call them, and that gap let a real divergence
+# through: submit_buy gained a limit_price argument for extended-hours
+# Alpaca, the loop began passing it on every buy, and both Fidelity
+# adapters would have raised TypeError the first time they were driven
+# by the real loop. Every unit test still passed, because none of them
+# drives a Fidelity broker through live_trading_loop.
+
+
+@pytest.mark.parametrize("build", BUILDERS)
+def test_every_adapter_accepts_the_arguments_the_loop_passes_to_submit_buy(build):
+    """Pinned against the CALL SITE, not against a remembered signature."""
+    import inspect
+
+    from src.live_trading_loop import LiveTradingLoop
+
+    source = inspect.getsource(LiveTradingLoop._maybe_buy)
+    assert "limit_price=" in source, (
+        "the loop no longer passes limit_price; update this test to match "
+        "whatever it passes now rather than deleting it"
+    )
+    signature = inspect.signature(build().submit_buy)
+    for name in ("client_order_id", "limit_price"):
+        assert name in signature.parameters, (
+            f"submit_buy does not accept {name!r}, which live_trading_loop passes "
+            "by keyword on every buy"
+        )
+
+
+@pytest.mark.parametrize("build", BUILDERS)
+def test_a_target_buy_price_is_honoured_rather_than_ignored(build):
+    """An adapter that accepted limit_price and quietly dropped it would
+    satisfy the signature check while trading at a different price than
+    the strategy decided on."""
+    broker = build()
+    order = broker.submit_buy("TQQQ", 500.0, client_order_id="dec-lp", limit_price=25.0)
+    assert order is not None

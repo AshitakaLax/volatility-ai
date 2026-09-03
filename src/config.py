@@ -380,6 +380,12 @@ class LiveConfig:
     broker: str = "alpaca"
     fidelity: FidelityConfig | None = None
     feed: str = "iex"
+    # Eligibility for pre-market (4:00-9:30 ET) and after-hours
+    # (16:00-20:00 ET) execution. Off by default: extended-hours books
+    # are thinner, spreads wider, and every recorded backtest here was
+    # produced from regular-hours bars, so turning this on trades a
+    # session no result was measured against.
+    extended_hours: bool = False
     poll_interval_seconds: float = 60.0
     # Bounds one tick's harvest work. A tick that tried to place an
     # unbounded number of sell orders could stall past the next tick;
@@ -502,6 +508,7 @@ class BacktestConfig:
             paper_trading=live_data.get("paper_trading", True),
             step=live_data.get("step"),
             profit_target=live_data.get("profit_target"),
+            extended_hours=bool(live_data.get("extended_hours", False)),
             broker=live_data.get("broker", "alpaca"),
             fidelity=fidelity,
             feed=live_data.get("feed", "iex"),
@@ -728,6 +735,7 @@ class BacktestConfig:
                     else {}
                 ),
                 "feed": self.live.feed,
+                "extended_hours": self.live.extended_hours,
                 "poll_interval_seconds": self.live.poll_interval_seconds,
                 "max_sells_per_tick": self.live.max_sells_per_tick,
             },

@@ -296,18 +296,31 @@ class FidelityBroker:
         self._session.assert_authenticated()
 
     def submit_buy(
-        self, symbol: str, trade_value: float, client_order_id: str | None = None
+        self,
+        symbol: str,
+        trade_value: float,
+        client_order_id: str | None = None,
+        limit_price: float | None = None,
     ) -> FidelityOrder:
         """PREVIEW a buy of trade_value dollars of symbol. Submits nothing.
 
         trade_value is NOTIONAL and Fidelity is share-based, so this
-        converts using a fresh quote and rounds DOWN -- mirroring
+        converts using a price and rounds DOWN -- mirroring
         _floor_to_cent's conservative direction, so a rounding error can
         never overspend the intended amount.
+
+        limit_price is the caller's TARGET BUY PRICE and is used when
+        given, falling back to a fresh quote when it is not. Accepting
+        it is not optional politeness: the live loop passes it on every
+        buy so that an extended-hours Alpaca deployment can work, and a
+        signature that rejected it would raise TypeError the first time
+        this adapter was driven by the real loop.
         """
         if trade_value <= 0:
             raise ValueError(f"trade_value must be positive, got {trade_value}")
-        price = self.get_quote(symbol)
+        if limit_price is not None and limit_price <= 0:
+            raise ValueError(f"limit_price must be positive, got {limit_price}")
+        price = limit_price if limit_price is not None else self.get_quote(symbol)
         qty = int(trade_value // price)
         if qty < 1:
             raise ValueError(

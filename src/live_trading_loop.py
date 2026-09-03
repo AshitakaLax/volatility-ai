@@ -798,8 +798,18 @@ class LiveTradingLoop:
         decision_id = self._decision_id("BUY", context.timestamp)
         outcome = self.guard.submit_once(
             decision_id,
+            # context.price IS the target buy price -- the grid trigger
+            # fired at it. Passed unconditionally: a regular-hours
+            # notional market buy ignores it, and an extended-hours buy
+            # cannot be placed without it, so the loop stays out of the
+            # business of knowing which shape the venue will take.
             lambda cid: str(
-                self.broker.submit_buy(self.symbol, trade_value, client_order_id=cid).id
+                self.broker.submit_buy(
+                    self.symbol,
+                    trade_value,
+                    client_order_id=cid,
+                    limit_price=context.price,
+                ).id
             ),
             event_kind="buy_submission",
         )
