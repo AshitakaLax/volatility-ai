@@ -337,16 +337,26 @@ class FidelityPlacingBroker(FidelityBroker):
     # -- the LiveBroker surface, now actually submitting ----------------
 
     def submit_buy(
-        self, symbol: str, trade_value: float, client_order_id: str | None = None
+        self,
+        symbol: str,
+        trade_value: float,
+        client_order_id: str | None = None,
+        limit_price: float | None = None,
     ) -> FidelityOrder:
+        """Place a buy. limit_price is the caller's target buy price;
+        without one a fresh quote is used. Same signature as the preview
+        adapter and as AlpacaBroker, because the live loop calls all
+        three through one interface."""
         if trade_value <= 0:
             raise ValueError(f"trade_value must be positive, got {trade_value}")
+        if limit_price is not None and limit_price <= 0:
+            raise ValueError(f"limit_price must be positive, got {limit_price}")
         if not client_order_id:
             raise ValueError(
                 "client_order_id is required when placing a real order: it is the "
                 "decision_id the journal and reconciliation key on."
             )
-        price = self.get_quote(symbol)
+        price = limit_price if limit_price is not None else self.get_quote(symbol)
         qty = int(trade_value // price)
         if qty < 1:
             raise ValueError(

@@ -80,6 +80,12 @@ def build_broker(
             )
         from src.alpaca_broker import AlpacaBroker
 
+        # extended_hours comes from config rather than being left to a
+        # caller's kwargs. It changes the SHAPE of every buy (share-sized
+        # limit instead of notional market), so a deployment that means
+        # to trade extended hours must say so in the file that describes
+        # the deployment, not in whatever happened to construct it.
+        alpaca_kwargs.setdefault("extended_hours", config.live.extended_hours)
         return AlpacaBroker(credentials, paper=config.live.paper_trading, **alpaca_kwargs)
 
     return _build_fidelity(config, fidelity_session)
