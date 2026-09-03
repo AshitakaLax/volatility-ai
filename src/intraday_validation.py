@@ -59,10 +59,11 @@ from src.cost_models import TransactionCostModel, ZeroCostModel
 from src.earnings_calendar import is_earnings_reaction_day_at
 from src.exceptions import DataValidationError
 from src.fomc_calendar import is_fomc_day_at
+from src.implied_vol_signal import change_at
 from src.intraday_profile import minutes_since_open
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext
-from src.no_loss_guard import NoLossViolation, validate_sell
+from src.no_loss_guard import NoLossViolation, SellReason, validate_sell
 from src.order_management_system import OrderManagementSystem, OrderStatus
 from src.performance_analyzer import PerformanceAnalyzer
 
@@ -99,6 +100,8 @@ def simulate_single_intraday(
     cost_model: TransactionCostModel = None,
     intrabar_priority: Literal["sell_first", "buy_first"] = "sell_first",
     initial_cash: float = 100_000.0,
+    implied_vol_path: str | None = None,
+    allow_signal_exit: bool = False,
 ) -> dict:
     """One finalist combination, re-simulated bar-by-bar against
     minute data. Fill-status validation (Task 1.5), the no-loss
@@ -131,11 +134,26 @@ def simulate_single_intraday(
     except (FileNotFoundError, DataValidationError):
         event_table = None
 
+    # Same reasoning as the event table directly above: this path must
+    # not see a blinder market than the sweep does. Defaults to None ->
+    # an exact no-op, so an existing caller is unaffected.
+    implied_vol_series = None
+    if implied_vol_path:
+        try:
+            from src.implied_vol_signal import load_implied_vol_change
+
+            implied_vol_series = load_implied_vol_change(implied_vol_path)
+        except (FileNotFoundError, DataValidationError):
+            implied_vol_series = None
+
     start_price = intraday_data["close"].iloc[0]
     cash = initial_cash
     last_buy_price = start_price
     peak_equity = initial_cash
     max_drawdown = 0.0
+    # Boxed for the nested _harvest_check to mutate, matching the daily
+    # path's accumulator.
+    signal_exits = [0]
 
     def _harvest_check(context: MarketContext) -> None:
         """Sell any lot whose target the bar's HIGH reached.
@@ -150,8 +168,28 @@ def simulate_single_intraday(
         # in the sequence. No-op unless the strategy overrides the hook.
         decision_cycle.adjust_open_lot_targets(sizing_engine, ledger, context)
         marketable = [lot for lot in ledger.open_lots if context.high >= lot.target_sell_price]
-        for lot in marketable:
-            exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
+
+        # Signal exits, through the same shared helper for the same
+        # reason. Empty unless config permits AND the strategy asks, so
+        # this pass reproduces prior results exactly.
+        #
+        # Fills at context.price, not context.high, deliberately. The
+        # high is the right probe for a RESTING limit order -- the whole
+        # premise of this pass -- but a signal exit is not resting; it is
+        # decided on this bar and sold on this bar, and filling it at the
+        # bar's best price would hand the strategy a high it had no order
+        # standing to capture.
+        liquidations = decision_cycle.collect_liquidations(
+            sizing_engine, ledger, context, allow_signal_exit=allow_signal_exit
+        )
+        exits = [(lot, context.price, SellReason.SIGNAL_EXIT) for lot in liquidations]
+        if liquidations:
+            condemned = {lot.order_id for lot in liquidations}
+            marketable = [lot for lot in marketable if lot.order_id not in condemned]
+        exits.extend((lot, lot.target_sell_price, SellReason.PROFIT_TARGET) for lot in marketable)
+
+        for lot, sell_price, sell_reason in exits:
+            exec_res = oms.execute_sell(lot.symbol, lot.shares, sell_price)
             if exec_res.get("status") != OrderStatus.FILLED:
                 logger.warning(
                     f"[intraday] Sell not filled for lot {lot.order_id}: status={exec_res.get('status')}"
@@ -164,12 +202,14 @@ def simulate_single_intraday(
             # the comparison.
             try:
                 economics = validate_sell(
-                    lot, filled_qty, filled_price, cost_model, context=context
+                    lot, filled_qty, filled_price, cost_model, context=context, reason=sell_reason
                 )
             except NoLossViolation:
                 continue  # already logged by the guard
             cash += economics.net_sell_proceeds
             ledger.close_lot(lot)
+            if sell_reason is SellReason.SIGNAL_EXIT:
+                signal_exits[0] += 1
 
     def _trigger_check(context: MarketContext) -> None:
         """Buy if the bar's LOW reached the grid trigger level.
@@ -236,6 +276,7 @@ def simulate_single_intraday(
             volume=float(row.get("volume", 0.0) or 0.0),
             event_intensity=event_intensity,
             minutes_to_event=minutes_to_event,
+            implied_vol_change=change_at(implied_vol_series, timestamp),
         )
 
         sizing_engine.record_tick(context)
@@ -253,4 +294,5 @@ def simulate_single_intraday(
 
     metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, initial_cash)
     metrics["Max Drawdown %"] = max_drawdown * 100.0
+    metrics["Signal Exit Count"] = signal_exits[0]
     return metrics

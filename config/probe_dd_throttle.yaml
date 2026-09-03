@@ -1,0 +1,54 @@
+# Probe: does sizing DOWN into an already-deep drawdown help this
+# strategy, using the new dd_throttle_start/full/floor levers on
+# HighFrequencyLocalReferenceSizing (see src/high_frequency_sizing.py's
+# module docstring, "dd_throttle_start / dd_throttle_full /
+# dd_throttle_floor" section)?
+#
+# Motivation: max drawdown has sat at 73-82% across essentially every
+# sweep run against this strategy on the full dataset -- vol scaling,
+# volume scaling, wide targets, Bayesian comparisons, and every trailing-
+# target variant (config/retune_trailing_v3.yaml and predecessors) all
+# land in that band. Nothing tried so far reacts to the drawdown itself,
+# only to local vol/volume/calendar signals. This is that lever.
+#
+# Baseline to beat (already recorded, NOT re-run here --
+# config/retune_uniform_extended_v2.yaml, target=1.00, trail_pct=null):
+#   38.605871% CAGR, 82.367648% max DD, 19402 trades, Return/Drawdown 37.45
+#
+# Every strategy param below is held EXACTLY at that champion
+# configuration; only the three new dd_throttle_* knobs vary, so any
+# difference in outcome is attributable to the throttle alone.
+#
+# 3 starts x 2 fulls x 2 floors = 12 combinations, same order of
+# magnitude as retune_trailing_v3's 12-combo probe. A wider sweep is
+# the natural follow-up once this narrows down which region (if any)
+# is worth exploring further -- this is a first probe, not a final
+# search.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 960
+    per_lot_pct: 0.001
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    weighted_event_boost_multiplier: 2.5
+    dd_throttle_start: [0.20, 0.35, 0.50]
+    dd_throttle_full: [0.65, 0.85]
+    dd_throttle_floor: [0.0, 0.30]
+grid:
+  steps: [0.00075]
+  profit_targets: [1.00]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: CAGR %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}

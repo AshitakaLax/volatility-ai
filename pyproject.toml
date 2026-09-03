@@ -53,6 +53,22 @@ ignore = [
 # optimization_controller.py are held to the rule and are C408-clean.
 "tests/**" = ["C408"]
 
+# tools/ and the root-level scripts put the repo root on sys.path before
+# importing anything from src/, because they are run BOTH as
+# `python tools/x.py` (which puts tools/ on the path, not the root) and
+# imported as `tools.x`. That bootstrap is executable code, so every
+# subsequent import is by definition not at the top of the file.
+#
+# This is an exemption for a real constraint, not an unaddressed finding:
+# src/ and optimization_controller.py have no bootstrap and are held to
+# the rule. The alternative -- a sitecustomize, or a package __init__ that
+# only works under `python -m` -- breaks one of the two ways these are run.
+"tools/**" = ["E402"]
+"analyze_har.py" = ["E402"]
+"analyze_annual.py" = ["E402"]
+"resample_uniform.py" = ["E402"]
+"run_hf_sweep.py" = ["E402"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["src", "optimization_controller"]
 

@@ -150,6 +150,12 @@ class DownloadReport:
     dropped_duplicates: int
     path: Path
     sha256: str
+    # Bars flagged by validate() as possibly unadjusted -- see
+    # src/data_validation.ValidationReport. Empty for a clean download.
+    # Recorded rather than only logged because the warning it comes from
+    # is, by this module's own admission above, one that "scrolls past
+    # unread in a sweep printing hundreds of lines".
+    suspect_bars: tuple = ()
 
 
 def _require_alpaca_data():
@@ -175,18 +181,40 @@ def _require_alpaca_data():
     )
 
 
+def validate_timeframe(text: str) -> None:
+    """Check a timeframe string against the closed set. PURE -- no SDK.
+
+    Split out from parse_timeframe deliberately. The vocabulary is this
+    project's own (_TIMEFRAMES, a module-level dict), so deciding whether
+    a string is valid needs nothing installed; only BUILDING alpaca-py's
+    TimeFrame object does.
+
+    That distinction is not academic. parse_timeframe used to call
+    _require_alpaca_data() BEFORE the membership check, so rejecting
+    "1Fortnight" first imported alpaca.data -> alpaca.trading.stream ->
+    asyncio -> asyncio.windows_events -> _overlapped, i.e. it initialised
+    WINSOCK to tell a user they had typed a bad string. In a restricted
+    environment that import fails, and the argument error surfaced as a
+    transport error with a different exit code -- so whether a typo was
+    diagnosed correctly depended on network stack availability.
+    """
+    if text not in _TIMEFRAMES:
+        raise ConfigurationError(
+            f"Unknown timeframe {text!r}. Valid values: {', '.join(sorted(_TIMEFRAMES))}"
+        )
+
+
 def parse_timeframe(text: str):
     """Map a CLI timeframe string to an alpaca-py TimeFrame.
 
     A closed set rather than free-form parsing: an unrecognized string
     should fail immediately with the valid options, not reach the API
     and come back as an opaque 422.
+
+    Validates BEFORE importing the SDK -- see validate_timeframe.
     """
+    validate_timeframe(text)
     *_, TimeFrame, TimeFrameUnit = _require_alpaca_data()
-    if text not in _TIMEFRAMES:
-        raise ConfigurationError(
-            f"Unknown timeframe {text!r}. Valid values: {', '.join(sorted(_TIMEFRAMES))}"
-        )
     amount, unit = _TIMEFRAMES[text]
     return TimeFrame(amount, getattr(TimeFrameUnit, unit))
 
@@ -304,8 +332,7 @@ def resample_to_uniform_minutes(
         spans.append(
             pd.date_range(
                 start=pd.Timestamp(day).replace(hour=start_h, minute=start_m),
-                end=pd.Timestamp(day).replace(hour=end_h, minute=end_m)
-                - pd.Timedelta(minutes=1),
+                end=pd.Timestamp(day).replace(hour=end_h, minute=end_m) - pd.Timedelta(minutes=1),
                 freq="1min",
                 tz=EXCHANGE_TZ,
             )
@@ -399,6 +426,7 @@ def to_backtest_frame(
 
     # The contract check. Anything that would make OptimizationController
     # reject this frame must fail here, not mid-sweep.
+    #
     data_validation.validate(df)
     return df, dropped_eh, dropped_duplicates
 
@@ -607,6 +635,16 @@ def download(
     """Fetch, validate, and write one dataset. Returns what it produced."""
     client = market_data or AlpacaHistoricalData(credentials=credentials)
     df, dropped_eh, dropped_dupes = client.fetch_bars(spec)
+    # Re-validated here deliberately, rather than threading a report out
+    # of fetch_bars. Two reasons. fetch_bars' 3-tuple is a contract BOTH
+    # providers implement (see HFMarketData.fetch_bars' docstring), and
+    # widening it to carry a diagnostic would change an interface for a
+    # payload only this function wants. And this is the frame about to be
+    # WRITTEN and checksummed -- validating exactly that, rather than
+    # trusting a report from an earlier stage, is the right scope for a
+    # provenance record. Cost is one extra pass per download, not per bar
+    # and not per sweep combination.
+    validation = data_validation.validate(df)
 
     path = Path(out_path) if out_path else default_output_path(spec, data_dir)
     write_csv(df, path, force=force)
@@ -626,6 +664,7 @@ def download(
         dropped_duplicates=dropped_dupes,
         path=path,
         sha256=digest,
+        suspect_bars=validation.suspect_bars,
     )
     if write_metadata:
         write_sidecar(
@@ -639,6 +678,17 @@ def download(
                 "dropped_extended_hours": dropped_eh,
                 "dropped_duplicates": dropped_dupes,
                 "sha256": digest,
+                # Survives the console scroll. A >15% single-bar move is
+                # the signature of an unadjusted split, which yields a
+                # backtest that looks like a spectacular win (see this
+                # module's "ON ADJUSTMENT" section). Recording WHICH bars
+                # and by how much is what makes it triageable later: three
+                # bars at +16.5%/-18.1%/+22.8% in March 2020 is a COVID
+                # signature, not a split, and only the values say so.
+                "suspect_bars": [
+                    {"timestamp": ts.isoformat(), "change_pct": round(change * 100, 4)}
+                    for ts, change in validation.suspect_bars
+                ],
             },
         )
     update_latest_symlink(path, regular_hours_only=spec.regular_hours_only)

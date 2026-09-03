@@ -77,6 +77,14 @@ def main():
     parser.add_argument("--output", default="output/search_hf_intrabar_2026-08-22.csv")
     parser.add_argument("--limit", type=int, default=None, help="run only the first N combinations")
     parser.add_argument(
+        "--implied-vol",
+        dest="implied_vol",
+        default=None,
+        help="Minute CSV for an implied-vol series (e.g. VIXY). Enables "
+        "MarketContext.implied_vol_change; without it that field stays 0.0 "
+        "and implied_vol_exponent is inert.",
+    )
+    parser.add_argument(
         "--search",
         choices=("grid", "bayesian", "random"),
         default=None,
@@ -109,7 +117,11 @@ def main():
     mode = args.search or config.search.strategy
 
     df = pd.read_csv(args.data, parse_dates=["timestamp"]).set_index("timestamp")
-    controller = OptimizationController(historical_data=df)
+    # Optional: an implied-vol series for MarketContext.implied_vol_change.
+    # None (the default) yields an all-zero signal, which is an exact no-op
+    # because implied_vol_exponent defaults to 0.0 -- so every config that
+    # predates this flag reproduces its recorded result unchanged.
+    controller = OptimizationController(historical_data=df, implied_vol_path=args.implied_vol)
     cost_model = config.costs.build()
     risk_manager = config.risk.build()
 
@@ -421,6 +433,10 @@ def main():
             "Trade Count",
             "Closed Trade Count",
             "Total Return %",
+            "CAGR %",
+            "Average Annual Return %",
+            "Best Year Return %",
+            "Worst Year Return %",
             "Max Drawdown %",
             "Return/Drawdown",
         ]
@@ -449,6 +465,17 @@ def main():
             "Capital Velocity Index",
             "Max Drawdown %",
             "Return/Drawdown",
+            # CAGR % predates this set and was already missing from it --
+            # harmless in practice since it is a deterministic function of
+            # Total Return %, which already distinguishes rows, but it is
+            # exactly the "new metric leaks through as an axis column"
+            # pattern analyze_annual.py's _constructor_params docstring
+            # describes. Added here alongside the three new metrics below
+            # rather than left to repeat.
+            "CAGR %",
+            "Average Annual Return %",
+            "Best Year Return %",
+            "Worst Year Return %",
             "error",
         }
         axis_cols = [c for c in results.columns if c not in metric_cols]
@@ -461,9 +488,7 @@ def main():
                 f"the {args.max_drawdown}% drawdown cap."
             )
         print(f"\nTop 15 distinct combinations by Total Return % (of {len(distinct)} evaluated):")
-        print(
-            admissible.sort_values("Total Return %", ascending=False)[cols].head(15).to_string()
-        )
+        print(admissible.sort_values("Total Return %", ascending=False)[cols].head(15).to_string())
 
 
 if __name__ == "__main__":

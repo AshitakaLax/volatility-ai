@@ -14,8 +14,8 @@ import pandas as pd
 import pytest
 
 from src.event_calendar import (
+    DEFAULT_EARNINGS_CSV,
     DEFAULT_LEAD_MINUTES,
-    DEFAULT_REACTION_MINUTES,
     NO_EVENT_MINUTES,
     EarningsEventTable,
 )
@@ -178,7 +178,27 @@ def test_non_positive_reaction_minutes_is_rejected(kw):
 # --- the real derived dataset ---
 
 
+@pytest.mark.skipif(
+    not DEFAULT_EARNINGS_CSV.exists(),
+    reason=(
+        f"{DEFAULT_EARNINGS_CSV} is a GENERATED artifact and is gitignored. "
+        "Build it with `python tools/build_earnings_calendar.py`."
+    ),
+)
 def test_loads_and_is_internally_consistent_against_the_real_dataset():
+    """Skipped when the derived CSV is absent, which is the documented
+    contract rather than a convenience.
+
+    src/event_calendar.py's own docstring calls this file "a generated
+    artifact, not a committed one", and BOTH production callers --
+    optimization_controller._load_event_table and LiveTradingLoop --
+    catch FileNotFoundError and fall back to no events, because the
+    consuming multiplier defaults to 1.0 so its absence is an exact
+    no-op. The code was right and this test was not: it called from_csv
+    unguarded, so it passed only on a machine that happened to have run
+    the generator, and failed on every clean checkout -- which is every
+    CI run.
+    """
     t = EarningsEventTable.from_csv()
     assert t.event_count >= 400  # 676 at time of writing across 16 tickers
 

@@ -54,12 +54,24 @@ this project always measures before tuning.
 from __future__ import annotations
 
 import logging
+
+# tools/ scripts import from src/, and Python puts THIS file's directory
+# on sys.path[0] -- not the working directory -- so `python
+# tools/screen_instruments.py` would otherwise fail on `from src...` while
+# `python -m tools.screen_instruments` succeeded. Same bootstrap as
+# tests/fixtures/regression_baseline.py, so both invocations work.
+import os as _os
 import sys
+import sys as _sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+_REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+if _REPO_ROOT not in _sys.path:
+    _sys.path.insert(0, _REPO_ROOT)
 
 from src.data_validation import validate
 from src.hf_market_data import HFMarketData
@@ -87,7 +99,7 @@ PARTS_DIR = Path("data/screen_parts")
 # endpoints confirmed working minutes earlier. Each request will wait
 # up to max_retries * mean(backoff schedule) rather than fail fast into
 # a script meant to run unattended.
-CLIENT_KW = dict(max_retries=20, retry_backoff_seconds=15.0)
+CLIENT_KW = {"max_retries": 20, "retry_backoff_seconds": 15.0}
 
 
 def variance_ratio(returns: np.ndarray, k: int) -> float:
@@ -118,8 +130,13 @@ def pull_symbol(symbol: str, client: HFMarketData) -> Path:
         return out
 
     spec = FetchSpec(
-        symbol=symbol, start=START, end=END, timeframe="1Min",
-        feed="hf", adjustment="splitdiv", regular_hours_only=True,
+        symbol=symbol,
+        start=START,
+        end=END,
+        timeframe="1Min",
+        feed="hf",
+        adjustment="splitdiv",
+        regular_hours_only=True,
     )
     df, dropped_eh, dupes = client.fetch_bars(spec)
     validate(df)

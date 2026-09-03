@@ -120,6 +120,75 @@ def _status_code_of(error) -> int | None:
     return None
 
 
+class _NeverMatches(Exception):
+    """Stand-in for an exception type from a package that is not installed.
+
+    isinstance(x, _NeverMatches) is False for every real error, so an
+    absent optional dependency degrades to "this classifier has no
+    opinion about that library's errors" rather than to an ImportError
+    raised from inside error handling -- which would replace a
+    classifiable broker failure with an unclassifiable one, at exactly
+    the moment classification matters most.
+    """
+
+
+def _broker_error_types():
+    """Collect the exception types to classify against, skipping any
+    whose package is not installed.
+
+    Both broker stacks are OPTIONAL dependencies pulling in different
+    trees: alpaca-py (with requests) from requirements.txt, playwright
+    from requirements-fidelity.txt, which the Docker image does not
+    install at all. classify_error previously imported alpaca
+    unconditionally, so a Fidelity-only deployment would have needed
+    alpaca-py installed purely to classify a Playwright error.
+
+    Not cached: this runs only on an error path, where an import lookup
+    against sys.modules is free relative to the failure being handled,
+    and caching would freeze the answer if a dependency were installed
+    later in a long-lived process.
+    """
+    transport: list[type[BaseException]] = [TimeoutError, ConnectionError]
+    api_error: type[BaseException] = _NeverMatches
+    retry_exception: type[BaseException] = _NeverMatches
+
+    try:
+        import requests.exceptions as rex
+
+        transport.extend((rex.ConnectionError, rex.Timeout))
+    except ImportError:
+        pass
+
+    try:
+        from alpaca.common.exceptions import APIError, RetryException
+
+        api_error, retry_exception = APIError, RetryException
+    except ImportError:
+        pass
+
+    try:
+        # Playwright's TimeoutError inherits from its own Error(Exception)
+        # -- NOT from the builtin TimeoutError, and not from OSError.
+        # Verified against playwright/_impl/_errors.py rather than
+        # assumed: `class Error(Exception)`, `class TimeoutError(Error)`.
+        # So the builtin TimeoutError above does not cover it, and
+        # without this a browser timeout would be classified
+        # NON_RETRYABLE before submission instead of RETRYABLE, quietly
+        # dropping a legitimate retry.
+        #
+        # After submission it would have landed on AMBIGUOUS anyway via
+        # the catch-all at the end of classify_error, so the safety
+        # property was never at risk -- this is a lost retry, not a lost
+        # order.
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+        transport.append(PlaywrightTimeoutError)
+    except ImportError:
+        pass
+
+    return tuple(transport), api_error, retry_exception
+
+
 def classify_error(error: BaseException, *, after_submission: bool = False) -> ErrorClass:
     """Classify a broker error.
 
@@ -130,12 +199,9 @@ def classify_error(error: BaseException, *, after_submission: bool = False) -> E
     contract is explicit that these route through Task 7.10's UNKNOWN
     state and Task 7.11's reconciliation-by-client-order-ID instead.
     """
-    import requests.exceptions as rex
-    from alpaca.common.exceptions import APIError, RetryException
+    transport_types, APIError, RetryException = _broker_error_types()
 
-    is_transport_failure = isinstance(
-        error, (rex.ConnectionError, rex.Timeout, TimeoutError, ConnectionError)
-    )
+    is_transport_failure = isinstance(error, transport_types)
 
     if after_submission and is_transport_failure:
         return ErrorClass.AMBIGUOUS

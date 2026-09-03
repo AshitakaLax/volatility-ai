@@ -227,6 +227,7 @@ from src.exceptions import ConfigurationError
 from src.market_context import MarketContext
 from src.size_calculators import SizingStrategy
 from src.sizing_indicators import RollingMax, RollingMean, RollingStdev, bars_from_days, clamp
+from src.synthetic_bars import is_synthetic_bar
 from src.trailing_target import TrailingTargetPolicy
 
 
@@ -361,8 +362,7 @@ class BayesianDualScaleSizing(SizingStrategy):
             raise ConfigurationError(f"lookback_days must be positive, got {lookback_days}")
         if vol_scale_min <= 0.0 or vol_scale_max < vol_scale_min:
             raise ConfigurationError(
-                f"need 0 < vol_scale_min <= vol_scale_max, got "
-                f"{vol_scale_min} and {vol_scale_max}"
+                f"need 0 < vol_scale_min <= vol_scale_max, got {vol_scale_min} and {vol_scale_max}"
             )
         if vol_measure not in ("stdev", "range"):
             raise ConfigurationError(f"vol_measure must be 'stdev' or 'range', got {vol_measure!r}")
@@ -479,12 +479,8 @@ class BayesianDualScaleSizing(SizingStrategy):
             # (high==low==price) AND unchanged from the previous real
             # print; skip it so realized vol does not read low through
             # synthetic filler.
-            is_synthetic_bar = (
-                context.high == context.low
-                and self._prev_price is not None
-                and price == self._prev_price
-            )
-            if not is_synthetic_bar:
+            synthetic = is_synthetic_bar(context.high, context.low, price, self._prev_price)
+            if not synthetic:
                 if self.vol_measure == "range":
                     self._fast_vol.update((context.high - context.low) / price)
                     self._slow_vol.update((context.high - context.low) / price)
@@ -512,6 +508,21 @@ class BayesianDualScaleSizing(SizingStrategy):
             success = window_max >= entry_price * (1.0 + self.target_return + self.cost_buffer_pct)
             self._fast.update(success)
             self._slow.update(success)
+
+    def wants_lot_retargeting(self) -> bool:
+        """False when trailing is off, so decision_cycle can skip walking
+        every open lot on every bar.
+
+        Not a micro-optimisation: that walk profiled at 63% of total
+        runtime, doing nothing, whenever trail_pct is unset -- which is
+        the default and the champion configuration. See
+        decision_cycle.adjust_open_lot_targets.
+
+        Answering False promises that adjust_profit_target AND
+        retain_lots are both inert, which is exactly what
+        `self._trailing is None` means here.
+        """
+        return self._trailing is not None
 
     def adjust_profit_target(self, lot, context: MarketContext) -> float | None:
         """Trail this lot's exit target, when trail_pct is configured.

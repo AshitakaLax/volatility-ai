@@ -38,6 +38,30 @@ this if a different original definition existed.
 
 from __future__ import annotations
 
+import pandas as pd
+
+
+def annual_returns(equity: pd.Series) -> pd.Series:
+    """Calendar-year percentage returns from an equity (or price) series.
+
+    The first year is measured from the series' own start rather than
+    from a prior year that does not exist, so a partial first year is
+    reported honestly instead of as NaN.
+
+    Written plainly on purpose -- shared between analyze_annual.py and
+    optimization_controller.py's per-run metrics precisely because an
+    early version of this (before it was shared) reindexed a
+    concatenated shifted series and produced badly misaligned results:
+    it reported TQQQ down 37% in 2023, a year it roughly tripled. A
+    year-over-year return is one shift; anything more elaborate is a
+    place for an off-by-one to hide, and two independent copies is two
+    places for it to hide differently.
+    """
+    yearly = equity.resample("YE").last()
+    prev = yearly.shift(1)
+    prev.iloc[0] = equity.iloc[0]
+    return ((yearly / prev) - 1.0) * 100.0
+
 
 class PerformanceAnalyzer:
     """Computes end-of-run summary metrics from a ledger.

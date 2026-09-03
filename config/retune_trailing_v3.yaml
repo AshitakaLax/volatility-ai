@@ -1,0 +1,79 @@
+# Re-tune v3: the trailing sweep, run against a TrailingTargetPolicy whose
+# floor is finally a bound rather than an attractor.
+#
+# HISTORY, because this is the third attempt and the first two both
+# produced results that looked fine and meant nothing:
+#
+#   v1 (retune_uniform_extended.yaml) left trail_min_profit_target at
+#   0.001 -- the HF default, sized for that strategy's 0.003-0.01
+#   targets -- against profit_targets of 0.30-1.00. Every target
+#   collapsed to the floor on the first tick after entry. All four rows
+#   byte-identical.
+#
+#   v2 (retune_uniform_extended_v2.yaml) raised the floor to 0.10 and
+#   added a guard requiring a real gain before trailing engaged. That
+#   fixed the tick-one collapse but not the bug: with
+#   `max(trailed_price, floor_price)` underneath, the floor was still an
+#   ATTRACTOR. The instant the guard released, trailed_price was by
+#   construction barely above buy_price and far below the floor, so
+#   max() returned the floor and ratchet-down-only locked it there.
+#
+#   A per-target split (floor = 50% of each target) was then tried and
+#   abandoned mid-run: trail_pct 0.05 and 0.10 at target=0.30 STILL
+#   returned identical results -- 2621.31% return, 91,608 trades, to the
+#   digit -- because scaling an attractor just moves it.
+#
+#   The actual fix is in src/trailing_target.py: propose() now requires
+#   trailed_price > FLOOR price, not merely > buy_price, so a lot holds
+#   its original target until trailing off the peak lands somewhere
+#   genuinely better than the floor. Pinned by
+#   test_the_floor_does_not_swallow_the_difference_between_trail_pcts.
+#
+# With that fixed, a single shared floor is no longer confounding, so
+# this goes back to one file rather than the four-way split -- the split
+# was a workaround for the bug, not a property of the question.
+#
+# ONE COMBO IS EXPECTED TO BE INERT, and that is not a bug. Trailing can
+# only engage once peak > (1 + floor) / (1 - trail_pct). At target=0.30
+# with floor=0.10 and trail_pct=0.20 that is a peak of 1.375x, above the
+# 1.30x target the lot would already have sold at. Expect that row to
+# reproduce the untrailed baseline exactly. A trail wider than the gap
+# between floor and target is inert by construction.
+#
+# UNTRAILED BASELINES to beat (from v1, still valid -- they never had
+# trailing enabled, so no version of this bug touched them):
+#   target=1.00: 38.61% CAGR, 82.4% DD
+#   target=0.75: 38.52% CAGR, 76.7% DD
+#   target=0.50: 38.22% CAGR, 73.5% DD
+#   target=0.30: 36.98% CAGR, 73.5% DD
+#
+# The untrailed (trail_pct: null) arm is dropped: those four numbers are
+# already established, and re-running them costs ~1400-9700s apiece to
+# re-learn a known answer. 4 targets x 3 trail_pct = 12 combinations.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 960
+    per_lot_pct: 0.001
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    trail_pct: [0.05, 0.10, 0.20]
+    trail_min_profit_target: 0.10
+    weighted_event_boost_multiplier: 2.5
+grid:
+  steps: [0.00075]
+  profit_targets: [0.30, 0.50, 0.75, 1.00]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: CAGR %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}

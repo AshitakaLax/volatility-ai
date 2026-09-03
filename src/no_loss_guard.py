@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from enum import StrEnum
 
 from src.exceptions import ExecutionError
 
@@ -50,6 +51,32 @@ logger = logging.getLogger("Optimizer")
 
 # architecture_overview.md 2.2: money comparisons use 1e-8.
 MONEY_EPSILON = 1e-8
+
+
+class SellReason(StrEnum):
+    """WHY a sell is being attempted. The guard's answer depends on it.
+
+    PROFIT_TARGET is every exit that existed before this enum: price
+    reached a lot's target_sell_price. A losing sell there is a bug or a
+    cost-model surprise, and is rejected.
+
+    SIGNAL_EXIT is a deliberate close for a reason unrelated to price --
+    a regime flip, a shutdown, a reconciliation repair. Realising a loss
+    is the POINT of such an exit, so refusing one would defeat it.
+
+    This is deliberately NOT a bypass flag on validate_sell. Both reasons
+    run the identical economics and the identical logging; only the
+    decision to raise differs. That keeps this module's stated contract
+    true -- "every exit path calls this, none of them re-implement the
+    comparison" -- which a bypass would have quietly broken.
+
+    The invariant the system actually wants is "no ACCIDENTAL loss", not
+    "no loss". Naming the reason is what makes the difference auditable
+    rather than implicit.
+    """
+
+    PROFIT_TARGET = "profit_target"
+    SIGNAL_EXIT = "signal_exit"
 
 
 class NoLossViolation(ExecutionError):
@@ -127,6 +154,7 @@ def validate_sell(
     cost_model,
     context=None,
     prev_close=None,
+    reason: SellReason = SellReason.PROFIT_TARGET,
 ) -> SellEconomics:
     """The canonical exit-boundary guard.
 
@@ -135,8 +163,14 @@ def validate_sell(
     cost basis (step 4: rejected BEFORE submission).
 
     Every exit path calls this -- normal harvest, intraday replay,
-    partial fills, and any future shutdown/reconciliation exit. None of
-    them re-implement the comparison.
+    partial fills, signal exits, and any future shutdown/reconciliation
+    exit. None of them re-implement the comparison.
+
+    `reason` decides only whether a losing sell RAISES. It defaults to
+    PROFIT_TARGET, so every existing caller is unchanged. A SIGNAL_EXIT
+    computes the same economics and logs the same detail at INFO rather
+    than WARNING, then returns them -- the loss is realised deliberately
+    and the caller records it.
     """
     economics = compute_sell_economics(
         lot, quantity, quoted_price, cost_model, context=context, prev_close=prev_close
@@ -149,6 +183,12 @@ def validate_sell(
             f"{economics.allocated_cost_basis:.6f} (sell costs {economics.sell_costs:.6f}, "
             f"realized PnL would be {economics.realized_pnl:+.6f})."
         )
+        if reason is SellReason.SIGNAL_EXIT:
+            # Deliberate. Logged at INFO rather than WARNING because it is
+            # an intended outcome, not an anomaly -- but still logged,
+            # every time, with the realised loss stated.
+            logger.info(f"Signal exit realising a loss: {detail}")
+            return economics
         logger.warning(detail)
         raise NoLossViolation(detail)
     return economics

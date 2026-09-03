@@ -136,21 +136,33 @@ class CostConfig:
 
 @dataclass(frozen=True)
 class RiskConfig:
-    """Maps to src/risk_manager.py (Task 3.1). No drawdown-limit field
-    -- RiskManager doesn't implement one; see module docstring."""
+    """Maps to src/risk_manager.py (Task 3.1), plus the
+    dd_exposure_start/full/floor_pct drawdown-conditioned exposure
+    throttle. Deliberately still omits halt_new_buys_if_drawdown_exceeds
+    (the live-only CircuitBreaker threshold) -- that remains
+    programmatic-only, unrelated to this config-driven throttle, which
+    runs identically in both live and backtest."""
 
     max_concurrent_lots: int | None = None
     max_total_exposure: float | None = None
+    dd_exposure_start: float | None = None
+    dd_exposure_full: float = 0.60
+    dd_exposure_floor_pct: float = 0.0
 
     def build(self) -> RiskManager:
         """Construct the real RiskManager this config describes.
 
-        Both limits default to None (unlimited), so an omitted risk
-        section yields an unconstrained manager rather than an error.
+        Both static limits default to None (unlimited), and
+        dd_exposure_start defaults to None (no-op throttle), so an
+        omitted risk section yields an unconstrained manager rather than
+        an error.
         """
         return RiskManager(
             max_concurrent_lots=self.max_concurrent_lots,
             max_total_exposure_pct=self.max_total_exposure,
+            dd_exposure_start=self.dd_exposure_start,
+            dd_exposure_full=self.dd_exposure_full,
+            dd_exposure_floor_pct=self.dd_exposure_floor_pct,
         )
 
 
@@ -202,6 +214,30 @@ class ExecutionConfig:
     # (the cost-floor case) -- it does not create a capitulation exit.
     # See max_lot_age_days for that.
     enforce_no_loss: bool = True
+    # Permits a strategy to close a lot for a reason unrelated to price
+    # -- a regime flip, a shutdown -- realising a loss if the lot is
+    # underwater. See src/no_loss_guard.SellReason.
+    #
+    # HALF of a two-part gate, and deliberately useless alone: a loss can
+    # only be realised when this is True AND the strategy implements
+    # lots_to_liquidate. Neither condition on its own changes anything,
+    # so switching this on cannot by itself alter a single result.
+    #
+    # Defaults False, which reproduces every recorded result exactly.
+    allow_signal_exit: bool = False
+    # Sessions between a sale and its proceeds becoming spendable.
+    #
+    # 0 (default) is instant redeployment, which is what every recorded
+    # result in this project was produced with. 1 is T+1, which is what
+    # a CASH account actually imposes -- and the target deployment is
+    # one: a Fidelity Traditional IRA, where buying with unsettled
+    # proceeds is a good-faith violation.
+    #
+    # This does not model the violation RULE, it models the CASH. A
+    # strategy that cannot fund a buy simply does not make it, which is
+    # the conservative direction and the one that reveals how much of a
+    # result depended on money that would not have been there.
+    settlement_days: int = 0
 
 
 @dataclass(frozen=True)
@@ -256,6 +292,60 @@ def expand_strategy_params(strategy_params: dict) -> list[dict]:
     return combinations
 
 
+def _as_account_tuple(value) -> tuple:
+    """Coerce an allowed_accounts value to a tuple of strings.
+
+    A bare string is REJECTED rather than coerced: tuple("Z12345678")
+    yields nine single-character entries, and an allowlist that silently
+    became nine one-character accounts would still be non-empty, still
+    pass every emptiness check, and match nothing -- or, worse, match
+    something. That is precisely the quiet misconfiguration an allowlist
+    exists to prevent, so it fails loudly instead.
+    """
+    if isinstance(value, str):
+        raise ConfigurationError(
+            "live.fidelity.allowed_accounts must be a LIST of account "
+            f"numbers, not a bare string (got {value!r}). A string would be "
+            "read as one entry per character."
+        )
+    try:
+        return tuple(str(item) for item in value)
+    except TypeError as exc:
+        raise ConfigurationError(
+            f"live.fidelity.allowed_accounts must be a list, got {type(value).__name__}"
+        ) from exc
+
+
+@dataclass(frozen=True)
+class FidelityConfig:
+    """Fidelity-venue settings. Only meaningful when live.broker == "fidelity".
+
+    allowed_accounts is the user's explicit requirement and the reason
+    this type exists at all. fidelity-api provides no allowlist and no
+    validation: it selects an account with a case-insensitive SUBSTRING
+    match against dropdown text. That fails closed on ambiguity
+    (Playwright strict mode raises on 2+ matches) and on zero matches (a
+    timeout), which is good -- but a truncated account number that
+    uniquely matches the WRONG button would simply be clicked. So the
+    allowlist is enforced here, before anything reaches the library, and
+    matched exactly rather than by substring.
+
+    Held as a tuple for the same reason GridConfig's lists are: the
+    config must stay immutable and hashable for artifact hashing.
+
+    dry_run defaults to True and flipping it is the deliberate go-live
+    act. It is a separate switch from live.paper_trading because they
+    mean different things: paper_trading selects a PAPER-mode OMS, while
+    dry_run controls whether the browser stops at the order preview.
+    A Fidelity account has no paper mode, so dry_run is the only thing
+    standing between a preview and a real order.
+    """
+
+    allowed_accounts: tuple = ()
+    account: str | None = None
+    dry_run: bool = True
+
+
 @dataclass(frozen=True)
 class LiveConfig:
     """Live-trading switches.
@@ -275,13 +365,20 @@ class LiveConfig:
     feed defaults to IEX because it is available on every Alpaca
     account. SIP covers the full market but requires a paid data
     subscription; selecting it without one makes every data request
-    fail.
+    fail. The feed whitelist is ALPACA's -- it is only validated when
+    broker == "alpaca", since those names mean nothing to another venue.
+
+    broker defaults to "alpaca" so that every config written before
+    Fidelity existed keeps its exact previous meaning. A second venue
+    must be opted into by name, never arrived at by default.
     """
 
     enabled: bool = False
     paper_trading: bool = True
     step: float | None = None
     profit_target: float | None = None
+    broker: str = "alpaca"
+    fidelity: FidelityConfig | None = None
     feed: str = "iex"
     poll_interval_seconds: float = 60.0
     # Bounds one tick's harvest work. A tick that tried to place an
@@ -359,6 +456,9 @@ class BacktestConfig:
         risk = RiskConfig(
             max_concurrent_lots=risk_data.get("max_concurrent_lots"),
             max_total_exposure=risk_data.get("max_total_exposure"),
+            dd_exposure_start=risk_data.get("dd_exposure_start"),
+            dd_exposure_full=risk_data.get("dd_exposure_full", 0.60),
+            dd_exposure_floor_pct=risk_data.get("dd_exposure_floor_pct", 0.0),
         )
 
         search_data = data.get("search", {})
@@ -375,17 +475,35 @@ class BacktestConfig:
             intrabar_priority=execution_data.get("intrabar_priority", "sell_first"),
             fill_model=execution_data.get("fill_model", "close"),
             enforce_no_loss=bool(execution_data.get("enforce_no_loss", True)),
+            allow_signal_exit=bool(execution_data.get("allow_signal_exit", False)),
+            settlement_days=int(execution_data.get("settlement_days", 0)),
         )
 
         output_data = data.get("output", {})
         output = OutputConfig(return_full_results=output_data.get("return_full_results", False))
 
         live_data = data.get("live", {})
+        fidelity_data = live_data.get("fidelity")
+        fidelity = None
+        if fidelity_data is not None:
+            fidelity = FidelityConfig(
+                # tuple() for immutability/hashability, matching
+                # GridConfig. A bare string would silently become a
+                # tuple of CHARACTERS, so it is rejected rather than
+                # coerced -- allowed_accounts: "Z123" reading as eight
+                # single-character accounts is exactly the kind of quiet
+                # misconfiguration an allowlist must not have.
+                allowed_accounts=_as_account_tuple(fidelity_data.get("allowed_accounts", ())),
+                account=fidelity_data.get("account"),
+                dry_run=bool(fidelity_data.get("dry_run", True)),
+            )
         live = LiveConfig(
             enabled=live_data.get("enabled", False),
             paper_trading=live_data.get("paper_trading", True),
             step=live_data.get("step"),
             profit_target=live_data.get("profit_target"),
+            broker=live_data.get("broker", "alpaca"),
+            fidelity=fidelity,
             feed=live_data.get("feed", "iex"),
             poll_interval_seconds=live_data.get("poll_interval_seconds", 60.0),
             max_sells_per_tick=live_data.get("max_sells_per_tick", 25),
@@ -440,6 +558,7 @@ class BacktestConfig:
             ("zero", "slippage_commission", "dynamic_slippage"),
             "costs.model_type",
         )
+        validate_non_negative(self.execution.settlement_days, "execution.settlement_days")
         validate_non_negative(self.costs.commission_per_trade, "costs.commission_per_trade")
         validate_non_negative(self.costs.slippage_bps, "costs.slippage_bps")
         validate_non_negative(self.costs.base_bps, "costs.base_bps")
@@ -449,6 +568,11 @@ class BacktestConfig:
             validate_positive_int(self.risk.max_concurrent_lots, "risk.max_concurrent_lots")
         if self.risk.max_total_exposure is not None:
             validate_unit_interval(self.risk.max_total_exposure, "risk.max_total_exposure")
+        # dd_exposure_start/full/floor_pct: validated by attempting to
+        # build the real RiskManager rather than re-deriving its
+        # ordering/ramp-base logic a second time here -- see
+        # src/risk_manager.py's constructor for the authoritative checks.
+        self.risk.build()
 
         validate_one_of(self.search.strategy, ("grid", "bayesian", "random"), "search.strategy")
         validate_one_of(self.search.direction, ("maximize", "minimize"), "search.direction")
@@ -478,11 +602,54 @@ class BacktestConfig:
             validate_positive(self.live.profit_target, "live.profit_target")
         validate_positive(self.live.poll_interval_seconds, "live.poll_interval_seconds")
         validate_positive_int(self.live.max_sells_per_tick, "live.max_sells_per_tick")
-        validate_one_of(
-            self.live.feed,
-            ("iex", "sip", "delayed_sip", "otc", "boats", "overnight"),
-            "live.feed",
-        )
+        validate_one_of(self.live.broker, ("alpaca", "fidelity"), "live.broker")
+
+        # The feed whitelist is ALPACA's -- "iex"/"sip" are names of
+        # Alpaca data feeds and mean nothing at another venue, so
+        # applying it to a Fidelity deployment would reject a config for
+        # failing to name a feed it does not have. A Fidelity deployment
+        # still needs a market-data source, but that is a separate
+        # connection from the trading venue (see the plan's section H).
+        if self.live.broker == "alpaca":
+            validate_one_of(
+                self.live.feed,
+                ("iex", "sip", "delayed_sip", "otc", "boats", "overnight"),
+                "live.feed",
+            )
+
+        if self.live.broker == "fidelity":
+            if self.live.fidelity is None:
+                raise ConfigurationError(
+                    "live.broker='fidelity' requires a live.fidelity section "
+                    "naming allowed_accounts -- there is no safe default for "
+                    "which brokerage account real orders go to."
+                )
+            if not self.live.fidelity.allowed_accounts:
+                raise ConfigurationError(
+                    "live.fidelity.allowed_accounts must not be empty. The "
+                    "library selects accounts by case-insensitive SUBSTRING "
+                    "match on dropdown text, so an unconstrained account "
+                    "string could match the wrong account."
+                )
+
+        if self.live.fidelity is not None:
+            # Checked whenever the section is PRESENT, not only when the
+            # broker is active: a config that names an account outside
+            # its own allowlist is wrong however it is later used, and
+            # catching it here means a broker switch cannot turn a latent
+            # contradiction into a live order against the wrong account.
+            for account in self.live.fidelity.allowed_accounts:
+                if not str(account).strip():
+                    raise ConfigurationError(
+                        "live.fidelity.allowed_accounts contains a blank entry"
+                    )
+            account = self.live.fidelity.account
+            if account is not None and account not in self.live.fidelity.allowed_accounts:
+                raise ConfigurationError(
+                    f"live.fidelity.account={account!r} is not in "
+                    f"allowed_accounts={list(self.live.fidelity.allowed_accounts)!r}. "
+                    "Exact match is required -- never a substring or a nickname."
+                )
 
     def to_dict(self) -> dict:
         """Inverse of from_dict() -- round-trips through the same nested
@@ -517,6 +684,9 @@ class BacktestConfig:
             "risk": {
                 "max_concurrent_lots": self.risk.max_concurrent_lots,
                 "max_total_exposure": self.risk.max_total_exposure,
+                "dd_exposure_start": self.risk.dd_exposure_start,
+                "dd_exposure_full": self.risk.dd_exposure_full,
+                "dd_exposure_floor_pct": self.risk.dd_exposure_floor_pct,
             },
             "search": {
                 "strategy": self.search.strategy,
@@ -529,6 +699,8 @@ class BacktestConfig:
                 "intrabar_priority": self.execution.intrabar_priority,
                 "fill_model": self.execution.fill_model,
                 "enforce_no_loss": self.execution.enforce_no_loss,
+                "allow_signal_exit": self.execution.allow_signal_exit,
+                "settlement_days": self.execution.settlement_days,
             },
             "output": {"return_full_results": self.output.return_full_results},
             "live": {
@@ -536,6 +708,25 @@ class BacktestConfig:
                 "paper_trading": self.live.paper_trading,
                 "step": self.live.step,
                 "profit_target": self.live.profit_target,
+                "broker": self.live.broker,
+                # Omitted entirely when absent rather than emitted as
+                # None, so that from_dict(to_dict(c)) == c holds for
+                # every Alpaca config: from_dict builds a FidelityConfig
+                # for any non-None value, and a None round-trips back to
+                # None either way -- but an explicit null in the emitted
+                # YAML would suggest a section that was configured and
+                # left blank, rather than one that does not apply.
+                **(
+                    {
+                        "fidelity": {
+                            "allowed_accounts": list(self.live.fidelity.allowed_accounts),
+                            "account": self.live.fidelity.account,
+                            "dry_run": self.live.fidelity.dry_run,
+                        }
+                    }
+                    if self.live.fidelity is not None
+                    else {}
+                ),
                 "feed": self.live.feed,
                 "poll_interval_seconds": self.live.poll_interval_seconds,
                 "max_sells_per_tick": self.live.max_sells_per_tick,

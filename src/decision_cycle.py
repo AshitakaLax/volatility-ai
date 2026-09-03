@@ -102,6 +102,25 @@ def adjust_open_lot_targets(
     if hook is None:
         return []
 
+    # EARLY-OUT WHEN RETARGETING IS INERT. Profiled on a 120,000-bar
+    # slice, this function was 63% of total runtime: 62.6 MILLION calls
+    # to adjust_profit_target, ~522 open lots re-examined on every bar,
+    # plus a list copy and 62.6M set.add calls to build open_ids.
+    #
+    # In the default configuration all of it does nothing. trail_pct
+    # defaults to None, so adjust_profit_target returns None immediately
+    # and retain_lots is a no-op -- the champion config and most sweeps
+    # pay the full cost for zero effect.
+    #
+    # Duck-typed and defaulting to True, so a strategy that does not
+    # implement it (a test double, an externally supplied strategy)
+    # keeps today's behavior exactly. A strategy answering False is
+    # promising that BOTH adjust_profit_target and retain_lots are
+    # inert, since this skips both.
+    wants = getattr(strategy, "wants_lot_retargeting", None)
+    if wants is not None and not wants():
+        return []
+
     changed = []
     open_ids = set()
     # list() because retarget mutates lots while we iterate, and a
@@ -128,7 +147,102 @@ def adjust_open_lot_targets(
     if retain is not None:
         retain(open_ids)
 
+    # Tell the ledger a target moved DOWN. get_marketable_lots keeps a
+    # lower bound on every open target so it can skip scanning the book
+    # on a price that cannot possibly trigger a sale; a bound that never
+    # heard about a ratcheted-down target would sit ABOVE a target that
+    # is now reachable and silently skip a real sale. Trailing only
+    # ratchets down, but the ledger takes a min, so reporting a raised
+    # target is harmless.
+    #
+    # Duck-typed like the hooks above: a ledger double in a test need not
+    # implement it.
+    if changed:
+        note = getattr(ledger, "note_target_lowered", None)
+        if note is not None:
+            note(min(lot.target_sell_price for lot in changed))
+
     return changed
+
+
+def collect_liquidations(
+    strategy,
+    ledger,
+    context: MarketContext,
+    *,
+    allow_signal_exit: bool,
+    skip_order_ids=frozenset(),
+) -> list:
+    """Phase 1c: the open lots a strategy wants closed on signal, not price.
+
+    Returns lots the caller must sell at this bar's price REGARDLESS of
+    whether they are profitable. Every other exit in this system happens
+    because price reached a target; this is the only one that does not,
+    and closing an underwater lot is a normal outcome of it rather than
+    an error -- see src/no_loss_guard.SellReason.SIGNAL_EXIT.
+
+    TWO INDEPENDENT CONDITIONS, both checked here. `allow_signal_exit`
+    comes from config; the hook comes from the strategy. Either one
+    missing returns empty, so neither a config flag flipped without a
+    strategy that uses it, nor a strategy dropped into a default config,
+    can realize a single loss. Both are cheap and both are checked every
+    bar rather than cached, because a cached authorization is one
+    refactor away from being the only authorization.
+
+    Ordering: after adjust_open_lot_targets, before the marketable
+    check. After, so a strategy that both retargets and liquidates sees
+    a consistent book. Before, so a lot that is BOTH marketable and
+    condemned exits once -- the caller drops it from the harvest -- and
+    the exit that actually fires is the profitable one, since the caller
+    processes liquidations first and get_marketable_lots then no longer
+    sees the lot. A lot cannot be sold twice in a bar.
+
+    Lives here rather than in the three sell sites for the reason the
+    whole module exists: backtest, intrabar replay, and live must make
+    the identical decision, and "loop the open lots and ask" copied
+    three times is three chances to disagree.
+
+    skip_order_ids mirrors adjust_open_lot_targets: the live loop
+    excludes lots with a sell already in flight, since condemning a lot
+    whose order is resting would submit a second one.
+    """
+    if not allow_signal_exit:
+        return []
+
+    # Duck-typed and optional for the same reason adjust_profit_target
+    # is: strategy_class is only duck-typed at the _simulate_single
+    # boundary, so test doubles and externally supplied strategies need
+    # not subclass SizingStrategy.
+    hook = getattr(strategy, "lots_to_liquidate", None)
+    if hook is None:
+        return []
+
+    open_lots = list(ledger.open_lots)
+    if not open_lots:
+        return []
+
+    requested = hook(open_lots, context)
+    if not requested:
+        return []
+
+    # Filter against the book we just read rather than trusting the
+    # returned list. A strategy holding a stale reference to an
+    # already-closed lot would otherwise sell shares that are gone --
+    # silently, since the ledger would happily record a second close.
+    # Identity, not order_id: two lots can share neither, but a lot
+    # object not in this bar's open book is not sellable this bar.
+    live = {id(lot) for lot in open_lots if lot.order_id not in skip_order_ids}
+    condemned = [lot for lot in requested if id(lot) in live]
+
+    # Deduplicate while preserving the strategy's order -- a hook that
+    # returns the same lot twice must not produce two sells.
+    seen = set()
+    unique = []
+    for lot in condemned:
+        if id(lot) not in seen:
+            seen.add(id(lot))
+            unique.append(lot)
+    return unique
 
 
 def evaluate_grid_decision(
@@ -161,10 +275,10 @@ def evaluate_grid_decision(
     if not triggered:
         return GridDecision(context=context, triggered=False)
 
-    proposed = strategy.calculate_trade_value(
-        context if sizing_context is None else sizing_context
+    proposed = strategy.calculate_trade_value(context if sizing_context is None else sizing_context)
+    clamped = risk_manager.clamp_trade_value(
+        proposed, context.equity, cash, context.open_lot_count, context.drawdown
     )
-    clamped = risk_manager.clamp_trade_value(proposed, context.equity, cash, context.open_lot_count)
     return GridDecision(
         context=context,
         triggered=True,

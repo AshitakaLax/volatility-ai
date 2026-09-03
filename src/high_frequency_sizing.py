@@ -307,6 +307,64 @@ measured cost here: it once took a sweep from 3.2% coverage to 0.30%.
 Defaults: 0.0, an exact no-op, and it should stay there unless a sweep
 shows it earning its place.
 --------------------------------------------------------------------
+dd_throttle_start / dd_throttle_full / dd_throttle_floor -- sizing DOWN
+into an extended drawdown, not just a volatile bar
+
+Every lever above reacts to something LOCAL -- a calendar day, a
+realized-vol ratio over a handful of hours, the clock. None of them
+know whether the strategy is already deep in a multi-month drawdown.
+That gap shows up in the numbers: max drawdown sits at 73-82% across
+essentially every sweep run against this strategy on the full 10-year
+dataset -- vol scaling, volume scaling, wide-target sweeps, Bayesian
+comparisons, and the trailing-target sweeps (config/retune_trailing_v3
+and its predecessors) all land in that same band regardless of which
+of the other knobs moved. No lever tried so far targets the drawdown
+number itself.
+
+This one does, directly, using MarketContext.drawdown -- the SAME
+peak-equity/drawdown figure optimization_controller.py already tracks
+every bar (see its "Peaks/drawdown every bar (B3)" comment) and reports
+as "Max Drawdown %". Reusing it here means this throttle sees exactly
+the metric it exists to improve, computed once, not a second estimate
+that could disagree with it.
+
+    multiplier = 1.0                                   if dd <= start
+                 floor                                  if dd >= full
+                 linear ramp from 1.0 down to floor      in between
+
+This is deliberately a threshold-and-ramp, not the exponent form
+vol_scale_exponent uses. That form fits a ratio that is centered on
+1.0 and can go either direction; drawdown is bounded in [0, 1) and this
+lever is size-DOWN only by design -- there is no direction to sweep
+across zero the way there was for vol_scale_exponent, only how early
+(dd_throttle_start) and how hard (dd_throttle_full, dd_throttle_floor)
+to de-risk. A no-loss strategy (src/no_loss_guard.py) that keeps buying
+dips all the way down is, by construction, accumulating lots that can
+only be closed once the price recovers past their own cost basis --
+each additional lot bought deep in a drawdown adds another position
+that needs a larger recovery to exit. Buying LESS once already deep in
+one is the direct lever against that, independent of anything vol_scale_
+exponent's backward-looking ratio measures.
+
+Composes by multiplication with every other scaler above, same as
+vol_scale_exponent and volume_scale_exponent -- a calm bar deep in a
+drawdown and a volatile bar deep in the same drawdown are not the same
+situation, so this stacks rather than overriding them.
+
+Defaults: dd_throttle_start=None, an exact no-op -- a config that never
+sets it gets IDENTICAL behavior to before this existed, and costs
+nothing per bar (context.drawdown is already computed by the controller
+for every strategy; this only adds one multiply-and-clamp when enabled).
+
+UNMEASURED as of this writing -- this is a new lever, not yet swept.
+The next sweep should hold every other parameter at this strategy's
+best known configuration (config/retune_uniform_extended_v2.yaml's
+target=1.00, untrailed: 38.61% CAGR, 82.4% max DD) and vary
+dd_throttle_start/full/floor to see whether de-risking during a deep
+drawdown actually trades return for a lower max DD, or whether -- like
+vol_scale_exponent leaning IN, or the trailing-target floor -- the
+straightforward-sounding direction turns out not to hold on this data.
+--------------------------------------------------------------------
 weighted_event_boost_multiplier -- minute precision, step 3
 
 MarketContext.event_intensity is a NEW field, not one of Task 7.9's
@@ -334,6 +392,68 @@ unlike the day-level flags above).
 Defaults: weighted_event_boost_multiplier=1.0, an exact no-op --
 event_intensity being populated changes nothing until a config sets
 this above 1.0.
+--------------------------------------------------------------------
+implied_vol_exponent -- the first FORWARD-looking volatility input
+
+Task 7.9 step-3 writeup for MarketContext.implied_vol_change:
+
+  Consuming strategy: this one, HighFrequencyLocalReferenceSizing, via
+  _implied_vol_scale. It is the only consumer.
+
+  Source dataset: src/implied_vol_signal.py, built from an
+  implied-volatility instrument's own minute bars and joined by
+  src/external_index_series.py's as-of lookup. Currently VIXY (Alpaca,
+  sip, adjustment=all). The RIGHT series is VXN -- Nasdaq-100 implied
+  vol, the index TQQQ tracks 3x -- from hfmarketdata.io, which was
+  unreachable when this was written (HTTP 000 after 25s while control
+  hosts answered in 1.5s; src/hf_market_data.py documents that same
+  outage mode). VIXY substitutes VIX for VXN and VIX FUTURES via an ETF
+  wrapper for spot, so it is a proxy on two axes. Re-measure against
+  real VXN before trusting tuned parameters.
+
+  Join semantics: session-over-session percentage change in the series'
+  CLOSE, published to the as-of series at midnight Eastern on the day
+  AFTER the session that produced it. Every bar of the following
+  session -- pre-market included -- therefore reads a value that was
+  already history when that session opened, so there is no lookahead;
+  tests/unit/test_implied_vol_signal.py asserts that directly rather
+  than inferring it from the construction. Absent file, or bars before
+  the series starts, yield 0.0.
+
+  Defaults: implied_vol_exponent=0.0, an exact no-op. A config that
+  does not set it, and a deployment with no implied-vol file, both
+  reproduce prior behavior bit for bit.
+
+WHY THE CHANGE AND NOT THE LEVEL OR THE RATIO -- measured, and the
+obvious answer was wrong. tools/measure_vol_signal.py, 2,671 sessions,
+partial rank correlation against next-session OPENING volatility:
+
+                        raw    partial|rv_ratio   partial|rv_fast
+    implied level     -0.180        -0.188            -0.085
+    implied 1d change +0.119        +0.136            +0.257
+    implied 5/60 ratio+0.429        +0.277            -0.039
+
+The RATIO looks like the winner against the realized 5/60 ratio and
+collapses to nothing against trailing realized vol -- the first control
+is much the weaker predictor (rho +0.41 vs +0.79), so the ratio was
+only re-encoding volatility persistence this strategy already has. The
+LEVEL is negatively correlated because a VIX-futures ETF carries roll
+decay, which is drift, not signal. Only the CHANGE strengthens under
+the harder control, which is what an input carrying genuinely new
+information looks like.
+
+WHY THIS EARNS AN AXIS WHEN THE CALENDARS DID NOT. It is not scheduled
+-- it fires on every session, not on a twentieth of them, which is the
+exact ceiling the event boosts hit above. And it is the only signal
+here that is not derived from TQQQ's own past bars, so it is the only
+one that can be non-redundant with vol_scale_exponent by construction.
+
+WHY LINEAR RATHER THAN AN EXPONENT. _vol_scale raises a strictly
+positive RATIO to a power. This input is a signed CHANGE centred on
+zero, and a negative base to a fractional power is undefined -- so the
+ratio form is not merely awkward here, it is wrong. See
+_implied_vol_scale.
+
 --------------------------------------------------------------------
 SYNTHETIC BARS, AND WHY THE VOL WINDOWS ARE GATED BY VOLUME TOO
 
@@ -385,6 +505,7 @@ from src.intraday_profile import relative_range
 from src.market_context import MarketContext
 from src.size_calculators import SizingStrategy
 from src.sizing_indicators import RollingMax, RollingMean, RollingStdev, bars_from_days, clamp
+from src.synthetic_bars import is_synthetic_bar
 from src.trailing_target import TrailingTargetPolicy
 
 # Below this, a realized-vol estimate is numerical noise rather than a
@@ -419,6 +540,12 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         trail_pct: float | None = None,
         trail_min_profit_target: float = 0.001,
         weighted_event_boost_multiplier: float = 1.0,
+        dd_throttle_start: float | None = None,
+        dd_throttle_full: float = 0.60,
+        dd_throttle_floor: float = 0.25,
+        implied_vol_exponent: float = 0.0,
+        implied_vol_scale_min: float = 0.5,
+        implied_vol_scale_max: float = 2.0,
     ) -> None:
         if not 0.0 < per_lot_pct <= 1.0:
             raise ConfigurationError(f"per_lot_pct must be in (0, 1], got {per_lot_pct}")
@@ -443,13 +570,10 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         self.bars_per_day = bars_per_day
         if vol_scale_min <= 0.0 or vol_scale_max < vol_scale_min:
             raise ConfigurationError(
-                f"need 0 < vol_scale_min <= vol_scale_max, got "
-                f"{vol_scale_min} and {vol_scale_max}"
+                f"need 0 < vol_scale_min <= vol_scale_max, got {vol_scale_min} and {vol_scale_max}"
             )
         if vol_measure not in ("stdev", "range"):
-            raise ConfigurationError(
-                f"vol_measure must be 'stdev' or 'range', got {vol_measure!r}"
-            )
+            raise ConfigurationError(f"vol_measure must be 'stdev' or 'range', got {vol_measure!r}")
         self.event_day_boost_multiplier = event_day_boost_multiplier
         self.earnings_day_boost_multiplier = earnings_day_boost_multiplier
         self.vol_scale_exponent = vol_scale_exponent
@@ -501,6 +625,39 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             if trail_pct is not None
             else None
         )
+        # See the module docstring's "dd_throttle_start / dd_throttle_full
+        # / dd_throttle_floor" section. None (the default) is an exact
+        # no-op, same convention as trail_pct above.
+        self._dd_throttle_enabled = dd_throttle_start is not None
+        if self._dd_throttle_enabled:
+            if not 0.0 < dd_throttle_start < 1.0:
+                raise ConfigurationError(
+                    f"dd_throttle_start must be in (0, 1), got {dd_throttle_start}"
+                )
+            if not dd_throttle_start < dd_throttle_full <= 1.0:
+                raise ConfigurationError(
+                    f"dd_throttle_full must be in (dd_throttle_start, 1], got "
+                    f"{dd_throttle_full} with dd_throttle_start={dd_throttle_start}"
+                )
+            if not 0.0 <= dd_throttle_floor <= 1.0:
+                raise ConfigurationError(
+                    f"dd_throttle_floor must be in [0, 1] -- this lever only sizes DOWN, "
+                    f"got {dd_throttle_floor}"
+                )
+        self.dd_throttle_start = dd_throttle_start
+        self.dd_throttle_full = dd_throttle_full
+        self.dd_throttle_floor = dd_throttle_floor
+        # See the module docstring's implied_vol_exponent section. 0.0 is
+        # an exact no-op, so every existing config and recorded result is
+        # unaffected.
+        if implied_vol_scale_min <= 0.0 or implied_vol_scale_max < implied_vol_scale_min:
+            raise ConfigurationError(
+                f"need 0 < implied_vol_scale_min <= implied_vol_scale_max, got "
+                f"{implied_vol_scale_min} and {implied_vol_scale_max}"
+            )
+        self.implied_vol_exponent = implied_vol_exponent
+        self.implied_vol_scale_min = implied_vol_scale_min
+        self.implied_vol_scale_max = implied_vol_scale_max
 
     def record_tick(self, context: MarketContext) -> None:
         """Advance the rolling high and capture the capital baseline,
@@ -535,12 +692,8 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             # volume field today -- a separate, pre-existing gap), which
             # would let this reuse context.volume directly; not done
             # here because it touches the live data adapter.
-            is_synthetic_bar = (
-                context.high == context.low
-                and self._prev_price is not None
-                and context.price == self._prev_price
-            )
-            if self._vol_enabled and not is_synthetic_bar:
+            synthetic = is_synthetic_bar(context.high, context.low, context.price, self._prev_price)
+            if self._vol_enabled and not synthetic:
                 if self.vol_measure == "range":
                     # Intrabar range, scaled by price so the two windows
                     # compare across a dataset where TQQQ spans ~8x-90x.
@@ -670,9 +823,79 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         if not self._tod_enabled:
             return 1.0
         relative = relative_range(context.time_of_day_flag)
+        return clamp(relative**self.time_of_day_exponent, _TOD_SCALE_FLOOR, _TOD_SCALE_CEIL)
+
+    def _dd_throttle_scale(self, context: MarketContext) -> float:
+        """Size multiplier from how deep INTO an extended drawdown the
+        strategy already is, using context.drawdown -- the same
+        peak-equity/drawdown figure optimization_controller.py tracks
+        every bar and reports as "Max Drawdown %". See the module
+        docstring's dd_throttle section for why this is a threshold-and-
+        ramp rather than an exponent form, and why it only ever sizes
+        down.
+
+        Returns 1.0 (no-op) while off, and while the drawdown has not
+        yet reached dd_throttle_start -- so a config that leaves this
+        unset, or a run that never draws down past the threshold,
+        behaves exactly as it did before this existed.
+        """
+        if not self._dd_throttle_enabled:
+            return 1.0
+        dd = context.drawdown
+        if dd <= self.dd_throttle_start:
+            return 1.0
+        if dd >= self.dd_throttle_full:
+            return self.dd_throttle_floor
+        span = self.dd_throttle_full - self.dd_throttle_start
+        frac = (dd - self.dd_throttle_start) / span
+        return 1.0 - frac * (1.0 - self.dd_throttle_floor)
+
+    def _implied_vol_scale(self, context: MarketContext) -> float:
+        """Size multiplier from the last closed session's change in
+        implied volatility -- context.implied_vol_change, in percent.
+
+        A LINEAR response, not the exponent-on-a-ratio form _vol_scale
+        uses, because the input is a signed CHANGE centred on zero
+        rather than a strictly-positive ratio centred on one. Raising a
+        possibly-negative number to a fractional power is undefined, so
+        the ratio form is not merely awkward here, it is wrong:
+
+            multiplier = clamp(1 + exponent * (change / 100), min, max)
+
+        Sign is not assumed, exactly as _vol_scale's is not. A NEGATIVE
+        exponent sizes down after implied vol jumps (the vol-targeting
+        direction, and the one _vol_scale measured as correct for
+        realized vol); a positive one leans in. Sweeping across zero
+        measures which is right rather than encoding a guess.
+
+        Returns 1.0 when the exponent is 0.0 (the default), and when no
+        reading is available -- context.implied_vol_change is 0.0 both
+        for "the index was flat" and for "no implied-vol file is
+        configured", and leaving size unchanged is the right answer to
+        both.
+        """
+        if self.implied_vol_exponent == 0.0:
+            return 1.0
         return clamp(
-            relative**self.time_of_day_exponent, _TOD_SCALE_FLOOR, _TOD_SCALE_CEIL
+            1.0 + self.implied_vol_exponent * (context.implied_vol_change / 100.0),
+            self.implied_vol_scale_min,
+            self.implied_vol_scale_max,
         )
+
+    def wants_lot_retargeting(self) -> bool:
+        """False when trailing is off, so decision_cycle can skip walking
+        every open lot on every bar.
+
+        Not a micro-optimisation: that walk profiled at 63% of total
+        runtime, doing nothing, whenever trail_pct is unset -- which is
+        the default and the champion configuration. See
+        decision_cycle.adjust_open_lot_targets.
+
+        Answering False promises that adjust_profit_target AND
+        retain_lots are both inert, which is exactly what
+        `self._trailing is None` means here.
+        """
+        return self._trailing is not None
 
     def adjust_profit_target(self, lot, context: MarketContext) -> float | None:
         """Trail this lot's exit target, when trail_pct is configured.
@@ -749,9 +972,12 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         # symbol's release contributes 0.0 intensity and this evaluates
         # to boost's floor, same as an ordinary bar.
         if context.event_intensity > 0:
-            weighted = 1.0 + (self.weighted_event_boost_multiplier - 1.0) * min(
-                context.event_intensity, 100.0
-            ) / 100.0
+            weighted = (
+                1.0
+                + (self.weighted_event_boost_multiplier - 1.0)
+                * min(context.event_intensity, 100.0)
+                / 100.0
+            )
             boost = max(boost, weighted)
         # The event boost and the vol scaler MULTIPLY, unlike the two
         # event boosts which take a max of each other. Those two are
@@ -767,4 +993,13 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             * self._vol_scale()
             * self._time_of_day_scale(context)
             * self._volume_scale()
+            * self._dd_throttle_scale(context)
+            # MULTIPLIES rather than max()-ing with the event boosts. It
+            # is a genuinely independent axis, and that was measured, not
+            # asserted: holding trailing realized vol fixed, this change
+            # still scores partial rho +0.257 against next-session
+            # opening volatility (tools/measure_vol_signal.py). It says
+            # something the other scalers do not. Clamped, so the product
+            # stays bounded.
+            * self._implied_vol_scale(context)
         )

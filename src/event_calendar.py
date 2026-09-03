@@ -18,7 +18,7 @@ and this module is additive, not a migration.
 --------------------------------------------------------------------
 THE DATA
 
-data/earnings_releases_derived.csv, from build_earnings_calendar.py:
+data/earnings_releases_derived.csv, from tools/build_earnings_calendar.py:
 676 release timestamps across 16 tickers, RECOVERED FROM THE TAPE
 rather than transcribed -- found the day from the next session's
 opening gap (release timing is a scheduled, publicly announced fact;
@@ -134,7 +134,7 @@ class EarningsEventTable:
         self._window_end = self._release + pd.Timedelta(minutes=reaction_minutes)
 
     @classmethod
-    def from_csv(cls, path: Path | str = DEFAULT_EARNINGS_CSV, **kw) -> "EarningsEventTable":
+    def from_csv(cls, path: Path | str = DEFAULT_EARNINGS_CSV, **kw) -> EarningsEventTable:
         events = pd.read_csv(path)
         events["release_utc"] = pd.to_datetime(events["release_utc"], utc=True)
         return cls(events, **kw)
@@ -198,14 +198,18 @@ class EarningsEventTable:
 
         idx_values = idx_utc.values
         for start, end, release, weight in zip(
-            self._window_start, self._window_end, self._release, self._weight
+            self._window_start, self._window_end, self._release, self._weight, strict=False
         ):
             # .to_datetime64() rather than np.datetime64(ts): the latter
             # on a tz-aware Timestamp warns and silently drops the tz --
             # harmless here since idx_values is already UTC-normalized,
             # but the explicit conversion says so instead of relying on
             # a warning nobody reads in a hot loop.
-            start64, end64, release64 = start.to_datetime64(), end.to_datetime64(), release.to_datetime64()
+            start64, end64, release64 = (
+                start.to_datetime64(),
+                end.to_datetime64(),
+                release.to_datetime64(),
+            )
             lo = np.searchsorted(idx_values, start64, side="left")
             hi = np.searchsorted(idx_values, end64, side="left")
             if lo < hi:

@@ -31,19 +31,27 @@ converted back into a profit_target so src/ledger.Lot.retarget can keep
 target_sell_price and profit_target consistent (see that method for why
 the derivation must be preserved).
 
-TRAILING ONLY ENGAGES ONCE THERE IS A REAL GAIN TO TRAIL. observe()
-seeds a fresh lot's peak from buy_price, so trailed_price on a lot's
-very first tick -- before price has moved at all -- is buy_price * (1
-- trail_pct), already BELOW cost for any trail_pct > 0. Combined with
-ratchet-down-only below, an earlier version of this method proposed
-collapsing straight to the floor on that first tick, regardless of
-trail_pct or whether price had moved, and the ratchet then locked it
-there permanently -- verified directly against a config sweep before
-being caught: every profit_target from 0.30 to 1.00 produced identical
-results once any trail_pct was set. propose() now requires
-trailed_price > buy_price before proposing anything at all, so a lot
-sits at its full original target, exactly as if trailing were off,
-until its peak has genuinely earned that.
+TRAILING ONLY ENGAGES ONCE THE TRAILED PRICE BEATS THE FLOOR. A lot
+sits at its full original target -- exactly as if trailing were off --
+until its peak has risen enough that trailing off that peak lands
+somewhere genuinely better than min_profit_target.
+
+That guard is stricter than it first appears necessary to be, and the
+reason is a bug that took two attempts to kill. observe() seeds a fresh
+lot's peak from buy_price, so trailed_price on a lot's very first tick
+is buy_price * (1 - trail_pct) -- already below cost for any trail_pct
+> 0. The first fix guarded on trailed_price > buy_price, which stopped
+the collapse on tick one but left the shape of the bug intact: with
+new_target = max(trailed_price, floor_price) underneath, the floor was
+an ATTRACTOR rather than a bound. The moment that guard released,
+trailed_price was by construction barely above buy_price and so far
+below the floor, max() picked the floor, and ratchet-down-only locked
+the lot there permanently. Every trail_pct collapsed to the same
+target, differing only in when.
+
+Both failures were caught from sweep output rather than by inspection,
+which is worth remembering: identical results across a swept parameter
+are the symptom to watch for. See propose() for the full history.
 
 --------------------------------------------------------------------
 RATCHET-DOWN ONLY, which is the safety property that makes this simple
@@ -102,9 +110,7 @@ class TrailingTargetPolicy:
         if not 0.0 < trail_pct < 1.0:
             raise ConfigurationError(f"trail_pct must be in (0, 1), got {trail_pct}")
         if min_profit_target <= 0:
-            raise ConfigurationError(
-                f"min_profit_target must be positive, got {min_profit_target}"
-            )
+            raise ConfigurationError(f"min_profit_target must be positive, got {min_profit_target}")
         self.trail_pct = trail_pct
         self.min_profit_target = min_profit_target
         # order_id -> highest price seen while this lot was open.
@@ -138,27 +144,48 @@ class TrailingTargetPolicy:
         peak = self.observe(lot, price)
 
         trailed_price = peak * (1.0 - self.trail_pct)
+        floor_price = lot.buy_price * (1.0 + self.min_profit_target)
 
-        # NOT YET ACTIVE: observe() seeds a fresh lot's peak from
-        # buy_price (see that method's docstring -- a lot that only
-        # ever falls should trail from what it cost, not wherever it
-        # was first looked at). That means on a lot's very first tick,
-        # BEFORE price has moved at all, trailed_price is buy_price *
-        # (1 - trail_pct) -- already BELOW cost for any trail_pct > 0.
-        # Without this guard, max(trailed_price, floor_price) would
-        # pick floor_price on that very first call regardless of
-        # trail_pct or how wide the original target was, and the
-        # ratchet-down-only rule would lock every lot there permanently
-        # -- verified directly: with profit_target=0.30, this proposed
-        # collapsing to a 0.10 floor on tick one, price unchanged from
-        # buy_price. Trailing must only engage once the peak has risen
-        # enough that trailing off it would still clear cost basis --
-        # i.e. there is an actual gain to protect -- not from a
-        # peak that is, so far, just the entry price relabeled.
-        if trailed_price <= lot.buy_price:
+        # NOT YET ACTIVE: the trailed price must clear the FLOOR, not
+        # merely the cost basis, before this policy proposes anything.
+        #
+        # observe() seeds a fresh lot's peak from buy_price (see that
+        # method's docstring -- a lot that only ever falls should trail
+        # from what it cost, not wherever it was first looked at). So on
+        # a lot's very first tick, before price has moved at all,
+        # trailed_price is buy_price * (1 - trail_pct): below cost for
+        # any trail_pct > 0.
+        #
+        # This guard was originally `trailed_price <= lot.buy_price`,
+        # which fixed the most violent form of the bug (collapse on tick
+        # one) but not the bug itself. With `new_target_price =
+        # max(trailed_price, floor_price)` underneath it, the floor was
+        # an ATTRACTOR rather than a bound: the instant the guard
+        # released -- at peak = buy_price / (1 - trail_pct), where
+        # trailed_price is by construction barely above buy_price and
+        # therefore far below the floor -- max() picked floor_price, and
+        # ratchet-down-only locked the lot there forever. Every
+        # trail_pct produced the same target, differing only in WHEN it
+        # snapped. Verified twice from sweep output, a month apart:
+        # first with a fixed 0.10 floor across profit_targets 0.30-1.00
+        # (all four byte-identical), then again after scaling the floor
+        # per-target to 50% of it, where trail_pct 0.05 and 0.10 still
+        # returned identical results (2621.31% return, 91,608 trades) --
+        # because scaling an attractor just moves it.
+        #
+        # Requiring trailed_price > floor_price makes the floor mean what
+        # its docstring always claimed: a level the target may never fall
+        # BELOW, never a level it is dragged DOWN TO. A lot now sits at
+        # its full original target -- exactly as if trailing were off --
+        # until the peak has risen enough that trailing off it lands
+        # somewhere genuinely better than the floor. Since floor_price >
+        # buy_price for any positive min_profit_target, this strictly
+        # subsumes the old cost-basis guard.
+        if trailed_price <= floor_price:
             return None
 
-        floor_price = lot.buy_price * (1.0 + self.min_profit_target)
+        # max() is now redundant given the guard, but kept as an
+        # invariant: no proposal may ever land below the floor.
         new_target_price = max(trailed_price, floor_price)
 
         # Ratchet down only -- see the module docstring.

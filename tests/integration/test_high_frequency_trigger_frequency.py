@@ -55,9 +55,7 @@ def test_hf_strategy_trades_materially_more_often_on_chop_than_the_default_trigg
 
     hf_trigger = controller.run_sweep(
         strategy_class=HighFrequencyLocalReferenceSizing,
-        strategy_params_grid=[
-            {"per_lot_pct": 0.005, "lookback_days": 0.01, "bars_per_day": 390}
-        ],
+        strategy_params_grid=[{"per_lot_pct": 0.005, "lookback_days": 0.01, "bars_per_day": 390}],
         **common,
     ).iloc[0]
 
@@ -75,9 +73,7 @@ def test_hf_strategy_completes_a_real_sweep_without_errors():
         grid_steps=[0.003],
         profit_targets=[0.006],
         strategy_class=HighFrequencyLocalReferenceSizing,
-        strategy_params_grid=[
-            {"per_lot_pct": 0.005, "lookback_days": 0.01, "bars_per_day": 390}
-        ],
+        strategy_params_grid=[{"per_lot_pct": 0.005, "lookback_days": 0.01, "bars_per_day": 390}],
     )
     assert len(results) == 1
     assert "error" not in results.columns, results.to_dict("records")

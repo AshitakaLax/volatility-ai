@@ -11,11 +11,23 @@ Run:  python pull_extended_history.py
 from __future__ import annotations
 
 import logging
+
+# tools/ scripts import from src/, and Python puts THIS file's directory
+# on sys.path[0] -- not the working directory -- so `python
+# tools/pull_extended_history.py` would otherwise fail on `from src...` while
+# `python -m tools.pull_extended_history` succeeded. Same bootstrap as
+# tests/fixtures/regression_baseline.py, so both invocations work.
+import os as _os
 import sys
+import sys as _sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
+
+_REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+if _REPO_ROOT not in _sys.path:
+    _sys.path.insert(0, _REPO_ROOT)
 
 from src.data_validation import validate
 from src.hf_market_data import HFMarketData

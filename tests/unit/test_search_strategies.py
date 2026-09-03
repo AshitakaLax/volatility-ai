@@ -289,7 +289,9 @@ def _drain(search):
         s = search.suggest()
         if s is None:
             return out
-        out.append((s["grid_step"], s["profit_target"], tuple(sorted(s["strategy_params"].items()))))
+        out.append(
+            (s["grid_step"], s["profit_target"], tuple(sorted(s["strategy_params"].items())))
+        )
 
 
 def _space(n_steps=3, n_targets=2, n_params=4):
@@ -337,14 +339,13 @@ def test_random_search_decodes_every_axis_independently():
     and quietly ruin every sweep that used it."""
     steps, targets, params = _space(3, 2, 4)
     drawn = set(_drain(RandomSearch(steps, targets, params, n_trials=1000, seed=1)))
-    expected = {
-        (s, t, tuple(sorted(p.items()))) for s in steps for t in targets for p in params
-    }
+    expected = {(s, t, tuple(sorted(p.items()))) for s in steps for t in targets for p in params}
     assert drawn == expected
 
 
 def test_random_search_report_is_a_no_op():
     steps, targets, params = _space()
+
     class _Result:
         """report() only ever reads .metrics."""
 

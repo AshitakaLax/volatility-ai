@@ -1,0 +1,81 @@
+# Does the implied-vol change actually help, at the backtest level?
+#
+# ONE new axis, everything else pinned at the champion configuration, so
+# this is a controlled A/B and the difference is attributable to the new
+# signal alone. That shape is deliberate: search_hf_volscaled.yaml
+# records that sweeping two extra axes "tripled the space from 6,272 to
+# 18,816 -- which dropped coverage from 3.2% to 0.30% at a 200-trial
+# budget and caused that run to never even propose the best
+# configuration a smaller earlier sweep had already found." Coordinate
+# descent, one axis at a time.
+#
+# WHY THIS SIGNAL EARNED A SWEEP WHEN THE EVENT CALENDARS DID NOT.
+# tools/measure_event_effects.py rejected all four free calendar
+# candidates (OpEx, triple witching, month-end, quarter-end -- none
+# cleared the +11.4%/t=2.89 bar earnings set, and OpEx was slightly
+# NEGATIVE). tools/measure_vol_signal.py then tested three forms of an
+# implied-vol input against next-session OPENING volatility over 2,671
+# sessions, partial rank correlation holding trailing realized vol
+# fixed:
+#
+#     implied level        -0.085     roll-decay drift, not signal
+#     implied 5/60 ratio   -0.039     re-encodes vol persistence
+#     implied 1d CHANGE    +0.257     survives the hard control
+#
+# Only the change survived, and it was aimed at where the incumbent is
+# blind by its own admission: vol_scale_exponent "cannot react to the
+# open's volatility until most of the open is already gone."
+#
+# DIRECTION IS NOT ASSUMED. The exponent sweeps ACROSS ZERO, exactly as
+# vol_scale_exponent's did. Negative sizes DOWN after an implied-vol
+# jump (vol targeting -- the direction realized vol measured as correct);
+# positive leans in. 0.0 is the CONTROL ARM and must reproduce
+# config/retune_uniform_extended_v2.yaml's recorded result exactly:
+#
+#     38.605871% CAGR | 82.367648% max DD | 19402 trades
+#     avg year +56.39% | best year +195.15% | worst year -78.96%
+#
+# If the 0.0 arm does not reproduce that, something in the wiring is not
+# the no-op it claims to be, and no other arm means anything.
+#
+# THE SERIES IS A PROXY. VIXY is VIX (S&P 500), not VXN (Nasdaq-100),
+# and VIX futures via an ETF wrapper rather than spot. The right series
+# is VXN from hfmarketdata.io, unreachable when this was written.
+# Re-run before promoting anything tuned here.
+#
+# Run with:
+#   python run_hf_sweep.py --config config/probe_implied_vol.yaml \
+#     --data data/TQQQ_1Min_hf_splitdiv_extuniform_2016-01-01_2026-08-07.csv \
+#     --implied-vol data/VIXY_1Min_sip_all_ext_2016-01-01_2026-09-01.csv \
+#     --search grid --output output/probe_implied_vol.csv
+#
+# 6 combinations (one axis, grid is exhaustive and cheapest here --
+# random search is for spaces too large to enumerate, which this is not).
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 960
+    per_lot_pct: 0.001
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    weighted_event_boost_multiplier: 2.5
+    implied_vol_exponent: [-2.0, -1.0, -0.5, 0.0, 0.5, 1.0]
+grid:
+  steps: [0.00075]
+  profit_targets: [1.00]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+search: {strategy: grid, rank_by: CAGR %, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}
