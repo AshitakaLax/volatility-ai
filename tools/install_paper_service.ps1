@@ -51,8 +51,17 @@ if (-not (Test-Path (Join-Path $RepoRoot ".env"))) {
     throw "No .env in $RepoRoot -- the runner needs APCA_API_KEY_ID / APCA_API_SECRET_KEY."
 }
 
-$action = New-ScheduledTaskAction -Execute "cmd.exe" `
-    -Argument "/c `"$runner`" `"$Config`" `"$StateDb`"" `
+# The .cmd is the Execute target directly -- NOT wrapped in cmd.exe /c.
+#
+# `cmd.exe /c "script" "arg"` strips the outer quotes when the first
+# token after /c is quoted, and the remainder parses as a request for an
+# INTERACTIVE shell. The task then "runs", sits there, and reports
+# failure with nothing in the log -- observed exactly that, LastTaskResult
+# 1 and an empty log file, because the runner's first line never
+# executed. Task Scheduler runs a .cmd through the shell association
+# without needing the wrapper at all.
+$action = New-ScheduledTaskAction -Execute $runner `
+    -Argument "`"$Config`" `"$StateDb`"" `
     -WorkingDirectory $RepoRoot
 
 $trigger = New-ScheduledTaskTrigger -Weekly `
