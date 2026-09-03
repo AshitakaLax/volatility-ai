@@ -18,6 +18,8 @@ import pytest
 from src.exceptions import ConfigurationError
 from src.fidelity_broker import FidelityBroker
 from src.fidelity_placing_broker import (
+    CANCEL_PLACE_PATH,
+    CANCEL_PREVIEW_PATH,
     PLACE_PATH,
     FidelityPlacingBroker,
     FileConfNumJournal,
@@ -348,3 +350,106 @@ def test_a_real_transport_failure_is_still_ambiguous():
     session = _session(place_raises=TimeoutError("gateway timeout"))
     with pytest.raises(AmbiguousSubmissionError):
         _broker(session).place(SYMBOL, "buy", 1, PRICE, "dec-1")
+
+
+# --- cancelling -------------------------------------------------------
+#
+# Cancelling reaches the same endpoint family as placing, so it is gated
+# the same way. The asymmetries below are deliberate and each has a
+# reason: a cancel only ever REDUCES exposure, so the checks that exist
+# to stop this deployment entering the wrong position do not apply to
+# leaving one.
+
+
+def _cancel_session(cancel_raises=None, echo_account=None):
+    responses = {
+        CANCEL_PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "2C50CWH1"}}},
+        CANCEL_PLACE_PATH: (
+            _raise(cancel_raises)
+            if cancel_raises
+            else {"place": {"orderConfirmDetail": {"acctNum": echo_account or ACCOUNT}}}
+        ),
+        "/ftgw/digital/activityapi/api/v1/transactions/pending": {"data": {"orders": []}},
+    }
+    return FakeSession(responses)
+
+
+def test_a_cancel_previews_then_commits_in_that_order():
+    """Same two-step shape as placing, and the order is the point: the
+    preview half is inert, so a failure there costs nothing."""
+    session = _cancel_session()
+    _broker(session).cancel("2C50CWH1")
+    assert [path for path, _ in session.calls] == [CANCEL_PREVIEW_PATH, CANCEL_PLACE_PATH]
+
+
+def test_both_cancel_steps_carry_the_captured_envelope():
+    """Transcribed from a captured request, not designed -- a shape this
+    fiddly is worth pinning against drift."""
+    session = _cancel_session()
+    _broker(session).cancel("2C50CWH1")
+    for _path, payload in session.calls:
+        assert payload == {"cancelOrderDetails": {"acctNum": ACCOUNT, "confNum": "2C50CWH1"}}
+
+
+def test_a_preview_only_transport_refuses_to_cancel():
+    """The transport is the gate, not this class. cancelPlaceOrder sits in
+    PLACE_ENDPOINTS precisely so a dry-run deployment cannot reach it."""
+    preview_only = FidelitySession(object(), allow_preview_endpoints=True)
+    with pytest.raises(ConfigurationError):
+        preview_only.post_json(CANCEL_PLACE_PATH, {})
+
+
+def test_cancelling_re_checks_the_account():
+    """An allowlist consulted once at construction is decorative. A
+    cancel is still an instruction aimed at one account."""
+    broker = _broker(_cancel_session())
+    broker._account = "999999999"
+    with pytest.raises(ConfigurationError, match="allowed_accounts"):
+        broker.cancel("2C50CWH1")
+
+
+def test_a_cancel_is_not_gated_on_the_symbol_allowlist():
+    """THE DELIBERATE ASYMMETRY. allowed_symbols stops this deployment
+    ENTERING instruments it was not configured for. Refusing to cancel an
+    order because its symbol drifted out of a config file would strand a
+    live order in the market to satisfy a check that was never about
+    that -- the same reasoning that keeps max_order_value on buys only.
+    """
+    broker = _broker(_cancel_session(), allowed_symbols=("SOMETHINGELSE",))
+    broker.cancel("2C50CWH1")  # must not raise
+
+
+def test_a_failed_cancel_is_ambiguous_and_never_retried():
+    """The unknown outcome of a failed cancel is that the order is still
+    working -- which is the state it was already in. Still ambiguous, and
+    still never a retry."""
+    session = _cancel_session(cancel_raises=RuntimeError("gateway timeout"))
+    with pytest.raises(AmbiguousSubmissionError, match="may still be WORKING"):
+        _broker(session).cancel("2C50CWH1")
+
+
+def test_a_transport_refusal_while_cancelling_is_not_reported_as_ambiguous():
+    """The endpoint gate fires BEFORE any network call, so nothing was
+    sent and nothing can be live. Calling that ambiguous would send an
+    operator hunting for an order that never existed."""
+    session = FakeSession({CANCEL_PREVIEW_PATH: {"preview": {}}}, refuse={CANCEL_PLACE_PATH})
+    with pytest.raises(ConfigurationError):
+        _broker(session).cancel("2C50CWH1")
+
+
+def test_cancelling_reads_the_account_back_out_of_the_reply():
+    """The request naming the right account is not proof the venue
+    applied it."""
+    from src.exceptions import ExecutionError
+
+    session = _cancel_session(echo_account="111111111")
+    with pytest.raises(ExecutionError, match="DIFFERENT account"):
+        _broker(session).cancel("2C50CWH1")
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_an_empty_confnum_is_refused_before_anything_is_sent(blank):
+    session = _cancel_session()
+    with pytest.raises(ValueError, match="conf_num is required"):
+        _broker(session).cancel(blank)
+    assert session.calls == []
