@@ -469,6 +469,25 @@ class AlpacaBroker:
             raise ValueError(f"target_price must be positive, got {target_price}")
 
         limit_price = _ceil_to_tick(target_price)
+
+        # A fractional lot cannot trade outside regular hours, so the
+        # EXTENDED-HOURS FLAG is dropped -- never the order. Refusing
+        # would block an exit, and being unable to leave a position is
+        # the one failure this system must not manufacture; the same
+        # reasoning that keeps the Fidelity value ceiling on buys only.
+        #
+        # The order is still submitted as a DAY limit at the validated
+        # price. Outside regular hours Alpaca queues it for the session
+        # open rather than rejecting it, so the exit is placed and
+        # merely waits -- which is what it would have done anyway if the
+        # flag had never been set.
+        eligible = self.extended_hours and float(qty).is_integer()
+        if self.extended_hours and not eligible:
+            logger.info(
+                f"SELL {symbol} qty={qty} is fractional, so it is not eligible for "
+                "extended hours; submitting it as a regular-hours DAY limit rather "
+                "than refusing the exit."
+            )
         _, _, OrderSide, TimeInForce, LimitOrderRequest, _ = _require_alpaca()
         request = LimitOrderRequest(
             symbol=symbol,
@@ -479,10 +498,11 @@ class AlpacaBroker:
             time_in_force=TimeInForce.DAY,
             limit_price=limit_price,
             client_order_id=client_order_id,
-            extended_hours=self.extended_hours or None,
+            extended_hours=eligible or None,
         )
         logger.info(
             f"Submitting SELL {symbol} qty={qty} limit=${limit_price} "
+            f"extended_hours={eligible} "
             f"client_order_id={client_order_id!r} (paper={self.paper})"
         )
         return self._submit(request)

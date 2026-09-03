@@ -582,3 +582,21 @@ def test_extended_hours_comes_from_the_deployment_config_not_a_caller_kwarg():
     )
     built = build_broker(config, credentials=CREDS, client=FakeClient())
     assert built.extended_hours is True
+
+
+def test_a_fractional_sell_drops_the_flag_not_the_order():
+    """Fractional lots cannot trade outside regular hours. Refusing the
+    order would block an EXIT, which is the one failure this system must
+    not manufacture -- so the flag goes, the order stays."""
+    client = FakeClient()
+    _ext(client=client).submit_sell("TQQQ", 0.28, 25.0, client_order_id="cid")
+    request = client.submitted[0]
+    assert request.extended_hours is None, "fractional cannot be extended-hours"
+    assert request.qty == 0.28, "the exit itself must still be submitted"
+    assert float(request.limit_price) == 25.0
+
+
+def test_a_whole_share_sell_keeps_extended_hours_eligibility():
+    client = FakeClient()
+    _ext(client=client).submit_sell("TQQQ", 3.0, 25.0, client_order_id="cid")
+    assert client.submitted[0].extended_hours is True
