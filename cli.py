@@ -180,11 +180,21 @@ def cmd_fetch_data(args: argparse.Namespace) -> int:
         download,
         median_bar_interval_seconds,
         resolve_window,
+        validate_timeframe,
     )
     from src.secrets import load_live_credentials
 
     try:
         start, end = resolve_window(days=args.days, start=args.start, end=args.end)
+        # Validated HERE, not left to download(). parse_timeframe is
+        # otherwise first reached inside fetch_bars
+        # (src/historical_data.py), which runs AFTER the network client is
+        # built and the first request is in flight -- so a bad
+        # --timeframe was diagnosed only if the network happened to work,
+        # and surfaced as whatever transport error came first if it did
+        # not. That made an argument error's exit code depend on
+        # connectivity.
+        validate_timeframe(args.timeframe)
         credentials = load_live_credentials()
     except ConfigurationError as e:
         print(f"{e}", file=sys.stderr)

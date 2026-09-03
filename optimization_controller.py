@@ -29,15 +29,31 @@ from src.intraday_profile import SESSION_MINUTES as _SESSION_MINUTES
 from src.intraday_profile import SESSION_OPEN_MINUTE as _SESSION_OPEN_MINUTE
 from src.ledger import AssetLotLedger
 from src.market_context import MarketContext, SimulationResult
-from src.no_loss_guard import NoLossViolation, compute_sell_economics, validate_sell
+from src.no_loss_guard import (
+    NoLossViolation,
+    SellReason,
+    compute_sell_economics,
+    validate_sell,
+)
 from src.order_management_system import OrderManagementSystem, OrderStatus
-from src.performance_analyzer import PerformanceAnalyzer
+from src.performance_analyzer import PerformanceAnalyzer, annual_returns
 from src.risk_manager import RiskManager
 from src.search_strategies import BayesianSearch, GridSearch, SearchStrategy
 from src.size_calculators import SizingStrategy
 from src.validation import validate_run_sweep_config
 
 logger = logging.getLogger("Optimizer")
+
+# NOTE ON WHY THIS IS A BOOL AND NOT A SENTINEL OBJECT.
+# None is a real value for the implied-vol series ("no file configured, or
+# it failed to load"), so it cannot also mean "not yet attempted". The
+# obvious fix -- a module-level `_UNLOADED = object()` compared with `is`
+# -- is WRONG here and was caught by
+# test_error_isolation_holds_across_process_boundaries: this controller is
+# pickled to worker processes, and pickle rebuilds a bare object() as a
+# NEW instance, so `is _UNLOADED` is False in the worker. The sentinel
+# itself was then returned as the series and every parallel combination
+# failed. A bool pickles by value and has no identity to lose.
 
 
 class BacktestState:
@@ -56,6 +72,62 @@ class BacktestState:
         self.last_buy_price = start_price
         self.peak_equity = initial_cash
         self.max_drawdown = 0.0
+
+        # T+N SETTLEMENT. `cash` stays TOTAL cash so equity is unaffected
+        # -- unsettled proceeds are really yours, they just cannot be
+        # spent yet. `unsettled` is the part of it that has not settled,
+        # and buying_power is the difference.
+        #
+        # This models the constraint a CASH ACCOUNT actually imposes, and
+        # the target deployment is one: a Traditional IRA where proceeds
+        # settle T+1 and buying with unsettled funds is a good-faith
+        # violation. Every recorded result in this project was produced
+        # with settlement_days=0, i.e. assuming proceeds redeploy
+        # instantly -- across roughly 2,000 trades a year.
+        self.unsettled = 0.0
+        self._pending: list[tuple[int, float]] = []
+        self.session = 0
+
+    @property
+    def buying_power(self) -> float:
+        """Cash that can actually be spent right now.
+
+        Floored at zero rather than allowed negative: a buy debits total
+        cash while unsettled is unchanged, so cash can legitimately fall
+        below unsettled. That means "nothing spendable", not "negative
+        spendable", and letting it go negative would silently invert
+        comparisons at the buy gate.
+        """
+        return max(0.0, self.cash - self.unsettled)
+
+    def credit_sale(self, amount: float, settlement_days: int) -> None:
+        """Book sale proceeds, settling `settlement_days` sessions later."""
+        self.cash += amount
+        if settlement_days <= 0:
+            return
+        self.unsettled += amount
+        # session is a day ORDINAL, so maturity is an ordinal too. A
+        # weekend or holiday between the trade and its settlement date
+        # therefore settles it on the next day PRESENT IN THE DATA rather
+        # than on a calendar day that never trades, because
+        # advance_session only fires on days the loop actually sees.
+        self._pending.append((self.session + settlement_days, amount))
+
+    def advance_session(self, session: int) -> None:
+        """Move to a new trading session and settle what has matured."""
+        self.session = session
+        if not self._pending:
+            return
+        still_pending = []
+        for settles_on, amount in self._pending:
+            if settles_on <= session:
+                self.unsettled -= amount
+            else:
+                still_pending.append((settles_on, amount))
+        self._pending = still_pending
+        # Floating-point residue only; a real imbalance would be a bug.
+        if not self._pending:
+            self.unsettled = 0.0
 
 
 def _resolve_search_strategy(
@@ -145,6 +217,8 @@ def _run_one_combination(
     fill_model: str = "close",
     intrabar_priority: str = "sell_first",
     enforce_no_loss: bool = True,
+    allow_signal_exit: bool = False,
+    settlement_days: int = 0,
 ):
     """
     Task 4.5. Module-level (not a method) so it, and everything passed
@@ -210,6 +284,8 @@ def _run_one_combination(
             on_flat_reentry=on_flat_reentry,
             fill_model=fill_model,
             enforce_no_loss=enforce_no_loss,
+            allow_signal_exit=allow_signal_exit,
+            settlement_days=settlement_days,
             intrabar_priority=intrabar_priority,
         )
         # Strategy is identified by name rather than by the config's
@@ -247,16 +323,22 @@ class OptimizationController:
     scored against identical data.
     """
 
-    def __init__(self, historical_data: pd.DataFrame):
+    def __init__(self, historical_data: pd.DataFrame, implied_vol_path: str | None = None):
         """Validate and retain the historical dataset.
 
         Validation happens here rather than at sweep time so malformed
         data fails immediately, before any combination runs. Raises
         DataValidationError (Task 2.1) on empty, non-finite,
         non-positive, unsorted, or duplicate-timestamped input.
+
+        implied_vol_path is optional and defaults to None, which yields
+        an all-zero implied-vol signal -- an exact no-op, so every
+        existing caller and recorded result is unaffected. See
+        src/implied_vol_signal.py.
         """
         data_validation.validate(historical_data)
         self.data = historical_data
+        self.implied_vol_path = implied_vol_path
         # Computed lazily, once per controller, and reused by every
         # combination in a sweep -- see _fomc_flags. Doing the Eastern
         # conversion per bar per combination meant 1.03M timezone
@@ -268,6 +350,9 @@ class OptimizationController:
         self._minutes_since_open_cache = None
         self._event_intensity_cache = None
         self._minutes_to_event_cache = None
+        self._implied_vol_change_cache = None
+        self._implied_vol_series_cache = None
+        self._implied_vol_series_loaded = False
         logger.info(
             f"OptimizationController initialized with historical dataset length: {len(historical_data)}"
         )
@@ -282,6 +367,7 @@ class OptimizationController:
         "_minutes_since_open_cache",
         "_event_intensity_cache",
         "_minutes_to_event_cache",
+        "_implied_vol_change_cache",
     )
 
     def __getstate__(self):
@@ -389,9 +475,7 @@ class OptimizationController:
         measurement behind that distinction.
         """
         if self._earnings_flags_cache is None:
-            self._earnings_flags_cache = [
-                d in EARNINGS_REACTION_DATES for d in self._eastern_dates
-            ]
+            self._earnings_flags_cache = [d in EARNINGS_REACTION_DATES for d in self._eastern_dates]
         return self._earnings_flags_cache
 
     def _load_event_table(self):
@@ -399,7 +483,7 @@ class OptimizationController:
 
         data/earnings_releases_derived.csv (src/event_calendar.py's
         source) is a generated artifact, not a committed one -- a fresh
-        checkout that has not run build_earnings_calendar.py lacks it.
+        checkout that has not run tools/build_earnings_calendar.py lacks it.
         Falling back to "no events" rather than raising keeps a sweep
         runnable without it: every strategy's weighted_event_boost_
         multiplier defaults to 1.0, so an all-zero event_intensity array
@@ -435,6 +519,64 @@ class OptimizationController:
             self._event_intensity  # noqa: B018 -- populates both caches
         return self._minutes_to_event_cache
 
+    @property
+    def _implied_vol_series(self):
+        """The session-change series itself -- SMALL, and deliberately
+        NOT in _DERIVED_CACHES so it survives pickling.
+
+        Splitting this from the per-bar array below is a measured
+        optimisation, not tidiness. Building it parses a 69MB minute CSV
+        to produce ~2,680 session values:
+
+            build from CSV          3.27s     <- was repeated per task
+            join onto 2.56M bars    0.07s     <- genuinely per-controller
+            the series pickles to  42.5 KB
+            the per-bar array      20.5 MB
+
+        __getstate__ ships this object on EVERY task submission, so the
+        first version -- which put the series behind the same cache as
+        the array -- re-read 69MB per combination. That is 40s on a
+        12-combo sweep and ~14 minutes on a 250-trial one, multiplied by
+        worker count.
+
+        42.5KB is the right thing to ship: the same order as
+        data/earnings_releases_derived.csv (40KB), which the event table
+        already re-reads per task without anyone minding. The 20.5MB
+        array is the thing that must not be.
+        """
+        if not self._implied_vol_series_loaded:
+            from src.implied_vol_signal import load_implied_vol_change
+
+            series = None
+            if self.implied_vol_path:
+                try:
+                    series = load_implied_vol_change(self.implied_vol_path)
+                except (FileNotFoundError, DataValidationError) as exc:
+                    logger.warning(
+                        f"Implied-vol series {self.implied_vol_path} unusable ({exc}); "
+                        "continuing with no implied-vol signal."
+                    )
+            self._implied_vol_series_cache = series
+            self._implied_vol_series_loaded = True
+        return self._implied_vol_series_cache
+
+    @property
+    def _implied_vol_change(self):
+        """Per-bar implied-vol session change, cached like _fomc_flags.
+
+        Absent file -> all-zero, the same fallback _load_event_table
+        takes and for the same reason: the consumer's exponent defaults
+        to 0.0, so a zero array is an exact no-op and a sweep stays
+        runnable on a checkout without the implied-vol data.
+        """
+        if self._implied_vol_change_cache is None:
+            from src.implied_vol_signal import changes_for_index
+
+            self._implied_vol_change_cache = changes_for_index(
+                self._implied_vol_series, self.data.index
+            )
+        return self._implied_vol_change_cache
+
     def _simulate_single(
         self,
         step: float,
@@ -448,6 +590,8 @@ class OptimizationController:
         fill_model: str = "close",
         intrabar_priority: str = "sell_first",
         enforce_no_loss: bool = True,
+        allow_signal_exit: bool = False,
+        settlement_days: int = 0,
     ) -> SimulationResult:
         """
         Task 4.1. One isolated combination: fresh AssetLotLedger and
@@ -518,6 +662,13 @@ class OptimizationController:
 
         # Task 4.6: opt-in trade blotter / equity curve capture.
         blotter_records = []
+        # Boxed in a list because _apply_sell_fill is a closure that has
+        # to MUTATE this, and it binds its per-iteration values as
+        # default arguments -- a plain int would be rebound locally and
+        # the count would stay zero. Incremented inside that closure, not
+        # at the call site, so a de-duplicated fill event (Task 4.10's
+        # apply_once) cannot count one exit twice.
+        signal_exit_count = [0]
         equity_curve_timestamps = []
         equity_curve_values = []
 
@@ -534,15 +685,37 @@ class OptimizationController:
         minute_flags = self._minutes_since_open
         event_intensity = self._event_intensity
         minutes_to_event = self._minutes_to_event
+        implied_vol_change = self._implied_vol_change
 
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp = row.Index
             current_price = row.close
 
+            # SESSION BOUNDARY, for T+N settlement only. Guarded on the
+            # flag so the default path pays one integer comparison per
+            # bar rather than a date extraction over ~1M bars -- the
+            # same discipline wants_lot_retargeting exists for.
+            #
+            # Counts CALENDAR days present in the data, not sessions in
+            # the exchange sense. On a continuous minute series those are
+            # the same thing for settlement purposes: what matters is
+            # that a sale on one trading day is spendable on the next
+            # one, and a day absent from the data cannot host a trade.
+            if settlement_days > 0:
+                day = timestamp.toordinal()
+                if day != state.session:
+                    state.advance_session(day)
+
             # Peaks/drawdown every bar (B3), before constructing context,
             # since MarketContext.equity/peak_equity/drawdown need this
             # bar's values.
-            open_assets_val = sum(lot.shares * current_price for lot in ledger.open_lots)
+            # price * total_shares, not sum(shares * price). Every lot is
+            # the same symbol at the same bar, so the price is a common
+            # factor, and the share total only changes on a fill. The
+            # generator form profiled at 65% of runtime here -- 62.7M
+            # steps over a ~522-lot book -- to compute a number that one
+            # multiply gives. See AssetLotLedger.total_open_shares.
+            open_assets_val = current_price * ledger.total_open_shares
             total_equity = state.cash + open_assets_val
             if total_equity > state.peak_equity:
                 state.peak_equity = total_equity
@@ -568,6 +741,7 @@ class OptimizationController:
                 volume=float(getattr(row, "volume", 0.0) or 0.0),
                 event_intensity=float(event_intensity[bar_index]),
                 minutes_to_event=float(minutes_to_event[bar_index]),
+                implied_vol_change=float(implied_vol_change[bar_index]),
             )
 
             # Every bar, unconditionally -- B4. Routed through the shared
@@ -593,8 +767,32 @@ class OptimizationController:
             # only the trigger price differs between the two models.
             harvest_probe = context.price if fill_model == "close" else row.high
             marketable = ledger.get_marketable_lots(harvest_probe)
-            for lot in marketable:
-                exec_res = oms.execute_sell(lot.symbol, lot.shares, lot.target_sell_price)
+
+            # Signal exits, if the strategy asks for them AND config
+            # permits. Empty on both defaults, so this reproduces prior
+            # results exactly -- see decision_cycle.collect_liquidations
+            # for why both conditions are required.
+            #
+            # Ordered FIRST and de-duplicated against the harvest so a
+            # lot that is both condemned and marketable sells once. The
+            # sale that fires is this one, at context.price rather than
+            # at the target: a strategy saying "close this now" means
+            # now, and letting the harvest win would silently convert a
+            # signal exit into a price-contingent one that might never
+            # fill on a later bar.
+            liquidations = decision_cycle.collect_liquidations(
+                strategy_instance, ledger, context, allow_signal_exit=allow_signal_exit
+            )
+            exits = [(lot, context.price, SellReason.SIGNAL_EXIT) for lot in liquidations]
+            if liquidations:
+                condemned = {lot.order_id for lot in liquidations}
+                marketable = [lot for lot in marketable if lot.order_id not in condemned]
+            exits.extend(
+                (lot, lot.target_sell_price, SellReason.PROFIT_TARGET) for lot in marketable
+            )
+
+            for lot, sell_price, sell_reason in exits:
+                exec_res = oms.execute_sell(lot.symbol, lot.shares, sell_price)
                 if exec_res.get("status") != OrderStatus.FILLED:
                     logger.warning(
                         f"Sell not filled for lot {lot.order_id}: status={exec_res.get('status')}"
@@ -616,6 +814,7 @@ class OptimizationController:
                         cost_model,
                         context=context,
                         prev_close=prev_close,
+                        reason=sell_reason,
                     )
                 except NoLossViolation:
                     if enforce_no_loss:
@@ -638,6 +837,7 @@ class OptimizationController:
 
                 def _apply_sell_fill(
                     lot=lot,
+                    sell_reason=sell_reason,
                     context=context,
                     net_sell_proceeds=net_sell_proceeds,
                     filled_price=filled_price,
@@ -657,8 +857,10 @@ class OptimizationController:
                     lot's economics. Binding removes that failure mode
                     outright instead of relying on the caller's timing.
                     """
-                    state.cash += net_sell_proceeds
+                    state.credit_sale(net_sell_proceeds, settlement_days)
                     ledger.close_lot(lot)
+                    if sell_reason is SellReason.SIGNAL_EXIT:
+                        signal_exit_count[0] += 1
                     blotter_records.append(
                         {
                             "timestamp": context.timestamp,
@@ -689,7 +891,12 @@ class OptimizationController:
             if fill_model == "close":
                 buy_fill_price = context.price
                 decision = decision_cycle.evaluate_grid_decision(
-                    strategy_instance, risk_manager, context, state.last_buy_price, step, state.cash
+                    strategy_instance,
+                    risk_manager,
+                    context,
+                    state.last_buy_price,
+                    step,
+                    state.buying_power,
                 )
             else:
                 trigger_level = strategy_instance._grid_trigger_level(
@@ -712,7 +919,7 @@ class OptimizationController:
             if decision.triggered:
                 trade_value = decision.clamped_trade_value
 
-                if state.cash >= trade_value and trade_value > 0:
+                if state.buying_power >= trade_value and trade_value > 0:
                     order = oms.execute_buy(symbol, trade_value, buy_fill_price)
                     if order.get("status") != OrderStatus.FILLED:
                         logger.warning(f"Buy not filled: status={order.get('status')}")
@@ -779,6 +986,14 @@ class OptimizationController:
 
         metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, initial_cash)
         metrics["Max Drawdown %"] = state.max_drawdown * 100.0
+        # Reported ALWAYS, not only when the feature is on. A column that
+        # appears conditionally is one an analysis script silently reads
+        # as absent-means-zero; a constant 0 says "measured, none
+        # happened". These are the only sells in the system that can
+        # realize a loss, so a results row that did not name them would
+        # make a strategy quietly dumping inventory look like one that
+        # simply performed worse.
+        metrics["Signal Exit Count"] = signal_exit_count[0]
         # Assigned here rather than in PerformanceAnalyzer for the same
         # reason "Max Drawdown %" is: it is derived from the drawdown
         # this loop tracks per bar, and computing it in two places would
@@ -828,6 +1043,42 @@ class OptimizationController:
             # validated dataset but must not raise here.
             metrics["CAGR %"] = -100.0 if growth <= 0.0 else 0.0
 
+        # Built once here and reused for SimulationResult.equity_curve
+        # below, rather than constructed twice from the same lists.
+        equity_curve = pd.Series(
+            data=equity_curve_values, index=pd.Index(equity_curve_timestamps, name="timestamp")
+        )
+
+        # Calendar-year returns, alongside the single whole-period CAGR
+        # above. CAGR alone hides exactly the thing a grid/harvest
+        # strategy needs shown: it is one smoothed number over a span
+        # that can contain both a strategy's best regime and its worst,
+        # and two runs with the same CAGR can have gotten there by wildly
+        # different paths -- one steady, one one great year carrying ten
+        # flat ones. Average/best/worst make that visible without having
+        # to re-run analyze_annual.py's full year-by-year table.
+        #
+        # "Average Annual Return %" is the plain mean of calendar-year
+        # returns, NOT a second annualization of the total -- it can
+        # legitimately differ from CAGR %, and that gap is itself
+        # informative (a mean pulled up by one outlier year while CAGR
+        # stays modest says something CAGR alone cannot).
+        #
+        # A single-year dataset produces one calendar-year return, which
+        # is simultaneously the average, the best, and the worst -- not a
+        # bug, just what "best" and "worst" mean over one data point.
+        yearly_returns = annual_returns(equity_curve)
+        if len(yearly_returns) > 0:
+            metrics["Average Annual Return %"] = float(yearly_returns.mean())
+            metrics["Best Year Return %"] = float(yearly_returns.max())
+            metrics["Worst Year Return %"] = float(yearly_returns.min())
+        else:
+            # Only reachable with an empty dataset, which validation
+            # rejects upstream -- guarded rather than assumed unreachable.
+            metrics["Average Annual Return %"] = 0.0
+            metrics["Best Year Return %"] = 0.0
+            metrics["Worst Year Return %"] = 0.0
+
         # Task 4.6. params captures every input _simulate_single itself
         # actually received -- the strategy's own constructor-derived
         # attributes (e.g. allocation_pct) are merged in via vars(),
@@ -844,6 +1095,8 @@ class OptimizationController:
             "on_flat_reentry": on_flat_reentry,
             "fill_model": fill_model,
             "enforce_no_loss": enforce_no_loss,
+            "allow_signal_exit": allow_signal_exit,
+            "settlement_days": settlement_days,
             # Underscore-prefixed attributes are excluded deliberately.
             # The intent above is "the strategy's own constructor-derived
             # attributes"; a stateful strategy's rolling indicator state
@@ -858,9 +1111,7 @@ class OptimizationController:
         return SimulationResult(
             metrics=metrics,
             trade_blotter=pd.DataFrame(blotter_records),
-            equity_curve=pd.Series(
-                data=equity_curve_values, index=pd.Index(equity_curve_timestamps, name="timestamp")
-            ),
+            equity_curve=equity_curve,
             params=params,
         )
 
@@ -876,6 +1127,8 @@ class OptimizationController:
         fill_model: str = "close",
         intrabar_priority: str = "sell_first",
         enforce_no_loss: bool = True,
+        allow_signal_exit: bool = False,
+        settlement_days: int = 0,
         symbol: str = "TQQQ",
         initial_cash: float = 100_000.0,
         n_jobs: int = 1,
@@ -1013,6 +1266,8 @@ class OptimizationController:
                     fill_model,
                     intrabar_priority,
                     enforce_no_loss,
+                    allow_signal_exit,
+                    settlement_days,
                 )
                 resolved_search_strategy.report(suggestion, sim_result)
                 results.append(row)
@@ -1059,6 +1314,8 @@ class OptimizationController:
                             fill_model,
                             intrabar_priority,
                             enforce_no_loss,
+                            allow_signal_exit,
+                            settlement_days,
                         ): s
                         for s in batch
                     }
@@ -1122,6 +1379,7 @@ class OptimizationController:
         strategy_class,
         cost_model: TransactionCostModel = None,
         intrabar_priority: str = "sell_first",
+        allow_signal_exit: bool = False,
     ) -> pd.DataFrame:
         """
         Task 2.3 (F2). Re-runs each finalist combination -- typically a
@@ -1138,6 +1396,12 @@ class OptimizationController:
         :param cost_model: applied identically to both the daily comparison run
             and the intraday replay, so the comparison isolates the intrabar
             effect rather than mixing it with a cost-model difference.
+        :param allow_signal_exit: threaded to BOTH runs, for the same reason
+            cost_model is. Without it a strategy implementing
+            lots_to_liquidate could not be intraday-validated at all: both
+            sides would silently run with signal exits off, and the
+            comparison would describe a configuration nobody intends to
+            trade. Defaults False, so every existing caller is unchanged.
         """
         intraday_validation.validate_intraday_schema(intraday_data)
 
@@ -1153,6 +1417,7 @@ class OptimizationController:
                 strategy_class=strategy_class,
                 strategy_params_grid=[strategy_params],
                 cost_model=cost_model,
+                allow_signal_exit=allow_signal_exit,
             ).iloc[0]
 
             intraday_metrics = intraday_validation.simulate_single_intraday(
@@ -1163,6 +1428,7 @@ class OptimizationController:
                 strategy_params=strategy_params,
                 cost_model=cost_model,
                 intrabar_priority=intrabar_priority,
+                allow_signal_exit=allow_signal_exit,
             )
 
             rows.append(

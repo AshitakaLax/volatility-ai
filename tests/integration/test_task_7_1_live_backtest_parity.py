@@ -62,11 +62,14 @@ class RecordingRiskManager(RiskManager):
         super().__init__()
         self.calls = []
 
-    def clamp_trade_value(self, proposed_value, equity, cash, open_lot_count):
+    def clamp_trade_value(self, proposed_value, equity, cash, open_lot_count, drawdown=0.0):
         self.calls.append(
-            ("clamp_trade_value", ("proposed_value", "equity", "cash", "open_lot_count"))
+            (
+                "clamp_trade_value",
+                ("proposed_value", "equity", "cash", "open_lot_count", "drawdown"),
+            )
         )
-        return super().clamp_trade_value(proposed_value, equity, cash, open_lot_count)
+        return super().clamp_trade_value(proposed_value, equity, cash, open_lot_count, drawdown)
 
 
 def _live_config(enabled: bool = True) -> BacktestConfig:
@@ -168,7 +171,10 @@ def test_live_and_backtest_produce_the_identical_strategy_call_sequence(monkeypa
     for name in live_names:
         assert name in backtest_names, f"Live path calls {name}, backtest path never does"
     assert live_risk.calls == [
-        ("clamp_trade_value", ("proposed_value", "equity", "cash", "open_lot_count"))
+        (
+            "clamp_trade_value",
+            ("proposed_value", "equity", "cash", "open_lot_count", "drawdown"),
+        )
     ]
     assert backtest_risk.calls[0] == live_risk.calls[0], (
         "clamp_trade_value argument shape differs between paths"

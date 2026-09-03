@@ -91,9 +91,7 @@ def test_the_window_is_sent_as_eastern_wall_clock():
     """The API compares start/end against its own naive values, so a
     UTC-shaped window would silently request the wrong hours."""
     opener = fake_opener([{"count": 1, "data": [bar("2024-06-03 04:00:00")]}])
-    HFMarketData(opener=opener).fetch_bars(
-        spec(start=datetime(2024, 6, 3, 8, 0, tzinfo=UTC))
-    )
+    HFMarketData(opener=opener).fetch_bars(spec(start=datetime(2024, 6, 3, 8, 0, tzinfo=UTC)))
     # 08:00Z is 04:00 Eastern -- that is what must go on the wire.
     assert "start=2024-06-03T04%3A00%3A00" in opener.calls[0]
     assert "Z" not in opener.calls[0].split("start=")[1].split("&")[0]
@@ -172,9 +170,7 @@ def test_regular_hours_filtering_uses_the_shared_implementation():
     ]
     opener = fake_opener([{"count": len(rows), "data": rows}])
 
-    df, dropped, _ = HFMarketData(opener=opener).fetch_bars(
-        spec(regular_hours_only=True)
-    )
+    df, dropped, _ = HFMarketData(opener=opener).fetch_bars(spec(regular_hours_only=True))
 
     assert dropped == 2
     eastern = df.index.tz_convert("America/New_York")
@@ -323,7 +319,9 @@ def test_a_timeout_is_retried_not_left_unhandled():
     """TimeoutError is NOT a urllib.error.URLError subclass -- verified
     directly -- so before this was handled explicitly, a slow server
     raised an unhandled TimeoutError instead of DataValidationError."""
-    opener = flaky_opener([TimeoutError("timed out"), {"count": 1, "data": [bar("2024-06-03 09:30:00")]}])
+    opener = flaky_opener(
+        [TimeoutError("timed out"), {"count": 1, "data": [bar("2024-06-03 09:30:00")]}]
+    )
     sleeps = []
     df, _, _ = HFMarketData(opener=opener, max_retries=3, sleep=sleeps.append).fetch_bars(spec())
     assert len(df) == 1
@@ -377,7 +375,10 @@ def test_a_connection_reset_is_retried_too():
     DIFFERENT OSError subclass than TimeoutError, not previously caught
     at all, killed an instrument-screen run with zero retries."""
     opener = flaky_opener(
-        [ConnectionResetError("connection reset"), {"count": 1, "data": [bar("2024-06-03 09:30:00")]}]
+        [
+            ConnectionResetError("connection reset"),
+            {"count": 1, "data": [bar("2024-06-03 09:30:00")]},
+        ]
     )
     df, _, _ = HFMarketData(opener=opener, max_retries=3, sleep=lambda _: None).fetch_bars(spec())
     assert len(df) == 1

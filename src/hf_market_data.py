@@ -295,6 +295,4 @@ class HFMarketData:
         ).tz_convert("UTC")
         frame.index.name = "timestamp"
 
-        return to_backtest_frame(
-            frame, spec.symbol, regular_hours_only=spec.regular_hours_only
-        )
+        return to_backtest_frame(frame, spec.symbol, regular_hours_only=spec.regular_hours_only)

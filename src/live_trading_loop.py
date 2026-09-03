@@ -79,6 +79,7 @@ liquidate -- consistent with Task 7.8's no-loss shutdown invariant.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -93,9 +94,10 @@ from src.exceptions import ConfigurationError
 from src.fill_accounting import FillTracker, extract_alpaca_fill
 from src.fomc_calendar import is_fomc_day_at
 from src.idempotency import compute_decision_id
+from src.implied_vol_signal import change_at
 from src.intraday_profile import minutes_since_open
 from src.market_context import MarketContext
-from src.no_loss_guard import NoLossViolation, validate_sell
+from src.no_loss_guard import NoLossViolation, SellReason, validate_sell
 from src.order_lifecycle import TERMINAL_STATES, map_broker_status
 from src.retry_policy import AmbiguousSubmissionError
 from src.risk_manager import CircuitBreaker, RiskManager
@@ -106,6 +108,11 @@ logger = logging.getLogger("Optimizer")
 # Durable keys for the scalars that are not lots. Namespaced so they
 # cannot collide with Task 7.8's halt keys in the same meta table.
 _META_CASH = "live.cash"
+# Unsettled proceeds and their maturity sessions, as JSON. Persisted
+# because a restart that forgot them would treat unsettled money as
+# spendable and trade MORE aggressively than the backtest modelled --
+# in a cash account, that is extra good-faith violations.
+_META_UNSETTLED = "live.unsettled"
 _META_PEAK_EQUITY = "live.peak_equity"
 
 
@@ -143,6 +150,14 @@ class _TrackedOrder:
     lot_order_id: str | None = None
     trigger_price: float = 0.0
     profit_target: float = 0.0
+    # WHY the sell was submitted, carried from submission to fill.
+    # Unlike the backtest, live splits those into two ticks: the guard
+    # runs in _apply_sell_fill, long after _maybe_sell decided. Without
+    # this field the fill handler cannot tell a harvest from a signal
+    # exit, would refuse to book the loss, and would leave a position
+    # the broker has already sold still open in our ledger -- the exact
+    # divergence reconciliation exists to catch, manufactured by us.
+    sell_reason: SellReason = SellReason.PROFIT_TARGET
 
 
 @dataclass
@@ -156,6 +171,46 @@ class _LoopState:
     max_drawdown: float = 0.0
     open_orders: dict = field(default_factory=dict)
     sells_in_flight: set = field(default_factory=set)
+
+    # T+N settlement, mirroring optimization_controller.BacktestState.
+    # `cash` remains TOTAL cash so equity is unaffected; only what can
+    # be SPENT is reduced.
+    unsettled: float = 0.0
+    pending: list = field(default_factory=list)
+    session: int = 0
+
+    @property
+    def buying_power(self) -> float:
+        """Cash that can actually be spent right now.
+
+        Floored at zero: a buy debits total cash while unsettled is
+        unchanged, so cash can legitimately fall below unsettled. That
+        means "nothing spendable", not "negative spendable".
+        """
+        return max(0.0, self.cash - self.unsettled)
+
+    def credit_sale(self, amount: float, settlement_days: int) -> None:
+        """Book sale proceeds, settling `settlement_days` sessions later."""
+        self.cash += amount
+        if settlement_days <= 0:
+            return
+        self.unsettled += amount
+        self.pending.append([self.session + settlement_days, amount])
+
+    def advance_session(self, session: int) -> None:
+        """Move to a new session and settle what has matured."""
+        self.session = session
+        if not self.pending:
+            return
+        still = []
+        for settles_on, amount in self.pending:
+            if settles_on <= session:
+                self.unsettled -= amount
+            else:
+                still.append([settles_on, amount])
+        self.pending = still
+        if not self.pending:
+            self.unsettled = 0.0
 
 
 class LiveTradingLoop:
@@ -227,6 +282,22 @@ class LiveTradingLoop:
         except (FileNotFoundError, _DataValidationError) as e:
             logger.warning(f"No earnings event table loaded ({e}); event_intensity stays 0.0.")
             self._event_table = None
+        # Implied-vol change series -- same optional-artifact fallback as
+        # the event table above, and for the same reason: the consuming
+        # exponent defaults to 0.0, so its absence is an exact no-op
+        # rather than something worth refusing to start over.
+        self._implied_vol_series = None
+        implied_vol_path = getattr(getattr(config, "live", None), "implied_vol_path", None)
+        if implied_vol_path:
+            try:
+                from src.implied_vol_signal import load_implied_vol_change
+
+                self._implied_vol_series = load_implied_vol_change(implied_vol_path)
+            except (FileNotFoundError, _DataValidationError) as e:
+                logger.warning(
+                    f"No implied-vol series loaded from {implied_vol_path} ({e}); "
+                    "implied_vol_change stays 0.0."
+                )
         self._sleep = sleep
         self._stop_requested = False
 
@@ -247,16 +318,57 @@ class LiveTradingLoop:
         cash = store.get_meta(_META_CASH)
         peak = store.get_meta(_META_PEAK_EQUITY)
         initial_cash = float(config.backtest.initial_cash)
+        self.settlement_days = int(config.execution.settlement_days)
         self.state = _LoopState(
             cash=float(cash) if cash is not None else initial_cash,
             peak_equity=float(peak) if peak is not None else initial_cash,
             last_buy_price=store.load_last_buy_price(),
         )
+        self._restore_settlement(store.get_meta(_META_UNSETTLED))
         logger.info(
             f"LiveTradingLoop ready: symbol={self.symbol} step={self.step} "
             f"profit_target={self.profit_target} cash={self.state.cash:.2f} "
             f"open_lots={len(self.ledger.open_lots)}"
         )
+
+    def _restore_settlement(self, raw: str | None) -> None:
+        """Reload unsettled proceeds, or fail SAFE if they are unreadable.
+
+        A restart that silently forgot unsettled money would treat it as
+        spendable -- trading more aggressively than the backtest
+        modelled, which in a cash account means good-faith violations
+        that were never simulated. So CORRUPT state does not default to
+        zero: it treats all cash as unsettled until the next session,
+        which under-trades for at most one session and cannot over-trade.
+
+        ABSENT state is a different fact and is handled differently. A
+        fresh deployment has written nothing yet, and its opening balance
+        is settled cash already sitting in the account. Conflating the
+        two froze buying power at zero on every first run.
+        """
+        if self.settlement_days <= 0:
+            return
+        if raw is None:
+            # NEVER WRITTEN, not corrupt. A fresh deployment's opening
+            # balance is settled cash sitting in the account -- there is
+            # nothing outstanding to wait for. Treating absence as the
+            # failure case froze buying power at zero on the first run and
+            # the loop could never open a position.
+            return
+        try:
+            saved = json.loads(raw)
+            self.state.session = int(saved["session"])
+            self.state.unsettled = float(saved["unsettled"])
+            self.state.pending = [[int(d), float(a)] for d, a in saved["pending"]]
+        except (TypeError, ValueError, KeyError) as exc:
+            self.state.unsettled = self.state.cash
+            self.state.pending = []
+            logger.warning(
+                f"Settlement state unreadable ({exc}); treating the whole "
+                f"${self.state.cash:.2f} balance as unsettled until the next "
+                "session. This under-trades deliberately -- the alternative "
+                "is spending money that may not have settled."
+            )
 
     # --- control ---
 
@@ -306,6 +418,17 @@ class LiveTradingLoop:
             return TickOutcome(acted=False, reason="tick_rejected", price=bar.close)
 
         price = check.price
+
+        # SESSION BOUNDARY, before fills are applied, so proceeds credited
+        # this tick are not settled by this tick's own advance. Mirrors
+        # _simulate_single, which advances at the top of each bar for the
+        # same reason. Guarded on the flag so the default path pays one
+        # integer comparison per tick.
+        if self.settlement_days > 0:
+            day = bar.timestamp.toordinal()
+            if day != self.state.session:
+                self.state.advance_session(day)
+
         fills = self._poll_open_orders()
 
         context = self._build_context(bar, price)
@@ -464,6 +587,7 @@ class LiveTradingLoop:
                 delta.avg_price,
                 self.cost_model,
                 prev_close=self.state.prev_close,
+                reason=tracked.sell_reason,
             )
         except NoLossViolation:
             # Already logged by the guard. Deliberately not applied:
@@ -471,7 +595,7 @@ class LiveTradingLoop:
             # reconcilable rather than quietly realizing a loss.
             return
 
-        self.state.cash += economics.net_sell_proceeds
+        self.state.credit_sale(economics.net_sell_proceeds, self.settlement_days)
         self.ledger.close_lot(lot, sell_qty=delta.qty, execution_price=delta.avg_price)
         self.store.sync_lot(self.ledger, lot)
         logger.info(
@@ -534,6 +658,7 @@ class LiveTradingLoop:
             volume=float(getattr(bar, "volume", 0.0) or 0.0),
             event_intensity=event_intensity,
             minutes_to_event=minutes_to_event,
+            implied_vol_change=change_at(self._implied_vol_series, timestamp),
         )
 
     # --- order submission ---
@@ -565,26 +690,64 @@ class LiveTradingLoop:
         for lot in retargeted:
             self.store.record_open_lot(lot)
         marketable = self.ledger.get_marketable_lots(context.price)
-        for lot in marketable[: self.config.live.max_sells_per_tick]:
+
+        # Signal exits, through the shared helper the backtest paths call,
+        # with the same in-flight exclusion retargeting uses: a lot whose
+        # sell is already resting must not get a second order.
+        #
+        # Priced at context.price rather than at the lot's target. A
+        # signal exit that rested above the market would simply not fill,
+        # which is the one outcome it must not have -- the strategy asked
+        # to be OUT. It stays a limit order (never a market order) so a
+        # thin book cannot fill it arbitrarily far away; it is marketable
+        # at submission, and an unfilled remainder is re-offered next
+        # tick at the new price rather than chased.
+        liquidations = decision_cycle.collect_liquidations(
+            self.strategy,
+            self.ledger,
+            context,
+            allow_signal_exit=self.config.execution.allow_signal_exit,
+            skip_order_ids=self.state.sells_in_flight,
+        )
+        exits = [(lot, context.price, SellReason.SIGNAL_EXIT) for lot in liquidations]
+        if liquidations:
+            condemned = {lot.order_id for lot in liquidations}
+            marketable = [lot for lot in marketable if lot.order_id not in condemned]
+        exits.extend((lot, lot.target_sell_price, SellReason.PROFIT_TARGET) for lot in marketable)
+
+        # The per-tick bound applies to the COMBINED list, not to each
+        # kind separately, because it exists to keep one tick inside the
+        # poll interval and the broker does not care why an order was
+        # sent. Signal exits are ordered first, so a harvest large enough
+        # to fill the budget defers other harvests rather than the exit a
+        # strategy asked for.
+        for lot, sell_price, sell_reason in exits[: self.config.live.max_sells_per_tick]:
             if lot.order_id in self.state.sells_in_flight:
                 continue
             decision_id = self._decision_id("SELL", context.timestamp, lot.order_id)
             outcome = self.guard.submit_once(
                 decision_id,
-                lambda cid, lot=lot: str(
+                lambda cid, lot=lot, sell_price=sell_price: str(
                     self.broker.submit_sell(
-                        self.symbol, lot.shares, lot.target_sell_price, client_order_id=cid
+                        self.symbol, lot.shares, sell_price, client_order_id=cid
                     ).id
                 ),
                 event_kind="sell_submission",
             )
             if not outcome.submitted_now:
                 continue
+            if sell_reason is SellReason.SIGNAL_EXIT:
+                logger.warning(
+                    f"SIGNAL EXIT submitted for lot {lot.order_id} "
+                    f"({lot.shares} @ {sell_price}, bought at {lot.buy_price}): "
+                    "this sell is permitted to realize a loss."
+                )
             self.state.open_orders[decision_id] = _TrackedOrder(
                 client_order_id=decision_id,
                 kind="sell",
                 tracker=FillTracker(decision_id),
                 lot_order_id=lot.order_id,
+                sell_reason=sell_reason,
             )
             self.state.sells_in_flight.add(lot.order_id)
             submitted += 1
@@ -593,9 +756,18 @@ class LiveTradingLoop:
     def _maybe_buy(self, context: MarketContext) -> int:
         """Evaluate the grid trigger and submit a buy if one is due.
 
-        Passes self.state.cash -- post-harvest, confirmed cash -- rather
-        than context.cash, matching what _simulate_single passes and
-        what decision_cycle.py's docstring requires.
+        Passes self.state.buying_power -- post-harvest, confirmed,
+        SETTLED cash -- rather than context.cash, matching what
+        _simulate_single passes and what decision_cycle.py's docstring
+        requires.
+
+        This said `self.state.cash` and claimed parity with
+        _simulate_single after that function had switched to settled
+        buying power. The claim was false and the divergence was real:
+        with execution.settlement_days set, the backtest honoured T+1
+        and live spent unsettled proceeds -- trading more aggressively
+        than anything that had been simulated, in the one account type
+        where that is a rule violation rather than a preference.
         """
         decision = decision_cycle.evaluate_grid_decision(
             self.strategy,
@@ -603,13 +775,13 @@ class LiveTradingLoop:
             context,
             self.state.last_buy_price,
             self.step,
-            self.state.cash,
+            self.state.buying_power,
         )
         if not decision.triggered:
             return 0
 
         trade_value = decision.clamped_trade_value
-        if trade_value <= 0 or self.state.cash < trade_value:
+        if trade_value <= 0 or self.state.buying_power < trade_value:
             return 0
 
         decision_id = self._decision_id("BUY", context.timestamp)
@@ -666,6 +838,16 @@ class LiveTradingLoop:
         written at the end of every tick. Cheap, and it means a crash
         loses at most one tick of drift rather than a session's.
         """
+        self.store.set_meta(
+            _META_UNSETTLED,
+            json.dumps(
+                {
+                    "session": self.state.session,
+                    "unsettled": self.state.unsettled,
+                    "pending": self.state.pending,
+                }
+            ),
+        )
         self.store.set_meta(_META_CASH, str(self.state.cash))
         self.store.set_meta(_META_PEAK_EQUITY, str(self.state.peak_equity))
 

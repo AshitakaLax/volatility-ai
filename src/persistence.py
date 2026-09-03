@@ -328,6 +328,11 @@ class LedgerStore:
                 ledger.open_lots.append(lot)
             else:
                 ledger.closed_lots.append(lot)
+        # open_lots was populated directly rather than through
+        # register_buy, so the ledger's incremental share total has not
+        # seen any of it. Recompute once here; a restored ledger that
+        # skipped this would mark the whole book to market as zero.
+        ledger.resync_total_open_shares()
         return ledger
 
     def get_meta(self, key: str) -> str | None:

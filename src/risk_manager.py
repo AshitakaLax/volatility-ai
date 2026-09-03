@@ -220,6 +220,9 @@ class RiskManager:
         max_total_exposure_pct: float | None = None,
         max_total_exposure: float | None = None,
         halt_new_buys_if_drawdown_exceeds: float | None = None,
+        dd_exposure_start: float | None = None,
+        dd_exposure_full: float = 0.60,
+        dd_exposure_floor_pct: float = 0.0,
     ):
         """Configure the risk limits; every one defaults to unlimited.
 
@@ -230,6 +233,12 @@ class RiskManager:
         halt_new_buys_if_drawdown_exceeds is live-only and drives the
         CircuitBreaker, not the sizing clamp -- it blocks entry outright
         rather than reducing size.
+
+        dd_exposure_start / dd_exposure_full / dd_exposure_floor_pct --
+        see clamp_trade_value's docstring for what these do and why they
+        live here rather than on a SizingStrategy. Unlike the halt
+        above, this runs in BOTH live and backtest (it is a clamp, not a
+        breaker), and it is a smooth ramp rather than an on/off trip.
         """
         if (
             max_total_exposure_pct is not None
@@ -260,17 +269,105 @@ class RiskManager:
         # breaker never trips -- backtests are entirely unaffected.
         self.halt_new_buys_if_drawdown_exceeds = halt_new_buys_if_drawdown_exceeds
 
+        # dd_exposure_start=None (the default) is an exact no-op -- see
+        # clamp_trade_value. "base" is whatever ceiling drawdown would
+        # ramp DOWN from: the configured max_total_exposure_pct, or 1.0
+        # (fully unconstrained) when no static cap was set. 1.0 is a
+        # safe stand-in for "unlimited" here, not an approximation of
+        # it: deployed = equity - cash can never exceed equity as long
+        # as cash >= 0 (which clamp_trade_value's own callers already
+        # enforce before ever spending), so a pct of 1.0 permits exactly
+        # what "no cap" already permitted, never more.
+        self._dd_exposure_enabled = dd_exposure_start is not None
+        if self._dd_exposure_enabled:
+            base = self.max_total_exposure_pct if self.max_total_exposure_pct is not None else 1.0
+            if not 0.0 < dd_exposure_start < 1.0:
+                raise ConfigurationError(
+                    f"dd_exposure_start must be in (0, 1), got {dd_exposure_start}"
+                )
+            if not dd_exposure_start < dd_exposure_full <= 1.0:
+                raise ConfigurationError(
+                    f"dd_exposure_full must be in (dd_exposure_start, 1], got "
+                    f"{dd_exposure_full} with dd_exposure_start={dd_exposure_start}"
+                )
+            if not 0.0 <= dd_exposure_floor_pct <= base:
+                raise ConfigurationError(
+                    f"dd_exposure_floor_pct must be in [0, {base}] -- this lever only tightens "
+                    f"the exposure cap as drawdown deepens, never loosens it -- got "
+                    f"{dd_exposure_floor_pct}"
+                )
+        self.dd_exposure_start = dd_exposure_start
+        self.dd_exposure_full = dd_exposure_full
+        self.dd_exposure_floor_pct = dd_exposure_floor_pct
+
+    def _effective_exposure_pct(self, drawdown: float) -> float | None:
+        """The exposure ceiling clamp_trade_value should apply THIS bar:
+        the static max_total_exposure_pct, ramped down as `drawdown`
+        crosses dd_exposure_start, when that lever is configured.
+
+        None means "no cap at all" -- clamp_trade_value skips the
+        exposure branch entirely on None, same as before this lever
+        existed, which is why this returns None (not 1.0) below the
+        start threshold when no static cap was ever set: an unconfigured
+        run must remain bit-for-bit identical to before, not merely
+        "effectively unlimited via a 1.0 pct" (a subtly different thing,
+        since 1.0 would still round-trip through the max_dollars/deployed
+        arithmetic below rather than skipping it)."""
+        if not self._dd_exposure_enabled or drawdown <= self.dd_exposure_start:
+            return self.max_total_exposure_pct
+        base = self.max_total_exposure_pct if self.max_total_exposure_pct is not None else 1.0
+        if drawdown >= self.dd_exposure_full:
+            return self.dd_exposure_floor_pct
+        span = self.dd_exposure_full - self.dd_exposure_start
+        frac = (drawdown - self.dd_exposure_start) / span
+        return base - frac * (base - self.dd_exposure_floor_pct)
+
     def clamp_trade_value(
-        self, proposed_value: float, equity: float, cash: float, open_lot_count: int
+        self,
+        proposed_value: float,
+        equity: float,
+        cash: float,
+        open_lot_count: int,
+        drawdown: float = 0.0,
     ) -> float:
-        """Both limits default to None -> unlimited, matching current
-        behavior. Takes plain values (not a context object) so it works
-        identically before and after Task 4.1's context-object refactor
-        -- only the call site changes."""
+        """Both static limits default to None -> unlimited, matching
+        current behavior. Takes plain values (not a context object) so
+        it works identically before and after Task 4.1's context-object
+        refactor -- only the call site changes.
+
+        `drawdown` defaults to 0.0 (below any real dd_exposure_start),
+        so a caller that never passes it -- every test written before
+        this parameter existed -- gets identical behavior; the only
+        caller that needs to pass the real figure is
+        src/decision_cycle.py's evaluate_grid_decision, which already
+        holds it on `context.drawdown`.
+
+        WHY THIS BELONGS HERE, NOT ON A SizingStrategy: an earlier
+        attempt (HighFrequencyLocalReferenceSizing.dd_throttle_*, see
+        that module's docstring) shrank a lot's FIXED DOLLAR size as
+        drawdown deepened, and measured as having no effect -- swept
+        across 12 combinations, CAGR moved by at most 0.001 percentage
+        points from the untrailed baseline. That strategy captures its
+        per-lot size once from the STARTING capital, so by the time a
+        real drawdown is deep enough to matter the portfolio has already
+        compounded well past that fixed amount, and shrinking it further
+        is shrinking something too small to matter.
+        max_total_exposure_pct does not have that problem: max_dollars =
+        equity * pct is computed off CURRENT equity every call, so a
+        drawdown-conditioned ceiling here scales with the portfolio's
+        actual current size, not a number frozen at bar zero. It also
+        applies uniformly to every strategy that flows through this risk
+        clamp, not only the one strategy that happened to expose the
+        knob -- risk management is a portfolio-level concern, and this
+        is where every other portfolio-level control (max_concurrent_lots,
+        the static exposure cap, the live-only CircuitBreaker) already
+        lives.
+        """
         if self.max_concurrent_lots is not None and open_lot_count >= self.max_concurrent_lots:
             return 0.0
-        if self.max_total_exposure_pct is not None:
-            max_dollars = equity * self.max_total_exposure_pct
+        effective_pct = self._effective_exposure_pct(drawdown)
+        if effective_pct is not None:
+            max_dollars = equity * effective_pct
             deployed = equity - cash
             proposed_value = min(proposed_value, max(0.0, max_dollars - deployed))
         return proposed_value

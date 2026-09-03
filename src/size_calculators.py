@@ -109,6 +109,33 @@ class SizingStrategy(ABC):
         """
         return None
 
+    def lots_to_liquidate(self, open_lots, context: MarketContext) -> list:
+        """Open lots to close NOW for a reason unrelated to their price.
+
+        Default: empty for every strategy, so this hook existing changes
+        nothing. A strategy that overrides it is asking for a signal
+        exit -- a trend break, a regime flip -- and such an exit MAY
+        realize a loss, which is the whole reason the hook is separate
+        from adjust_profit_target (which explicitly cannot).
+
+        That makes this the only hook in the sizing interface capable of
+        losing money on purpose, so it is deliberately half a gate:
+        `execution.allow_signal_exit` must ALSO be True. A strategy
+        overriding this against a default config liquidates nothing --
+        see decision_cycle.collect_liquidations, which is where the two
+        conditions meet, and src/no_loss_guard.SellReason for why the
+        guard still runs on every one of these sells.
+
+        Called once per bar, after adjust_open_lot_targets and before
+        the marketable check, by decision_cycle.collect_liquidations --
+        the same single-implementation discipline that keeps backtest,
+        intrabar replay, and live from drifting apart.
+
+        `open_lots` is a snapshot list, safe to filter. Return a subset
+        of it; lots not in the ledger are ignored rather than trusted.
+        """
+        return []
+
     @abstractmethod
     def record_tick(self, context: MarketContext) -> None:
         """Called once per bar in the target execution sequence

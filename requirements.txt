@@ -21,6 +21,15 @@ optuna>=4.9.0
 # live broker path touch alpaca-py types.
 alpaca-py>=0.44.0
 
+# NOT HERE: the Fidelity live-trading dependencies. They live in
+# requirements-fidelity.txt instead, deliberately -- Dockerfile does
+# `pip install -r requirements.txt` for every image, and Playwright
+# would pull a browser-automation stack into containers that only run
+# backtests, while still being unusable there without a separate
+# `playwright install firefox` for the browser binary. Optuna and
+# alpaca-py stay in this file because they are light and pure-Python;
+# Playwright is a different class of dependency.
+
 # Development / test only.
 pytest>=9.1.1
 

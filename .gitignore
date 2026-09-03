@@ -20,3 +20,49 @@ state/
 data/
 output/
 *.db
+
+# fidelity-api writes several files into the CURRENT WORKING DIRECTORY,
+# some of which are credential-equivalent. Listed here as defense in
+# depth -- the real fix is passing save_state=False / an explicit
+# profile_path outside the repo, and never debug=True (see
+# src/fidelity_broker.py). This list exists so that a mistake there is
+# still not committable.
+#
+#   Fidelity.json / Fidelity_<title>.json
+#       Playwright storage_state: the complete cookie + localStorage set
+#       for an AUTHENTICATED brokerage session, plaintext. Written
+#       unconditionally by close_browser() when save_state is left at
+#       its default of True. With save_device=True it also carries
+#       Fidelity's 2FA-bypass token.
+#   fidelity_trace*.zip
+#       Playwright trace, written when debug=True. Records .fill()
+#       arguments -- i.e. the USERNAME AND PASSWORD in cleartext --
+#       plus screenshots and DOM snapshots.
+#   Statements/
+#       Downloaded account statements.
+#   Portfolio_Positions*.csv
+#       The positions export. Note the library uses the SERVER-supplied
+#       download.suggested_filename, so this pattern matches Fidelity's
+#       current naming and is not a guarantee; the adapter is
+#       responsible for cleaning it up rather than relying on this.
+Fidelity.json
+Fidelity_*.json
+fidelity_trace*.zip
+Statements/
+Portfolio_Positions*.csv
+
+# fidelity_recon.py's traffic dumps. Written to ~/.fidelity_recon by
+# default -- outside the repo entirely -- but --artifact-dir can point
+# anywhere, so the pattern is listed here too. The dump holds captured
+# traffic from an AUTHENTICATED session: session tokens and account
+# numbers. TrafficCapture scrubs the literal credential values and
+# redacts secret-looking JSON keys, which is mitigation, not elimination.
+.fidelity_recon/
+recon_*.json
+
+# HAR exports from browser DevTools. A HAR of an authenticated session
+# contains live Cookie/Authorization headers -- credential-equivalent
+# for a brokerage login -- plus account numbers and balances. Never
+# committable. See analyze_har.py, which reads these and offers
+# --redact to produce a scrubbed copy.
+*.har
