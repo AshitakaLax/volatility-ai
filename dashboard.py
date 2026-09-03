@@ -87,10 +87,24 @@ def render_header(state) -> None:
     else:
         st.success("Circuit breaker ACTIVE — trading normally.", icon="✅")
 
+    age = state.last_write_age
+    if age is None:
+        freshness = "write time unknown"
+    elif age < 120:
+        freshness = f"last write {age:.0f}s ago"
+    else:
+        freshness = f"**last write {age / 60:.0f} min ago**"
     st.caption(
-        f"`{state.path}` · revision {state.revision:,} · persisted state, so up to "
-        "one poll interval behind the running loop."
+        f"`{state.path}` · revision {state.revision:,} · {freshness} · persisted "
+        "state, so up to one poll interval behind the running loop."
     )
+    if age is not None and age > 900:
+        st.warning(
+            f"Nothing has been written for {age / 60:.0f} minutes. The loop writes "
+            "through on every tick, so this means it has stopped, is wedged, or "
+            "the market is closed — the store cannot tell those apart.",
+            icon="⏱️",
+        )
 
 
 def render_cash(state, price: float | None) -> None:
@@ -115,6 +129,28 @@ def render_cash(state, price: float | None) -> None:
         help="Cash plus lots marked to market. Blank until a mark price is "
         "set, because valuing held shares at nothing would report an "
         "equity figure identical to cash.",
+    )
+
+    drawdown = state.drawdown(price)
+    unrealized = state.unrealized(price)
+    e, f, g = st.columns(3)
+    e.metric(
+        "Peak equity",
+        money(state.peak_equity),
+        help="The high-water mark the circuit breaker measures drawdown against.",
+    )
+    f.metric(
+        "Drawdown from peak",
+        "--" if drawdown is None else f"{drawdown:.2%}",
+        help="What the circuit breaker acts on. It was persisted and never "
+        "displayed, so a deployment approaching its halt threshold looked "
+        "exactly like one that was not.",
+    )
+    g.metric(
+        "Unrealized on open lots",
+        money(unrealized),
+        delta=None if unrealized is None else f"{unrealized:+,.2f}",
+        delta_color="normal",
     )
 
     if state.pending_settlement:
@@ -174,6 +210,70 @@ def render_lots(state, price: float | None) -> None:
     left, right = st.columns(2)
     left.metric("Shares held", f"{state.open_shares:,.4f}")
     right.metric("Cost basis", money(state.cost_basis))
+
+
+def render_ladder(state, price: float | None) -> None:
+    """What a price move actually releases."""
+    rows = state.ladder(price)
+    if not rows:
+        st.info("Set a mark price to see what a move would release.")
+        return
+    st.subheader("If price moves")
+    st.caption(
+        "How much of the book becomes sellable at each move, and what it returns. "
+        "Proceeds are at each lot's own TARGET, not at the probe price — a resting "
+        "limit sell fills at its limit."
+    )
+    frame = pd.DataFrame(rows)
+    st.dataframe(
+        frame,
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "move": st.column_config.NumberColumn("move", format="%+.0f%%"),
+            "price": st.column_config.NumberColumn(format="$%.4f"),
+            "lots": st.column_config.NumberColumn("lots sellable"),
+            "shares": st.column_config.NumberColumn(format="%.4f"),
+            "proceeds": st.column_config.NumberColumn(format="$%.2f"),
+        },
+    )
+
+
+def render_closed(state) -> None:
+    """The trading history, which the store keeps and nothing read back."""
+    if not state.closed_lots:
+        return
+    st.subheader(f"Closed lots ({len(state.closed_lots)})")
+    st.caption(
+        "Retained in the store and never surfaced before. **Realized P&L is not "
+        "shown because it is not derivable**: a closed lot records shares and "
+        "status but NOT its execution price, so the store cannot say what any "
+        "of these actually sold for. The targets below are what they were "
+        "offered at, which is a floor for profit-target exits and nothing at "
+        "all for signal exits."
+    )
+    rows = [
+        {
+            "order id": lot.order_id[:12],
+            "symbol": lot.symbol,
+            "shares": lot.shares,
+            "buy": lot.buy_price,
+            "offered at": lot.target_sell_price,
+            "cost basis": lot.shares * lot.buy_price,
+        }
+        for lot in state.closed_lots[:200]
+    ]
+    st.dataframe(
+        pd.DataFrame(rows),
+        width="stretch",
+        hide_index=True,
+        height=260,
+        column_config={
+            "buy": st.column_config.NumberColumn(format="$%.4f"),
+            "offered at": st.column_config.NumberColumn(format="$%.4f"),
+            "cost basis": st.column_config.NumberColumn(format="$%.2f"),
+        },
+    )
 
 
 def render_activity(db_path: str) -> None:
@@ -245,6 +345,10 @@ def main() -> None:
     render_cash(state, mark)
     st.divider()
     render_lots(state, mark)
+    st.divider()
+    render_ladder(state, mark)
+    st.divider()
+    render_closed(state)
     st.divider()
     render_activity(db_path)
     render_journal(args.journal)
