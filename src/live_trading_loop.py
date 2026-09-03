@@ -257,6 +257,7 @@ class LiveTradingLoop:
         they ARE the strategy that real capital will trade.
         """
         config.validate()
+        self.extended_hours = bool(getattr(config.live, "extended_hours", False))
         if not config.live.enabled:
             raise ConfigurationError("live.enabled=False: live trading is disabled")
         if config.live.step is None or config.live.profit_target is None:
@@ -399,6 +400,33 @@ class LiveTradingLoop:
 
     # --- the tick ---
 
+    def _session_is_open(self) -> bool:
+        """Whether the loop should tick, per the session it trades.
+
+        Alpaca's clock reports the REGULAR session only, so gating on it
+        meant the loop never woke outside 09:30-16:00 ET. With
+        extended_hours enabled that made the whole feature inert: the
+        broker could build a pre-market limit order perfectly well, and
+        nothing ever asked it to, because run_once had already returned
+        "market_closed" an hour before the pre-market session began.
+
+        Refuses rather than falling back when the data source cannot
+        answer the extended question. Silently using the regular clock
+        would reproduce exactly the inertness above, and it would look
+        like the flag was on and working.
+        """
+        if not self.extended_hours:
+            return self.market_data.is_open()
+        extended = getattr(self.market_data, "is_open_extended", None)
+        if extended is None:
+            raise ConfigurationError(
+                f"live.extended_hours is enabled but {type(self.market_data).__name__} "
+                "has no is_open_extended(). Falling back to the regular-session clock "
+                "would leave the loop asleep during exactly the hours the flag was "
+                "turned on for."
+            )
+        return bool(extended())
+
     def run_once(self) -> TickOutcome:
         """One full cycle. Returns what it did, including why it skipped.
 
@@ -406,7 +434,7 @@ class LiveTradingLoop:
         the tick's sizing decisions see confirmed reality rather than
         state that is one fill stale.
         """
-        if not self.market_data.is_open():
+        if not self._session_is_open():
             return TickOutcome(acted=False, reason="market_closed")
 
         from src.exceptions import DataValidationError

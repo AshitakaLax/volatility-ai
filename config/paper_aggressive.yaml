@@ -33,7 +33,18 @@ strategy:
   strategy_id: hf_local_reference
   strategy_params:
     bars_per_day: 387
-    per_lot_pct: 0.0002
+    # Raised from 0.0002 so one lot buys at least one WHOLE share.
+    # Extended-hours orders cannot be fractional, and at 0.0002 a lot
+    # was $54.78 against a $71.88 TQQQ share -- every pre-market and
+    # after-hours buy would have been refused.
+    #
+    # 0.0003 gives $82.17, about 14% of headroom above the current
+    # price. That headroom is the real constraint and it is NOT
+    # generous on a 3x ETF: if TQQQ trades above $82 this needs raising
+    # again, or extended-hours buys start failing. The lot size is a
+    # fixed dollar amount captured once at startup while the share
+    # price moves freely, so the two drift apart by construction.
+    per_lot_pct: 0.0003
     lookback_days: 0.02
     event_day_boost_multiplier: 2.5
     earnings_day_boost_multiplier: 1.5
@@ -94,6 +105,15 @@ live:
   # minute data, so iex here IS a backtest/live mismatch -- stated
   # rather than hidden, because it affects how many triggers fire.
   feed: iex
+  # Pre-market 04:00-09:30 and after-hours 16:00-20:00 ET. Turning this
+  # on changes the SHAPE of every buy -- share-sized limit at the target
+  # price instead of notional market -- because Alpaca executes neither
+  # market nor notional orders outside regular hours.
+  #
+  # No backtest here has measured an extended-hours session: every
+  # recorded result came from regular-hours bars, and those books are
+  # thinner with wider spreads.
+  extended_hours: true
   poll_interval_seconds: 60.0
   # A 0.075% step on a 6,000-lot book can make many lots marketable at
   # once. This bounds one tick's submissions so a large harvest cannot
