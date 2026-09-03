@@ -87,6 +87,13 @@ def parse_args(argv=None):
     )
     parser.add_argument("--account", required=True, help="Full account number, exact.")
     parser.add_argument("--symbol", default="CWH", help="Ticker (default: CWH).")
+    parser.add_argument(
+        "--account-name",
+        default="Traditional IRA",
+        help="The account's display name, e.g. 'Traditional IRA'. Required by "
+        "transactions/pending, which rejects an account filter missing it. "
+        "Read it off your Fidelity account list if the default is wrong.",
+    )
     parser.add_argument("--quantity", type=int, default=1, help="Shares (default: 1).")
     parser.add_argument(
         "--limit-discount",
@@ -218,7 +225,12 @@ def main(argv=None) -> int:
         session.assert_authenticated()
 
         if args.check_only:
-            return _report(FidelityBroker(session, args.account, (args.account,)), journal)
+            return _report(
+                FidelityBroker(
+                    session, args.account, (args.account,), account_name=args.account_name
+                ),
+                journal,
+            )
 
         if args.cancel:
             if not args.confirmed:
@@ -237,6 +249,7 @@ def main(argv=None) -> int:
                 session,
                 args.account,
                 (args.account,),
+                account_name=args.account_name,
                 confirm_live_orders=True,
                 allowed_symbols=(args.symbol,),
                 max_order_value=args.max_order_value,
@@ -247,7 +260,9 @@ def main(argv=None) -> int:
             print("Cancel accepted. Reading the venue's order list back ...")
             return _report(canceller, journal)
 
-        quote_broker = FidelityBroker(session, args.account, (args.account,))
+        quote_broker = FidelityBroker(
+            session, args.account, (args.account,), account_name=args.account_name
+        )
         price = quote_broker.get_quote(args.symbol)
         limit = round(price * (1.0 - args.limit_discount), 2)
         value = limit * args.quantity
@@ -285,6 +300,7 @@ def main(argv=None) -> int:
             session,
             args.account,
             (args.account,),
+            account_name=args.account_name,
             confirm_live_orders=True,
             allowed_symbols=(args.symbol,),
             max_order_value=args.max_order_value,

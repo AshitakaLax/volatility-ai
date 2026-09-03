@@ -32,6 +32,7 @@ from src.fidelity_session import (
     FidelitySession,
     FidelitySessionError,
     FidelitySessionExpired,
+    service_of,
 )
 
 PENDING = "/ftgw/digital/activityapi/api/v1/transactions/pending"
@@ -40,9 +41,19 @@ SIGNED_IN = f"{FIDELITY_ORIGIN}/ftgw/digital/traderplus"
 SIGNIN = f"{FIDELITY_ORIGIN}/prgw/digital/signin/retail"
 
 
+TRADE_URL = f"{FIDELITY_ORIGIN}/ftgw/digital/trade-equity/getquote"
+ACTIVITY_URL = f"{FIDELITY_ORIGIN}/ftgw/digital/activityapi/api/v1/transactions/pending"
+
+
 class FakeRequest:
-    def __init__(self, headers):
+    """A request the page made. It has a URL because headers are keyed
+    by the BACKEND it was aimed at -- Fidelity brands appid/appname per
+    service, and replaying one service's across all of them is what drew
+    a 403 on a live order readback."""
+
+    def __init__(self, headers, url=TRADE_URL):
         self.headers = headers
+        self.url = url
 
 
 class FakePage:
@@ -57,9 +68,9 @@ class FakePage:
     def on(self, event, handler):
         self.handlers.setdefault(event, []).append(handler)
 
-    def emit_request(self, headers):
+    def emit_request(self, headers, url=TRADE_URL):
         for handler in self.handlers.get("request", []):
-            handler(FakeRequest(headers))
+            handler(FakeRequest(headers, url))
 
     def evaluate(self, script, arg):
         self.evaluated.append(arg)
@@ -74,6 +85,12 @@ class FakePage:
         pass
 
 
+ACTIVITY_HEADERS = {
+    "x-csrf-token": "TOKEN-ACTIVITY",
+    "appid": "AP182052",
+    "appname": "Trader Plus Web",
+}
+
 AUTH_HEADERS = {
     "x-csrf-token": "TOKEN-ABC",
     "appid": "AP145890",
@@ -86,7 +103,10 @@ def _ready(**kw):
     page = FakePage(**kw)
     session = FidelitySession(page, **kw.pop("session_kw", {}))
     session.attach()
-    page.emit_request(AUTH_HEADERS)
+    # Both backends, because these tests POST to both and each now
+    # carries its own header set.
+    page.emit_request(AUTH_HEADERS, TRADE_URL)
+    page.emit_request(AUTH_HEADERS, ACTIVITY_URL)
     return session, page
 
 
@@ -98,7 +118,8 @@ def _ready_with(result=None, allow_orders=False, url=SIGNED_IN, raises=None, all
         allow_preview_endpoints=allow_preview,
     )
     session.attach()
-    page.emit_request(AUTH_HEADERS)
+    page.emit_request(AUTH_HEADERS, TRADE_URL)
+    page.emit_request(AUTH_HEADERS, ACTIVITY_URL)
     return session, page
 
 
@@ -333,3 +354,103 @@ def test_the_payload_is_sent_as_given():
     session, page = _ready_with()
     session.post_json(PENDING, {"acctNum": "999888777"})
     assert page.evaluated[0][1] == {"acctNum": "999888777"}
+
+
+# --- headers are PER BACKEND ------------------------------------------
+#
+# Learned from a live run, not from reading. An order was placed
+# perfectly through trade-equity and the readback from activityapi
+# returned 403 -- because one flat header dict meant trade-equity's
+# appid (AP145890 "Trader Dashboard") was replayed to a backend that
+# uses AP182052 "Trader Plus Web". The error then blamed the login,
+# which was fine the whole time.
+
+
+def test_each_backend_gets_its_own_headers():
+    page = FakePage()
+    session = FidelitySession(page)
+    session.attach()
+    page.emit_request(AUTH_HEADERS, TRADE_URL)
+    page.emit_request(ACTIVITY_HEADERS, ACTIVITY_URL)
+
+    assert session.headers_for(PLACE)["appid"] == "AP145890"
+    assert session.headers_for(PENDING)["appid"] == "AP182052"
+
+
+def test_one_backends_appid_is_never_sent_to_another():
+    """THE REGRESSION. Only trade-equity has been seen; a call to
+    activityapi must NOT borrow its appid."""
+    page = FakePage()
+    session = FidelitySession(page)
+    session.attach()
+    page.emit_request(AUTH_HEADERS, TRADE_URL)
+
+    assert session.headers_for(PENDING) == {}
+    session.post_json(PENDING, {})
+    sent = page.evaluated[0][2]
+    assert sent.get("appid") is None, "another backend's appid leaked across"
+
+
+def test_a_backend_never_seen_is_reported_as_such_not_as_a_dead_login():
+    """A 403 with no observed headers is a HEADER problem. Calling it an
+    expired session sends an operator to re-authenticate something that
+    is working, which is exactly what happened."""
+    page = FakePage(result={"status": 403, "url": SIGNED_IN, "body": ""})
+    session = FidelitySession(page)
+    session.attach()
+    page.emit_request(AUTH_HEADERS, TRADE_URL)
+
+    with pytest.raises(FidelitySessionError) as caught:
+        session.post_json(PENDING, {})
+    message = str(caught.value)
+    assert "NOT an expired login" in message
+    assert "activityapi" in message
+    assert "trade-equity" in message, "should name what HAS been observed"
+    assert not isinstance(caught.value, FidelitySessionExpired)
+
+
+def test_a_403_with_that_backends_own_headers_still_means_expired():
+    """The other half: once we ARE sending what the backend expects, a
+    403 is what it has always been."""
+    page = FakePage(result={"status": 403, "url": SIGNED_IN, "body": ""})
+    session = FidelitySession(page)
+    session.attach()
+    page.emit_request(ACTIVITY_HEADERS, ACTIVITY_URL)
+    with pytest.raises(FidelitySessionExpired):
+        session.post_json(PENDING, {})
+
+
+def test_headers_are_sniffed_without_requiring_a_csrf_token():
+    """activityapi sends no x-csrf-token at all. The first sniffer
+    required one to record anything, so that backend's headers were
+    permanently unobservable and no amount of browsing would have fixed
+    the replay."""
+    page = FakePage()
+    session = FidelitySession(page)
+    session.attach()
+    page.emit_request({"appid": "AP182052", "appname": "Trader Plus Web"}, ACTIVITY_URL)
+    assert session.headers_for(PENDING)["appid"] == "AP182052"
+
+
+def test_third_party_requests_are_not_sniffed():
+    """The site loads a device-fingerprinting iframe. Its headers are not
+    ours to replay and must not end up on a brokerage call."""
+    page = FakePage()
+    session = FidelitySession(page)
+    session.attach()
+    page.emit_request({"appid": "VENDOR"}, "https://h.online-metrix.net/f244Ev1FL3i")
+    assert session.observed_services == ()
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("/ftgw/digital/trade-equity/placeOrder", "trade-equity"),
+        ("/ftgw/digital/activityapi/api/v1/transactions/pending", "activityapi"),
+        ("/ftgw/digital/traderplus-api/api/positions/v1", "traderplus-api"),
+        ("https://digital.fidelity.com/ftgw/digital/trade-equity/getquote?x=1", "trade-equity"),
+        ("/prgw/digital/signin/retail", "prgw"),
+    ],
+)
+def test_the_backend_is_read_off_the_path(path, expected):
+    assert service_of(path) == expected
