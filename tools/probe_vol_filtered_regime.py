@@ -94,9 +94,20 @@ def build_signal(px: pd.Series, *, trend: int, vol_win: int, lookback: int, q: f
 class VolFilteredRegime(HighFrequencyLocalReferenceSizing):
     """Hold when trend and calm agree; harvest dips otherwise."""
 
-    def __init__(self, *args, signal=None, bull_step=0.005, bear_step=0.05,
-                 bear_target=0.04, bull_lot_scale=2.0, max_mult=400.0, dd_ref=0.75,
-                 hold_in_bull=True, use_dip_in_bear=True, **kwargs):
+    def __init__(
+        self,
+        *args,
+        signal=None,
+        bull_step=0.005,
+        bear_step=0.05,
+        bear_target=0.04,
+        bull_lot_scale=2.0,
+        max_mult=400.0,
+        dd_ref=0.75,
+        hold_in_bull=True,
+        use_dip_in_bear=True,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.signal = signal or {}
         self.bull_step, self.bear_step = bull_step, bear_step
@@ -121,8 +132,9 @@ class VolFilteredRegime(HighFrequencyLocalReferenceSizing):
         self._is_bull = self.signal.get(context.timestamp.date(), False)
         self._flipped = self._seen and (was != self._is_bull)
         self._seen = True
-        self._price_peak = (context.price if self._price_peak is None
-                            else max(self._price_peak, context.price))
+        self._price_peak = (
+            context.price if self._price_peak is None else max(self._price_peak, context.price)
+        )
 
     def _grid_trigger_level(self, context, last_buy_price: float, step: float) -> float:
         high = self._rolling_high.value
@@ -154,17 +166,31 @@ class VolFilteredRegime(HighFrequencyLocalReferenceSizing):
 
 def run(controller, cfg, signal, *, cap, dip_in_bear, hold_in_bull, bull_scale):
     params = dict(cfg.strategy.strategy_params)
-    params.update(per_lot_pct=0.02, signal=signal, bull_step=0.005, bear_step=0.05,
-                  bear_target=0.04, bull_lot_scale=bull_scale, max_mult=400.0,
-                  dd_ref=0.75, hold_in_bull=hold_in_bull, use_dip_in_bear=dip_in_bear)
+    params.update(
+        per_lot_pct=0.02,
+        signal=signal,
+        bull_step=0.005,
+        bear_step=0.05,
+        bear_target=0.04,
+        bull_lot_scale=bull_scale,
+        max_mult=400.0,
+        dd_ref=0.75,
+        hold_in_bull=hold_in_bull,
+        use_dip_in_bear=dip_in_bear,
+    )
     summary, full = controller.run_sweep(
-        grid_steps=[0.05], profit_targets=[0.04],
-        strategy_class=VolFilteredRegime, strategy_params_grid=[params],
+        grid_steps=[0.05],
+        profit_targets=[0.04],
+        strategy_class=VolFilteredRegime,
+        strategy_params_grid=[params],
         cost_model=cfg.costs.build(),
         risk_manager=RiskManager(max_concurrent_lots=6000, max_total_exposure_pct=cap),
-        fill_model="intrabar", intrabar_priority="sell_first",
-        enforce_no_loss=True, allow_signal_exit=True,
-        on_flat_reentry="stale_reference", return_full_results=True,
+        fill_model="intrabar",
+        intrabar_priority="sell_first",
+        enforce_no_loss=True,
+        allow_signal_exit=True,
+        on_flat_reentry="stale_reference",
+        return_full_results=True,
     )
     return summary.iloc[0], annual_returns(full[0].equity_curve)
 
@@ -185,22 +211,35 @@ def main(argv=None) -> int:
     print("bull = SMA200 AND vol20 below its trailing 75th percentile")
     print("Reference points, all measured earlier in this project:")
     print("  SMA200-else-cash            34.57% CAGR   2022 -19.8%   maxDD 50.2%")
-    print("  vol-filtered, else CASH     38.98% CAGR   2022  +0.0%   maxDD 35.6%  (0/251 days invested)")
+    print(
+        "  vol-filtered, else CASH     38.98% CAGR   2022  +0.0%   maxDD 35.6%  (0/251 days invested)"
+    )
     print("  regime harvest bull         13.79% CAGR   2022  +3.6%   maxDD 44.3%\n")
 
-    print(f"{'bear leg':>10}{'hold':>6}{'cap':>6}{'bullx':>7}{'CAGR':>9}{'maxDD':>8}"
-          f"{'worst':>8}{'neg':>7}{'2022':>8}{'exits':>8}")
+    print(
+        f"{'bear leg':>10}{'hold':>6}{'cap':>6}{'bullx':>7}{'CAGR':>9}{'maxDD':>8}"
+        f"{'worst':>8}{'neg':>7}{'2022':>8}{'exits':>8}"
+    )
     for dip_in_bear in (True, False):
         for cap, scale in ((1.00, 2.0), (0.50, 5.0)):
             for hold in (True, False) if dip_in_bear else (True,):
-                row, yearly = run(controller, cfg, signal, cap=cap, dip_in_bear=dip_in_bear,
-                                  hold_in_bull=hold, bull_scale=scale)
+                row, yearly = run(
+                    controller,
+                    cfg,
+                    signal,
+                    cap=cap,
+                    dip_in_bear=dip_in_bear,
+                    hold_in_bull=hold,
+                    bull_scale=scale,
+                )
                 complete = yearly[[t.year < 2026 for t in yearly.index]]
                 y22 = yearly[[t.year == 2022 for t in yearly.index]].iloc[0]
-                print(f"{'dip' if dip_in_bear else 'cash':>10}{hold!s:>6}{cap:6.2f}"
-                      f"{scale:6.1f}x{row['CAGR %']:8.2f}%{row['Max Drawdown %']:7.1f}%"
-                      f"{complete.min():+7.1f}%{int((complete < 0).sum()):5d}/10"
-                      f"{y22:+7.1f}%{int(row['Signal Exit Count']):8d}")
+                print(
+                    f"{'dip' if dip_in_bear else 'cash':>10}{hold!s:>6}{cap:6.2f}"
+                    f"{scale:6.1f}x{row['CAGR %']:8.2f}%{row['Max Drawdown %']:7.1f}%"
+                    f"{complete.min():+7.1f}%{int((complete < 0).sum()):5d}/10"
+                    f"{y22:+7.1f}%{int(row['Signal Exit Count']):8d}"
+                )
                 print("          " + "  ".join(f"{t.year}:{v:+.0f}%" for t, v in yearly.items()))
 
     print("\n'worst'/'neg' are COMPLETE years only; 2026 is a Jan-Aug stub.")

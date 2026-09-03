@@ -114,9 +114,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Share quantity for the preview. Kept small on principle: nothing "
         "is submitted, but the ticket is filled in against a real account.",
     )
-    parser.add_argument(
-        "--action", choices=["buy", "sell"], default="buy", help="Preview side."
-    )
+    parser.add_argument("--action", choices=["buy", "sell"], default="buy", help="Preview side.")
     parser.add_argument(
         "--limit-price",
         type=float,
@@ -237,9 +235,7 @@ def _write_dump(capture: TrafficCapture, path: Path) -> None:
         json.dump(payload, handle, indent=2)
 
 
-def _assert_account_allowed(
-    fid, requested: str
-) -> dict:
+def _assert_account_allowed(fid, requested: str) -> dict:
     """Enumerate accounts and require an EXACT match for the requested one.
 
     Uses `get_list_of_accounts`, not `getAccountInfo`: the latter
@@ -354,9 +350,7 @@ def _wait_for_manual_login(context, timeout_seconds: float, poll_seconds: float 
             if _AUTHENTICATED_PATH_MARKER in current:
                 with contextlib.suppress(Exception):
                     page.wait_for_load_state("load")
-                print(
-                    f"[recon] login detected on {current}", file=sys.stderr, flush=True
-                )
+                print(f"[recon] login detected on {current}", file=sys.stderr, flush=True)
                 return page
         time.sleep(poll_seconds)
     seen = ", ".join(sorted(reported)) or "(no pages seen)"
@@ -393,8 +387,7 @@ def run_cdp_recon(args: argparse.Namespace) -> int:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise ConfigurationError(
-            f"playwright is not installed: {exc}\n"
-            "    pip install -r requirements-fidelity.txt"
+            f"playwright is not installed: {exc}\n    pip install -r requirements-fidelity.txt"
         ) from exc
 
     artifact_dir = _prepare_artifact_dir(args.artifact_dir)
@@ -480,9 +473,7 @@ def run_cdp_recon(args: argparse.Namespace) -> int:
                 last_report = elapsed
             still_open = any(_context_pages(ctx) for ctx in browser.contexts)
             if not still_open:
-                print(
-                    "[recon] every tab was closed; stopping early.", file=sys.stderr
-                )
+                print("[recon] every tab was closed; stopping early.", file=sys.stderr)
                 break
     finally:
         try:
@@ -714,9 +705,7 @@ def _report(capture: TrafficCapture, dump_path: Path) -> None:
         print(f"handler errors: {summary['handler_errors']}")
 
     print("\n-- WebSocket URLs (question 1: does submit round-trip an ID?) --")
-    for url, count in sorted(
-        summary["websocket_urls"].items(), key=lambda kv: -kv[1]
-    ):
+    for url, count in sorted(summary["websocket_urls"].items(), key=lambda kv: -kv[1]):
         print(f"  {count:6d}  {url}")
     if not summary["websocket_urls"]:
         print("  (none -- no WebSocket traffic was seen at all)")

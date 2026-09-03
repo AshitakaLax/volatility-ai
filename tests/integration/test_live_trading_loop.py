@@ -585,8 +585,9 @@ def _liquidating_loop(store, broker, market, *, allow, buy_price=98.0, qty=10.0)
     config = make_config()
     object.__setattr__(config.execution, "allow_signal_exit", allow)
     market.push(100.0)
-    loop = make_loop(store, broker, market, config=config,
-                     strategy=_LiquidatesBelow(allocation_pct=0.05))
+    loop = make_loop(
+        store, broker, market, config=config, strategy=_LiquidatesBelow(allocation_pct=0.05)
+    )
     loop.run_once()
     market.push(buy_price, ts=BASE_TS + timedelta(minutes=1))
     loop.run_once()
@@ -710,9 +711,7 @@ def test_sale_proceeds_are_not_spendable_on_the_day_they_land(store):
     loop.run_once()
 
     assert loop.state.cash > before, "proceeds are equity immediately"
-    assert loop.state.buying_power == pytest.approx(before), (
-        "but not spendable until they settle"
-    )
+    assert loop.state.buying_power == pytest.approx(before), "but not spendable until they settle"
 
 
 def test_proceeds_settle_on_the_next_session(store):
@@ -787,9 +786,7 @@ def test_the_live_buy_gate_reads_the_same_quantity_the_backtest_does(store):
 
     import optimization_controller
 
-    backtest = inspect.getsource(
-        optimization_controller.OptimizationController._simulate_single
-    )
+    backtest = inspect.getsource(optimization_controller.OptimizationController._simulate_single)
     live = inspect.getsource(LiveTradingLoop._maybe_buy)
     assert "state.buying_power >= trade_value" in backtest
     assert "self.state.buying_power < trade_value" in live

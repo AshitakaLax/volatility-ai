@@ -69,9 +69,7 @@ def test_the_first_session_produces_no_change():
 def test_the_session_close_is_the_LAST_bar_not_the_first():
     """A change built off opening prints would be a different, unmeasured
     quantity."""
-    frame = build_session_change_series(
-        _iv_bars({"2024-06-03": 100.0, "2024-06-04": 200.0})
-    )
+    frame = build_session_change_series(_iv_bars({"2024-06-03": 100.0, "2024-06-04": 200.0}))
     # Session closes are 100 and 200 -> +100%. The 0.5x opening bars
     # would give the same ratio, so make them differ:
     bars = _iv_bars({"2024-06-03": 100.0, "2024-06-04": 200.0})
@@ -107,9 +105,7 @@ def test_a_friday_close_is_read_by_mondays_bars_and_nothing_sooner():
         NO_SIGNAL
     )
     # +20% across Friday, readable from Monday's first bar.
-    assert change_at(series, pd.Timestamp("2024-06-03 04:00", tz=EASTERN_TZ)) == pytest.approx(
-        20.0
-    )
+    assert change_at(series, pd.Timestamp("2024-06-03 04:00", tz=EASTERN_TZ)) == pytest.approx(20.0)
 
 
 def test_premarket_bars_see_the_prior_sessions_change():
@@ -125,18 +121,14 @@ def test_premarket_bars_see_the_prior_sessions_change():
 
 def test_bars_before_the_series_starts_read_the_no_op_value():
     series = _series({"2024-06-03": 100.0, "2024-06-04": 110.0})
-    assert change_at(series, pd.Timestamp("2020-01-01", tz=EASTERN_TZ)) == pytest.approx(
-        NO_SIGNAL
-    )
+    assert change_at(series, pd.Timestamp("2020-01-01", tz=EASTERN_TZ)) == pytest.approx(NO_SIGNAL)
 
 
 # -- scalar / vectorized agreement --------------------------------------
 
 
 def test_scalar_and_vectorized_agree_on_every_bar():
-    series = _series(
-        {f"2024-06-{d:02d}": 100.0 + d for d in (3, 4, 5, 6, 7, 10, 11, 12)}
-    )
+    series = _series({f"2024-06-{d:02d}": 100.0 + d for d in (3, 4, 5, 6, 7, 10, 11, 12)})
     index = pd.date_range("2024-06-03", "2024-06-12 20:00", freq="97min", tz="UTC")
     vec = changes_for_index(series, index)
     for i, ts in enumerate(index):
@@ -172,9 +164,7 @@ def test_a_naive_index_is_refused():
 
 
 def test_a_missing_value_column_is_named():
-    bars = _iv_bars({"2024-06-03": 100.0, "2024-06-04": 110.0}).rename(
-        columns={"close": "price"}
-    )
+    bars = _iv_bars({"2024-06-03": 100.0, "2024-06-04": 110.0}).rename(columns={"close": "price"})
     with pytest.raises(DataValidationError, match="close"):
         build_session_change_series(bars)
 

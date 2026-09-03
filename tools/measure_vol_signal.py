@@ -117,9 +117,9 @@ SESSION_MINUTES = 390
 
 def session_frame(path: str, *, regular_hours_only: bool = True) -> pd.DataFrame:
     """Per-session realized volatility and close for one instrument."""
-    df = pd.read_csv(
-        path, parse_dates=["timestamp"], usecols=["timestamp", "close"]
-    ).set_index("timestamp")
+    df = pd.read_csv(path, parse_dates=["timestamp"], usecols=["timestamp", "close"]).set_index(
+        "timestamp"
+    )
     minutes = minute_of_day(df.index)
     if regular_hours_only:
         keep = (minutes >= SESSION_OPEN) & (minutes < SESSION_CLOSE)
@@ -160,9 +160,7 @@ def spearman(a: pd.Series, b: pd.Series) -> float:
     return float(np.corrcoef(ra, rb)[0, 1])
 
 
-def partial_spearman(
-    target: pd.Series, candidate: pd.Series, control: pd.Series
-) -> float:
+def partial_spearman(target: pd.Series, candidate: pd.Series, control: pd.Series) -> float:
     """Rank correlation of candidate with target, holding control fixed.
 
     The number that decides this question. A raw correlation is inflated

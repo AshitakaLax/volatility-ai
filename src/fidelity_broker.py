@@ -367,9 +367,7 @@ class FidelityBroker:
             raw={"preview": True},
         )
 
-    def build_ticket(
-        self, symbol: str, side: str, qty: float, limit_price: float
-    ) -> dict:
+    def build_ticket(self, symbol: str, side: str, qty: float, limit_price: float) -> dict:
         """The order ticket, field for field as the site's own page sends it.
 
         Transcribed from captured previewSrvc requests rather than
@@ -492,9 +490,7 @@ class FidelityBroker:
                 "avg_fill_price": _as_float(detail.get("avgExecPrice")),
                 "symbol": raw.get("symbol"),
             }
-        return BrokerSnapshot(
-            positions=self._positions(), orders=orders, cash=self._cash()
-        )
+        return BrokerSnapshot(positions=self._positions(), orders=orders, cash=self._cash())
 
     # -- read-only fetches ---------------------------------------------
 
@@ -517,11 +513,7 @@ class FidelityBroker:
                 }
             },
         )
-        return [
-            o
-            for o in _find_all_with_key(response, "orderNum")
-            if _account_matches(o, account)
-        ]
+        return [o for o in _find_all_with_key(response, "orderNum") if _account_matches(o, account)]
 
     def _positions(self) -> dict:
         """Share positions for this account. CASH IS NOT A POSITION.

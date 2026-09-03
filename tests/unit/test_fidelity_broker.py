@@ -37,26 +37,54 @@ OTHER = "999999999"
 # --- real captured order records --------------------------------------
 
 FILLED = {
-    "orderNum": "2C50H6WV", "acctNum": ACCOUNT, "symbol": "TQQQ", "action": "Sell",
-    "quantity": "1 Share", "status": "Filled at $69.35", "cancelableInd": False,
-    "orderType": "stock/etf", "tifCode": "D",
-    "amountDetail": {"avgExecPrice": 69.35, "commission": 0, "gross": 69.35,
-                     "net": 69.35, "qty": 1, "qtyExec": 1, "qtyRemaining": 0,
-                     "totalPriceImprovement": 0.01},
+    "orderNum": "2C50H6WV",
+    "acctNum": ACCOUNT,
+    "symbol": "TQQQ",
+    "action": "Sell",
+    "quantity": "1 Share",
+    "status": "Filled at $69.35",
+    "cancelableInd": False,
+    "orderType": "stock/etf",
+    "tifCode": "D",
+    "amountDetail": {
+        "avgExecPrice": 69.35,
+        "commission": 0,
+        "gross": 69.35,
+        "net": 69.35,
+        "qty": 1,
+        "qtyExec": 1,
+        "qtyRemaining": 0,
+        "totalPriceImprovement": 0.01,
+    },
 }
 WORKING = {
-    "orderNum": "2C50H81C", "acctNum": ACCOUNT, "symbol": "TQQQ", "action": "Buy",
-    "quantity": "1 Share", "status": "Open", "cancelableInd": True,
+    "orderNum": "2C50H81C",
+    "acctNum": ACCOUNT,
+    "symbol": "TQQQ",
+    "action": "Buy",
+    "quantity": "1 Share",
+    "status": "Open",
+    "cancelableInd": True,
     "amountDetail": {"qty": 1, "qtyExec": 0, "qtyRemaining": 1, "avgExecPrice": 0},
 }
 CANCELED = {
-    "orderNum": "2C50JKCQ", "acctNum": ACCOUNT, "symbol": "TQQQ", "action": "Buy",
-    "quantity": "1 Share", "status": "Verified Canceled", "cancelableInd": False,
+    "orderNum": "2C50JKCQ",
+    "acctNum": ACCOUNT,
+    "symbol": "TQQQ",
+    "action": "Buy",
+    "quantity": "1 Share",
+    "status": "Verified Canceled",
+    "cancelableInd": False,
     "amountDetail": {"qty": 1, "qtyExec": 0, "qtyRemaining": 1, "avgExecPrice": 0},
 }
 PARTIAL = {
-    "orderNum": "2C50PART", "acctNum": ACCOUNT, "symbol": "TQQQ", "action": "Buy",
-    "quantity": "10 Shares", "status": "Filled at $69.10", "cancelableInd": True,
+    "orderNum": "2C50PART",
+    "acctNum": ACCOUNT,
+    "symbol": "TQQQ",
+    "action": "Buy",
+    "quantity": "10 Shares",
+    "status": "Filled at $69.10",
+    "cancelableInd": True,
     "amountDetail": {"qty": 10, "qtyExec": 4, "qtyRemaining": 6, "avgExecPrice": 69.10},
 }
 
@@ -66,17 +94,26 @@ PARTIAL = {
 # fixture used {"lastPrice": 69.50}, a shape that appears nowhere in
 # Fidelity's responses -- so it agreed with the adapter's wrong guess
 # and the pair of them hid a get_quote that could never work.
-QUOTE = {"QUOTE_DATA": {"ASK_PRICE": "69.54", "BID_PRICE": "69.53",
-                        "LAST_PRICE": "69.5376", "OPEN_PRICE": "68.969"}}
+QUOTE = {
+    "QUOTE_DATA": {
+        "ASK_PRICE": "69.54",
+        "BID_PRICE": "69.53",
+        "LAST_PRICE": "69.5376",
+        "OPEN_PRICE": "68.969",
+    }
+}
 
 # trade-equity/positions returns a FLAT LIST already scoped to the
 # requested account. SPAXX is the core money-market sweep and is CASH,
 # not a holding -- it is in every real response and must not be counted.
 SPAXX_ROW = {
-    "symbol": "SPAXX", "securityType": "Core", "quantity": 27336.03,
+    "symbol": "SPAXX",
+    "securityType": "Core",
+    "quantity": 27336.03,
     "securityDescription": "FIDELITY GOVERNMENT MONEY MARKET",
     "securityDetail": {"brokerageHoldingType": "Cash", "isCash": True},
 }
+
 
 class FakeSession:
     """Records what was asked for and replays canned JSON."""
@@ -129,8 +166,10 @@ def test_no_string_constant_in_the_module_names_a_place_endpoint():
             if doc is not None:
                 docstrings.add(doc)
     offenders = [
-        node.value for node in ast.walk(tree)
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
         and node.value not in docstrings
         and ("placeOrder" in node.value or "cancelPlaceOrder" in node.value)
     ]
@@ -141,8 +180,7 @@ def test_no_endpoint_constant_resolves_to_a_place_endpoint():
     """The same guarantee from the other direction: whatever paths this
     module can POST to, none of them place an order."""
     paths = {
-        v for k, v in vars(fidelity_broker).items()
-        if k.endswith("_PATH") and isinstance(v, str)
+        v for k, v in vars(fidelity_broker).items() if k.endswith("_PATH") and isinstance(v, str)
     }
     assert paths and not (paths & PLACE_ENDPOINTS)
 
@@ -162,10 +200,12 @@ def test_the_transport_refuses_placing_even_if_this_module_tried(path):
 def test_a_previewed_order_is_never_reported_as_submitted():
     """Third layer. A caller that ignored everything above still cannot
     mistake a preview for a live order."""
-    session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": QUOTE,
-        PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "2C50QMK4"}}},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/trade-equity/getquote": QUOTE,
+            PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "2C50QMK4"}}},
+        }
+    )
     order = _broker(session).submit_buy("TQQQ", 200.0, client_order_id="dec-1")
     assert order.state is OrderState.CREATED
     assert order.state is not OrderState.SUBMITTED
@@ -176,10 +216,12 @@ def test_a_preview_without_a_confnum_is_a_failure_not_a_success():
     """The confNum is the only handle by which the order could later be
     found or cancelled. Accepting a preview without one would recreate
     the ambiguity window reconnaissance closed."""
-    session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": QUOTE,
-        PREVIEW_PATH: {"preview": {"ok": True}},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/trade-equity/getquote": QUOTE,
+            PREVIEW_PATH: {"preview": {"ok": True}},
+        }
+    )
     with pytest.raises(ExecutionError, match="no confNum"):
         _broker(session).submit_buy("TQQQ", 200.0)
 
@@ -213,22 +255,27 @@ def test_a_substring_of_an_allowed_account_is_not_enough():
 def test_an_account_echoed_back_differently_aborts_the_order():
     """The request naming the right account is not proof the venue
     applied it."""
-    session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": QUOTE,
-        PREVIEW_PATH: {"preview": {"orderConfirmDetail": {
-            "confNum": "2C50QMK4", "acctNum": OTHER}}},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/trade-equity/getquote": QUOTE,
+            PREVIEW_PATH: {
+                "preview": {"orderConfirmDetail": {"confNum": "2C50QMK4", "acctNum": OTHER}}
+            },
+        }
+    )
     with pytest.raises(ExecutionError, match="DIFFERENT account"):
         _broker(session).submit_buy("TQQQ", 200.0)
 
 
 def test_orders_belonging_to_another_account_are_dropped_from_the_snapshot():
     stray = dict(FILLED, orderNum="2C5OTHER", acctNum=OTHER)
-    session = FakeSession({
-        "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([FILLED, stray]),
-        "/ftgw/digital/trade-equity/positions": [],
-        "/ftgw/digital/trade-equity/balance": {"cashDetail": {"settledAmt": 1000.0}},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([FILLED, stray]),
+            "/ftgw/digital/trade-equity/positions": [],
+            "/ftgw/digital/trade-equity/balance": {"cashDetail": {"settledAmt": 1000.0}},
+        }
+    )
     snap = _broker(session).snapshot()
     assert set(snap.orders) == {"2C50H6WV"}
 
@@ -270,8 +317,12 @@ def test_a_partially_filled_order_that_is_cancelled_keeps_its_fill():
 
 
 def test_an_unrecognisable_terminal_order_is_unknown_not_guessed():
-    record = {"orderNum": "X", "status": "Something New", "cancelableInd": False,
-              "amountDetail": {"qty": 1, "qtyExec": 0, "qtyRemaining": 1}}
+    record = {
+        "orderNum": "X",
+        "status": "Something New",
+        "cancelableInd": False,
+        "amountDetail": {"qty": 1, "qtyExec": 0, "qtyRemaining": 1},
+    }
     assert derive_order_state(record) is OrderState.UNKNOWN
 
 
@@ -299,10 +350,12 @@ def test_an_order_claiming_Open_while_not_cancelable_is_unknown():
 
 
 def test_share_conversion_rounds_down_so_it_cannot_overspend():
-    session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": QUOTE,
-        PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "C1"}}},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/trade-equity/getquote": QUOTE,
+            PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "C1"}}},
+        }
+    )
     _broker(session).submit_buy("TQQQ", 209.0)  # 209 / 69.54 (ASK) = 3.005
     ticket = session.calls[-1][1]["orderDetails"]
     assert ticket["qty"] == 3
@@ -310,9 +363,11 @@ def test_share_conversion_rounds_down_so_it_cannot_overspend():
 
 
 def test_a_trade_value_under_one_share_refuses_rather_than_rounding_to_zero():
-    session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": QUOTE,
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/trade-equity/getquote": QUOTE,
+        }
+    )
     with pytest.raises(ValueError, match="one whole share"):
         _broker(session).submit_buy("TQQQ", 40.0)
 
@@ -327,10 +382,12 @@ def test_every_ticket_carries_an_explicit_limit_price():
     """Extended hours cannot be disabled at this venue, which forces the
     limit branch -- and a market order in a thin session is the one thing
     a grid strategy must never emit."""
-    session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": QUOTE,
-        PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "C1"}}},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/trade-equity/getquote": QUOTE,
+            PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "C1"}}},
+        }
+    )
     broker = _broker(session)
     broker.submit_buy("TQQQ", 200.0)
     broker.submit_sell("TQQQ", 2, 71.25)
@@ -347,13 +404,18 @@ def test_every_ticket_carries_an_explicit_limit_price():
 
 
 def test_snapshot_feeds_the_reconciler_without_adaptation():
-    session = FakeSession({
-        "/ftgw/digital/activityapi/api/v1/transactions/pending":
-            _pending([FILLED, WORKING, PARTIAL]),
-        "/ftgw/digital/trade-equity/positions":
-            [SPAXX_ROW, {"symbol": "TQQQ", "quantity": 12.0}],
-        "/ftgw/digital/trade-equity/balance": {"cashDetail": {"settledAmt": 4321.55}},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending(
+                [FILLED, WORKING, PARTIAL]
+            ),
+            "/ftgw/digital/trade-equity/positions": [
+                SPAXX_ROW,
+                {"symbol": "TQQQ", "quantity": 12.0},
+            ],
+            "/ftgw/digital/trade-equity/balance": {"cashDetail": {"settledAmt": 4321.55}},
+        }
+    )
     snap = _broker(session).snapshot()
     assert snap.positions == {"TQQQ": 12.0}
     assert snap.cash == 4321.55
@@ -365,12 +427,16 @@ def test_snapshot_feeds_the_reconciler_without_adaptation():
 def test_cash_prefers_settled_because_this_is_a_cash_account():
     """Proceeds settle T+1 here, so unsettled cash is visible in the
     account and is NOT tradeable without a good-faith violation."""
-    session = FakeSession({
-        "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
-        "/ftgw/digital/trade-equity/positions": [],
-        "/ftgw/digital/trade-equity/balance": {
-            "cash": 9999.99, "cashDetail": {"settledAmt": 100.00}},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
+            "/ftgw/digital/trade-equity/positions": [],
+            "/ftgw/digital/trade-equity/balance": {
+                "cash": 9999.99,
+                "cashDetail": {"settledAmt": 100.00},
+            },
+        }
+    )
     assert _broker(session).snapshot().cash == 100.00
 
 
@@ -378,11 +444,13 @@ def test_an_order_is_findable_by_our_decision_id_after_preview():
     """Fidelity has no client-reference field, so the decision_id ->
     confNum map is written at PREVIEW time -- before anything could be
     committed, so it is never a guess made after the fact."""
-    session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote": QUOTE,
-        PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "2C50H6WV"}}},
-        "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([FILLED]),
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/trade-equity/getquote": QUOTE,
+            PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "2C50H6WV"}}},
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([FILLED]),
+        }
+    )
     broker = _broker(session)
     assert broker.get_order_by_client_id("dec-9") is None
     broker.submit_buy("TQQQ", 200.0, client_order_id="dec-9")
@@ -396,11 +464,13 @@ def test_an_order_is_findable_by_our_decision_id_after_preview():
 def test_an_order_placed_by_hand_still_appears_in_the_snapshot():
     """Keyed by confNum rather than dropped. Reconciliation should SEE an
     unrecognised order, not have it silently hidden."""
-    session = FakeSession({
-        "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([WORKING]),
-        "/ftgw/digital/trade-equity/positions": [],
-        "/ftgw/digital/trade-equity/balance": {},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([WORKING]),
+            "/ftgw/digital/trade-equity/positions": [],
+            "/ftgw/digital/trade-equity/balance": {},
+        }
+    )
     snap = _broker(session).snapshot()
     assert "2C50H81C" in snap.orders
 
@@ -408,11 +478,13 @@ def test_an_order_placed_by_hand_still_appears_in_the_snapshot():
 def test_a_missing_balance_is_none_rather_than_zero():
     """Zero cash and unknown cash are completely different facts to
     reconcile against."""
-    session = FakeSession({
-        "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
-        "/ftgw/digital/trade-equity/positions": [],
-        "/ftgw/digital/trade-equity/balance": {},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
+            "/ftgw/digital/trade-equity/positions": [],
+            "/ftgw/digital/trade-equity/balance": {},
+        }
+    )
     assert _broker(session).snapshot().cash is None
 
 
@@ -430,28 +502,37 @@ def test_the_core_money_market_sweep_is_not_a_position():
     """SPAXX appears in every real positions response with a quantity in
     the tens of thousands. Counted, it tells reconciliation the account
     holds 27,336 shares of something the strategy has never traded."""
-    session = FakeSession({
-        "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
-        "/ftgw/digital/trade-equity/positions": [SPAXX_ROW,
-                                                 {"symbol": "TQQQ", "quantity": 5.0}],
-        "/ftgw/digital/trade-equity/balance": {},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
+            "/ftgw/digital/trade-equity/positions": [
+                SPAXX_ROW,
+                {"symbol": "TQQQ", "quantity": 5.0},
+            ],
+            "/ftgw/digital/trade-equity/balance": {},
+        }
+    )
     assert _broker(session).snapshot().positions == {"TQQQ": 5.0}
 
 
-@pytest.mark.parametrize("row", [
-    {"symbol": "X", "quantity": 1.0, "securityDetail": {"isCash": True}},
-    {"symbol": "X", "quantity": 1.0, "securityType": "Core"},
-    {"symbol": "X", "quantity": 1.0, "securityDetail": {"brokerageHoldingType": "Cash"}},
-])
+@pytest.mark.parametrize(
+    "row",
+    [
+        {"symbol": "X", "quantity": 1.0, "securityDetail": {"isCash": True}},
+        {"symbol": "X", "quantity": 1.0, "securityType": "Core"},
+        {"symbol": "X", "quantity": 1.0, "securityDetail": {"brokerageHoldingType": "Cash"}},
+    ],
+)
 def test_cash_is_excluded_on_any_of_its_three_markers(row):
     """Any one marker could be renamed; cash misreported as a position is
     the failure that matters, so this errs toward excluding."""
-    session = FakeSession({
-        "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
-        "/ftgw/digital/trade-equity/positions": [row],
-        "/ftgw/digital/trade-equity/balance": {},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
+            "/ftgw/digital/trade-equity/positions": [row],
+            "/ftgw/digital/trade-equity/balance": {},
+        }
+    )
     assert _broker(session).snapshot().positions == {}
 
 
@@ -461,15 +542,22 @@ def test_the_quote_reads_fidelitys_own_field_names():
     never have returned a price, and every order would have died at
     'No usable price'. The real shape is QUOTE_DATA.ASK_PRICE, upper
     snake case, string-valued."""
-    assert _broker(FakeSession({"/ftgw/digital/trade-equity/getquote": QUOTE})
-                   ).get_quote("TQQQ") == 69.54
+    assert (
+        _broker(FakeSession({"/ftgw/digital/trade-equity/getquote": QUOTE})).get_quote("TQQQ")
+        == 69.54
+    )
 
 
 def test_the_quote_prefers_the_ask_because_a_buy_pays_it():
     """Sizing a dollar amount against a lower last price would buy more
     shares than the cash covers."""
-    session = FakeSession({"/ftgw/digital/trade-equity/getquote": {
-        "QUOTE_DATA": {"ASK_PRICE": "70.00", "LAST_PRICE": "69.00", "BID_PRICE": "68.00"}}})
+    session = FakeSession(
+        {
+            "/ftgw/digital/trade-equity/getquote": {
+                "QUOTE_DATA": {"ASK_PRICE": "70.00", "LAST_PRICE": "69.00", "BID_PRICE": "68.00"}
+            }
+        }
+    )
     assert _broker(session).get_quote("TQQQ") == 70.00
 
 
@@ -482,33 +570,53 @@ def test_the_adapter_never_calls_the_multi_account_positions_endpoint():
 
     source = Path("src/fidelity_broker.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
-    docs = {ast.get_docstring(n, clean=False) for n in ast.walk(tree)
-            if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef))}
-    literals = [n.value for n in ast.walk(tree)
-                if isinstance(n, ast.Constant) and isinstance(n.value, str)
-                and n.value not in docs and "traderplus-api" in n.value]
+    docs = {
+        ast.get_docstring(n, clean=False)
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef))
+    }
+    literals = [
+        n.value
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Constant)
+        and isinstance(n.value, str)
+        and n.value not in docs
+        and "traderplus-api" in n.value
+    ]
     assert literals == [], f"multi-account endpoint reachable: {literals}"
 
 
-@pytest.mark.parametrize("method,path,check", [
-    ("_orders", "/ftgw/digital/activityapi/api/v1/transactions/pending",
-     lambda payload: "filter" in payload and "accounts" in payload["filter"]),
-    ("_positions", "/ftgw/digital/trade-equity/positions",
-     lambda payload: payload.get("acctNum") == ACCOUNT),
-    ("_cash", "/ftgw/digital/trade-equity/balance",
-     lambda payload: isinstance(payload, list) and payload[0]["acctNum"] == ACCOUNT),
-])
-def test_each_read_endpoint_is_sent_the_body_fidelity_actually_expects(
-    method, path, check
-):
+@pytest.mark.parametrize(
+    "method,path,check",
+    [
+        (
+            "_orders",
+            "/ftgw/digital/activityapi/api/v1/transactions/pending",
+            lambda payload: "filter" in payload and "accounts" in payload["filter"],
+        ),
+        (
+            "_positions",
+            "/ftgw/digital/trade-equity/positions",
+            lambda payload: payload.get("acctNum") == ACCOUNT,
+        ),
+        (
+            "_cash",
+            "/ftgw/digital/trade-equity/balance",
+            lambda payload: isinstance(payload, list) and payload[0]["acctNum"] == ACCOUNT,
+        ),
+    ],
+)
+def test_each_read_endpoint_is_sent_the_body_fidelity_actually_expects(method, path, check):
     """Every one of these was wrong. Request shapes were never captured
     from real traffic -- only responses were -- so all three were
     invented, and the adapter would have failed on its first real call."""
-    session = FakeSession({
-        "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
-        "/ftgw/digital/trade-equity/positions": [],
-        "/ftgw/digital/trade-equity/balance": {},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
+            "/ftgw/digital/trade-equity/positions": [],
+            "/ftgw/digital/trade-equity/balance": {},
+        }
+    )
     getattr(_broker(session), method)()
     sent = next(p for called, p in session.calls if called == path)
     assert check(sent), f"{path} was sent {sent!r}"

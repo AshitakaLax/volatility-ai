@@ -69,7 +69,7 @@ def test_an_alpaca_config_still_rejects_an_unknown_feed():
 
 
 def test_a_fidelity_config_is_not_held_to_the_alpaca_feed_whitelist():
-    """"iex"/"sip" are names of ALPACA data feeds. Applying that list to
+    """ "iex"/"sip" are names of ALPACA data feeds. Applying that list to
     a Fidelity deployment would reject a config for failing to name a
     feed it does not have."""
     config = _build(
@@ -121,9 +121,7 @@ def test_a_bare_string_allowlist_is_rejected_not_coerced():
     still be non-empty, still pass every emptiness check, and match
     either nothing or something terrible."""
     with pytest.raises(ConfigurationError, match="not a bare string"):
-        _build(
-            {"broker": "fidelity", "fidelity": {"allowed_accounts": "Z12345678"}}
-        )
+        _build({"broker": "fidelity", "fidelity": {"allowed_accounts": "Z12345678"}})
 
 
 def test_a_non_iterable_allowlist_is_rejected():
@@ -210,9 +208,7 @@ def test_dry_run_defaults_to_true():
     """A Fidelity account has no paper mode. dry_run is the only thing
     between a preview and a real order, so it defaults to safe and
     flipping it is the deliberate go-live act."""
-    config = _build(
-        {"broker": "fidelity", "fidelity": {"allowed_accounts": ["Z12345678"]}}
-    )
+    config = _build({"broker": "fidelity", "fidelity": {"allowed_accounts": ["Z12345678"]}})
     assert config.live.fidelity.dry_run is True
 
 
@@ -244,9 +240,7 @@ def test_dry_run_is_a_real_bool_not_a_truthy_string():
 
 def test_allowed_accounts_is_a_tuple_so_the_config_stays_hashable():
     """Artifact hashing (Task 6.3) requires it, same as GridConfig."""
-    config = _build(
-        {"broker": "fidelity", "fidelity": {"allowed_accounts": ["Z12345678"]}}
-    )
+    config = _build({"broker": "fidelity", "fidelity": {"allowed_accounts": ["Z12345678"]}})
     assert isinstance(config.live.fidelity.allowed_accounts, tuple)
 
 
@@ -286,7 +280,5 @@ def test_an_alpaca_config_round_trips_without_a_null_fidelity_section():
 def test_to_dict_is_json_serializable_with_fidelity_settings():
     import json
 
-    config = _build(
-        {"broker": "fidelity", "fidelity": {"allowed_accounts": ["Z12345678"]}}
-    )
+    config = _build({"broker": "fidelity", "fidelity": {"allowed_accounts": ["Z12345678"]}})
     assert "Z12345678" in json.dumps(config.to_dict())

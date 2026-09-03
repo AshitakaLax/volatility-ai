@@ -475,9 +475,7 @@ class OptimizationController:
         measurement behind that distinction.
         """
         if self._earnings_flags_cache is None:
-            self._earnings_flags_cache = [
-                d in EARNINGS_REACTION_DATES for d in self._eastern_dates
-            ]
+            self._earnings_flags_cache = [d in EARNINGS_REACTION_DATES for d in self._eastern_dates]
         return self._earnings_flags_cache
 
     def _load_event_table(self):

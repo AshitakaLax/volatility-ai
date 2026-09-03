@@ -58,15 +58,19 @@ def _alpaca(orders=(), positions=(), cash="1000.00"):
 
 
 def _fidelity(orders=(), positions=(), cash=1000.00):
-    session = FakeSession({
-        "/ftgw/digital/trade-equity/getquote":
-            {"QUOTE_DATA": {"ASK_PRICE": "100.00", "LAST_PRICE": "100.00"}},
-        PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "2C50H6WV"}}},
-        "/ftgw/digital/activityapi/api/v1/transactions/pending":
-            {"data": {"orders": list(orders)}},
-        "/ftgw/digital/trade-equity/positions": list(positions),
-        "/ftgw/digital/trade-equity/balance": {"cashDetail": {"settledAmt": cash}},
-    })
+    session = FakeSession(
+        {
+            "/ftgw/digital/trade-equity/getquote": {
+                "QUOTE_DATA": {"ASK_PRICE": "100.00", "LAST_PRICE": "100.00"}
+            },
+            PREVIEW_PATH: {"preview": {"orderConfirmDetail": {"confNum": "2C50H6WV"}}},
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": {
+                "data": {"orders": list(orders)}
+            },
+            "/ftgw/digital/trade-equity/positions": list(positions),
+            "/ftgw/digital/trade-equity/balance": {"cashDetail": {"settledAmt": cash}},
+        }
+    )
     return FidelityBroker(session, ACCOUNT, (ACCOUNT,))
 
 
@@ -78,8 +82,7 @@ def _empty_fidelity():
     return _fidelity()
 
 
-BUILDERS = [pytest.param(_empty_alpaca, id="alpaca"),
-            pytest.param(_empty_fidelity, id="fidelity")]
+BUILDERS = [pytest.param(_empty_alpaca, id="alpaca"), pytest.param(_empty_fidelity, id="fidelity")]
 
 
 # --- the surface -------------------------------------------------------
@@ -173,8 +176,9 @@ def test_an_absent_order_is_none_not_an_exception(build):
     [
         pytest.param(
             lambda: _alpaca(
-                orders=[FakeOrder(client_order_id="dec-1", status="filled",
-                                  filled_qty="2", avg="69.35")],
+                orders=[
+                    FakeOrder(client_order_id="dec-1", status="filled", filled_qty="2", avg="69.35")
+                ],
                 positions=[FakePosition(symbol="TQQQ", qty="2")],
             ),
             id="alpaca",

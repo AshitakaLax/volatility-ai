@@ -122,8 +122,17 @@ DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 
 # SMA200-else-cash, measured earlier in this project. The number to beat.
 BENCHMARK = {
-    2016: 3.7, 2017: 118.3, 2018: 8.4, 2019: 40.5, 2020: 68.4, 2021: 83.0,
-    2022: -19.8, 2023: 65.2, 2024: 36.4, 2025: 18.0, 2026: 3.5,
+    2016: 3.7,
+    2017: 118.3,
+    2018: 8.4,
+    2019: 40.5,
+    2020: 68.4,
+    2021: 83.0,
+    2022: -19.8,
+    2023: 65.2,
+    2024: 36.4,
+    2025: 18.0,
+    2026: 3.5,
 }
 BENCHMARK_CAGR = 34.55
 
@@ -204,9 +213,7 @@ class RegimeHold(HighFrequencyLocalReferenceSizing):
             self._session = session
             if self._prior_close is not None:
                 average = self._regime_mean.value
-                self._is_bull = (
-                    self._warm and average is not None and self._prior_close > average
-                )
+                self._is_bull = self._warm and average is not None and self._prior_close > average
                 self._regime_mean.update(self._prior_close)
         self._prior_close = price
         # Flip in EITHER direction rotates the book.
@@ -297,14 +304,21 @@ def main(argv=None) -> int:
 
     print("bull = hold the trend, bear = 5%/4% escalating dips, flip = rotate the book")
     print(f"benchmark SMA200-else-cash: {BENCHMARK_CAGR:.2f}% CAGR, worst year -19.8%\n")
-    print(f"{'hold':>5} {'cap':>5} {'bullx':>6} {'bull':>6} {'CAGR':>8} {'maxDD':>7} "
-          f"{'worst':>8} {'neg':>6} {'2022':>8} {'exits':>7}")
+    print(
+        f"{'hold':>5} {'cap':>5} {'bullx':>6} {'bull':>6} {'CAGR':>8} {'maxDD':>7} "
+        f"{'worst':>8} {'neg':>6} {'2022':>8} {'exits':>7}"
+    )
 
     for hold_in_bull in (True, False):
-        for cap, per_lot, bull_step in ((1.00, 5.0, 0.002), (1.00, 2.0, 0.005),
-                                        (0.50, 5.0, 0.002)):
-            row, yearly = run(controller, cfg, hold_in_bull=hold_in_bull, cap=cap,
-                              per_lot=per_lot, bull_step=bull_step)
+        for cap, per_lot, bull_step in ((1.00, 5.0, 0.002), (1.00, 2.0, 0.005), (0.50, 5.0, 0.002)):
+            row, yearly = run(
+                controller,
+                cfg,
+                hold_in_bull=hold_in_bull,
+                cap=cap,
+                per_lot=per_lot,
+                bull_step=bull_step,
+            )
             y2022 = yearly[[i.year == 2022 for i in yearly.index]].iloc[0]
             complete = yearly[[ts.year < 2026 for ts in yearly.index]]
             print(
@@ -314,11 +328,18 @@ def main(argv=None) -> int:
                 f"{y2022:+7.2f}% {int(row['Signal Exit Count']):7d}"
             )
             print("      " + "  ".join(f"{ts.year}:{v:+.0f}%" for ts, v in yearly.items()))
-            caps = [yearly[[t.year == y for t in yearly.index]].iloc[0] / BENCHMARK[y]
-                    for y in (2017, 2019, 2020, 2021, 2023) if BENCHMARK[y]]
-            print("      bull-year capture vs benchmark: "
-                  + "  ".join(f"{y}:{c:.0%}" for y, c in
-                              zip((2017, 2019, 2020, 2021, 2023), caps, strict=False)))
+            caps = [
+                yearly[[t.year == y for t in yearly.index]].iloc[0] / BENCHMARK[y]
+                for y in (2017, 2019, 2020, 2021, 2023)
+                if BENCHMARK[y]
+            ]
+            print(
+                "      bull-year capture vs benchmark: "
+                + "  ".join(
+                    f"{y}:{c:.0%}"
+                    for y, c in zip((2017, 2019, 2020, 2021, 2023), caps, strict=False)
+                )
+            )
 
     print("\n'worst' and 'neg' cover COMPLETE years only -- 2026 is a Jan-Aug stub.")
     print("hold=False is the control: identical in every respect except that bull")

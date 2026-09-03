@@ -45,6 +45,7 @@ than as a tuned constant.
 This is a PROBE, not a shipped strategy: it subclasses the real strategy
 rather than modifying it, so nothing in src/ changes.
 """
+
 import sys
 
 sys.path.insert(0, r"C:/workspace/volatility-ai")
@@ -85,18 +86,26 @@ def main() -> int:
         p["per_lot_pct"], p["max_mult"], p["dd_ref"] = 0.02, 400.0, 0.75
         rm = RiskManager(max_concurrent_lots=6000, max_total_exposure_pct=cap)
         summary, full = controller.run_sweep(
-            grid_steps=[0.10], profit_targets=[0.04], strategy_class=Escalating,
-            strategy_params_grid=[p], cost_model=cost, risk_manager=rm,
-            fill_model="intrabar", intrabar_priority="sell_first",
-            enforce_no_loss=True, on_flat_reentry="stale_reference",
+            grid_steps=[0.10],
+            profit_targets=[0.04],
+            strategy_class=Escalating,
+            strategy_params_grid=[p],
+            cost_model=cost,
+            risk_manager=rm,
+            fill_model="intrabar",
+            intrabar_priority="sell_first",
+            enforce_no_loss=True,
+            on_flat_reentry="stale_reference",
             return_full_results=True,
         )
         ar = annual_returns(full[0].equity_curve)
         r = summary.iloc[0]
         print(f"--- step 0.10 / mult 400 / cap {cap:.2f} ---")
         print("  " + "  ".join(f"{ts.year}:{v:+.1f}%" for ts, v in ar.items()))
-        print(f"  CAGR {r['CAGR %']:.2f}%   maxDD {r['Max Drawdown %']:.1f}%   "
-              f"total {r['Total Return %']:.0f}%   trades {int(r['Trade Count'])}")
+        print(
+            f"  CAGR {r['CAGR %']:.2f}%   maxDD {r['Max Drawdown %']:.1f}%   "
+            f"total {r['Total Return %']:.0f}%   trades {int(r['Trade Count'])}"
+        )
 
     print("\nlot-size multiplier at each TQQQ drawdown (mult=400, dd_ref=0.75):")
     for dd in (0.10, 0.25, 0.50, 0.60, 0.75, 0.80):

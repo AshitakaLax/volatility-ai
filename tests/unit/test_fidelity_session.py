@@ -90,8 +90,7 @@ def _ready(**kw):
     return session, page
 
 
-def _ready_with(result=None, allow_orders=False, url=SIGNED_IN, raises=None,
-                allow_preview=False):
+def _ready_with(result=None, allow_orders=False, url=SIGNED_IN, raises=None, allow_preview=False):
     page = FakePage(url=url, result=result, raises=raises)
     session = FidelitySession(
         page,
@@ -269,9 +268,7 @@ def test_a_redirect_into_signin_raises_expired_not_empty_data():
     200 with a login page, not a 401. Parsed naively that is an empty
     order list, which would read as 'no open orders' at exactly the wrong
     moment."""
-    session, _ = _ready_with(
-        result={"status": 200, "url": SIGNIN, "body": "<html>sign in</html>"}
-    )
+    session, _ = _ready_with(result={"status": 200, "url": SIGNIN, "body": "<html>sign in</html>"})
     with pytest.raises(FidelitySessionExpired, match="expired"):
         session.post_json(PENDING, {})
 
@@ -302,16 +299,12 @@ def test_expired_is_distinguishable_from_a_transport_error():
 
 def test_a_json_body_is_parsed():
     payload = {"data": {"orders": [{"orderNum": "2C3239SF"}]}}
-    session, _ = _ready_with(
-        result={"status": 200, "url": SIGNED_IN, "body": json.dumps(payload)}
-    )
+    session, _ = _ready_with(result={"status": 200, "url": SIGNED_IN, "body": json.dumps(payload)})
     assert session.post_json(PENDING, {}) == payload
 
 
 def test_html_where_json_was_expected_says_so():
-    session, _ = _ready_with(
-        result={"status": 200, "url": SIGNED_IN, "body": "<html>nope</html>"}
-    )
+    session, _ = _ready_with(result={"status": 200, "url": SIGNED_IN, "body": "<html>nope</html>"})
     with pytest.raises(FidelitySessionError, match="looks like HTML"):
         session.post_json(PENDING, {})
 

@@ -558,9 +558,7 @@ class BacktestConfig:
             ("zero", "slippage_commission", "dynamic_slippage"),
             "costs.model_type",
         )
-        validate_non_negative(
-            self.execution.settlement_days, "execution.settlement_days"
-        )
+        validate_non_negative(self.execution.settlement_days, "execution.settlement_days")
         validate_non_negative(self.costs.commission_per_trade, "costs.commission_per_trade")
         validate_non_negative(self.costs.slippage_bps, "costs.slippage_bps")
         validate_non_negative(self.costs.base_bps, "costs.base_bps")

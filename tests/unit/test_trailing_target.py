@@ -257,9 +257,7 @@ def test_forget_drops_a_closed_lots_peak():
     assert lot.order_id not in policy._peaks
 
 
-@pytest.mark.parametrize(
-    "kw", [{"trail_pct": 0.0}, {"trail_pct": 1.0}, {"trail_pct": -0.1}]
-)
+@pytest.mark.parametrize("kw", [{"trail_pct": 0.0}, {"trail_pct": 1.0}, {"trail_pct": -0.1}])
 def test_invalid_trail_pct_is_rejected(kw):
     with pytest.raises(ConfigurationError, match="trail_pct"):
         TrailingTargetPolicy(**kw)
@@ -437,9 +435,7 @@ def test_trailing_still_retargets_through_the_real_helper():
         trail_pct=0.05,
         trail_min_profit_target=0.10,
     )
-    lot = Lot(
-        order_id="L1", symbol="TQQQ", buy_price=100.0, shares=1.0, profit_target=1.00
-    )
+    lot = Lot(order_id="L1", symbol="TQQQ", buy_price=100.0, shares=1.0, profit_target=1.00)
     ledger = _CountingLedger([lot])
     # Drive the peak well above the floor so a lower target is proposed.
     for price in (100.0, 150.0, 200.0, 190.0):

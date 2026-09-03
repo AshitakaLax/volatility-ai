@@ -92,21 +92,15 @@ class Escalating(HighFrequencyLocalReferenceSizing):
         super().record_tick(context)
         if context.price > 0:
             self._price_peak = (
-                context.price
-                if self._price_peak is None
-                else max(self._price_peak, context.price)
+                context.price if self._price_peak is None else max(self._price_peak, context.price)
             )
 
     def calculate_trade_value(self, context) -> float:
         base = super().calculate_trade_value(context)
-        return base * escalation(
-            context.price, self._price_peak, self.max_mult, self.dd_ref
-        )
+        return base * escalation(context.price, self._price_peak, self.max_mult, self.dd_ref)
 
 
-def escalation(
-    price: float, peak: float | None, max_mult: float, dd_ref: float
-) -> float:
+def escalation(price: float, peak: float | None, max_mult: float, dd_ref: float) -> float:
     """The multiplier, as a function rather than a formula to re-type.
 
     Returns 1.0 (no escalation) when there is no peak yet, no drawdown,

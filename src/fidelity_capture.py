@@ -169,9 +169,7 @@ class TrafficCapture:
         # Empty strings are dropped: `"" in payload` is always True, so a
         # blank credential would scrub every payload down to nothing.
         self._secret_values = [s for s in (secret_values or []) if s]
-        self._resource_types = (
-            DEFAULT_RESOURCE_TYPES if resource_types is None else resource_types
-        )
+        self._resource_types = DEFAULT_RESOURCE_TYPES if resource_types is None else resource_types
         self._max_payload_bytes = max_payload_bytes
         self._max_records = max_records
         self._ws_hosts = (

@@ -175,9 +175,7 @@ class FidelitySession:
         # Placing implies previewing -- placeOrder needs a confNum that
         # only previewSrvc mints -- so granting the stronger capability
         # grants the weaker one. The reverse is never true.
-        self._allow_preview_endpoints = bool(
-            allow_preview_endpoints or allow_order_endpoints
-        )
+        self._allow_preview_endpoints = bool(allow_preview_endpoints or allow_order_endpoints)
         self._request_timeout_ms = request_timeout_ms
         self._headers: dict[str, str] = {}
         self._attached = False
@@ -275,9 +273,7 @@ class FidelitySession:
         would make that a matter of the caller getting it right.
         """
         if not path.startswith("/"):
-            raise ConfigurationError(
-                f"path must be site-relative and start with '/', got {path!r}"
-            )
+            raise ConfigurationError(f"path must be site-relative and start with '/', got {path!r}")
         if path in PLACE_ENDPOINTS and not self._allow_order_endpoints:
             raise ConfigurationError(
                 f"{path} PLACES OR CANCELS A REAL ORDER and this session does not "
@@ -337,9 +333,7 @@ class FidelitySession:
         }
         """
         try:
-            result = self._page.evaluate(
-                script, [path, payload, headers, self._request_timeout_ms]
-            )
+            result = self._page.evaluate(script, [path, payload, headers, self._request_timeout_ms])
         except Exception as exc:
             raise FidelitySessionError(f"POST {path} failed in the page: {exc}") from exc
 
@@ -365,9 +359,7 @@ class FidelitySession:
                 "longer valid; log in again."
             )
         if status >= 400:
-            raise FidelitySessionError(
-                f"POST {path} returned {status}: {body[:300]}"
-            )
+            raise FidelitySessionError(f"POST {path} returned {status}: {body[:300]}")
 
         try:
             return json.loads(body)

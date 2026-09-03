@@ -48,15 +48,20 @@ class SpyJournal:
 
 
 def _session(conf="2C50CWH1", place_conf=None, place_raises=None):
-    return FakeSession({
-        "/ftgw/digital/trade-equity/getquote":
-            {"QUOTE_DATA": {"ASK_PRICE": str(PRICE), "LAST_PRICE": str(PRICE)}},
-        PREVIEW: {"preview": {"orderConfirmDetail": {"confNum": conf}}},
-        PLACE_PATH: (_raise(place_raises) if place_raises else
-                     {"place": {"orderConfirmDetail":
-                                {"confNum": place_conf or conf}}}),
-        "/ftgw/digital/activityapi/api/v1/transactions/pending": {"data": {"orders": []}},
-    })
+    return FakeSession(
+        {
+            "/ftgw/digital/trade-equity/getquote": {
+                "QUOTE_DATA": {"ASK_PRICE": str(PRICE), "LAST_PRICE": str(PRICE)}
+            },
+            PREVIEW: {"preview": {"orderConfirmDetail": {"confNum": conf}}},
+            PLACE_PATH: (
+                _raise(place_raises)
+                if place_raises
+                else {"place": {"orderConfirmDetail": {"confNum": place_conf or conf}}}
+            ),
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": {"data": {"orders": []}},
+        }
+    )
 
 
 def _raise(exc):
@@ -86,9 +91,7 @@ def _broker(session=None, journal=_UNSET, **kw):
         journal=SpyJournal() if journal is _UNSET else journal,
     )
     options.update(kw)
-    return FidelityPlacingBroker(
-        session or _session(), ACCOUNT, (ACCOUNT,), **options
-    )
+    return FidelityPlacingBroker(session or _session(), ACCOUNT, (ACCOUNT,), **options)
 
 
 # ======================================================================
@@ -99,8 +102,12 @@ def _broker(session=None, journal=_UNSET, **kw):
 def test_it_will_not_construct_without_an_explicit_acknowledgement():
     with pytest.raises(ConfigurationError, match="REAL ORDERS WITH REAL MONEY"):
         FidelityPlacingBroker(
-            _session(), ACCOUNT, (ACCOUNT,),
-            allowed_symbols=(SYMBOL,), max_order_value=100.0, journal=SpyJournal(),
+            _session(),
+            ACCOUNT,
+            (ACCOUNT,),
+            allowed_symbols=(SYMBOL,),
+            max_order_value=100.0,
+            journal=SpyJournal(),
         )
 
 
@@ -187,9 +194,7 @@ def test_the_confnum_is_journalled_before_the_order_is_committed():
 def test_a_journal_failure_stops_the_order_before_it_is_placed():
     session = _session()
     with pytest.raises(OSError):
-        _broker(session, SpyJournal(explode=True)).place(
-            SYMBOL, "buy", 1, PRICE, "dec-1"
-        )
+        _broker(session, SpyJournal(explode=True)).place(SYMBOL, "buy", 1, PRICE, "dec-1")
     assert PLACE_PATH not in [p for p, _ in session.calls], (
         "an unjournalled order must never be committed"
     )
@@ -278,13 +283,23 @@ def test_unresolved_orders_names_what_the_venue_never_received(tmp_path):
     journal.record("dec-1", "2C50LANDED", {"symbol": SYMBOL})
     journal.record("dec-2", "2C50LOST", {"symbol": SYMBOL})
 
-    session = FakeSession({
-        "/ftgw/digital/activityapi/api/v1/transactions/pending": {
-            "data": {"orders": [{"orderNum": "2C50LANDED", "acctNum": ACCOUNT,
-                                 "symbol": SYMBOL, "status": "Open",
-                                 "cancelableInd": True}]}
+    session = FakeSession(
+        {
+            "/ftgw/digital/activityapi/api/v1/transactions/pending": {
+                "data": {
+                    "orders": [
+                        {
+                            "orderNum": "2C50LANDED",
+                            "acctNum": ACCOUNT,
+                            "symbol": SYMBOL,
+                            "status": "Open",
+                            "cancelableInd": True,
+                        }
+                    ]
+                }
+            }
         }
-    })
+    )
     missing = unresolved_orders(journal, FidelityBroker(session, ACCOUNT, (ACCOUNT,)))
     assert [x["decision_id"] for x in missing] == ["dec-2"]
 
@@ -303,7 +318,11 @@ def test_the_spend_ceiling_does_not_block_an_exit():
     """
     session = _session()
     order = _broker(session, max_order_value=50.0).place(
-        SYMBOL, "sell", 10, 20.0, "exit-1"  # $200, four times the ceiling
+        SYMBOL,
+        "sell",
+        10,
+        20.0,
+        "exit-1",  # $200, four times the ceiling
     )
     assert order.state is OrderState.SUBMITTED
 

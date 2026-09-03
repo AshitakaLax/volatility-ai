@@ -205,7 +205,11 @@ class EarningsEventTable:
             # harmless here since idx_values is already UTC-normalized,
             # but the explicit conversion says so instead of relying on
             # a warning nobody reads in a hot loop.
-            start64, end64, release64 = start.to_datetime64(), end.to_datetime64(), release.to_datetime64()
+            start64, end64, release64 = (
+                start.to_datetime64(),
+                end.to_datetime64(),
+                release.to_datetime64(),
+            )
             lo = np.searchsorted(idx_values, start64, side="left")
             hi = np.searchsorted(idx_values, end64, side="left")
             if lo < hi:

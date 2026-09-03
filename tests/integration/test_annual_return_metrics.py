@@ -25,9 +25,7 @@ def _flat_price_series(years: int = 3) -> pd.DataFrame:
     logic, only on the wiring being correct."""
     idx = pd.date_range("2020-01-02", periods=years * 365 + 1, freq="D", tz="UTC")
     price = pd.Series(100.0, index=idx)
-    return pd.DataFrame(
-        {"open": price, "high": price, "low": price, "close": price}, index=idx
-    )
+    return pd.DataFrame({"open": price, "high": price, "low": price, "close": price}, index=idx)
 
 
 def test_a_never_triggered_run_reports_zero_for_all_three_years():

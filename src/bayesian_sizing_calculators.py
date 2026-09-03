@@ -362,8 +362,7 @@ class BayesianDualScaleSizing(SizingStrategy):
             raise ConfigurationError(f"lookback_days must be positive, got {lookback_days}")
         if vol_scale_min <= 0.0 or vol_scale_max < vol_scale_min:
             raise ConfigurationError(
-                f"need 0 < vol_scale_min <= vol_scale_max, got "
-                f"{vol_scale_min} and {vol_scale_max}"
+                f"need 0 < vol_scale_min <= vol_scale_max, got {vol_scale_min} and {vol_scale_max}"
             )
         if vol_measure not in ("stdev", "range"):
             raise ConfigurationError(f"vol_measure must be 'stdev' or 'range', got {vol_measure!r}")
@@ -480,9 +479,7 @@ class BayesianDualScaleSizing(SizingStrategy):
             # (high==low==price) AND unchanged from the previous real
             # print; skip it so realized vol does not read low through
             # synthetic filler.
-            synthetic = is_synthetic_bar(
-                context.high, context.low, price, self._prev_price
-            )
+            synthetic = is_synthetic_bar(context.high, context.low, price, self._prev_price)
             if not synthetic:
                 if self.vol_measure == "range":
                     self._fast_vol.update((context.high - context.low) / price)

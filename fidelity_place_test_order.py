@@ -129,8 +129,7 @@ def attach(cdp_url: str):
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise ConfigurationError(
-            f"playwright is not installed: {exc}\n"
-            "    pip install -r requirements-fidelity.txt"
+            f"playwright is not installed: {exc}\n    pip install -r requirements-fidelity.txt"
         ) from exc
 
     playwright = sync_playwright().start()
@@ -170,8 +169,10 @@ def _report(broker: FidelityBroker, journal: FileConfNumJournal) -> int:
     for entry in entries:
         found = orders.get(entry["conf_num"])
         state = "NOT AT VENUE" if found is None else str(found.get("status"))
-        print(f"  {entry['conf_num']:>10}  {entry.get('side', '?'):>4} "
-              f"{entry.get('qty', '?')} {entry.get('symbol', '?'):<6} -> {state}")
+        print(
+            f"  {entry['conf_num']:>10}  {entry.get('side', '?'):>4} "
+            f"{entry.get('qty', '?')} {entry.get('symbol', '?'):<6} -> {state}"
+        )
     missing = unresolved_orders(journal, broker)
     if missing:
         print(
@@ -204,9 +205,7 @@ def main(argv=None) -> int:
         session.assert_authenticated()
 
         if args.check_only:
-            return _report(
-                FidelityBroker(session, args.account, (args.account,)), journal
-            )
+            return _report(FidelityBroker(session, args.account, (args.account,)), journal)
 
         quote_broker = FidelityBroker(session, args.account, (args.account,))
         price = quote_broker.get_quote(args.symbol)
@@ -232,8 +231,7 @@ def main(argv=None) -> int:
             return 0
         if not args.confirmed:
             print(
-                "\nRefusing to place without "
-                "--i-understand-this-places-a-real-order.",
+                "\nRefusing to place without --i-understand-this-places-a-real-order.",
                 file=sys.stderr,
             )
             return 2

@@ -358,10 +358,7 @@ def test_classify_works_without_alpaca_installed(monkeypatch):
     """A Fidelity-only deployment must not need alpaca-py."""
     _hide_packages(monkeypatch, "alpaca")
     assert classify_error(TimeoutError("t")) is ErrorClass.RETRYABLE
-    assert (
-        classify_error(TimeoutError("t"), after_submission=True)
-        is ErrorClass.AMBIGUOUS
-    )
+    assert classify_error(TimeoutError("t"), after_submission=True) is ErrorClass.AMBIGUOUS
 
 
 def test_classify_works_without_requests_installed(monkeypatch):
@@ -420,6 +417,5 @@ def test_a_playwright_timeout_after_submission_is_ambiguous(monkeypatch):
     monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
 
     assert (
-        classify_error(PlaywrightTimeoutError("t"), after_submission=True)
-        is ErrorClass.AMBIGUOUS
+        classify_error(PlaywrightTimeoutError("t"), after_submission=True) is ErrorClass.AMBIGUOUS
     )

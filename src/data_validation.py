@@ -65,8 +65,7 @@ class ValidationReport:
         """One line per suspect bar, truncated -- for a sidecar or an
         operator prompt."""
         shown = [
-            f"{ts.isoformat()} {change * 100:+.1f}%"
-            for ts, change in self.suspect_bars[:limit]
+            f"{ts.isoformat()} {change * 100:+.1f}%" for ts, change in self.suspect_bars[:limit]
         ]
         extra = len(self.suspect_bars) - limit
         return "; ".join(shown) + (f" (+{extra} more)" if extra > 0 else "")

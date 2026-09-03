@@ -66,6 +66,7 @@ _METRIC_COLS = {
     "error",
 }
 
+
 def _constructor_params(strategy_class, row):
     """Strategy kwargs for `row`, by ASKING the constructor what it takes.
 
@@ -170,12 +171,9 @@ def main():
         for year in strat.index:
             bench = benchmark.get(year, float("nan"))
             print(
-                f"  {year.year:<6} {strat[year]:>9.2f}% {bench:>9.2f}% "
-                f"{strat[year] - bench:>9.2f}%"
+                f"  {year.year:<6} {strat[year]:>9.2f}% {bench:>9.2f}% {strat[year] - bench:>9.2f}%"
             )
-        wins = sum(
-            1 for y in strat.index if pd.notna(benchmark.get(y)) and strat[y] > benchmark[y]
-        )
+        wins = sum(1 for y in strat.index if pd.notna(benchmark.get(y)) and strat[y] > benchmark[y])
         print(f"  strategy beat buy-and-hold in {wins} of {len(strat)} calendar years")
         _by_regime(equity, df["close"])
 

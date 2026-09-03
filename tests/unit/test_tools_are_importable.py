@@ -53,10 +53,13 @@ def test_no_tool_does_work_at_import_time(path):
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
     loaders = [
-        node for node in tree.body
+        node
+        for node in tree.body
         if isinstance(node, (ast.Assign, ast.Expr, ast.For, ast.While))
-        and any(call in ast.unparse(node)
-                for call in ("read_csv(", "run_sweep(", "OptimizationController("))
+        and any(
+            call in ast.unparse(node)
+            for call in ("read_csv(", "run_sweep(", "OptimizationController(")
+        )
     ]
     assert loaders == [], (
         f"{path.name} loads data or runs a sweep at module level: "
@@ -122,17 +125,20 @@ def test_the_three_escalating_copies_still_agree():
     # the first version did exactly that.
     monkey = pytest.MonkeyPatch()
     monkey.setattr(
-        HighFrequencyLocalReferenceSizing, "calculate_trade_value",
+        HighFrequencyLocalReferenceSizing,
+        "calculate_trade_value",
         lambda self, context: 1000.0,
     )
     try:
         sized = {}
-        for module in ("probe_downturn_tactics", "probe_escalating_risk",
-                       "probe_regime_combo"):
+        for module in ("probe_downturn_tactics", "probe_escalating_risk", "probe_regime_combo"):
             cls = importlib.import_module(f"tools.{module}").Escalating
             strategy = cls(
-                lookback_days=20, bars_per_day=390,
-                per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75,
+                lookback_days=20,
+                bars_per_day=390,
+                per_lot_pct=0.02,
+                max_mult=400.0,
+                dd_ref=0.75,
             )
             strategy._price_peak = 100.0
             sized[module] = [

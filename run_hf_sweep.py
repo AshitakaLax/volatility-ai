@@ -121,9 +121,7 @@ def main():
     # None (the default) yields an all-zero signal, which is an exact no-op
     # because implied_vol_exponent defaults to 0.0 -- so every config that
     # predates this flag reproduces its recorded result unchanged.
-    controller = OptimizationController(
-        historical_data=df, implied_vol_path=args.implied_vol
-    )
+    controller = OptimizationController(historical_data=df, implied_vol_path=args.implied_vol)
     cost_model = config.costs.build()
     risk_manager = config.risk.build()
 
@@ -490,9 +488,7 @@ def main():
                 f"the {args.max_drawdown}% drawdown cap."
             )
         print(f"\nTop 15 distinct combinations by Total Return % (of {len(distinct)} evaluated):")
-        print(
-            admissible.sort_values("Total Return %", ascending=False)[cols].head(15).to_string()
-        )
+        print(admissible.sort_values("Total Return %", ascending=False)[cols].head(15).to_string())
 
 
 if __name__ == "__main__":

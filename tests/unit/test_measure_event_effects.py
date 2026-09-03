@@ -32,11 +32,11 @@ from tools.measure_event_effects import (
 @pytest.mark.parametrize(
     ("year", "month", "expected"),
     [
-        (2024, 1, date(2024, 1, 19)),   # Jan 1 2024 was a Monday
-        (2025, 6, date(2025, 6, 20)),   # Jun 1 2025 was a Sunday
-        (2026, 1, date(2026, 1, 16)),   # Jan 1 2026 was a Thursday
-        (2020, 2, date(2020, 2, 21)),   # Feb 1 2020 was a Saturday
-        (2021, 10, date(2021, 10, 15)), # Oct 1 2021 was a Friday -> 1st Friday IS the 1st
+        (2024, 1, date(2024, 1, 19)),  # Jan 1 2024 was a Monday
+        (2025, 6, date(2025, 6, 20)),  # Jun 1 2025 was a Sunday
+        (2026, 1, date(2026, 1, 16)),  # Jan 1 2026 was a Thursday
+        (2020, 2, date(2020, 2, 21)),  # Feb 1 2020 was a Saturday
+        (2021, 10, date(2021, 10, 15)),  # Oct 1 2021 was a Friday -> 1st Friday IS the 1st
     ],
 )
 def test_third_friday_against_known_dates(year, month, expected):
@@ -102,16 +102,12 @@ def _sessions(*days: str) -> pd.Index:
 def test_month_end_uses_the_last_SESSION_not_the_calendar_last_day():
     """2021-01-31 was a Sunday; the last session was Friday the 29th.
     Deriving from the calendar would produce a date the market was shut."""
-    sessions = _sessions(
-        "2021-01-27", "2021-01-28", "2021-01-29", "2021-02-01", "2021-02-02"
-    )
+    sessions = _sessions("2021-01-27", "2021-01-28", "2021-01-29", "2021-02-01", "2021-02-02")
     assert month_end_sessions(sessions) == {date(2021, 1, 29), date(2021, 2, 2)}
 
 
 def test_quarter_end_groups_by_calendar_quarter():
-    sessions = _sessions(
-        "2021-03-30", "2021-03-31", "2021-04-01", "2021-06-29", "2021-06-30"
-    )
+    sessions = _sessions("2021-03-30", "2021-03-31", "2021-04-01", "2021-06-29", "2021-06-30")
     assert quarter_end_sessions(sessions) == {date(2021, 3, 31), date(2021, 6, 30)}
 
 
@@ -139,8 +135,8 @@ def test_welch_t_sign_follows_the_first_sample():
 def test_welch_t_matches_a_hand_computed_value():
     """Unequal variances AND unequal n -- the case Student's t gets
     wrong and Welch's is for."""
-    a = np.array([1.0, 2.0, 3.0, 4.0, 5.0])          # mean 3, var 2.5, n 5
-    b = np.array([2.0, 4.0, 6.0])                     # mean 4, var 4.0, n 3
+    a = np.array([1.0, 2.0, 3.0, 4.0, 5.0])  # mean 3, var 2.5, n 5
+    b = np.array([2.0, 4.0, 6.0])  # mean 4, var 4.0, n 3
     expected = (3.0 - 4.0) / np.sqrt(2.5 / 5 + 4.0 / 3)
     assert welch_t(a, b) == pytest.approx(expected)
 
