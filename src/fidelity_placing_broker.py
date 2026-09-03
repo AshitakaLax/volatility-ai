@@ -159,7 +159,20 @@ class FidelityPlacingBroker(FidelityBroker):
             )
         return upper
 
-    def _check_value(self, symbol: str, qty: float, limit_price: float) -> None:
+    def _check_value(self, side: str, qty: float, limit_price: float) -> None:
+        """Cap what an order can SPEND. Buys only, deliberately.
+
+        A ceiling applied to sells blocks EXITS, and being unable to
+        leave a position you already hold is strictly worse than being
+        unable to enter one. The first version checked both, so a book
+        built one $20 share at a time could not be sold in one order
+        under a $50 ceiling -- the ceiling would have trapped capital it
+        was meant to protect.
+
+        Selling reduces exposure and needs no ceiling for that reason.
+        """
+        if side != "buy":
+            return
         value = float(qty) * float(limit_price)
         if value > self._max_order_value:
             raise ConfigurationError(
@@ -193,7 +206,7 @@ class FidelityPlacingBroker(FidelityBroker):
         if limit_price <= 0:
             raise ValueError(f"limit_price must be positive, got {limit_price}")
         symbol = self._check_symbol(symbol)
-        self._check_value(symbol, qty, limit_price)
+        self._check_value(side, qty, limit_price)
 
         # 1. PREVIEW. Commits nothing, and mints the identifier.
         previewed = self._preview(symbol, side, qty, limit_price, decision_id)
@@ -217,6 +230,18 @@ class FidelityPlacingBroker(FidelityBroker):
             response = self._session.post_json(
                 PLACE_PATH, {"orderDetails": dict(ticket, confNum=conf)}
             )
+        except ConfigurationError:
+            # NOT ambiguous. The transport's endpoint gate fires BEFORE
+            # any network call, so nothing was sent and no order can be
+            # live. Reporting this as an ambiguous submission would send
+            # an operator into a recovery hunt for an order that never
+            # existed -- and would teach them to distrust the warning
+            # that does matter. Re-raised unchanged.
+            #
+            # Everything else stays ambiguous on purpose, including
+            # FidelitySessionExpired: post_json can raise that either
+            # side of the fetch, so it is genuinely unknowable.
+            raise
         except Exception as exc:
             # NEVER a retry. The order may be live; the confNum is
             # journalled, so reconciliation can settle it definitively.

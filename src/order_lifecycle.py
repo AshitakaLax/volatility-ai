@@ -123,6 +123,11 @@ _ALPACA_STATUS_MAP: dict = {
 }
 
 
+# Every canonical state, by name. Built from the enum rather than typed
+# out, so a new OrderState cannot be forgotten here.
+_CANONICAL_NAMES: dict = {state.name: state for state in OrderState}
+
+
 def map_broker_status(broker_status) -> OrderState:
     """Translate a broker status into a canonical internal state.
 
@@ -132,6 +137,25 @@ def map_broker_status(broker_status) -> OrderState:
     contract demands.
     """
     raw = getattr(broker_status, "value", broker_status)
+
+    # IDEMPOTENT ON ITS OWN OUTPUT. An adapter that already speaks
+    # canonical states -- src/fidelity_broker.FidelityOrder.status does,
+    # because Fidelity's own status field is prose with the fill price
+    # interpolated into it -- hands this a value it produced.
+    #
+    # Without this, six of the nine OrderState names round-tripped by
+    # sheer coincidence (Alpaca's vocabulary happens to overlap the enum)
+    # and CREATED, SUBMITTED and UNKNOWN did not. A live Fidelity order
+    # in CREATED or SUBMITTED therefore mapped to UNKNOWN, which is not
+    # terminal, so live_trading_loop polled it forever and logged an
+    # "unrecognized status" warning on every tick. Coincidental
+    # correctness for two thirds of an enum is the worst kind.
+    if isinstance(raw, OrderState):
+        return raw
+    canonical = _CANONICAL_NAMES.get(str(raw).strip().upper())
+    if canonical is not None:
+        return canonical
+
     key = str(raw).lower()
     state = _ALPACA_STATUS_MAP.get(key)
     if state is None:
