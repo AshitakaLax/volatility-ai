@@ -1381,6 +1381,7 @@ class OptimizationController:
         strategy_class,
         cost_model: TransactionCostModel = None,
         intrabar_priority: str = "sell_first",
+        allow_signal_exit: bool = False,
     ) -> pd.DataFrame:
         """
         Task 2.3 (F2). Re-runs each finalist combination -- typically a
@@ -1397,6 +1398,12 @@ class OptimizationController:
         :param cost_model: applied identically to both the daily comparison run
             and the intraday replay, so the comparison isolates the intrabar
             effect rather than mixing it with a cost-model difference.
+        :param allow_signal_exit: threaded to BOTH runs, for the same reason
+            cost_model is. Without it a strategy implementing
+            lots_to_liquidate could not be intraday-validated at all: both
+            sides would silently run with signal exits off, and the
+            comparison would describe a configuration nobody intends to
+            trade. Defaults False, so every existing caller is unchanged.
         """
         intraday_validation.validate_intraday_schema(intraday_data)
 
@@ -1412,6 +1419,7 @@ class OptimizationController:
                 strategy_class=strategy_class,
                 strategy_params_grid=[strategy_params],
                 cost_model=cost_model,
+                allow_signal_exit=allow_signal_exit,
             ).iloc[0]
 
             intraday_metrics = intraday_validation.simulate_single_intraday(
@@ -1422,6 +1430,7 @@ class OptimizationController:
                 strategy_params=strategy_params,
                 cost_model=cost_model,
                 intrabar_priority=intrabar_priority,
+                allow_signal_exit=allow_signal_exit,
             )
 
             rows.append(

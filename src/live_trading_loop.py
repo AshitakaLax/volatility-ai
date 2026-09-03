@@ -79,6 +79,7 @@ liquidate -- consistent with Task 7.8's no-loss shutdown invariant.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -107,6 +108,11 @@ logger = logging.getLogger("Optimizer")
 # Durable keys for the scalars that are not lots. Namespaced so they
 # cannot collide with Task 7.8's halt keys in the same meta table.
 _META_CASH = "live.cash"
+# Unsettled proceeds and their maturity sessions, as JSON. Persisted
+# because a restart that forgot them would treat unsettled money as
+# spendable and trade MORE aggressively than the backtest modelled --
+# in a cash account, that is extra good-faith violations.
+_META_UNSETTLED = "live.unsettled"
 _META_PEAK_EQUITY = "live.peak_equity"
 
 
@@ -165,6 +171,46 @@ class _LoopState:
     max_drawdown: float = 0.0
     open_orders: dict = field(default_factory=dict)
     sells_in_flight: set = field(default_factory=set)
+
+    # T+N settlement, mirroring optimization_controller.BacktestState.
+    # `cash` remains TOTAL cash so equity is unaffected; only what can
+    # be SPENT is reduced.
+    unsettled: float = 0.0
+    pending: list = field(default_factory=list)
+    session: int = 0
+
+    @property
+    def buying_power(self) -> float:
+        """Cash that can actually be spent right now.
+
+        Floored at zero: a buy debits total cash while unsettled is
+        unchanged, so cash can legitimately fall below unsettled. That
+        means "nothing spendable", not "negative spendable".
+        """
+        return max(0.0, self.cash - self.unsettled)
+
+    def credit_sale(self, amount: float, settlement_days: int) -> None:
+        """Book sale proceeds, settling `settlement_days` sessions later."""
+        self.cash += amount
+        if settlement_days <= 0:
+            return
+        self.unsettled += amount
+        self.pending.append([self.session + settlement_days, amount])
+
+    def advance_session(self, session: int) -> None:
+        """Move to a new session and settle what has matured."""
+        self.session = session
+        if not self.pending:
+            return
+        still = []
+        for settles_on, amount in self.pending:
+            if settles_on <= session:
+                self.unsettled -= amount
+            else:
+                still.append([settles_on, amount])
+        self.pending = still
+        if not self.pending:
+            self.unsettled = 0.0
 
 
 class LiveTradingLoop:
@@ -272,16 +318,57 @@ class LiveTradingLoop:
         cash = store.get_meta(_META_CASH)
         peak = store.get_meta(_META_PEAK_EQUITY)
         initial_cash = float(config.backtest.initial_cash)
+        self.settlement_days = int(config.execution.settlement_days)
         self.state = _LoopState(
             cash=float(cash) if cash is not None else initial_cash,
             peak_equity=float(peak) if peak is not None else initial_cash,
             last_buy_price=store.load_last_buy_price(),
         )
+        self._restore_settlement(store.get_meta(_META_UNSETTLED))
         logger.info(
             f"LiveTradingLoop ready: symbol={self.symbol} step={self.step} "
             f"profit_target={self.profit_target} cash={self.state.cash:.2f} "
             f"open_lots={len(self.ledger.open_lots)}"
         )
+
+    def _restore_settlement(self, raw: str | None) -> None:
+        """Reload unsettled proceeds, or fail SAFE if they are unreadable.
+
+        A restart that silently forgot unsettled money would treat it as
+        spendable -- trading more aggressively than the backtest
+        modelled, which in a cash account means good-faith violations
+        that were never simulated. So CORRUPT state does not default to
+        zero: it treats all cash as unsettled until the next session,
+        which under-trades for at most one session and cannot over-trade.
+
+        ABSENT state is a different fact and is handled differently. A
+        fresh deployment has written nothing yet, and its opening balance
+        is settled cash already sitting in the account. Conflating the
+        two froze buying power at zero on every first run.
+        """
+        if self.settlement_days <= 0:
+            return
+        if raw is None:
+            # NEVER WRITTEN, not corrupt. A fresh deployment's opening
+            # balance is settled cash sitting in the account -- there is
+            # nothing outstanding to wait for. Treating absence as the
+            # failure case froze buying power at zero on the first run and
+            # the loop could never open a position.
+            return
+        try:
+            saved = json.loads(raw)
+            self.state.session = int(saved['session'])
+            self.state.unsettled = float(saved['unsettled'])
+            self.state.pending = [[int(d), float(a)] for d, a in saved['pending']]
+        except (TypeError, ValueError, KeyError) as exc:
+            self.state.unsettled = self.state.cash
+            self.state.pending = []
+            logger.warning(
+                f"Settlement state unreadable ({exc}); treating the whole "
+                f"${self.state.cash:.2f} balance as unsettled until the next "
+                "session. This under-trades deliberately -- the alternative "
+                "is spending money that may not have settled."
+            )
 
     # --- control ---
 
@@ -331,6 +418,17 @@ class LiveTradingLoop:
             return TickOutcome(acted=False, reason="tick_rejected", price=bar.close)
 
         price = check.price
+
+        # SESSION BOUNDARY, before fills are applied, so proceeds credited
+        # this tick are not settled by this tick's own advance. Mirrors
+        # _simulate_single, which advances at the top of each bar for the
+        # same reason. Guarded on the flag so the default path pays one
+        # integer comparison per tick.
+        if self.settlement_days > 0:
+            day = bar.timestamp.toordinal()
+            if day != self.state.session:
+                self.state.advance_session(day)
+
         fills = self._poll_open_orders()
 
         context = self._build_context(bar, price)
@@ -497,7 +595,7 @@ class LiveTradingLoop:
             # reconcilable rather than quietly realizing a loss.
             return
 
-        self.state.cash += economics.net_sell_proceeds
+        self.state.credit_sale(economics.net_sell_proceeds, self.settlement_days)
         self.ledger.close_lot(lot, sell_qty=delta.qty, execution_price=delta.avg_price)
         self.store.sync_lot(self.ledger, lot)
         logger.info(
@@ -658,9 +756,18 @@ class LiveTradingLoop:
     def _maybe_buy(self, context: MarketContext) -> int:
         """Evaluate the grid trigger and submit a buy if one is due.
 
-        Passes self.state.cash -- post-harvest, confirmed cash -- rather
-        than context.cash, matching what _simulate_single passes and
-        what decision_cycle.py's docstring requires.
+        Passes self.state.buying_power -- post-harvest, confirmed,
+        SETTLED cash -- rather than context.cash, matching what
+        _simulate_single passes and what decision_cycle.py's docstring
+        requires.
+
+        This said `self.state.cash` and claimed parity with
+        _simulate_single after that function had switched to settled
+        buying power. The claim was false and the divergence was real:
+        with execution.settlement_days set, the backtest honoured T+1
+        and live spent unsettled proceeds -- trading more aggressively
+        than anything that had been simulated, in the one account type
+        where that is a rule violation rather than a preference.
         """
         decision = decision_cycle.evaluate_grid_decision(
             self.strategy,
@@ -668,13 +775,13 @@ class LiveTradingLoop:
             context,
             self.state.last_buy_price,
             self.step,
-            self.state.cash,
+            self.state.buying_power,
         )
         if not decision.triggered:
             return 0
 
         trade_value = decision.clamped_trade_value
-        if trade_value <= 0 or self.state.cash < trade_value:
+        if trade_value <= 0 or self.state.buying_power < trade_value:
             return 0
 
         decision_id = self._decision_id("BUY", context.timestamp)
@@ -731,6 +838,14 @@ class LiveTradingLoop:
         written at the end of every tick. Cheap, and it means a crash
         loses at most one tick of drift rather than a session's.
         """
+        self.store.set_meta(
+            _META_UNSETTLED,
+            json.dumps({
+                "session": self.state.session,
+                "unsettled": self.state.unsettled,
+                "pending": self.state.pending,
+            }),
+        )
         self.store.set_meta(_META_CASH, str(self.state.cash))
         self.store.set_meta(_META_PEAK_EQUITY, str(self.state.peak_equity))
 
