@@ -467,6 +467,22 @@ def cmd_live(args: argparse.Namespace) -> int:
 
     db_path = args.state_db
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # ONE LOOP PER STORE. Two live loops against the same state store
+    # submit duplicate orders, and DuplicateOrderGuard cannot catch it:
+    # its decision_id is derived from symbol, side and bar timestamp, so
+    # both loops compute the SAME id on the same bar and each believes
+    # it is the one submitting it. Acquired before the store is opened,
+    # so a refusal costs nothing and leaves no partial state.
+    from src.process_lock import LockHeldError, StateStoreLock
+
+    lock = StateStoreLock(db_path)
+    try:
+        lock.acquire()
+    except LockHeldError as exc:
+        print(f"\n{exc}\n", file=sys.stderr)
+        return 2
+
     store = LedgerStore(db_path)
     circuit_breaker = CircuitBreaker(store=store)
     reconciler = Reconciler(store=store, circuit_breaker=circuit_breaker)
@@ -505,6 +521,7 @@ def cmd_live(args: argparse.Namespace) -> int:
     print(f"Mode: {mode.value}")
     if final_state.value != "READY":
         store.close()
+        lock.release()
         print(
             "Did not reach READY. The state above names the stage that stopped startup; "
             "RECONCILIATION_REQUIRED means local and broker state disagree and a human "
@@ -515,9 +532,17 @@ def cmd_live(args: argparse.Namespace) -> int:
     print("READY -- broker connected and local state reconciles with the broker.")
     if args.check_only:
         store.close()
+        lock.release()
         return 0
 
-    return _run_trading_loop(args, config, connected["broker"], store, circuit_breaker, lifecycle)
+    try:
+        return _run_trading_loop(
+            args, config, connected["broker"], store, circuit_breaker, lifecycle
+        )
+    finally:
+        # finally, not after the return: a loop that raises must not
+        # leave a lock naming a live PID that is about to not exist.
+        lock.release()
 
 
 def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -> int:
@@ -596,6 +621,14 @@ def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
+    # SIGBREAK is the ONLY graceful stop Windows can deliver to a
+    # detached process: taskkill without /F does not reach a console
+    # application, and Process.terminate() is a hard kill that would
+    # land mid-tick. A supervisor there sends CTRL_BREAK_EVENT to the
+    # process group, which arrives here as SIGBREAK. Without this the
+    # Windows path had no way to stop the loop cleanly at all.
+    if hasattr(signal, "SIGBREAK"):  # Windows only
+        signal.signal(signal.SIGBREAK, _handle_signal)
 
     print(
         f"Trading loop started: symbol={config.backtest.symbol} step={config.live.step} "
