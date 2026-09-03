@@ -114,6 +114,10 @@ _META_CASH = "live.cash"
 # in a cash account, that is extra good-faith violations.
 _META_UNSETTLED = "live.unsettled"
 _META_PEAK_EQUITY = "live.peak_equity"
+# The last observed price and the moment it was observed. A real
+# heartbeat, unlike the store's file mtime, which cannot tell a
+# stopped loop from a closed market.
+_META_LAST_TICK = "live.last_tick"
 
 
 @dataclass
@@ -178,6 +182,11 @@ class _LoopState:
     unsettled: float = 0.0
     pending: list = field(default_factory=list)
     session: int = 0
+
+    # The most recent accepted tick. Written every tick so a reader has
+    # a mark to value the book at without being told one by hand.
+    last_tick_price: float | None = None
+    last_tick_at: str | None = None
 
     @property
     def buying_power(self) -> float:
@@ -432,6 +441,8 @@ class LiveTradingLoop:
         fills = self._poll_open_orders()
 
         context = self._build_context(bar, price)
+        self.state.last_tick_price = float(price)
+        self.state.last_tick_at = bar.timestamp.isoformat()
 
         # Phase 1, unconditionally and before any harvest.
         decision_cycle.record_tick(self.strategy, context)
@@ -850,6 +861,22 @@ class LiveTradingLoop:
         )
         self.store.set_meta(_META_CASH, str(self.state.cash))
         self.store.set_meta(_META_PEAK_EQUITY, str(self.state.peak_equity))
+        # The price this tick saw, and when. The loop already knows both
+        # and was discarding them, which left every reader downstream
+        # with no mark to value the book at and no way to tell a running
+        # deployment from a stopped one except the store's file mtime --
+        # a proxy that cannot distinguish "stopped" from "market closed".
+        if self.state.last_tick_price is not None:
+            self.store.set_meta(
+                _META_LAST_TICK,
+                json.dumps(
+                    {
+                        "price": self.state.last_tick_price,
+                        "at": self.state.last_tick_at,
+                        "symbol": self.symbol,
+                    }
+                ),
+            )
 
     def in_flight_settled(self) -> bool:
         """Whether nothing is awaiting a fill.

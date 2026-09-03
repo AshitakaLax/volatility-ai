@@ -46,13 +46,21 @@ import json
 import sqlite3
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+import pandas as pd
 
 # Keys written by the live loop and the circuit breaker. Imported by
 # NAME rather than re-typed, so a rename in either module breaks this at
 # import time instead of silently showing a blank dashboard.
-from src.live_trading_loop import _META_CASH, _META_PEAK_EQUITY, _META_UNSETTLED
+from src.live_trading_loop import (
+    _META_CASH,
+    _META_LAST_TICK,
+    _META_PEAK_EQUITY,
+    _META_UNSETTLED,
+)
 from src.risk_manager import HALT_REASON_KEY, HALT_STATE_KEY
 
 
@@ -101,6 +109,10 @@ class DeploymentState:
     pending_settlement: list[tuple[int, float]] = field(default_factory=list)
     closed_lots: list[Lot] = field(default_factory=list)
     last_write_age: float | None = None
+    # The loop's OWN last observed price and tick time. A real mark and
+    # a real heartbeat, where last_write_age is only a file-mtime proxy.
+    last_price: float | None = None
+    last_tick_at: str | None = None
     exists: bool = True
 
     @property
@@ -189,6 +201,24 @@ class DeploymentState:
                 }
             )
         return rows
+
+    def tick_age(self) -> float | None:
+        """Seconds since the loop last accepted a tick.
+
+        Distinct from last_write_age, which is the store's file mtime and
+        moves on any write. This moves only when the loop actually SAW a
+        price, so it separates "running but the market is closed" from
+        "not running" -- the two the mtime proxy could not tell apart.
+        """
+        if not self.last_tick_at:
+            return None
+        try:
+            seen = datetime.fromisoformat(self.last_tick_at)
+        except ValueError:
+            return None
+        if seen.tzinfo is None:
+            seen = seen.replace(tzinfo=UTC)
+        return max(0.0, (datetime.now(UTC) - seen).total_seconds())
 
     def marketable(self, price: float | None) -> list[Lot]:
         """Lots whose target price the market has already reached.
@@ -284,6 +314,7 @@ def load_state(db_path: str) -> DeploymentState:
             halt_state = _meta(conn, HALT_STATE_KEY)
             halt_reason = _meta(conn, HALT_REASON_KEY) or ""
             unsettled_raw = _meta(conn, _META_UNSETTLED)
+            tick_raw = _meta(conn, _META_LAST_TICK)
         except sqlite3.Error as exc:
             raise DashboardError(
                 f"{db_path} is not a ledger store ({exc}). It exists, but has none "
@@ -304,8 +335,22 @@ def load_state(db_path: str) -> DeploymentState:
                 # shows the whole balance as unsettled to match.
                 unsettled = cash or 0.0
 
+        last_price, last_tick_at = None, None
+        if tick_raw:
+            try:
+                tick = json.loads(tick_raw)
+                last_price = float(tick["price"])
+                last_tick_at = str(tick["at"])
+            except (TypeError, ValueError, KeyError):
+                # Unreadable means "no mark", not "price zero". A zero
+                # here would render every lot as infinitely far from its
+                # target and equity as cash alone.
+                last_price, last_tick_at = None, None
+
         return DeploymentState(
             path=str(db_path),
+            last_price=last_price,
+            last_tick_at=last_tick_at,
             cash=cash,
             unsettled=unsettled,
             peak_equity=peak,
@@ -372,3 +417,47 @@ def find_stores(root: str = ".") -> list[str]:
         for p in Path(root).rglob("*.db")
         if not {".venv", "venv", "node_modules"} & set(p.parts)
     )
+
+
+def find_bar_files(symbol: str, root: str = "data") -> list[str]:
+    """Minute-bar CSVs for `symbol`, newest-looking first.
+
+    The dashboard charts from a FILE rather than from a market-data API
+    on purpose. Fetching live bars would put credentials into a process
+    whose entire safety argument is that it holds none and imports
+    nothing that can trade -- a real cost for a chart.
+
+    So the chart shows recorded history, and the page says how stale it
+    is rather than letting a two-week-old close pass for a quote. The
+    LIVE price comes from the loop's own last tick, which is a fact the
+    store already holds.
+    """
+    folder = Path(root)
+    if not folder.exists():
+        return []
+    return sorted(
+        (str(p) for p in folder.glob(f"{symbol}_*1Min*.csv")),
+        key=lambda p: Path(p).stat().st_mtime,
+        reverse=True,
+    )
+
+
+def load_bars(path: str, *, limit: int = 780) -> pd.DataFrame:
+    """The last `limit` minute bars, oldest first.
+
+    Reads the tail rather than the whole file: these are 60 MB and
+    1,000,000+ rows, and a dashboard that takes three seconds to redraw
+    stops being looked at. 780 rows is two regular sessions.
+    """
+    file = Path(path)
+    if not file.exists():
+        raise DashboardError(f"No bar file at {path}.")
+    try:
+        frame = pd.read_csv(file)
+    except (OSError, ValueError) as exc:
+        raise DashboardError(f"Could not read {path}: {exc}") from exc
+    if "timestamp" not in frame.columns or "close" not in frame.columns:
+        raise DashboardError(f"{path} has no timestamp/close columns -- not a minute-bar file.")
+    frame = frame.tail(limit).copy()
+    frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True, errors="coerce")
+    return frame.dropna(subset=["timestamp"]).reset_index(drop=True)
