@@ -39,3 +39,10 @@ pytest>=9.1.1
 #   ruff check .          -- lint
 #   ruff check --fix .    -- lint and apply safe fixes
 ruff>=0.16.3
+
+# Optional: only required for the read-only live dashboard
+# (`streamlit run dashboard.py`). Backtesting and live trading need none
+# of this -- src/dashboard_data.py imports no streamlit at all, and its
+# tests skip when the package is absent, so an install without this is a
+# fully working deployment minus one window onto it.
+streamlit>=1.58.0
