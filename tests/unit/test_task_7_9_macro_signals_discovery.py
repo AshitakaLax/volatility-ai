@@ -323,7 +323,9 @@ def test_the_confirmed_consumer_still_exists_exactly_where_documented():
     was removed (update the docstring) or moved (update this test to
     match) -- either way the documentation must track reality."""
     path = REPO_ROOT / CONFIRMED_CONSUMER_MODULE
-    assert path.exists(), f"{CONFIRMED_CONSUMER_MODULE} is documented as the macro-field consumer but no longer exists"
+    assert path.exists(), (
+        f"{CONFIRMED_CONSUMER_MODULE} is documented as the macro-field consumer but no longer exists"
+    )
     source = path.read_text()
     missing = [f for f in CONFIRMED_CONSUMER_FIELDS if f not in source]
     assert missing == [], (

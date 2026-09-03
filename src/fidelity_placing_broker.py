@@ -136,9 +136,10 @@ class FidelityPlacingBroker(FidelityBroker):
         self._max_order_value = float(max_order_value)
         self._journal = journal
         logger.warning(
-            "LIVE ORDER PLACEMENT ENABLED for account ...%s, symbols %s, ceiling "
-            "$%.2f per order.",
-            str(account)[-4:], ",".join(self._allowed_symbols), self._max_order_value,
+            "LIVE ORDER PLACEMENT ENABLED for account ...%s, symbols %s, ceiling $%.2f per order.",
+            str(account)[-4:],
+            ",".join(self._allowed_symbols),
+            self._max_order_value,
         )
 
     # -- gates ----------------------------------------------------------
@@ -217,14 +218,24 @@ class FidelityPlacingBroker(FidelityBroker):
         self._journal.record(
             decision_id,
             conf,
-            {"symbol": symbol, "side": side, "qty": float(qty),
-             "limit_price": float(limit_price), "account": self._account},
+            {
+                "symbol": symbol,
+                "side": side,
+                "qty": float(qty),
+                "limit_price": float(limit_price),
+                "account": self._account,
+            },
         )
 
         # 3. COMMIT. Same ticket, plus the confNum the preview minted.
         logger.warning(
             "PLACING A REAL ORDER: %s %s %s limit %.2f (confNum %s, decision %s)",
-            side, qty, symbol, limit_price, conf, decision_id,
+            side,
+            qty,
+            symbol,
+            limit_price,
+            conf,
+            decision_id,
         )
         try:
             response = self._session.post_json(
@@ -286,8 +297,7 @@ class FidelityPlacingBroker(FidelityBroker):
         qty = int(trade_value // price)
         if qty < 1:
             raise ValueError(
-                f"${trade_value:.2f} does not buy one whole share of {symbol} at "
-                f"${price:.2f}."
+                f"${trade_value:.2f} does not buy one whole share of {symbol} at ${price:.2f}."
             )
         return self.place(symbol, "buy", qty, price, client_order_id)
 
@@ -327,8 +337,7 @@ class FileConfNumJournal:
         import time
 
         line = json.dumps(
-            {"ts": time.time(), "decision_id": decision_id, "conf_num": conf_num,
-             **detail},
+            {"ts": time.time(), "decision_id": decision_id, "conf_num": conf_num, **detail},
             sort_keys=True,
         )
         with open(self._path, "a", encoding="utf-8") as handle:

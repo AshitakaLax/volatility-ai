@@ -651,9 +651,7 @@ def test_fidelity_dependencies_are_exactly_pinned():
     there would auto-adopt any future release unreviewed."""
     content = (REPO_ROOT / "requirements-fidelity.txt").read_text()
     pinned = [
-        line.strip()
-        for line in content.splitlines()
-        if line.strip() and not line.startswith("#")
+        line.strip() for line in content.splitlines() if line.strip() and not line.startswith("#")
     ]
     assert pinned, "requirements-fidelity.txt declares no dependencies"
     for line in pinned:

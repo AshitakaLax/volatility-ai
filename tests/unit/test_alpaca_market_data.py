@@ -58,7 +58,10 @@ def test_a_bar_with_no_volume_attribute_degrades_to_the_unknown_default():
     response ever omits the field."""
     bar_without_volume = SimpleNamespace(
         timestamp=datetime(2026, 3, 2, 15, 0, tzinfo=UTC),
-        open=100.0, high=101.0, low=99.0, close=100.5,
+        open=100.0,
+        high=101.0,
+        low=99.0,
+        close=100.5,
     )
     md = market_data({"TQQQ": bar_without_volume})
     bar = md.latest_bar("TQQQ")

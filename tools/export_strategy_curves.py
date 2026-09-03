@@ -111,8 +111,10 @@ def main(argv=None) -> int:
     price = frame["close"].resample("D").last().dropna()
     hold = price / price.iloc[0] * 100_000.0
     out["strategies"]["TQQQ buy & hold"] = {
-        "kind": "reference", "note": "the instrument itself",
-        **_stats(hold), "curve": _curve(hold),
+        "kind": "reference",
+        "note": "the instrument itself",
+        **_stats(hold),
+        "curve": _curve(hold),
     }
 
     ret = price.pct_change().fillna(0.0)
@@ -121,49 +123,133 @@ def main(argv=None) -> int:
     bench_ret = np.where(bull, ret, 0.0) - switch * SWITCH_COST
     bench = pd.Series((1 + bench_ret).cumprod() * 100_000.0, index=price.index)
     out["strategies"]["SMA200-else-cash"] = {
-        "kind": "benchmark", "note": "hold TQQQ above the 200-day average, else cash",
-        **_stats(bench), "curve": _curve(bench),
+        "kind": "benchmark",
+        "note": "hold TQQQ above the 200-day average, else cash",
+        **_stats(bench),
+        "curve": _curve(bench),
     }
 
     # --- the grid strategies, each one full engine run ---
     specs = [
-        ("Regime, harvest bull", RegimeSwitched,
-         dict(base, per_lot_pct=0.02, bull_step=0.005, bear_step=0.10, max_mult=400.0,
-              dd_ref=0.75, regime_days=200, daily_signal=True, stand_aside_until_warm=True),
-         0.10, 0.04, 0.50, True, "signal exits on; every complete year positive"),
-        ("Regime, hold bull (cap 0.50)", RegimeHold,
-         dict(base, per_lot_pct=0.02, bull_lot_scale=5.0, bull_step=0.002, bear_step=0.05,
-              bear_target=0.04, max_mult=400.0, dd_ref=0.75, regime_days=200,
-              hold_in_bull=True),
-         0.05, 0.04, 0.50, True, "holds the trend instead of harvesting it"),
-        ("Regime, hold bull (cap 1.00)", RegimeHold,
-         dict(base, per_lot_pct=0.02, bull_lot_scale=2.0, bull_step=0.005, bear_step=0.05,
-              bear_target=0.04, max_mult=400.0, dd_ref=0.75, regime_days=200,
-              hold_in_bull=True),
-         0.05, 0.04, 1.00, True, "full exposure; matches the benchmark's CAGR"),
-        ("Deep-dip escalating .10/.04", Escalating,
-         dict(base, per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75),
-         0.10, 0.04, 0.50, False, "~98% cash; only trades deep drawdowns"),
-        ("Dip escalating .05/.04", Escalating,
-         dict(base, per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75),
-         0.05, 0.04, 0.50, False, "the downturn winner, run over the whole period"),
-        ("Vol-filtered, hold bull", VolFilteredRegime,
-         dict(base, per_lot_pct=0.02, signal=None, bull_step=0.005, bear_step=0.05,
-              bear_target=0.04, bull_lot_scale=2.0, max_mult=400.0, dd_ref=0.75,
-              hold_in_bull=True, use_dip_in_bear=False),
-         0.05, 0.04, 1.00, True,
-         "SMA200 AND calm volatility; holds the trend, cash otherwise"),
+        (
+            "Regime, harvest bull",
+            RegimeSwitched,
+            dict(
+                base,
+                per_lot_pct=0.02,
+                bull_step=0.005,
+                bear_step=0.10,
+                max_mult=400.0,
+                dd_ref=0.75,
+                regime_days=200,
+                daily_signal=True,
+                stand_aside_until_warm=True,
+            ),
+            0.10,
+            0.04,
+            0.50,
+            True,
+            "signal exits on; every complete year positive",
+        ),
+        (
+            "Regime, hold bull (cap 0.50)",
+            RegimeHold,
+            dict(
+                base,
+                per_lot_pct=0.02,
+                bull_lot_scale=5.0,
+                bull_step=0.002,
+                bear_step=0.05,
+                bear_target=0.04,
+                max_mult=400.0,
+                dd_ref=0.75,
+                regime_days=200,
+                hold_in_bull=True,
+            ),
+            0.05,
+            0.04,
+            0.50,
+            True,
+            "holds the trend instead of harvesting it",
+        ),
+        (
+            "Regime, hold bull (cap 1.00)",
+            RegimeHold,
+            dict(
+                base,
+                per_lot_pct=0.02,
+                bull_lot_scale=2.0,
+                bull_step=0.005,
+                bear_step=0.05,
+                bear_target=0.04,
+                max_mult=400.0,
+                dd_ref=0.75,
+                regime_days=200,
+                hold_in_bull=True,
+            ),
+            0.05,
+            0.04,
+            1.00,
+            True,
+            "full exposure; matches the benchmark's CAGR",
+        ),
+        (
+            "Deep-dip escalating .10/.04",
+            Escalating,
+            dict(base, per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75),
+            0.10,
+            0.04,
+            0.50,
+            False,
+            "~98% cash; only trades deep drawdowns",
+        ),
+        (
+            "Dip escalating .05/.04",
+            Escalating,
+            dict(base, per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75),
+            0.05,
+            0.04,
+            0.50,
+            False,
+            "the downturn winner, run over the whole period",
+        ),
+        (
+            "Vol-filtered, hold bull",
+            VolFilteredRegime,
+            dict(
+                base,
+                per_lot_pct=0.02,
+                signal=None,
+                bull_step=0.005,
+                bear_step=0.05,
+                bear_target=0.04,
+                bull_lot_scale=2.0,
+                max_mult=400.0,
+                dd_ref=0.75,
+                hold_in_bull=True,
+                use_dip_in_bear=False,
+            ),
+            0.05,
+            0.04,
+            1.00,
+            True,
+            "SMA200 AND calm volatility; holds the trend, cash otherwise",
+        ),
     ]
     signal = build_signal(price, trend=200, vol_win=20, lookback=250, q=0.75)
     for label, cls, params, step, target, cap, exits, note in specs:
         if "signal" in params:
             params = dict(params, signal=signal)
         print(f"running {label} ...", flush=True)
-        equity, n_exits = run(controller, cfg, cls, params,
-                              step=step, target=target, cap=cap, signal_exits=exits)
+        equity, n_exits = run(
+            controller, cfg, cls, params, step=step, target=target, cap=cap, signal_exits=exits
+        )
         out["strategies"][label] = {
-            "kind": "strategy", "note": note, "signal_exits": n_exits,
-            **_stats(equity), "curve": _curve(equity),
+            "kind": "strategy",
+            "note": note,
+            "signal_exits": n_exits,
+            **_stats(equity),
+            "curve": _curve(equity),
         }
 
     with open(args.out, "w", encoding="utf-8") as fh:
@@ -171,8 +257,10 @@ def main(argv=None) -> int:
     size = _os.path.getsize(args.out) / 1e6
     print(f"\nwrote {args.out} ({size:.1f} MB), {len(out['strategies'])} series")
     for name, s in out["strategies"].items():
-        print(f"  {name:34s} CAGR {s['cagr']:7.2f}%  maxDD {s['maxdd']:5.1f}%  "
-              f"worst {s['worst_complete']:+7.1f}%  neg {s['neg_complete']}/{s['n_complete']}")
+        print(
+            f"  {name:34s} CAGR {s['cagr']:7.2f}%  maxDD {s['maxdd']:5.1f}%  "
+            f"worst {s['worst_complete']:+7.1f}%  neg {s['neg_complete']}/{s['n_complete']}"
+        )
     return 0
 
 

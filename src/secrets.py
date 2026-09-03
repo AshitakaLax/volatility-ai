@@ -140,8 +140,7 @@ class FidelityCredentials:
         brokerage login ID is worth protecting even though it is not
         strictly a secret."""
         return (
-            f"FidelityCredentials(username={REDACTED}, password={REDACTED}, "
-            f"totp_secret={REDACTED})"
+            f"FidelityCredentials(username={REDACTED}, password={REDACTED}, totp_secret={REDACTED})"
         )
 
     __str__ = __repr__

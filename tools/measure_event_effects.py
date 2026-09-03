@@ -247,8 +247,13 @@ def compare(metrics: pd.DataFrame, flagged: set[date], column: str) -> dict:
     mask = mask.reindex(series.index).fillna(False)
     a, b = series[mask].to_numpy(), series[~mask].to_numpy()
     if len(a) == 0 or len(b) == 0:
-        return {"n": len(a), "flagged": float("nan"), "baseline": float("nan"),
-                "pct": float("nan"), "t": float("nan")}
+        return {
+            "n": len(a),
+            "flagged": float("nan"),
+            "baseline": float("nan"),
+            "pct": float("nan"),
+            "t": float("nan"),
+        }
     return {
         "n": len(a),
         "flagged": float(np.mean(a)),
@@ -266,8 +271,7 @@ def validate(metrics: pd.DataFrame) -> bool:
     print("=== VALIDATION: reproducing the recorded figures ===")
     print("(src/earnings_calendar.py MEASURED EFFECT; gap-inclusive convention)\n")
     ok = True
-    for label, calendar in (("FOMC", FOMC_DECISION_DATES),
-                            ("earnings", EARNINGS_REACTION_DATES)):
+    for label, calendar in (("FOMC", FOMC_DECISION_DATES), ("earnings", EARNINGS_REACTION_DATES)):
         got = compare(metrics, calendar, "session_vol_gap")
         want = KNOWN_RESULTS[label]
         checks = [
@@ -306,15 +310,16 @@ def _row(name: str, r: dict) -> str:
 def report(metrics: pd.DataFrame, candidates: dict[str, set[date]]) -> None:
     sessions = set(metrics.index)
     print("=== CANDIDATES ===")
-    print(f"sessions in dataset: {len(sessions):,}  "
-          f"({min(sessions)} -> {max(sessions)})\n")
+    print(f"sessions in dataset: {len(sessions):,}  ({min(sessions)} -> {max(sessions)})\n")
 
     for name, dates_all in candidates.items():
         present = dates_all & sessions
         missing = len(dates_all) - len(present)
         print(f"--- {name} ---")
-        print(f"  derived dates: {len(dates_all)}, present as sessions: {len(present)}"
-              f"{f', ABSENT (holiday/weekend): {missing}' if missing else ''}")
+        print(
+            f"  derived dates: {len(dates_all)}, present as sessions: {len(present)}"
+            f"{f', ABSENT (holiday/weekend): {missing}' if missing else ''}"
+        )
         if not present:
             print("  no overlap with this dataset -- skipping\n")
             continue
@@ -339,8 +344,11 @@ def parse_args(argv=None):
         description="Measure whether candidate event classes move volatility."
     )
     p.add_argument("--data", default=DEFAULT_DATA, help=f"Minute CSV (default: {DEFAULT_DATA})")
-    p.add_argument("--validate", action="store_true",
-                   help="Only re-derive the recorded FOMC/earnings figures and exit.")
+    p.add_argument(
+        "--validate",
+        action="store_true",
+        help="Only re-derive the recorded FOMC/earnings figures and exit.",
+    )
     return p.parse_args(argv)
 
 

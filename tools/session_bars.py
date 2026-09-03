@@ -62,9 +62,9 @@ def load_minute_bars(
     path: str, columns=("high", "low", "close"), *, regular_hours_only: bool = True
 ) -> pd.DataFrame:
     """Read a minute CSV, optionally restricted to the regular session."""
-    frame = pd.read_csv(
-        path, parse_dates=["timestamp"], usecols=["timestamp", *columns]
-    ).set_index("timestamp")
+    frame = pd.read_csv(path, parse_dates=["timestamp"], usecols=["timestamp", *columns]).set_index(
+        "timestamp"
+    )
     if frame.index.tz is None:
         raise ValueError(
             f"{path} has timezone-naive timestamps; the session boundary would be "

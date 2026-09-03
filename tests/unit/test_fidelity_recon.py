@@ -160,9 +160,7 @@ def fake_fidelity(monkeypatch):
     return FakeFidelityAutomation
 
 
-CREDENTIALS = FidelityCredentials(
-    username="bob", password="hunter2", totp_secret="SEED"
-)
+CREDENTIALS = FidelityCredentials(username="bob", password="hunter2", totp_secret="SEED")
 
 
 def _args(tmp_path: Path, **overrides):
@@ -204,9 +202,7 @@ def test_no_source_path_can_set_dry_false():
     assert code_lines == []
 
 
-def test_dry_run_is_passed_explicitly_not_left_to_the_library_default(
-    fake_fidelity, tmp_path
-):
+def test_dry_run_is_passed_explicitly_not_left_to_the_library_default(fake_fidelity, tmp_path):
     """An upstream change to transaction()'s default must not silently
     flip this script into submitting orders."""
     fidelity_recon.run_recon(_args(tmp_path), CREDENTIALS)
@@ -224,9 +220,7 @@ def test_skip_preview_opens_no_order_ticket_at_all(fake_fidelity, tmp_path):
 # -- credential-to-disk hardening --------------------------------------
 
 
-def test_library_is_constructed_with_credential_writes_disabled(
-    fake_fidelity, tmp_path
-):
+def test_library_is_constructed_with_credential_writes_disabled(fake_fidelity, tmp_path):
     fidelity_recon.run_recon(_args(tmp_path), CREDENTIALS)
 
     kwargs = fake_fidelity.instances[0].init_kwargs
@@ -404,9 +398,7 @@ def test_the_browser_is_closed_even_when_the_run_fails(fake_fidelity, tmp_path):
     assert fake_fidelity.instances[0].closed is True
 
 
-@pytest.mark.skipif(
-    os.name == "nt", reason="POSIX mode bits are not meaningful on NTFS"
-)
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not meaningful on NTFS")
 def test_the_dump_is_private_to_this_user(fake_fidelity, tmp_path):
     fidelity_recon.run_recon(_args(tmp_path), CREDENTIALS)
 
@@ -537,9 +529,7 @@ def test_manual_login_reads_no_credentials_at_all(monkeypatch, fake_fidelity, tm
     """A stale FIDELITY_PASSWORD in the environment must not be picked
     up -- not loaded, not scrubbed against, not sent anywhere."""
     called = []
-    monkeypatch.setattr(
-        fidelity_recon, "load_fidelity_credentials", lambda: called.append(1)
-    )
+    monkeypatch.setattr(fidelity_recon, "load_fidelity_credentials", lambda: called.append(1))
     fidelity_recon.main(
         [
             "--account",
@@ -748,9 +738,7 @@ def test_the_import_path_works_against_the_really_installed_package():
             )
 
 
-def test_a_missing_class_reports_the_real_cause_not_a_reinstall_instruction(
-    monkeypatch, tmp_path
-):
+def test_a_missing_class_reports_the_real_cause_not_a_reinstall_instruction(monkeypatch, tmp_path):
     """The first failed run said 'fidelity-api is not installed' when it
     WAS installed and only the import path was wrong -- sending the
     reader off to reinstall a dependency already present. The underlying
@@ -842,14 +830,10 @@ def test_cdp_mode_uses_no_credentials_and_no_library(monkeypatch, tmp_path):
     """It must not import fidelity-api at all: the library owns a browser
     it launches itself, which is precisely what does not work here."""
     called = []
-    monkeypatch.setattr(
-        fidelity_recon, "load_fidelity_credentials", lambda: called.append(1)
-    )
+    monkeypatch.setattr(fidelity_recon, "load_fidelity_credentials", lambda: called.append(1))
     monkeypatch.setitem(sys.modules, "fidelity", None)  # any use would raise
     page = FakePage()
-    _install_fake_playwright(
-        monkeypatch, FakePlaywright(browser=FakeCDPBrowser(FakeContext(page)))
-    )
+    _install_fake_playwright(monkeypatch, FakePlaywright(browser=FakeCDPBrowser(FakeContext(page))))
 
     argv = [
         "--account",
@@ -877,9 +861,7 @@ def test_cdp_mode_attaches_to_every_context(monkeypatch, tmp_path):
     assert dumps, "no dump was written"
 
 
-def test_a_failed_cdp_connection_names_the_user_data_dir_requirement(
-    monkeypatch, tmp_path
-):
+def test_a_failed_cdp_connection_names_the_user_data_dir_requirement(monkeypatch, tmp_path):
     """Current Chrome and Edge silently refuse remote debugging on the
     DEFAULT profile. Without that detail the failure looks like the flag
     was ignored, which is the single likeliest way to get stuck here."""
@@ -891,8 +873,6 @@ def test_a_failed_cdp_connection_names_the_user_data_dir_requirement(
 
 
 def test_a_browser_with_no_contexts_is_reported_clearly(monkeypatch, tmp_path):
-    _install_fake_playwright(
-        monkeypatch, FakePlaywright(browser=FakeCDPBrowser())
-    )
+    _install_fake_playwright(monkeypatch, FakePlaywright(browser=FakeCDPBrowser()))
     with pytest.raises(ConfigurationError, match="no contexts"):
         fidelity_recon.run_cdp_recon(_cdp_args(tmp_path))

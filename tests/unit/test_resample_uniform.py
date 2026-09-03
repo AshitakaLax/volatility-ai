@@ -60,8 +60,14 @@ def _write_source(path: Path, *, tz: str | None = "UTC", drop_col: str | None = 
 @pytest.mark.parametrize(
     ("stem", "expected"),
     [
-        ("RSP_1Min_sip_all_ext_2016-01-01_2026-08-30", "RSP_1Min_sip_all_extuniform_2016-01-01_2026-08-30"),
-        ("TQQQ_1Min_sip_all_rth_2016-01-01_2026-08-21", "TQQQ_1Min_sip_all_rthuniform_2016-01-01_2026-08-21"),
+        (
+            "RSP_1Min_sip_all_ext_2016-01-01_2026-08-30",
+            "RSP_1Min_sip_all_extuniform_2016-01-01_2026-08-30",
+        ),
+        (
+            "TQQQ_1Min_sip_all_rth_2016-01-01_2026-08-21",
+            "TQQQ_1Min_sip_all_rthuniform_2016-01-01_2026-08-21",
+        ),
         ("something_without_a_scope_tag", "something_without_a_scope_tag_uniform"),
     ],
 )
@@ -150,7 +156,21 @@ def test_real_bars_are_left_untouched(tmp_path):
     src = _write_source(tmp_path / "IN_1Min_ext_a_b.csv")
     before = load_minute_csv(src)
     out = tmp_path / "out.csv"
-    assert main(["--input", str(src), "--output", str(out), "--session-start", "09:30", "--session-end", "10:00"]) == 0
+    assert (
+        main(
+            [
+                "--input",
+                str(src),
+                "--output",
+                str(out),
+                "--session-start",
+                "09:30",
+                "--session-end",
+                "10:00",
+            ]
+        )
+        == 0
+    )
     after = pd.read_csv(out, parse_dates=["timestamp"]).set_index("timestamp")
     common = before.index.intersection(after.index)
     assert len(common) == len(before)

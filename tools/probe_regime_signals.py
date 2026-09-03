@@ -156,52 +156,45 @@ def signals(px: pd.Series, vix: pd.Series) -> dict:
         "EMA50": px > ema(px, 50),
         "EMA20": px > ema(px, 20),
         "SMA20 > SMA100": px.rolling(20).mean() > px.rolling(100).mean(),
-
         # --- price-structure signals ---
         "Donchian: > 50d low x1.10": px > px.rolling(50).min() * 1.10,
         "Drawdown < 15% off 250d peak": (px / px.rolling(250).max()) > 0.85,
         "Trailing peak: < 20% off high": (px / peak) > 0.80,
-
         # --- oscillators and volatility ---
         "MACD > 0": macd > 0,
         "MACD > signal": macd > ema(macd, 9),
         "RSI(14) > 45": rsi(px) > 45,
         "Vol20 below its 250d median": vol20 < vol20.rolling(250).median(),
-
         # --- implied volatility, from VIXY ---
         "VIXY below 250d median": vix < vix.rolling(250).median(),
         "VIXY 10d change < +10%": vix.pct_change(10) < 0.10,
-
         # --- combinations: trend AND a risk filter ---
         "SMA200 and vol20 < median": (px > px.rolling(200).mean())
-                                     & (vol20 < vol20.rolling(250).median()),
+        & (vol20 < vol20.rolling(250).median()),
         "SMA200 or EMA20 (either)": (px > px.rolling(200).mean()) | (px > ema(px, 20)),
         "SMA200 and EMA20 (both)": (px > px.rolling(200).mean()) & (px > ema(px, 20)),
         "SMA100 and MACD > 0": (px > px.rolling(100).mean()) & (macd > 0),
-
         # --- variants of the one filter that reached 2022 breakeven ---
         "SMA200 and vol20 < 1.25x med": (px > px.rolling(200).mean())
-                                        & (vol20 < vol20.rolling(250).median() * 1.25),
+        & (vol20 < vol20.rolling(250).median() * 1.25),
         "SMA200 and vol20 < 75th pct": (px > px.rolling(200).mean())
-                                       & (vol20 < vol20.rolling(250).quantile(0.75)),
+        & (vol20 < vol20.rolling(250).quantile(0.75)),
         "SMA100 and vol20 < median": (px > px.rolling(100).mean())
-                                     & (vol20 < vol20.rolling(250).median()),
+        & (vol20 < vol20.rolling(250).median()),
         "SMA200 and vol60 < median": (px > px.rolling(200).mean())
-                                     & (ret.rolling(60).std()
-                                        < ret.rolling(60).std().rolling(250).median()),
-
+        & (ret.rolling(60).std() < ret.rolling(60).std().rolling(250).median()),
         # --- asymmetric: leave fast, come back slow ---
-        "exit EMA20 / enter SMA200": asymmetric(
-            px, px > ema(px, 20), px > px.rolling(200).mean()),
+        "exit EMA20 / enter SMA200": asymmetric(px, px > ema(px, 20), px > px.rolling(200).mean()),
         "exit SMA50 / enter SMA200": asymmetric(
-            px, px > px.rolling(50).mean(), px > px.rolling(200).mean()),
-        "exit EMA20 / enter SMA100": asymmetric(
-            px, px > ema(px, 20), px > px.rolling(100).mean()),
+            px, px > px.rolling(50).mean(), px > px.rolling(200).mean()
+        ),
+        "exit EMA20 / enter SMA100": asymmetric(px, px > ema(px, 20), px > px.rolling(100).mean()),
         "exit -12% off peak / SMA200": asymmetric(
-            px, (px / px.rolling(250).max()) > 0.88, px > px.rolling(200).mean()),
+            px, (px / px.rolling(250).max()) > 0.88, px > px.rolling(200).mean()
+        ),
         "exit volspike / enter SMA200": asymmetric(
-            px, vol20 < vol20.rolling(250).median() * 1.5,
-            px > px.rolling(200).mean()),
+            px, vol20 < vol20.rolling(250).median() * 1.5, px > px.rolling(200).mean()
+        ),
     }
 
 
@@ -249,8 +242,7 @@ def report(name: str, equity: pd.Series, flips: float) -> dict:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Regime indicators, isolated.")
-    parser.add_argument("--sort", default="y2022",
-                        choices=["y2022", "cagr", "worst", "maxdd"])
+    parser.add_argument("--sort", default="y2022", choices=["y2022", "cagr", "worst", "maxdd"])
     args = parser.parse_args(argv)
 
     px = daily(TQQQ)
@@ -262,14 +254,18 @@ def main(argv=None) -> int:
 
     print("Long TQQQ when the signal says bull, cash when it says bear. Nothing else.")
     print("Switching costs charged. Signal from day t's close, applied to day t+1.\n")
-    print(f"{'indicator':<32}{'CAGR':>8}{'2022':>9}{'worst':>9}{'neg':>6}"
-          f"{'maxDD':>8}{'flips/yr':>10}{'16-20':>8}{'21-26':>8}")
+    print(
+        f"{'indicator':<32}{'CAGR':>8}{'2022':>9}{'worst':>9}{'neg':>6}"
+        f"{'maxDD':>8}{'flips/yr':>10}{'16-20':>8}{'21-26':>8}"
+    )
     print("-" * 98)
     for r in rows:
         mark = " *" if r["y2022"] > 0 else "  "
-        print(f"{r['name']:<32}{r['cagr']:7.2f}%{r['y2022']:+8.1f}%{r['worst']:+8.1f}%"
-              f"{r['neg']:4d}/10{r['maxdd']:7.1f}%{r['flips']:9.1f}"
-              f"{r['first']:7.1f}%{r['second']:7.1f}%{mark}")
+        print(
+            f"{r['name']:<32}{r['cagr']:7.2f}%{r['y2022']:+8.1f}%{r['worst']:+8.1f}%"
+            f"{r['neg']:4d}/10{r['maxdd']:7.1f}%{r['flips']:9.1f}"
+            f"{r['first']:7.1f}%{r['second']:7.1f}%{mark}"
+        )
 
     print("\n* = positive in 2022.  16-20 / 21-26 are per-year mean CAGRs for each half;")
     print("an indicator whose two halves disagree is describing one regime, not a rule.")
@@ -279,8 +275,10 @@ def main(argv=None) -> int:
     best = sorted(rows, key=lambda r: -r["cagr"])[:5]
     print("\ntop five by CAGR, year by year:")
     for r in best:
-        print(f"  {r['name']:<32}" +
-              "  ".join(f"{ts.year}:{v:+.0f}%" for ts, v in r["annual"].items()))
+        print(
+            f"  {r['name']:<32}"
+            + "  ".join(f"{ts.year}:{v:+.0f}%" for ts, v in r["annual"].items())
+        )
     return 0
 
 

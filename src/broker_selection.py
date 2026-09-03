@@ -70,9 +70,7 @@ def build_broker(
     """
     broker = getattr(config.live, "broker", "alpaca")
     if broker not in SUPPORTED_BROKERS:
-        raise ConfigurationError(
-            f"live.broker must be one of {SUPPORTED_BROKERS}, got {broker!r}"
-        )
+        raise ConfigurationError(f"live.broker must be one of {SUPPORTED_BROKERS}, got {broker!r}")
 
     if broker == "alpaca":
         if credentials is None:
@@ -82,9 +80,7 @@ def build_broker(
             )
         from src.alpaca_broker import AlpacaBroker
 
-        return AlpacaBroker(
-            credentials, paper=config.live.paper_trading, **alpaca_kwargs
-        )
+        return AlpacaBroker(credentials, paper=config.live.paper_trading, **alpaca_kwargs)
 
     return _build_fidelity(config, fidelity_session)
 

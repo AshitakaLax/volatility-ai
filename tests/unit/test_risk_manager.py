@@ -85,7 +85,9 @@ def test_dd_exposure_defaults_to_an_exact_no_op():
     assert rm._dd_exposure_enabled is False
     for dd in (0.0, 0.3, 0.6, 0.99):
         assert (
-            rm.clamp_trade_value(999_999.0, equity=100_000.0, cash=0.0, open_lot_count=100, drawdown=dd)
+            rm.clamp_trade_value(
+                999_999.0, equity=100_000.0, cash=0.0, open_lot_count=100, drawdown=dd
+            )
             == 999_999.0
         )
 
@@ -187,7 +189,10 @@ def test_still_composes_with_the_max_concurrent_lots_cap():
     """The lot-count cap is checked first and short-circuits regardless
     of the exposure throttle -- must remain true with the new lever."""
     rm = RiskManager(
-        max_concurrent_lots=1, dd_exposure_start=0.1, dd_exposure_full=0.5, dd_exposure_floor_pct=0.5
+        max_concurrent_lots=1,
+        dd_exposure_start=0.1,
+        dd_exposure_full=0.5,
+        dd_exposure_floor_pct=0.5,
     )
     clamped = rm.clamp_trade_value(
         50_000.0, equity=100_000.0, cash=90_000.0, open_lot_count=1, drawdown=0.9

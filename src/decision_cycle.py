@@ -275,9 +275,7 @@ def evaluate_grid_decision(
     if not triggered:
         return GridDecision(context=context, triggered=False)
 
-    proposed = strategy.calculate_trade_value(
-        context if sizing_context is None else sizing_context
-    )
+    proposed = strategy.calculate_trade_value(context if sizing_context is None else sizing_context)
     clamped = risk_manager.clamp_trade_value(
         proposed, context.equity, cash, context.open_lot_count, context.drawdown
     )

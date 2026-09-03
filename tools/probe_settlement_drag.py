@@ -130,34 +130,87 @@ def main(argv=None) -> int:
     signal = build_signal(price, trend=200, vol_win=20, lookback=250, q=0.75)
 
     specs = [
-        ("Regime, harvest bull", RegimeSwitched,
-         dict(base, per_lot_pct=0.02, bull_step=0.005, bear_step=0.10, max_mult=400.0,
-              dd_ref=0.75, regime_days=200, daily_signal=True,
-              stand_aside_until_warm=True),
-         0.10, 0.04, 0.50, True),
-        ("Vol-filtered, hold bull", VolFilteredRegime,
-         dict(base, per_lot_pct=0.02, signal=signal, bull_step=0.005, bear_step=0.05,
-              bear_target=0.04, bull_lot_scale=2.0, max_mult=400.0, dd_ref=0.75,
-              hold_in_bull=True, use_dip_in_bear=False),
-         0.05, 0.04, 1.00, True),
-        ("Dip escalating .05/.04", Escalating,
-         dict(base, per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75),
-         0.05, 0.04, 0.50, False),
-        ("Deep-dip .10/.04", Escalating,
-         dict(base, per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75),
-         0.10, 0.04, 0.50, False),
+        (
+            "Regime, harvest bull",
+            RegimeSwitched,
+            dict(
+                base,
+                per_lot_pct=0.02,
+                bull_step=0.005,
+                bear_step=0.10,
+                max_mult=400.0,
+                dd_ref=0.75,
+                regime_days=200,
+                daily_signal=True,
+                stand_aside_until_warm=True,
+            ),
+            0.10,
+            0.04,
+            0.50,
+            True,
+        ),
+        (
+            "Vol-filtered, hold bull",
+            VolFilteredRegime,
+            dict(
+                base,
+                per_lot_pct=0.02,
+                signal=signal,
+                bull_step=0.005,
+                bear_step=0.05,
+                bear_target=0.04,
+                bull_lot_scale=2.0,
+                max_mult=400.0,
+                dd_ref=0.75,
+                hold_in_bull=True,
+                use_dip_in_bear=False,
+            ),
+            0.05,
+            0.04,
+            1.00,
+            True,
+        ),
+        (
+            "Dip escalating .05/.04",
+            Escalating,
+            dict(base, per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75),
+            0.05,
+            0.04,
+            0.50,
+            False,
+        ),
+        (
+            "Deep-dip .10/.04",
+            Escalating,
+            dict(base, per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75),
+            0.10,
+            0.04,
+            0.50,
+            False,
+        ),
     ]
 
     print("Sale proceeds spendable immediately (T+0) vs on the next session (T+1).")
     print("T+1 is what a cash IRA imposes. Every recorded result used T+0.\n")
-    print(f"{'strategy':<26}{'settle':>7}{'CAGR':>9}{'trades':>9}{'2022':>8}"
-          f"{'maxDD':>8}{'dCAGR':>9}{'dTrades':>10}")
+    print(
+        f"{'strategy':<26}{'settle':>7}{'CAGR':>9}{'trades':>9}{'2022':>8}"
+        f"{'maxDD':>8}{'dCAGR':>9}{'dTrades':>10}"
+    )
 
     for label, cls, params, step, target, cap, exits in specs:
         base_row = None
         for days in (0, 1):
-            row, yearly = run(controller, cfg, cls, params, step=step, target=target,
-                              cap=cap, exits=exits, days=days)
+            row, yearly = run(
+                controller,
+                cfg,
+                cls,
+                params,
+                step=step,
+                target=target,
+                cap=cap,
+                exits=exits,
+                days=days,
+            )
             y22 = yearly[[t.year == 2022 for t in yearly.index]].iloc[0]
             trades = int(row["Trade Count"])
             if days == 0:
@@ -168,9 +221,11 @@ def main(argv=None) -> int:
                 lost = trades - int(base_row["Trade Count"])
                 pct = lost / max(1, int(base_row["Trade Count"])) * 100
                 dtrades = f"{pct:+9.1f}%"
-            print(f"{label if days == 0 else '':<26}{'T+' + str(days):>7}"
-                  f"{row['CAGR %']:8.2f}%{trades:9d}{y22:+7.1f}%"
-                  f"{row['Max Drawdown %']:7.1f}%{delta:>9}{dtrades:>10}")
+            print(
+                f"{label if days == 0 else '':<26}{'T+' + str(days):>7}"
+                f"{row['CAGR %']:8.2f}%{trades:9d}{y22:+7.1f}%"
+                f"{row['Max Drawdown %']:7.1f}%{delta:>9}{dtrades:>10}"
+            )
         print()
 
     print("The cost is NEGLIGIBLE -- at most -0.09pp of CAGR here. These books")

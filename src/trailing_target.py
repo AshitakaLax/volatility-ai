@@ -110,9 +110,7 @@ class TrailingTargetPolicy:
         if not 0.0 < trail_pct < 1.0:
             raise ConfigurationError(f"trail_pct must be in (0, 1), got {trail_pct}")
         if min_profit_target <= 0:
-            raise ConfigurationError(
-                f"min_profit_target must be positive, got {min_profit_target}"
-            )
+            raise ConfigurationError(f"min_profit_target must be positive, got {min_profit_target}")
         self.trail_pct = trail_pct
         self.min_profit_target = min_profit_target
         # order_id -> highest price seen while this lot was open.

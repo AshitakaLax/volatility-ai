@@ -103,8 +103,17 @@ TQQQ = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 # primary result precisely so this table can be disagreed with without
 # invalidating the measurement.
 APPROX_YIELDS = {
-    2016: 0.3, 2017: 0.8, 2018: 1.8, 2019: 2.2, 2020: 0.4, 2021: 0.05,
-    2022: 1.7, 2023: 4.9, 2024: 5.2, 2025: 4.2, 2026: 4.0,
+    2016: 0.3,
+    2017: 0.8,
+    2018: 1.8,
+    2019: 2.2,
+    2020: 0.4,
+    2021: 0.05,
+    2022: 1.7,
+    2023: 4.9,
+    2024: 5.2,
+    2025: 4.2,
+    2026: 4.0,
 }
 
 # Written to by the mixin below. Module-level because run_sweep
@@ -141,8 +150,7 @@ class DipCash(_RecordsCashFraction, HighFrequencyLocalReferenceSizing):
         super().record_tick(context)
         if context.price > 0:
             self._price_peak = (
-                context.price if self._price_peak is None
-                else max(self._price_peak, context.price)
+                context.price if self._price_peak is None else max(self._price_peak, context.price)
             )
 
     def calculate_trade_value(self, context) -> float:
@@ -185,8 +193,10 @@ def measure(controller, cfg, label, strategy_class, params, *, cap, step, target
     print("    " + "  ".join(f"{yr}:{v:.0%}" for yr, v in yearly.items()))
     print("  a FLAT yield, which is counterfactual -- see below:")
     for rate in (2.0, 4.0, 5.0):
-        print(f"    {rate:.0f}% flat  ->  CAGR {cagr:.2f}% + {mean_frac * rate:.2f}pp "
-              f"= {cagr + mean_frac * rate:.2f}%")
+        print(
+            f"    {rate:.0f}% flat  ->  CAGR {cagr:.2f}% + {mean_frac * rate:.2f}pp "
+            f"= {cagr + mean_frac * rate:.2f}%"
+        )
 
     # A flat rate is the wrong shape for this period and OVERSTATES
     # badly: 2016-2021 money-market yields were near zero. But applying
@@ -200,8 +210,10 @@ def measure(controller, cfg, label, strategy_class, params, *, cap, step, target
     print("  year-by-year, using the approximate yields listed at the end:")
     print(f"    period-average yield           : {flat_avg:.2f}%")
     print(f"    naive (avg yield x avg cash)   : +{mean_frac * flat_avg:.2f}pp")
-    print(f"    correlation-aware (per year)   : +{weighted / years:.2f}pp"
-          f"  -> CAGR {cagr + weighted / years:.2f}%")
+    print(
+        f"    correlation-aware (per year)   : +{weighted / years:.2f}pp"
+        f"  -> CAGR {cagr + weighted / years:.2f}%"
+    )
     return mean_frac
 
 
@@ -221,19 +233,39 @@ def main(argv=None) -> int:
 
     regime = dict(cfg.strategy.strategy_params)
     regime.update(
-        per_lot_pct=0.02, bull_step=0.005, bear_step=0.10, max_mult=400.0,
-        dd_ref=0.75, regime_days=200, daily_signal=True, stand_aside_until_warm=True,
+        per_lot_pct=0.02,
+        bull_step=0.005,
+        bear_step=0.10,
+        max_mult=400.0,
+        dd_ref=0.75,
+        regime_days=200,
+        daily_signal=True,
+        stand_aside_until_warm=True,
     )
     measure(
-        controller, cfg, "regime + signal exits (0.005 / cap 0.50) -- 13.79% CAGR row",
-        RegimeCash, regime, cap=0.50, step=0.10, target=0.04, signal_exits=True,
+        controller,
+        cfg,
+        "regime + signal exits (0.005 / cap 0.50) -- 13.79% CAGR row",
+        RegimeCash,
+        regime,
+        cap=0.50,
+        step=0.10,
+        target=0.04,
+        signal_exits=True,
     )
 
     dip = dict(cfg.strategy.strategy_params)
     dip.update(per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75)
     measure(
-        controller, cfg, "deep-dip escalating (cap 0.50) -- the ~90%-cash book",
-        DipCash, dip, cap=0.50, step=0.10, target=0.04, signal_exits=False,
+        controller,
+        cfg,
+        "deep-dip escalating (cap 0.50) -- the ~90%-cash book",
+        DipCash,
+        dip,
+        cap=0.50,
+        step=0.10,
+        target=0.04,
+        signal_exits=False,
     )
 
     print("\napproximate yields used above (percent, hand-entered and rounded):")

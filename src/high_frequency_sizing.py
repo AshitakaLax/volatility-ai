@@ -570,13 +570,10 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         self.bars_per_day = bars_per_day
         if vol_scale_min <= 0.0 or vol_scale_max < vol_scale_min:
             raise ConfigurationError(
-                f"need 0 < vol_scale_min <= vol_scale_max, got "
-                f"{vol_scale_min} and {vol_scale_max}"
+                f"need 0 < vol_scale_min <= vol_scale_max, got {vol_scale_min} and {vol_scale_max}"
             )
         if vol_measure not in ("stdev", "range"):
-            raise ConfigurationError(
-                f"vol_measure must be 'stdev' or 'range', got {vol_measure!r}"
-            )
+            raise ConfigurationError(f"vol_measure must be 'stdev' or 'range', got {vol_measure!r}")
         self.event_day_boost_multiplier = event_day_boost_multiplier
         self.earnings_day_boost_multiplier = earnings_day_boost_multiplier
         self.vol_scale_exponent = vol_scale_exponent
@@ -695,9 +692,7 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             # volume field today -- a separate, pre-existing gap), which
             # would let this reuse context.volume directly; not done
             # here because it touches the live data adapter.
-            synthetic = is_synthetic_bar(
-                context.high, context.low, context.price, self._prev_price
-            )
+            synthetic = is_synthetic_bar(context.high, context.low, context.price, self._prev_price)
             if self._vol_enabled and not synthetic:
                 if self.vol_measure == "range":
                     # Intrabar range, scaled by price so the two windows
@@ -828,9 +823,7 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         if not self._tod_enabled:
             return 1.0
         relative = relative_range(context.time_of_day_flag)
-        return clamp(
-            relative**self.time_of_day_exponent, _TOD_SCALE_FLOOR, _TOD_SCALE_CEIL
-        )
+        return clamp(relative**self.time_of_day_exponent, _TOD_SCALE_FLOOR, _TOD_SCALE_CEIL)
 
     def _dd_throttle_scale(self, context: MarketContext) -> float:
         """Size multiplier from how deep INTO an extended drawdown the
@@ -979,9 +972,12 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         # symbol's release contributes 0.0 intensity and this evaluates
         # to boost's floor, same as an ordinary bar.
         if context.event_intensity > 0:
-            weighted = 1.0 + (self.weighted_event_boost_multiplier - 1.0) * min(
-                context.event_intensity, 100.0
-            ) / 100.0
+            weighted = (
+                1.0
+                + (self.weighted_event_boost_multiplier - 1.0)
+                * min(context.event_intensity, 100.0)
+                / 100.0
+            )
             boost = max(boost, weighted)
         # The event boost and the vol scaler MULTIPLY, unlike the two
         # event boosts which take a max of each other. Those two are

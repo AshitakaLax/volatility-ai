@@ -94,8 +94,7 @@ def test_a_bigger_target_is_never_easier_to_hit():
     highs = 100 * np.cumprod(1 + rng.normal(0, 0.03, 300))
     bars = _bars(highs.tolist())
     rates = [
-        profitable_exit_available(bars, 60, t).dropna().mean()
-        for t in (0.02, 0.05, 0.10, 0.20)
+        profitable_exit_available(bars, 60, t).dropna().mean() for t in (0.02, 0.05, 0.10, 0.20)
     ]
     assert rates == sorted(rates, reverse=True)
 

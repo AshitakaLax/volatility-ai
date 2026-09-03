@@ -108,9 +108,7 @@ def test_fidelity_error_never_leaks_a_partial_value(monkeypatch):
 
 def test_fidelity_repr_and_str_are_redacted():
     """repr lands in logs and traceback frames verbatim."""
-    creds = FidelityCredentials(
-        username="bob", password="hunter2", totp_secret="SEED"
-    )
+    creds = FidelityCredentials(username="bob", password="hunter2", totp_secret="SEED")
     for rendered in (repr(creds), str(creds), f"{creds}", f"{creds}"):
         assert "bob" not in rendered
         assert "hunter2" not in rendered
@@ -127,9 +125,7 @@ def test_fidelity_credentials_in_a_container_repr_stay_redacted():
 
 
 def test_secret_values_returns_the_raw_strings_for_scrubbing():
-    creds = FidelityCredentials(
-        username="bob", password="hunter2", totp_secret="SEED"
-    )
+    creds = FidelityCredentials(username="bob", password="hunter2", totp_secret="SEED")
     assert creds.secret_values() == ["bob", "hunter2", "SEED"]
 
 
@@ -141,9 +137,7 @@ def test_secret_values_omits_a_missing_totp():
 def test_redact_secrets_masks_totp_secret_and_password_by_name():
     """SECRET_KEY_MARKERS already covers both -- asserted rather than
     assumed, since fidelity_capture depends on it."""
-    payload = redact_secrets(
-        {"username": "bob", "password": "hunter2", "totp_secret": "SEED"}
-    )
+    payload = redact_secrets({"username": "bob", "password": "hunter2", "totp_secret": "SEED"})
     assert payload["password"] == REDACTED
     assert payload["totp_secret"] == REDACTED
     # An identifier, not a secret -- masking it would make a recon dump

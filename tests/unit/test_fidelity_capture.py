@@ -249,9 +249,7 @@ def test_non_xhr_resources_are_filtered_out():
     has recon value and all of it would swamp the dump."""
     capture, page = _attached()
     for resource_type in ("script", "image", "stylesheet", "font", "document"):
-        page.emit_response(
-            FakeResponse("https://x/asset", resource_type=resource_type)
-        )
+        page.emit_response(FakeResponse("https://x/asset", resource_type=resource_type))
     assert capture.responses == []
 
 
@@ -259,9 +257,7 @@ def test_an_unreadable_body_is_recorded_rather_than_dropped():
     """.text() throws for redirects and aborted requests. Knowing an
     endpoint was CALLED matters even when its payload is unavailable."""
     capture, page = _attached()
-    page.emit_response(
-        FakeResponse("https://x/redirect", raises=RuntimeError("no body"))
-    )
+    page.emit_response(FakeResponse("https://x/redirect", raises=RuntimeError("no body")))
 
     assert len(capture.responses) == 1
     record = capture.responses[0]
@@ -289,9 +285,7 @@ def test_literal_credentials_are_scrubbed_from_response_bodies():
     """The login POST body carries the password verbatim -- this is the
     single most important thing the scrubber does."""
     capture, page = _attached(secret_values=["hunter2"])
-    page.emit_response(
-        FakeResponse("https://x/login", body="username=bob&password=hunter2")
-    )
+    page.emit_response(FakeResponse("https://x/login", body="username=bob&password=hunter2"))
     assert "hunter2" not in capture.responses[0].body
 
 
@@ -423,9 +417,7 @@ def test_candidate_id_fields_finds_id_shaped_keys():
     ws = FakeWebSocket("wss://digital.fidelity.com/ws")
     page.emit_websocket(ws)
     ws.emit("framereceived", json.dumps({"data": {"orderId": "ABC123"}}))
-    page.emit_response(
-        FakeResponse("https://x/o", body=json.dumps({"confirmationNumber": "9"}))
-    )
+    page.emit_response(FakeResponse("https://x/o", body=json.dumps({"confirmationNumber": "9"})))
 
     hits = capture.candidate_id_fields()
     keys = {k for hit in hits for k in hit["keys"]}
@@ -436,9 +428,7 @@ def test_candidate_id_fields_finds_id_shaped_keys():
 def test_candidate_id_fields_matches_keys_not_values():
     """A value containing the word 'order' is not a hint."""
     capture, page = _attached()
-    page.emit_response(
-        FakeResponse("https://x/y", body=json.dumps({"message": "order received"}))
-    )
+    page.emit_response(FakeResponse("https://x/y", body=json.dumps({"message": "order received"})))
     assert capture.candidate_id_fields() == []
 
 

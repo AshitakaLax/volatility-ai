@@ -278,9 +278,9 @@ def test_the_bound_never_hides_a_marketable_lot_under_random_activity():
             ledger.close_lot(rng.choice(ledger.open_lots), completed=True)
 
         for price in (40.0, 75.0, 100.0, 125.0, 200.0):
-            assert ledger.get_marketable_lots(price) == _brute_force_marketable(
-                ledger, price
-            ), f"bound disagreed with a full scan at price {price}, step {step}"
+            assert ledger.get_marketable_lots(price) == _brute_force_marketable(ledger, price), (
+                f"bound disagreed with a full scan at price {price}, step {step}"
+            )
 
 
 def test_a_direct_retarget_is_seen_by_the_ledger():

@@ -153,17 +153,28 @@ def main(argv=None) -> int:
     controller = OptimizationController(historical_data=frame)
 
     price = frame["close"]
-    print(f"SQQQ {price.iloc[0]:.2f} -> {price.iloc[-1]:.4f} "
-          f"({(price.iloc[-1] / price.iloc[0] - 1) * 100:.2f}% over the period)")
-    print(f"grid step {args.step:.0%}, target {args.target:.0%}, "
-          f"per-lot {args.per_lot:.0%}, exposure cap {args.cap:.0%}\n")
-    print(f"{'stop':>8} {'CAGR':>8} {'maxDD':>7} {'worst':>8} {'2022':>8} "
-          f"{'openLots':>9} {'unsold':>8} {'exits':>7}")
+    print(
+        f"SQQQ {price.iloc[0]:.2f} -> {price.iloc[-1]:.4f} "
+        f"({(price.iloc[-1] / price.iloc[0] - 1) * 100:.2f}% over the period)"
+    )
+    print(
+        f"grid step {args.step:.0%}, target {args.target:.0%}, "
+        f"per-lot {args.per_lot:.0%}, exposure cap {args.cap:.0%}\n"
+    )
+    print(
+        f"{'stop':>8} {'CAGR':>8} {'maxDD':>7} {'worst':>8} {'2022':>8} "
+        f"{'openLots':>9} {'unsold':>8} {'exits':>7}"
+    )
 
     for stop_pct in [None, *args.stops]:
         row, result = run(
-            controller, cfg, stop_pct=stop_pct, cap=args.cap,
-            per_lot=args.per_lot, step=args.step, target=args.target,
+            controller,
+            cfg,
+            stop_pct=stop_pct,
+            cap=args.cap,
+            per_lot=args.per_lot,
+            step=args.step,
+            target=args.target,
         )
         equity = result.equity_curve
         yearly = annual_returns(equity)

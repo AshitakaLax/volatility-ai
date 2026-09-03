@@ -332,8 +332,7 @@ def resample_to_uniform_minutes(
         spans.append(
             pd.date_range(
                 start=pd.Timestamp(day).replace(hour=start_h, minute=start_m),
-                end=pd.Timestamp(day).replace(hour=end_h, minute=end_m)
-                - pd.Timedelta(minutes=1),
+                end=pd.Timestamp(day).replace(hour=end_h, minute=end_m) - pd.Timedelta(minutes=1),
                 freq="1min",
                 tz=EXCHANGE_TZ,
             )

@@ -141,10 +141,7 @@ def build_session_change_series(bars: pd.DataFrame, *, value_column: str = "clos
     # produced it -- see the module docstring on why not "the next
     # session's open".
     available_at = pd.DatetimeIndex(
-        [
-            pd.Timestamp(d + timedelta(days=1), tz=EASTERN_TZ)
-            for d in change_pct.index
-        ]
+        [pd.Timestamp(d + timedelta(days=1), tz=EASTERN_TZ) for d in change_pct.index]
     ).tz_convert("UTC")
 
     frame = pd.DataFrame({CHANGE_COLUMN: change_pct.to_numpy()}, index=available_at)

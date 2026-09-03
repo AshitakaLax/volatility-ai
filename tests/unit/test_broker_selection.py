@@ -52,9 +52,7 @@ def test_the_default_is_still_alpaca():
 
 
 def test_fidelity_is_selected_when_named():
-    broker = build_broker(
-        _config("fidelity", FIDELITY_OK), fidelity_session=FakeSession()
-    )
+    broker = build_broker(_config("fidelity", FIDELITY_OK), fidelity_session=FakeSession())
     assert isinstance(broker, FidelityBroker)
 
 
@@ -126,7 +124,5 @@ def test_an_account_outside_the_allowlist_is_still_refused_through_this_path():
 
 
 def test_the_symbol_comes_from_the_backtest_section():
-    broker = build_broker(
-        _config("fidelity", FIDELITY_OK), fidelity_session=FakeSession()
-    )
+    broker = build_broker(_config("fidelity", FIDELITY_OK), fidelity_session=FakeSession())
     assert broker._symbol == "TQQQ"

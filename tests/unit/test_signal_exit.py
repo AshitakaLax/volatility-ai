@@ -108,9 +108,9 @@ def test_collect_liquidations_checks_both_conditions_every_call():
     class _Ctx:
         price = 100.0
 
-    assert decision_cycle.collect_liquidations(
-        strategy, ledger, _Ctx(), allow_signal_exit=False
-    ) == []
+    assert (
+        decision_cycle.collect_liquidations(strategy, ledger, _Ctx(), allow_signal_exit=False) == []
+    )
     assert decision_cycle.collect_liquidations(
         strategy, ledger, _Ctx(), allow_signal_exit=True
     ) == [lot]

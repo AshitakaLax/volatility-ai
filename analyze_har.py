@@ -266,9 +266,7 @@ def analyze_socket_frames(sockets: list[dict]) -> dict:
                     }
                 )
             elif len(samples) < 6:
-                samples.append(
-                    {"url": socket["url"], "direction": direction, "data": data}
-                )
+                samples.append({"url": socket["url"], "direction": direction, "data": data})
 
     return {
         "sent": sent,

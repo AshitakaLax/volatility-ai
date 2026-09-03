@@ -134,13 +134,15 @@ def find_episodes(daily: pd.Series, min_depth: float) -> list[dict]:
             j += 1
         depth = 1.0 - values[trough_i] / peak
         if depth >= min_depth:
-            episodes.append({
-                "peak_ts": index[peak_i],
-                "trough_ts": index[trough_i],
-                "end_ts": index[j] if j < n else index[-1],
-                "depth": depth,
-                "recovered": j < n,
-            })
+            episodes.append(
+                {
+                    "peak_ts": index[peak_i],
+                    "trough_ts": index[trough_i],
+                    "end_ts": index[j] if j < n else index[-1],
+                    "depth": depth,
+                    "recovered": j < n,
+                }
+            )
             i = j if j < n else n
         else:
             i = peak_i + 1
@@ -186,12 +188,12 @@ def run_tactic(window: pd.DataFrame, cfg, *, step, target, per_lot, cap, max_mul
 # being an optimum and being merely the edge of the range I tried.
 TACTICS = (
     # label,            step,  target, per_lot, cap,  max_mult
-    ("dip .05/.02",      0.05,  0.020,   0.02,  0.50,  400.0),
-    ("dip .05/.03",      0.05,  0.030,   0.02,  0.50,  400.0),
-    ("dip .05/.04",      0.05,  0.040,   0.02,  0.50,  400.0),
-    ("dip .05/.06",      0.05,  0.060,   0.02,  0.50,  400.0),
-    ("noesc .05/.04",    0.05,  0.040,   0.02,  0.50,    1.0),
-    ("dip .05/.04 c1.0", 0.05,  0.040,   0.02,  1.00,  400.0),
+    ("dip .05/.02", 0.05, 0.020, 0.02, 0.50, 400.0),
+    ("dip .05/.03", 0.05, 0.030, 0.02, 0.50, 400.0),
+    ("dip .05/.04", 0.05, 0.040, 0.02, 0.50, 400.0),
+    ("dip .05/.06", 0.05, 0.060, 0.02, 0.50, 400.0),
+    ("noesc .05/.04", 0.05, 0.040, 0.02, 0.50, 1.0),
+    ("dip .05/.04 c1.0", 0.05, 0.040, 0.02, 1.00, 400.0),
 )
 
 
@@ -229,18 +231,22 @@ def main(argv=None) -> int:
         hold_all.append(hold)
         spans.append(max(1, (ep["end_ts"] - ep["peak_ts"]).days))
 
-        row = (f"{ep['peak_ts'].date()!s:>11}->{ep['end_ts'].date()!s:>9} "
-               f"{ep['depth'] * 100:6.1f}% {(ep['end_ts'] - ep['peak_ts']).days:5d} "
-               f"{hold:+8.1f}%")
+        row = (
+            f"{ep['peak_ts'].date()!s:>11}->{ep['end_ts'].date()!s:>9} "
+            f"{ep['depth'] * 100:6.1f}% {(ep['end_ts'] - ep['peak_ts']).days:5d} "
+            f"{hold:+8.1f}%"
+        )
         for label, step, target, per_lot, cap, max_mult in TACTICS:
-            value = run_tactic(window, cfg, step=step, target=target,
-                               per_lot=per_lot, cap=cap, max_mult=max_mult)
+            value = run_tactic(
+                window, cfg, step=step, target=target, per_lot=per_lot, cap=cap, max_mult=max_mult
+            )
             totals[label].append(value)
             row += f" {value:+15.1f}%"
         print(row + ("" if ep["recovered"] else "   (open)"))
 
-    banner = (f"{'':>21} {'':>7} {'':>5} {'hold':>9}"
-              + "".join(f" {label:>16}" for label, *_ in TACTICS))
+    banner = f"{'':>21} {'':>7} {'':>5} {'hold':>9}" + "".join(
+        f" {label:>16}" for label, *_ in TACTICS
+    )
     print()
     print(banner)
     _summary("median", hold_all, totals, lambda v: pd.Series(v).median())
@@ -253,8 +259,7 @@ def main(argv=None) -> int:
     # because its wins come in shorter windows -- so both rows are
     # printed rather than picking whichever tells a better story. Note
     # .05/.06 is still the one that loses an episode.
-    _summary("median ann.", hold_all, totals,
-             lambda v: pd.Series(_annualize(v, spans)).median())
+    _summary("median ann.", hold_all, totals, lambda v: pd.Series(_annualize(v, spans)).median())
 
     # CHRONOLOGICAL SPLIT. Every parameter above was chosen by looking at
     # these same episodes, across three passes -- which is exactly how an
@@ -270,8 +275,7 @@ def main(argv=None) -> int:
     half = len(hold_all) // 2
     for name, lo, hi in (
         (f"FIRST HALF (2016-2021), episodes 1-{half}", 0, half),
-        (f"SECOND HALF (2021-2026), episodes {half + 1}-{len(hold_all)}",
-         half, len(hold_all)),
+        (f"SECOND HALF (2021-2026), episodes {half + 1}-{len(hold_all)}", half, len(hold_all)),
     ):
         print()
         print(name)
@@ -295,8 +299,10 @@ def _annualize(values, spans):
     only way to compare a 42-day episode with a 1,111-day one without
     the long one winning purely on elapsed time.
     """
-    return [((1.0 + v / 100.0) ** (365.0 / d) - 1.0) * 100.0
-            for v, d in zip(values, spans, strict=False)]
+    return [
+        ((1.0 + v / 100.0) ** (365.0 / d) - 1.0) * 100.0
+        for v, d in zip(values, spans, strict=False)
+    ]
 
 
 def _summary(label, hold_all, totals, fn):

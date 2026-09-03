@@ -98,9 +98,7 @@ def parse_args(argv=None) -> argparse.Namespace:
         default="20:00",
         help="End of the uniform grid, exclusive, exchange-local (default: 20:00).",
     )
-    parser.add_argument(
-        "--force", action="store_true", help="Overwrite an existing output file"
-    )
+    parser.add_argument("--force", action="store_true", help="Overwrite an existing output file")
     return parser.parse_args(argv)
 
 

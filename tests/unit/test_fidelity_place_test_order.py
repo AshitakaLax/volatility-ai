@@ -73,8 +73,7 @@ def test_order_endpoints_are_unlocked_only_when_a_place_is_intended(kw, should_p
 def test_the_transport_refuses_placing_when_not_unlocked():
     from src.fidelity_session import FidelitySession
 
-    session = FidelitySession(object(), allow_order_endpoints=False,
-                              allow_preview_endpoints=True)
+    session = FidelitySession(object(), allow_order_endpoints=False, allow_preview_endpoints=True)
     from src.exceptions import ConfigurationError
 
     for path in PLACE_ENDPOINTS:
@@ -176,8 +175,11 @@ def test_it_places_through_the_gated_adapter_not_a_raw_post():
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef))
     }
     literals = [
-        node.value for node in ast.walk(tree)
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
-        and node.value not in docstrings and "placeOrder" in node.value
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value not in docstrings
+        and "placeOrder" in node.value
     ]
     assert literals == [], f"the place endpoint is reachable as a literal: {literals}"

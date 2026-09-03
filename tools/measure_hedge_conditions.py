@@ -137,9 +137,7 @@ def rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return out.fillna(50.0)
 
 
-def profitable_exit_available(
-    bars: pd.DataFrame, horizon: int, cost_pct: float
-) -> pd.Series:
+def profitable_exit_available(bars: pd.DataFrame, horizon: int, cost_pct: float) -> pd.Series:
     """Did the forward HIGH, strictly AFTER entry, clear entry x (1+cost)
     within `horizon` sessions?
 
@@ -192,9 +190,7 @@ def build(cost_pct: float) -> pd.DataFrame:
     frame["vixy_chg5"] = (vixy["close"] / vixy["close"].shift(5) - 1.0) * 100.0
     # VIXY level is not comparable across years (roll decay), so rank it
     # within a trailing window instead of using the raw number.
-    frame["vixy_pctile"] = (
-        vixy["close"].rolling(250, min_periods=60).rank(pct=True) * 100.0
-    )
+    frame["vixy_pctile"] = vixy["close"].rolling(250, min_periods=60).rank(pct=True) * 100.0
     return frame
 
 
@@ -305,9 +301,7 @@ def by_target(frame: pd.DataFrame, horizon: int) -> None:
 
 
 def parse_args(argv=None):
-    p = argparse.ArgumentParser(
-        description="When can an SQQQ hedge leg be exited at a profit?"
-    )
+    p = argparse.ArgumentParser(description="When can an SQQQ hedge leg be exited at a profit?")
     p.add_argument("--horizons", type=int, nargs="+", default=[5, 20, 60])
     p.add_argument("--cost-pct", type=float, default=DEFAULT_COST_PCT)
     return p.parse_args(argv)

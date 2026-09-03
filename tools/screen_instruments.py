@@ -130,8 +130,13 @@ def pull_symbol(symbol: str, client: HFMarketData) -> Path:
         return out
 
     spec = FetchSpec(
-        symbol=symbol, start=START, end=END, timeframe="1Min",
-        feed="hf", adjustment="splitdiv", regular_hours_only=True,
+        symbol=symbol,
+        start=START,
+        end=END,
+        timeframe="1Min",
+        feed="hf",
+        adjustment="splitdiv",
+        regular_hours_only=True,
     )
     df, dropped_eh, dupes = client.fetch_bars(spec)
     validate(df)

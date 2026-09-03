@@ -163,9 +163,11 @@ def test_dynamic_slippage_actually_reaches_simulation_and_widens_spread_on_a_vol
     config.validate()
     kwargs = config.to_run_sweep_kwargs(FixedPortfolioPercentage)
 
-    flat_row = OptimizationController(historical_data=_load_fixture()).run_sweep(
-        **{**kwargs, "cost_model": ZeroCostModel()}
-    ).iloc[0]
+    flat_row = (
+        OptimizationController(historical_data=_load_fixture())
+        .run_sweep(**{**kwargs, "cost_model": ZeroCostModel()})
+        .iloc[0]
+    )
     dynamic_row = OptimizationController(historical_data=df).run_sweep(**kwargs).iloc[0]
 
     assert dynamic_row["Final Equity"] != flat_row["Final Equity"]

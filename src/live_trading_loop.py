@@ -357,9 +357,9 @@ class LiveTradingLoop:
             return
         try:
             saved = json.loads(raw)
-            self.state.session = int(saved['session'])
-            self.state.unsettled = float(saved['unsettled'])
-            self.state.pending = [[int(d), float(a)] for d, a in saved['pending']]
+            self.state.session = int(saved["session"])
+            self.state.unsettled = float(saved["unsettled"])
+            self.state.pending = [[int(d), float(a)] for d, a in saved["pending"]]
         except (TypeError, ValueError, KeyError) as exc:
             self.state.unsettled = self.state.cash
             self.state.pending = []
@@ -840,11 +840,13 @@ class LiveTradingLoop:
         """
         self.store.set_meta(
             _META_UNSETTLED,
-            json.dumps({
-                "session": self.state.session,
-                "unsettled": self.state.unsettled,
-                "pending": self.state.pending,
-            }),
+            json.dumps(
+                {
+                    "session": self.state.session,
+                    "unsettled": self.state.unsettled,
+                    "pending": self.state.pending,
+                }
+            ),
         )
         self.store.set_meta(_META_CASH, str(self.state.cash))
         self.store.set_meta(_META_PEAK_EQUITY, str(self.state.peak_equity))

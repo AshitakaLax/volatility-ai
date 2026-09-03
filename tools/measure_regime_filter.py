@@ -79,9 +79,9 @@ DEFAULT_COST_PCT = 0.0015  # round trip, matching the sweeps' dynamic_slippage
 
 
 def daily_closes(path: str) -> pd.Series:
-    frame = pd.read_csv(
-        path, parse_dates=["timestamp"], usecols=["timestamp", "close"]
-    ).set_index("timestamp")
+    frame = pd.read_csv(path, parse_dates=["timestamp"], usecols=["timestamp", "close"]).set_index(
+        "timestamp"
+    )
     return frame["close"].resample("D").last().dropna()
 
 
@@ -130,7 +130,9 @@ def main(argv=None) -> int:
 
     print(f"sessions: {len(tqqq):,}  ({tqqq.index[0].date()} -> {tqqq.index[-1].date()})")
     print(f"round-trip cost charged: {args.cost_pct * 100:.2f}%\n")
-    print(f"{'variant':34s} {'CAGR':>7} {'2022':>8} {'worst':>8} {'neg':>6} {'maxDD':>7} {'in mkt':>7}")
+    print(
+        f"{'variant':34s} {'CAGR':>7} {'2022':>8} {'worst':>8} {'neg':>6} {'maxDD':>7} {'in mkt':>7}"
+    )
 
     best = None
     for window in args.sma:

@@ -65,9 +65,7 @@ the live data adapter.
 from __future__ import annotations
 
 
-def is_synthetic_bar(
-    high: float, low: float, price: float, prev_price: float | None
-) -> bool:
+def is_synthetic_bar(high: float, low: float, price: float, prev_price: float | None) -> bool:
     """True when this bar looks fabricated rather than traded.
 
     prev_price is the last observed price, or None if this is the first

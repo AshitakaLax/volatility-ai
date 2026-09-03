@@ -80,8 +80,22 @@ SOURCE_TZ = "America/New_York"
 # 2.92%) and an event table that sums concurrent weights should see
 # 6.06%, not 3.14%.
 TICKERS = (
-    "NVDA", "AAPL", "MSFT", "MU", "AMZN", "AMD", "GOOGL", "AVGO", "GOOG",
-    "META", "TSLA", "WMT", "INTC", "CSCO", "COST", "NFLX",
+    "NVDA",
+    "AAPL",
+    "MSFT",
+    "MU",
+    "AMZN",
+    "AMD",
+    "GOOGL",
+    "AVGO",
+    "GOOG",
+    "META",
+    "TSLA",
+    "WMT",
+    "INTC",
+    "CSCO",
+    "COST",
+    "NFLX",
 )
 
 START = "2016-01-01"
@@ -119,8 +133,12 @@ def daily_bars(ticker: str) -> pd.DataFrame:
     while True:
         page = get(
             f"/v1/bars/stock/{ticker}",
-            timeframe="1day", start=cursor, end=END,
-            order="asc", limit=1000, format="json",
+            timeframe="1day",
+            start=cursor,
+            end=END,
+            order="asc",
+            limit=1000,
+            format="json",
         )
         if not page:
             break
@@ -152,13 +170,9 @@ def candidate_release_days(df: pd.DataFrame) -> list[pd.Timestamp]:
     gap_z = gap / gap_sigma.replace(0, pd.NA)
 
     hits = df.index[
-        (gap_z >= MIN_GAP_SIGMA)
-        & (gap >= MIN_GAP_FLOOR_PCT)
-        & (vol_ratio >= MIN_VOLUME_RATIO)
+        (gap_z >= MIN_GAP_SIGMA) & (gap >= MIN_GAP_FLOOR_PCT) & (vol_ratio >= MIN_VOLUME_RATIO)
     ]
-    scored = sorted(
-        ((gap_z.loc[d] * vol_ratio.loc[d], d) for d in hits), reverse=True
-    )
+    scored = sorted(((gap_z.loc[d] * vol_ratio.loc[d], d) for d in hits), reverse=True)
     by_year: dict[int, list[pd.Timestamp]] = defaultdict(list)
     positions = {d: i for i, d in enumerate(df.index)}
     for _, reaction_day in scored:
@@ -180,8 +194,12 @@ def release_minute(ticker: str, day: pd.Timestamp) -> tuple[pd.Timestamp, float]
     d = day.date().isoformat()
     rows = get(
         f"/v1/bars/stock/{ticker}",
-        timeframe="1min", start=f"{d}T16:01:00", end=f"{d}T20:00:00",
-        order="asc", limit=300, format="json",
+        timeframe="1min",
+        start=f"{d}T16:01:00",
+        end=f"{d}T20:00:00",
+        order="asc",
+        limit=300,
+        format="json",
     )
     if not rows:
         return None
@@ -207,9 +225,11 @@ def main() -> None:
                 {
                     "symbol": ticker,
                     "release_et": ts_et.isoformat(),
-                    "release_utc": ts_et.tz_localize(SOURCE_TZ, ambiguous="raise",
-                                                     nonexistent="raise")
-                    .tz_convert("UTC").isoformat(),
+                    "release_utc": ts_et.tz_localize(
+                        SOURCE_TZ, ambiguous="raise", nonexistent="raise"
+                    )
+                    .tz_convert("UTC")
+                    .isoformat(),
                     "postclose_peak_volume": int(vol),
                 }
             )
@@ -221,9 +241,7 @@ def main() -> None:
         et = pd.to_datetime(out["release_et"])
         # Minutes-since-midnight, so the median is arithmetic rather than
         # a string sort -- "16:30" and "09:05" do not order numerically.
-        summary = out.assign(
-            hm=et.dt.strftime("%H:%M"), mins=et.dt.hour * 60 + et.dt.minute
-        )
+        summary = out.assign(hm=et.dt.strftime("%H:%M"), mins=et.dt.hour * 60 + et.dt.minute)
         logger.info("release minute per symbol (ET):")
         for sym, grp in summary.groupby("symbol"):
             mode = grp["hm"].mode()
