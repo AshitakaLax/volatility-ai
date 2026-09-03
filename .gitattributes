@@ -1,0 +1,41 @@
+# Line endings, decided here rather than per-developer.
+#
+# There was no .gitattributes, so every checkout's line endings depended
+# on that machine's core.autocrlf. On Windows (autocrlf=true) a fresh
+# clone gets CRLF; ruff format wants LF, so `ruff format --check` failed
+# on 184 of 195 files in a clean clone while passing in a working tree
+# where ruff itself had written the files. Same commit, same ruff,
+# opposite answers -- which is exactly the local/CI disagreement this
+# file exists to remove.
+#
+# The index has always stored LF. This makes the WORKING TREE match it
+# for the file types that tooling cares about, so what a linter sees is
+# what CI sees.
+
+# Everything git considers text: normalise to LF in the index.
+* text=auto eol=lf
+
+# The types where a formatter or parser is opinionated about endings.
+*.py    text eol=lf
+*.pyi   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.toml  text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.sh    text eol=lf
+
+# Windows-only scripts genuinely need CRLF.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binary: never touched, never diffed as text.
+*.parquet binary
+*.png     binary
+*.jpg     binary
+*.zip     binary
+*.har     binary
