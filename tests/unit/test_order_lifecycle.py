@@ -308,3 +308,44 @@ def test_submitted_at_is_recorded_once_not_overwritten():
     first = order.submitted_at
     order.transition_to(OrderState.ACCEPTED)
     assert order.submitted_at == first
+
+
+# --- idempotence on canonical states ---
+#
+# An adapter that already speaks canonical states hands this function a
+# value it produced. src/fidelity_broker.FidelityOrder.status does,
+# because Fidelity's own status field is prose with the fill price
+# interpolated into it ("Filled at $69.335").
+
+
+@pytest.mark.parametrize("state", list(OrderState))
+def test_every_canonical_state_round_trips(state):
+    """Six of nine used to survive by coincidence -- Alpaca's vocabulary
+    happens to overlap the enum names -- while CREATED, SUBMITTED and
+    UNKNOWN did not. A live Fidelity order in CREATED or SUBMITTED
+    mapped to UNKNOWN, which is not terminal, so the loop polled it
+    forever and warned on every tick."""
+    assert map_broker_status(str(state)) is state
+    assert map_broker_status(state) is state
+
+
+@pytest.mark.parametrize("state", list(OrderState))
+def test_mapping_is_stable_under_repetition(state):
+    """f(f(x)) == f(x). Anything else means a value can degrade each
+    time it passes through a layer."""
+    once = map_broker_status(str(state))
+    assert map_broker_status(once) is once
+
+
+def test_the_alpaca_vocabulary_still_maps():
+    """The canonical shortcut must not shadow real venue strings."""
+    assert map_broker_status("pending_new") is OrderState.SUBMITTED
+    assert map_broker_status("done_for_day") is OrderState.ACCEPTED
+    assert map_broker_status("replaced") is OrderState.CANCELED
+
+
+def test_a_genuinely_unrecognised_status_is_still_unknown():
+    """Fidelity's raw prose must NOT be quietly accepted -- it carries
+    the fill price and no exact-match table can cover it."""
+    assert map_broker_status("Filled at $69.35") is OrderState.UNKNOWN
+    assert map_broker_status("Verified Canceled") is OrderState.UNKNOWN

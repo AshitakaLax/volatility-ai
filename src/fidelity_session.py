@@ -268,7 +268,7 @@ class FidelitySession:
 
     # -- the request itself ---------------------------------------------
 
-    def post_json(self, path: str, payload: dict) -> Any:
+    def post_json(self, path: str, payload: dict | list) -> Any:
         """POST JSON to `path` from inside the authenticated page.
 
         `path` is a site-relative path, never a full URL: this can only

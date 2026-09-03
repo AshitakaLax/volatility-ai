@@ -287,3 +287,45 @@ def test_unresolved_orders_names_what_the_venue_never_received(tmp_path):
     })
     missing = unresolved_orders(journal, FidelityBroker(session, ACCOUNT, (ACCOUNT,)))
     assert [x["decision_id"] for x in missing] == ["dec-2"]
+
+
+# ======================================================================
+# Regressions: gates that protected the wrong thing
+# ======================================================================
+
+
+def test_the_spend_ceiling_does_not_block_an_exit():
+    """A ceiling applied to sells traps capital it was meant to protect.
+
+    Being unable to LEAVE a position you already hold is strictly worse
+    than being unable to enter one -- a book built one $20 share at a
+    time could not be sold in a single order under a $50 ceiling.
+    """
+    session = _session()
+    order = _broker(session, max_order_value=50.0).place(
+        SYMBOL, "sell", 10, 20.0, "exit-1"  # $200, four times the ceiling
+    )
+    assert order.state is OrderState.SUBMITTED
+
+
+def test_the_spend_ceiling_still_blocks_an_entry():
+    with pytest.raises(ConfigurationError, match="exceeds the max_order_value"):
+        _broker(max_order_value=50.0).place(SYMBOL, "buy", 10, 20.0, "entry-1")
+
+
+def test_a_transport_refusal_is_not_reported_as_a_possible_live_order():
+    """The endpoint gate fires BEFORE any network call, so nothing was
+    sent. Calling that ambiguous would send an operator hunting for an
+    order that never existed -- and teach them to distrust the warning
+    that does matter."""
+    session = _session()
+    session.refuse = {PLACE_PATH}
+    with pytest.raises(ConfigurationError):
+        _broker(session).place(SYMBOL, "buy", 1, PRICE, "dec-1")
+
+
+def test_a_real_transport_failure_is_still_ambiguous():
+    """The distinction must not swallow the case it was carved out of."""
+    session = _session(place_raises=TimeoutError("gateway timeout"))
+    with pytest.raises(AmbiguousSubmissionError):
+        _broker(session).place(SYMBOL, "buy", 1, PRICE, "dec-1")
