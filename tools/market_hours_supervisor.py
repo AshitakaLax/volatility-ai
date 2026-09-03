@@ -59,7 +59,7 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -85,6 +85,12 @@ def parse_args(argv=None):
     p.add_argument("--state-db", default="paper_ledger.db")
     p.add_argument("--open-delay", type=float, default=DEFAULT_OPEN_DELAY)
     p.add_argument("--close-margin", type=float, default=DEFAULT_CLOSE_MARGIN)
+    p.add_argument(
+        "--extended-hours",
+        action="store_true",
+        help="Run the pre-market and after-hours sessions too (04:00-20:00 ET). "
+        "Implied by live.extended_hours in the config; this flag only forces it on.",
+    )
     p.add_argument("--max-restarts", type=int, default=MAX_RESTARTS)
     p.add_argument(
         "--max-wait-hours",
@@ -109,6 +115,41 @@ def clock(paper: bool):
     if not (key and secret):
         raise SystemExit("APCA_API_KEY_ID / APCA_API_SECRET_KEY are not set.")
     return TradingClient(key, secret, paper=paper).get_clock()
+
+
+def extended_window(paper: bool):
+    """(start, end) of today's EXTENDED session, in the clock's own tz.
+
+    Alpaca's clock answers for the regular session only -- is_open,
+    next_open and next_close all ignore pre- and post-market -- so a
+    supervisor that trusts it sleeps through precisely the hours
+    live.extended_hours was turned on for.
+
+    The window is derived from the CALENDAR, which keeps holidays
+    authoritative: a day the calendar does not list has no extended
+    session either. [04:00 ET, close + 4h] is correct on normal and
+    half days alike, because after-hours ends four hours after whatever
+    close the calendar reports (16:00 -> 20:00, 13:00 -> 17:00).
+    """
+    from alpaca.trading.client import TradingClient
+    from alpaca.trading.requests import GetCalendarRequest
+
+    key, secret = os.environ.get("APCA_API_KEY_ID"), os.environ.get("APCA_API_SECRET_KEY")
+    if not (key and secret):
+        raise SystemExit("APCA_API_KEY_ID / APCA_API_SECRET_KEY are not set.")
+    client = TradingClient(key, secret, paper=paper)
+    now = client.get_clock().timestamp
+    today = now.date()
+    for day in client.get_calendar(GetCalendarRequest(start=today, end=today)):
+        day_date = day.date.date() if hasattr(day.date, "date") else day.date
+        if day_date != today:
+            continue
+        start = now.replace(hour=4, minute=0, second=0, microsecond=0)
+        end = now.replace(
+            hour=day.close.hour, minute=day.close.minute, second=0, microsecond=0
+        ) + timedelta(hours=4)
+        return now, start, end
+    return now, None, None
 
 
 def _stop(process: subprocess.Popen) -> None:
@@ -164,11 +205,70 @@ def run_session(args, ticks: int, deadline: float) -> int:
         raise
 
 
+def _main_extended(args, config, poll: float) -> int:
+    """Session control for the extended day, 04:00-20:00 ET.
+
+    Deliberately a separate path rather than a few conditionals inside
+    main(). The regular-hours logic reads the clock's own is_open /
+    next_open / next_close, and none of those three mean anything here
+    -- threading a flag through them would leave a function whose every
+    line has to be read twice to know which session it is talking about.
+    """
+    now, start, end = extended_window(config.live.paper_trading)
+    if start is None:
+        log("not a trading day -- no extended session either. Exiting.")
+        return 0
+
+    if now < start:
+        wait = (start - now).total_seconds()
+        if wait > args.max_wait_hours * 3600:
+            log(f"pre-market opens {start:%Y-%m-%d %H:%M} ET, too far off. Exiting.")
+            return 0
+        log(f"pre-market opens {start:%H:%M} ET ({wait / 60:.0f} min)")
+        if args.dry_run:
+            log("--dry-run: would wait, then trade the extended session.")
+            return 0
+        time.sleep(max(0.0, wait) + args.open_delay)
+        now, start, end = extended_window(config.live.paper_trading)
+
+    seconds_left = (end - now).total_seconds() - args.close_margin
+    if seconds_left <= poll:
+        log(f"only {seconds_left:.0f}s of extended session left. Exiting.")
+        return 0
+
+    ticks = max(1, int(seconds_left // poll))
+    log(
+        f"EXTENDED session {start:%H:%M}-{end:%H:%M} ET -- "
+        f"{seconds_left / 60:.0f} min left, {ticks} ticks at {poll:.0f}s"
+    )
+    if args.dry_run:
+        log("--dry-run: would run the loop now.")
+        return 0
+
+    deadline = time.time() + seconds_left
+    for attempt in range(1, args.max_restarts + 1):
+        code = run_session(args, ticks, deadline)
+        remaining = deadline - time.time()
+        if remaining <= poll:
+            log("extended session over")
+            return 0
+        log(
+            f"loop exited with {code} and {remaining / 60:.0f} min left "
+            f"(restart {attempt}/{args.max_restarts})"
+        )
+        ticks = max(1, int(remaining // poll))
+    log("restart budget exhausted")
+    return 1
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     config = BacktestConfig.from_yaml(args.config)
     config.validate()
     poll = float(config.live.poll_interval_seconds or 60.0)
+
+    if args.extended_hours or getattr(config.live, "extended_hours", False):
+        return _main_extended(args, config, poll)
 
     now = clock(config.live.paper_trading)
     if not now.is_open:
