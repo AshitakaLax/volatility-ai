@@ -136,7 +136,7 @@ def attach(cdp_url: str):
     playwright = sync_playwright().start()
     try:
         browser = playwright.chromium.connect_over_cdp(cdp_url)
-    except Exception as exc:  # noqa: BLE001 -- the advice is the useful part
+    except Exception as exc:
         playwright.stop()
         raise ConfigurationError(
             f"Could not attach to a browser at {cdp_url}: {exc}\n\n"

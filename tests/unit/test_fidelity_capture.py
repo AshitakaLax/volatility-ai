@@ -18,8 +18,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from src.fidelity_capture import (
     DEFAULT_MAX_PAYLOAD_BYTES,
     TrafficCapture,
@@ -115,7 +113,7 @@ def _attached(**kwargs) -> tuple[TrafficCapture, FakePage]:
 
 
 def test_attach_registers_both_listeners():
-    capture, page = _attached()
+    _capture, page = _attached()
     assert "websocket" in page._handlers
     assert "response" in page._handlers
 
@@ -268,7 +266,7 @@ def test_an_unreadable_body_is_recorded_rather_than_dropped():
     assert len(capture.responses) == 1
     record = capture.responses[0]
     assert record.body is None
-    assert "RuntimeError: no body" == record.body_error
+    assert record.body_error == "RuntimeError: no body"
     assert capture.handler_errors == []
 
 
@@ -306,7 +304,7 @@ def test_credentials_are_scrubbed_from_urls_too():
 def test_empty_secret_values_are_ignored():
     """`"" in payload` is always True -- a blank credential would scrub
     every payload down to nothing."""
-    capture, page = _attached(secret_values=["", None and "x"])
+    capture, page = _attached(secret_values=["", None])
     page.emit_response(FakeResponse("https://x/y", body="untouched"))
     assert capture.responses[0].body == "untouched"
 

@@ -90,16 +90,16 @@ _REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _REPO_ROOT not in _sys.path:
     _sys.path.insert(0, _REPO_ROOT)
 
-import logging  # noqa: E402
+import logging
 
-import pandas as pd  # noqa: E402
+import pandas as pd
 
-from optimization_controller import OptimizationController  # noqa: E402
-from src.config import BacktestConfig  # noqa: E402
-from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing  # noqa: E402
-from src.performance_analyzer import annual_returns  # noqa: E402
-from src.risk_manager import RiskManager  # noqa: E402
-from src.sizing_indicators import RollingMean  # noqa: E402
+from optimization_controller import OptimizationController
+from src.config import BacktestConfig
+from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from src.performance_analyzer import annual_returns
+from src.risk_manager import RiskManager
+from src.sizing_indicators import RollingMean
 
 DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 

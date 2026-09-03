@@ -78,6 +78,7 @@ mistaken for "no orders found".
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 from typing import Any
@@ -205,7 +206,7 @@ class FidelitySession:
             for name in _SNIFFED_HEADERS:
                 if lowered.get(name):
                     self._headers[name] = lowered[name]
-        except Exception:  # noqa: BLE001 -- a sniffing failure must not break the page
+        except Exception:
             return
 
     @property
@@ -247,10 +248,8 @@ class FidelitySession:
         """
         target = url or f"{FIDELITY_ORIGIN}/ftgw/digital/traderplus"
         self._page.goto(target)
-        try:
+        with contextlib.suppress(Exception):
             self._page.wait_for_load_state("networkidle")
-        except Exception:  # noqa: BLE001 -- best effort; wait_for_credentials is the real gate
-            pass
 
     # -- session validity ----------------------------------------------
 
@@ -258,7 +257,7 @@ class FidelitySession:
         """Raise if the page is sitting on the sign-in flow."""
         try:
             url = str(self._page.url)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise FidelitySessionExpired(f"The page is gone: {exc}") from exc
         if _SIGNIN_MARKER in url:
             raise FidelitySessionExpired(
@@ -341,7 +340,7 @@ class FidelitySession:
             result = self._page.evaluate(
                 script, [path, payload, headers, self._request_timeout_ms]
             )
-        except Exception as exc:  # noqa: BLE001 -- classified by the caller's retry policy
+        except Exception as exc:
             raise FidelitySessionError(f"POST {path} failed in the page: {exc}") from exc
 
         return self._interpret(path, result)

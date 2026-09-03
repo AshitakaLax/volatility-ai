@@ -372,7 +372,7 @@ def report(result: dict, args: argparse.Namespace) -> None:
     hits = result["id_hits"]
     print(f"\n-- Responses carrying ID-shaped keys ({len(hits)}) --")
     for hit in hits:
-        keys = ",".join(hit["keys"][:8]) if hit["keys"] else f"(url match)"
+        keys = ",".join(hit["keys"][:8]) if hit["keys"] else "(url match)"
         print(f"  [{hit['status']}] {hit['method']:5s} {hit['endpoint']}")
         print(f"          keys: {keys}")
         if args.show_bodies:
@@ -388,7 +388,7 @@ def report(result: dict, args: argparse.Namespace) -> None:
 
     if not args.show_bodies and hits:
         print(
-            f"\n  Bodies not shown. Re-run with --show-bodies 400 to see them --\n"
+            "\n  Bodies not shown. Re-run with --show-bodies 400 to see them --\n"
             "  they may contain account numbers and balances."
         )
 

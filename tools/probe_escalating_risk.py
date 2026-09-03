@@ -46,6 +46,7 @@ This is a PROBE, not a shipped strategy: it subclasses the real strategy
 rather than modifying it, so nothing in src/ changes.
 """
 import sys
+
 sys.path.insert(0, r"C:/workspace/volatility-ai")
 import logging
 
@@ -54,39 +55,15 @@ import pandas as pd
 logging.disable(logging.WARNING)
 from optimization_controller import OptimizationController
 from src.config import BacktestConfig
-from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.performance_analyzer import annual_returns
 from src.risk_manager import RiskManager
+from tools.harness import Escalating
 
 
-class Escalating(HighFrequencyLocalReferenceSizing):
-    """Lot size scales log-linearly with the UNDERLYING's drawdown from its
-    own trailing peak -- not the portfolio's, which stays near zero while
-    the book is mostly cash."""
-
-    def __init__(self, *a, max_mult=10.0, dd_ref=0.75, **kw):
-        super().__init__(*a, **kw)
-        self.max_mult, self.dd_ref = max_mult, dd_ref
-        self._price_peak = None
-
-    def record_tick(self, context):
-        super().record_tick(context)
-        if context.price > 0:
-            self._price_peak = (
-                context.price if self._price_peak is None
-                else max(self._price_peak, context.price)
-            )
-
-    def calculate_trade_value(self, context):
-        base = super().calculate_trade_value(context)
-        if not self._price_peak:
-            return base
-        dd = 1.0 - context.price / self._price_peak
-        if dd <= 0:
-            return base
-        return base * min(self.max_mult, self.max_mult ** (dd / self.dd_ref))
-
-
+# Escalating now lives in tools/harness.py -- ONE definition. Three
+# independent copies of it lived in this directory, verified equivalent
+# but each a chance to diverge silently, which would have made two
+# probes' results look comparable while not being so.
 def main() -> int:
     """Everything below used to run at IMPORT time.
 
@@ -116,14 +93,14 @@ def main() -> int:
         )
         ar = annual_returns(full[0].equity_curve)
         r = summary.iloc[0]
-        print("--- step 0.10 / mult 400 / cap %.2f ---" % cap)
-        print("  " + "  ".join("%d:%+.1f%%" % (ts.year, v) for ts, v in ar.items()))
-        print("  CAGR %.2f%%   maxDD %.1f%%   total %.0f%%   trades %d"
-              % (r["CAGR %"], r["Max Drawdown %"], r["Total Return %"], int(r["Trade Count"])))
+        print(f"--- step 0.10 / mult 400 / cap {cap:.2f} ---")
+        print("  " + "  ".join(f"{ts.year}:{v:+.1f}%" for ts, v in ar.items()))
+        print(f"  CAGR {r['CAGR %']:.2f}%   maxDD {r['Max Drawdown %']:.1f}%   "
+              f"total {r['Total Return %']:.0f}%   trades {int(r['Trade Count'])}")
 
     print("\nlot-size multiplier at each TQQQ drawdown (mult=400, dd_ref=0.75):")
     for dd in (0.10, 0.25, 0.50, 0.60, 0.75, 0.80):
-        print("  TQQQ -%2.0f%%  ->  x%7.1f" % (dd * 100, min(400, 400 ** (dd / 0.75))))
+        print(f"  TQQQ -{dd * 100:2.0f}%  ->  x{min(400, 400 ** (dd / 0.75)):7.1f}")
     return 0
 
 

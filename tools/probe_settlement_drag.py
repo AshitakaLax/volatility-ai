@@ -76,17 +76,17 @@ _REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _REPO_ROOT not in _sys.path:
     _sys.path.insert(0, _REPO_ROOT)
 
-import logging  # noqa: E402
+import logging
 
-import pandas as pd  # noqa: E402
+import pandas as pd
 
-from optimization_controller import OptimizationController  # noqa: E402
-from src.config import BacktestConfig  # noqa: E402
-from src.performance_analyzer import annual_returns  # noqa: E402
-from src.risk_manager import RiskManager  # noqa: E402
-from tools.probe_downturn_tactics import Escalating  # noqa: E402
-from tools.probe_regime_integrated import RegimeSwitched  # noqa: E402
-from tools.probe_vol_filtered_regime import (  # noqa: E402
+from optimization_controller import OptimizationController
+from src.config import BacktestConfig
+from src.performance_analyzer import annual_returns
+from src.risk_manager import RiskManager
+from tools.probe_downturn_tactics import Escalating
+from tools.probe_regime_integrated import RegimeSwitched
+from tools.probe_vol_filtered_regime import (
     VolFilteredRegime,
     build_signal,
 )
@@ -154,14 +154,14 @@ def main(argv=None) -> int:
           f"{'maxDD':>8}{'dCAGR':>9}{'dTrades':>10}")
 
     for label, cls, params, step, target, cap, exits in specs:
-        base_row = base_yearly = None
+        base_row = None
         for days in (0, 1):
             row, yearly = run(controller, cfg, cls, params, step=step, target=target,
                               cap=cap, exits=exits, days=days)
             y22 = yearly[[t.year == 2022 for t in yearly.index]].iloc[0]
             trades = int(row["Trade Count"])
             if days == 0:
-                base_row, base_yearly = row, yearly
+                base_row, _base_yearly = row, yearly
                 delta = dtrades = ""
             else:
                 delta = f"{row['CAGR %'] - base_row['CAGR %']:+8.2f}"

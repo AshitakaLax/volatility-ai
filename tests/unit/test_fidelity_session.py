@@ -24,10 +24,10 @@ import pytest
 
 from src.exceptions import ConfigurationError
 from src.fidelity_session import (
-    PLACE_ENDPOINTS,
-    PREVIEW_ENDPOINTS,
     FIDELITY_ORIGIN,
     ORDER_ENDPOINTS,
+    PLACE_ENDPOINTS,
+    PREVIEW_ENDPOINTS,
     READ_ONLY_ENDPOINTS,
     FidelitySession,
     FidelitySessionError,
@@ -107,7 +107,7 @@ def _ready_with(result=None, allow_orders=False, url=SIGNED_IN, raises=None,
 
 
 def test_the_csrf_token_is_lifted_from_the_pages_own_request():
-    session, page = _ready_with()
+    session, _page = _ready_with()
     assert session.has_credentials is True
     assert session.csrf_token == "TOKEN-ABC"
 

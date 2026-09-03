@@ -26,7 +26,6 @@ from tools.measure_event_effects import (
     witching_dates,
 )
 
-
 # -- nth-weekday arithmetic --------------------------------------------
 
 

@@ -88,46 +88,22 @@ _REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _REPO_ROOT not in _sys.path:
     _sys.path.insert(0, _REPO_ROOT)
 
-import logging  # noqa: E402
+import logging
 
-import pandas as pd  # noqa: E402
+import pandas as pd
 
-from optimization_controller import OptimizationController  # noqa: E402
-from src.config import BacktestConfig  # noqa: E402
-from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing  # noqa: E402
-from src.risk_manager import RiskManager  # noqa: E402
+from optimization_controller import OptimizationController
+from src.config import BacktestConfig
+from src.risk_manager import RiskManager
+from tools.harness import Escalating
 
 DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 
 
-class Escalating(HighFrequencyLocalReferenceSizing):
-    """Lot size scales log-linearly with the UNDERLYING's drawdown from
-    its own trailing peak -- not the portfolio's, which stays near zero
-    while the book is mostly cash."""
-
-    def __init__(self, *args, max_mult: float = 1.0, dd_ref: float = 0.75, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.max_mult, self.dd_ref = max_mult, dd_ref
-        self._price_peak: float | None = None
-
-    def record_tick(self, context) -> None:
-        super().record_tick(context)
-        if context.price > 0:
-            self._price_peak = (
-                context.price if self._price_peak is None
-                else max(self._price_peak, context.price)
-            )
-
-    def calculate_trade_value(self, context) -> float:
-        base = super().calculate_trade_value(context)
-        if self.max_mult <= 1.0 or not self._price_peak:
-            return base
-        drawdown = 1.0 - context.price / self._price_peak
-        if drawdown <= 0:
-            return base
-        return base * min(self.max_mult, self.max_mult ** (drawdown / self.dd_ref))
-
-
+# Escalating now lives in tools/harness.py -- ONE definition. Three
+# independent copies of it lived in this directory, verified equivalent
+# but each a chance to diverge silently, which would have made two
+# probes' results look comparable while not being so.
 def find_episodes(daily: pd.Series, min_depth: float) -> list[dict]:
     """Non-overlapping peak -> trough -> recovery drawdown episodes.
 
@@ -293,8 +269,8 @@ def main(argv=None) -> int:
     # and it is labelled that way on purpose.
     half = len(hold_all) // 2
     for name, lo, hi in (
-        ("FIRST HALF (2016-2021), episodes 1-%d" % half, 0, half),
-        ("SECOND HALF (2021-2026), episodes %d-%d" % (half + 1, len(hold_all)),
+        (f"FIRST HALF (2016-2021), episodes 1-{half}", 0, half),
+        (f"SECOND HALF (2021-2026), episodes {half + 1}-{len(hold_all)}",
          half, len(hold_all)),
     ):
         print()
@@ -320,7 +296,7 @@ def _annualize(values, spans):
     the long one winning purely on elapsed time.
     """
     return [((1.0 + v / 100.0) ** (365.0 / d) - 1.0) * 100.0
-            for v, d in zip(values, spans)]
+            for v, d in zip(values, spans, strict=False)]
 
 
 def _summary(label, hold_all, totals, fn):
@@ -328,7 +304,7 @@ def _summary(label, hold_all, totals, fn):
     line += "%" if label != "# positive" else f"/{len(hold_all)}"
     if label == "# positive":
         line = f"{label:>21} {'':>7} {'':>5} {fn(hold_all):>5}/{len(hold_all):<3}"
-    for name, values in totals.items():
+    for _name, values in totals.items():
         if label == "# positive":
             line += f" {fn(values):>12}/{len(values):<3}"
         else:

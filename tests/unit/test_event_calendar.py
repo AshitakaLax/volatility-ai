@@ -15,7 +15,6 @@ import pytest
 
 from src.event_calendar import (
     DEFAULT_LEAD_MINUTES,
-    DEFAULT_REACTION_MINUTES,
     NO_EVENT_MINUTES,
     EarningsEventTable,
 )

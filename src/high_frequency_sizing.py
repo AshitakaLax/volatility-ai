@@ -504,8 +504,8 @@ from src.exceptions import ConfigurationError
 from src.intraday_profile import relative_range
 from src.market_context import MarketContext
 from src.size_calculators import SizingStrategy
-from src.synthetic_bars import is_synthetic_bar
 from src.sizing_indicators import RollingMax, RollingMean, RollingStdev, bars_from_days, clamp
+from src.synthetic_bars import is_synthetic_bar
 from src.trailing_target import TrailingTargetPolicy
 
 # Below this, a realized-vol estimate is numerical noise rather than a

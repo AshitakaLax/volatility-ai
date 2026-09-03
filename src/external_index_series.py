@@ -72,7 +72,7 @@ class ExternalIndexSeries:
         self._values = series[value_column].to_numpy(dtype=float)[order]
 
     @classmethod
-    def from_csv(cls, path: Path | str, *, value_column: str = "close") -> "ExternalIndexSeries":
+    def from_csv(cls, path: Path | str, *, value_column: str = "close") -> ExternalIndexSeries:
         df = pd.read_csv(path)
         if "timestamp" not in df.columns:
             raise DataValidationError(f"{path}: expected a 'timestamp' column.")
