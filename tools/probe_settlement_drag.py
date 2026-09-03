@@ -177,8 +177,7 @@ def main(argv=None) -> int:
     print("hold 64-98% cash on average (tools/measure_cash_drag.py), so they are")
     print("almost never short of settled buying power. The expectation that this")
     print("would re-rank the strategies was wrong; the measurement says so.")
-    print("
-Not monotonic, either: the regime book trades MORE at T+1 and its")
+    print("\nNot monotonic, either: the regime book trades MORE at T+1 and its")
     print("2022 improves, while CAGR still falls. A deferred buy moves the grid")
     print("reference, which changes every trigger after it.")
     print("\nThe violation RULE is not modelled, only the cash. Read T+1 as 'what")

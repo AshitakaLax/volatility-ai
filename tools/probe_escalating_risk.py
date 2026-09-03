@@ -87,31 +87,45 @@ class Escalating(HighFrequencyLocalReferenceSizing):
         return base * min(self.max_mult, self.max_mult ** (dd / self.dd_ref))
 
 
-cfg = BacktestConfig.from_yaml("config/probe_dipbuy_full.yaml")
-cost = cfg.costs.build()
-df = pd.read_csv(
-    "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv", parse_dates=["timestamp"]
-).set_index("timestamp")
-controller = OptimizationController(historical_data=df)
+def main() -> int:
+    """Everything below used to run at IMPORT time.
 
-for cap in (0.50, 1.00):
-    p = dict(cfg.strategy.strategy_params)
-    p["per_lot_pct"], p["max_mult"], p["dd_ref"] = 0.02, 400.0, 0.75
-    rm = RiskManager(max_concurrent_lots=6000, max_total_exposure_pct=cap)
-    summary, full = controller.run_sweep(
-        grid_steps=[0.10], profit_targets=[0.04], strategy_class=Escalating,
-        strategy_params_grid=[p], cost_model=cost, risk_manager=rm,
-        fill_model="intrabar", intrabar_priority="sell_first",
-        enforce_no_loss=True, on_flat_reentry="stale_reference",
-        return_full_results=True,
-    )
-    ar = annual_returns(full[0].equity_curve)
-    r = summary.iloc[0]
-    print("--- step 0.10 / mult 400 / cap %.2f ---" % cap)
-    print("  " + "  ".join("%d:%+.1f%%" % (ts.year, v) for ts, v in ar.items()))
-    print("  CAGR %.2f%%   maxDD %.1f%%   total %.0f%%   trades %d"
-          % (r["CAGR %"], r["Max Drawdown %"], r["Total Return %"], int(r["Trade Count"])))
+    That made these modules unimportable as libraries: reusing the
+    Escalating class from here fired a full multi-minute sweep as a side
+    effect of the import statement. Every other tool in this directory
+    already had this guard; these two were the exception, and nothing
+    noticed because nobody had imported them until now.
+    """
+    cfg = BacktestConfig.from_yaml("config/probe_dipbuy_full.yaml")
+    cost = cfg.costs.build()
+    df = pd.read_csv(
+        "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv", parse_dates=["timestamp"]
+    ).set_index("timestamp")
+    controller = OptimizationController(historical_data=df)
 
-print("\nlot-size multiplier at each TQQQ drawdown (mult=400, dd_ref=0.75):")
-for dd in (0.10, 0.25, 0.50, 0.60, 0.75, 0.80):
-    print("  TQQQ -%2.0f%%  ->  x%7.1f" % (dd * 100, min(400, 400 ** (dd / 0.75))))
+    for cap in (0.50, 1.00):
+        p = dict(cfg.strategy.strategy_params)
+        p["per_lot_pct"], p["max_mult"], p["dd_ref"] = 0.02, 400.0, 0.75
+        rm = RiskManager(max_concurrent_lots=6000, max_total_exposure_pct=cap)
+        summary, full = controller.run_sweep(
+            grid_steps=[0.10], profit_targets=[0.04], strategy_class=Escalating,
+            strategy_params_grid=[p], cost_model=cost, risk_manager=rm,
+            fill_model="intrabar", intrabar_priority="sell_first",
+            enforce_no_loss=True, on_flat_reentry="stale_reference",
+            return_full_results=True,
+        )
+        ar = annual_returns(full[0].equity_curve)
+        r = summary.iloc[0]
+        print("--- step 0.10 / mult 400 / cap %.2f ---" % cap)
+        print("  " + "  ".join("%d:%+.1f%%" % (ts.year, v) for ts, v in ar.items()))
+        print("  CAGR %.2f%%   maxDD %.1f%%   total %.0f%%   trades %d"
+              % (r["CAGR %"], r["Max Drawdown %"], r["Total Return %"], int(r["Trade Count"])))
+
+    print("\nlot-size multiplier at each TQQQ drawdown (mult=400, dd_ref=0.75):")
+    for dd in (0.10, 0.25, 0.50, 0.60, 0.75, 0.80):
+        print("  TQQQ -%2.0f%%  ->  x%7.1f" % (dd * 100, min(400, 400 ** (dd / 0.75))))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
