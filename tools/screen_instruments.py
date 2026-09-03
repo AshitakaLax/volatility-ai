@@ -54,12 +54,6 @@ this project always measures before tuning.
 from __future__ import annotations
 
 import logging
-import sys
-from datetime import UTC, datetime
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
 
 # tools/ scripts import from src/, and Python puts THIS file's directory
 # on sys.path[0] -- not the working directory -- so `python
@@ -67,7 +61,13 @@ import pandas as pd
 # `python -m tools.screen_instruments` succeeded. Same bootstrap as
 # tests/fixtures/regression_baseline.py, so both invocations work.
 import os as _os
+import sys
 import sys as _sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 
 _REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _REPO_ROOT not in _sys.path:
@@ -99,7 +99,7 @@ PARTS_DIR = Path("data/screen_parts")
 # endpoints confirmed working minutes earlier. Each request will wait
 # up to max_retries * mean(backoff schedule) rather than fail fast into
 # a script meant to run unattended.
-CLIENT_KW = dict(max_retries=20, retry_backoff_seconds=15.0)
+CLIENT_KW = {"max_retries": 20, "retry_backoff_seconds": 15.0}
 
 
 def variance_ratio(returns: np.ndarray, k: int) -> float:

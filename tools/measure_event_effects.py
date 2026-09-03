@@ -105,12 +105,12 @@ _REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _REPO_ROOT not in _sys.path:
     _sys.path.insert(0, _REPO_ROOT)
 
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
+import numpy as np
+import pandas as pd
 
-from src.earnings_calendar import EARNINGS_REACTION_DATES  # noqa: E402
-from src.fomc_calendar import EASTERN_TZ, FOMC_DECISION_DATES  # noqa: E402
-from tools.session_bars import (  # noqa: E402
+from src.earnings_calendar import EARNINGS_REACTION_DATES
+from src.fomc_calendar import FOMC_DECISION_DATES
+from tools.session_bars import (
     OPEN_WINDOW_END,
     SESSION_OPEN,
     minute_of_day,

@@ -64,9 +64,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict, dataclass
-from urllib.parse import urlparse
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 from src.secrets import REDACTED, redact_secrets
 
@@ -295,7 +295,7 @@ class TrafficCapture:
             if not self._has_room():
                 return
             binary = isinstance(payload, bytes | bytearray)
-            if binary:
+            if binary:  # noqa: SIM108 -- the comment belongs to this branch
                 # Binary frames are decoded leniently rather than dropped:
                 # a JSON body sent as bytes is common and readable, and a
                 # genuinely binary frame still yields a recognizable shape.

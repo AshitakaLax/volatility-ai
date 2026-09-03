@@ -129,7 +129,7 @@ def test_the_three_escalating_copies_still_agree():
         sized = {}
         for module in ("probe_downturn_tactics", "probe_escalating_risk",
                        "probe_regime_combo"):
-            cls = getattr(importlib.import_module(f"tools.{module}"), "Escalating")
+            cls = importlib.import_module(f"tools.{module}").Escalating
             strategy = cls(
                 lookback_days=20, bars_per_day=390,
                 per_lot_pct=0.02, max_mult=400.0, dd_ref=0.75,

@@ -97,7 +97,7 @@ def test_the_session_boundary_lands_on_the_documented_minutes():
     values = OptimizationController(historical_data=frame)._minutes_since_open
     index = frame.index.tz_convert("America/New_York")
 
-    by_clock = {f"{ts.hour:02d}:{ts.minute:02d}": v for ts, v in zip(index, values)}
+    by_clock = {f"{ts.hour:02d}:{ts.minute:02d}": v for ts, v in zip(index, values, strict=False)}
     assert by_clock["09:29"] == -1, "09:29 is pre-market"
     assert by_clock["09:30"] == 0, "09:30 is minute zero"
     assert by_clock["15:59"] == SESSION_MINUTES - 1, "15:59 is the last regular minute"

@@ -111,7 +111,7 @@ def test_fidelity_repr_and_str_are_redacted():
     creds = FidelityCredentials(
         username="bob", password="hunter2", totp_secret="SEED"
     )
-    for rendered in (repr(creds), str(creds), f"{creds}", "{}".format(creds)):
+    for rendered in (repr(creds), str(creds), f"{creds}", f"{creds}"):
         assert "bob" not in rendered
         assert "hunter2" not in rendered
         assert "SEED" not in rendered

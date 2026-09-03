@@ -95,10 +95,10 @@ _REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _REPO_ROOT not in _sys.path:
     _sys.path.insert(0, _REPO_ROOT)
 
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
+import numpy as np
+import pandas as pd
 
-from tools.session_bars import session_bars  # noqa: E402
+from tools.session_bars import session_bars
 
 SQQQ = "data/SQQQ_1Min_sip_all_ext_2016-01-01_2026-09-01.csv"
 TQQQ = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
@@ -235,7 +235,7 @@ def summarize(frame: pd.DataFrame, horizons, cost_pct: float) -> None:
         for b in sorted(pd.Series(buckets).dropna().unique()):
             mask = buckets == b
             lo, hi = series[mask].min(), series[mask].max()
-            n = int(mask.sum())
+            int(mask.sum())
             rates = " ".join(
                 f"H{h}={outcomes[h][mask].dropna().mean() * 100:5.1f}%" for h in horizons
             )

@@ -701,8 +701,6 @@ class BacktestConfig:
                 "intrabar_priority": self.execution.intrabar_priority,
                 "fill_model": self.execution.fill_model,
                 "enforce_no_loss": self.execution.enforce_no_loss,
-            "allow_signal_exit": self.execution.allow_signal_exit,
-            "settlement_days": self.execution.settlement_days,
                 "allow_signal_exit": self.execution.allow_signal_exit,
                 "settlement_days": self.execution.settlement_days,
             },

@@ -67,7 +67,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Protocol
 
-from src.exceptions import ConfigurationError, ExecutionError
+from src.exceptions import ConfigurationError
 from src.fidelity_broker import FidelityBroker, FidelityOrder, _find_first
 from src.fidelity_session import PLACE_ENDPOINTS
 from src.order_lifecycle import OrderState

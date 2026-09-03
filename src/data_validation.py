@@ -139,7 +139,7 @@ def validate(df: pd.DataFrame, *, warn_on_gap_pct: float = 0.15) -> ValidationRe
     pct_change = close.pct_change()
     big_jumps = pct_change[pct_change.abs() > warn_on_gap_pct]
     report = ValidationReport(
-        suspect_bars=tuple(zip(big_jumps.index, big_jumps.to_numpy()))
+        suspect_bars=tuple(zip(big_jumps.index, big_jumps.to_numpy(), strict=False))
     )
     if report.has_suspect_bars:
         logging.getLogger("Optimizer").warning(

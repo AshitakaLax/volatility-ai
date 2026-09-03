@@ -22,9 +22,11 @@ import ast
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -99,7 +101,10 @@ class FakeContext:
 class FakeFidelityAutomation:
     """Records every call so the tests can assert on what was asked of it."""
 
-    instances: list[FakeFidelityAutomation] = []
+    # Shared across instances ON PURPOSE: the tests read this to see
+    # what the code under test constructed. Per-instance state would
+    # leave nothing to inspect.
+    instances: ClassVar[list[FakeFidelityAutomation]] = []
 
     def __init__(self, **kwargs):
         self.init_kwargs = kwargs
@@ -490,7 +495,7 @@ def test_importing_the_module_does_not_require_playwright():
 
 def test_a_missing_fidelity_api_gives_an_actionable_error(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "fidelity", None)
-    with pytest.raises(ConfigurationError, match="requirements-fidelity.txt"):
+    with pytest.raises(ConfigurationError, match=re.escape("requirements-fidelity.txt")):
         fidelity_recon.run_recon(_args(tmp_path), CREDENTIALS)
 
 
@@ -722,7 +727,6 @@ def test_the_import_path_works_against_the_really_installed_package():
     skips cleanly where the optional dependency is absent (the Docker
     image, every backtest environment).
     """
-    import ast
 
     source = Path(fidelity_recon.__file__).read_text(encoding="utf-8")
     imports = [

@@ -107,16 +107,16 @@ _REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _REPO_ROOT not in _sys.path:
     _sys.path.insert(0, _REPO_ROOT)
 
-import logging  # noqa: E402
+import logging
 
-import pandas as pd  # noqa: E402
+import pandas as pd
 
-from optimization_controller import OptimizationController  # noqa: E402
-from src.config import BacktestConfig  # noqa: E402
-from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing  # noqa: E402
-from src.performance_analyzer import annual_returns  # noqa: E402
-from src.risk_manager import RiskManager  # noqa: E402
-from src.sizing_indicators import RollingMean  # noqa: E402
+from optimization_controller import OptimizationController
+from src.config import BacktestConfig
+from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from src.performance_analyzer import annual_returns
+from src.risk_manager import RiskManager
+from src.sizing_indicators import RollingMean
 
 DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 
@@ -308,7 +308,7 @@ def main(argv=None) -> int:
             y2022 = yearly[[i.year == 2022 for i in yearly.index]].iloc[0]
             complete = yearly[[ts.year < 2026 for ts in yearly.index]]
             print(
-                f"{str(hold_in_bull):>5} {cap:5.2f} {per_lot:5.1f}x {bull_step:6.3f} "
+                f"{hold_in_bull!s:>5} {cap:5.2f} {per_lot:5.1f}x {bull_step:6.3f} "
                 f"{row['CAGR %']:7.2f}% {row['Max Drawdown %']:6.1f}% "
                 f"{complete.min():+7.2f}% {int((complete < 0).sum()):3d}/10 "
                 f"{y2022:+7.2f}% {int(row['Signal Exit Count']):7d}"
@@ -316,9 +316,9 @@ def main(argv=None) -> int:
             print("      " + "  ".join(f"{ts.year}:{v:+.0f}%" for ts, v in yearly.items()))
             caps = [yearly[[t.year == y for t in yearly.index]].iloc[0] / BENCHMARK[y]
                     for y in (2017, 2019, 2020, 2021, 2023) if BENCHMARK[y]]
-            print(f"      bull-year capture vs benchmark: "
+            print("      bull-year capture vs benchmark: "
                   + "  ".join(f"{y}:{c:.0%}" for y, c in
-                              zip((2017, 2019, 2020, 2021, 2023), caps)))
+                              zip((2017, 2019, 2020, 2021, 2023), caps, strict=False)))
 
     print("\n'worst' and 'neg' cover COMPLETE years only -- 2026 is a Jan-Aug stub.")
     print("hold=False is the control: identical in every respect except that bull")

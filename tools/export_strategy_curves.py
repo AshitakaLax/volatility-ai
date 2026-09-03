@@ -30,19 +30,19 @@ _REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _REPO_ROOT not in _sys.path:
     _sys.path.insert(0, _REPO_ROOT)
 
-import logging  # noqa: E402
+import logging
 
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
+import numpy as np
+import pandas as pd
 
-from optimization_controller import OptimizationController  # noqa: E402
-from src.config import BacktestConfig  # noqa: E402
-from src.performance_analyzer import annual_returns  # noqa: E402
-from src.risk_manager import RiskManager  # noqa: E402
-from tools.probe_bull_capture import RegimeHold  # noqa: E402
-from tools.probe_downturn_tactics import Escalating  # noqa: E402
-from tools.probe_regime_integrated import RegimeSwitched  # noqa: E402
-from tools.probe_vol_filtered_regime import VolFilteredRegime, build_signal  # noqa: E402
+from optimization_controller import OptimizationController
+from src.config import BacktestConfig
+from src.performance_analyzer import annual_returns
+from src.risk_manager import RiskManager
+from tools.probe_bull_capture import RegimeHold
+from tools.probe_downturn_tactics import Escalating
+from tools.probe_regime_integrated import RegimeSwitched
+from tools.probe_vol_filtered_regime import VolFilteredRegime, build_signal
 
 DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 SWITCH_COST = 0.0015
@@ -70,7 +70,7 @@ def _stats(equity: pd.Series) -> dict:
         "annual": {str(ts.year): round(float(v), 1) for ts, v in yearly.items()},
         "worst_complete": round(float(complete.min()), 1),
         "neg_complete": int((complete < 0).sum()),
-        "n_complete": int(len(complete)),
+        "n_complete": len(complete),
     }
 
 

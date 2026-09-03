@@ -16,6 +16,7 @@ with no preceding positional. Fixed by forwarding sys.argv directly
 for the `test` subcommand rather than routing it through argparse.
 """
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -431,7 +432,7 @@ def test_a_live_target_return_mismatch_is_rejected_before_the_loop_starts(monkey
     broker.trading_client = object()
     config = _bayesian_live_config(target_return=0.02, profit_target=0.005)
 
-    with pytest.raises(ConfigurationError, match="target_return=0.02"):
+    with pytest.raises(ConfigurationError, match=re.escape("target_return=0.02")):
         cli._run_trading_loop(Args(), config, broker, None, None, None)
 
 

@@ -95,10 +95,10 @@ _REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _REPO_ROOT not in _sys.path:
     _sys.path.insert(0, _REPO_ROOT)
 
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
+import numpy as np
+import pandas as pd
 
-from tools.session_bars import (  # noqa: E402
+from tools.session_bars import (
     OPEN_WINDOW_END,
     SESSION_CLOSE,
     SESSION_OPEN,

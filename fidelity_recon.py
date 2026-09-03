@@ -71,6 +71,7 @@ it does and abandon the ticket yourself if anything looks wrong.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import stat
@@ -220,10 +221,8 @@ def _prepare_artifact_dir(path: Path) -> Path:
     tolerated rather than fatal.
     """
     path.mkdir(parents=True, exist_ok=True)
-    try:
+    with contextlib.suppress(OSError):
         path.chmod(stat.S_IRWXU)
-    except OSError:
-        pass
     return path
 
 
@@ -240,7 +239,7 @@ def _write_dump(capture: TrafficCapture, path: Path) -> None:
 
 def _assert_account_allowed(
     fid, requested: str
-) -> dict:  # noqa: ANN001 -- duck-typed FidelityAutomation
+) -> dict:
     """Enumerate accounts and require an EXACT match for the requested one.
 
     Uses `get_list_of_accounts`, not `getAccountInfo`: the latter
@@ -292,7 +291,7 @@ def _context_pages(context) -> list:
     double that does not implement `.pages`."""
     try:
         return list(getattr(context, "pages", []) or [])
-    except Exception:  # noqa: BLE001 -- a torn-down context is handled by the caller
+    except Exception:
         return []
 
 
@@ -347,16 +346,14 @@ def _wait_for_manual_login(context, timeout_seconds: float, poll_seconds: float 
         for page in pages:
             try:
                 current = page.url
-            except Exception:  # noqa: BLE001 -- one dead tab must not end the wait
+            except Exception:
                 continue
             if current not in reported:
                 print(f"[recon]   tab at {current}", file=sys.stderr, flush=True)
                 reported.add(current)
             if _AUTHENTICATED_PATH_MARKER in current:
-                try:
+                with contextlib.suppress(Exception):
                     page.wait_for_load_state("load")
-                except Exception:  # noqa: BLE001 -- best effort
-                    pass
                 print(
                     f"[recon] login detected on {current}", file=sys.stderr, flush=True
                 )
@@ -415,7 +412,7 @@ def run_cdp_recon(args: argparse.Namespace) -> int:
         print(f"[recon] connecting to {args.cdp_url} ...", file=sys.stderr)
         try:
             browser = playwright.chromium.connect_over_cdp(args.cdp_url)
-        except Exception as exc:  # noqa: BLE001 -- the actionable part is the advice
+        except Exception as exc:
             raise ConfigurationError(
                 f"Could not attach to a browser at {args.cdp_url}: {exc}\n"
                 "\n"
@@ -499,7 +496,7 @@ def run_cdp_recon(args: argparse.Namespace) -> int:
         # patience. Dropping the connection is all that is wanted.
         try:
             playwright.stop()
-        except Exception as exc:  # noqa: BLE001 -- teardown must not mask
+        except Exception as exc:
             print(f"[recon] playwright.stop() raised: {exc}", file=sys.stderr)
 
     _report(capture, dump_path)
@@ -596,17 +593,15 @@ def run_recon(args: argparse.Namespace, credentials: FidelityCredentials | None)
                     )
                     landed.goto(url=TRADERPLUS_URL)
                     landed.wait_for_load_state("networkidle")
-                except Exception as exc:  # noqa: BLE001 -- recon must not die here
+                except Exception as exc:
                     print(
                         f"[recon] Trader+ visit did not complete: {exc}",
                         file=sys.stderr,
                     )
                 # Give any lazily-loaded XHR/WebSocket traffic a moment
                 # to arrive; networkidle can fire before a socket opens.
-                try:
+                with contextlib.suppress(Exception):
                     landed.wait_for_timeout(args.settle_ms)
-                except Exception:  # noqa: BLE001
-                    pass
         else:
             # BEFORE login. The constructor launches the browser without
             # navigating anywhere (login() is a separate call), and Playwright
@@ -665,7 +660,7 @@ def run_recon(args: argparse.Namespace, credentials: FidelityCredentials | None)
             # (bool, str|None). Unpacked defensively so a future upstream
             # correction to the annotation does not crash this script.
             if isinstance(result, tuple):
-                succeeded, detail = (result + (None,))[:2]
+                succeeded, detail = ((*result, None))[:2]
             else:
                 succeeded, detail = bool(result), None
             print(
@@ -683,7 +678,7 @@ def run_recon(args: argparse.Namespace, credentials: FidelityCredentials | None)
             print(f"[recon] FAILED to write dump: {exc}", file=sys.stderr)
         try:
             fid.close_browser()
-        except Exception as exc:  # noqa: BLE001 -- teardown must not mask
+        except Exception as exc:
             print(f"[recon] close_browser raised: {exc}", file=sys.stderr)
 
     _report(capture, dump_path)

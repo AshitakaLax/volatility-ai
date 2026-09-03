@@ -5,6 +5,8 @@ wrong venue, so the tests are mostly about refusals.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from src.broker_selection import build_broker
@@ -59,7 +61,7 @@ def test_fidelity_is_selected_when_named():
 def test_an_unknown_venue_is_refused():
     config = _config()
     object.__setattr__(config.live, "broker", "etrade")
-    with pytest.raises(ConfigurationError, match="live.broker must be one of"):
+    with pytest.raises(ConfigurationError, match=re.escape("live.broker must be one of")):
         build_broker(config, credentials=CREDS)
 
 
@@ -80,7 +82,7 @@ def test_fidelity_without_a_session_says_credentials_are_not_enough():
 
 
 def test_fidelity_without_its_config_section_says_so():
-    with pytest.raises(ConfigurationError, match="live.fidelity section"):
+    with pytest.raises(ConfigurationError, match=re.escape("live.fidelity section")):
         build_broker(_config("fidelity"), fidelity_session=FakeSession())
 
 

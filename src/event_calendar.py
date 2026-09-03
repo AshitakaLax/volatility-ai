@@ -134,7 +134,7 @@ class EarningsEventTable:
         self._window_end = self._release + pd.Timedelta(minutes=reaction_minutes)
 
     @classmethod
-    def from_csv(cls, path: Path | str = DEFAULT_EARNINGS_CSV, **kw) -> "EarningsEventTable":
+    def from_csv(cls, path: Path | str = DEFAULT_EARNINGS_CSV, **kw) -> EarningsEventTable:
         events = pd.read_csv(path)
         events["release_utc"] = pd.to_datetime(events["release_utc"], utc=True)
         return cls(events, **kw)
@@ -198,7 +198,7 @@ class EarningsEventTable:
 
         idx_values = idx_utc.values
         for start, end, release, weight in zip(
-            self._window_start, self._window_end, self._release, self._weight
+            self._window_start, self._window_end, self._release, self._weight, strict=False
         ):
             # .to_datetime64() rather than np.datetime64(ts): the latter
             # on a tz-aware Timestamp warns and silently drops the tz --

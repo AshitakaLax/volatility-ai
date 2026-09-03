@@ -21,35 +21,15 @@ import pandas as pd
 logging.disable(logging.WARNING)
 from optimization_controller import OptimizationController
 from src.config import BacktestConfig
-from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.performance_analyzer import annual_returns
 from src.risk_manager import RiskManager
+from tools.harness import Escalating
 
 
-class Escalating(HighFrequencyLocalReferenceSizing):
-    def __init__(self, *a, max_mult=400.0, dd_ref=0.75, **kw):
-        super().__init__(*a, **kw)
-        self.max_mult, self.dd_ref = max_mult, dd_ref
-        self._price_peak = None
-
-    def record_tick(self, context):
-        super().record_tick(context)
-        if context.price > 0:
-            self._price_peak = (
-                context.price if self._price_peak is None
-                else max(self._price_peak, context.price)
-            )
-
-    def calculate_trade_value(self, context):
-        base = super().calculate_trade_value(context)
-        if not self._price_peak:
-            return base
-        dd = 1.0 - context.price / self._price_peak
-        return base if dd <= 0 else base * min(
-            self.max_mult, self.max_mult ** (dd / self.dd_ref)
-        )
-
-
+# Escalating now lives in tools/harness.py -- ONE definition. Three
+# independent copies of it lived in this directory, verified equivalent
+# but each a chance to diverge silently, which would have made two
+# probes' results look comparable while not being so.
 def main() -> int:
     """Everything below used to run at IMPORT time.
 

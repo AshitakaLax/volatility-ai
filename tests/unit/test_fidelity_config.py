@@ -14,6 +14,9 @@ Fidelity existed must keep its exact previous meaning.
 
 from __future__ import annotations
 
+import dataclasses
+import re
+
 import pytest
 
 from src.config import BacktestConfig, FidelityConfig
@@ -61,7 +64,7 @@ def test_an_existing_alpaca_config_is_unchanged():
 
 
 def test_an_alpaca_config_still_rejects_an_unknown_feed():
-    with pytest.raises(ConfigurationError, match="live.feed"):
+    with pytest.raises(ConfigurationError, match=re.escape("live.feed")):
         _build({"feed": "nonsense"})
 
 
@@ -80,7 +83,7 @@ def test_a_fidelity_config_is_not_held_to_the_alpaca_feed_whitelist():
 
 
 def test_an_unknown_broker_is_rejected():
-    with pytest.raises(ConfigurationError, match="live.broker"):
+    with pytest.raises(ConfigurationError, match=re.escape("live.broker")):
         _build({"broker": "schwab"})
 
 
@@ -90,7 +93,7 @@ def test_an_unknown_broker_is_rejected():
 def test_fidelity_broker_requires_a_fidelity_section():
     """There is no safe default for which brokerage account real orders
     go to."""
-    with pytest.raises(ConfigurationError, match="requires a live.fidelity"):
+    with pytest.raises(ConfigurationError, match=re.escape("requires a live.fidelity")):
         _build({"broker": "fidelity"})
 
 
@@ -248,8 +251,14 @@ def test_allowed_accounts_is_a_tuple_so_the_config_stays_hashable():
 
 
 def test_the_fidelity_config_is_frozen():
+    """FrozenInstanceError specifically.
+
+    A bare `pytest.raises(Exception)` passed for an AttributeError or a
+    TypeError too, so it never actually asserted frozenness -- it would
+    have stayed green if the field had simply been renamed.
+    """
     fidelity = FidelityConfig(allowed_accounts=("Z1",))
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         fidelity.account = "Z2"
 
 
