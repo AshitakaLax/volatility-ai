@@ -49,13 +49,16 @@ _REPO_ROOT = Path(__file__).resolve().parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import altair as alt  # noqa: E402
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from src.dashboard_data import (  # noqa: E402
     DashboardError,
+    find_bar_files,
     find_stores,
     load_activity,
+    load_bars,
     load_order_journal,
     load_state,
 )
@@ -87,22 +90,35 @@ def render_header(state) -> None:
     else:
         st.success("Circuit breaker ACTIVE — trading normally.", icon="✅")
 
-    age = state.last_write_age
-    if age is None:
-        freshness = "write time unknown"
-    elif age < 120:
-        freshness = f"last write {age:.0f}s ago"
+    tick_age = state.tick_age()
+    if tick_age is not None:
+        # The loop's own tick, which moves only when it SAW a price --
+        # so this separates "running, market closed" from "not running",
+        # which the file-mtime proxy below could never do.
+        freshness = (
+            f"last tick {tick_age:.0f}s ago at ${state.last_price:,.4f}"
+            if tick_age < 120
+            else f"**last tick {tick_age / 60:.0f} min ago** at ${state.last_price:,.4f}"
+        )
+        age = tick_age
     else:
-        freshness = f"**last write {age / 60:.0f} min ago**"
+        age = state.last_write_age
+        if age is None:
+            freshness = "no tick recorded yet"
+        elif age < 120:
+            freshness = f"last write {age:.0f}s ago (no tick recorded)"
+        else:
+            freshness = f"**last write {age / 60:.0f} min ago** (no tick recorded)"
     st.caption(
         f"`{state.path}` · revision {state.revision:,} · {freshness} · persisted "
         "state, so up to one poll interval behind the running loop."
     )
     if age is not None and age > 900:
         st.warning(
-            f"Nothing has been written for {age / 60:.0f} minutes. The loop writes "
-            "through on every tick, so this means it has stopped, is wedged, or "
-            "the market is closed — the store cannot tell those apart.",
+            f"No tick for {age / 60:.0f} minutes. Outside market hours that is "
+            "expected — the loop ticks but skips, and only records a tick when it "
+            "actually sees a price. During the session it means the loop has "
+            "stopped or is wedged.",
             icon="⏱️",
         )
 
@@ -276,6 +292,99 @@ def render_closed(state) -> None:
     )
 
 
+def render_chart(state, bar_path: str | None, mark: float | None) -> None:
+    """Price, with every lot's exit drawn on it.
+
+    THE POINT OF THIS CHART is not the price line -- it is the grid.
+    A lot table gives a distance per row and leaves the reader to build
+    the picture; drawn against price, the whole book's structure is one
+    glance: where the exits cluster, how far the nearest one is, and
+    whether a move would release one lot or twenty.
+    """
+    if not bar_path:
+        st.info(
+            "No minute-bar file found in `data/`. The chart reads recorded bars "
+            "from disk rather than fetching them, so this page needs no "
+            "credentials and makes no network calls."
+        )
+        return
+    try:
+        bars = load_bars(bar_path)
+    except DashboardError as exc:
+        st.warning(str(exc))
+        return
+    if bars.empty:
+        st.info("That bar file is empty.")
+        return
+
+    st.subheader("Price and the lot grid")
+    latest = bars["timestamp"].iloc[-1]
+    st.caption(
+        f"`{Path(bar_path).name}` · {len(bars)} bars to {latest:%Y-%m-%d %H:%M} UTC. "
+        "**Recorded history, not a quote** -- the live mark comes from the loop's "
+        "own last tick, shown above."
+    )
+
+    price = (
+        alt.Chart(bars)
+        .mark_line(strokeWidth=1.4)
+        .encode(
+            x=alt.X("timestamp:T", title=None),
+            y=alt.Y(
+                "close:Q",
+                title="price",
+                scale=alt.Scale(zero=False),  # a grid is basis points wide
+            ),
+            tooltip=[
+                alt.Tooltip("timestamp:T", title="time"),
+                alt.Tooltip("close:Q", title="close", format="$.4f"),
+            ],
+        )
+    )
+    layers = [price]
+
+    if state.lots:
+        ready = {lot.order_id for lot in state.marketable(mark)}
+        targets = pd.DataFrame(
+            {
+                "target": [lot.target_sell_price for lot in state.lots],
+                "status": ["ready" if lot.order_id in ready else "waiting" for lot in state.lots],
+                "shares": [lot.shares for lot in state.lots],
+            }
+        )
+        layers.append(
+            alt.Chart(targets)
+            .mark_rule(strokeDash=[4, 3], strokeWidth=1)
+            .encode(
+                y="target:Q",
+                color=alt.Color(
+                    "status:N",
+                    scale=alt.Scale(domain=["ready", "waiting"], range=["#2ca02c", "#888888"]),
+                    legend=alt.Legend(title="lot exit"),
+                ),
+                tooltip=[
+                    alt.Tooltip("target:Q", title="exit at", format="$.4f"),
+                    alt.Tooltip("shares:Q", title="shares"),
+                    alt.Tooltip("status:N", title="status"),
+                ],
+            )
+        )
+
+    if mark:
+        layers.append(
+            alt.Chart(pd.DataFrame({"mark": [mark]}))
+            .mark_rule(strokeWidth=2, color="#d62728")
+            .encode(y="mark:Q", tooltip=[alt.Tooltip("mark:Q", format="$.4f")])
+        )
+
+    st.altair_chart(alt.layer(*layers).interactive(), width="stretch")
+    if state.lots and mark:
+        st.caption(
+            "Dashed lines are lot exits — green where price has already reached "
+            "them. The solid red line is the live mark."
+        )
+
+
 def render_activity(db_path: str) -> None:
     st.subheader("Activity")
     st.caption(
@@ -315,13 +424,24 @@ def main() -> None:
             if options
             else st.text_input("Ledger store path", value="")
         )
+        st.divider()
+        st.header("Mark")
         price = st.number_input(
-            "Mark price",
+            "Override the mark",
             min_value=0.0,
             value=0.0,
             step=0.01,
-            help="Used only to mark open lots to market and compute distance to "
-            "target. Nothing is fetched: this view makes no network calls.",
+            help="0 uses the loop's OWN last tick price, which the store now "
+            "records. Set a value here only to ask what-if. Nothing is "
+            "fetched either way: this view makes no network calls.",
+        )
+        st.divider()
+        st.header("Chart")
+        bar_files = find_bar_files("TQQQ")
+        bar_path = (
+            st.selectbox("Minute bars", bar_files, format_func=lambda p: Path(p).name)
+            if bar_files
+            else None
         )
         st.divider()
         st.caption(
@@ -340,11 +460,16 @@ def main() -> None:
         st.error(str(exc))
         return
 
-    mark = price if price > 0 else None
+    # The loop's own last tick is the default mark. Before it existed the
+    # page opened with equity blank and every lot at an unknown distance
+    # until someone typed a number -- for a figure the store already had.
+    mark = price if price > 0 else state.last_price
     render_header(state)
     render_cash(state, mark)
     st.divider()
     render_lots(state, mark)
+    st.divider()
+    render_chart(state, bar_path, mark)
     st.divider()
     render_ladder(state, mark)
     st.divider()

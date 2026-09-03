@@ -22,8 +22,10 @@ from src.dashboard_data import (
     DashboardError,
     DeploymentState,
     Lot,
+    find_bar_files,
     find_stores,
     load_activity,
+    load_bars,
     load_order_journal,
     load_state,
 )
@@ -484,17 +486,26 @@ def test_the_write_age_is_reported_as_a_proxy_for_liveness(store, tmp_path):
     assert 0.0 <= state.last_write_age < 60.0
 
 
-def test_a_stale_store_warns_that_it_cannot_tell_why(demo_db, monkeypatch):
-    """Stopped, wedged, and market-closed look identical from here, and
-    the UI says so rather than implying a heartbeat."""
+def test_a_stale_store_warns_when_no_tick_was_ever_recorded(demo_db, monkeypatch):
+    """The file-mtime fallback, which now applies ONLY when the loop has
+    recorded no tick of its own.
+
+    This previously asserted that stopped, wedged and market-closed were
+    indistinguishable -- true when mtime was the only signal available.
+    Persisting the loop's own tick made that obsolete: a tick moves only
+    when a price was actually seen, so an old tick during the session
+    means stopped, and an old tick outside it means closed. The old
+    wording is gone because the limitation is.
+    """
     import os
     import time
 
-    old = time.time() - 3600
-    os.utime(demo_db, (old, old))
+    stale = time.time() - 3600
+    os.utime(demo_db, (stale, stale))
     at = _app(demo_db, monkeypatch=monkeypatch)
     assert at.exception == []
-    assert any("has stopped, is wedged, or" in w.value for w in at.warning)
+    assert any("no tick recorded" in c.value for c in at.caption)
+    assert any("No tick for" in w.value for w in at.warning)
 
 
 def test_a_fresh_store_does_not_warn_about_staleness(demo_db, monkeypatch):
@@ -509,3 +520,143 @@ def test_the_new_sections_all_render(demo_db, monkeypatch):
     assert "If price moves" in headings
     labels = {m.label for m in at.metric}
     assert {"Peak equity", "Drawdown from peak", "Unrealized on open lots"} <= labels
+
+
+# ======================================================================
+# The loop's own mark, and the chart
+# ======================================================================
+
+
+def _tick(price=69.14, ago_seconds=0.0):
+    import datetime as dt
+
+    at = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=ago_seconds)
+    return json.dumps({"price": price, "at": at.isoformat(), "symbol": "TQQQ"})
+
+
+def test_the_loops_own_tick_price_is_read_back(store, tmp_path):
+    """The loop knew the price every tick and discarded it, leaving every
+    reader with no mark to value the book at."""
+    from src.live_trading_loop import _META_LAST_TICK
+
+    store.set_meta(_META_CASH, "1000.0")
+    store.set_meta(_META_LAST_TICK, _tick(69.14))
+    state = load_state(str(tmp_path / "live.db"))
+    assert state.last_price == pytest.approx(69.14)
+    assert state.tick_age() is not None and state.tick_age() < 60
+
+
+def test_tick_age_separates_a_stopped_loop_from_a_closed_market(store, tmp_path):
+    """last_write_age moves on ANY write; this moves only when the loop
+    actually saw a price. That is the distinction the file-mtime proxy
+    could never make."""
+    from src.live_trading_loop import _META_LAST_TICK
+
+    store.set_meta(_META_LAST_TICK, _tick(69.14, ago_seconds=3600))
+    state = load_state(str(tmp_path / "live.db"))
+    assert state.tick_age() > 3500
+    assert state.last_write_age < 60, "the file was just written; the TICK is old"
+
+
+def test_an_unreadable_tick_is_no_mark_rather_than_zero(store, tmp_path):
+    """A zero would render every lot as infinitely far from its target
+    and equity as cash alone -- a wrong number that looks like data."""
+    from src.live_trading_loop import _META_LAST_TICK
+
+    store.set_meta(_META_CASH, "1000.0")
+    store.set_meta(_META_LAST_TICK, "{ not json")
+    state = load_state(str(tmp_path / "live.db"))
+    assert state.last_price is None
+    assert state.tick_age() is None
+
+
+def test_bar_files_are_found_and_tailed(tmp_path):
+    """The tail, not the whole file: these are 60 MB and a million rows,
+    and a dashboard that takes seconds to redraw stops being looked at."""
+    import pandas as pd
+
+    folder = tmp_path / "data"
+    folder.mkdir()
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-01-01", periods=2000, freq="1min", tz="UTC"),
+            "close": range(2000),
+        }
+    )
+    frame.to_csv(folder / "TQQQ_1Min_x.csv", index=False)
+
+    found = find_bar_files("TQQQ", root=str(folder))
+    assert len(found) == 1
+    bars = load_bars(found[0], limit=780)
+    assert len(bars) == 780
+    assert bars["close"].iloc[-1] == 1999, "the TAIL, so the newest bars"
+
+
+def test_a_file_that_is_not_bars_is_refused(tmp_path):
+    path = tmp_path / "nope.csv"
+    path.write_text("a,b\n1,2\n", encoding="utf-8")
+    with pytest.raises(DashboardError, match="not a minute-bar file"):
+        load_bars(str(path))
+
+
+def test_missing_bar_files_are_an_empty_list_not_an_error(tmp_path):
+    assert find_bar_files("TQQQ", root=str(tmp_path / "absent")) == []
+
+
+# --- the rendered page ---
+
+
+@pytest.fixture
+def demo_with_tick(tmp_path):
+    import pandas as pd
+
+    from src.live_trading_loop import _META_LAST_TICK, _META_PEAK_EQUITY
+
+    path = tmp_path / "demo.db"
+    s = LedgerStore(str(path))
+    ledger = AssetLotLedger()
+    for i, price in enumerate([68.40, 65.80, 61.90]):
+        s.record_open_lot(ledger.register_buy(f"o{i}", "TQQQ", price, 12.0, 0.04))
+    s.set_meta(_META_CASH, "48210.55")
+    s.set_meta(_META_PEAK_EQUITY, "52000.00")
+    s.set_meta(HALT_STATE_KEY, "ACTIVE")
+    s.set_meta(_META_LAST_TICK, _tick(69.14))
+    s.close()
+
+    folder = tmp_path / "data"
+    folder.mkdir()
+    pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-08-21", periods=900, freq="1min", tz="UTC"),
+            "close": [69.0 + (i % 20) * 0.01 for i in range(900)],
+        }
+    ).to_csv(folder / "TQQQ_1Min_demo.csv", index=False)
+    return str(path)
+
+
+def test_equity_populates_with_no_manual_price(demo_with_tick, monkeypatch):
+    """THE POINT OF PERSISTING THE TICK. The page previously opened with
+    equity blank and every lot at an unknown distance until someone
+    typed a number the store already had."""
+    at = _app(demo_with_tick, monkeypatch=monkeypatch)
+    assert at.exception == []
+    equity = next(m for m in at.metric if m.label == "Equity")
+    assert equity.value != "--"
+    assert equity.value != next(m for m in at.metric if m.label == "Total cash").value
+
+
+def test_the_chart_renders(demo_with_tick, monkeypatch):
+    at = _app(demo_with_tick, monkeypatch=monkeypatch)
+    assert at.exception == []
+    assert "Price and the lot grid" in [s.value for s in at.subheader]
+
+
+def test_the_chart_says_it_is_history_not_a_quote(demo_with_tick, monkeypatch):
+    """A stale close must not read as a live price."""
+    at = _app(demo_with_tick, monkeypatch=monkeypatch)
+    assert any("not a quote" in c.value for c in at.caption)
+
+
+def test_the_header_reports_the_tick_not_the_file_write(demo_with_tick, monkeypatch):
+    at = _app(demo_with_tick, monkeypatch=monkeypatch)
+    assert any("last tick" in c.value for c in at.caption)
