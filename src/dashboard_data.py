@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -98,6 +99,8 @@ class DeploymentState:
     lots: list[Lot] = field(default_factory=list)
     revision: int = 0
     pending_settlement: list[tuple[int, float]] = field(default_factory=list)
+    closed_lots: list[Lot] = field(default_factory=list)
+    last_write_age: float | None = None
     exists: bool = True
 
     @property
@@ -140,6 +143,53 @@ class DeploymentState:
         value = self.market_value(price)
         return None if value is None else self.cash + value
 
+    def drawdown(self, price: float | None) -> float | None:
+        """Current equity against the persisted high-water mark.
+
+        THE number the circuit breaker acts on, and it was loaded and
+        then never shown. An operator watching a deployment wants to
+        know how close it is to halting, not to discover it halted.
+        """
+        equity = self.equity(price)
+        if equity is None or not self.peak_equity:
+            return None
+        return max(0.0, (self.peak_equity - equity) / self.peak_equity)
+
+    def unrealized(self, price: float | None) -> float | None:
+        """Mark-to-market gain on open lots. None without a price."""
+        value = self.market_value(price)
+        return None if value is None else value - self.cost_basis
+
+    def ladder(self, price: float | None, moves=(0.0, 0.01, 0.02, 0.05, 0.10)) -> list[dict]:
+        """How many lots become sellable at each of several price moves.
+
+        The operational question for a grid book is not "what is it worth
+        now" but "what does a 2% rally actually release". That is
+        answerable from the targets already on file and was not being
+        asked -- the table showed a per-lot distance and left the reader
+        to aggregate it in their head.
+
+        Proceeds are computed at each lot's TARGET, not at the probe
+        price: a resting limit sell fills at its limit, so the target is
+        what the lot actually returns.
+        """
+        if price is None or price <= 0:
+            return []
+        rows = []
+        for move in moves:
+            probe = price * (1.0 + move)
+            ready = [lot for lot in self.lots if probe >= lot.target_sell_price]
+            rows.append(
+                {
+                    "move": move,
+                    "price": probe,
+                    "lots": len(ready),
+                    "shares": sum(lot.shares for lot in ready),
+                    "proceeds": sum(lot.shares * lot.target_sell_price for lot in ready),
+                }
+            )
+        return rows
+
     def marketable(self, price: float | None) -> list[Lot]:
         """Lots whose target price the market has already reached.
 
@@ -173,6 +223,25 @@ def _connect(db_path: str) -> sqlite3.Connection:
         raise DashboardError(f"Could not open {resolved} read-only: {exc}") from exc
 
 
+def _write_age(db_path: str) -> float | None:
+    """Seconds since the store was last written, or None if unknowable.
+
+    A PROXY for loop liveness, and the only one available: neither
+    ledger_lots nor revisions carries a timestamp, so there is no
+    in-band way to ask "is the loop still running". The file's mtime
+    answers it well enough -- the loop writes through on every tick, so
+    a store untouched for many poll intervals means the process is gone,
+    wedged, or the market is closed.
+
+    Stated as a proxy in the UI rather than presented as a heartbeat,
+    because it cannot distinguish those three.
+    """
+    try:
+        return max(0.0, time.time() - Path(db_path).stat().st_mtime)
+    except OSError:
+        return None
+
+
 def _meta(conn: sqlite3.Connection, key: str) -> str | None:
     row = conn.execute("SELECT value FROM ledger_meta WHERE key = ?", (key,)).fetchone()
     return row[0] if row else None
@@ -197,10 +266,15 @@ def load_state(db_path: str) -> DeploymentState:
     conn = _connect(db_path)
     try:
         try:
+            columns = "order_id, symbol, buy_price, shares, profit_target, target_sell_price"
             lot_rows = conn.execute(
-                "SELECT order_id, symbol, buy_price, shares, profit_target, "
-                "target_sell_price FROM ledger_lots WHERE status = 'open' "
-                "ORDER BY buy_price DESC"
+                f"SELECT {columns} FROM ledger_lots WHERE status = 'open' ORDER BY buy_price DESC"
+            ).fetchall()
+            # Closed lots are RETAINED in this table and were never read
+            # back. They are the deployment's entire trading history.
+            closed_rows = conn.execute(
+                f"SELECT {columns} FROM ledger_lots WHERE status = 'closed' "
+                "ORDER BY revision DESC LIMIT 500"
             ).fetchall()
             revision = conn.execute("SELECT COALESCE(MAX(revision), 0) FROM revisions").fetchone()[
                 0
@@ -238,6 +312,8 @@ def load_state(db_path: str) -> DeploymentState:
             halted=bool(halt_state) and str(halt_state).upper() != "ACTIVE",
             halt_reason=halt_reason,
             lots=[Lot(*row) for row in lot_rows],
+            closed_lots=[Lot(*row) for row in closed_rows],
+            last_write_age=_write_age(db_path),
             revision=int(revision or 0),
             pending_settlement=pending,
         )

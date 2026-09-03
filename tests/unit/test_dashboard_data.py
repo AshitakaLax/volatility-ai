@@ -364,3 +364,148 @@ def test_a_halt_is_shown_as_an_error_not_a_footnote(tmp_path, monkeypatch):
     assert any("HALTED" in e.value for e in at.error)
     assert any("reconciliation mismatch" in e.value for e in at.error)
     assert at.success == [], "a halted deployment must not also report ACTIVE"
+
+
+# ======================================================================
+# What the store held and the display was ignoring
+# ======================================================================
+
+
+def test_drawdown_uses_the_persisted_high_water_mark(store, tmp_path):
+    """peak_equity was loaded and never displayed, so a deployment
+    approaching its halt threshold looked exactly like one that was
+    not -- and drawdown is the thing the circuit breaker acts on."""
+    from src.live_trading_loop import _META_PEAK_EQUITY
+
+    _with_lots(store, n=2)  # 20 shares at 100 and 99
+    store.set_meta(_META_CASH, "1000.00")
+    store.set_meta(_META_PEAK_EQUITY, "5000.00")
+    state = load_state(str(tmp_path / "live.db"))
+    # equity at 100 = 1000 cash + 20 shares * 100 = 3000
+    assert state.equity(100.0) == pytest.approx(3000.0)
+    assert state.drawdown(100.0) == pytest.approx(0.4)
+
+
+def test_drawdown_is_none_without_a_peak_or_a_price():
+    assert DeploymentState(path="x", cash=1.0).drawdown(10.0) is None
+    assert DeploymentState(path="x", cash=1.0, peak_equity=5.0).drawdown(None) == 0.8
+
+
+def test_drawdown_floors_at_zero_above_the_old_peak():
+    """A new high is not a negative drawdown."""
+    state = DeploymentState(path="x", cash=200.0, peak_equity=100.0)
+    assert state.drawdown(None) == 0.0
+
+
+def test_unrealized_is_market_value_less_cost_basis():
+    state = DeploymentState(path="x", cash=0.0, lots=[Lot("a", "T", 50.0, 10.0, 0.04, 52.0)])
+    assert state.unrealized(60.0) == pytest.approx(100.0)
+    assert state.unrealized(40.0) == pytest.approx(-100.0)
+    assert state.unrealized(None) is None
+
+
+def test_closed_lots_are_surfaced(store, tmp_path):
+    """They are retained in ledger_lots and nothing had ever read them
+    back -- the deployment's whole trading history was invisible."""
+    ledger = AssetLotLedger()
+    lots = [ledger.register_buy(f"c{i}", "TQQQ", 100.0 - i, 10.0, 0.04) for i in range(4)]
+    for lot in lots:
+        store.record_open_lot(lot)
+    for lot in lots[:3]:
+        ledger.close_lot(lot)
+        store.sync_lot(ledger, lot)
+
+    state = load_state(str(tmp_path / "live.db"))
+    assert len(state.lots) == 1
+    assert len(state.closed_lots) == 3
+    assert {lot.order_id for lot in state.closed_lots} == {"c0", "c1", "c2"}
+
+
+def test_realized_pnl_is_deliberately_not_offered():
+    """It is NOT derivable and must not be faked.
+
+    record_lot_shares writes shares, status and revision -- never the
+    execution price -- so the store genuinely cannot say what a closed
+    lot sold for. Anything labelled 'realized P&L' here would be the
+    target price wearing a different name, which is a floor for
+    profit-target exits and meaningless for signal exits.
+    """
+    assert not hasattr(DeploymentState, "realized_pnl")
+    assert not hasattr(DeploymentState, "realized")
+
+
+# --- the price ladder ---
+
+
+def _laddered():
+    return DeploymentState(
+        path="x",
+        cash=0.0,
+        lots=[
+            Lot("a", "T", 100.0, 10.0, 0.04, 104.0),
+            Lot("b", "T", 90.0, 10.0, 0.04, 93.6),
+            Lot("c", "T", 80.0, 10.0, 0.04, 83.2),
+        ],
+    )
+
+
+def test_the_ladder_counts_lots_released_by_each_move():
+    rows = _laddered().ladder(95.0, moves=(0.0, 0.10))
+    assert rows[0]["lots"] == 2, "at 95 the 83.2 and 93.6 targets are already passed"
+    assert rows[1]["lots"] == 3, "a 10% move to 104.5 releases the last one"
+
+
+def test_ladder_proceeds_use_the_lots_target_not_the_probe_price():
+    """A resting limit sell fills AT ITS LIMIT. Valuing the release at
+    the probe price would overstate proceeds on every lot whose target
+    the move has passed."""
+    rows = _laddered().ladder(200.0, moves=(0.0,))
+    assert rows[0]["lots"] == 3
+    expected = 10.0 * (104.0 + 93.6 + 83.2)
+    assert rows[0]["proceeds"] == pytest.approx(expected)
+    assert rows[0]["proceeds"] < 3 * 10.0 * 200.0
+
+
+def test_the_ladder_is_empty_without_a_price():
+    assert _laddered().ladder(None) == []
+    assert _laddered().ladder(0.0) == []
+
+
+# --- loop liveness ---
+
+
+def test_the_write_age_is_reported_as_a_proxy_for_liveness(store, tmp_path):
+    """Neither ledger_lots nor revisions carries a timestamp, so there
+    is no in-band way to ask whether the loop is still running. The
+    file's mtime is the only available answer."""
+    _with_lots(store, n=1)
+    state = load_state(str(tmp_path / "live.db"))
+    assert state.last_write_age is not None
+    assert 0.0 <= state.last_write_age < 60.0
+
+
+def test_a_stale_store_warns_that_it_cannot_tell_why(demo_db, monkeypatch):
+    """Stopped, wedged, and market-closed look identical from here, and
+    the UI says so rather than implying a heartbeat."""
+    import os
+    import time
+
+    old = time.time() - 3600
+    os.utime(demo_db, (old, old))
+    at = _app(demo_db, monkeypatch=monkeypatch)
+    assert at.exception == []
+    assert any("has stopped, is wedged, or" in w.value for w in at.warning)
+
+
+def test_a_fresh_store_does_not_warn_about_staleness(demo_db, monkeypatch):
+    at = _app(demo_db, monkeypatch=monkeypatch)
+    assert not any("wedged" in w.value for w in at.warning)
+
+
+def test_the_new_sections_all_render(demo_db, monkeypatch):
+    at = _app(demo_db, price=69.0, monkeypatch=monkeypatch)
+    assert at.exception == []
+    headings = [s.value for s in at.subheader]
+    assert "If price moves" in headings
+    labels = {m.label for m in at.metric}
+    assert {"Peak equity", "Drawdown from peak", "Unrealized on open lots"} <= labels
