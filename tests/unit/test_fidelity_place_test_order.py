@@ -19,7 +19,7 @@ from src.fidelity_placing_broker import FileConfNumJournal
 from src.fidelity_session import PLACE_ENDPOINTS
 
 PREVIEW = "/ftgw/digital/trade-equity/previewSrvc"
-ACCOUNT = "231930409"
+ACCOUNT = "999888777"
 
 
 def _args(**kw):
