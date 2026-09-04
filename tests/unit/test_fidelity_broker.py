@@ -23,6 +23,7 @@ import pytest
 from src import fidelity_broker
 from src.exceptions import ConfigurationError, ExecutionError
 from src.fidelity_broker import (
+    PENDING_PATH,
     PREVIEW_PATH,
     FidelityBroker,
     FidelityOrder,
@@ -620,3 +621,63 @@ def test_each_read_endpoint_is_sent_the_body_fidelity_actually_expects(method, p
     getattr(_broker(session), method)()
     sent = next(p for called, p in session.calls if called == path)
     assert check(sent), f"{path} was sent {sent!r}"
+
+
+# --- the pending-orders filter ----------------------------------------
+#
+# Every field below is REQUIRED by the venue, and each was learned by
+# being refused. The first live readback sent only acctNum and got:
+#
+#   400 "filter.accounts.0.acctType should not be empty"
+#
+# then, once acctType was added:
+#
+#   400 "filter.accounts.0.acctName should not be empty"
+#
+# That happened AFTER the order it was reading back had been placed
+# successfully, which is the worst moment to discover a payload is
+# incomplete -- the money had moved and the tool could not see it.
+
+
+def _account_filter(session):
+    """The account entry actually sent to transactions/pending."""
+    path, payload = next((p, q) for p, q in session.calls if p.endswith("transactions/pending"))
+    assert path
+    return payload["filter"]["accounts"][0]
+
+
+def test_the_pending_filter_carries_every_field_the_venue_demands():
+    session = FakeSession({PENDING_PATH: _pending([])})
+    FidelityBroker(session, ACCOUNT, (ACCOUNT,), account_name="Traditional IRA")._orders()
+    entry = _account_filter(session)
+    assert entry == {
+        "acctNum": ACCOUNT,
+        "acctType": "Brokerage",
+        "acctSubType": "Brokerage",
+        "acctName": "Traditional IRA",
+    }
+
+
+def test_the_account_type_describes_the_account_and_is_not_a_constant():
+    """A different account type sends something else, so these are
+    constructor arguments rather than module constants."""
+    session = FakeSession({PENDING_PATH: _pending([])})
+    FidelityBroker(
+        session,
+        ACCOUNT,
+        (ACCOUNT,),
+        account_name="Some Cash Account",
+        account_type="Cash",
+        account_sub_type="CashManagement",
+    )._orders()
+    entry = _account_filter(session)
+    assert entry["acctType"] == "Cash"
+    assert entry["acctSubType"] == "CashManagement"
+
+
+def test_a_bare_account_number_is_not_what_this_endpoint_takes():
+    """Pins the shape against a well-meaning simplification back to
+    {"acctNum": ...}, which reads cleaner and is rejected."""
+    session = FakeSession({PENDING_PATH: _pending([])})
+    FidelityBroker(session, ACCOUNT, (ACCOUNT,), account_name="Traditional IRA")._orders()
+    assert set(_account_filter(session)) > {"acctNum"}

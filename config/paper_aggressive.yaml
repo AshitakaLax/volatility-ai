@@ -1,0 +1,121 @@
+# Paper trading, aggressive: the champion high-frequency configuration
+# against Alpaca's PAPER endpoint.
+#
+# Derived from config/best_known_2026-08-24.yaml, which is the parameter
+# set this project's sweeps actually selected, plus the `live:` section
+# that file lacks. Every strategy_param below is copied unchanged from
+# it -- this is the champion running live, not a new configuration.
+#
+# HOW THIS DIFFERS FROM config/staging.yaml, which it replaces for
+# paper trading:
+#
+#   staging  fixed / allocation_pct 0.05  -- 5% of equity per lot, a
+#            placeholder that was never the outcome of a sweep.
+#   here     hf_local_reference           -- 0.02% per lot, up to 6,000
+#            concurrent lots, a 0.075% grid step, and the multiplier
+#            stack (volatility, time of day, volume, event days).
+#
+# It is "more aggressive" in the sense that matters: it deploys far more
+# of the account across far more positions and trades roughly 2,000
+# times a year, where the placeholder traded rarely and in large blocks.
+#
+# THE 30% PROFIT TARGET IS NOT A TYPO. Paired with a 0.075% step and
+# 0.02% lots, this book accumulates many tiny positions and holds each
+# for a large move rather than scalping. That is what produced the
+# champion's measured return, and changing it here would mean running
+# something other than the configuration that was validated.
+#
+# paper_trading: true routes to a PAPER-mode OMS against Alpaca's paper
+# endpoint. Flipping it is not sufficient to trade real money -- Task
+# 7.7's promotion evidence is required as well.
+
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    # Raised from 0.0002 so one lot buys at least one WHOLE share.
+    # Extended-hours orders cannot be fractional, and at 0.0002 a lot
+    # was $54.78 against a $71.88 TQQQ share -- every pre-market and
+    # after-hours buy would have been refused.
+    #
+    # 0.0003 gives $82.17, about 14% of headroom above the current
+    # price. That headroom is the real constraint and it is NOT
+    # generous on a 3x ETF: if TQQQ trades above $82 this needs raising
+    # again, or extended-hours buys start failing. The lot size is a
+    # fixed dollar amount captured once at startup while the share
+    # price moves freely, so the two drift apart by construction.
+    per_lot_pct: 0.0003
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+
+grid:
+  steps: [0.00075]
+  profit_targets: [0.3]
+
+backtest:
+  symbol: TQQQ
+  initial_cash: 100000.0
+
+costs:
+  # The live path does NOT apply this to buy fills -- a real fill price
+  # already contains the real slippage, and modelling it again would
+  # double-count. It still runs on the sell side through the no-loss
+  # guard, where modelled costs only ever make the guard stricter.
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  enforce_no_loss: true
+  # Both default-off features stay off. Signal exits are the only path
+  # that can realise a loss and no strategy here implements the hook;
+  # settlement_days is 0 because an Alpaca margin-enabled paper account
+  # is not the cash IRA that constraint models.
+  allow_signal_exit: false
+  settlement_days: 0
+
+output:
+  return_full_results: false
+
+live:
+  enabled: true
+  paper_trading: true
+  # The SINGLE pair the loop trades, taken from grid above rather than
+  # left to sweep ordering.
+  step: 0.00075
+  profit_target: 0.3
+  # iex is free; sip is the full consolidated tape and needs a paid
+  # subscription. The sweeps that chose these parameters ran on sip
+  # minute data, so iex here IS a backtest/live mismatch -- stated
+  # rather than hidden, because it affects how many triggers fire.
+  feed: iex
+  # Pre-market 04:00-09:30 and after-hours 16:00-20:00 ET. Turning this
+  # on changes the SHAPE of every buy -- share-sized limit at the target
+  # price instead of notional market -- because Alpaca executes neither
+  # market nor notional orders outside regular hours.
+  #
+  # No backtest here has measured an extended-hours session: every
+  # recorded result came from regular-hours bars, and those books are
+  # thinner with wider spreads.
+  extended_hours: true
+  poll_interval_seconds: 60.0
+  # A 0.075% step on a 6,000-lot book can make many lots marketable at
+  # once. This bounds one tick's submissions so a large harvest cannot
+  # overrun the poll interval; the remainder is picked up next tick.
+  max_sells_per_tick: 25

@@ -78,6 +78,13 @@ logger = logging.getLogger("Optimizer")
 PLACE_PATH = "/ftgw/digital/trade-equity/placeOrder"
 assert PLACE_PATH in PLACE_ENDPOINTS, "the transport must know this is a place endpoint"
 
+# Cancelling is a two-step round-trip of the same shape as placing --
+# preview the cancellation, then commit it -- and both steps take the
+# identical envelope. Transcribed from captured requests, not designed.
+CANCEL_PREVIEW_PATH = "/ftgw/digital/trade-equity/cancelPreviewOrder"
+CANCEL_PLACE_PATH = "/ftgw/digital/trade-equity/cancelPlaceOrder"
+assert CANCEL_PLACE_PATH in PLACE_ENDPOINTS, "cancelling must sit behind the order gate"
+
 
 class ConfNumJournal(Protocol):
     """Durable record of a confNum, written before the order is committed."""
@@ -281,19 +288,75 @@ class FidelityPlacingBroker(FidelityBroker):
             raw={"placed": True},
         )
 
+    def cancel(self, conf_num: str) -> dict:
+        """Cancel a working order by confNum. Two steps, like placing.
+
+        NO SYMBOL OR VALUE GATE, deliberately, and the asymmetry is the
+        point. The allowlists exist to stop this deployment ENTERING
+        positions it was not configured for; a cancellation only ever
+        reduces exposure. Refusing to cancel an order because its symbol
+        drifted out of a config file would strand a live order in the
+        market to satisfy a check that was never about that -- the same
+        reasoning that keeps max_order_value on buys only.
+
+        The account IS re-checked: cancelling is still an instruction
+        aimed at one account, and aiming it at the wrong one is exactly
+        what the allowlist is for.
+
+        Not idempotent, because the venue's answer to "cancel an order
+        that is already gone" is information rather than an error to
+        swallow. Callers get the response and decide.
+        """
+        conf_num = str(conf_num).strip()
+        if not conf_num:
+            raise ValueError("conf_num is required to cancel an order")
+        account = self._check_account(self._account)
+        envelope = {"cancelOrderDetails": {"acctNum": account, "confNum": conf_num}}
+
+        logger.warning("CANCELLING order %s on account ...%s", conf_num, account[-4:])
+        # Step 1 discards nothing if it fails -- a cancel preview is as
+        # inert as an order preview, so this half needs no recovery path.
+        self._session.post_json(CANCEL_PREVIEW_PATH, envelope)
+        try:
+            response = self._session.post_json(CANCEL_PLACE_PATH, envelope)
+        except ConfigurationError:
+            raise
+        except Exception as exc:
+            # Ambiguous in the same way a place is, and MORE tolerable:
+            # the unknown outcome of a failed cancel is that the order is
+            # still working, which is the state it was already in.
+            raise AmbiguousSubmissionError(
+                f"cancelPlaceOrder did not return cleanly for {conf_num}. The order "
+                f"may still be WORKING. Do not assume it is gone -- query "
+                f"transactions/pending for {conf_num}."
+            ) from exc
+        self._assert_echoed_account(response, account)
+        logger.warning("CANCEL ACCEPTED for order %s", conf_num)
+        return response if isinstance(response, dict) else {"response": response}
+
     # -- the LiveBroker surface, now actually submitting ----------------
 
     def submit_buy(
-        self, symbol: str, trade_value: float, client_order_id: str | None = None
+        self,
+        symbol: str,
+        trade_value: float,
+        client_order_id: str | None = None,
+        limit_price: float | None = None,
     ) -> FidelityOrder:
+        """Place a buy. limit_price is the caller's target buy price;
+        without one a fresh quote is used. Same signature as the preview
+        adapter and as AlpacaBroker, because the live loop calls all
+        three through one interface."""
         if trade_value <= 0:
             raise ValueError(f"trade_value must be positive, got {trade_value}")
+        if limit_price is not None and limit_price <= 0:
+            raise ValueError(f"limit_price must be positive, got {limit_price}")
         if not client_order_id:
             raise ValueError(
                 "client_order_id is required when placing a real order: it is the "
                 "decision_id the journal and reconciliation key on."
             )
-        price = self.get_quote(symbol)
+        price = limit_price if limit_price is not None else self.get_quote(symbol)
         qty = int(trade_value // price)
         if qty < 1:
             raise ValueError(

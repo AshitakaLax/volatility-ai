@@ -114,6 +114,10 @@ _META_CASH = "live.cash"
 # in a cash account, that is extra good-faith violations.
 _META_UNSETTLED = "live.unsettled"
 _META_PEAK_EQUITY = "live.peak_equity"
+# The last observed price and the moment it was observed. A real
+# heartbeat, unlike the store's file mtime, which cannot tell a
+# stopped loop from a closed market.
+_META_LAST_TICK = "live.last_tick"
 
 
 @dataclass
@@ -178,6 +182,11 @@ class _LoopState:
     unsettled: float = 0.0
     pending: list = field(default_factory=list)
     session: int = 0
+
+    # The most recent accepted tick. Written every tick so a reader has
+    # a mark to value the book at without being told one by hand.
+    last_tick_price: float | None = None
+    last_tick_at: str | None = None
 
     @property
     def buying_power(self) -> float:
@@ -248,6 +257,7 @@ class LiveTradingLoop:
         they ARE the strategy that real capital will trade.
         """
         config.validate()
+        self.extended_hours = bool(getattr(config.live, "extended_hours", False))
         if not config.live.enabled:
             raise ConfigurationError("live.enabled=False: live trading is disabled")
         if config.live.step is None or config.live.profit_target is None:
@@ -390,6 +400,33 @@ class LiveTradingLoop:
 
     # --- the tick ---
 
+    def _session_is_open(self) -> bool:
+        """Whether the loop should tick, per the session it trades.
+
+        Alpaca's clock reports the REGULAR session only, so gating on it
+        meant the loop never woke outside 09:30-16:00 ET. With
+        extended_hours enabled that made the whole feature inert: the
+        broker could build a pre-market limit order perfectly well, and
+        nothing ever asked it to, because run_once had already returned
+        "market_closed" an hour before the pre-market session began.
+
+        Refuses rather than falling back when the data source cannot
+        answer the extended question. Silently using the regular clock
+        would reproduce exactly the inertness above, and it would look
+        like the flag was on and working.
+        """
+        if not self.extended_hours:
+            return self.market_data.is_open()
+        extended = getattr(self.market_data, "is_open_extended", None)
+        if extended is None:
+            raise ConfigurationError(
+                f"live.extended_hours is enabled but {type(self.market_data).__name__} "
+                "has no is_open_extended(). Falling back to the regular-session clock "
+                "would leave the loop asleep during exactly the hours the flag was "
+                "turned on for."
+            )
+        return bool(extended())
+
     def run_once(self) -> TickOutcome:
         """One full cycle. Returns what it did, including why it skipped.
 
@@ -397,7 +434,7 @@ class LiveTradingLoop:
         the tick's sizing decisions see confirmed reality rather than
         state that is one fill stale.
         """
-        if not self.market_data.is_open():
+        if not self._session_is_open():
             return TickOutcome(acted=False, reason="market_closed")
 
         from src.exceptions import DataValidationError
@@ -432,6 +469,8 @@ class LiveTradingLoop:
         fills = self._poll_open_orders()
 
         context = self._build_context(bar, price)
+        self.state.last_tick_price = float(price)
+        self.state.last_tick_at = bar.timestamp.isoformat()
 
         # Phase 1, unconditionally and before any harvest.
         decision_cycle.record_tick(self.strategy, context)
@@ -787,8 +826,18 @@ class LiveTradingLoop:
         decision_id = self._decision_id("BUY", context.timestamp)
         outcome = self.guard.submit_once(
             decision_id,
+            # context.price IS the target buy price -- the grid trigger
+            # fired at it. Passed unconditionally: a regular-hours
+            # notional market buy ignores it, and an extended-hours buy
+            # cannot be placed without it, so the loop stays out of the
+            # business of knowing which shape the venue will take.
             lambda cid: str(
-                self.broker.submit_buy(self.symbol, trade_value, client_order_id=cid).id
+                self.broker.submit_buy(
+                    self.symbol,
+                    trade_value,
+                    client_order_id=cid,
+                    limit_price=context.price,
+                ).id
             ),
             event_kind="buy_submission",
         )
@@ -850,6 +899,22 @@ class LiveTradingLoop:
         )
         self.store.set_meta(_META_CASH, str(self.state.cash))
         self.store.set_meta(_META_PEAK_EQUITY, str(self.state.peak_equity))
+        # The price this tick saw, and when. The loop already knows both
+        # and was discarding them, which left every reader downstream
+        # with no mark to value the book at and no way to tell a running
+        # deployment from a stopped one except the store's file mtime --
+        # a proxy that cannot distinguish "stopped" from "market closed".
+        if self.state.last_tick_price is not None:
+            self.store.set_meta(
+                _META_LAST_TICK,
+                json.dumps(
+                    {
+                        "price": self.state.last_tick_price,
+                        "at": self.state.last_tick_at,
+                        "symbol": self.symbol,
+                    }
+                ),
+            )
 
     def in_flight_settled(self) -> bool:
         """Whether nothing is awaiting a fill.

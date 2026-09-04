@@ -1,0 +1,99 @@
+# The Raspberry Pi deployment: Alpaca paper trading, and a window onto it.
+#
+# SEPARATE FROM docker-compose.yml ON PURPOSE. That file describes a
+# development box -- test, fetch-data, backtest, and staging/production
+# live services whose env_file entries (.env.staging, .env.production)
+# do not exist on the Pi and would fail the whole file at parse time.
+# This one describes exactly what the Pi runs and nothing else, so
+# `docker compose up` here cannot start something that belongs elsewhere.
+#
+# ARCHITECTURE. python:3.12-slim is a multi-arch image and resolves to
+# arm64 on a Pi 4/5 without any platform pinning. Building ON the Pi is
+# slower than cross-building but needs no buildx setup and produces an
+# image that matches the machine by construction.
+#
+#     docker compose -f docker-compose.pi.yml build
+#     docker compose -f docker-compose.pi.yml up -d
+#
+# ONE HOST AT A TIME. Nothing here can enforce that. StateStoreLock is a
+# FILE lock inside this container's volume, so it cannot see another
+# machine trading the same Alpaca account. Before starting this, confirm
+# the previous host's scheduled task is disabled -- see
+# docs/DEPLOY_RASPBERRY_PI.md, "Decommissioning the old host".
+
+services:
+  # The trading loop. Runs one market session, waits, runs the next.
+  paper:
+    build: .
+    image: volatility-ai:local
+    # Overrides the image's `python cli.py` entrypoint: the Pi runs the
+    # market-hours supervisor, which owns session timing, rather than
+    # cli.py live, which expects something else to decide when to run.
+    entrypoint: ["/bin/sh", "/app/tools/docker_session_loop.sh"]
+    env_file:
+      - .env # APCA_API_KEY_ID / APCA_API_SECRET_KEY. Never committed.
+    environment:
+      VAI_CONFIG: /app/config/paper_aggressive.yaml
+      VAI_STATE_DB: /app/state/paper_ledger.db
+      # Between sessions. Long enough that a weekend costs a handful of
+      # wakeups, short enough that a same-day restart rejoins quickly.
+      VAI_IDLE_SECONDS: "900"
+      # Container-local wall clock. The trading logic never reads it --
+      # every session decision goes through ZoneInfo("America/New_York")
+      # explicitly -- but it makes `docker logs` timestamps legible
+      # against the market day rather than against UTC.
+      TZ: America/New_York
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./config:/app/config:ro
+      - state:/app/state
+    # Covers what the in-container loop cannot: a killed container, a
+    # daemon restart, the Pi rebooting. The loop itself already survives
+    # a failing session.
+    restart: unless-stopped
+    # A Pi runs other things. Left generous rather than tight: the loop
+    # is idle most of the time and this only bounds a runaway.
+    mem_limit: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Read-only view of the ledger, reachable from the LAN.
+  #
+  # It imports no broker code and opens the store with mode=ro, so it
+  # cannot place an order or corrupt state no matter what it is asked
+  # to render. That is what makes exposing it on the LAN reasonable.
+  dashboard:
+    build: .
+    image: volatility-ai:local
+    entrypoint:
+      - streamlit
+      - run
+      - dashboard.py
+      - --server.port=8501
+      - --server.address=0.0.0.0
+      - --server.headless=true
+      - --browser.gatherUsageStats=false
+      - --
+      - --db=/app/state/paper_ledger.db
+    environment:
+      TZ: America/New_York
+    ports:
+      - "8501:8501"
+    volumes:
+      # READ-ONLY mount, belt to the application's own mode=ro braces.
+      # Two independent reasons the window cannot become a hand.
+      - state:/app/state:ro
+    restart: unless-stopped
+    mem_limit: 512m
+    depends_on:
+      - paper
+
+volumes:
+  # A NAMED VOLUME, not a bind mount. The ledger is the deployment's
+  # memory of every open lot: a bind mount onto the Pi's SD card invites
+  # someone to "clean up" the directory, and named volumes survive
+  # `docker compose down` while bind-mounted paths tempt an rm -rf.
+  state:

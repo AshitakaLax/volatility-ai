@@ -87,6 +87,13 @@ def parse_args(argv=None):
     )
     parser.add_argument("--account", required=True, help="Full account number, exact.")
     parser.add_argument("--symbol", default="CWH", help="Ticker (default: CWH).")
+    parser.add_argument(
+        "--account-name",
+        default="Traditional IRA",
+        help="The account's display name, e.g. 'Traditional IRA'. Required by "
+        "transactions/pending, which rejects an account filter missing it. "
+        "Read it off your Fidelity account list if the default is wrong.",
+    )
     parser.add_argument("--quantity", type=int, default=1, help="Shares (default: 1).")
     parser.add_argument(
         "--limit-discount",
@@ -113,6 +120,15 @@ def parse_args(argv=None):
         "--check-only",
         action="store_true",
         help="Recovery path: reconcile the journal against the venue and exit.",
+    )
+    parser.add_argument(
+        "--cancel",
+        metavar="CONFNUM",
+        help="Cancel a working order by confNum and exit. Needs the same "
+        "acknowledgement flag as placing -- cancelling is state-changing and "
+        "sits behind the same transport gate -- but NOT the typed phrase, "
+        "which guards against placing an order you did not mean to place. "
+        "There is no equivalent hazard in withdrawing one.",
     )
     parser.add_argument(
         "--i-understand-this-places-a-real-order",
@@ -193,10 +209,14 @@ def main(argv=None) -> int:
         # allow_order_endpoints is granted ONLY when a real place is
         # intended. In every other mode the transport itself refuses
         # /placeOrder, so a bug below cannot submit.
+        # A cancel needs the ORDER endpoints too -- cancelPlaceOrder sits in
+        # PLACE_ENDPOINTS deliberately -- so the transport is unlocked for
+        # either act, and for neither without the acknowledgement.
         placing = bool(args.confirmed and not args.dry_run and not args.check_only)
+        cancelling = bool(args.cancel and args.confirmed and not args.dry_run)
         session = FidelitySession(
             page,
-            allow_order_endpoints=placing,
+            allow_order_endpoints=placing or cancelling,
             allow_preview_endpoints=True,
         )
         session.attach()
@@ -205,9 +225,44 @@ def main(argv=None) -> int:
         session.assert_authenticated()
 
         if args.check_only:
-            return _report(FidelityBroker(session, args.account, (args.account,)), journal)
+            return _report(
+                FidelityBroker(
+                    session, args.account, (args.account,), account_name=args.account_name
+                ),
+                journal,
+            )
 
-        quote_broker = FidelityBroker(session, args.account, (args.account,))
+        if args.cancel:
+            if not args.confirmed:
+                print(
+                    "\nRefusing to cancel without "
+                    "--i-understand-this-places-a-real-order. Cancelling reaches the "
+                    "same order endpoints as placing and deserves the same "
+                    "deliberateness.",
+                    file=sys.stderr,
+                )
+                return 2
+            if args.dry_run:
+                print(f"\n--dry-run: would cancel {args.cancel}. Nothing was sent.")
+                return 0
+            canceller = FidelityPlacingBroker(
+                session,
+                args.account,
+                (args.account,),
+                account_name=args.account_name,
+                confirm_live_orders=True,
+                allowed_symbols=(args.symbol,),
+                max_order_value=args.max_order_value,
+                journal=journal,
+            )
+            print(f"\nCancelling {args.cancel} ...")
+            canceller.cancel(args.cancel)
+            print("Cancel accepted. Reading the venue's order list back ...")
+            return _report(canceller, journal)
+
+        quote_broker = FidelityBroker(
+            session, args.account, (args.account,), account_name=args.account_name
+        )
         price = quote_broker.get_quote(args.symbol)
         limit = round(price * (1.0 - args.limit_discount), 2)
         value = limit * args.quantity
@@ -245,6 +300,7 @@ def main(argv=None) -> int:
             session,
             args.account,
             (args.account,),
+            account_name=args.account_name,
             confirm_live_orders=True,
             allowed_symbols=(args.symbol,),
             max_order_value=args.max_order_value,

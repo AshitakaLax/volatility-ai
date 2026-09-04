@@ -9,6 +9,21 @@ numpy>=2.5.2
 # Required for BacktestConfig.from_yaml (Task 6.1).
 pyyaml>=6.0.3
 
+# The IANA time-zone database, as a pure-Python package.
+#
+# NOT optional on a container, and its absence is a HARD FAILURE rather
+# than a degradation. src/fomc_calendar.py does ZoneInfo("America/New_
+# York") at import time, and every session decision in the project reads
+# through it -- the FOMC calendar, the intraday profile, and now
+# AlpacaMarketData.is_open_extended.
+#
+# Linux distributions usually ship /usr/share/zoneinfo, so this is
+# invisible on a developer machine. The slim Debian images this project
+# builds on do NOT, and Python's zoneinfo falls back to this package
+# only if it is installed -- otherwise ZoneInfoNotFoundError, at import,
+# before any of the code that would have explained itself gets to run.
+tzdata>=2026.1
+
 # Optional: only required for search_strategy="bayesian" (Task 5.3).
 # search_strategy="grid" (the default) needs none of this. Without it,
 # BayesianSearch(...) raises a clear ConfigurationError rather than
@@ -39,3 +54,10 @@ pytest>=9.1.1
 #   ruff check .          -- lint
 #   ruff check --fix .    -- lint and apply safe fixes
 ruff>=0.16.3
+
+# Optional: only required for the read-only live dashboard
+# (`streamlit run dashboard.py`). Backtesting and live trading need none
+# of this -- src/dashboard_data.py imports no streamlit at all, and its
+# tests skip when the package is absent, so an install without this is a
+# fully working deployment minus one window onto it.
+streamlit>=1.58.0

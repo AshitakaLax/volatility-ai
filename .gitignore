@@ -66,3 +66,17 @@ recon_*.json
 # committable. See analyze_har.py, which reads these and offers
 # --redact to produce a scrubbed copy.
 *.har
+
+# Runtime logs from the paper/live supervisor. Machine-local by nature:
+# they record one deployment's session on one host, so committing them
+# creates conflicts between machines that are trading independently and
+# says nothing either of them needs. They also carry account balances
+# and position sizes in the loop's own output.
+logs/
+
+# Cached bar data written next to the code rather than under data/.
+# x.parquet -- 17.2 MB of TQQQ minute bars, unreferenced by any module
+# -- was committed by accident and shipped in every clone, including
+# the Raspberry Pi's. data/ was already ignored; the rule was simply
+# scoped to a directory the file did not land in.
+*.parquet

@@ -357,14 +357,34 @@ def test_nothing_branches_on_the_macro_fields_outside_the_confirmed_consumer():
 
 def test_no_speculative_ingestion_dependency_was_added():
     """Step 4: the only permitted production change was documentation.
-    No sentiment/NLP/macro data pipeline may have appeared."""
+    No sentiment/NLP/macro data pipeline may have appeared.
+
+    Reads the DEPENDENCY LINES, not the whole file. The first version
+    matched raw text, so it fired on any comment that happened to
+    mention a forbidden word -- and it did: adding tzdata, which is a
+    hard runtime requirement for ZoneInfo in a slim container, tripped
+    it because the comment explaining WHY names src/fomc_calendar.py as
+    the module doing the import.
+
+    A gate that cannot be explained in a comment without failing pushes
+    people to remove the explanation, which is the opposite of what this
+    module is for. The rule it actually means -- no ingestion package
+    was added -- is unchanged and is what is checked here.
+    """
     forbidden = ("finbert", "transformers", "sentiment", "fomc", "federal reserve")
-    requirements = (REPO_ROOT / "requirements.txt").read_text().lower()
-    for term in forbidden:
-        assert term not in requirements, (
-            f"requirements.txt now contains {term!r} -- Task 7.9 forbids adding an ingestion "
-            "dependency merely to make the task appear implemented."
-        )
+    lines = (REPO_ROOT / "requirements.txt").read_text().lower().splitlines()
+    declared = [
+        line.split("#", 1)[0].strip()
+        for line in lines
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    for requirement in declared:
+        for term in forbidden:
+            assert term not in requirement, (
+                f"requirements.txt declares {requirement!r}, which contains {term!r} -- "
+                "Task 7.9 forbids adding an ingestion dependency merely to make the "
+                "task appear implemented."
+            )
 
 
 def test_the_named_bayesian_strategy_now_exists_and_is_still_not_macroeconomic():

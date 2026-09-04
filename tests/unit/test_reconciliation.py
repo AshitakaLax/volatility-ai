@@ -13,7 +13,7 @@ Every row of the 2.7 reconciliation decision table has a test.
 import pytest
 
 from src.ledger import AssetLotLedger
-from src.order_lifecycle import OrderRecord, OrderState
+from src.order_lifecycle import TERMINAL_STATES, OrderRecord, OrderState
 from src.persistence import LedgerStore
 from src.reconciliation import BrokerSnapshot, Reconciler, ReconciliationOutcome
 from src.risk_manager import CircuitBreaker, CircuitBreakerState
@@ -305,3 +305,100 @@ def test_multiple_discrepancies_are_all_reported(store):
         "UNKNOWN_BROKER_ORDER",
         "CASH_MISMATCH",
     } <= kinds
+
+
+# ======================================================================
+# An unknown broker order: terminal is noted, LIVE still halts
+# ======================================================================
+#
+# Every real account has a past. Treating a settled order from last week
+# as an unresolved divergence meant startup could never reach READY
+# against one -- observed on a paper account carrying 317 filled orders,
+# all terminal, none live, whose effect was already in a position that
+# reconciled. Refusing to run forever is not a safe default; it is an
+# unusable one, and it trains an operator to bypass the check.
+
+
+def _unknown(state, filled=1.0, price=72.5, symbol="TQQQ"):
+    return {"state": state, "filled_qty": filled, "avg_fill_price": price, "symbol": symbol}
+
+
+@pytest.mark.parametrize("state", sorted(TERMINAL_STATES, key=str))
+def test_a_terminal_unknown_order_is_noted_not_blocking(store, state):
+    """It cannot fill again, and whatever it did is already in the
+    position -- which _reconcile_positions checks independently."""
+    report = Reconciler(store).reconcile(
+        BrokerSnapshot(orders={"someone-elses-order": _unknown(state)})
+    )
+    assert report.ready, report.diagnostic()
+    assert report.discrepancies == []
+    assert len(report.observations) == 1
+    assert report.observations[0].kind == "UNKNOWN_BROKER_ORDER"
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        OrderState.NEW if hasattr(OrderState, "NEW") else OrderState.ACCEPTED,
+        OrderState.PARTIALLY_FILLED,
+        OrderState.SUBMITTED,
+        OrderState.UNKNOWN,
+    ],
+)
+def test_a_LIVE_unknown_order_still_halts(store, state):
+    """THE PROPERTY THIS CHANGE MUST NOT WEAKEN. Something is working at
+    the broker that this system did not decide, and it can still fill
+    and move the position underneath us."""
+    report = Reconciler(store).reconcile(
+        BrokerSnapshot(orders={"someone-elses-order": _unknown(state)})
+    )
+    assert not report.ready
+    assert [d.kind for d in report.discrepancies] == ["UNKNOWN_BROKER_ORDER"]
+    assert "STILL LIVE" in report.discrepancies[0].detail
+
+
+def test_a_missing_state_is_treated_as_live_and_halts(store):
+    """Fail-safe direction. An order whose state this code cannot read
+    is assumed dangerous, not assumed settled."""
+    report = Reconciler(store).reconcile(
+        BrokerSnapshot(orders={"x": {"filled_qty": 1.0, "avg_fill_price": 70.0}})
+    )
+    assert not report.ready
+    assert report.observations == []
+
+
+def test_a_terminal_unknown_order_does_not_mask_a_position_mismatch(store):
+    """The whole argument for noting rather than halting is that the
+    POSITION check still catches any real divergence. If it did not,
+    this change would be a hole."""
+    report = Reconciler(store).reconcile(
+        BrokerSnapshot(
+            orders={"old": _unknown(OrderState.FILLED)},
+            positions={"TQQQ": 500.0},  # no local lot for these
+        )
+    )
+    assert not report.ready
+    kinds = {d.kind for d in report.discrepancies}
+    assert "POSITION_ONLY_AT_BROKER" in kinds
+    assert len(report.observations) == 1, "the terminal order is still reported"
+
+
+def test_observations_are_surfaced_in_the_diagnostic(store):
+    report = Reconciler(store).reconcile(
+        BrokerSnapshot(orders={"old": _unknown(OrderState.FILLED)})
+    )
+    text = report.diagnostic()
+    assert "READY" in text
+    assert "Noted, not blocking" in text
+    assert "old" in text
+
+
+def test_a_noted_order_does_not_halt_the_circuit_breaker(store):
+    """Observations must not reach the breaker -- a halt an operator
+    cannot clear is worse than the warning it replaced."""
+    breaker = CircuitBreaker(store=store)
+    report = Reconciler(store, circuit_breaker=breaker).reconcile(
+        BrokerSnapshot(orders={"old": _unknown(OrderState.FILLED)})
+    )
+    assert report.ready
+    assert breaker.state is CircuitBreakerState.ACTIVE

@@ -41,13 +41,15 @@ class FakeBroker:
 
     def __init__(self):
         self.buys = []
+        self.buy_limits = []
         self.sells = []
         self.orders = {}
         self._seq = 0
 
-    def submit_buy(self, symbol, trade_value, client_order_id=None):
+    def submit_buy(self, symbol, trade_value, client_order_id=None, limit_price=None):
         self._seq += 1
         self.buys.append((symbol, trade_value, client_order_id))
+        self.buy_limits.append(limit_price)
         order = FakeBrokerOrder(f"b{self._seq}", client_order_id)
         self.orders[client_order_id] = order
         return order
@@ -791,3 +793,67 @@ def test_the_live_buy_gate_reads_the_same_quantity_the_backtest_does(store):
     assert "state.buying_power >= trade_value" in backtest
     assert "self.state.buying_power < trade_value" in live
     assert "self.state.cash < trade_value" not in live
+
+
+def test_the_buy_carries_the_target_price_the_grid_triggered_at(store):
+    """The loop must hand the broker a limit price it can use outside
+    regular hours, without knowing which shape the venue will take.
+
+    A regular-hours notional market buy ignores it; an extended-hours
+    buy cannot be placed without it. Passing it unconditionally keeps
+    that venue detail out of the loop.
+    """
+    broker = FakeBroker()
+    market = FakeMarketData()
+    market.push(100.0)
+    loop = make_loop(store, broker, market)
+    loop.run_once()
+
+    market.push(98.0, ts=BASE_TS + timedelta(minutes=1))
+    loop.run_once()
+
+    assert len(broker.buys) == 1, "no buy submitted; the assertion below would be vacuous"
+    assert broker.buy_limits[0] == 98.0, "the limit must be the price the trigger fired at"
+
+
+# --- which session the loop wakes for ---------------------------------
+
+
+def test_the_loop_uses_the_extended_clock_when_extended_hours_is_on(store):
+    """Without this the feature was inert: the broker could build a
+    pre-market limit order and run_once had already returned
+    'market_closed' an hour before pre-market began."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    market.push(100.0)
+    market.is_open = lambda: False
+    market.is_open_extended = lambda: True
+
+    loop = make_loop(store, broker, market)
+    loop.extended_hours = True
+    assert loop.run_once().acted is True, "the loop ignored the extended session"
+
+
+def test_the_regular_clock_still_governs_when_the_flag_is_off(store):
+    broker = FakeBroker()
+    market = FakeMarketData()
+    market.push(100.0)
+    market.is_open = lambda: False
+    market.is_open_extended = lambda: True
+
+    loop = make_loop(store, broker, market)
+    assert loop.extended_hours is False
+    assert loop.run_once().reason == "market_closed"
+
+
+def test_a_data_source_that_cannot_answer_the_extended_question_is_refused(store):
+    """Silently falling back to the regular clock would reproduce the
+    exact inertness this fixes, while looking like the flag was working."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    market.push(100.0)
+    market.is_open = lambda: False
+    loop = make_loop(store, broker, market)
+    loop.extended_hours = True
+    with pytest.raises(ConfigurationError, match="is_open_extended"):
+        loop.run_once()
