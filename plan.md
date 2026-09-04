@@ -391,6 +391,81 @@ python tools/indicator_sweep.py --report output/indicator_sweep.jsonl
 
 ---
 
+## Stage 1 results — run 2026-09-04
+
+**784 configurations, 134 indicators, both funds, 0 failures, 12 seconds.**
+`output/indicator_sweep.jsonl`, reproducible with
+`python tools/indicator_sweep.py --stage 1`.
+
+### A scoring bug the first report surfaced, before any finding
+
+The first RSP leaderboard was twelve candlestick patterns with
+return/drawdown near **118**. That was 4.07% CAGR over a 0.03% drawdown —
+and 4.07% *is* the cash yield. Patterns fire on a handful of bars a year,
+so the "strategy" sat in cash and could not draw down, which
+return/drawdown rewards perfectly. **The metric is degenerate at low
+exposure, not merely noisy.** `--min-market` (default 20%) now drops such
+configurations, and it dropped **277 of 784**.
+
+Worth stating plainly: had the report been read before that was noticed,
+the recommendation would have been a candlestick pattern that never trades.
+
+### TQQQ — 5 of 266 beat the bar (1.9%)
+
+| indicator | CAGR | max DD | first half | second half |
+|---|---|---|---|---|
+| **LINEARREG above** | **46.16%** | **−54.22%** | 58.17% | 35.10% |
+| TSF above | 44.89% | −55.36% | 58.05% | 32.86% |
+| BBANDS middleband above | 42.01% | −65.31% | 49.12% | 35.26% |
+| BBANDS lowerband above | 41.79% | −48.71% | 54.07% | 30.53% |
+| T3 above | 41.60% | −65.51% | 47.01% | 36.42% |
+| *buy and hold* | *39.15%* | *−81.68%* | | |
+
+**1.9% beating the bar is below what chance alone would produce**, and the
+five are one coherent family — price above a smoothed trend line
+(LINEARREG, TSF = its extrapolation, BBANDS middleband = an SMA, T3 = a
+smoothed MA). Scattered noise does not cluster like that.
+
+LINEARREG: **+7.0pp of CAGR and 27pp less drawdown, on 27 switches in ten
+years**, and it gets *better* with COVID removed (49.17%, −37.38%). It also
+beats the existing best-ever configuration of 41.65%.
+
+### RSP — the risk objective, answered
+
+| indicator | CAGR | max DD | Sharpe | in market | first half | second half |
+|---|---|---|---|---|---|---|
+| **PLUS_DM below** | **12.37%** | **−13.37%** | 1.12 | 46.2% | 11.02% | 13.73% |
+| CCI sizing/rank | 7.28% | −8.77% | 0.90 | | 9.41% | 5.21% |
+| ADOSC below | 12.75% | −15.52% | 0.95 | | 17.42% | 8.29% |
+| *buy and hold* | *12.46%* | *−39.11%* | *0.73* | *100%* | | |
+
+PLUS_DM holds buy-and-hold's return at **one third of its drawdown**, and
+survives COVID removal (11.01% against buy-and-hold's 12.46%, at −13.37%
+against −21.38%). That is a far better trade than volatility targeting
+offered — 1.45pp of CAGR for 8pp of drawdown, against 1pp for 0.6pp.
+
+Note what it is: PLUS_DM is the magnitude of upward directional movement,
+so "below its trailing median" means **invest when the market is calm**.
+That is a volatility filter wearing a trend indicator's name, and it agrees
+with everything else this project has measured — the strategy wins in
+choppy regimes, and `SMA200 and vol20 < median` already topped the earlier
+nineteen-rule table.
+
+### What these results are NOT, yet
+
+* **Daily bars.** Stage 3 has not run. The strategy trades minutes.
+* **One threshold rule.** Every indicator was binarised against its own
+  250-day trailing median. That is a defensible generic rule, not a swept
+  parameter — Stage 2 exists for that.
+* **39.8% of RSP configurations beat the RSP bar**, because return/drawdown
+  of 0.319 is easy to beat by de-risking. The TQQQ figure of 1.9% is the
+  meaningful one; the RSP bar needs a companion return floor.
+* **Not out-of-sample.** Both halves agreeing is a consistency check, and
+  784 configurations were tested. LINEARREG and PLUS_DM have earned a
+  pre-registered out-of-sample test, not a config change.
+
+---
+
 ## What would make this dishonest
 
 * **Lookahead.** Every signal is computed from data through day *t* and
