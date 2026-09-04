@@ -32,7 +32,14 @@ from src.fidelity_broker import (
 from src.fidelity_session import PLACE_ENDPOINTS, FidelitySession
 from src.order_lifecycle import OrderState
 
-ACCOUNT = "231930409"
+# A DELIBERATELY FAKE account number. This was the operator's real
+# Fidelity account until it was noticed that this repository is public,
+# which put it in every clone and in GitHub's search index. An account
+# number cannot move money on its own -- Fidelity needs an authenticated
+# session for that -- but it is precisely the field an attacker would
+# use to redirect an order or to sound legitimate to a support desk, and
+# a test fixture never needed a real one.
+ACCOUNT = "999888777"
 OTHER = "999999999"
 
 # --- real captured order records --------------------------------------
@@ -248,7 +255,7 @@ def test_an_empty_allowlist_permits_nothing():
 def test_a_substring_of_an_allowed_account_is_not_enough():
     """The library this replaces matched accounts by case-insensitive
     SUBSTRING against a dropdown. Only exact equality is accepted."""
-    for candidate in ("2319304", "31930409", "231930409X", "231930409 "):
+    for candidate in ("9998887", "99888777", "999888777X", "999888777 "):
         with pytest.raises(ConfigurationError):
             FidelityBroker(FakeSession(), candidate, (ACCOUNT,))
 
