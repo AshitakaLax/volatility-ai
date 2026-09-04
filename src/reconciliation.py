@@ -29,7 +29,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from src.order_lifecycle import OrderState
+from src.order_lifecycle import TERMINAL_STATES, OrderState
 
 logger = logging.getLogger("Optimizer")
 
@@ -67,11 +67,15 @@ class ReconciliationReport:
     outcome: ReconciliationOutcome
     discrepancies: list = field(default_factory=list)
     repairs_applied: list = field(default_factory=list)
+    # Differences that are real, worth telling an operator about, and
+    # NOT evidence of an unresolved divergence. Distinct from a repair,
+    # which changed local state, and from a discrepancy, which halts.
+    observations: list = field(default_factory=list)
 
     @property
     def ready(self) -> bool:
         """Whether trading may resume: true only with zero unresolved
-        discrepancies."""
+        discrepancies. Observations never gate this."""
         return self.outcome is ReconciliationOutcome.READY
 
     def diagnostic(self) -> str:
@@ -81,10 +85,16 @@ class ReconciliationReport:
         "state mismatch" -- whoever is paged at 3am needs to know which
         symbol and how many shares, not that something is wrong.
         """
+        notes = (
+            ""
+            if not self.observations
+            else "\nNoted, not blocking:\n"
+            + "\n".join(f"  - [{o.kind}] {o.detail}" for o in self.observations)
+        )
         if self.ready:
-            return "READY -- local and broker state agree."
+            return "READY -- local and broker state agree." + notes
         lines = [f"  - [{d.kind}] {d.detail}" for d in self.discrepancies]
-        return "RECONCILIATION_REQUIRED -- unresolved differences:\n" + "\n".join(lines)
+        return "RECONCILIATION_REQUIRED -- unresolved differences:\n" + "\n".join(lines) + notes
 
 
 @dataclass(frozen=True)
@@ -155,8 +165,9 @@ class Reconciler:
         local_orders = local_orders or {}
         discrepancies: list = []
         repairs: list = []
+        observations: list = []
 
-        self._reconcile_orders(snapshot, local_orders, discrepancies, repairs)
+        self._reconcile_orders(snapshot, local_orders, discrepancies, repairs, observations)
         self._reconcile_positions(snapshot, discrepancies)
         self._reconcile_cash(snapshot, expected_cash, discrepancies)
 
@@ -165,11 +176,16 @@ class Reconciler:
                 outcome=ReconciliationOutcome.RECONCILIATION_REQUIRED,
                 discrepancies=discrepancies,
                 repairs_applied=repairs,
+                observations=observations,
             )
             self._halt(report)
             return report
 
-        return ReconciliationReport(outcome=ReconciliationOutcome.READY, repairs_applied=repairs)
+        return ReconciliationReport(
+            outcome=ReconciliationOutcome.READY,
+            repairs_applied=repairs,
+            observations=observations,
+        )
 
     def _halt(self, report: ReconciliationReport) -> None:
         """Step 4: enter HALTED_NEW_BUYS and alert. Reuses Task 7.8's
@@ -181,7 +197,9 @@ class Reconciler:
 
     # --- decision table rows ---
 
-    def _reconcile_orders(self, snapshot, local_orders, discrepancies, repairs) -> None:
+    def _reconcile_orders(
+        self, snapshot, local_orders, discrepancies, repairs, observations=None
+    ) -> None:
         """Compare orders in both directions, appending findings in place.
 
         Auto-repairs ONLY the unambiguous case: a broker-confirmed fill
@@ -205,18 +223,52 @@ class Reconciler:
                         f"(known decision, absent from in-memory state)"
                     )
                 else:
-                    discrepancies.append(
-                        Discrepancy(
-                            kind="UNKNOWN_BROKER_ORDER",
-                            detail=(
-                                f"Broker reports order client_order_id={client_order_id!r} "
-                                f"({broker_order.get('filled_qty', 0)} filled @ "
-                                f"{broker_order.get('avg_fill_price', 0)}) that this system has no "
-                                "record of deciding. It may have been placed outside this system -- "
-                                "not importing it."
-                            ),
-                        )
+                    # A TERMINAL unknown order is reported, not blocking.
+                    #
+                    # It is still a real fact -- something traded that this
+                    # system did not decide -- and it is still surfaced. But
+                    # a terminal order cannot diverge any further: it will
+                    # never fill again, and whatever it did is already
+                    # expressed in the position. The position is checked
+                    # independently by _reconcile_positions, which DOES
+                    # halt, so a genuine state divergence still stops
+                    # startup by that route.
+                    #
+                    # A LIVE unknown order is a different thing entirely:
+                    # something is working at the broker right now that this
+                    # system has no record of, and it can still fill and
+                    # move the position underneath us. That halts, as before.
+                    #
+                    # Without this split the system could never start against
+                    # any account that has a past, which is every real
+                    # account -- the Fidelity IRA included. Refusing to run
+                    # forever is not a safe default; it is an unusable one,
+                    # and it trains an operator to bypass the check.
+                    #
+                    # Missing or unrecognised state is treated as LIVE, so
+                    # the fail-safe direction is to halt.
+                    state = broker_order.get("state")
+                    terminal = state in TERMINAL_STATES
+                    note = Discrepancy(
+                        kind="UNKNOWN_BROKER_ORDER",
+                        detail=(
+                            f"Broker reports order client_order_id={client_order_id!r} "
+                            f"({broker_order.get('filled_qty', 0)} filled @ "
+                            f"{broker_order.get('avg_fill_price', 0)}, state={state}) that "
+                            "this system has no record of deciding. It may have been placed "
+                            "outside this system -- not importing it."
+                            + (
+                                " Terminal, so it cannot change further; the position "
+                                "check covers its effect."
+                                if terminal
+                                else " STILL LIVE -- it can fill and move the position."
+                            )
+                        ),
                     )
+                    if terminal and observations is not None:
+                        observations.append(note)
+                    else:
+                        discrepancies.append(note)
                 continue
 
             broker_filled = float(broker_order.get("filled_qty", 0.0))

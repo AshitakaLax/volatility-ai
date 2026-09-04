@@ -11,8 +11,15 @@ FROM python:3.12-slim AS base
 # hoping). Removed from the final layer via a multi-stage-style cleanup
 # below is unnecessary here since apt lists are purged and this layer
 # is small; kept minimal on purpose.
+# tzdata is installed at the SYSTEM level here AND via pip in
+# requirements.txt, and the duplication is deliberate: the pip package
+# satisfies Python's zoneinfo, the system one makes the TZ environment
+# variable and any non-Python tool agree with it. On a slim image
+# neither is present, and ZoneInfo("America/New_York") raises at import
+# -- which on a Pi surfaces as a container exiting instantly with a
+# traceback that no market-hours logic ever reached.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential \
+    && apt-get install -y --no-install-recommends build-essential tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

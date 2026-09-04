@@ -32,10 +32,11 @@ because it is invisible at runtime, not because the code can fix it.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from src.exceptions import ConfigurationError, DataValidationError
+from src.fomc_calendar import EASTERN_TZ
 from src.retry_policy import RetryConfig, retry_call
 
 
@@ -174,3 +175,55 @@ class AlpacaMarketData:
             self._trading_client.get_clock, self._retry_config, after_submission=False
         )
         return bool(clock.is_open)
+
+    def is_open_extended(self) -> bool:
+        """Whether the EXTENDED session is open: pre-market, regular, or
+        after-hours.
+
+        Alpaca's clock cannot answer this -- `clock.is_open` is the
+        REGULAR session alone, and the Calendar model carries only
+        date/open/close. So the extended window is derived from the
+        calendar rather than from a hand-rolled weekday rule, which
+        keeps holidays authoritative: a day the calendar does not list
+        has no extended session either.
+
+        The window is [04:00 ET, close + 4h]:
+
+          * 04:00 ET is where pre-market begins, and it does not move on
+            a half day -- the early close truncates the END of the day,
+            not the start.
+          * close + 4h is correct for BOTH cases without a special
+            case. A normal 16:00 close gives 20:00; a half-day 13:00
+            close gives 17:00, which is exactly when after-hours ends on
+            those days. Anchoring to the calendar's own close is what
+            makes that fall out for free rather than needing a table of
+            early-close dates.
+        """
+        if self._trading_client is None:
+            raise ConfigurationError(
+                "is_open_extended() needs the trading client (the calendar is a "
+                "trading-API endpoint). Construct AlpacaMarketData with "
+                "trading_client=..."
+            )
+        # Imported here, matching _require_alpaca_data's pattern: this
+        # module must stay importable without alpaca-py installed.
+        from alpaca.trading.requests import GetCalendarRequest
+
+        now = datetime.now(EASTERN_TZ)
+        today = now.date()
+        days = retry_call(
+            lambda: self._trading_client.get_calendar(GetCalendarRequest(start=today, end=today)),
+            self._retry_config,
+            after_submission=False,
+        )
+        for day in days:
+            day_date = day.date.date() if hasattr(day.date, "date") else day.date
+            if day_date != today:
+                continue
+            close = day.close
+            close_at = now.replace(hour=close.hour, minute=close.minute, second=0, microsecond=0)
+            start = now.replace(hour=4, minute=0, second=0, microsecond=0)
+            return start <= now <= close_at + timedelta(hours=4)
+        # Not a trading day at all -- no regular session and no extended
+        # one either.
+        return False

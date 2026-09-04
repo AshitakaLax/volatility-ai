@@ -1,0 +1,44 @@
+# Local Fidelity deployment settings. Copy to config/fidelity_local.yaml
+# and fill in. That filename is gitignored; THIS one is the committed
+# documentation of the shape.
+#
+# WHY THIS IS A FILE AND NOT COMMAND-LINE FLAGS
+#
+# Every value here is an AUTHORIZATION, and an authorization supplied on
+# the same command line as the action it authorizes is not a control --
+# it is a formality. `--account X --allow-account X` would always pass.
+# Keeping the allowlists in a durable file that a human edited on purpose,
+# separately from the invocation, is what makes them mean anything.
+
+fidelity:
+  # Full account numbers, exact match. A truncated or partial value is
+  # refused rather than matched loosely -- the library this replaces
+  # selected accounts by case-insensitive SUBSTRING match, which is how a
+  # truncated number ends up naming the wrong account.
+  allowed_accounts:
+    - "123456789"
+
+  # Which account orders actually go to. Must appear above. May be
+  # omitted when allowed_accounts has exactly one entry.
+  account: "123456789"
+
+  # Shown on the order ticket; Fidelity's own page sends it. Optional --
+  # omitted rather than invented if you do not know it.
+  account_name: "Traditional IRA"
+
+  # Tickers this deployment may ENTER. Empty means nothing is permitted,
+  # never everything. Exits are not gated on this: being unable to leave
+  # a position you already hold is worse than being unable to enter one.
+  allowed_symbols:
+    - "CWH"
+
+  # Hard per-order dollar ceiling, BUYS ONLY. The last thing standing
+  # between a sizing bug and an order the account cannot afford. An order
+  # over the ceiling is refused, never trimmed -- a size the code did not
+  # expect is a bug to surface, not a number to quietly adjust.
+  max_order_value: 100.0
+
+  # Where confNums are journalled before an order is committed. This is
+  # what turns a placeOrder timeout from unknowable into a lookup, so it
+  # is load-bearing rather than bookkeeping.
+  journal_path: "data/fidelity_orders.jsonl"

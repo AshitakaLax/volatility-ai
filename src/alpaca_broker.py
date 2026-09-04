@@ -125,6 +125,41 @@ def _ceil_to_tick(price: float) -> float:
     return float(Decimal(str(price)).quantize(quantum, rounding=ROUND_CEILING))
 
 
+def _floor_to_tick(price: float) -> float:
+    """Round a BUY limit price DOWN to a tick Alpaca accepts.
+
+    Down, never nearest, and the direction is the mirror of
+    _ceil_to_tick's for the same reason. A buy's fill price BECOMES the
+    lot's cost basis, and every later sell is validated against it by
+    no_loss_guard. Rounding a buy limit UP raises the cost basis by up
+    to a tick, which raises the price the lot must reach to clear the
+    guard -- paying more now to make the exit harder later.
+
+    Rounding down can only leave a buy unfilled, and an unfilled buy is
+    recoverable: the grid trigger fires again on the next bar that
+    qualifies.
+    """
+    quantum = _SUB_DOLLAR_TICK if price < 1 else _TICK
+    return float(Decimal(str(price)).quantize(quantum, rounding=ROUND_FLOOR))
+
+
+def _floor_shares(qty: float, whole_only: bool) -> float:
+    """Round a share count DOWN, so cost never exceeds the budget.
+
+    whole_only exists because fractional shares and extended hours do
+    not mix at Alpaca: fractional trading is a regular-hours facility.
+    Rather than discover that as a venue rejection at 4:30pm, an
+    extended-hours order is sized in whole shares here.
+
+    Fractional quantities are floored to six places. Alpaca accepts
+    more, but the precision is not the point -- the FLOOR is, so that
+    qty * limit_price stays at or under the risk-approved value.
+    """
+    if whole_only:
+        return float(Decimal(str(qty)).quantize(Decimal("1"), rounding=ROUND_FLOOR))
+    return float(Decimal(str(qty)).quantize(Decimal("0.000001"), rounding=ROUND_FLOOR))
+
+
 def _require_alpaca():
     """Import alpaca-py, or raise a ConfigurationError explaining how to
     get it.
@@ -187,8 +222,19 @@ class AlpacaBroker:
         adapter itself and testing nothing. When supplied, credentials
         are not used to build a connection.
 
-        extended_hours applies to the sell limit order only -- a
-        notional market buy cannot run outside regular hours at Alpaca.
+        extended_hours makes BOTH sides eligible outside regular hours,
+        and changes the shape of a buy to get there. It used to apply to
+        the sell only, on the true observation that a notional market
+        buy cannot run outside regular hours -- but the conclusion drawn
+        from it was wrong. The fix is not to leave buys behind; it is to
+        stop making them notional market orders when the flag is on. See
+        submit_buy.
+
+        The asymmetry that remains is real: an extended-hours buy is
+        sized in WHOLE shares, because fractional trading is a
+        regular-hours facility. A deployment whose lots are usually
+        fractional will therefore trade a coarser grid outside regular
+        hours.
 
         snapshot_limit bounds how many recent orders snapshot() pulls
         for reconciliation. It has to be large enough to cover every
@@ -265,9 +311,37 @@ class AlpacaBroker:
     # --- LiveBroker protocol ---
 
     def submit_buy(
-        self, symbol: str, trade_value: float, client_order_id: str | None = None
+        self,
+        symbol: str,
+        trade_value: float,
+        client_order_id: str | None = None,
+        limit_price: float | None = None,
     ) -> Any:
-        """Buy trade_value dollars of symbol as a notional market order.
+        """Buy trade_value dollars of symbol.
+
+        TWO ORDER SHAPES, and which one is used is decided by
+        extended_hours, not by the caller:
+
+        * REGULAR HOURS (extended_hours=False) -- a NOTIONAL MARKET
+          order, exactly as before. Alpaca takes dollars directly, so
+          there is no local price lookup and no window in which our
+          price and theirs disagree.
+
+        * EXTENDED HOURS (extended_hours=True) -- a LIMIT order at
+          limit_price, sized in whole shares. This is not a preference.
+          Alpaca will not execute a market order outside regular hours,
+          and `notional` "only works with MarketOrders" and "does not
+          work with qty" (the SDK's own OrderRequest docstring). So an
+          extended-hours buy CANNOT be notional and CANNOT be a market
+          order; a share-sized limit order is the only shape the venue
+          accepts, and the local price lookup notional was avoiding
+          becomes unavoidable.
+
+        limit_price is the strategy's TARGET BUY PRICE -- the price at
+        which the grid trigger fired. It is accepted in both modes and
+        ignored in the first, so the caller passes it unconditionally
+        rather than branching on a venue detail it should not know
+        about.
 
         client_order_id should be Task 7.4's decision_id, which Alpaca
         stores and dedupes on server-side -- pass it and a replayed
@@ -283,6 +357,12 @@ class AlpacaBroker:
         """
         if trade_value <= 0:
             raise ValueError(f"trade_value must be positive, got {trade_value}")
+
+        if self.extended_hours:
+            return self._submit_extended_hours_buy(
+                symbol, trade_value, client_order_id, limit_price
+            )
+
         notional = _floor_to_cent(trade_value)
         if notional < MINIMUM_NOTIONAL:
             raise ValueError(
@@ -302,6 +382,66 @@ class AlpacaBroker:
         )
         logger.info(
             f"Submitting BUY {symbol} notional=${notional:.2f} "
+            f"client_order_id={client_order_id!r} (paper={self.paper})"
+        )
+        return self._submit(request)
+
+    def _submit_extended_hours_buy(
+        self,
+        symbol: str,
+        trade_value: float,
+        client_order_id: str | None,
+        limit_price: float | None,
+    ) -> Any:
+        """A share-sized limit buy, eligible outside regular hours.
+
+        Refuses rather than falling back to a market order when no
+        limit_price is available. A silent fallback would submit an
+        order the venue rejects at 4:30pm -- and the deployment would
+        look like it was trading extended hours while placing nothing.
+        """
+        if limit_price is None:
+            raise ConfigurationError(
+                "extended_hours is enabled but no limit_price was supplied for a "
+                f"BUY of {symbol}. Alpaca does not execute market orders outside "
+                "regular hours, and notional sizing is market-only, so an "
+                "extended-hours buy must be a share-sized LIMIT order. Pass the "
+                "strategy's target buy price."
+            )
+        if limit_price <= 0:
+            raise ValueError(f"limit_price must be positive, got {limit_price}")
+
+        price = _floor_to_tick(limit_price)
+        if price <= 0:
+            raise ValueError(
+                f"limit_price {limit_price} floors to {price}, which is not a submittable price."
+            )
+        # Whole shares: fractional trading is a regular-hours facility at
+        # Alpaca, so an extended-hours order is sized to whole shares here
+        # rather than rejected at the venue.
+        qty = _floor_shares(trade_value / price, whole_only=True)
+        if qty < 1:
+            raise ValueError(
+                f"${trade_value:.2f} does not buy one whole share of {symbol} at "
+                f"${price:.2f}. Extended-hours orders cannot be fractional, so this "
+                "trade cannot be expressed outside regular hours."
+            )
+
+        _, _, OrderSide, TimeInForce, LimitOrderRequest, _ = _require_alpaca()
+        request = LimitOrderRequest(
+            symbol=symbol,
+            qty=qty,
+            side=OrderSide.BUY,
+            # DAY is required alongside extended_hours -- Alpaca rejects
+            # any other time_in_force on an extended-hours order.
+            time_in_force=TimeInForce.DAY,
+            limit_price=price,
+            client_order_id=client_order_id,
+            extended_hours=True,
+        )
+        logger.info(
+            f"Submitting BUY {symbol} qty={qty} limit=${price} EXTENDED-HOURS "
+            f"(budget ${trade_value:.2f}, cost ${qty * price:.2f}) "
             f"client_order_id={client_order_id!r} (paper={self.paper})"
         )
         return self._submit(request)
@@ -329,6 +469,25 @@ class AlpacaBroker:
             raise ValueError(f"target_price must be positive, got {target_price}")
 
         limit_price = _ceil_to_tick(target_price)
+
+        # A fractional lot cannot trade outside regular hours, so the
+        # EXTENDED-HOURS FLAG is dropped -- never the order. Refusing
+        # would block an exit, and being unable to leave a position is
+        # the one failure this system must not manufacture; the same
+        # reasoning that keeps the Fidelity value ceiling on buys only.
+        #
+        # The order is still submitted as a DAY limit at the validated
+        # price. Outside regular hours Alpaca queues it for the session
+        # open rather than rejecting it, so the exit is placed and
+        # merely waits -- which is what it would have done anyway if the
+        # flag had never been set.
+        eligible = self.extended_hours and float(qty).is_integer()
+        if self.extended_hours and not eligible:
+            logger.info(
+                f"SELL {symbol} qty={qty} is fractional, so it is not eligible for "
+                "extended hours; submitting it as a regular-hours DAY limit rather "
+                "than refusing the exit."
+            )
         _, _, OrderSide, TimeInForce, LimitOrderRequest, _ = _require_alpaca()
         request = LimitOrderRequest(
             symbol=symbol,
@@ -339,10 +498,11 @@ class AlpacaBroker:
             time_in_force=TimeInForce.DAY,
             limit_price=limit_price,
             client_order_id=client_order_id,
-            extended_hours=self.extended_hours or None,
+            extended_hours=eligible or None,
         )
         logger.info(
             f"Submitting SELL {symbol} qty={qty} limit=${limit_price} "
+            f"extended_hours={eligible} "
             f"client_order_id={client_order_id!r} (paper={self.paper})"
         )
         return self._submit(request)

@@ -136,7 +136,47 @@ ORDER_ENDPOINTS = PREVIEW_ENDPOINTS | PLACE_ENDPOINTS
 # these three: everything else (cookies, sec-*, user-agent) is supplied
 # by the browser itself, and overriding those from script would be both
 # unnecessary and a way to look different from the real page.
+#
+# THESE ARE PER-SERVICE, NOT GLOBAL, and that cost a live order to learn.
+# Fidelity's site is several backends behind one origin, and each brands
+# its own appid/appname:
+#
+#     /ftgw/digital/trade-equity/   appid AP145890  "Trader Dashboard"
+#     /ftgw/digital/activityapi/    appid AP182052  "Trader Plus Web"
+#
+# The first version kept ONE flat dict, so whichever service was seen
+# last won and its appid was replayed everywhere. A real run placed an
+# order through trade-equity perfectly and then got 403 reading the order
+# back from activityapi -- with a message blaming the login, which was
+# fine the whole time.
+#
+# Worse, the sniffer only recorded headers from requests carrying an
+# x-csrf-token, and activityapi does not send one. Its headers were
+# therefore never observable at all, so no amount of browsing would have
+# fixed the replay.
 _SNIFFED_HEADERS = ("x-csrf-token", "appid", "appname")
+
+# The path segment after /ftgw/digital/ names the backend. Anything that
+# does not match keeps its own bucket under the full prefix rather than
+# being lumped in with a service it has nothing to do with.
+_SERVICE_PREFIX = "/ftgw/digital/"
+
+
+def service_of(path_or_url: str) -> str:
+    """Which Fidelity backend a path belongs to.
+
+    Used to key sniffed headers, so trade-equity's appid is never sent to
+    activityapi and vice versa.
+    """
+    text = str(path_or_url or "")
+    if "digital.fidelity.com" in text:
+        text = text.split("digital.fidelity.com", 1)[1]
+    text = text.split("?", 1)[0]
+    if not text.startswith(_SERVICE_PREFIX):
+        return text.strip("/").split("/")[0] or "?"
+    remainder = text[len(_SERVICE_PREFIX) :]
+    return remainder.split("/")[0] or "?"
+
 
 # A page whose URL matches this is the sign-in flow, not a session.
 _SIGNIN_MARKER = "/prgw/digital/signin"
@@ -177,7 +217,8 @@ class FidelitySession:
         # grants the weaker one. The reverse is never true.
         self._allow_preview_endpoints = bool(allow_preview_endpoints or allow_order_endpoints)
         self._request_timeout_ms = request_timeout_ms
-        self._headers: dict[str, str] = {}
+        # service -> {header: value}. Never a flat dict again.
+        self._headers: dict[str, dict[str, str]] = {}
         self._attached = False
 
     # -- credential sniffing -------------------------------------------
@@ -190,30 +231,67 @@ class FidelitySession:
         self._attached = True
 
     def _on_request(self, request: Any) -> None:
-        """Lift auth headers from any authenticated call the page makes.
+        """Lift auth headers per BACKEND from the page's own calls.
+
+        Deliberately does NOT require an x-csrf-token to record a
+        request. The first version did, and that silently excluded every
+        service which does not use one -- activityapi among them -- so
+        its appid could never be learned and another service's was sent
+        instead, drawing a 403 that read like an expired login.
+
+        A request is recorded when it carries any header we replay AND is
+        aimed at Fidelity's own origin. Requests to third parties (the
+        site loads a device-fingerprinting iframe, among others) are
+        ignored: their headers are not ours to replay and could carry a
+        vendor's identifiers into our calls.
 
         Never raises: this runs inside a Playwright event handler, where
         an exception would surface in the middle of whatever page
         interaction happened to be in flight.
         """
         try:
-            headers = request.headers or {}
-            lowered = {str(k).lower(): str(v) for k, v in headers.items()}
-            if "x-csrf-token" not in lowered:
+            url = str(request.url or "")
+            if "digital.fidelity.com" not in url:
                 return
-            for name in _SNIFFED_HEADERS:
-                if lowered.get(name):
-                    self._headers[name] = lowered[name]
+            lowered = {str(k).lower(): str(v) for k, v in (request.headers or {}).items()}
+            found = {name: lowered[name] for name in _SNIFFED_HEADERS if lowered.get(name)}
+            if not found:
+                return
+            self._headers.setdefault(service_of(url), {}).update(found)
         except Exception:
             return
 
+    def headers_for(self, path: str) -> dict[str, str]:
+        """The sniffed headers for the backend `path` belongs to.
+
+        Empty when that backend has not been observed yet. Returning
+        another service's headers instead is exactly the bug this
+        replaced, so an empty result is reported as empty.
+        """
+        return dict(self._headers.get(service_of(path), {}))
+
+    @property
+    def observed_services(self) -> tuple[str, ...]:
+        """Backends whose headers have been seen. Useful in diagnostics."""
+        return tuple(sorted(self._headers))
+
     @property
     def has_credentials(self) -> bool:
-        return "x-csrf-token" in self._headers
+        """True once ANY Fidelity backend has shown us a CSRF token.
+
+        Still the right proxy for "is this session authenticated at all",
+        even though the token itself is per-service: an unauthenticated
+        page never produces one anywhere.
+        """
+        return any("x-csrf-token" in headers for headers in self._headers.values())
 
     @property
     def csrf_token(self) -> str | None:
-        return self._headers.get("x-csrf-token")
+        for headers in self._headers.values():
+            token = headers.get("x-csrf-token")
+            if token:
+                return token
+        return None
 
     def wait_for_credentials(self, timeout_seconds: float = 60.0) -> None:
         """Block until the page has made an authenticated request.
@@ -304,10 +382,14 @@ class FidelitySession:
 
         self.assert_authenticated()
 
+        # The headers for THIS backend, never another's. An empty set is
+        # sent as-is rather than back-filled from a service that happens
+        # to have been seen: a wrong appid is not better than none, and
+        # _interpret says so if the venue refuses.
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            **{k: v for k, v in self._headers.items() if k in _SNIFFED_HEADERS},
+            **self.headers_for(path),
         }
         # Executed in the PAGE, so the browser attaches cookies and the
         # request is same-origin. credentials:"same-origin" is explicit
@@ -354,9 +436,28 @@ class FidelitySession:
                 "the session has expired. Log in again."
             )
         if status in (401, 403):
+            # A 403 is NOT proof the login died. This exact message once
+            # followed a perfectly good session that had just placed an
+            # order: the call went out with another backend's appid,
+            # because none had been observed for this one. Say which case
+            # it is rather than sending an operator to re-authenticate a
+            # session that is fine.
+            service = service_of(path)
+            if not self.headers_for(path):
+                raise FidelitySessionError(
+                    f"POST {path} returned {status}, and NO headers have been "
+                    f"observed for the {service!r} backend -- the request went out "
+                    "without the appid/appname that backend expects.\n"
+                    f"    observed so far: {list(self.observed_services) or 'none'}\n"
+                    "This is very likely a header problem, NOT an expired login. "
+                    "Open the page that uses this backend (for transactions/pending "
+                    "that is Orders / Activity) so its headers can be sniffed, then "
+                    "retry."
+                )
             raise FidelitySessionExpired(
-                f"POST {path} returned {status}. The session or CSRF token is no "
-                "longer valid; log in again."
+                f"POST {path} returned {status} using the {service!r} backend's own "
+                "observed headers. The session or CSRF token is no longer valid; "
+                "log in again."
             )
         if status >= 400:
             raise FidelitySessionError(f"POST {path} returned {status}: {body[:300]}")
