@@ -131,13 +131,58 @@ of thing a brute-force search exists to overturn.
 ## The inventory
 
 Every indicator absent from the codebase, from the audit of `src/`,
-`tools/`, and `optimization_controller.py`. **No new dependencies** —
-TA-Lib, pandas-ta, `ta` and `finta` are all absent and stay absent
-(`requirements.txt` is gated by
-`tests/unit/test_task_7_9_macro_signals_discovery.py`). Each is
-hand-implemented in pandas/numpy in a new `src/indicator_library.py`, with
-a scalar/vectorised agreement test per the convention in
-`tests/unit/test_external_index_series.py:66`.
+`tools/`, and `optimization_controller.py`.
+
+### These come from libraries, not from memory
+
+Thirty-five indicators written by hand is thirty-five chances at a silent
+wrong answer propagating through every result computed on top of it.
+`requirements-indicators.txt` pins five reference implementations — TA-Lib
+(161 functions, the C reference), pandas-ta-classic (427, pure Python), ta
+(48), finta (90, for breadth), and talipp (incremental, for the live loop
+if anything is ever promoted).
+
+**Separate from `requirements.txt`, deliberately**, on the same reasoning
+that put Playwright in `requirements-fidelity.txt`: the Dockerfile installs
+`requirements.txt` for every image, and the Raspberry Pi runs a trading
+loop that computes no indicators. TA-Lib in particular may want a source
+build on ARM, and the Pi should never be asked to compile it.
+
+### But a library is not automatically safer, and this was measured
+
+Six implementations of RSI(14) over 1,500 TQQQ daily bars:
+
+| implementation | largest deviation from TA-Lib |
+|---|---|
+| `src.sizing_indicators.WilderRSI` | **0.000000** |
+| `pandas_ta_classic` | **0.000000** |
+| `ta` | 7.911761 |
+| `finta` | 7.911761 |
+| `stockstats` | 7.911761 |
+
+All six converge to the same value and agree **exactly** after bar ~104.
+The disagreement is entirely **warmup seeding** — TA-Lib and Wilder seed
+with a simple average of the first N periods then smooth, the others run an
+EWM from bar one. ATR(14) behaves identically: 0.06 apart early,
+`0.00000000` after bar 250.
+
+Note what that table also says: this project's own hand-rolled `WilderRSI`
+is exactly right, and three well-known libraries disagree with the
+reference. "Fewer bugs" is earned by cross-checking, not by importing.
+
+**So two rules, both load-bearing:**
+
+1. **Every indicator is computed by two libraries and their steady-state
+   values asserted equal.** Disagreement is a finding to resolve before the
+   indicator enters the sweep, not a tolerance to widen.
+2. **The warmup region is discarded explicitly**, by our own rule, rather
+   than trusting any library's seeding. 104 bars of 7.9-point RSI error is
+   precisely the artifact class that already cost this project a year: an
+   unwarmed 200-day mean put 79.4% of 2016 inside its window and made that
+   year's −7.70% meaningless.
+
+Versions are pinned exactly. A library that changes its seeding in a point
+release would silently move every result in the sweep.
 
 Data needed is noted because it decides implementation order: the existing
 daily probes load `close` only, and anything needing OHLC or volume needs
@@ -226,19 +271,26 @@ block most likely to produce a false positive purely from its size.
 
 ## Stages
 
-### Stage 0 — the library and its tests
+### Stage 0 — the adapter and its cross-checks
 
-`src/indicator_library.py`, one function per indicator, pandas in and
-pandas out, no state. Each gets:
+`src/indicator_library.py` is a thin **adapter**, not a set of
+implementations: one function per indicator, delegating to the pinned
+libraries, normalising their differing APIs (TA-Lib takes numpy arrays,
+finta takes a lowercase-column DataFrame, pandas-ta-classic takes Series)
+to one signature that returns a `pd.Series` aligned to the input index.
 
-* a **known-answer test** against a hand-computed fixture — an indicator
-  implemented from memory and never checked is a silent wrong answer
-  propagated through every result below it;
-* a **warmup test** asserting `NaN` until the window is full. This is not
-  boilerplate: a previous probe traded an unwarmed 200-day mean because
-  `RollingMean.value` returns a partial mean from the second observation,
-  and 79.4% of 2016 sat inside the warmup, making that year's −7.7% an
-  artifact. The same class of bug in this library would corrupt every stage.
+Each indicator gets:
+
+* a **cross-library agreement test** — computed two ways, steady-state
+  values asserted equal within a tight tolerance. This is the test that
+  makes the libraries worth using; without it we have merely moved where
+  the bug would live.
+* a **warmup test** asserting `NaN` until the window is full, applied by
+  *us* regardless of what the library returns. The RSI measurement above is
+  why: three libraries emit confident, wrong-by-8-points values through
+  their first hundred bars rather than `NaN`.
+* a **known-answer test** for anything available from only one library
+  (finta's exclusives), since there is nothing to cross-check it against.
 
 ### Stage 1 — every indicator alone, daily bars, both instruments
 

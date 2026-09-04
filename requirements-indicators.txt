@@ -1,0 +1,87 @@
+# Technical-indicator libraries, for the sweep in plan.md.
+#
+# SEPARATE FROM requirements.txt, following the same reasoning that put
+# Playwright in requirements-fidelity.txt: the Dockerfile installs
+# requirements.txt for every image, and the Raspberry Pi runs a trading
+# loop that computes no indicators. Nothing here should reach that
+# container. If an indicator is ever promoted to a live sizing input,
+# THAT is the moment its library moves into requirements.txt -- and
+# talipp below is the one to move, for the reason given against it.
+#
+#     pip install -r requirements-indicators.txt
+#
+# ------------------------------------------------------------------
+# WHY LIBRARIES RATHER THAN HAND-ROLLED IMPLEMENTATIONS
+#
+# Thirty-five indicators written from memory is thirty-five chances at a
+# silent wrong answer that propagates through every result computed on
+# top of it. These are the reference implementations.
+#
+# But "use a library" is NOT automatically safer, and the measurement
+# that settled it is worth keeping. Six implementations of RSI(14) on
+# 1,500 TQQQ daily bars:
+#
+#     src.sizing_indicators.WilderRSI   exact match to TA-Lib
+#     pandas_ta_classic                 exact match to TA-Lib
+#     ta                                differs by up to 7.91 RSI points
+#     finta                             differs by up to 7.91 RSI points
+#     stockstats                        differs by up to 7.91 RSI points
+#
+# All six converge to the same value and agree exactly after bar ~104.
+# The disagreement is entirely WARMUP SEEDING: TA-Lib and Wilder seed
+# with a simple average of the first N periods and then smooth; the
+# others run an EWM from the first bar. Same for ATR(14), which differs
+# by 0.06 early and 0.00000000 after bar 250.
+#
+# Two consequences, both load-bearing:
+#
+#   1. Cross-validate. Every indicator is computed by TWO of these and
+#      the steady-state values asserted equal. That is how a library
+#      buys you fewer bugs -- not by being trusted, by being checked
+#      against another that was written by different people.
+#   2. Discard the warmup, explicitly, rather than trusting any
+#      library's seeding. This project has already produced one artifact
+#      year from an unwarmed 200-day mean, where 79.4% of 2016 sat
+#      inside the window and made that year's -7.70% meaningless.
+#
+# Pinned exactly. An indicator library that changes its seeding in a
+# point release would silently move every result in the sweep.
+
+# The reference implementation, in C. 161 functions. Where TA-Lib and a
+# pure-Python library disagree in steady state, TA-Lib is right.
+#
+# NEEDS THE C LIBRARY. Wheels exist for Windows and mainstream Linux;
+# on ARM it may want a source build, which is the other reason this file
+# is not requirements.txt -- the Pi should never be asked to compile it.
+TA-Lib==0.7.1
+
+# 427 indicators, pure Python, and it matched TA-Lib EXACTLY on RSI.
+# The primary cross-check, and the fallback wherever TA-Lib will not
+# install.
+#
+# Note the name: plain `pandas-ta` has been REMOVED from PyPI ("No
+# matching distribution found") and this is the maintained fork. Anyone
+# reading an older tutorial will reach for the wrong one.
+pandas-ta-classic==0.6.52
+
+# 48 indicators, pure Python, actively maintained, clean API. Third
+# opinion where the first two disagree -- but note it is one of the
+# libraries that seeds differently, so it is a cross-check on formulas,
+# never on warmup.
+ta==0.11.0
+
+# 90 indicators. Last release 2021, so it is here for BREADTH on
+# indicators the others lack, not as an authority. Anything sourced only
+# from finta needs its known-answer test written by hand.
+finta==1.3
+
+# INCREMENTAL indicators -- updated one bar at a time rather than
+# recomputed over an array.
+#
+# Not needed for the sweep, which is vectorised over history. It is here
+# because it is the shape the LIVE loop needs: src/live_trading_loop.py
+# processes one bar per tick, which is exactly why this project's own
+# WilderRSI and RollingStdev are incremental classes. If the sweep
+# promotes an indicator to a live sizing input, this is what avoids
+# recomputing a 200-bar window every 60 seconds.
+talipp==2.7.0
