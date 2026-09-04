@@ -216,6 +216,40 @@ There is no other copy unless you made one.
 
 ---
 
+## What the Pi does and does not need on disk
+
+**The trading loop reads no data files.** It builds its state from live
+ticks, so `data/` is `.dockerignore`d and never mounted into it. That is
+deliberate: hundreds of MB of history has no business inside the one
+container that can place orders.
+
+**`data/earnings_releases_derived.csv` is not required by this config,**
+and the loop says so rather than failing:
+
+    No earnings event table loaded (...); event_intensity stays 0.0.
+
+That warning is expected here. The CSV feeds `event_intensity`, whose
+only consumer is `weighted_event_boost_multiplier` -- not set in
+`paper_aggressive.yaml`, so it defaults to 1.0 and the whole path is an
+exact no-op. The two boosts that ARE configured read static Python
+lists and need no file at all:
+
+| config | source | file needed |
+|---|---|---|
+| `event_day_boost_multiplier: 2.5` | `is_fomc_day_at` | no -- static list |
+| `earnings_day_boost_multiplier: 1.5` | `EARNINGS_REACTION_DATES` | no -- static list |
+
+If you later set `weighted_event_boost_multiplier`, that changes: copy
+`data/earnings_releases_derived.csv` to the Pi (about 40 KB), or
+regenerate it with `tools/build_earnings_calendar.py`. Until then the
+warning is not telling you anything is wrong.
+
+**The dashboard DOES need bars,** for its price chart only. It mounts
+`./data` read-only. The chart is labelled recorded history rather than a
+quote, and it shows whatever CSVs the Pi happens to hold -- if those are
+weeks old, the chart is weeks old. The live mark on it comes from the
+loop's own tick, not from the file.
+
 ## Known constraints
 
 **Extended hours needs whole shares.** Orders outside the regular

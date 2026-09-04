@@ -141,3 +141,24 @@ def test_the_deployment_guide_leads_with_decommissioning():
     the guide is the only thing preventing it."""
     guide = (ROOT / "docs" / "DEPLOY_RASPBERRY_PI.md").read_text(encoding="utf-8")
     assert guide.index("Decommission the old host") < guide.index("## 5. Verify")
+
+
+def test_the_dashboard_can_reach_the_bars_its_chart_draws(compose):
+    """The chart reads recorded bars off disk. data/ is .dockerignored
+    -- correctly, it is hundreds of MB no container should carry -- so
+    without an explicit mount find_bar_files searches an /app/data that
+    does not exist and the chart renders empty, which reads as a flat
+    market rather than a missing mount.
+    """
+    mounts = compose["services"]["dashboard"]["volumes"]
+    data = [m for m in mounts if "/app/data" in m]
+    assert data, "the dashboard cannot see any bar files"
+    assert data[0].endswith(":ro"), f"{data[0]} must be read-only"
+
+
+def test_the_trading_loop_does_not_mount_the_bar_data(compose):
+    """It reads no file: state comes from live ticks. Mounting history
+    into the one container that can place orders would be surface for
+    nothing."""
+    mounts = compose["services"]["paper"]["volumes"]
+    assert not any("/app/data" in m for m in mounts)
