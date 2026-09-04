@@ -1,0 +1,373 @@
+# Indicator sweep: brute-force every untested input, on two instruments
+
+## What this is
+
+An exhaustive search over the technical indicators this project has never
+tried, run as **two independent objectives** — TQQQ and RSP — because they
+are different problems with different bars, and a configuration that wins
+on one has proven nothing about the other.
+
+| | TQQQ | RSP |
+|---|---|---|
+| Annualised vol | 65.9% | 18.1% |
+| Best strategy found so far | 41.65% CAGR | 12.44% CAGR |
+| …against its buy-and-hold | **+2.9pp** | **−0.1pp** |
+
+### The bar, computed once, with its provenance
+
+A buy-and-hold CAGR moves by half a point depending on which file and
+which resolution you take it from — and this sweep is hunting a two-point
+edge, so that ambiguity is not tolerable. Both numbers below come from the
+exact files the runner reads, and **the daily and minute bars are
+different numbers on purpose**: Stages 1–2 run on daily bars and are judged
+against the daily row, Stage 3 runs the minute engine and is judged against
+the minute row. Comparing a Stage-1 result to the minute bar would hand a
+candidate 0.14pp it did not earn.
+
+| instrument | file | resolution | CAGR | max DD | return/DD |
+|---|---|---|---|---|---|
+| TQQQ | `TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv` | daily close | **39.15%** | −81.68% | 0.479 |
+| TQQQ | same | minute | **39.29%** | −82.29% | 0.477 |
+| RSP | `RSP_1Min_sip_all_rthuniform_2016-01-01_2026-08-30.csv` | daily close | **12.46%** | −39.11% | 0.319 |
+| RSP | same | minute | **12.52%** | −40.04% | 0.313 |
+
+Windows are 2016-01-04 → 2026-08-21 (TQQQ) and → 2026-08-28 (RSP). The
+earlier figures of 38.73% and 12.52% came from Alpaca *daily* bars over a
+slightly longer window in `tools/screen_daily_fitness.py`; they are a
+different measurement of the same thing and are not the bar here.
+
+**What a win looks like**
+
+* **TQQQ** — beat the buy-and-hold CAGR for its stage, or match it at
+  materially lower drawdown.
+* **RSP** — beat return/DD of 0.319 (daily) / 0.313 (minute), **or** cut
+  max drawdown by ≥10pp at a cost of ≤1pp of CAGR.
+
+The objectives differ because the instruments do. TQQQ is held for return
+and its strategy already clears buy-and-hold, so the question is *how much
+more*. RSP is held for the diversification of 500 equal-weighted names, and
+nothing has beaten simply owning it — so the question is whether any input
+makes owning it **safer** at an acceptable price.
+
+**Never rank the two together.** A combined leaderboard would be dominated
+by TQQQ's larger numbers and would silently answer the RSP question with
+the TQQQ answer.
+
+---
+
+## The trap this plan exists to avoid
+
+Brute force is what was asked for and it is the right instinct — the
+indicator space has never been swept, and hand-picking candidates is how
+you find what you already expected. But this project has already paid for
+naive brute force twice, and both receipts are in the tree:
+
+> "sweeping them tripled the space from 6,272 to 18,816 — which dropped
+> coverage from 3.2% to 0.30% at a 200-trial budget and caused that run to
+> never even propose the best configuration a smaller earlier sweep had
+> already found." — `config/search_hf_volscaled.yaml`
+
+> "TPE evaluated 14 distinct combinations out of 250 trials on this space."
+> — `config/search_hf_volume_sweep.yaml`
+
+So the space is searched in **stages**, widest-and-cheapest first. This is
+not a reduction in coverage; every indicator is still tested. It is a
+reordering, so that the expensive engine only ever runs on inputs a cheap
+screen has already shown to be worth the minutes.
+
+### The statistical trap, which is worse
+
+Testing ~500 configurations against a fixed bar and reporting the winner is
+**guaranteed** to produce something that beats the bar, whether or not
+anything real is there. At a 5% threshold, 25 of 500 pass by chance alone.
+This is the single most likely way for this plan to produce a confident,
+wrong answer, and the mitigations are non-negotiable:
+
+1. **Every result is reported on both halves of the record**, split
+   chronologically. An indicator whose halves disagree is describing one
+   regime, not stating a rule. `tools/probe_regime_signals.py` already
+   prints `16–20` and `21–26` columns for exactly this reason.
+2. **The full distribution is reported, not the winner.** If 200 configs
+   were tested and the best beat the bar by 2pp while the median trailed by
+   4pp, that is a different finding than 200 configs clustering 2pp above.
+   The runner writes every row; the report shows the histogram.
+3. **A win must survive dropping the single best year and the single worst
+   year.** The vol-targeting result on RSP looked robust across every
+   parameter from 10% to 26% and evaporated when Feb–Jun 2020 was removed.
+   That check goes in from the start, not after something looks good.
+4. **Nothing from this sweep goes near live trading on this evidence
+   alone.** Clearing the bar here earns a candidate a dedicated,
+   pre-registered out-of-sample test, not a config change.
+
+---
+
+## Two roles, and they are different experiments
+
+The same indicator can enter this system two ways, and conflating them
+would halve the search without saying so.
+
+**As a REGIME FILTER** — a boolean that says in-market or out. Runs through
+the existing shell in `tools/probe_regime_signals.py`: long when true, cash
+when false, switching costs charged, signal from day *t* applied to day
+*t+1*. Nineteen rules already run this way, so a new one is a dictionary
+entry and is directly comparable to everything already measured.
+
+**As a SIZING INPUT** — a continuous multiplier on trade size, the way
+`vol_scale_exponent` and `volume_scale_exponent` already work in
+`src/high_frequency_sizing.py`. Exposure scales with the indicator rather
+than switching on it.
+
+**Prior, stated so it can be falsified rather than assumed:** the sizing
+role is more likely to pay. Every measurement this project has made points
+that way — every *faster* regime signal made 2022 worse (EMA20 −65.0%,
+RSI(14) −65.7%), the continuous vol filter beat binary SMA200 on every
+axis, and volatility targeting on RSP cut drawdown 54% where a trend filter
+cost 5.7pp of CAGR to cut it 14pp. Direction is hard; magnitude persists.
+The sweep tests both roles anyway, because that prior is exactly the kind
+of thing a brute-force search exists to overturn.
+
+---
+
+## The inventory
+
+Every indicator absent from the codebase, from the audit of `src/`,
+`tools/`, and `optimization_controller.py`. **No new dependencies** —
+TA-Lib, pandas-ta, `ta` and `finta` are all absent and stay absent
+(`requirements.txt` is gated by
+`tests/unit/test_task_7_9_macro_signals_discovery.py`). Each is
+hand-implemented in pandas/numpy in a new `src/indicator_library.py`, with
+a scalar/vectorised agreement test per the convention in
+`tests/unit/test_external_index_series.py:66`.
+
+Data needed is noted because it decides implementation order: the existing
+daily probes load `close` only, and anything needing OHLC or volume needs
+the loader widened first. Both instruments' files carry
+`open,high,low,close,volume`, so nothing here is blocked on a download.
+
+### Bands and channels — needs OHLC
+
+| indicator | params to sweep | regime use | sizing use |
+|---|---|---|---|
+| Bollinger Bands | period 10/20/50, k 1.5/2/2.5 | close above/below mid; %B | bandwidth as a vol proxy |
+| Keltner Channels | period 10/20, ATR mult 1.5/2/3 | position vs channel | channel width |
+| Donchian width | period 20/50/100 | *(entry already tested)* | width as range proxy |
+
+### Volatility — needs OHLC
+
+| indicator | params | regime use | sizing use |
+|---|---|---|---|
+| **ATR / ATR%** | period 7/14/21 | ATR% below median | **the direct replacement for the single-bar-move proxy `src/cost_models.py:120` already flags as owed** |
+| True Range percentile | window 60/250 | percentile filter | percentile as scalar |
+| Parkinson / Garman-Klass vol | window 20/60 | — | higher-efficiency vol estimators; the sizing input is already a stdev, and these use the whole bar |
+
+### Trend strength — direction-agnostic, which is the interesting part
+
+| indicator | params | regime use | sizing use |
+|---|---|---|---|
+| ADX / DMI | period 14/21 | ADX > 20/25 | **ADX as a harvest gate** — the strategy is measured to win in choppy regimes and lose in rallies, and ADX is the standard measure of exactly that |
+| Aroon | period 14/25 | up > down | oscillator as scalar |
+| Vortex | period 14/21 | VI+ > VI− | spread magnitude |
+| TRIX | period 9/15 | > 0, > signal | slope magnitude |
+| Supertrend | period 10, mult 2/3 | direction flag | — |
+| Parabolic SAR | af 0.02, max 0.2 | price vs SAR | — |
+| Ichimoku | 9/26/52 | price vs cloud | cloud thickness |
+
+### Oscillators — needs OHLC for most
+
+| indicator | params | regime use | sizing use |
+|---|---|---|---|
+| Stochastic %K/%D | 14/3/3, 21/5/5 | %K > 50, cross | distance from 50 |
+| Williams %R | period 14/21 | > −50 | level as scalar |
+| CCI | period 14/20 | > 0, > −100 | magnitude |
+| Ultimate Oscillator | 7/14/28 | > 50 | level |
+| Connors RSI | 3/2/100 | > 50 | designed for mean reversion, which is this system's whole premise |
+
+### Volume — the largest untested block
+
+| indicator | params | regime use | sizing use |
+|---|---|---|---|
+| **VWAP distance** | session, rolling 20/60 | price above VWAP | **(price − VWAP)/VWAP as a sizing scalar** |
+| OBV | slope 20/60 | OBV > its own SMA | slope magnitude |
+| Chaikin Money Flow | period 20/21 | > 0 | level |
+| Accumulation/Distribution | slope 20/60 | rising | slope |
+| Money Flow Index | period 14 | > 50 | level |
+| Force Index | period 13 | > 0 | magnitude |
+| Ease of Movement | period 14 | > 0 | magnitude |
+| Volume z-score | window 20/60 | — | relative volume, a cleaner form of the existing fast/slow ratio |
+
+**VWAP is the cheapest thing on this list and should be tested first.**
+`src/historical_data.py:371` already downloads a `vwap` column with every
+bar and nothing in the project reads it. No fetch, no new data, no new
+dependency — and it is a *reference price*, which is precisely the
+mechanism the champion configurations turned out to be exploiting: they
+buy dips and hold, so the edge is entry price against a local reference.
+
+### Moving-average variants — low prior, cheap to include
+
+WMA, HMA, DEMA, TEMA, KAMA, VWMA, ZLEMA. Periods 20/50/100/200. Regime use
+only. These are lag/smoothness variations on SMA and EMA, which are already
+measured, and the measured finding is that faster made 2022 *worse*.
+Included for completeness because they cost minutes, and flagged as the
+block most likely to produce a false positive purely from its size.
+
+### Structure and statistics
+
+| indicator | params | notes |
+|---|---|---|
+| Heikin-Ashi trend | — | smoothed candles; regime flag |
+| Pivot points | daily S/R | intraday levels, needs session grouping |
+| Fibonacci retracement | 250d swing | levels off the rolling peak/trough |
+| Hurst exponent | window 100/250 | direct persistence-vs-reversion measure; conceptually the closest thing here to the variance ratio already used in `tools/screen_daily_fitness.py` |
+| Rolling z-score | window 20/60 | mean-reversion band |
+| Rolling skew / kurtosis | window 60/250 | tail-shape as a risk scalar |
+| Autocorrelation | lag 1/5, window 60 | regime-conditional mean reversion |
+
+---
+
+## Stages
+
+### Stage 0 — the library and its tests
+
+`src/indicator_library.py`, one function per indicator, pandas in and
+pandas out, no state. Each gets:
+
+* a **known-answer test** against a hand-computed fixture — an indicator
+  implemented from memory and never checked is a silent wrong answer
+  propagated through every result below it;
+* a **warmup test** asserting `NaN` until the window is full. This is not
+  boilerplate: a previous probe traded an unwarmed 200-day mean because
+  `RollingMean.value` returns a partial mean from the second observation,
+  and 79.4% of 2016 sat inside the warmup, making that year's −7.7% an
+  artifact. The same class of bug in this library would corrupt every stage.
+
+### Stage 1 — every indicator alone, daily bars, both instruments
+
+Each indicator, in each applicable role, at 2–3 default parameterisations.
+Roughly **35 indicators → ~90 configs per instrument per role**, so ~360
+runs. Daily bars: seconds each, the whole stage in minutes.
+
+Output per run: CAGR, max DD, Ulcer, Sharpe, worst year, return/DD,
+time-in-market, switches, **and the two chronological halves**.
+
+Gate to Stage 2:
+* **TQQQ** — beats the daily buy-and-hold CAGR of 39.15%, or matches it at
+  materially lower drawdown.
+* **RSP** — beats daily return/DD of 0.319, or cuts max drawdown by ≥10pp
+  at ≤1pp of CAGR.
+* **Both** — the two halves must agree in sign.
+
+### Stage 2 — parameter sweep of the survivors, daily bars
+
+Full grid over each survivor's parameters. Expect 5–15 survivors, ~50
+configs each, so ~500 runs per instrument. Still daily, still minutes.
+
+This is where the multiple-comparisons discipline bites hardest: report the
+distribution, and treat a lone spike surrounded by mediocre neighbours as
+noise. A real parameter effect is a **ridge**, not a point — the
+volatility-targeting result was believable partly because Sharpe was flat
+at 0.76–0.78 across the whole 10–26% range.
+
+### Stage 3 — survivors through the real engine, minute bars
+
+Only now does `run_hf_sweep.py` run, on 1-minute data with costs, the
+no-loss guard, and intrabar fills. ~35s per combination. Budget ~50
+combinations per instrument.
+
+Daily-bar promise does not guarantee minute-bar delivery, and the gap is
+itself a finding: the strategy trades minutes, and an indicator that only
+works on daily bars is telling you the effect is slower than the machinery.
+
+### Stage 4 — pairwise combination, survivors only
+
+**Coordinate descent, one axis at a time.** Never a full cross-product —
+that is the mistake the two config files quoted above are receipts for.
+Combination rule, from `src/high_frequency_sizing.py`: `max()` when the
+second indicator restates the first's claim, multiply (and **clamp**) when
+it is a genuinely independent axis.
+
+---
+
+## The runner
+
+`tools/indicator_sweep.py`. One script, all four stages, driven by
+`--stage`.
+
+### Progress logging, which is the part that has to be right
+
+These runs are long, the box has had at least one memory incident from
+overlapping sweeps, and a run that loses six hours of work to a crash gets
+abandoned rather than restarted.
+
+* **Append-only JSONL, flushed and fsynced per row.** Every completed
+  configuration is durable the moment it finishes. Same discipline as
+  `FileConfNumJournal` in `src/fidelity_placing_broker.py`, and for the
+  same reason: a buffered handle is exactly how a journal loses its last
+  entry.
+* **`--resume` is the default.** On start, read the log, skip every
+  configuration already present, report how many were skipped. Interrupting
+  and restarting must cost one configuration, not the run.
+* **A stable `config_id`** — a hash of (instrument, role, indicator, params)
+  — is the resume key. Not the row index, which changes the moment the
+  inventory grows.
+* **Progress line per configuration**: `[  47/360] RSP regime bollinger
+  p=20,k=2.0  CAGR 9.14%  DD -22.1%  Sharpe 0.71  (2.3s, eta 0.19h)`.
+  Matching `run_hf_sweep.py`'s existing format, so both are readable by the
+  same eye.
+* **Heartbeat every 30 configurations**: elapsed, remaining, best-so-far
+  per instrument. A silent run is indistinguishable from a stalled one, and
+  that distinction has cost real time here already.
+* **Failures are logged and skipped, never fatal.** One indicator raising
+  on a degenerate window must not end a six-hour run; the row records the
+  exception and the sweep continues. A stage that ends with 3 failures out
+  of 360 is a result; one that dies at configuration 47 is nothing.
+
+### Usage
+
+```bash
+# Stage 1, both instruments, both roles. Minutes.
+python tools/indicator_sweep.py --stage 1 --out output/indicator_sweep.jsonl
+
+# Resume after an interruption -- default, shown for clarity.
+python tools/indicator_sweep.py --stage 1 --resume
+
+# Survivors only, full parameter grids.
+python tools/indicator_sweep.py --stage 2 --from output/indicator_sweep.jsonl
+
+# Read the results: distributions and both halves, not just the winner.
+python tools/indicator_sweep.py --report output/indicator_sweep.jsonl
+```
+
+---
+
+## What would make this dishonest
+
+* **Lookahead.** Every signal is computed from data through day *t* and
+  applied to day *t+1*. Any rolling threshold uses an **expanding** or
+  trailing quantile, never one computed over the whole sample — a
+  full-sample `quantile(0.9)` knows the future.
+* **Survivorship in the instrument choice.** Both instruments are fixed in
+  advance and both are reported, including when RSP's answer is "nothing
+  helped". A sweep that quietly drops the instrument where nothing worked
+  is a sweep that cannot produce a negative result.
+* **Costs.** Charged on every switch and every unit of turnover. A
+  continuous sizing input that rebalances daily can lose to a binary filter
+  purely on friction, and it should be allowed to.
+* **The bar moving.** Buy-and-hold per instrument is computed once, written
+  down here, and not recomputed per experiment.
+
+## What success and failure both look like
+
+**Success** is a small number of indicators — plausibly one or two — that
+clear their instrument's bar, hold across both halves, survive dropping the
+best and worst year, and still deliver through the minute-bar engine.
+
+**Failure is a legitimate and likely outcome, and is worth the run.** Most
+of these have been tested to death by the whole industry; the prior that
+any given one carries alpha on a leveraged ETF is low. A sweep that returns
+"none of the 35 cleared the bar on TQQQ, two cut RSP drawdown at a price"
+is a real finding, and it retires a large question permanently.
+
+The failure mode to actively guard against is neither of those: it is
+**finding a winner that is noise**, promoting it, and discovering that in
+production. Everything in the multiple-comparisons section exists for that
+one risk.
