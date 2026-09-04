@@ -58,7 +58,7 @@ strategy:
 
 grid:
   steps: [0.00075]
-  profit_targets: [0.3]
+  profit_targets: [0.003]
 
 backtest:
   symbol: TQQQ
@@ -99,7 +99,20 @@ live:
   # The SINGLE pair the loop trades, taken from grid above rather than
   # left to sweep ordering.
   step: 0.00075
-  profit_target: 0.3
+  # 0.3%, NOT 30%. This read 0.3 from the day the file was written, which
+  # is a factor of 100: it made the target 400x the grid step -- a 0.075%
+  # step buying every dip and then demanding a 30% gain before selling.
+  #
+  # The deployed book proved it. Of 94 lots opened under that value NONE
+  # ever filled; 48 of the 58 opened at 0.003 closed normally, and the
+  # 94 still sit there holding $8,116 with their nearest target 29.4%
+  # above the market.
+  #
+  # tools/indicator_exit_study.py puts a number on why: on TQQQ the
+  # median reachable excursion over SIXTY days is 33.6% and the 75th
+  # percentile 57.6%, so a 30% target is a multi-month hold by
+  # construction. A target near 6x the step is what actually cycles.
+  profit_target: 0.003
   # iex is free; sip is the full consolidated tape and needs a paid
   # subscription. The sweeps that chose these parameters ran on sip
   # minute data, so iex here IS a backtest/live mismatch -- stated
