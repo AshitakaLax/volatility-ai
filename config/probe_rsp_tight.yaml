@@ -1,0 +1,103 @@
+# RSP, the region the first sweep never tested.
+#
+# WHY A SECOND SWEEP AT ALL
+#
+# The first one (config/probe_rsp_scaled.yaml, output/probe_rsp_scaled.csv)
+# returned twelve rows spanning 12.03-12.44% CAGR, 40.041-40.043% max
+# drawdown, and -11.588 to -11.596% worst year. Numbers that identical
+# across a 4x range of grid step and an 8x range of profit target are not
+# twelve results; they are one result reported twelve times, and the
+# thing being reported is RSP itself:
+#
+#     buy-and-hold RSP, same window:  12.52% CAGR, -39.11% DD, -11.60% 2022
+#     best of the twelve:             12.44% CAGR, -40.04% DD, -11.595%
+#
+# The strategy was reproducing the underlying and giving back a little to
+# costs. Every configuration in that sweep held far more than it
+# harvested.
+#
+# WHY THE PROFIT TARGETS ARE THE THING THAT CHANGED
+#
+# target_sell_price = buy_price * (1 + profit_target), so the previous
+# sweep's range of 0.05-0.40 is a demand for +5% to +40% per lot. RSP's
+# realized volatility is 14.2% annualised (median 1-minute move 0.0149%),
+# against TQQQ's 54.7% -- so on RSP a +30% target, the TQQQ champion's,
+# is a multi-year hold, and even +5% is roughly a quarter's drift. Those
+# are swing-trade horizons. Nothing about them harvests volatility.
+#
+# This sweep asks for 0.5% to 4%, which on a 14.2%-vol instrument are
+# moves that actually recur. The overlap at 0.04 is deliberate: it sits
+# just under the old range's floor so the two sweeps can be read as one
+# curve rather than two disconnected experiments.
+#
+# WHAT WOULD MAKE THIS FAIL, AND IT MIGHT
+#
+# Costs. base_bps 0.5 plus dynamic slippage is charged per fill, so a
+# 0.5% target gives up a meaningful fraction of its gross edge to
+# frictions, and the trade count rises as the target falls. There is an
+# optimum somewhere between "too coarse to ever cycle" and "churned
+# away", and the point of this grid is to find which side of it RSP
+# lives on -- not to assume it lands somewhere flattering.
+#
+# THE BAR IS BUY-AND-HOLD, 12.52% CAGR AT -39.11% DRAWDOWN. A
+# configuration that does not beat that on return, or does not clearly
+# beat it on drawdown, is a worse way to own RSP than owning RSP.
+
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    # 390 = the RTH-uniform grid. RSP's extended-hours bars are 60.9%
+    # fabricated against 6.1% for regular hours, so the uniform RTH
+    # dataset is the only honest one to sweep on.
+    bars_per_day: 390
+    per_lot_pct: 0.001
+    lookback_days: 0.05
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    weighted_event_boost_multiplier: 2.5
+
+grid:
+  # Unchanged from the first sweep, deliberately. These are already
+  # vol-equivalent to the TQQQ champion's 0.00075 (TQQQ moves 4.58x more
+  # per bar, and 0.00075/4.58 = 0.00016, inside this range). Holding
+  # them fixed keeps this a one-axis move -- the coordinate-descent
+  # discipline config/search_hf_volscaled.yaml records the cost of
+  # abandoning.
+  steps: [0.0001, 0.0002, 0.0004]
+  profit_targets: [0.005, 0.01, 0.02, 0.04]
+
+backtest:
+  symbol: RSP
+  initial_cash: 100000.0
+
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+
+search:
+  strategy: grid
+  rank_by: CAGR %
+  direction: maximize
+  seed: 42
+
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  enforce_no_loss: true
+
+output:
+  return_full_results: false
