@@ -86,6 +86,16 @@ services:
       # READ-ONLY mount, belt to the application's own mode=ro braces.
       # Two independent reasons the window cannot become a hand.
       - state:/app/state:ro
+      # Recorded bars for the price chart. NOT needed by the trading
+      # loop -- that builds its state from live ticks and reads no file
+      # -- which is why only this service mounts it, and read-only.
+      #
+      # Without it find_bar_files() searches an /app/data that does not
+      # exist in the image (data/ is .dockerignored, correctly: it is
+      # hundreds of MB of history no container should carry). The chart
+      # then renders empty, which looks like a flat market rather than
+      # a missing mount.
+      - ./data:/app/data:ro
     restart: unless-stopped
     mem_limit: 512m
     depends_on:
