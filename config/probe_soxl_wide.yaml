@@ -1,0 +1,92 @@
+# SOXL, tested against the mechanism the TQQQ champion actually uses.
+#
+# WHY SOXL, AND WHY THE BAR IS HIGH
+#
+# tools/screen_daily_fitness.py ranked candidates against TQQQ (where
+# the grid works) and RSP (where it was measured not to):
+#
+#     symbol   vol%   effic%   VR(5)   B&H CAGR   B&H DD
+#     SOXL    100.7     3.44    0.84     +48.9%   -91.5%
+#     TQQQ     65.9     4.52    0.83     +38.7%   -81.7%
+#     RSP      18.1     6.21    0.91     +12.4%   -39.0%
+#
+# SOXL beats the incumbent on every axis: more amplitude, a LOWER
+# efficiency ratio (more oscillation per unit of trend), equally
+# mean-reverting, and a higher buy-and-hold. The cost is a deeper
+# drawdown.
+#
+# THE BAR IS BUY-AND-HOLD SOXL: +48.95% CAGR at -91.52% drawdown, and it
+# is a much harder bar than TQQQ's was. Across 53 recorded result files
+# the best TQQQ configuration ever found returned 41.65% against a
+# buy-and-hold of 38.73% -- an edge of 2.9 percentage points, with most
+# sweeps landing at 38.6% and therefore indistinguishable from holding.
+# A SOXL configuration that does not clear 48.95% has found nothing.
+#
+# WHAT THE CHAMPION ACTUALLY DOES, WHICH IS NOT HARVESTING
+#
+# The best TQQQ row is step 0.00075, profit target 0.75, per_lot_pct
+# 0.002 -- and Open Trade Count 6000, exactly the max_concurrent_lots
+# cap. A +75% target on a book pinned at its lot ceiling is not cycling
+# inventory; it is buying dips and holding almost all of them. The edge
+# comes from ENTRY PRICE, not from harvest cycles. That is worth saying
+# plainly because it changes what the parameters mean: the step controls
+# how eagerly it accumulates, and the profit target mostly controls what
+# it refuses to give back.
+#
+# So the sweep centres on the champion's own values and scales the step
+# by SOXL's volatility ratio (100.7/65.9 = 1.53x, giving 0.00115), then
+# brackets it. Profit targets bracket 0.75 in the same spirit.
+
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    # 356 = SOXL's actual mean bars per RTH session (954,587 / 2,682),
+    # measured rather than assumed. The TQQQ runs used 387 because that
+    # is what TQQQ's file holds; using TQQQ's number here would misstate
+    # the session length this strategy's local reference resets against.
+    bars_per_day: 356
+    per_lot_pct: 0.002
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    weighted_event_boost_multiplier: 1.0
+
+grid:
+  steps: [0.00115]
+  profit_targets: [1.10, 1.60, 2.20, 3.00, 4.00]
+
+backtest:
+  symbol: SOXL
+  initial_cash: 100000.0
+
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+
+search:
+  strategy: grid
+  rank_by: CAGR %
+  direction: maximize
+  seed: 42
+
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  enforce_no_loss: true
+
+output:
+  return_full_results: false

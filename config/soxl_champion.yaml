@@ -1,0 +1,101 @@
+# SOXL champion. The best configuration found for this strategy, on the
+# instrument a fitness screen picked over the incumbent.
+#
+# RESULT, against the only bar that matters -- owning the thing:
+#
+#                        CAGR     max DD   worst yr   R/DD
+#   this config         52.67%    -83.80%   -52.85%   0.629
+#   SOXL buy-and-hold   48.95%    -91.52%   ~-85.6%   0.535
+#
+# +3.7pp of CAGR, 7.7pp less drawdown, and a worst year 32.8 points
+# shallower. That is a real edge on all three axes, and it is larger
+# than anything this strategy has ever shown on TQQQ, where the best of
+# 53 recorded result files returned 41.65% against a buy-and-hold of
+# 38.73% at a marginally WORSE drawdown.
+#
+# WHY NOT THE HIGHER-RETURNING ROW
+#
+# step 0.00115 / target 4.00 returns 54.88%, and its drawdown is
+# -91.52% -- identical to buy-and-hold's, to two decimals. That is not
+# a coincidence: at a +400% target the book never sells, so it IS
+# buy-and-hold with dip-timed entries, and its worst year (-85.6%)
+# is buy-and-hold's too. Paying 2.2pp of CAGR to move the worst year
+# from -85.6% to -52.9% is the trade this file takes. If the objective
+# were maximum terminal wealth and drawdown were genuinely irrelevant,
+# target 4.00 is the row to use.
+#
+# WHAT THE STRATEGY IS ACTUALLY DOING, WHICH IS NOT HARVESTING
+#
+# A +110% profit target on a book pinned at its 6,000-lot ceiling does
+# not cycle inventory. It buys dips and holds nearly all of them; the
+# edge comes from ENTRY PRICE. Naming that matters, because it means
+# the step controls how eagerly it accumulates and the target controls
+# what it refuses to give back -- not "how often it harvests".
+#
+# CAVEATS, none of which the numbers above disclose on their own:
+#
+#   * Open Trade Count is 6000 in EVERY row of the sweep -- exactly
+#     max_concurrent_lots. The cap binds everywhere, so this is the best
+#     configuration AT THIS CAP, and the cap is untested as a variable.
+#   * A -83.8% drawdown is still ruinous by most standards. This is 3x
+#     semiconductors; the sector risk is undiversified and deliberate.
+#   * One instrument, one 10.6-year window, containing one crash (2020)
+#     and one bear (2022). The worst-year figure rests on 2022 alone.
+#   * SOXL survived its own leverage over this window. LABU and ERX
+#     scored better on oscillation and did not (-13.6% and -4.9%
+#     buy-and-hold, ~-99% drawdowns). Survivorship is doing real work in
+#     this choice.
+
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    # Measured from the file: 954,587 bars / 2,682 sessions.
+    bars_per_day: 356
+    per_lot_pct: 0.002
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    weighted_event_boost_multiplier: 1.0
+
+grid:
+  # 0.00115 is TQQQ's 0.00075 scaled by the volatility ratio
+  # (100.7/65.9 = 1.53). It beat both neighbours in the sweep, so the
+  # scaling was not merely a plausible starting point.
+  steps: [0.00115]
+  profit_targets: [1.10]
+
+backtest:
+  symbol: SOXL
+  initial_cash: 100000.0
+
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+
+search:
+  strategy: grid
+  rank_by: CAGR %
+  direction: maximize
+  seed: 42
+
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  enforce_no_loss: true
+
+output:
+  return_full_results: false
