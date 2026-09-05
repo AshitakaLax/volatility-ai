@@ -6,8 +6,12 @@ import { FilterPanel } from "@/components/backtest/FilterPanel";
 import { FundComparison } from "@/components/backtest/FundComparison";
 import { ParameterForm } from "@/components/backtest/ParameterForm";
 import { RiskRewardMetrics } from "@/components/backtest/RiskRewardMetrics";
+import { CommandCenter } from "@/components/live/CommandCenter";
+import { DeploymentHealth } from "@/components/live/DeploymentHealth";
+import { LiveOrderLedger } from "@/components/live/LiveOrderLedger";
 import { Card, CardContent } from "@/components/ui/primitives";
 import { useBacktestRun } from "@/hooks/useBacktestRun";
+import { useLiveState } from "@/hooks/useLiveState";
 import { api } from "@/lib/api";
 import { type Candle, filterExecutions, openLotIds, toEpochSeconds } from "@/lib/filters";
 import { cn } from "@/lib/utils";
@@ -31,6 +35,25 @@ export default function App() {
   const [staticReport, setStaticReport] = useState<MultiFundBacktestReport | null>(null);
   const [filters, setFilters] = useState<ExecutionFilters>(DEFAULT_FILTERS);
   const { run, submit, submitting, error } = useBacktestRun();
+
+  // --- live ------------------------------------------------------------
+  const [stores, setStores] = useState<{ path: string; label: string; paper: boolean }[]>([]);
+  const [store, setStore] = useState<string | null>(null);
+  const live = useLiveState(tab === "live" ? store : null);
+
+  useEffect(() => {
+    if (tab !== "live" || stores.length > 0) return;
+    void api
+      .stores()
+      .then((body) => {
+        setStores(body.stores);
+        // Select the first store automatically. A picker that starts
+        // empty makes an operator choose before seeing anything, and
+        // there is usually exactly one.
+        setStore((current) => current ?? body.stores[0]?.path ?? null);
+      })
+      .catch(() => setStores([]));
+  }, [tab, stores.length]);
 
   useEffect(() => {
     void api.staticReport().then(setStaticReport);
@@ -118,14 +141,28 @@ export default function App() {
 
       <main className="mx-auto max-w-[1600px] space-y-4 px-6 py-6">
         {tab === "live" ? (
-          <Card>
-            <CardContent className="pt-5 text-sm text-muted-foreground">
-              Live telemetry is the next phase. The read-only API it will use is already
-              running — until the view lands, the Streamlit dashboard
-              (<code className="text-foreground">streamlit run dashboard.py</code>) remains
-              the operator view.
-            </CardContent>
-          </Card>
+          <>
+            <DeploymentHealth
+              state={live.state}
+              health={live.health}
+              stores={stores}
+              selected={store}
+              onSelect={setStore}
+            />
+            {live.error ? (
+              <Card>
+                <CardContent className="pt-5 text-sm text-loss">
+                  {live.error} — is the API running?{" "}
+                  <code className="text-foreground">uvicorn server.app:app</code>
+                </CardContent>
+              </Card>
+            ) : null}
+            <CommandCenter path={store} state={live.state} onHalted={live.refresh} />
+            <LiveOrderLedger
+              lots={live.state?.lots ?? []}
+              lastPrice={live.state?.last_price ?? null}
+            />
+          </>
         ) : (
           <>
             <ParameterForm

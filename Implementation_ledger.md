@@ -9,10 +9,10 @@ Roadmap: `implementation_plan.md`.
 
 | | |
 |---|---|
-| **Active phase** | Phase 5 — Section 2: Live telemetry |
-| **Active step** | 5.1 `LiveOrderLedger.tsx` |
+| **Active phase** | All planned phases complete |
+| **Active step** | — see *Next actions* for what was deliberately deferred |
 | **Branch** | `main` |
-| **Last full suite** | **2079 passed**, 1 skipped — regression baseline byte-identical |
+| **Last full suite** | **2088 passed**, 1 skipped — regression baseline byte-identical |
 | **Frontend** | `tsc -b` clean, `vite build` succeeds, **19 vitest tests** pass |
 
 ---
@@ -85,20 +85,39 @@ forward because the Python contract is now complete.)
 | `.../FundComparison.tsx` | Normalised overlay + side-by-side table. |
 | `web/vite.config.ts` | `ws: true` moved onto `/api` — the sockets live under it. |
 
+### Phase 5 — Section 2: Live telemetry ✅ 2026-09-05
+
+| File | Notes |
+|---|---|
+| `server/deployment.py` | `GET /api/deployment` — git identity, uptime, cgroup memory. The only server module that runs a subprocess, and the capability test now says so. |
+| `web/src/hooks/useLiveState.ts` | Fetch once + subscribe. Read-only by construction. |
+| `.../live/DeploymentHealth.tsx` | Build, account switcher, connection health, and the staleness stated rather than implied. |
+| `.../live/LiveOrderLedger.tsx` | Un-merged lots sorted by distance to target; null distance sorts last. |
+| `.../live/CommandCenter.tsx` | Halt with confirmation + required reason; the two refused commands rendered greyed **with their reasons**. |
+
 ---
 
 ## Next actions
 
-1. **5.1** — `LiveOrderLedger.tsx`: lots, distance to target, distance to next step,
-   over `GET /api/live/state` + `WS /api/live/ws`.
-2. **5.2** — `DeploymentHealth.tsx`: git commit/branch, container health, account
-   switcher over `/api/live/stores`.
-3. **5.3** — `CommandCenter.tsx`: halt with a confirmation modal; `liquidate_all` and
-   `parameter_override` greyed **with their reasons**, read from `/api/health`.
-4. **5.4** — the parameter-sweep heatmap, which needs a multi-configuration run the
-   API does not yet expose (it returns the best row per fund).
-5. **Deferred:** a date-range filter that reaches the ENGINE rather than the view —
-   currently `limit` caps bars from the end of the file, not an arbitrary window.
+Everything in `implementation_plan.md` is built. What remains was scoped out
+deliberately, and each item says why:
+
+1. **Parameter-sweep heatmap.** Needs a multi-configuration run the API does not
+   expose — `POST /runs` accepts lists of steps and targets but returns only the best
+   row per fund, since `run_sweep` already ranks them. Exposing the full grid is an
+   API change, not a UI one.
+2. **Engine-level date range.** `limit` caps bars from the END of the file. An
+   arbitrary window means passing a date range into the engine, which no existing
+   caller does.
+3. **True OHLC on the backtest chart.** Candles are currently synthesised from
+   executions (D11). A real candle series needs a bar endpoint that takes a date
+   range rather than serving the tail.
+4. **Clearing a halt from the UI.** Setting one is reversible by an operator outside
+   the dashboard; adding the inverse is a second write and would need its own
+   justification against the one-write invariant.
+5. **Retiring `dashboard.py`.** The user's decision was to keep both until the React
+   live view reaches parity. It now covers lots, halt state and drawdown; Streamlit
+   still has the price ladder.
 
 ---
 
@@ -134,6 +153,19 @@ The requested ratio ships beside it as `Harvest to Stuck Ratio`.
 One engine run measured at ~23 seconds on 10y of minute bars. A synchronous POST would
 time out. `POST /api/backtest/runs` returns 202 + `run_id`; progress arrives on
 `/ws/backtest/{run_id}`.
+
+**D13 — Refused commands are rendered, not hidden.**
+`liquidate_all` and `parameter_override` appear greyed with the sentence that
+explains each. A control a reader expects and cannot find reads as a bug; one that
+explains itself reads as a decision. Capabilities come from `/api/health` rather than
+a constant in the bundle, which could disagree with the deployment it is talking to.
+
+**D14 — Container stats are cgroup or null, and CPU is never reported.**
+psutil is not a dependency and a status card does not justify one. More importantly a
+"CPU 0%" meaning "could not measure" is a number someone would act on. cgroup exposes
+cumulative microseconds; a percentage needs two samples over a known interval this
+endpoint does not keep, so it is absent rather than approximated. `git_dirty` is null
+rather than false when git cannot be reached, for the same reason.
 
 **D11 — Candles are synthesised from executions, not fetched.**
 `/api/live/bars` serves recent minute data for LIVE charting. A historical run may
@@ -207,6 +239,15 @@ carried.
   live socket delivered state at revision 922 (1 open lot, halted) then heartbeats; a
   submitted run returned **202**, completed in **4s** over its own socket, and came back
   with 32 executions and **16 of 16 sells carrying `matched_buy_id`**.
+* **Phase 5 against the real paper store**, through the proxy: deployment reported
+  `main@b9f50c7`, the store came back **halted** with "reconciliation required", and
+  the ledger showed one adopted TQQQ lot at 72.3127 against a 94.0065 target — **30.52%
+  away**, the stranded lot from the 30% profit-target bug found earlier this session.
+  Surfaced as one row, with no log grepping.
+* A `/api/deployment` 404 was first misdiagnosed as `include_router` not taking effect.
+  It was registered; the debug filter read `.path` off router groups where it is not a
+  plain string. Real cause: a stale uvicorn predating the module, plus a second Vite
+  holding 5173 while a third reported 5175.
 * **Phase 4 through the Vite proxy** (the path a browser actually takes): a two-fund run
   submitted, watched to completion over the ws proxy, returning 50 TQQQ executions with
   **25 of 25 cycles linked**, 6 RSP executions with 3 of 3, RSI on every row, and both

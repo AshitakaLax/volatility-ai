@@ -54,6 +54,22 @@ export interface Capabilities {
   backtest_submit: boolean;
 }
 
+export interface DeploymentInfo {
+  git_commit: string | null;
+  git_branch: string | null;
+  /** null means "could not tell", which is different from false. */
+  git_dirty: boolean | null;
+  started_at: number;
+  uptime_seconds: number;
+  python: string;
+  pid: number;
+  /** null outside a container -- cgroup is the only place these are true. */
+  memory_mb: number | null;
+  memory_limit_mb: number | null;
+  cpu_pct: number | null;
+  containerised: boolean;
+}
+
 export interface FundAvailability {
   ticker: string;
   path: string;
@@ -62,6 +78,8 @@ export interface FundAvailability {
 
 export const api = {
   health: () => request<{ status: string; capabilities: Capabilities }>("/api/health"),
+
+  deployment: () => request<DeploymentInfo>("/api/deployment"),
 
   funds: () =>
     request<{ funds: FundAvailability[]; sizing_models: string[] }>("/api/backtest/funds"),

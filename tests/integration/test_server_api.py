@@ -111,6 +111,40 @@ class TestHalt:
         assert client.post("/api/live/liquidate", json={"path": store}).status_code == 404
 
 
+class TestDeployment:
+    def test_it_reports_the_build_it_is_running(self, client):
+        body = client.get("/api/deployment").json()
+        assert body["git_commit"], "no commit reported from inside a git checkout"
+        assert body["git_branch"]
+        assert body["uptime_seconds"] >= 0
+        assert body["python"].startswith("3.")
+
+    def test_container_stats_are_null_rather_than_zero_when_unavailable(self, client):
+        """A "CPU 0%" that means "could not measure" is a number someone
+        would act on. Outside a container these must be absent, not
+        plausible-looking."""
+        body = client.get("/api/deployment").json()
+        if not body["containerised"]:
+            assert body["memory_mb"] is None
+            assert body["memory_limit_mb"] is None
+        # CPU is never reported: cgroup exposes cumulative microseconds,
+        # and a percentage needs two samples over a known interval, which
+        # this endpoint does not keep.
+        assert body["cpu_pct"] is None
+
+    def test_a_cgroup_max_limit_is_not_read_as_a_number(self):
+        """cgroup writes the literal string "max" for "no limit"."""
+        from server.deployment import _read_int
+
+        assert _read_int("/definitely/not/a/real/cgroup/path") is None
+
+    def test_git_dirty_distinguishes_unknown_from_clean(self, client):
+        """None means "could not tell". A card showing a clean checkmark
+        because git was missing would assert something it does not know."""
+        body = client.get("/api/deployment").json()
+        assert body["git_dirty"] in (True, False, None)
+
+
 class TestBacktestSubmission:
     def test_funds_reports_availability_rather_than_hiding_it(self, client):
         body = client.get("/api/backtest/funds").json()

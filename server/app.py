@@ -35,7 +35,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from server import backtest, control, live
+from server import backtest, control, deployment, live
 
 app = FastAPI(
     title="volatility-ai",
@@ -59,6 +59,7 @@ app.add_middleware(
 app.include_router(live.router)
 app.include_router(control.router)
 app.include_router(backtest.router)
+app.include_router(deployment.router)
 
 
 @app.get("/api/health")

@@ -80,7 +80,7 @@ def called_names(tree: ast.Module) -> set[str]:
     return found
 
 
-ALL_MODULES = ("live.py", "control.py", "backtest.py", "jobs.py", "app.py")
+ALL_MODULES = ("live.py", "control.py", "backtest.py", "jobs.py", "app.py", "deployment.py")
 
 
 @pytest.mark.parametrize("name", ALL_MODULES)
@@ -183,6 +183,33 @@ class TestBacktestTouchesNoLiveState:
         anyone who can reach the port."""
         source = (SERVER / "backtest.py").read_text(encoding="utf-8")
         assert '"live"' not in source
+
+
+class TestDeploymentIsNarrow:
+    """deployment.py is the only module that runs a subprocess."""
+
+    def test_it_opens_no_store_and_reaches_no_breaker(self):
+        tree = module_ast("deployment.py")
+        assert "LedgerStore" not in imported_modules(tree)
+        assert "CircuitBreaker" not in imported_modules(tree)
+
+    def test_no_shell_and_no_interpolated_command(self):
+        """The argv is a fixed constant list. A formatted command string
+        here would be a path from an HTTP request to a shell."""
+        source = (SERVER / "deployment.py").read_text(encoding="utf-8")
+        assert "shell=True" not in source
+        assert 'subprocess.run(f"' not in source
+        assert "os.system" not in source
+
+    def test_only_deployment_runs_a_subprocess(self):
+        """If another module grows one, it needs its own justification
+        rather than inheriting this one's."""
+        for name in ALL_MODULES:
+            if name == "deployment.py":
+                continue
+            assert "subprocess" not in imported_modules(module_ast(name)), (
+                f"server/{name} imports subprocess"
+            )
 
 
 class TestAppDefaults:
