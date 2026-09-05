@@ -682,6 +682,96 @@ existed to ask and the one that killed the last TQQQ leader.
 
 ---
 
+## Stage 2 REDONE inside the grid engine — run 2026-09-04
+
+**165 engine runs, 0 failed.** `tools/stage2_grid.py`,
+`output/stage2_grid.jsonl`. The nine Stage 1-grid leaders swept across a
+6x period range and lookbacks 100/250/500, scored on both surfaces.
+
+### Eight of nine are spikes. One is not, and it is the strongest result
+### this project has produced.
+
+**TQQQ `NATR below`, liquidate-on-flip, clears buy-and-hold's
+return/drawdown at 18 of 18 settings.** Not 17 of 18 like PLUS_DM, which
+this file already called robust — every cell.
+
+```
+ret/dd            lookback 100    250    500      bar = 0.479
+period  7                  1.189  0.972  0.834
+period 10                  1.448  0.805  0.911
+period 14                  0.905  0.637  0.635
+period 21                  0.683  0.881  0.568
+period 28                  0.669  0.672  0.530
+period 42                  0.658  0.515  0.551
+```
+
+Range 0.515 to 1.448 against a bar of 0.479. Column means fall
+monotonically with lookback — 0.925, 0.747, 0.671 — which is a gradient,
+not the single lucky column that turned out to be LINEARREG's whole
+effect.
+
+At the best cell (period 10, lookback 100):
+
+| | CAGR | maxDD | worst yr | neg yrs | in market |
+|---|---|---|---|---|---|
+| **NATR below, liquidate** | **38.64%** | **26.68%** | **−12.64%** | 2 of 10 | 54.0% |
+| same signal, hold through bear | 38.38% | 69.38% | −66.91% | 3 of 10 | 54.0% |
+| TQQQ buy and hold | 39.15% | 81.68% | ~−79% | — | 100% |
+
+It gives up **0.5pp of CAGR** and cuts drawdown from 81.68% to 26.68%.
+
+### Three things wrong with believing that yet
+
+1. **A Stage 1 claim recorded above is too broad.** "TQQQ pays 11 CAGR
+   points for protection it does not receive" was a median over 87
+   heterogeneous signals, and it is false for this one. Here liquidating
+   costs **0.26pp** and buys **42.7pp** of drawdown. The median hid a
+   minority of signals that get real protection; NATR is in it.
+2. **The optimum sits on the boundary of the swept range.** Lookback 100
+   is the smallest value tested and the best; below it is unexplored, so
+   the true optimum may be outside the grid. A boundary optimum is weaker
+   evidence than an interior one.
+3. **The peak is sharp even though the surface is not.** 1.448 against
+   neighbours of 0.966 — the adjacency test calls the argmax a spike
+   sitting on a robust plateau. Both are true, and the deployable choice
+   is a mid-surface cell, never the argmax.
+
+### THE CONTROL THAT HAS NOT RUN, AND IT IS THE ONE THAT MATTERS
+
+NATR-below is in the market 54% of the time and flips 138 times. **No
+test so far distinguishes "NATR is informative" from "any signal that
+sits out half the time and liquidates on 138 flips does this to a
+leveraged ETF."** Liquidate-on-flip forces sales the no-loss guard has
+already shaped, so a policy effect could masquerade as a signal effect
+and every stage to date would have scored it identically.
+
+That is settled by a random regime matched on in-market fraction and
+flip count, and nothing in this project has ever run one. Until it does,
+the honest statement is that the *configuration* is robust, not that the
+*indicator* is informative.
+
+### The other eight
+
+| signal | best ret/dd | neighbours | clear the bar |
+|---|---|---|---|
+| RSP MACD.macd above | 0.533 | 0.326 | 8 of 18 |
+| RSP NATR below | 0.495 | 0.350 | 7 of 18 |
+| RSP OBV above | 0.448 | 0.446 | 2 of 3¹ |
+| RSP MACDFIX.macdsignal | 0.391 | 0.210 | 3 of 18 |
+| RSP MACD.macdsignal above | 0.341 | 0.177 | 2 of 18 |
+| TQQQ BBANDS lower above | 0.801 | 0.473 | 6 of 18 |
+| TQQQ TSF above | 0.615 | 0.412 | 6 of 18 |
+| TQQQ LINEARREG above | 0.560 | 0.383 | 5 of 18 |
+
+¹ OBV takes no period parameter, so its surface is the lookback axis
+alone — three cells, and a much weaker robustness claim than the others.
+
+**Not one of the 165 settings clears the return floor on either
+instrument.** The best CAGR anywhere is NATR-below-hold at 39.090%
+against 39.15%. On raw return the answer is still buy-and-hold.
+
+---
+
 ## What would make this dishonest
 
 * **Lookahead.** Every signal is computed from data through day *t* and
