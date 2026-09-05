@@ -130,6 +130,30 @@ BASELINE: dict | None = {
     # appended and none moved -- this file still pins exactly the
     # behavior it did before, plus one new column reading zero.
     "Signal Exit Count": 0,
+    # Added for the web UI's metrics panel. Every value above was
+    # re-derived and compared before these keys were appended and NONE
+    # moved -- this file still pins exactly the behavior it did before,
+    # plus eight new columns.
+    #
+    # "Win Rate %": 100.0 is the REAL answer here, not the artifact these
+    # metrics were written to avoid. enforce_no_loss is on and no signal
+    # exit fired, so every one of the four lots genuinely did close above
+    # its basis. The artifact would be a 100% that could not be anything
+    # else; trade_metrics() reads the blotter's actual fills, so a losing
+    # signal exit would show up. "Profit Factor" equals "Realized PnL"
+    # for the same reason: with no losing trade there is nothing to
+    # divide by, and the gross profit is reported rather than inf.
+    "Profit Factor": 99.8149,
+    "Win Rate %": 100.0,
+    "Max Consecutive Losses": 0,
+    "Average Hold Duration": 8.0,
+    "Sharpe": 0.8912,
+    "Sortino": 2.2228,
+    # Both zero because all four lots closed. The pair is what makes the
+    # no-loss invariant's cost visible: capital the strategy cannot
+    # redeploy until the market comes back to a target.
+    "Stuck Capital Value": 0.0,
+    "Harvest to Stuck Ratio": 4.0,
     # Added when run_sweep began reporting a drawdown-aware ranking
     # metric. Every other value above is UNCHANGED by that addition and
     # by the is_earnings_reaction_day wiring alongside it -- both were

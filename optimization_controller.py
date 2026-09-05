@@ -36,7 +36,12 @@ from src.no_loss_guard import (
     validate_sell,
 )
 from src.order_management_system import OrderManagementSystem, OrderStatus
-from src.performance_analyzer import PerformanceAnalyzer, annual_returns
+from src.performance_analyzer import (
+    PerformanceAnalyzer,
+    annual_returns,
+    curve_metrics,
+    trade_metrics,
+)
 from src.risk_manager import RiskManager
 from src.search_strategies import BayesianSearch, GridSearch, SearchStrategy
 from src.size_calculators import SizingStrategy
@@ -842,6 +847,7 @@ class OptimizationController:
                     net_sell_proceeds=net_sell_proceeds,
                     filled_price=filled_price,
                     filled_qty=filled_qty,
+                    realized_pnl=economics.realized_pnl,
                 ):
                     """Side effects of one confirmed sell, applied at most once.
 
@@ -868,6 +874,22 @@ class OptimizationController:
                             "price": filled_price,
                             "qty": filled_qty,
                             "equity": context.equity,
+                            # IDENTITY. lot_id is the same id the lot's BUY
+                            # row carries, which is the only thing that makes
+                            # the two joinable -- and joining them is what a
+                            # closed-cycle connector on a chart, an
+                            # open-vs-closed filter, and any per-trade metric
+                            # all require. Without it the blotter records that
+                            # a sale happened but not which position it ended.
+                            "lot_id": lot.order_id,
+                            "ticker": symbol,
+                            "bar_index": context.bar_index,
+                            "sell_reason": str(sell_reason),
+                            # economics.realized_pnl, not
+                            # (target - basis) * qty. A signal exit fills at
+                            # the market and MAY be a loss; the target-based
+                            # figure would report every trade as a winner.
+                            "profit_realized": realized_pnl,
                         }
                     )
                     if len(ledger.open_lots) == 0 and on_flat_reentry == "reset_to_market":
@@ -970,6 +992,11 @@ class OptimizationController:
                                     "price": filled_price,
                                     "qty": filled_qty,
                                     "equity": context.equity,
+                                    # The id register_buy is about to give the
+                                    # lot, so the eventual sell row can name it.
+                                    "lot_id": order["id"],
+                                    "ticker": symbol,
+                                    "bar_index": context.bar_index,
                                 }
                             )
 
@@ -984,7 +1011,9 @@ class OptimizationController:
         open_assets_val = sum(lot.shares * final_price for lot in ledger.open_lots)
         final_portfolio_value = state.cash + open_assets_val
 
-        metrics = PerformanceAnalyzer.calculate_metrics(ledger, final_portfolio_value, initial_cash)
+        metrics = PerformanceAnalyzer.calculate_metrics(
+            ledger, final_portfolio_value, initial_cash, mark_price=final_price
+        )
         metrics["Max Drawdown %"] = state.max_drawdown * 100.0
         # Reported ALWAYS, not only when the feature is on. A column that
         # appears conditionally is one an analysis script silently reads
@@ -1108,9 +1137,20 @@ class OptimizationController:
             **{k: v for k, v in vars(strategy_instance).items() if not k.startswith("_")},
         }
 
+        blotter = pd.DataFrame(blotter_records)
+        # Computed HERE rather than inside calculate_metrics because
+        # they need the blotter and the equity curve, and that function
+        # receives neither -- it takes a ledger and two scalars, which
+        # is exactly why its own docstring says Sharpe and Sortino are
+        # not computable there. Both are folded into the same metrics
+        # dict so every consumer, the results table included, sees one
+        # flat row.
+        metrics.update(trade_metrics(blotter))
+        metrics.update(curve_metrics(equity_curve))
+
         return SimulationResult(
             metrics=metrics,
-            trade_blotter=pd.DataFrame(blotter_records),
+            trade_blotter=blotter,
             equity_curve=equity_curve,
             params=params,
         )

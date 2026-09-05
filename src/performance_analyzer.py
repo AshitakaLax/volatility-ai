@@ -63,6 +63,117 @@ def annual_returns(equity: pd.Series) -> pd.Series:
     return ((yearly / prev) - 1.0) * 100.0
 
 
+def trade_metrics(blotter: pd.DataFrame) -> dict:
+    """Per-trade metrics, from ACTUAL FILLS rather than from targets.
+
+    WHY NOT FROM THE LEDGER. PerformanceAnalyzer.calculate_metrics below
+    derives realised PnL as (target_sell_price - buy_price) * shares,
+    which is correct only while signal exits are off -- the backtest
+    path calls close_lot(lot) with no execution_price, so a closed lot
+    does not record what it actually sold for. A target is ALWAYS above
+    its own cost basis, so a win rate computed that way would report
+    100% by construction, on every run, forever. That is worse than no
+    metric at all.
+
+    The blotter's sell rows carry economics.realized_pnl, which is the
+    figure the no-loss guard itself computes and the one that can be
+    negative on a signal exit. These read that.
+
+    Returns zeros for an empty or unenriched blotter rather than
+    raising: a run with no closed trades is a real outcome, and callers
+    should not have to branch on it.
+    """
+    empty = {
+        "Profit Factor": 0.0,
+        "Win Rate %": 0.0,
+        "Max Consecutive Losses": 0,
+        "Average Hold Duration": 0.0,
+    }
+    if blotter is None or blotter.empty or "profit_realized" not in blotter.columns:
+        return empty
+
+    sells = blotter[blotter["side"] == "sell"].dropna(subset=["profit_realized"])
+    if sells.empty:
+        return empty
+
+    pnl = sells["profit_realized"].astype(float)
+    wins = pnl[pnl > 0]
+    losses = pnl[pnl < 0]
+    gross_loss = float(-losses.sum())
+
+    # A book with no losing trade has an undefined ratio, not an
+    # infinite one. inf serialises to JSON as null and sorts
+    # unpredictably, so the gross profit is reported instead -- a large
+    # finite number that ranks correctly against other runs.
+    gross_profit = float(wins.sum())
+    profit_factor = gross_profit / gross_loss if gross_loss > 0 else gross_profit
+
+    streak = worst_streak = 0
+    for value in pnl:
+        streak = streak + 1 if value < 0 else 0
+        worst_streak = max(worst_streak, streak)
+
+    hold = 0.0
+    if "lot_id" in blotter.columns and "bar_index" in blotter.columns:
+        opened = (
+            blotter[blotter["side"] == "buy"]
+            .dropna(subset=["lot_id"])
+            .groupby("lot_id")["bar_index"]
+            .min()
+        )
+        closed = sells.dropna(subset=["lot_id"]).groupby("lot_id")["bar_index"].max()
+        spans = (closed - opened).dropna()
+        hold = float(spans.mean()) if not spans.empty else 0.0
+
+    return {
+        "Profit Factor": round(profit_factor, 4),
+        "Win Rate %": round(float(len(wins)) / len(pnl) * 100.0, 4),
+        "Max Consecutive Losses": int(worst_streak),
+        "Average Hold Duration": round(hold, 2),
+    }
+
+
+def curve_metrics(equity: pd.Series, periods_per_year: int = 252) -> dict:
+    """Risk-adjusted metrics, which need the time series the ledger lacks.
+
+    calculate_metrics' docstring correctly explains that Sharpe and
+    Sortino "are not computable in this function" -- it receives only a
+    ledger and two scalars. They ARE computable here, because
+    SimulationResult.equity_curve exists and is passed in.
+
+    Resampled to DAILY before measuring. On minute bars, the per-bar
+    standard deviation annualised by sqrt(98280) is not a Sharpe ratio
+    anyone would recognise, and this project's data is minute bars.
+
+    Sortino divides by DOWNSIDE deviation only, which is the whole point
+    of it: a strategy whose no-loss guard suppresses losing exits has
+    very little downside deviation, and a metric that punished it for
+    upside volatility would say the opposite of what is true.
+    """
+    empty = {"Sharpe": 0.0, "Sortino": 0.0}
+    if equity is None or len(equity) < 3:
+        return empty
+    try:
+        daily = equity.resample("1D").last().dropna()
+    except (TypeError, ValueError):
+        # A non-datetime index cannot be resampled; measure as given
+        # rather than failing a whole run over a metric.
+        daily = equity.dropna()
+    returns = daily.pct_change().dropna()
+    if returns.empty or returns.std(ddof=0) == 0:
+        return empty
+
+    scale = periods_per_year**0.5
+    sharpe = float(returns.mean() / returns.std(ddof=0)) * scale
+    downside = returns[returns < 0]
+    sortino = (
+        float(returns.mean() / downside.std(ddof=0)) * scale
+        if not downside.empty and downside.std(ddof=0) > 0
+        else 0.0
+    )
+    return {"Sharpe": round(sharpe, 4), "Sortino": round(sortino, 4)}
+
+
 class PerformanceAnalyzer:
     """Computes end-of-run summary metrics from a ledger.
 
@@ -71,7 +182,9 @@ class PerformanceAnalyzer:
     """
 
     @staticmethod
-    def calculate_metrics(ledger, final_portfolio_value: float, initial_cash: float) -> dict:
+    def calculate_metrics(
+        ledger, final_portfolio_value: float, initial_cash: float, mark_price: float | None = None
+    ) -> dict:
         """Summary metrics for one completed run.
 
         Deliberately does NOT return "Max Drawdown %": the controller
@@ -81,6 +194,21 @@ class PerformanceAnalyzer:
 
         Realized PnL counts only closed lots; open lots contribute to
         Final Equity through mark-to-market instead.
+
+        REALIZED PNL IS TARGET-BASED AND THEREFORE APPROXIMATE ONCE
+        SIGNAL EXITS ARE ON. It assumes each closed lot sold at its
+        target, which the backtest guarantees only while
+        execution.allow_signal_exit is false -- the default, and the
+        configuration the pinned regression baseline was measured under.
+        A signal exit fills at the market and may realise a loss. It is
+        left as-is rather than corrected because changing it would move
+        a pinned number; trade_metrics() above reads the blotter's
+        actual fills and is the figure to trust per-trade.
+
+        mark_price is the final bar's close, used to value open
+        inventory. Optional so the original three-argument call site
+        keeps working; Stuck Capital Value is 0.0 without it rather than
+        silently wrong.
         """
         closed_lots = ledger.closed_lots
         open_lots = ledger.open_lots
@@ -100,6 +228,26 @@ class PerformanceAnalyzer:
         )
         capital_velocity_index = (len(closed_lots) / total_lots) if total_lots else 0.0
 
+        # CAPITAL TIED UP IN INVENTORY THAT HAS NOT COME BACK. The grid
+        # only sells at a profit, so an open lot is not a paper loss to
+        # be ignored -- it is capital the strategy cannot redeploy until
+        # the market returns to its target. That is the real cost of the
+        # no-loss invariant, and nothing reported it before.
+        stuck_capital_value = (
+            float(sum(lot.shares * mark_price for lot in open_lots)) if mark_price else 0.0
+        )
+
+        # THE UI SPEC'S READING OF "capital velocity": completed harvest
+        # cycles per stuck lot. Deliberately NOT merged into
+        # "Capital Velocity Index" above, which is closed/TOTAL and is
+        # the default rank_by -- every sweep result recorded in
+        # README.md is ordered by it, so redefining it would silently
+        # restate published rankings. Two names, two definitions, no
+        # collision.
+        harvest_to_stuck_ratio = (
+            len(closed_lots) / len(open_lots) if open_lots else float(len(closed_lots))
+        )
+
         return {
             "Final Equity": final_portfolio_value,
             "Total Return %": total_return_pct,
@@ -108,4 +256,6 @@ class PerformanceAnalyzer:
             "Closed Trade Count": len(closed_lots),
             "Open Trade Count": len(open_lots),
             "Capital Velocity Index": capital_velocity_index,
+            "Stuck Capital Value": stuck_capital_value,
+            "Harvest to Stuck Ratio": harvest_to_stuck_ratio,
         }
