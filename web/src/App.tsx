@@ -1,48 +1,86 @@
-import { useEffect, useState } from "react";
 import { Activity, LineChart } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
-import type { MultiFundBacktestReport } from "@/types/backtest";
-import { cn, pct, usd } from "@/lib/utils";
+import { BacktestChart } from "@/components/backtest/BacktestChart";
+import { FilterPanel } from "@/components/backtest/FilterPanel";
+import { FundComparison } from "@/components/backtest/FundComparison";
+import { ParameterForm } from "@/components/backtest/ParameterForm";
+import { RiskRewardMetrics } from "@/components/backtest/RiskRewardMetrics";
+import { Card, CardContent } from "@/components/ui/primitives";
+import { useBacktestRun } from "@/hooks/useBacktestRun";
+import { api } from "@/lib/api";
+import { type Candle, filterExecutions, openLotIds, toEpochSeconds } from "@/lib/filters";
+import { cn } from "@/lib/utils";
+import {
+  DEFAULT_FILTERS,
+  type ExecutionFilters,
+  type MultiFundBacktestReport,
+} from "@/types/backtest";
 
 /**
- * Phase 1 shell: proves the environment and the types agree with the
- * data the Python side actually emits.
+ * Section 1 is the default view, and that ordering is the brief's.
  *
- * Section 1 (backtesting) is the priority view and therefore the
- * default tab; live telemetry is Phase 5. Both are placeholders here --
- * the point of this file today is that a real exported report parses
- * against `MultiFundBacktestReport` with strict TypeScript on.
+ * The report shown comes from a submitted run when there is one, and
+ * falls back to the static export otherwise -- so the page is useful
+ * before the API is running, which is also how it was developed.
  */
 type Tab = "backtest" | "live";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("backtest");
-  const [report, setReport] = useState<MultiFundBacktestReport | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [staticReport, setStaticReport] = useState<MultiFundBacktestReport | null>(null);
+  const [filters, setFilters] = useState<ExecutionFilters>(DEFAULT_FILTERS);
+  const { run, submit, submitting, error } = useBacktestRun();
 
   useEffect(() => {
-    // The static export (tools/export_ui_data.py). Phase 2 replaces this
-    // with /api/backtest/runs; the SHAPE does not change, which is the
-    // reason the exporter was written first.
-    fetch("/data/backtest_report.json")
-      .then((response) => {
-        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-        return response.json() as Promise<MultiFundBacktestReport>;
-      })
-      .then(setReport)
-      .catch((cause: unknown) => {
-        setError(
-          cause instanceof Error ? cause.message : "could not read the exported report",
-        );
-      });
+    void api.staticReport().then(setStaticReport);
   }, []);
 
-  const funds = report ? Object.entries(report.funds) : [];
+  // A completed run wins over the export; nothing else changes the view.
+  const report = run?.report ?? staticReport;
+  const tickers = report ? Object.keys(report.funds) : [];
+  const selected = filters.tickers[0] ?? tickers[0] ?? null;
+  const fund = report && selected ? report.funds[selected] : undefined;
+
+  const executions = fund?.executions ?? [];
+  const visible = useMemo(
+    () => filterExecutions(executions, filters),
+    [executions, filters],
+  );
+  const open = useMemo(() => openLotIds(executions), [executions]);
+
+  // Candles are synthesised from the executions rather than fetched.
+  // The bar endpoint serves recent minute data for LIVE charting; a
+  // historical run may cover ten years, and pulling a million rows into
+  // a browser to draw 40 markers would be the wrong trade. Each
+  // execution contributes its own price point, so the line the markers
+  // sit on is exactly the prices they executed at.
+  const candles = useMemo<Candle[]>(() => {
+    const byTime = new Map<number, Candle>();
+    for (const execution of executions) {
+      const time = toEpochSeconds(execution.timestamp);
+      const existing = byTime.get(time);
+      if (existing) {
+        existing.high = Math.max(existing.high, execution.price);
+        existing.low = Math.min(existing.low, execution.price);
+        existing.close = execution.price;
+      } else {
+        byTime.set(time, {
+          time,
+          open: execution.price,
+          high: execution.price,
+          low: execution.price,
+          close: execution.price,
+        });
+      }
+    }
+    return [...byTime.values()].sort((a, b) => a.time - b.time);
+  }, [executions]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border">
-        <div className="mx-auto flex max-w-7xl items-center gap-6 px-6 py-4">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-6 px-6 py-4">
           <span className="text-sm font-semibold tracking-tight">volatility-ai</span>
           <nav className="flex gap-1">
             {(
@@ -67,75 +105,74 @@ export default function App() {
               </button>
             ))}
           </nav>
+          {report ? (
+            <span className="ml-auto text-xs text-muted-foreground">
+              {report.run_id} · {report.parameters.sizing_model} · step{" "}
+              {((report.parameters.grid_step_pct ?? 0) * 100).toFixed(2)}% · target{" "}
+              {((report.parameters.profit_target_pct ?? 0) * 100).toFixed(2)}% ·{" "}
+              {report.parameters.fill_model} fills
+            </span>
+          ) : null}
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-8">
+      <main className="mx-auto max-w-[1600px] space-y-4 px-6 py-6">
         {tab === "live" ? (
-          <p className="text-sm text-muted-foreground">
-            Live telemetry is Phase 5. Until it lands, the Streamlit dashboard
-            (<code className="text-foreground">streamlit run dashboard.py</code>) remains
-            the operator view.
-          </p>
-        ) : error ? (
-          <div className="rounded-lg border border-border p-6">
-            <p className="text-sm font-medium">No exported report found.</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Generate one with{" "}
-              <code className="text-foreground">
-                python tools/export_ui_data.py --tickers TQQQ
-              </code>
-              . ({error})
-            </p>
-          </div>
-        ) : !report ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <Card>
+            <CardContent className="pt-5 text-sm text-muted-foreground">
+              Live telemetry is the next phase. The read-only API it will use is already
+              running — until the view lands, the Streamlit dashboard
+              (<code className="text-foreground">streamlit run dashboard.py</code>) remains
+              the operator view.
+            </CardContent>
+          </Card>
         ) : (
-          <div className="space-y-6">
-            <div className="text-sm text-muted-foreground">
-              <span className="text-foreground">{report.run_id}</span> ·{" "}
-              {report.parameters.sizing_model} · step{" "}
-              {pct((report.parameters.grid_step_pct ?? 0) * 100)} · target{" "}
-              {pct((report.parameters.profit_target_pct ?? 0) * 100)} ·{" "}
-              {report.parameters.fill_model} fills
-            </div>
+          <>
+            <ParameterForm
+              onSubmit={submit}
+              run={run}
+              submitting={submitting}
+              error={error}
+            />
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {funds.map(([ticker, fund]) => (
-                <article key={ticker} className="rounded-lg border border-border p-5">
-                  <h2 className="text-sm font-semibold">{ticker}</h2>
-                  <dl className="mt-4 space-y-2 text-sm">
-                    <Row label="Net yield" value={pct(fund.metrics.net_yield_pct)} />
-                    <Row label="CAGR" value={pct(fund.metrics.cagr_pct)} />
-                    <Row
-                      label="Max drawdown"
-                      value={pct(fund.metrics.max_drawdown_pct)}
-                    />
-                    <Row label="Win rate" value={pct(fund.metrics.win_rate_pct, 1)} />
-                    <Row
-                      label="Stuck capital"
-                      value={usd(fund.metrics.stuck_capital_value)}
-                    />
-                    <Row
-                      label="Executions"
-                      value={String(fund.executions.length)}
-                    />
-                  </dl>
-                </article>
-              ))}
-            </div>
-          </div>
+            {!report ? (
+              <Card>
+                <CardContent className="pt-5 text-sm text-muted-foreground">
+                  No run loaded. Submit one above, or generate a static export with{" "}
+                  <code className="text-foreground">
+                    python tools/export_ui_data.py --tickers TQQQ
+                  </code>
+                  .
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {fund ? (
+                  <RiskRewardMetrics metrics={fund.metrics} />
+                ) : null}
+
+                <FilterPanel
+                  filters={filters}
+                  onChange={setFilters}
+                  availableTickers={tickers}
+                  showing={visible.length}
+                  total={executions.length}
+                />
+
+                <BacktestChart
+                  candles={candles}
+                  executions={visible}
+                  timeframe={filters.timeframe}
+                  openLotIds={open}
+                  profitTarget={report.parameters.profit_target_pct ?? 0.005}
+                />
+
+                {tickers.length > 1 ? <FundComparison funds={report.funds} /> : null}
+              </>
+            )}
+          </>
         )}
       </main>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="tnum font-medium">{value}</dd>
     </div>
   );
 }

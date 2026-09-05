@@ -22,8 +22,11 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     proxy: {
-      "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/ws": { target: "ws://127.0.0.1:8000", ws: true },
+      // ws: true on /api as well, because the sockets live UNDER it --
+      // /api/live/ws and /api/backtest/ws/{id}. A separate /ws entry
+      // would never match them, and the upgrade would fall through to
+      // the HTTP proxy and fail as a 404 that looks like a dead server.
+      "/api": { target: "http://127.0.0.1:8000", changeOrigin: true, ws: true },
     },
   },
 });

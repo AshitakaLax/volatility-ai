@@ -219,6 +219,8 @@ export interface BacktestRunRequest {
   enforce_no_loss?: boolean;
   start?: string;
   end?: string;
+  /** Cap on bars fed to the engine. A full file is a million rows. */
+  limit?: number;
 }
 
 export interface BacktestRunState {

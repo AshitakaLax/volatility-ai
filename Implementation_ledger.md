@@ -9,11 +9,11 @@ Roadmap: `implementation_plan.md`.
 
 | | |
 |---|---|
-| **Active phase** | Phase 4 — Section 1: Backtesting & multi-fund (priority) |
-| **Active step** | 4.1 `RiskRewardMetrics.tsx` |
+| **Active phase** | Phase 5 — Section 2: Live telemetry |
+| **Active step** | 5.1 `LiveOrderLedger.tsx` |
 | **Branch** | `main` |
 | **Last full suite** | **2079 passed**, 1 skipped — regression baseline byte-identical |
-| **Frontend** | `npx tsc -b` clean under strict mode; `npm run build` succeeds |
+| **Frontend** | `tsc -b` clean, `vite build` succeeds, **19 vitest tests** pass |
 
 ---
 
@@ -68,18 +68,37 @@ forward because the Python contract is now complete.)
 | `tests/unit/test_server_capability.py` | 22 AST tests. Verified against deliberate violations. |
 | `tests/integration/test_server_api.py` | 19 tests against a real store and a real engine run. |
 
+### Phase 4 — Section 1: Backtesting & multi-fund ✅ 2026-09-05
+
+| File | Notes |
+|---|---|
+| `web/src/lib/api.ts` | Typed client; surfaces FastAPI's `detail` rather than a bare status. |
+| `web/src/lib/filters.ts` | Cycle matching, filtering, OHLC aggregation. The only deciding code in the frontend. |
+| `web/src/lib/filters.test.ts` | 19 tests, verified against three deliberate bugs. |
+| `web/src/hooks/useWebSocket.ts` | Reconnect with capped, jittered backoff; health reported. |
+| `web/src/hooks/useBacktestRun.ts` | Submit + follow to completion. |
+| `web/src/components/ui/primitives.tsx` | Card/Button/Input/Select/Badge/Field. |
+| `.../RiskRewardMetrics.tsx` | Traditional metrics separated from grid behaviour. |
+| `.../BacktestChart.tsx` | Candles, markers, **cycle connectors** on a canvas overlay, target lines from the run's own profit target. |
+| `.../FilterPanel.tsx` | Timeframe, date range + presets, lot status, RSI bounds, fund. |
+| `.../ParameterForm.tsx` | The bidirectional half. Percent → fraction on submit. |
+| `.../FundComparison.tsx` | Normalised overlay + side-by-side table. |
+| `web/vite.config.ts` | `ws: true` moved onto `/api` — the sockets live under it. |
+
 ---
 
 ## Next actions
 
-1. **4.1** — `RiskRewardMetrics.tsx`: traditional + grid-specific cards, reading the
-   metrics Phase 1 added.
-2. **4.2** — `BacktestChart.tsx`: lightweight-charts candles, buy/sell markers,
-   closed-cycle connectors and target lines (all enabled by the `lot_id` join).
-3. **4.3** — `FilterPanel.tsx`: timeframe, date range, order status, RSI bounds.
-4. **4.4** — `ParameterForm.tsx` + `useBacktestRun.ts`: the bidirectional half, over
-   `POST /api/backtest/runs` and `WS /api/backtest/ws/{run_id}`.
-5. **4.5** — `FundComparison.tsx`: normalised overlay, comparison table, sweep heatmap.
+1. **5.1** — `LiveOrderLedger.tsx`: lots, distance to target, distance to next step,
+   over `GET /api/live/state` + `WS /api/live/ws`.
+2. **5.2** — `DeploymentHealth.tsx`: git commit/branch, container health, account
+   switcher over `/api/live/stores`.
+3. **5.3** — `CommandCenter.tsx`: halt with a confirmation modal; `liquidate_all` and
+   `parameter_override` greyed **with their reasons**, read from `/api/health`.
+4. **5.4** — the parameter-sweep heatmap, which needs a multi-configuration run the
+   API does not yet expose (it returns the best row per fund).
+5. **Deferred:** a date-range filter that reaches the ENGINE rather than the view —
+   currently `limit` caps bars from the end of the file, not an arbitrary window.
 
 ---
 
@@ -115,6 +134,19 @@ The requested ratio ships beside it as `Harvest to Stuck Ratio`.
 One engine run measured at ~23 seconds on 10y of minute bars. A synchronous POST would
 time out. `POST /api/backtest/runs` returns 202 + `run_id`; progress arrives on
 `/ws/backtest/{run_id}`.
+
+**D11 — Candles are synthesised from executions, not fetched.**
+`/api/live/bars` serves recent minute data for LIVE charting. A historical run may
+span ten years, and pulling a million rows into a browser to draw 40 markers is the
+wrong trade. Each execution contributes its own price point, so the line the markers
+sit on is exactly the prices they executed at. A future chart wanting true OHLC needs
+a bar endpoint that takes a date range.
+
+**D12 — Connectors are canvas, not series.**
+lightweight-charts has no segment primitive and one `LineSeries` per cycle would mean
+thousands of series. An overlay canvas positioned with `timeToCoordinate` /
+`priceToCoordinate` costs one canvas regardless. Capped at 400 and the cap is
+reported in the header rather than applied silently.
 
 **D9 — The FastAPI pin is load-bearing for Streamlit.**
 `fastapi==0.115.6` caps `starlette<0.42`. Installing it downgraded starlette and broke
@@ -175,6 +207,12 @@ carried.
   live socket delivered state at revision 922 (1 open lot, halted) then heartbeats; a
   submitted run returned **202**, completed in **4s** over its own socket, and came back
   with 32 executions and **16 of 16 sells carrying `matched_buy_id`**.
+* **Phase 4 through the Vite proxy** (the path a browser actually takes): a two-fund run
+  submitted, watched to completion over the ws proxy, returning 50 TQQQ executions with
+  **25 of 25 cycles linked**, 6 RSP executions with 3 of 3, RSI on every row, and both
+  curves normalised to 100.0.
+* The frontend tests were checked against three deliberate bugs — unknown RSI treated as
+  in-range, an exclusive end date, aggregation by sampling — and each failed its own test.
 * The capability tests were checked against deliberate violations — a broker import in
   `live.py`, a `LedgerStore` in `live.py`, a second route in `control.py`, a wildcard
   CORS origin — and each failed its own guard.
