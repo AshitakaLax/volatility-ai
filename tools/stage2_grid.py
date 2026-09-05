@@ -108,14 +108,19 @@ def leaders(path: str) -> list[dict]:
     ]
 
 
-def daily_regime(symbol, ind, output, variant, params, lookback):
+def daily_regime(symbol, ind, output, variant, params, lookback, path: str | None = None):
     """The bull/bear flag per session date, from DAILY bars.
 
     Daily, not per-minute, for the reason probe_stage3_engine records: a
     21-period indicator on minute bars is a 21-MINUTE signal, a different
     claim about the market than anything these stages measured.
+
+    `path` overrides the INSTRUMENTS lookup so a stage can test a symbol
+    that is not in that table -- the leverage comparison needs QQQ, and
+    adding it to INSTRUMENTS would give it a hand-entered buy-and-hold
+    benchmark that nothing keeps in sync with the data file.
     """
-    bars = load_bars(INSTRUMENTS[symbol]["path"])
+    bars = load_bars(path or INSTRUMENTS[symbol]["path"])
     values = compute(ind, bars, **params)[output]
     flags = signals(values, ind, lookback=lookback)[variant]
     skip = max(warmup_bars(ind, **params), lookback)
