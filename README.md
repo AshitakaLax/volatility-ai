@@ -978,26 +978,45 @@ evaluations.
 
 ```
 volatility-ai/
-├── cli.py                     # single entrypoint: test | backtest | search | live
+├── cli.py                     # single entrypoint: test | backtest | search | live | fetch-data
 ├── optimization_controller.py # sweep orchestration
+├── dashboard.py               # Streamlit view of a running deployment
 ├── run_hf_sweep.py            # parallel sweep driver for HF configs -- see below
 ├── analyze_annual.py          # annualized regime breakdown vs. buy-and-hold
+├── resample_uniform.py        # re-grid minute bars onto a uniform index
+├── analyze_har.py             # read a browser HAR; --redact to scrub one
+├── fidelity_recon.py          # attach to a live browser and capture Fidelity's own JSON API
+├── fidelity_place_test_order.py
 ├── run_*_chain.sh             # sequential sweep + analyze_annual wrappers
 ├── Dockerfile
 ├── docker-compose.yml         # test/backtest/live + staging/production
+├── docker-compose.pi.yml      # the Raspberry Pi deployment
 ├── pyproject.toml             # ruff config, Python floor
-├── requirements.txt
+├── requirements.txt           # plus requirements-fidelity.txt, requirements-indicators.txt
 ├── Run_Instructions           # detailed usage walkthrough
+├── README.md / QUICK_START.md
 ├── CHANGELOG.md               # design decisions and rationale
-├── config/
+├── plan.md                    # the staged indicator sweep, and every stage's result
+├── config/                    # one YAML per deployment or sweep
 │   ├── staging.yaml           # paper account
+│   ├── paper_aggressive.yaml  # the champion configuration, paper
 │   └── production.yaml        # real capital
-├── src/                       # see the module map
+├── docs/                      # setup and deployment guides
+├── src/                       # the library -- see the module map
+├── tools/                     # ops, data prep, and research probes -- see tools/README.md
+│   └── experiments/           # shell wrappers for earlier sweep batches
 └── tests/
     ├── unit/                  # fast, isolated
     ├── integration/           # cross-module, end-to-end
     └── fixtures/              # synthetic OHLCV + regression baseline
 ```
+
+Git-ignored and therefore absent from a fresh clone, but created by
+normal use: `data/` (downloaded market history — tens of MB per
+symbol-year), `output/` (sweep results), `logs/` (supervisor output),
+`state/`, `*.db` (the SQLite ledger), and the Fidelity capture
+artifacts listed in `.gitignore`. `tools/build_earnings_calendar.py`
+regenerates the one file under `data/` that `src/` actually needs.
 
 `CHANGELOG.md` documents *why* decisions were made, including several
 resolved specification contradictions. It is worth reading before changing

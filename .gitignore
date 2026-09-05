@@ -21,6 +21,13 @@ data/
 output/
 *.db
 
+# StateStoreLock writes "<state_db>.lock" (src/process_lock.py:103),
+# which *.db above does not match -- the suffix comes AFTER .db. The
+# file names the holding PID and exists only while a loop is running,
+# so it is machine-local by construction and was one `git add -A` away
+# from being committed on every session.
+*.db.lock
+
 # fidelity-api writes several files into the CURRENT WORKING DIRECTORY,
 # some of which are credential-equivalent. Listed here as defense in
 # depth -- the real fix is passing save_state=False / an explicit
