@@ -592,6 +592,96 @@ a long/cash overlay, and this project runs a lot ledger.
 
 ---
 
+## Stage 1 REDONE inside the grid engine — run 2026-09-04
+
+**294 engine runs, 0 failed, 111.5 minutes.** `tools/stage1_grid.py`,
+`output/stage1_grid.jsonl`. Every indicator scored where the strategy
+actually lives, after Stage 3 showed the long/cash shell answered a
+different question.
+
+### First, a cost estimate in this file was wrong by 10x
+
+The staged design rests on the claim, written above, that an engine run
+costs **~5 minutes**, which is why scoring in the engine was deferred to
+last. Measured across 294 runs it is **23 seconds**. The full 507-signal
+space is about four hours, not two days. The staging was built around a
+number nobody had measured.
+
+### The result: nothing beats buy-and-hold on return. Nothing.
+
+| | settings | clear the return floor |
+|---|---|---|
+| TQQQ (floor 39.15%, = buy-and-hold) | 174 | **0** |
+| RSP (floor 11.0%, vs buy-and-hold 12.46%) | 120 | **0** |
+
+Best in class: TQQQ `NATR below` **34.24%** and RSP `NATR below` **10.65%**,
+both under their instrument's floor. This is now the third independent
+line of evidence pointing the same way, after "the grid loses to holding
+RSP monotonically" and Stage 3.
+
+### Known-answer check: the harness reproduces Stage 3
+
+`tools/stage1_grid.py` and `tools/probe_stage3_engine.py` are separate
+scripts. On the one configuration they share — TQQQ LINEARREG above,
+period 14, lookback 250 — Stage 3 recorded **28.87% / −54.85%** and this
+run produced **28.875% / −54.845%**. Two implementations, one number.
+
+### The Stage 3 mechanism, now at n=147 instead of n=1
+
+Liquidate-on-flip was measured against hold-through-bear on the same
+signal, 147 paired runs:
+
+| | median CAGR cost | worse in | median drawdown bought |
+|---|---|---|---|
+| TQQQ | **−11.21pp** | **87 of 87** | 0.43pp (better in 45 of 87) |
+| RSP | −5.50pp | 59 of 60 | **10.12pp** (better in 51 of 60) |
+
+Liquidating is worse for return in **146 of 147** paired runs. Stage 3
+established that on one signal; it is now a property of the policy.
+
+**But the drawdown half splits by instrument, and that is new.** On RSP
+the money buys something: 10 points of drawdown, four fifths of the time.
+On TQQQ it buys **nothing** — 0.43pp median, and better in 45 of 87, which
+is a coin flip. TQQQ pays 11 CAGR points for protection it does not
+receive. Its crashes outrun a daily signal.
+
+The flip-rate correlation splits the same way: `corr(flips, CAGR cost)` is
+**−0.717** on TQQQ and **−0.003** on RSP. On TQQQ the cost is the flipping,
+exactly as Stage 3 argued. On RSP the cost is there but flip rate does not
+explain it, and this run does not establish what does.
+
+### On return/drawdown, 10 of 294 clear the bar — and one is interesting
+
+Nine of the ten are `liquidate`, which is the RSP column of the table above
+paying off. Every one of them still fails the return floor, so under Stage
+2's discipline they are de-risking, not edge. But the leader is not the
+usual cash-sitter:
+
+| | in market | CAGR | maxDD | worst yr | neg yrs |
+|---|---|---|---|---|---|
+| **TQQQ NATR below, liquidate** | 49.4% | 29.74% | 46.70% | −36.07% | 1 of 10 |
+| TQQQ buy and hold | 100% | 39.15% | 81.68% | ~−79% | — |
+
+It is in the market half the time and returns 29.74%, so the `--min-market`
+artifact that sank the candlestick patterns in the first Stage 1 does not
+apply. It gives up 9.4 CAGR points to halve the drawdown and take the worst
+year from −79% to −36%.
+
+**Which bar applies is the user's call.** Against max CAGR it fails like
+everything else. Against the objective stated earlier in this project —
+"the worst year with a positive return, drawdown very small in comparison"
+— it is the best row in 294, and it is the only signal to lead on **both**
+instruments and **both** policies. `NATR above` is its mirror and is
+catastrophic (−16.94% on TQQQ), so the direction carries the information:
+**invest when volatility is below its own trailing median.**
+
+That is volatility targeting, which this project has already measured once
+on RSP and priced at ~1.4pp of CAGR as crash insurance. Stage 2-grid tests
+whether it is a ridge or one lucky cell, which is the question Stage 2
+existed to ask and the one that killed the last TQQQ leader.
+
+---
+
 ## What would make this dishonest
 
 * **Lookahead.** Every signal is computed from data through day *t* and
