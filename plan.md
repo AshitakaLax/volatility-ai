@@ -867,6 +867,89 @@ not automatically the conservative choice here.
 
 ---
 
+## Stage 4 — the leverage prediction is FALSIFIED — run 2026-09-05
+
+**132 engine runs, 0 failed, 52.1 min.** `tools/stage4_leverage.py`,
+`output/stage4_leverage.jsonl`. QQQ downloaded for this test: 1,044,165
+rows, 2,684 sessions, SIP/all-adjustment/RTH, matched to TQQQ's sidecar
+so the comparison is like for like.
+
+### The prediction, recorded before the run
+
+An L-times daily-rebalanced fund loses about `(L^2 - L)/2 * sigma^2`
+against L times its index — `3*sigma^2` at L=3, and **exactly zero** at
+L=1. So avoiding high-volatility regimes should pay a 3x fund and do
+nothing for an unleveraged one. Stated criterion: QQQ near RSP's 7 of
+18; **15+ of 18 falsifies the mechanism.**
+
+The drag itself is real and directly measurable here — 3x QQQ's 20.20%
+would be ~60.6% CAGR with no drag, and TQQQ delivers 39.29%. That ~21pp
+gap is the drag. The mechanism exists. It is just not what produces the
+NATR result.
+
+### The result: falsified twice over
+
+| | leverage | index | clears bar | ratio to own b&h | control z |
+|---|---|---|---|---|---|
+| **TQQQ** | 3x | Nasdaq-100 | 18/18 | **3.03x** | +11.99 |
+| QQQ | 1x | Nasdaq-100 | **16/18** | 1.73x | +4.90 |
+| **SOXL** | **3x** | semis | **0/18** | **0.95x** | +6.80 |
+| RSP | 1x | equal-weight | 7/18 | 1.55x | — |
+
+QQQ cleared 16 of 18 against a stated falsification threshold of 15.
+And SOXL — 3x leveraged, vol 1.019 against TQQQ's 0.666, so roughly
+**2.3x more drag** — is the *weakest* of all four. The two 3x funds sit
+at opposite ends of the table. Leverage does not order this.
+
+### What the controls actually establish, and a correction
+
+Every instrument beats its own matched-random control decisively: QQQ
+z=+4.90, SOXL z=+6.80, TQQQ z=+11.99, each exceeding 30 of 30. **So
+NATR-below carries real information on all three.** That much survives.
+
+**SOXL then shows why that was never sufficient.** It beats noise at
+z=+6.80 and still clears its buy-and-hold bar **0 times out of 18**.
+Beating a random signal and beating buy-and-hold are different claims,
+and this file recorded the first as though it bore on the second.
+
+Which forces a correction to the Stage 3 entry above: it says the
+control is immune to the 544-configuration multiple-comparisons problem.
+**It is not.** The control kills exactly one null — *the exit policy
+alone produces this* — and that null is genuinely dead. It says nothing
+about a second: *134 indicators were searched against one price series
+and the best fit was kept.* TQQQ's 3.03x is a **selected maximum** over
+544 engine configurations; QQQ's 1.73x and SOXL's 0.95x are
+**unselected** values handed the same signal over 18 cells each. A gap of
+that shape is close to what selection bias alone predicts.
+
+### A confound in this stage's own design, recorded against it
+
+Both instruments preferred the **larger** of the two profit targets they
+were given — QQQ 0.04 over 0.0134, SOXL 0.0612 over 0.04 — so neither
+was at an optimum and the target is not really held fixed across
+instruments. The vol-scaled pass was meant to make a null interpretable
+and instead showed the target is a strong free parameter in its own
+right.
+
+This cuts *against* the leverage story rather than rescuing it: TQQQ was
+run at 0.04 only, never optimised over target, and still sits at 3.03x
+against SOXL's best-of-two 1.40x.
+
+### Where this leaves the TQQQ result
+
+Nothing measured is retracted — 18 of 18, the halves, ex-COVID and the
+policy control all stand exactly as computed. What changes is what they
+license. The configuration now has **no mechanism and no cross-instrument
+support**, which returns it to "a strong in-sample fit on one
+instrument."
+
+Walk-forward — select on data through year T, score T+1, roll — is now
+the deciding test rather than a formality, and the prior after this stage
+should be that it will not hold. Recording that here so the result is
+read against a prediction, the way Stage 3 was.
+
+---
+
 ## What would make this dishonest
 
 * **Lookahead.** Every signal is computed from data through day *t* and

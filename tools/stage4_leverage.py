@@ -90,7 +90,7 @@ BEST_LOOKBACK = 100
 # Measured, not assumed. bh_* are filled in from the price series so a
 # new instrument needs no hand-entered benchmark that could go stale.
 CANDIDATES = {
-    "QQQ": "data/QQQ_1Min_sip_all_2016-01-01_2026-09-05.csv",
+    "QQQ": "data/QQQ_1Min_sip_all_rth_2016-01-01_2026-09-05.csv",
     "SOXL": "data/SOXL_1Min_sip_all_rth_2016-01-01_2026-09-03.csv",
 }
 REFERENCE = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
