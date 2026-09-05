@@ -90,7 +90,7 @@ from src.config import BacktestConfig
 from src.cost_models import ZeroCostModel
 from src.duplicate_order_guard import DuplicateOrderGuard
 from src.earnings_calendar import is_earnings_reaction_day_at
-from src.exceptions import ConfigurationError
+from src.exceptions import ConfigurationError, PersistenceError
 from src.fill_accounting import FillTracker, extract_alpaca_fill
 from src.fomc_calendar import is_fomc_day_at
 from src.idempotency import compute_decision_id
@@ -118,6 +118,7 @@ _META_PEAK_EQUITY = "live.peak_equity"
 # heartbeat, unlike the store's file mtime, which cannot tell a
 # stopped loop from a closed market.
 _META_LAST_TICK = "live.last_tick"
+_META_OPEN_ORDERS = "live.open_orders"
 
 
 @dataclass
@@ -162,6 +163,42 @@ class _TrackedOrder:
     # the broker has already sold still open in our ledger -- the exact
     # divergence reconciliation exists to catch, manufactured by us.
     sell_reason: SellReason = SellReason.PROFIT_TARGET
+
+    def to_dict(self) -> dict:
+        """Durable form, INCLUDING the tracker's cumulative counters.
+
+        The counters are the whole point. A restart that rebuilt this
+        table with fresh FillTrackers would read the broker's CUMULATIVE
+        figures against a zero baseline and book the entire fill again
+        as a new increment -- double-counting an execution that was
+        already applied. That is worse than the state it replaces, so
+        cumulative_qty and cumulative_notional travel with the order.
+        """
+        return {
+            "client_order_id": self.client_order_id,
+            "kind": self.kind,
+            "lot_order_id": self.lot_order_id,
+            "trigger_price": self.trigger_price,
+            "profit_target": self.profit_target,
+            "sell_reason": str(self.sell_reason),
+            "cumulative_qty": self.tracker.cumulative_qty,
+            "cumulative_notional": self.tracker.cumulative_notional,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> _TrackedOrder:
+        """Rebuild one tracked order, restoring the tracker's baseline."""
+        tracker = FillTracker(raw["client_order_id"])
+        tracker.restore(float(raw["cumulative_qty"]), float(raw["cumulative_notional"]))
+        return cls(
+            client_order_id=raw["client_order_id"],
+            kind=raw["kind"],
+            tracker=tracker,
+            lot_order_id=raw.get("lot_order_id"),
+            trigger_price=float(raw.get("trigger_price", 0.0)),
+            profit_target=float(raw.get("profit_target", 0.0)),
+            sell_reason=SellReason(raw.get("sell_reason", SellReason.PROFIT_TARGET)),
+        )
 
 
 @dataclass
@@ -335,6 +372,7 @@ class LiveTradingLoop:
             last_buy_price=store.load_last_buy_price(),
         )
         self._restore_settlement(store.get_meta(_META_UNSETTLED))
+        self._restore_open_orders(store.get_meta(_META_OPEN_ORDERS))
         logger.info(
             f"LiveTradingLoop ready: symbol={self.symbol} step={self.step} "
             f"profit_target={self.profit_target} cash={self.state.cash:.2f} "
@@ -379,6 +417,81 @@ class LiveTradingLoop:
                 "session. This under-trades deliberately -- the alternative "
                 "is spending money that may not have settled."
             )
+
+    def _restore_open_orders(self, raw: str | None) -> None:
+        """Reload the in-flight order table, or refuse to start.
+
+        WHY THIS EXISTS. open_orders and sells_in_flight used to be
+        memory-only. Any restart that was not a clean shutdown -- a
+        crash, an OOM kill, a redeploy, the scheduled task firing --
+        forgot every resting order. Three things followed, none of them
+        detectable at the time:
+
+          * the fill was never applied, so cash and the ledger silently
+            missed an execution that really happened;
+          * sells_in_flight came back empty, so a lot with a live
+            resting sell was eligible for a SECOND sell, and the
+            duplicate guard could not stop it (its decision_id is
+            derived from the bar timestamp, which differs);
+          * startup reconciliation could not catch either, because a
+            RESTING order leaves positions agreeing.
+
+        CORRUPT STATE RAISES rather than defaulting to empty. Empty is
+        precisely the broken behaviour this method replaces, and
+        "in-flight orders unknown" is not a state in which it is safe to
+        harvest -- a second sell against shares already sold is the
+        outcome. Failing to start leaves the position visible, the
+        durable submission records intact, and a human to clear it.
+
+        ABSENT state is a different fact: nothing was ever written, so
+        there is nothing in flight. That is the fresh-deployment case
+        and the same distinction _restore_settlement draws.
+        """
+        if raw is None:
+            return
+        try:
+            restored = {
+                entry["client_order_id"]: _TrackedOrder.from_dict(entry)
+                for entry in json.loads(raw)
+            }
+        except (TypeError, ValueError, KeyError) as exc:
+            raise PersistenceError(
+                f"In-flight order state is unreadable ({exc}). Refusing to start: an unknown "
+                "set of resting orders cannot be harvested against without risking a second "
+                f"sell of shares already sold. Inspect {_META_OPEN_ORDERS!r} in the store, "
+                "reconcile against the broker, and clear it once the truth is known."
+            ) from exc
+
+        self.state.open_orders = restored
+        # DERIVED, never stored separately. The two are maintained in
+        # lockstep at every mutation site, so persisting both would
+        # create a second source of truth that could disagree with the
+        # first -- and the failure mode of disagreement is the double
+        # sell this whole method exists to prevent.
+        self.state.sells_in_flight = {
+            order.lot_order_id
+            for order in restored.values()
+            if order.kind == "sell" and order.lot_order_id is not None
+        }
+        if restored:
+            logger.warning(
+                f"Restored {len(restored)} in-flight order(s) from durable state: "
+                f"{sorted(restored)}. Their fills will be applied on the next poll."
+            )
+
+    def _persist_open_orders(self) -> None:
+        """Write the in-flight order table through.
+
+        Called at every mutation of the table rather than once per tick,
+        matching how lots are handled: a crash between submitting an
+        order and the durable write is exactly the window that made this
+        state unreliable, and _harvest can submit up to
+        max_sells_per_tick orders inside one tick.
+        """
+        self.store.set_meta(
+            _META_OPEN_ORDERS,
+            json.dumps([order.to_dict() for order in self.state.open_orders.values()]),
+        )
 
     # --- control ---
 
@@ -540,7 +653,7 @@ class LiveTradingLoop:
         Iterates a snapshot of the tracked orders because applying a
         fill can untrack the order it came from.
         """
-        applied = 0
+        applied = removed = 0
         for client_order_id, tracked in list(self.state.open_orders.items()):
             order = self.broker.get_order_by_client_id(client_order_id)
             if order is None:
@@ -567,6 +680,9 @@ class LiveTradingLoop:
                 self.state.open_orders.pop(client_order_id, None)
                 if tracked.lot_order_id is not None:
                     self.state.sells_in_flight.discard(tracked.lot_order_id)
+                removed += 1
+        if removed or applied:
+            self._persist_open_orders()
         return applied
 
     def _apply_buy_fill(self, tracked: _TrackedOrder, delta) -> None:
@@ -789,6 +905,7 @@ class LiveTradingLoop:
                 sell_reason=sell_reason,
             )
             self.state.sells_in_flight.add(lot.order_id)
+            self._persist_open_orders()
             submitted += 1
         return submitted
 
@@ -851,6 +968,7 @@ class LiveTradingLoop:
             trigger_price=context.price,
             profit_target=self.profit_target,
         )
+        self._persist_open_orders()
         return 1
 
     def _decision_id(self, decision_type: str, timestamp: datetime, suffix: str = "") -> str:

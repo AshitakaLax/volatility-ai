@@ -101,6 +101,22 @@ class FillTracker:
         price at the time of the last update)."""
         return self._cumulative_notional
 
+    def restore(self, cumulative_qty: float, cumulative_notional: float) -> None:
+        """Re-seed the baseline from durable state after a restart.
+
+        A tracker rebuilt at zero would read the broker's CUMULATIVE
+        figures as one enormous first increment and re-apply a fill that
+        was already booked. This sets the baseline back to what was
+        already accounted for, so the next apply_update yields only what
+        actually happened while the process was down.
+
+        Deliberately not a constructor argument: a fresh order must
+        start at zero, and making the baseline optional-at-construction
+        would let a typo silently suppress a real first fill.
+        """
+        self._cumulative_qty = float(cumulative_qty)
+        self._cumulative_notional = float(cumulative_notional)
+
     def apply_update(self, filled_qty: float, filled_avg_price: float) -> FillDelta:
         """Consume one cumulative broker status update, returning the
         incremental fill it represents.
