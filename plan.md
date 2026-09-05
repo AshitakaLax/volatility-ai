@@ -537,6 +537,61 @@ describing something about the instrument.
 
 ---
 
+## Stage 3 results — run 2026-09-04
+
+**Both candidates fail, and the reason is the same one, and it is worth
+more than either would have been.** `tools/probe_stage3_engine.py`,
+`output/stage3_*.csv`.
+
+The prior was written into the script before running: the TQQQ trend-line
+family should not survive (3 of 18 settings), PLUS_DM and ADOSC should
+(17 of 18). **The prior was right about TQQQ and wrong about RSP, but not
+in the direction that would have helped.**
+
+| | Stage 1–2 shell | real engine | buy and hold |
+|---|---|---|---|
+| TQQQ LINEARREG | 46.16% / −54.22% | **28.87%** / −54.85% | 39.15% / −81.68% |
+| RSP PLUS_DM, liquidate on flip | 12.37% / −13.37% | **−0.19%** / −25.01% | 12.46% / −39.11% |
+| RSP PLUS_DM, hold through bear | 12.37% / −13.37% | 10.39% / **−40.04%** | 12.46% / −39.11% |
+
+### The mechanism, which the shell could not have shown
+
+In a long/cash shell, "exit" means selling the index and holding cash. It
+costs the spread and nothing else.
+
+In the grid, "exit" means closing every open lot — and a signal exit is
+the *one* path in this system permitted to realise a loss. PLUS_DM flips
+**277 times** against SMA200's 27, so liquidate-on-flip crystallised the
+losing half of the book on every one: **37,407 signal exits out of 38,359
+trades**, and −0.19% CAGR.
+
+Turn liquidation off and the drawdown protection vanishes with it — the
+book simply holds through the bear, and max drawdown lands at **−40.04%**,
+which *is* buy-and-hold's. PLUS_DM's entire risk benefit came from being
+out of the market, and in the grid "out" is only available at a price the
+strategy cannot pay.
+
+So the signal is not weak. It is **not transferable**: Stages 1–2 measured
+a long/cash overlay, and this project runs a lot ledger.
+
+### What this changes
+
+* **The RSP answer stands, but it is not a grid enhancement.** Hold RSP,
+  overlay PLUS_DM-below, no grid engine involved. That is consistent with
+  the earlier finding that the grid loses to buy-and-hold on RSP anyway —
+  the two results were always pointing at the same deployment.
+* **TQQQ has no answer.** The trend-line family was a spike in Stage 2 and
+  lands 10 points under buy-and-hold here.
+* **The sweep's shell was the wrong shell**, and that is a design fault in
+  Stages 1–2 rather than a fact about the indicators. A future sweep that
+  wants grid-relevant answers has to score inside the grid — which costs
+  ~5 minutes per configuration against 0.4 seconds, and is why the staged
+  design put it last. The correct lesson is not "score everything in the
+  engine" but "state which strategy a screen is screening for", and these
+  stages did not.
+
+---
+
 ## What would make this dishonest
 
 * **Lookahead.** Every signal is computed from data through day *t* and
