@@ -156,8 +156,9 @@ class FixedPortfolioPercentage(SizingStrategy):
     drawdown or ticks in its sizing").
 
     Canonical constructor keyword is `allocation_pct`, per
-    implementation_task_specs.md Task 1.1's own proposed reading of
-    Run_Instructions' (buggy) `allocations` example parameter --
+    implementation_task_specs.md Task 1.1's own proposed reading of the
+    (buggy) `allocations` example parameter Run_Instructions carried at
+    the time -- that example has since been removed from it --
     everything in this codebase built against that name. `percentage`
     is also accepted (also keyword-only) since src/live_execution.py,
     pushed directly to main mid-session, calls this constructor with

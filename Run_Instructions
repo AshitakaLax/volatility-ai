@@ -1,115 +1,337 @@
-5. Running Backtests (Hyperparameter Sweeps)
-Backtests process historical datasets sequentially via the OptimizationController to find grid-step, take-profit, and sizing parameters that maximize a chosen ranking metric.
+RUNNING THIS PROJECT
+====================
 
-Step 1: Establish Historical CSV Data
-Ensure you have structured historical OHLCV data (columns: timestamp, open, high, low, close, volume) in a local directory matching this path framework:
+A usage walkthrough. README.md is the reference for what the system
+does and why; this is how to actually run it. CHANGELOG.md records why
+decisions were made.
 
-data/TQQQ_historical.csv
+WHAT CHANGED SINCE THE LAST VERSION OF THIS FILE
+------------------------------------------------
+It had drifted far enough to be actively misleading, so the corrections
+are listed rather than quietly folded in:
 
-Step 2: Quick Start -- Calling run_sweep() Directly
-An example execution script can be run with:
+  * It said "this codebase has no strategy-id-to-class registry, so map
+    it yourself" and showed a hand-written dict. There IS one --
+    src/strategy_registry.py, whose own docstring names this file as one
+    of the two hand-maintained copies it exists to remove.
+  * It said to run `python optimization_controller.py`. That module has
+    no __main__ block; the command does nothing. The entrypoint is
+    cli.py.
+  * It used `data/TQQQ_historical.csv`, a filename `cli.py fetch-data`
+    has never produced.
+  * Its YAML omitted the cost model, the fill model, the no-loss guard,
+    signal exits, settlement, and the whole live section -- i.e. most of
+    what determines a result.
+  * It began at "5.", a fragment of a document that no longer exists.
 
-python optimization_controller.py
 
-Script Example & Ingestion Configuration:
-import pandas as pd
-from optimization_controller import OptimizationController
-from src.size_calculators import FixedPortfolioPercentage
+1. SETUP
+--------
+    python -m venv .venv
+    .venv/Scripts/activate          # Windows; use bin/activate elsewhere
+    pip install -r requirements.txt
 
-# Load historical pandas frame
-df = pd.read_csv("data/TQQQ_historical.csv", parse_dates=['timestamp'])
-df.set_index('timestamp', inplace=True)
+Optional extras, each independent:
 
-# Each dict in strategy_params_grid is a set of constructor kwargs for
-# strategy_class -- run_sweep instantiates FixedPortfolioPercentage(**params)
-# once per combination. allocation_pct is FixedPortfolioPercentage's real
-# constructor keyword (src/size_calculators.py).
-strategy_params_grid = [{"allocation_pct": a} for a in [0.01, 0.02]]  # 1% and 2% portfolio limits
+    requirements-indicators.txt     TA-Lib and friends, for tools/ sweeps
+    requirements-fidelity.txt       Playwright, for the Fidelity adapter
 
-# Define target sweeping matrix bounds
-controller = OptimizationController(historical_data=df)
-results_df = controller.run_sweep(
-    grid_steps=[0.005, 0.01, 0.015],  # 0.5%, 1.0%, 1.5% drops
-    profit_targets=[0.003, 0.005, 0.01],  # 0.3%, 0.5%, 1.0% targets
-    strategy_class=FixedPortfolioPercentage,
-    strategy_params_grid=strategy_params_grid,
-)
+Verify the install:
 
-# Output optimization sorted by Capital Velocity Index (the default rank_by)
-print(results_df.head(5))
+    python cli.py test -q
 
-Step 3: Configuration-Driven Workflow -- BacktestConfig / YAML
-For anything beyond a one-off run, src/config.py's BacktestConfig is the source of truth for a sweep's configuration -- build it programmatically via BacktestConfig.from_dict({...}), or from a YAML file via BacktestConfig.from_yaml("config.yaml"). Both paths validate identically via config.validate().
 
-Example config.yaml (every section except strategy/grid is optional -- omitted sections use the defaults shown):
+2. GET DATA
+-----------
+`data/` is git-ignored, so a fresh clone has none. Downloading needs
+Alpaca credentials in the environment:
+
+    APCA_API_KEY_ID, APCA_API_SECRET_KEY
+
+Then:
+
+    python cli.py fetch-data --symbol TQQQ --start 2016-01-01 --end 2026-09-05 \
+        --timeframe 1Min --feed sip --adjustment all
+
+Notes that matter:
+
+  * The file is NAMED for its parameters --
+    `data/TQQQ_1Min_sip_all_rth_2016-01-01_2026-09-05.csv` -- and a
+    `.meta.json` sidecar records the row count, span and SHA-256. Two
+    downloads with different settings cannot be confused for each other.
+  * `--feed sip` needs a paid subscription. The live loop can only read
+    `iex`, so backtesting on `sip` tunes parameters against a tape
+    production cannot see. Use `iex` unless you know why you want `sip`.
+  * `--adjustment all` is the default and should stay: anything less
+    makes a split look like a ~66% single-bar crash.
+  * Regular hours only unless `--include-extended-hours` is passed.
+
+One more file is needed and is NOT a download:
+
+    python tools/build_earnings_calendar.py
+
+It writes `data/earnings_releases_derived.csv`, which `src/event_calendar.py`
+requires. Because `data/` is ignored, this is load-bearing for a fresh
+checkout.
+
+
+3. RUN A BACKTEST
+-----------------
+    python cli.py backtest --config config/staging.yaml \
+        --data data/TQQQ_1Min_sip_all_rth_2016-01-01_2026-09-05.csv
+
+`cli.py backtest --help` lists the overrides. The config is the source
+of truth; flags are for one-off variations.
+
+
+4. THE CONFIG FILE
+------------------
+`src/config.py`'s BacktestConfig validates every path identically,
+whether built from YAML (`BacktestConfig.from_yaml`) or a dict
+(`BacktestConfig.from_dict`). Only `strategy` and `grid` are required;
+every default below is the real one.
+
+The block below is extracted and RUN by
+tests/integration/test_task_6_1_config_run_instructions.py, so it
+cannot drift from the code without a test failing. The named delimiters
+are what the test keys on -- prose around them can be rewritten freely,
+which the previous markers (a full sentence of prose) did not allow.
+
+--- BEGIN example-config.yaml ---
 strategy:
-  strategy_id: fixed              # looked up in your own strategy_id -> class mapping (see below); not a registry this codebase provides
-  strategy_params:
+  strategy_id: fixed                # resolved by src/strategy_registry.py
+  strategy_params:                  # constructor kwargs for that class
     allocation_pct: 0.05
+
 grid:
-  steps: [0.005, 0.01, 0.015]
-  profit_targets: [0.003, 0.005, 0.01]
+  steps: [0.005, 0.01]              # required
+  profit_targets: [0.003, 0.005]    # required
+
 backtest:
-  symbol: TQQQ                    # default: TQQQ
-  initial_cash: 100000.0          # default: 100000.0
+  symbol: TQQQ
+  initial_cash: 100000.0
+
 costs:
-  model_type: zero                # "zero" (default) or "slippage_commission"
+  model_type: zero                  # zero | slippage_commission | dynamic_slippage
   commission_per_trade: 0.0
-  slippage_bps: 0.0
+  slippage_bps: 0.0                 # slippage_commission only
+  base_bps: 0.0                     # dynamic_slippage: the flat floor
+  vol_multiplier: 1.0               # dynamic_slippage: scales the bar's move
+
 risk:
-  max_concurrent_lots: null       # default: unlimited
-  max_total_exposure: null        # default: unlimited, else 0-1
+  max_concurrent_lots: null         # null = unlimited
+  max_total_exposure: null          # null = unlimited, else 0-1
+  dd_exposure_start: null           # throttle exposure as drawdown deepens
+  dd_exposure_full: 0.6
+  dd_exposure_floor_pct: 0.0
+
 search:
-  strategy: grid                  # "grid" (default) or "bayesian"
-  rank_by: Capital Velocity Index # default
-  direction: maximize             # "maximize" (default) or "minimize"
-  seed: null                      # only used by search_strategy="bayesian"
+  strategy: grid                    # grid | bayesian
+  rank_by: Capital Velocity Index
+  direction: maximize
+  seed: null                        # bayesian only
+
 execution:
-  on_flat_reentry: stale_reference  # "stale_reference" (default) or "reset_to_market"
-  intrabar_priority: sell_first     # used by validate_finalists_intraday, not run_sweep itself
+  on_flat_reentry: stale_reference  # stale_reference | reset_to_market
+  intrabar_priority: sell_first
+  fill_model: close                 # close | intrabar -- see below
+  enforce_no_loss: true             # see below
+  allow_signal_exit: false          # see below
+  settlement_days: 0                # T+N; 1 models a cash account
+
 output:
-  return_full_results: false      # true also returns per-combination trade blotters/equity curves
+  return_full_results: false        # true also returns blotters + equity curves
+
 live:
   enabled: false
   paper_trading: true
+  broker: alpaca                    # alpaca | fidelity
+  step: null                        # required when enabled
+  profit_target: null               # required when enabled
+  feed: iex
+  extended_hours: false
+  poll_interval_seconds: 60.0
+  max_sells_per_tick: 25
+--- END example-config.yaml ---
 
-Script Example:
+Four settings change results more than anything else in the file:
+
+  fill_model
+      "close" requires a level to be reached by the bar's CLOSE.
+      "intrabar" fills a level TOUCHED during the bar, which is what
+      resting limit orders actually do -- roughly 1.85x more fills on
+      both sides on this repo's own minute data. "close" remains the
+      default; see OptimizationController._simulate_single for why.
+
+  enforce_no_loss
+      TRUE (default) rejects any sell whose net proceeds would not cover
+      the lot's allocated cost basis. This is not caution for its own
+      sake: an institution is periodically FORCED to liquidate, a retail
+      book is not, so declining to realise a loss is a structural edge.
+      Turning it off changes what the strategy IS.
+
+  allow_signal_exit
+      FALSE (default). TRUE lets a strategy implementing
+      `lots_to_liquidate` close positions at a loss on a signal. BOTH
+      conditions are required -- the flag alone does nothing. Every such
+      exit is logged with its realised loss and counted in the result's
+      `Signal Exit Count` column.
+
+  settlement_days
+      0 (default) assumes sale proceeds redeploy instantly. A cash
+      account settles T+1, and the champion configuration trades roughly
+      2,000 times a year, so this is a real constraint rather than a
+      rounding detail. Set it to 1 to model one.
+
+
+5. SWEEPS
+---------
+For anything larger than a single config, use the sweep drivers rather
+than calling run_sweep by hand:
+
+    python run_hf_sweep.py --config config/search_hf_volscaled.yaml \
+        --search random --trials 250 --max-drawdown 55 --n-jobs 4 \
+        --output output/my_sweep.csv
+
+    python analyze_annual.py --top 3        # year by year vs. buy-and-hold
+
+README.md has a table of every sweep this project has actually run, the
+question each was asking, and where its output landed. Read that before
+designing a new one -- several of those runs answered questions that
+keep getting re-asked.
+
+Calling the controller directly is still supported, and is what the
+tools in `tools/` do. Both scripts below are extracted and RUN by the
+tests, against tests/fixtures/regression_ohlcv.csv copied in as
+data/TQQQ_historical.csv -- so they are known to work, not merely
+believed to.
+
+Direct call, no config file:
+
+--- BEGIN example-direct.py ---
 import pandas as pd
+
 from optimization_controller import OptimizationController
-from src.config import BacktestConfig
 from src.size_calculators import FixedPortfolioPercentage
 
-df = pd.read_csv("data/TQQQ_historical.csv", parse_dates=['timestamp'])
-df.set_index('timestamp', inplace=True)
+frame = pd.read_csv("data/TQQQ_historical.csv", parse_dates=["timestamp"])
+frame.set_index("timestamp", inplace=True)
+
+# Each dict is one set of constructor kwargs; run_sweep instantiates
+# FixedPortfolioPercentage(**params) once per combination.
+strategy_params_grid = [{"allocation_pct": a} for a in (0.01, 0.02)]
+
+controller = OptimizationController(historical_data=frame)
+summary = controller.run_sweep(
+    grid_steps=[0.005, 0.01],
+    profit_targets=[0.003, 0.005],
+    strategy_class=FixedPortfolioPercentage,
+    strategy_params_grid=strategy_params_grid,
+)
+print(summary.head())
+--- END example-direct.py ---
+
+Config-driven, which is what anything repeatable should use:
+
+--- BEGIN example-config.py ---
+import pandas as pd
+
+from optimization_controller import OptimizationController
+from src.config import BacktestConfig
+from src.strategy_registry import resolve_strategy
+
+frame = pd.read_csv("data/TQQQ_historical.csv", parse_dates=["timestamp"])
+frame.set_index("timestamp", inplace=True)
 
 config = BacktestConfig.from_yaml("config.yaml")
 config.validate()
 
-# BacktestConfig stores strategy_id as a string; this codebase has no
-# strategy-id-to-class registry, so map it yourself:
-STRATEGY_REGISTRY = {"fixed": FixedPortfolioPercentage}
-strategy_class = STRATEGY_REGISTRY[config.strategy.strategy_id]
+controller = OptimizationController(historical_data=frame)
+summary = controller.run_sweep(
+    **config.to_run_sweep_kwargs(resolve_strategy(config.strategy.strategy_id))
+)
+print(summary.head())
+--- END example-config.py ---
 
-controller = OptimizationController(historical_data=df)
-results_df = controller.run_sweep(**config.to_run_sweep_kwargs(strategy_class))
+Note `OptimizationController(historical_data=frame)` -- it takes a
+loaded DataFrame, not a path. And note `resolve_strategy`: earlier
+versions of this file told you to hand-write a strategy_id-to-class
+dict, which is exactly the drift src/strategy_registry.py was added to
+remove.
 
-print(results_df.head(5))
+run_sweep's optional keyword arguments, each defaulting to the original
+behaviour when omitted. The list is checked against the real signature
+by the tests, so a renamed parameter fails rather than rots here:
 
-Step 4: Optional run_sweep() Capabilities Reference
-All of the following are real, tested run_sweep() keyword arguments beyond the required grid_steps/profit_targets/strategy_class/strategy_params_grid -- every one defaults to today's original behavior when omitted:
+--- BEGIN run-sweep-kwargs ---
+- cost_model          ZeroCostModel() by default; see src/cost_models.py.
+- risk_manager        Clamps new-buy size by max_concurrent_lots and/or
+                      max_total_exposure_pct. Unlimited by default.
+- on_flat_reentry     "stale_reference" (default) or "reset_to_market" --
+                      the grid's reference price once fully flat.
+- symbol              Ticker traded, default "TQQQ".
+- initial_cash        Default 100000.0.
+- n_jobs              1 (sequential) or >1 for a process pool.
+- search_strategy     None/"grid" (exhaustive, default), "bayesian"
+                      (Optuna-backed), or a SearchStrategy instance.
+- search_seed         Bayesian only.
+- search_direction    Bayesian only.
+- rank_by             Result column to sort by; default "Capital
+                      Velocity Index".
+- tie_break_by        Secondary sort column.
+- return_full_results False (default) returns one summary DataFrame;
+                      True returns (summary, [SimulationResult]) with
+                      per-combination blotters and equity curves.
+--- END run-sweep-kwargs ---
 
-- cost_model: TransactionCostModel -- ZeroCostModel() (default) or SlippageCommissionModel(commission_per_trade=..., slippage_bps=...). src/cost_models.py.
-- risk_manager: RiskManager -- clamps new-buy size by max_concurrent_lots and/or max_total_exposure_pct. Unlimited by default. src/risk_manager.py.
-- on_flat_reentry: "stale_reference" (default) or "reset_to_market" -- controls the grid's reference price once the portfolio goes fully flat.
-- symbol: str -- ticker traded, default "TQQQ".
-- initial_cash: float -- default 100000.0.
-- n_jobs: int -- 1 (default, sequential) or >1 to evaluate combinations across a process pool.
-- search_strategy: None/"grid" (default, exhaustive) or "bayesian" (Optuna-backed, needs the optuna package -- see requirements.txt) or a pre-built SearchStrategy instance. src/search_strategies.py.
-- search_seed / search_direction: only affect search_strategy="bayesian".
-- rank_by / tie_break_by: which result column(s) to sort by; default rank_by is "Capital Velocity Index".
-- return_full_results: bool -- False (default) returns one summary DataFrame; True returns (summary_df, full_results), where full_results is a list of per-combination SimulationResult (trade_blotter, equity_curve, params).
+Beyond run_sweep:
 
-Additional, related tools beyond run_sweep() itself:
-- controller.validate_finalists_intraday(...) -- re-checks a short list of finalists against minute-bar data (src/intraday_validation.py).
-- WalkForwardRunner (src/walk_forward.py) -- selects parameters on a training window, scores only on a held-out test window.
-- MonteCarloRunner (src/monte_carlo.py) -- block-bootstraps the historical return series into synthetic paths, reporting percentile outcomes.
+  controller.validate_finalists_intraday(...)
+      Re-check a shortlist against minute bars (src/intraday_validation.py).
+  WalkForwardRunner (src/walk_forward.py)
+      Select parameters on a training window, score only on a held-out
+      test window. This is the discipline a sweep result needs before it
+      means anything.
+  MonteCarloRunner (src/monte_carlo.py)
+      Block-bootstrap the return series into synthetic paths.
+
+
+6. LIVE AND PAPER TRADING
+-------------------------
+    python tools/preflight.py                    # can this machine trade at all?
+    python cli.py live --config config/paper_aggressive.yaml --check-only
+    python cli.py live --config config/paper_aggressive.yaml
+
+`--check-only` runs the full startup lifecycle -- connect, reconcile
+against the broker, validate the data clock -- and stops before the
+first tick. Anything other than READY names the stage that stopped it;
+RECONCILIATION_REQUIRED means local and broker state disagree and a
+human must resolve it.
+
+Things worth knowing before running this:
+
+  * PAPER vs LIVE comes from the config, not a CLI flag: routing real
+    capital has to be a reviewable, committed decision.
+  * One loop per state store, enforced by a lock file. Two loops against
+    one store submit duplicate orders that the duplicate guard cannot
+    catch, because both compute the same decision id on the same bar.
+  * A drawdown halt and a reconciliation halt both survive restart. They
+    block new BUYS only -- the loop keeps tracking the market and keeps
+    exiting open lots.
+  * Nothing in the system force-liquidates. Not shutdown, not a drawdown
+    halt, not a reconciliation failure.
+
+Operational scripts (`tools/market_hours_supervisor.py`,
+`install_paper_service.ps1`, `docker_session_loop.sh`) and the
+Raspberry Pi deployment are covered in `tools/README.md` and
+`docs/DEPLOY_RASPBERRY_PI.md`. Alpaca credentials are in
+`docs/ALPACA_SETUP.md`; the pre-production gate is
+`docs/PRE_PRODUCTION_CHECKLIST.md`.
+
+
+7. THE DASHBOARD
+----------------
+    streamlit run dashboard.py
+
+Reads the ledger store a deployment is writing: open lots, closed
+trades, drawdown, and the price ladder.

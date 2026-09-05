@@ -49,8 +49,18 @@ from src.validation import (
 class StrategyConfig:
     """Which sizing strategy to run and how to construct it.
 
-    strategy_id is an opaque string label; this codebase has no
-    id-to-class registry, so the caller maps it (see Run_Instructions).
+    strategy_id is an opaque string label HERE -- this dataclass stores
+    it without resolving it, so config parsing does not depend on every
+    strategy class being importable. Callers resolve it through
+    src/strategy_registry.resolve_strategy, which is the single mapping.
+
+    This docstring previously said no registry existed and told the
+    caller to map it themselves. That stopped being true when
+    strategy_registry.py was added -- whose own docstring names this
+    comment and Run_Instructions as the two hand-maintained copies it
+    replaced. Opaque-at-parse-time and no-registry-anywhere are
+    different claims, and only the first one was ever the design.
+
     strategy_params are the constructor kwargs for that class.
     """
 
