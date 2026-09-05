@@ -7,3 +7,8 @@ dist/
 # ignored), so committing it would ship a stale snapshot of a run
 # nobody can reproduce from this repo.
 public/data/
+
+# tsc -b incremental build cache. Machine-local and regenerated on
+# every build; committing it creates conflicts between machines and
+# says nothing either of them needs.
+*.tsbuildinfo
