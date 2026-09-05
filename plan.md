@@ -466,6 +466,77 @@ nineteen-rule table.
 
 ---
 
+## Stage 2 results — run 2026-09-04
+
+**144 configurations: 8 surviving signals x 6 period scalings x 3
+threshold lookbacks.** `output/indicator_stage2.jsonl`, reproducible with
+`python tools/indicator_sweep.py --stage 2 --from output/indicator_sweep.jsonl`.
+
+### First, the RSP bar was fixed
+
+Stage 1 reported 96 of 392 RSP configurations beating the bar against 5 of
+392 on TQQQ. That was not RSP being easier — a return/drawdown of 0.319 is
+trivially beaten by de-risking, and a book that sits in cash beats it
+without doing anything useful. Adding the return floor the objective always
+implied (CAGR at least 11%, against buy-and-hold's 12.46%) collapses 96
+survivors to **3**: PLUS_DM, ADOSC, TRIX.
+
+### The ridge test, and the metric that had to be fixed first
+
+The first version of `ridge_scores` compared each setting against the mean
+of **every other setting** in the grid — which is not a neighbourhood, it is
+"better than the average of a surface spanning periods 7–42 and lookbacks
+100–500". It scored LINEARREG at +20 CAGR points of "ridge" and PLUS_DM at
++0.4, **making the fragile result look stronger than the robust one.** It
+now compares against adjacent settings in both axes.
+
+### The result reverses Stage 1's apparent ranking
+
+| signal | best | neighbours | settings clearing the bar |
+|---|---|---|---|
+| TQQQ LINEARREG | 46.16% | 30.76% | **3 of 18** |
+| TQQQ TSF | 44.89% | 30.90% | 2 of 18 |
+| TQQQ BBANDS lower | 43.76% | 31.70% | 4 of 18 |
+| TQQQ T3 | 41.60% | 30.22% | 3 of 18 |
+| **RSP PLUS_DM** | 1.046 | 0.834 | **17 of 18** |
+| **RSP ADOSC** | 1.159 | 0.877 | **17 of 18** |
+| RSP TRIX | 0.640 | 0.511 | 10 of 18 |
+
+**Every TQQQ survivor is a spike.** The surface shows why — the entire
+effect lives in one lookback column:
+
+```
+LINEARREG CAGR      lookback 100    250    500
+period  7                 26.34  37.92  18.69
+period 14                 28.63  46.16  16.66     bar = 39.15
+period 21                 26.61  43.70  13.30
+period 42                 20.45  29.72  13.86
+```
+
+Stage 1 fixed the threshold lookback at 250 as a generic rule, and 250 is
+the only column that works. That was luck, not design, and the honest
+reading of the headline finding is that it is **one cell of eighteen**.
+
+**Both RSP leaders are ridges.** PLUS_DM clears its bar at 17 of 18
+settings, across periods 7–42 and lookbacks 100–500; the single failure is
+the shortest period at the longest lookback. ADOSC is the same shape. An
+effect that survives its parameters being wrong by a factor of six is
+describing something about the instrument.
+
+### Where that leaves the two objectives
+
+* **RSP has a robust answer.** Invest when directional movement or
+  accumulation flow is below its own trailing median — that is, when the
+  market is calm — and take buy-and-hold's return at roughly a third of its
+  drawdown. It survives COVID removal, both chronological halves, and its
+  own parameters.
+* **TQQQ does not yet.** The trend-line family is real enough to have
+  produced five of the only five configurations that beat a hard bar, but
+  at one lookback each. Stage 3 on minute bars is the test that matters,
+  and the prior should now be that it will not hold.
+
+---
+
 ## What would make this dishonest
 
 * **Lookahead.** Every signal is computed from data through day *t* and

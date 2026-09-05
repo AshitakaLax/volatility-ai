@@ -309,6 +309,208 @@ def stage1(args) -> int:
     return 0
 
 
+# Stage 2's return floor per instrument. Stage 1 showed 96 of 392 RSP
+# configurations "beating the bar" against 5 of 392 on TQQQ -- not
+# because RSP is easier, but because a return/drawdown of 0.319 is
+# trivially beaten by de-risking, and a book that sits in cash beats it
+# without doing anything useful. The floor makes the objective say what
+# it always meant: cut the drawdown WITHOUT surrendering the return.
+# It collapses 96 survivors to 3.
+RETURN_FLOOR = {"TQQQ": 39.15, "RSP": 11.0}
+
+
+def survivors(path: str, min_market: float = 20.0) -> pd.DataFrame:
+    """Stage 1 rows that earned a parameter sweep."""
+    with open(path, encoding="utf-8") as fh:
+        rows = [json.loads(line) for line in fh if line.strip()]
+    d = pd.DataFrame([r for r in rows if "error" not in r])
+    d = d[d.in_market_pct >= min_market]
+    keep = d.beats_bar & d.halves_agree
+    floor = d.instrument.map(RETURN_FLOOR).fillna(0)
+    return d[keep & (d.cagr >= floor)]
+
+
+def param_grid(ind) -> list[dict]:
+    """Parameter settings to try for one indicator.
+
+    Periods scale multiplicatively rather than by fixed steps, because
+    the question is whether an effect holds across a RANGE, and 12 to 16
+    on a 14-period default proves far less than 7 to 42 does.
+
+    Non-period parameters (matype, nbdev) stay at their defaults. Stage 4
+    is where axes get combined, and sweeping them here would multiply the
+    space for exactly the reason plan.md refuses to elsewhere.
+    """
+    periods = {k: v for k, v in ind.params.items() if "period" in k.lower()}
+    if not periods:
+        return [{}]
+    out: list[dict] = []
+    for scale in (0.5, 0.75, 1.0, 1.5, 2.0, 3.0):
+        setting = {k: max(2, round(v * scale)) for k, v in periods.items()}
+        # A fast/slow pair that crosses is not a slower indicator, it is
+        # an undefined one.
+        if (
+            "fastperiod" in setting
+            and "slowperiod" in setting
+            and setting["fastperiod"] >= setting["slowperiod"]
+        ):
+            continue
+        if setting not in out:
+            out.append(setting)
+    return out
+
+
+def ridge_scores(frame: pd.DataFrame, metric: str) -> pd.DataFrame:
+    """How each setting's ADJACENT neighbours did.
+
+    plan.md: "a real parameter effect is a ridge, not a point". A setting
+    whose neighbours in parameter space also perform is describing
+    something about the market; one surrounded by mediocrity is the
+    maximum of a noisy sample and will not survive new data.
+
+    THE FIRST VERSION OF THIS COMPARED AGAINST THE MEAN OF EVERY OTHER
+    SETTING, which is not a neighbourhood -- it is "better than the
+    average of a grid that spans periods 7 to 42 and lookbacks 100 to
+    500". It reported LINEARREG at +20 CAGR points of "ridge" and
+    PLUS_DM at +0.4, which made the fragile result look stronger than
+    the robust one. Adjacency in BOTH axes is what the plan meant:
+    neighbours are the settings one step away in period at the same
+    lookback, and one step away in lookback at the same period.
+    """
+    frame = frame.copy()
+    frame["grid_period"] = frame["params"].apply(
+        lambda p: next(iter(json.loads(p).values())) if json.loads(p) else 0
+    )
+    periods = sorted(frame["grid_period"].unique())
+    lookbacks = sorted(frame["lookback"].unique())
+    lookup = {(r.grid_period, r.lookback): getattr(r, metric) for r in frame.itertuples()}
+
+    means, counts = [], []
+    for row in frame.itertuples():
+        pi, li = periods.index(row.grid_period), lookbacks.index(row.lookback)
+        vals = []
+        for dp, dl in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            p, lb = pi + dp, li + dl
+            if 0 <= p < len(periods) and 0 <= lb < len(lookbacks):
+                v = lookup.get((periods[p], lookbacks[lb]))
+                if v is not None:
+                    vals.append(v)
+        means.append(round(sum(vals) / len(vals), 4) if vals else float("nan"))
+        counts.append(len(vals))
+
+    frame["neighbour_mean"] = means
+    frame["neighbours"] = counts
+    frame["ridge"] = (frame[metric] - frame["neighbour_mean"]).round(4)
+    return frame.drop(columns=["grid_period"])
+
+
+def surface(frame: pd.DataFrame, metric: str, bar: float) -> str:
+    """One line summarising the whole parameter surface.
+
+    The fraction of settings that clear the bar is the honest headline.
+    A result present in 1 of 18 cells and one present in 18 of 18 are
+    different findings however similar their best rows look, and the
+    best row alone cannot tell them apart.
+    """
+    n = len(frame)
+    over = int((frame[metric] >= bar).sum())
+    return f"{over}/{n} settings clear the bar"
+
+
+def stage2(args) -> int:
+    """Full parameter grid over every Stage 1 survivor."""
+    surv = survivors(args.from_path or args.out, args.min_market)
+    if surv.empty:
+        print("No Stage 1 survivors to sweep. Run --stage 1 first.", file=sys.stderr)
+        return 1
+
+    inventory = {i.name: i for i in available()}
+    seen = surv[["instrument", "indicator", "output", "role", "variant"]].drop_duplicates()
+    print(f"[stage2] {len(seen)} surviving signals from Stage 1")
+    for inst, grp in seen.groupby("instrument"):
+        print(f"[stage2]   {inst}: {', '.join(sorted(set(grp.indicator)))}")
+
+    journal = Journal(args.out2)
+    done = journal.done_ids() if args.resume else set()
+    cache: dict[str, pd.DataFrame] = {}
+    written = 0
+
+    for _, row in seen.iterrows():
+        ind = inventory.get(row.indicator)
+        if ind is None:
+            continue
+        spec = INSTRUMENTS[row.instrument]
+        if row.instrument not in cache:
+            cache[row.instrument] = load_bars(spec["path"])
+        bars = cache[row.instrument]
+
+        collected = []
+        for setting in param_grid(ind):
+            for lookback in args.lookbacks:
+                cid = config_id(
+                    row.instrument,
+                    ind.name,
+                    row.output,
+                    row.role,
+                    row.variant,
+                    json.dumps(setting, sort_keys=True),
+                    str(lookback),
+                )
+                if cid in done:
+                    continue
+                try:
+                    values = compute(ind, bars, **setting)[row.output]
+                    skip = max(warmup_bars(ind, **setting), lookback)
+                    if row.role == "regime":
+                        weight = signals(values, ind, lookback=lookback)[row.variant].astype(float)
+                    else:
+                        weight = exposure(values, lookback=lookback)
+                    close = bars["close"].iloc[skip:]
+                    weight = weight.iloc[skip:]
+                    if len(close) < TRADING_DAYS * 2:
+                        raise ValueError("insufficient history after warmup")
+                    m = metrics(run_weights(close, weight, args.cash_yield, args.cost_pct))
+                    if not m:
+                        raise ValueError("degenerate curve")
+                    base = next(iter(setting.values())) if setting else 0
+                    default = next(iter(ind.params.values())) if ind.params else 0
+                    out_row = {
+                        "config_id": cid,
+                        "instrument": row.instrument,
+                        "indicator": ind.name,
+                        "output": row.output,
+                        "role": row.role,
+                        "variant": row.variant,
+                        "params": json.dumps(setting, sort_keys=True),
+                        "lookback": lookback,
+                        "scale": round(base / default, 3) if default else 1.0,
+                        "in_market_pct": round(float(weight.mean()) * 100, 2),
+                        **m,
+                    }
+                    journal.write(out_row)
+                    collected.append(out_row)
+                    written += 1
+                except Exception as exc:
+                    journal.write({"config_id": cid, "error": f"{type(exc).__name__}: {exc}"[:200]})
+
+        if collected:
+            metric = "cagr" if spec["objective"] == "return" else "ret_dd"
+            f = ridge_scores(pd.DataFrame(collected), metric)
+            best = f.loc[f[metric].idxmax()]
+            bar = spec["bh_cagr"] if spec["objective"] == "return" else spec["bh_ret_dd"]
+            verdict = "RIDGE" if abs(best["ridge"]) < abs(best[metric]) * 0.25 else "spike"
+            print(
+                f"[stage2] {row.instrument:<5} {ind.name:<16} {row.role}/{row.variant:<6} "
+                f"best {metric} {best[metric]:7.3f} at {best['params']} lb={best['lookback']} | "
+                f"neighbours {best['neighbour_mean']:7.3f} ({verdict}) | "
+                f"{surface(f, metric, bar)}",
+                flush=True,
+            )
+
+    print(f"\n[stage2] {written} rows -> {args.out2}")
+    return 0
+
+
 def report(path: str, min_market: float = 20.0) -> int:
     with open(path, encoding="utf-8") as fh:
         rows = [json.loads(line) for line in fh if line.strip()]
@@ -384,6 +586,9 @@ def report(path: str, min_market: float = 20.0) -> int:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Brute-force indicator sweep. See plan.md.")
     p.add_argument("--stage", type=int, default=1)
+    p.add_argument("--from", dest="from_path", help="Stage 1 JSONL to take survivors from.")
+    p.add_argument("--out2", default="output/indicator_stage2.jsonl")
+    p.add_argument("--lookbacks", type=int, nargs="+", default=[100, 250, 500])
     p.add_argument("--out", default="output/indicator_sweep.jsonl")
     p.add_argument("--report", metavar="JSONL")
     p.add_argument("--cost-pct", type=float, default=0.0005)
@@ -404,6 +609,8 @@ def main(argv=None) -> int:
         return report(args.report, args.min_market)
     if args.stage == 1:
         return stage1(args)
+    if args.stage == 2:
+        return stage2(args)
     print(f"Stage {args.stage} is not implemented yet; see plan.md.", file=sys.stderr)
     return 2
 
