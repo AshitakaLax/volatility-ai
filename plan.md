@@ -772,6 +772,101 @@ against 39.15%. On raw return the answer is still buy-and-hold.
 
 ---
 
+## Stage 3 REDONE — the control, and it comes back positive — run 2026-09-05
+
+**85 engine runs, 0 failed.** `tools/stage3_grid.py`,
+`output/stage3_grid.jsonl`.
+
+### The control: NATR is not the policy in disguise
+
+30 random regimes from a two-state Markov chain, matched on **both**
+in-market fraction and flip count (realised 54.1% and 136 against the
+signal's 54.0% and 138), full sample, same engine, same policy:
+
+| liquidate-on-flip | ret/dd | CAGR | maxDD |
+|---|---|---|---|
+| matched random, mean of 30 | **−0.017** | −2.48% | 83.94% |
+| matched random, best of 30 | 0.262 | 17.07% | — |
+| **NATR below, tp 10, lb 100** | **1.448** | 38.64% | 26.68% |
+
+**z = +11.99, exceeds 30 of 30.** And the null did not merely fail to
+reach 1.448 — the policy applied to noise is actively destructive, at
+−2.48% CAGR against an 83.94% drawdown. Liquidate-on-flip is not a free
+de-risking mechanism that any 54%-in-market signal can exploit; it is a
+loss engine that NATR happens to point in a useful direction.
+
+Under `hold` the control lands at 0.353 and NATR at 0.553 (z = +3.69,
+30 of 30) — the signal still carries information without the policy, but
+a quarter of the effect size. **The two are complements, not
+substitutes**, and that is the answer to the question this stage existed
+to ask.
+
+### The halves — and a comparison this file nearly recorded wrongly
+
+The first read was "the effect degrades badly out of sample": ret/dd
+falls from 3.92 in the first half to 0.907 in the second. That compares
+a segment result against the FULL-SAMPLE bar, which is not the right
+bar. Buy-and-hold degrades over the same split, and much harder.
+
+| segment | span | buy-and-hold ret/dd | NATR ret/dd | ratio |
+|---|---|---|---|---|
+| full | 2016-01..2026-08 | 0.477 | 1.448 | **3.03x** |
+| first half | 2016-01..2021-05 | 0.808 | 3.924 | 4.85x |
+| **second half** | 2021-05..2026-08 | 0.268 | 0.907 | **3.39x** |
+| ex-COVID | COVID removed | 0.477 | 1.430 | 3.00x |
+
+Against its own benchmark the second half is **stronger** than the full
+sample, not weaker. The apparent collapse was buy-and-hold falling from
+0.808 to 0.268 underneath it.
+
+**And in the second half it beats buy-and-hold on raw return too** —
+40.10% against 22.03%, at 44.19% drawdown against 82.29%. That is the
+first configuration anywhere in this project to clear the return floor
+in any segment.
+
+### Three things that keep this from being a result yet
+
+1. **The halves are not out of sample.** The configuration was selected
+   on the full sample, which contains both halves. A subsample is not a
+   holdout, and the only genuine holdout is data after 2026-08-21, which
+   does not exist. Walk-forward selection is the test that has not run.
+2. **The ex-COVID check is weaker here than it was for RSP.** Removing
+   February–May 2020 leaves buy-and-hold's maximum drawdown at 82.29%,
+   unchanged — because TQQQ's worst drawdown is **2022, not COVID**. So
+   the check passes, but it did not stress the thing it was designed to
+   stress, and it should not be read as the same evidence the RSP
+   reversal produced.
+3. **544 engine configurations have now been scored.** The control is
+   not vulnerable to that (it is a matched null with a 12-sigma
+   separation, not an argmax), and neither is 18-of-18. The *specific
+   cell* is.
+
+### The boundary optimum is resolved: it is interior after all
+
+Lookbacks 25/50/75, below Stage 2-grid's swept range:
+
+```
+ret/dd        lookback  25     50     75     100    250    500
+period 10               0.566  1.368  0.956  1.448  0.805  0.911
+period 14               0.665  1.320  1.083  0.905  0.637  0.635
+```
+
+25 is clearly off the edge, so the optimum sits inside [25, 500] rather
+than on its boundary. The surface between 50 and 100 is bumpy — two
+local peaks, not one smooth ridge — which argues for the plateau and
+against the argmax when a cell has to be chosen.
+
+### The mid-surface cell is the weaker one, which is backwards
+
+tp 21 / lb 250 was picked as the safe deployable cell on the theory that
+an argmax is not to be trusted. It delivers 0.881 on the full sample and
+**0.423 in the second half — under buy-and-hold's full-sample bar**,
+while the argmax holds at 0.907. Whatever is driving the effect prefers
+the short period and short lookback, and "take the mid-surface cell" is
+not automatically the conservative choice here.
+
+---
+
 ## What would make this dishonest
 
 * **Lookahead.** Every signal is computed from data through day *t* and
