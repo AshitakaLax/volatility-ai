@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.local
+.vite/
+
+# Written by tools/export_ui_data.py -- generated from data/ (itself
+# ignored), so committing it would ship a stale snapshot of a run
+# nobody can reproduce from this repo.
+public/data/

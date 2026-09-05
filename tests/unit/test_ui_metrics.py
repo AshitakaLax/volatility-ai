@@ -229,3 +229,62 @@ class TestBlotterLinkage:
         # Every sold lot is traceable to the buy that opened it, which
         # is what a cycle connector draws between.
         assert set(sells.lot_id) <= set(buys.lot_id)
+
+    def test_rsi_is_recorded_and_unseeded_bars_are_null_not_zero(self):
+        """A zero would filter as "extremely oversold" and drag every
+        early trade into an RSI<30 query. NaN says "not yet known"."""
+        import pandas as pd_
+
+        from optimization_controller import OptimizationController
+        from src.config import BacktestConfig
+        from src.strategy_registry import resolve_strategy
+
+        frame = pd_.read_csv(
+            "tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]
+        ).set_index("timestamp")
+        config = BacktestConfig.from_yaml("config/staging.yaml")
+        kwargs = config.to_run_sweep_kwargs(resolve_strategy(config.strategy.strategy_id))
+        kwargs["return_full_results"] = True
+        _, full = OptimizationController(historical_data=frame).run_sweep(**kwargs)
+
+        book = full[0].trade_blotter
+        assert "rsi" in book.columns
+        seeded = book["rsi"].dropna()
+        assert not seeded.empty, "RSI never seeded on a run long enough to seed it"
+        assert (seeded >= 0).all() and (seeded <= 100).all()
+        # Bars inside the 14-period warmup are absent, never 0.0.
+        assert not (book["rsi"] == 0.0).any()
+
+    def test_the_exporter_omits_rsi_rather_than_emitting_a_null(self):
+        """The published contract has rsi_at_entry as OPTIONAL."""
+        import pandas as pd_
+
+        from tools.export_ui_data import executions
+
+        book = pd_.DataFrame(
+            [
+                {
+                    "side": "buy",
+                    "lot_id": "L1",
+                    "bar_index": 0,
+                    "price": 10.0,
+                    "qty": 1.0,
+                    "timestamp": pd_.Timestamp("2024-01-01T00:00:00Z"),
+                    "ticker": "TQQQ",
+                    "rsi": float("nan"),
+                },
+                {
+                    "side": "buy",
+                    "lot_id": "L2",
+                    "bar_index": 20,
+                    "price": 10.0,
+                    "qty": 1.0,
+                    "timestamp": pd_.Timestamp("2024-01-02T00:00:00Z"),
+                    "ticker": "TQQQ",
+                    "rsi": 28.4,
+                },
+            ]
+        )
+        unseeded, seeded = executions(book, "TQQQ")
+        assert "rsi_at_entry" not in unseeded
+        assert seeded["rsi_at_entry"] == 28.4

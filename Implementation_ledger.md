@@ -12,7 +12,8 @@ Roadmap: `implementation_plan.md`.
 | **Active phase** | Phase 2 — Server, split by capability |
 | **Active step** | 2.1 `server/live.py` (read-only router) |
 | **Branch** | `main` |
-| **Last full suite** | **2032 passed**, 1 skipped — regression baseline byte-identical |
+| **Last full suite** | **2038 passed**, 1 skipped — regression baseline byte-identical |
+| **Frontend** | `npx tsc -b` clean under strict mode; `npm run build` succeeds |
 
 ---
 
@@ -35,6 +36,24 @@ Roadmap: `implementation_plan.md`.
 | 1.3 | `tests/fixtures/regression_baseline.py` | Eight new columns. **Every existing value re-derived and compared first; none moved.** |
 | 1.3 | `tests/unit/test_ui_metrics.py` | 16 tests, expectations hand-computed in comments. |
 | 1.4 | `tools/export_ui_data.py` | Emits the wire contract. Verified against a real TQQQ run. |
+| 1.5 | `optimization_controller.py` | `rsi` on every blotter row, from the existing `WilderRSI` — the last missing contract field. **Not** added to `MarketContext`: see D7. |
+
+### Frontend Phase 1 — Environment & shared types ✅ 2026-09-05
+
+(The user's own numbering. This is Phase 3 in `implementation_plan.md`; pulled
+forward because the Python contract is now complete.)
+
+| File | Notes |
+|---|---|
+| `web/package.json` | React 19, Vite 6, Tailwind **v4**, lightweight-charts, lucide-react. |
+| `web/vite.config.ts` | `@/*` alias (a shadcn prerequisite), `/api` + `/ws` proxy to `127.0.0.1:8000`, dev server bound to `127.0.0.1`. |
+| `web/tsconfig.app.json` | Strict, plus `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `noUnusedLocals/Parameters`. |
+| `web/components.json` | shadcn/ui config (new-york, slate, CSS variables). |
+| `web/src/index.css` | Tailwind v4 theme in CSS — no `tailwind.config.js` by design. shadcn tokens plus **semantic** `--profit` / `--loss` / `--stuck`, separate from the accent. |
+| `web/src/lib/utils.ts` | `cn()` (shadcn prerequisite) + `pct` / `usd` / `count`. |
+| `web/src/types/backtest.ts` | `BacktestExecution`, `FundPerformanceMetrics`, `MultiFundBacktestReport`, filter and run-state types. |
+| `web/src/types/telemetry.ts` | `InventoryLot`, `DeploymentState`, `ConnectionHealth`, `COMMANDS`. |
+| `web/src/App.tsx` | Shell that fetches the real exported report and renders metric cards. |
 
 ---
 
@@ -85,6 +104,21 @@ One engine run measured at ~23 seconds on 10y of minute bars. A synchronous POST
 time out. `POST /api/backtest/runs` returns 202 + `run_id`; progress arrives on
 `/ws/backtest/{run_id}`.
 
+**D7 — RSI goes on the BLOTTER, not on `MarketContext`.**
+`rsi_at_entry` is a reporting column the UI filters by. Putting RSI on
+`MarketContext` would instead expose it to every *strategy* — a behaviour change
+gated by `test_task_7_9_macro_signals_discovery`, needing the four-part discovery
+block and all four construction sites. A blotter column needs none of that. It reuses
+`WilderRSI`, the same class `RsiMomentumSizing` trades on, so the filter cannot
+describe a different indicator than the chart it filters. Unseeded bars are **NaN,
+not 0.0** — a zero would filter as extremely oversold and drag every early trade into
+an RSI<30 query.
+
+**D8 — Tailwind v4, no `tailwind.config.js`.**
+v4 takes its theme from CSS. Semantic colours (`--profit`, `--loss`, `--stuck`) are
+defined separately from the accent, because a grid book's harvested/stuck distinction
+has to read at a glance in a table of hundreds of rows.
+
 **D6 — `realized_pnl` in `calculate_metrics` is left as-is, and documented.**
 It is only correct while signal exits are off, which is the default and the regression
 baseline's configuration. Changing it would move a pinned number. The new metrics are
@@ -108,14 +142,15 @@ carried.
 * RSP returned **0 executions** at `config/staging.yaml`'s 0.5% step over 40k bars. Not
   a bug — a low-volatility fund on a grid tuned for a 3x one. The UI must render "no
   executions" rather than an empty chart, which `executions()` already supports.
+* **41 of 42 executions carry `rsi_at_entry`** (one falls inside the 14-bar warmup),
+  and an RSI<30 filter over the export finds **14 real oversold entries**.
+* `npx tsc -b --noEmit` clean under strict mode; `npm run build` emits 220 kB JS /
+  11 kB CSS; the dev server serves the app and the real report.
 
 ---
 
 ## Known gaps carried into this build
 
-* **RSI is not available.** Private `_rsi()` on `src/sizing_indicators.py`, not a
-  `MarketContext` field. `rsi_at_entry` needs four construction sites plus the Task 7.9
-  gate. Deferred to Phase 5; the RSI filter ships last.
 * **UPRO and SPY are not downloaded.** On hand: TQQQ, QQQ, RSP, SOXL, SQQQ, VIXY.
 * **`tools/stage*_grid.py` outputs** are JSONL under `output/`, which is git-ignored —
   the UI reads them where present and must degrade cleanly where absent.

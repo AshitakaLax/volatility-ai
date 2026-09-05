@@ -45,6 +45,7 @@ from src.performance_analyzer import (
 from src.risk_manager import RiskManager
 from src.search_strategies import BayesianSearch, GridSearch, SearchStrategy
 from src.size_calculators import SizingStrategy
+from src.sizing_indicators import WilderRSI
 from src.validation import validate_run_sweep_config
 
 logger = logging.getLogger("Optimizer")
@@ -667,6 +668,23 @@ class OptimizationController:
 
         # Task 4.6: opt-in trade blotter / equity curve capture.
         blotter_records = []
+        # RSI FOR REPORTING ONLY, WHICH IS WHY IT IS NOT ON MarketContext.
+        #
+        # `rsi_at_entry` is a column the UI filters executions by ("show
+        # trades entered under 30"). Putting RSI on MarketContext would
+        # instead make it available to every STRATEGY, which is a
+        # behaviour change gated by test_task_7_9_macro_signals_discovery
+        # and would need the four-part discovery block plus all four
+        # construction sites. A blotter column needs none of that: it
+        # describes what the market looked like when a fill happened and
+        # nothing reads it back.
+        #
+        # WilderRSI is the same class RsiMomentumSizing uses -- a second
+        # implementation would be free to disagree with the one the
+        # strategy trades on, and then the filter would be describing a
+        # different indicator than the chart it filters.
+        rsi_tracker = WilderRSI(period=14)
+        rsi_value: float | None = None
         # Boxed in a list because _apply_sell_fill is a closure that has
         # to MUTATE this, and it binds its per-iteration values as
         # default arguments -- a plain int would be rebound locally and
@@ -695,6 +713,13 @@ class OptimizationController:
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp = row.Index
             current_price = row.close
+            # Updated at the TOP of the bar, so a fill recorded later in
+            # this same iteration reports the RSI as of the bar it
+            # executed on rather than the previous one. None until the
+            # 14-period window seeds, which is honest: an unseeded RSI is
+            # a partial average, and this project has already been caught
+            # once trading a moving average that had not warmed up.
+            rsi_value = rsi_tracker.update(current_price)
 
             # SESSION BOUNDARY, for T+N settlement only. Guarded on the
             # flag so the default path pays one integer comparison per
@@ -848,6 +873,7 @@ class OptimizationController:
                     filled_price=filled_price,
                     filled_qty=filled_qty,
                     realized_pnl=economics.realized_pnl,
+                    rsi_at_fill=rsi_value,
                 ):
                     """Side effects of one confirmed sell, applied at most once.
 
@@ -884,6 +910,7 @@ class OptimizationController:
                             "lot_id": lot.order_id,
                             "ticker": symbol,
                             "bar_index": context.bar_index,
+                            "rsi": rsi_at_fill,
                             "sell_reason": str(sell_reason),
                             # economics.realized_pnl, not
                             # (target - basis) * qty. A signal exit fills at
@@ -963,6 +990,7 @@ class OptimizationController:
                             filled_price=filled_price,
                             filled_qty=filled_qty,
                             buy_fill_price=buy_fill_price,
+                            rsi_at_fill=rsi_value,
                         ):
                             """Side effects of one confirmed buy, applied at most once.
 
@@ -997,6 +1025,7 @@ class OptimizationController:
                                     "lot_id": order["id"],
                                     "ticker": symbol,
                                     "bar_index": context.bar_index,
+                                    "rsi": rsi_at_fill,
                                 }
                             )
 

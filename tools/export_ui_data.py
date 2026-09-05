@@ -81,6 +81,12 @@ def executions(blotter: pd.DataFrame, ticker: str) -> list[dict]:
             "shares": round(float(row.qty), 6),
             "timestamp": pd.Timestamp(row.timestamp).isoformat(),
         }
+        # OMITTED, not zeroed, while the 14-period window is seeding. A
+        # zero would filter as "extremely oversold" and put the run's
+        # first trades in every RSI<30 query -- exactly backwards.
+        rsi = getattr(row, "rsi", None)
+        if rsi is not None and not pd.isna(rsi):
+            record["rsi_at_entry"] = round(float(rsi), 2)
         if side == "SELL":
             record["matched_buy_id"] = lot_id
             profit = getattr(row, "profit_realized", None)
@@ -192,7 +198,7 @@ def main(argv=None) -> int:
         print(f"[export]   {len(funds[ticker]['executions'])} executions", flush=True)
 
     report = {
-        "run_id": args.run_id or f"local-{pd.Timestamp.now("UTC"):%Y%m%d-%H%M%S}",
+        "run_id": args.run_id or f"local-{pd.Timestamp.now('UTC'):%Y%m%d-%H%M%S}",
         "parameters": {
             "grid_step_pct": config.grid.steps[0] if config.grid.steps else None,
             "profit_target_pct": (
