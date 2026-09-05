@@ -1,0 +1,205 @@
+"""The server's capability split, enforced instead of documented.
+
+The API is deliberately not uniform. Live state is read-only because a
+UI bug there could touch a real position; a backtest is bidirectional
+because it is a simulation over a CSV. That boundary is only worth
+anything if something checks it, so these walk each module's AST.
+
+Modelled on tests/unit/test_dashboard_data.py's
+`test_no_broker_or_session_is_reachable_from_the_dashboard`, which
+established the pattern here: assert against the SOURCE, not against
+behaviour, because behaviour tests only cover the paths someone thought
+to exercise and a new import is exactly the thing nobody thinks to
+exercise.
+"""
+
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+import pytest
+
+SERVER = Path(__file__).resolve().parents[2] / "server"
+
+# Anything that could reach a venue, a credential, or an order. Matched
+# against imported MODULE names, so `src.alpaca_broker` and
+# `from src.alpaca_broker import X` are both caught.
+FORBIDDEN_MODULES = (
+    "alpaca",
+    "alpaca_broker",
+    "fidelity_broker",
+    "fidelity_session",
+    "fidelity_placing_broker",
+    "fidelity_capture",
+    "live_execution",
+    "live_trading_loop",
+    "broker_selection",
+    "order_management_system",
+    "secrets",
+)
+
+# Names that would mean this module can decide to sell something.
+FORBIDDEN_NAMES = (
+    "submit_sell",
+    "submit_buy",
+    "execute_sell",
+    "close_lot",
+    "lots_to_liquidate",
+    "collect_liquidations",
+)
+
+
+def module_ast(name: str) -> ast.Module:
+    return ast.parse((SERVER / name).read_text(encoding="utf-8"))
+
+
+def imported_modules(tree: ast.Module) -> set[str]:
+    """Every module named by an import, flattened to its parts."""
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                found.update(alias.name.split("."))
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            found.update(node.module.split("."))
+            found.update(alias.name for alias in node.names)
+    return found
+
+
+def called_names(tree: ast.Module) -> set[str]:
+    """Every attribute and bare name that appears in a call position."""
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            target = node.func
+            if isinstance(target, ast.Attribute):
+                found.add(target.attr)
+            elif isinstance(target, ast.Name):
+                found.add(target.id)
+    return found
+
+
+ALL_MODULES = ("live.py", "control.py", "backtest.py", "jobs.py", "app.py")
+
+
+@pytest.mark.parametrize("name", ALL_MODULES)
+def test_no_server_module_can_reach_a_broker(name: str):
+    """Not one of them. The process has no credentials by design."""
+    offenders = imported_modules(module_ast(name)) & set(FORBIDDEN_MODULES)
+    assert not offenders, f"server/{name} imports {sorted(offenders)}"
+
+
+@pytest.mark.parametrize("name", ALL_MODULES)
+def test_no_server_module_can_sell_anything(name: str):
+    """There is no forced-liquidation path, and none may appear here."""
+    offenders = called_names(module_ast(name)) & set(FORBIDDEN_NAMES)
+    assert not offenders, f"server/{name} calls {sorted(offenders)}"
+
+
+class TestLiveIsReadOnly:
+    """server/live.py's central claim."""
+
+    def test_it_opens_no_writable_store(self):
+        """Every read goes through src.dashboard_data, which opens the
+        database `mode=ro` -- the DRIVER refuses writes, not this code.
+        Constructing a LedgerStore here would bypass that entirely."""
+        tree = module_ast("live.py")
+        assert "LedgerStore" not in imported_modules(tree)
+        assert "LedgerStore" not in called_names(tree)
+
+    def test_it_cannot_reach_the_circuit_breaker(self):
+        """The halt lives in control.py. If it were reachable from here,
+        live.py's docstring would be false and a reader who trusted it
+        would be wrong."""
+        tree = module_ast("live.py")
+        assert "CircuitBreaker" not in imported_modules(tree)
+        assert "halt_for_reconciliation" not in called_names(tree)
+
+    def test_it_reads_only_through_the_read_only_layer(self):
+        """A direct sqlite3 connection would sidestep mode=ro."""
+        assert "sqlite3" not in imported_modules(module_ast("live.py"))
+
+
+class TestControlIsNarrow:
+    """server/control.py is the ONE write, and only that one."""
+
+    def test_it_reaches_the_circuit_breaker(self):
+        """A negative test suite that never checks the positive case
+        would pass on an empty file."""
+        tree = module_ast("control.py")
+        assert "CircuitBreaker" in imported_modules(tree)
+        assert "halt_for_reconciliation" in called_names(tree)
+
+    def test_it_exposes_exactly_one_route(self):
+        """A second endpoint here is a second write, and would need its
+        own justification. Counting them makes that a decision rather
+        than a drift."""
+        routes = [
+            node
+            for node in ast.walk(module_ast("control.py"))
+            for decorator in getattr(node, "decorator_list", [])
+            if isinstance(node, ast.FunctionDef)
+            and isinstance(decorator, ast.Call)
+            and isinstance(decorator.func, ast.Attribute)
+            and isinstance(decorator.func.value, ast.Name)
+            and decorator.func.value.id == "router"
+        ]
+        assert len(routes) == 1, f"control.py exposes {[r.name for r in routes]}"
+
+    def test_it_names_no_liquidation_endpoint(self):
+        """`liquidate_all` was requested and refused: the trading loop
+        has no code path that sells for any reason but a met profit
+        target, and adding one would mean forced selling at a loss."""
+        source = (SERVER / "control.py").read_text(encoding="utf-8")
+        assert "def liquidate" not in source
+        assert '"/liquidate' not in source
+
+
+class TestBacktestTouchesNoLiveState:
+    """The bidirectional router may accept input precisely because it
+    cannot reach anything live."""
+
+    def test_it_opens_no_ledger_store(self):
+        tree = module_ast("backtest.py")
+        assert "LedgerStore" not in imported_modules(tree)
+        assert "CircuitBreaker" not in imported_modules(tree)
+
+    def test_it_validates_through_the_real_config(self):
+        """Not through a second schema that could drift from the one the
+        engine enforces."""
+        tree = module_ast("backtest.py")
+        assert "BacktestConfig" in imported_modules(tree)
+        assert "validate" in called_names(tree)
+
+    def test_it_reuses_the_exporter_serialisers(self):
+        """A static export and the API disagreeing about the shape of a
+        BacktestExecution is a bug the UI would find at runtime."""
+        imported = imported_modules(module_ast("backtest.py"))
+        assert {"executions", "fund_metrics", "equity_series"} <= imported
+
+    def test_a_submitted_config_cannot_carry_a_live_section(self):
+        """Live settings from a browser would be live settings from
+        anyone who can reach the port."""
+        source = (SERVER / "backtest.py").read_text(encoding="utf-8")
+        assert '"live"' not in source
+
+
+class TestAppDefaults:
+    def test_cors_is_not_a_wildcard(self):
+        """There is no authentication. A wildcard origin plus no auth
+        means any page the operator visits can read their positions."""
+        source = (SERVER / "app.py").read_text(encoding="utf-8")
+        assert 'allow_origins=["*"]' not in source
+        assert '"*"' not in source.split("allow_origins")[1].split("]")[0]
+
+    def test_it_reports_which_commands_it_supports(self):
+        """The UI renders the Command Center from what the SERVER says,
+        not from a constant baked into the bundle that could disagree
+        with the deployment it is talking to."""
+        from server.app import health
+
+        capabilities = health()["capabilities"]
+        assert capabilities["halt"] is True
+        assert capabilities["liquidate"] is False
+        assert capabilities["parameter_override"] is False

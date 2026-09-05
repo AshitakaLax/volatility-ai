@@ -1,0 +1,32 @@
+# The read-only API + backtest job server (server/).
+#
+# DELIBERATELY NOT IN requirements.txt. The live trading loop must not
+# grow a web dependency: a machine that trades needs alpaca-py and
+# pandas, and nothing that listens on a socket. Installing this is a
+# separate, explicit act -- the same reason requirements-fidelity.txt
+# and requirements-indicators.txt are separate files.
+#
+#   pip install -r requirements-web.txt
+#   uvicorn server.app:app --host 127.0.0.1 --port 8000
+#
+# Pinned rather than floating, matching how requirements-fidelity.txt
+# handles the same problem: an unpinned dependency that runs in-process
+# with a reader of brokerage state is not a thing to leave to chance.
+#
+# THE FASTAPI PIN IS NOT ARBITRARY, AND IT WAS NOT FREE. The first
+# attempt here used fastapi==0.115.6, which caps starlette at <0.42.
+# Installing it silently DOWNGRADED starlette and broke Streamlit --
+# streamlit 1.58 imports DEFAULT_EXCLUDED_CONTENT_TYPES from
+# starlette.middleware.gzip, which that version does not have, so
+# dashboard.py stopped importing and took its test module with it.
+#
+# The user's decision was to keep BOTH dashboards while the React one is
+# built, so a pin that quietly disables one of them is not a pin this
+# file may carry. These two share the environment and must resolve
+# together; check `python -c "import streamlit"` after changing either.
+fastapi==0.141.1
+uvicorn[standard]==0.34.0
+
+# starlette.testclient needs it, and tests/integration/test_server_api.py
+# drives the real app through TestClient rather than mocking the routes.
+httpx==0.28.1

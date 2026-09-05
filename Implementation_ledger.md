@@ -9,10 +9,10 @@ Roadmap: `implementation_plan.md`.
 
 | | |
 |---|---|
-| **Active phase** | Phase 2 — Server, split by capability |
-| **Active step** | 2.1 `server/live.py` (read-only router) |
+| **Active phase** | Phase 4 — Section 1: Backtesting & multi-fund (priority) |
+| **Active step** | 4.1 `RiskRewardMetrics.tsx` |
 | **Branch** | `main` |
-| **Last full suite** | **2038 passed**, 1 skipped — regression baseline byte-identical |
+| **Last full suite** | **2079 passed**, 1 skipped — regression baseline byte-identical |
 | **Frontend** | `npx tsc -b` clean under strict mode; `npm run build` succeeds |
 
 ---
@@ -55,19 +55,31 @@ forward because the Python contract is now complete.)
 | `web/src/types/telemetry.ts` | `InventoryLot`, `DeploymentState`, `ConnectionHealth`, `COMMANDS`. |
 | `web/src/App.tsx` | Shell that fetches the real exported report and renders metric cards. |
 
+### Phase 2 — Server, split by capability ✅ 2026-09-05
+
+| File | Notes |
+|---|---|
+| `server/live.py` | Read-only. `/stores`, `/state`, `/activity`, `/bars`, `WS /ws`. Reads only through `src/dashboard_data` (`mode=ro`). |
+| `server/control.py` | The only write. `POST /api/live/halt` → `CircuitBreaker`, read back through the read-only path so the write is verified, not assumed. |
+| `server/backtest.py` | `/funds`, `/runs`, `POST /runs` (202), `WS /ws/{run_id}`. Validated via `BacktestConfig`; serialised by the exporter's own helpers. |
+| `server/jobs.py` | One worker thread, Condition-based waits. No persistence — see the known gaps. |
+| `server/app.py` | Mounts all three, loopback bind, explicit CORS origins, `/api/health` reporting capabilities. |
+| `requirements-web.txt` | Separate from `requirements.txt` on purpose. |
+| `tests/unit/test_server_capability.py` | 22 AST tests. Verified against deliberate violations. |
+| `tests/integration/test_server_api.py` | 19 tests against a real store and a real engine run. |
+
 ---
 
 ## Next actions
 
-1. **2.1** — `server/live.py`: read-only router over `src/dashboard_data`. AST test that
-   it imports no broker, session or order type.
-2. **2.2** — `server/control.py`: the only write path, `POST /api/live/halt` →
-   `CircuitBreaker`. AST test that it reaches nothing else.
-3. **2.3** — `server/backtest.py` + `server/jobs.py`: bidirectional, validated through
-   `BacktestConfig`, runs enqueued (~23s each, never inline).
-4. **2.4** — `server/app.py`, CORS to the Vite dev origin only, bind `127.0.0.1`.
-5. Add `fastapi`/`uvicorn` to a new `requirements-web.txt` (kept out of
-   `requirements.txt` so the trading path gains no web dependency).
+1. **4.1** — `RiskRewardMetrics.tsx`: traditional + grid-specific cards, reading the
+   metrics Phase 1 added.
+2. **4.2** — `BacktestChart.tsx`: lightweight-charts candles, buy/sell markers,
+   closed-cycle connectors and target lines (all enabled by the `lot_id` join).
+3. **4.3** — `FilterPanel.tsx`: timeframe, date range, order status, RSI bounds.
+4. **4.4** — `ParameterForm.tsx` + `useBacktestRun.ts`: the bidirectional half, over
+   `POST /api/backtest/runs` and `WS /api/backtest/ws/{run_id}`.
+5. **4.5** — `FundComparison.tsx`: normalised overlay, comparison table, sweep heatmap.
 
 ---
 
@@ -103,6 +115,19 @@ The requested ratio ships beside it as `Harvest to Stuck Ratio`.
 One engine run measured at ~23 seconds on 10y of minute bars. A synchronous POST would
 time out. `POST /api/backtest/runs` returns 202 + `run_id`; progress arrives on
 `/ws/backtest/{run_id}`.
+
+**D9 — The FastAPI pin is load-bearing for Streamlit.**
+`fastapi==0.115.6` caps `starlette<0.42`. Installing it downgraded starlette and broke
+streamlit 1.58, which imports `DEFAULT_EXCLUDED_CONTENT_TYPES` from
+`starlette.middleware.gzip` — `dashboard.py` stopped importing and took
+`test_dashboard_data.py` with it. D-keep-both means a pin that disables one dashboard
+is not acceptable. Now `fastapi==0.141.1`; re-check `import streamlit` after any
+change to either pin.
+
+**D10 — The halt reads its result back rather than echoing the request.**
+An endpoint that reports success from its own inputs cannot tell you it silently did
+nothing. `POST /api/live/halt` writes through `CircuitBreaker`, then returns what
+`load_state` (read-only, separate connection) actually sees.
 
 **D7 — RSI goes on the BLOTTER, not on `MarketContext`.**
 `rsi_at_entry` is a reporting column the UI filters by. Putting RSI on
@@ -146,10 +171,23 @@ carried.
   and an RSI<30 filter over the export finds **14 real oversold entries**.
 * `npx tsc -b --noEmit` clean under strict mode; `npm run build` emits 220 kB JS /
   11 kB CSS; the dev server serves the app and the real report.
+* **Server, end to end against a running uvicorn and the real `paper_ledger.db`:** the
+  live socket delivered state at revision 922 (1 open lot, halted) then heartbeats; a
+  submitted run returned **202**, completed in **4s** over its own socket, and came back
+  with 32 executions and **16 of 16 sells carrying `matched_buy_id`**.
+* The capability tests were checked against deliberate violations — a broker import in
+  `live.py`, a `LedgerStore` in `live.py`, a second route in `control.py`, a wildcard
+  CORS origin — and each failed its own guard.
 
 ---
 
 ## Known gaps carried into this build
+
+* **The job queue is in-process and unpersisted.** A server restart loses queued and
+  running runs. Acceptable for a single-operator tool; a real task queue is a
+  dependency and an operational surface this project does not need.
+* **No authentication on the API.** Acceptable only because it binds `127.0.0.1`.
+  Binding it to a LAN would need auth first — it serves balances and positions.
 
 * **UPRO and SPY are not downloaded.** On hand: TQQQ, QQQ, RSP, SOXL, SQQQ, VIXY.
 * **`tools/stage*_grid.py` outputs** are JSONL under `output/`, which is git-ignored —
