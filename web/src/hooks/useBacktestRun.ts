@@ -34,6 +34,24 @@ export function useBacktestRun() {
     },
   );
 
+  /**
+   * Follow a run this tab did not start.
+   *
+   * A page refresh mid-sweep, or a second machine opening the
+   * dashboard, has no submission to hang state on -- but the run is
+   * there and its socket works the same. Fetching the current state
+   * first matters: a run that finished a second ago would otherwise
+   * wait forever for an event that has already passed.
+   */
+  const attach = useCallback(async (runId: string) => {
+    setError(null);
+    try {
+      setRun(await api.run(runId));
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : String(cause));
+    }
+  }, []);
+
   const submit = useCallback(async (request: BacktestRunRequest) => {
     setSubmitting(true);
     setError(null);
@@ -51,5 +69,5 @@ export function useBacktestRun() {
     }
   }, []);
 
-  return { run, submit, submitting, error, health };
+  return { run, submit, attach, submitting, error, health };
 }

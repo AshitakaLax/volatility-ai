@@ -361,8 +361,18 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
 
     funds: dict[str, Any] = {}
     jobs = 1
-    for index, ticker in enumerate(available):
-        report(index / len(available), f"running {ticker}")
+    # PROGRESS IS PER COMBINATION, NOT PER TICKER. A single-instrument
+    # run has one ticker, so a per-ticker bar sits at 0% for the whole
+    # run and then jumps to 100% -- which tells a watcher nothing except
+    # that the page has not crashed. The engine now reports each
+    # combination as it finishes, so the fraction below is real work
+    # done across every ticker in the request.
+    combinations = len(config.grid.steps) * len(config.grid.profit_targets)
+    total_units = max(1, combinations * len(available))
+    finished_units = 0
+
+    for ticker in available:
+        report(finished_units / total_units, f"running {ticker}")
         frame = pd.read_csv(KNOWN_DATA[ticker], parse_dates=["timestamp"]).set_index("timestamp")
         frame = window(frame, parsed.start, parsed.end, parsed.limit)
         if frame.empty:
@@ -374,9 +384,19 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
         kwargs = config.to_run_sweep_kwargs(strategy_class)
         kwargs["return_full_results"] = True
         kwargs["symbol"] = ticker
-        combinations = len(config.grid.steps) * len(config.grid.profit_targets)
         jobs = choose_jobs(len(frame), combinations, parsed.n_jobs)
         kwargs["n_jobs"] = jobs
+
+        def on_combination(
+            done: int, of: int, _base: int = finished_units, _t: str = ticker
+        ) -> None:
+            # Bound as defaults so the closure reports THIS ticker's
+            # offset even if it were ever called after the loop moved
+            # on -- the same late-binding hazard the engine's own fill
+            # closures bind against.
+            report((_base + done) / total_units, f"{_t}: {done}/{of} configurations")
+
+        kwargs["progress_callback"] = on_combination
         summary, full = OptimizationController(historical_data=frame).run_sweep(**kwargs)
 
         # The best configuration by the engine's own default ranking.
@@ -406,6 +426,9 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
                 "count": len(frame),
             },
         }
+        # This ticker's combinations are done; the next one's callback
+        # counts from here rather than restarting at zero.
+        finished_units += combinations
 
     report(1.0, "assembling report")
     return {

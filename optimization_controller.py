@@ -13,8 +13,10 @@ rather than keeping parallel copies that could drift apart.
 """
 
 import concurrent.futures
+import contextlib
 import dataclasses
 import logging
+from collections.abc import Callable
 
 import pandas as pd
 
@@ -1201,6 +1203,7 @@ class OptimizationController:
         symbol: str = "TQQQ",
         initial_cash: float = 100_000.0,
         n_jobs: int = 1,
+        progress_callback: Callable[[int, int], None] | None = None,
         return_full_results: bool = False,
         rank_by: str = "Capital Velocity Index",
         tie_break_by: str | None = None,
@@ -1233,6 +1236,21 @@ class OptimizationController:
         :param symbol: Ticker traded. Defaults to "TQQQ" -- exactly today's behavior.
         :param initial_cash: Starting cash for every combination. Defaults to 100_000.0 --
             exactly today's behavior.
+        :param progress_callback: called (completed, total) after each
+            combination finishes, in BOTH the sequential and parallel
+            paths. Optional and defaulted to None, so nothing about an
+            existing call changes.
+
+            It exists because a sweep is the only thing in this project
+            long enough that a caller needs to show progress, and a
+            caller outside cannot see inside the loop. In the parallel
+            path "completed" counts futures as they RESOLVE, so it is
+            genuine completion rather than submission -- workers finish
+            out of order, and counting submissions would show 100%
+            while the last combination was still running.
+
+            Exceptions from the callback are swallowed: a progress
+            display must never be able to fail a sweep.
         :param n_jobs: 1 (default) runs combinations sequentially in this process --
             exactly today's behavior. >1 runs combinations across a
             ProcessPoolExecutor with that many workers. Row order may differ
@@ -1310,6 +1328,20 @@ class OptimizationController:
             f"Starting parameter sweep. Evaluating up to {total_combinations} total variations."
         )
 
+        completed = 0
+
+        def _report_progress() -> None:
+            """Tell the caller one more combination is done.
+
+            Wrapped because a progress display must never fail a sweep:
+            twenty minutes of engine time is not worth losing to a
+            broken websocket on the other end of a callback.
+            """
+            if progress_callback is None:
+                return
+            with contextlib.suppress(Exception):
+                progress_callback(completed, total_combinations)
+
         idx = 0
         if n_jobs == 1:
             while True:
@@ -1340,6 +1372,8 @@ class OptimizationController:
                 )
                 resolved_search_strategy.report(suggestion, sim_result)
                 results.append(row)
+                completed += 1
+                _report_progress()
                 # Retained ONLY when the caller asked for them. Each
                 # SimulationResult carries a per-bar equity curve (one
                 # entry per bar -- ~1.03M on this repo's 10-year minute
@@ -1393,6 +1427,8 @@ class OptimizationController:
                         row, sim_result = future.result()
                         resolved_search_strategy.report(suggestion, sim_result)
                         results.append(row)
+                        completed += 1
+                        _report_progress()
                         if return_full_results:  # see the sequential branch
                             full_results.append(sim_result)
 

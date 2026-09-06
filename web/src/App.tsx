@@ -6,6 +6,7 @@ import { FilterPanel } from "@/components/backtest/FilterPanel";
 import { FundComparison } from "@/components/backtest/FundComparison";
 import { ParameterForm } from "@/components/backtest/ParameterForm";
 import { RiskRewardMetrics } from "@/components/backtest/RiskRewardMetrics";
+import { ActiveRuns } from "@/components/backtest/ActiveRuns";
 import { RunHistory } from "@/components/backtest/RunHistory";
 import { SweepMatrix } from "@/components/backtest/SweepMatrix";
 import { TradeLog } from "@/components/backtest/TradeLog";
@@ -39,7 +40,10 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("backtest");
   const [staticReport, setStaticReport] = useState<MultiFundBacktestReport | null>(null);
   const [filters, setFilters] = useState<ExecutionFilters>(DEFAULT_FILTERS);
-  const { run, submit, submitting, error } = useBacktestRun();
+  const { run, submit, attach, submitting, error } = useBacktestRun();
+  // Bumped whenever a run settles, so history reloads without the
+  // reader having to press anything.
+  const [historyToken, setHistoryToken] = useState(0);
   const [staged, setStaged] = useState<{ gridStep: number; profitTarget: number } | null>(
     null,
   );
@@ -179,6 +183,18 @@ export default function App() {
               staged={staged}
             />
 
+            {/* OUTSIDE the report branch, deliberately. Both were
+                previously rendered only when a report was loaded, which
+                hid them on exactly the load where they are most
+                useful -- a fresh page with nothing selected. */}
+            <ActiveRuns
+              onAttach={(runId) => {
+                setOpened(null);
+                void attach(runId);
+              }}
+              onSettled={() => setHistoryToken((value) => value + 1)}
+            />
+
             {!report ? (
               <Card>
                 <CardContent className="pt-5 text-sm text-muted-foreground">
@@ -228,18 +244,17 @@ export default function App() {
                 />
 
                 {tickers.length > 1 ? <FundComparison funds={report.funds} /> : null}
-
-                <RunHistory
-                  onOpen={(runId) => {
-                    void api
-                      .historyRun(runId)
-                      .then((stored) => setOpened(stored.report))
-                      .catch(() => setOpened(null));
-                  }}
-                  refreshToken={run?.status === "complete" ? 1 : 0}
-                />
               </>
             )}
+            <RunHistory
+              onOpen={(runId) => {
+                void api
+                  .historyRun(runId)
+                  .then((stored) => setOpened(stored.report))
+                  .catch(() => setOpened(null));
+              }}
+              refreshToken={historyToken}
+            />
           </>
         )}
       </main>
