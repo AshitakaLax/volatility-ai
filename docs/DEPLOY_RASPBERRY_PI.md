@@ -282,3 +282,20 @@ The live routes read the store `mode=ro` and import no broker, and the
 only write is the halt — which blocks new **buys** while open lots keep
 exiting, and which any device on the LAN can trigger. That is
 acceptable on a trusted network and would not be on anything routable.
+
+### Verifying it, end to end
+
+    python -m pytest tests/e2e/ -q
+
+Twenty-two checks against the **running deployment**: the Pi serves the
+bundle, backtests forward to the workstation, a real sweep completes and
+reaches history, every offered sizing model is submittable, and a real
+browser renders the page and drives a run through the form.
+
+They **skip** rather than fail when the Pi or the engine host is not
+reachable, so `cli.py test` stays green on a machine without the
+hardware. Point them elsewhere with `VAI_E2E_BASE`.
+
+They never call `/api/live/halt` — a test suite able to halt a live
+deployment is a worse problem than no suite, and an AST check in the
+file enforces it.
