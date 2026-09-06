@@ -1,0 +1,193 @@
+import { Grid3x3 } from "lucide-react";
+import { useState } from "react";
+
+import { Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
+import { cn, pct, usd } from "@/lib/utils";
+import type { FundResult, SweepConfiguration } from "@/types/backtest";
+
+/**
+ * The parameter sweep as a heatmap: grid step against profit target.
+ *
+ * WHY THE SCALE IS PER-METRIC AND SIGNED. Colour runs from the minimum
+ * to the maximum of the cells actually present, not from zero, because
+ * a sweep whose results all sit between 38% and 39% would otherwise be
+ * one flat block. For metrics where lower is better -- drawdown, stuck
+ * capital -- the scale is inverted, so "good" is always the same colour
+ * and a reader never has to remember which way a particular column runs.
+ *
+ * WHY THERE IS NO "BEST" BADGE. This project's own results repeatedly
+ * show the highest-return cell belonging to a configuration nobody would
+ * deploy, and a matrix that crowned one would be making a
+ * recommendation it has no basis for. The engine's ranking already puts
+ * its own choice first in the table above; this shows the shape of the
+ * surface, which is the thing a single number cannot.
+ */
+
+interface Props {
+  funds: Record<string, FundResult>;
+}
+
+type MetricKey =
+  | "cagr_pct"
+  | "net_yield_pct"
+  | "max_drawdown_pct"
+  | "sharpe_ratio"
+  | "win_rate_pct"
+  | "stuck_capital_value"
+  | "total_trades";
+
+const METRICS: { key: MetricKey; label: string; higherIsBetter: boolean; format: (v: number) => string }[] = [
+  { key: "cagr_pct", label: "CAGR", higherIsBetter: true, format: (v) => pct(v, 1) },
+  { key: "net_yield_pct", label: "Net yield", higherIsBetter: true, format: (v) => pct(v, 2) },
+  { key: "max_drawdown_pct", label: "Max drawdown", higherIsBetter: false, format: (v) => pct(v, 1) },
+  { key: "sharpe_ratio", label: "Sharpe", higherIsBetter: true, format: (v) => v.toFixed(2) },
+  { key: "win_rate_pct", label: "Win rate", higherIsBetter: true, format: (v) => pct(v, 0) },
+  {
+    key: "stuck_capital_value",
+    label: "Stuck capital",
+    higherIsBetter: false,
+    format: (v) => usd(v, 0),
+  },
+  { key: "total_trades", label: "Trades", higherIsBetter: true, format: (v) => String(v) },
+];
+
+function shade(value: number, min: number, max: number, higherIsBetter: boolean): string {
+  // A degenerate range is one colour, not a division by zero.
+  if (max === min) return "oklch(0.6 0.02 286 / 0.25)";
+  const position = (value - min) / (max - min);
+  const good = higherIsBetter ? position : 1 - position;
+  // Red through neutral to green, alpha carrying the intensity so the
+  // text on top stays readable at every level.
+  const hue = 25 + good * 127;
+  const alpha = 0.12 + Math.abs(good - 0.5) * 0.5;
+  return `oklch(0.7 0.16 ${hue} / ${alpha.toFixed(3)})`;
+}
+
+export function SweepMatrix({ funds }: Props) {
+  const withGrid = Object.entries(funds).filter(
+    ([, fund]) => (fund.configurations?.length ?? 0) > 1,
+  );
+  const [metric, setMetric] = useState<MetricKey>("cagr_pct");
+  const [ticker, setTicker] = useState<string>(withGrid[0]?.[0] ?? "");
+
+  // A single-configuration run has no surface to show. Rendering an
+  // empty 1x1 grid would suggest the sweep did something it did not.
+  if (withGrid.length === 0) return null;
+
+  const fund = funds[ticker] ?? withGrid[0]?.[1];
+  const cells: SweepConfiguration[] = fund?.configurations ?? [];
+  const spec = METRICS.find((entry) => entry.key === metric) ?? METRICS[0]!;
+
+  const steps = [...new Set(cells.map((cell) => cell.grid_step))].sort((a, b) => a - b);
+  const targets = [...new Set(cells.map((cell) => cell.profit_target))].sort((a, b) => a - b);
+
+  const values = cells.map((cell) => cell.metrics[spec.key]);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+
+  const lookup = new Map(
+    cells.map((cell) => [`${cell.grid_step}|${cell.profit_target}`, cell]),
+  );
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-end justify-between gap-4">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Grid3x3 className="size-4" />
+            Parameter sweep
+          </CardTitle>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {cells.length} configuration{cells.length === 1 ? "" : "s"} · grid step down,
+            profit target across. Colour is scaled to this grid's own range, and inverted
+            where lower is better.
+          </p>
+        </div>
+        <div className="flex gap-3">
+          {withGrid.length > 1 ? (
+            <Field label="Fund">
+              <Select value={ticker} onChange={(event) => setTicker(event.currentTarget.value)}>
+                {withGrid.map(([name]) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
+          <Field label="Metric">
+            <Select
+              value={metric}
+              onChange={(event) => setMetric(event.currentTarget.value as MetricKey)}
+            >
+              {METRICS.map((entry) => (
+                <option key={entry.key} value={entry.key}>
+                  {entry.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+      </CardHeader>
+
+      <CardContent className="overflow-x-auto">
+        <table className="text-sm">
+          <thead>
+            <tr>
+              <th className="p-2 text-left text-xs font-medium text-muted-foreground">
+                step ╲ target
+              </th>
+              {targets.map((target) => (
+                <th
+                  key={target}
+                  className="tnum p-2 text-right text-xs font-medium text-muted-foreground"
+                >
+                  {(target * 100).toFixed(2)}%
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="tnum">
+            {steps.map((step) => (
+              <tr key={step}>
+                <td className="p-2 text-xs font-medium text-muted-foreground">
+                  {(step * 100).toFixed(2)}%
+                </td>
+                {targets.map((target) => {
+                  const cell = lookup.get(`${step}|${target}`);
+                  if (!cell) {
+                    // A combination the engine skipped or that errored.
+                    // Blank, not zero -- zero is a result.
+                    return (
+                      <td key={target} className="p-2 text-right text-muted-foreground">
+                        --
+                      </td>
+                    );
+                  }
+                  const value = cell.metrics[spec.key];
+                  return (
+                    <td
+                      key={target}
+                      className={cn(
+                        "min-w-[86px] rounded p-2 text-right font-medium",
+                        "border border-border/40",
+                      )}
+                      style={{ background: shade(value, min, max, spec.higherIsBetter) }}
+                      title={
+                        `step ${(step * 100).toFixed(2)}% · target ${(target * 100).toFixed(2)}%\n` +
+                        `CAGR ${pct(cell.metrics.cagr_pct)} · DD ${pct(cell.metrics.max_drawdown_pct)}\n` +
+                        `${cell.metrics.closed_trades} closed of ${cell.metrics.total_trades}`
+                      }
+                    >
+                      {spec.format(value)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  );
+}

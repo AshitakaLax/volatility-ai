@@ -47,6 +47,11 @@ interface Props {
    * actually at -- wrong in a way that looks entirely plausible.
    */
   profitTarget: number;
+  /** null candles means "still fetching", which is not "none". */
+  loading?: boolean;
+  /** The bucket the server rolled up to, so the chart can say so. */
+  bucketSeconds?: number | null;
+  error?: string | null;
   height?: number;
 }
 
@@ -61,6 +66,9 @@ export function BacktestChart({
   timeframe,
   openLotIds,
   profitTarget,
+  loading = false,
+  bucketSeconds = null,
+  error = null,
   height = 460,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
@@ -252,6 +260,11 @@ export function BacktestChart({
           <span>
             {closed.length} cycle{closed.length === 1 ? "" : "s"}
             {truncated > 0 ? ` (${truncated} connectors not drawn)` : ""}
+            {/* Said out loud: the server chose this bucket to keep the
+                payload sane, and it may not be the timeframe selected. */}
+            {bucketSeconds && bucketSeconds > 60
+              ? ` · ${Math.round(bucketSeconds / 60)}m candles`
+              : ""}
           </span>
         </div>
       </CardHeader>
@@ -260,7 +273,14 @@ export function BacktestChart({
           <div ref={container} className="absolute inset-0" />
           <canvas ref={overlay} className="pointer-events-none absolute inset-0" />
         </div>
-        {executions.length === 0 ? (
+        {loading ? (
+          <p className="mt-3 text-sm text-muted-foreground">Loading price history…</p>
+        ) : error ? (
+          <p className="mt-3 text-sm text-loss">
+            Could not load price bars: {error}. Markers are still placed at their execution
+            prices.
+          </p>
+        ) : executions.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">
             No executions in this range. A low-volatility fund on a grid tuned for a
             leveraged one legitimately never trades -- widen the date range, or lower the

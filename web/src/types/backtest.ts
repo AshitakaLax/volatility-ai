@@ -126,12 +126,33 @@ export interface BarWindow {
   count: number;
 }
 
+/**
+ * One cell of the parameter sweep.
+ *
+ * Metrics only, deliberately. Carrying each configuration's executions
+ * would multiply the payload by the size of the grid to draw a heatmap
+ * that needs one number per cell.
+ */
+export interface SweepConfiguration {
+  grid_step: number;
+  profit_target: number;
+  metrics: FundPerformanceMetrics;
+}
+
 export interface FundResult {
   metrics: FundPerformanceMetrics;
   /** May be empty: a low-volatility fund on a grid tuned for a 3x one
    * legitimately never trades. Render "no executions", not an error. */
   executions: BacktestExecution[];
   equity_curve: EquitySeries;
+  /**
+   * Every combination run, ranked by the engine's own default metric.
+   * Index 0 is the same configuration `metrics` above describes.
+   *
+   * Optional because a static export predating this field must still
+   * render -- the matrix hides rather than the page failing.
+   */
+  configurations?: SweepConfiguration[];
   bars: BarWindow;
 }
 
@@ -217,10 +238,32 @@ export interface BacktestRunRequest {
   strategy_params?: Record<string, number | string | boolean>;
   fill_model?: "close" | "intrabar";
   enforce_no_loss?: boolean;
+  /** ISO date, inclusive. Applied BEFORE the bar cap. */
   start?: string;
+  /** ISO date, inclusive of the whole day. */
   end?: string;
   /** Cap on bars fed to the engine. A full file is a million rows. */
   limit?: number;
+}
+
+/** One OHLC bar from /api/backtest/bars, already downsampled. */
+export interface PriceBar {
+  /** Epoch seconds. */
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface BarSeries {
+  ticker: string;
+  /** The bucket the server rolled up to, so the UI can say so. */
+  bucket_seconds: number;
+  /** How many 1-minute rows went in. */
+  source_rows: number;
+  bars: PriceBar[];
 }
 
 export interface BacktestRunState {

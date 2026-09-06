@@ -194,6 +194,61 @@ class TestBacktestSubmission:
         assert client.get("/api/backtest/runs/deadbeef").status_code == 404
 
 
+class TestDateWindowAndBars:
+    def test_the_window_is_applied_before_the_bar_cap(self):
+        """CAPPING FIRST WOULD BE A REAL BUG: it takes the tail of the
+        FILE and then filters, so any non-recent window comes back empty
+        -- indistinguishable on screen from "no trades in that period"."""
+        import pandas as pd_
+
+        from server.backtest import window
+
+        index = pd_.date_range("2024-01-01", periods=1000, freq="1min", tz="UTC")
+        frame = pd_.DataFrame({"close": range(1000)}, index=index)
+
+        # A window at the START of the file, with a cap far smaller than
+        # the file. Cap-then-window would return nothing.
+        got = window(frame, "2024-01-01", "2024-01-01", limit=10)
+        assert len(got) == 10
+        assert got.index[0] >= pd_.Timestamp("2024-01-01", tz="UTC")
+
+    def test_the_end_bound_covers_the_whole_day(self):
+        import pandas as pd_
+
+        from server.backtest import window
+
+        index = pd_.date_range("2024-01-01 09:00", periods=3, freq="4h", tz="UTC")
+        frame = pd_.DataFrame({"close": [1, 2, 3]}, index=index)
+        # 17:00 on the 1st must survive an end of "2024-01-01".
+        assert len(window(frame, None, "2024-01-01", None)) == 3
+
+    def test_bars_downsample_by_ohlc_not_by_sampling(self, client):
+        """Under the intrabar fill model a level TOUCHED during a bar is
+        a fill, so dropping the extremes would leave markers hanging off
+        candles that never reached them."""
+        body = client.get(
+            "/api/backtest/bars",
+            params={"ticker": "TQQQ", "start": "2026-03-02", "end": "2026-03-06", "max_points": 20},
+        ).json()
+        assert body["bars"], "no bars for a window the file covers"
+        assert len(body["bars"]) <= 40, "downsample did not bound the result"
+        assert body["bucket_seconds"] > 60, "a 4-day window at 20 points must roll up"
+        for bar in body["bars"]:
+            assert bar["low"] <= bar["open"] <= bar["high"]
+            assert bar["low"] <= bar["close"] <= bar["high"]
+
+    def test_bars_for_an_unknown_ticker_are_a_404(self, client):
+        assert client.get("/api/backtest/bars", params={"ticker": "NOPE"}).status_code == 404
+
+    def test_an_empty_window_returns_no_bars_rather_than_failing(self, client):
+        body = client.get(
+            "/api/backtest/bars",
+            params={"ticker": "TQQQ", "start": "1990-01-01", "end": "1990-01-02"},
+        ).json()
+        assert body["bars"] == []
+        assert body["source_rows"] == 0
+
+
 class TestBacktestExecution:
     """The worker actually runs the engine and produces the contract."""
 
@@ -243,6 +298,74 @@ class TestBacktestExecution:
         }
         assert sells, "the fixture produced no sells"
         assert buys <= buy_lots, "a sell references a lot with no buy row"
+
+    def test_a_multi_configuration_run_returns_every_cell(self, tmp_path):
+        """The sweep matrix needs the whole surface, not the best row."""
+        import pandas as pd_
+
+        from server import backtest as module
+        from server.backtest import run_backtest
+
+        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        csv = tmp_path / "TESTQ.csv"
+        frame.to_csv(csv)
+
+        original = dict(module.KNOWN_DATA)
+        module.KNOWN_DATA.clear()
+        module.KNOWN_DATA["TESTQ"] = str(csv)
+        try:
+            report = run_backtest(
+                {
+                    "tickers": ["TESTQ"],
+                    "grid_steps": [0.01, 0.02],
+                    "profit_targets": [0.005, 0.01, 0.02],
+                    "sizing_model": "fixed",
+                    "strategy_params": {"allocation_pct": 0.05},
+                    "limit": 5000,
+                },
+                lambda fraction, note: None,
+            )
+        finally:
+            module.KNOWN_DATA.clear()
+            module.KNOWN_DATA.update(original)
+
+        cells = report["funds"]["TESTQ"]["configurations"]
+        assert len(cells) == 6, "2 steps x 3 targets should be 6 cells"
+        assert {c["grid_step"] for c in cells} == {0.01, 0.02}
+        assert {c["profit_target"] for c in cells} == {0.005, 0.01, 0.02}
+        # Index 0 is the engine's own top-ranked row, and `metrics`
+        # above describes that same configuration.
+        assert cells[0]["metrics"] == report["funds"]["TESTQ"]["metrics"]
+
+    def test_a_window_with_no_bars_fails_with_a_useful_message(self, tmp_path):
+        import pandas as pd_
+
+        from server import backtest as module
+        from server.backtest import run_backtest
+
+        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        csv = tmp_path / "TESTQ.csv"
+        frame.to_csv(csv)
+
+        original = dict(module.KNOWN_DATA)
+        module.KNOWN_DATA.clear()
+        module.KNOWN_DATA["TESTQ"] = str(csv)
+        try:
+            with pytest.raises(ValueError, match="no bars between"):
+                run_backtest(
+                    {
+                        "tickers": ["TESTQ"],
+                        "grid_steps": [0.01],
+                        "profit_targets": [0.005],
+                        "sizing_model": "fixed",
+                        "start": "1990-01-01",
+                        "end": "1990-06-01",
+                    },
+                    lambda fraction, note: None,
+                )
+        finally:
+            module.KNOWN_DATA.clear()
+            module.KNOWN_DATA.update(original)
 
     def test_a_run_naming_no_downloaded_fund_fails_with_a_useful_message(self):
         from server.backtest import run_backtest

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 import { api, type FundAvailability } from "@/lib/api";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui/primitives";
-import type { BacktestRunRequest, BacktestRunState } from "@/types/backtest";
+import type { BacktestRunRequest, BacktestRunState, DateRange } from "@/types/backtest";
 
 /**
  * The bidirectional half: submit a run and watch it.
@@ -24,9 +24,18 @@ interface Props {
   run: BacktestRunState | null;
   submitting: boolean;
   error: string | null;
+  /**
+   * The filter panel's window, submitted WITH the run.
+   *
+   * One date range, two jobs: it filters what is drawn, and it bounds
+   * what the engine reads. Two separate pickers for the same concept
+   * would let them disagree, and the chart would then be showing a
+   * different period than the metrics beside it.
+   */
+  range: DateRange;
 }
 
-export function ParameterForm({ onSubmit, run, submitting, error }: Props) {
+export function ParameterForm({ onSubmit, run, submitting, error, range }: Props) {
   const [funds, setFunds] = useState<FundAvailability[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [tickers, setTickers] = useState<string[]>(["TQQQ"]);
@@ -74,6 +83,8 @@ export function ParameterForm({ onSubmit, run, submitting, error }: Props) {
       fill_model: fillModel,
       strategy_params: model === "fixed" ? { allocation_pct: 0.05 } : {},
       limit,
+      ...(range.start ? { start: range.start } : {}),
+      ...(range.end ? { end: range.end } : {}),
     });
 
   return (
@@ -87,6 +98,9 @@ export function ParameterForm({ onSubmit, run, submitting, error }: Props) {
           <p className="mt-1 text-xs text-muted-foreground">
             Queued on the server. A full ten-year run is roughly 23 seconds per
             configuration.
+            {range.start || range.end
+              ? ` Windowed to ${range.start ?? "start"} – ${range.end ?? "end"} from the filters below.`
+              : ""}
           </p>
         </div>
         {run ? <RunStatus run={run} /> : null}

@@ -10,9 +10,9 @@ Roadmap: `implementation_plan.md`.
 | | |
 |---|---|
 | **Active phase** | All planned phases complete |
-| **Active step** | — see *Next actions* for what was deliberately deferred |
+| **Active step** | — every planned item and three of five deferrals are built |
 | **Branch** | `main` |
-| **Last full suite** | **2088 passed**, 1 skipped — regression baseline byte-identical |
+| **Last full suite** | **2095 passed**, 1 skipped — regression baseline byte-identical |
 | **Frontend** | `tsc -b` clean, `vite build` succeeds, **19 vitest tests** pass |
 
 ---
@@ -95,29 +95,35 @@ forward because the Python contract is now complete.)
 | `.../live/LiveOrderLedger.tsx` | Un-merged lots sorted by distance to target; null distance sorts last. |
 | `.../live/CommandCenter.tsx` | Halt with confirmation + required reason; the two refused commands rendered greyed **with their reasons**. |
 
+### Deferred items closed ✅ 2026-09-05
+
+| Item | Notes |
+|---|---|
+| Real OHLC candles | `GET /api/backtest/bars` — date range, server-side OHLC downsample. Measured: 5,850 rows → 390 candles at 900s, all with low ≤ open,close ≤ high. |
+| Engine-level date range | `RunRequest.start`/`.end`, applied **before** the bar cap. |
+| Parameter sweep matrix | `configurations[]` per fund + `SweepMatrix.tsx` heatmap. |
+| Event-loop stall (found while testing) | The backtest WS blocked on a `threading.Condition` for up to 10s from a coroutine. Now `asyncio.to_thread`: an unrelated request measured **23 ms** where it could have waited 10,000. |
+
 ---
 
 ## Next actions
 
-Everything in `implementation_plan.md` is built. What remains was scoped out
-deliberately, and each item says why:
+Everything planned is built, and three of the five deferrals are now closed. Two
+remain, both still deliberate:
 
-1. **Parameter-sweep heatmap.** Needs a multi-configuration run the API does not
-   expose — `POST /runs` accepts lists of steps and targets but returns only the best
-   row per fund, since `run_sweep` already ranks them. Exposing the full grid is an
-   API change, not a UI one.
-2. **Engine-level date range.** `limit` caps bars from the END of the file. An
-   arbitrary window means passing a date range into the engine, which no existing
-   caller does.
-3. **True OHLC on the backtest chart.** Candles are currently synthesised from
-   executions (D11). A real candle series needs a bar endpoint that takes a date
-   range rather than serving the tail.
-4. **Clearing a halt from the UI.** Setting one is reversible by an operator outside
-   the dashboard; adding the inverse is a second write and would need its own
-   justification against the one-write invariant.
-5. **Retiring `dashboard.py`.** The user's decision was to keep both until the React
-   live view reaches parity. It now covers lots, halt state and drawdown; Streamlit
-   still has the price ladder.
+1. **Clearing a halt from the UI.** Setting one is reversible by an operator outside
+   the dashboard; adding the inverse is a SECOND write and would need its own
+   justification against the one-write invariant that `control.py` is built on.
+2. **Retiring `dashboard.py`.** The decision was to keep both until the React live
+   view reaches parity. It now covers lots, halt state, deployment identity and the
+   command centre; Streamlit still has the price ladder.
+
+Worth doing next if the UI continues:
+
+3. **A sweep run is serial.** Six configurations over 18 days took 4.1s, but the full
+   grid on ten years is the engine cost times the grid size. `run_sweep` accepts
+   `n_jobs`; the API pins it at the default.
+4. **The job queue still loses work on restart** (D5's known limitation).
 
 ---
 
@@ -153,6 +159,18 @@ The requested ratio ships beside it as `Harvest to Stuck Ratio`.
 One engine run measured at ~23 seconds on 10y of minute bars. A synchronous POST would
 time out. `POST /api/backtest/runs` returns 202 + `run_id`; progress arrives on
 `/ws/backtest/{run_id}`.
+
+**D15 — Two bar endpoints, deliberately.**
+`/api/live/bars` serves the TAIL of a file for a running deployment and takes no date
+range; `/api/backtest/bars` takes a range and is useless for live. Merging them would
+mean one endpoint whose behaviour depends on which arguments were passed. This
+supersedes D11 for the backtest chart — candles are now real OHLC, not synthesised
+from executions.
+
+**D16 — The window is applied before the bar cap.**
+Capping first takes the tail of the FILE and then filters it, so any non-recent window
+returns empty — on screen indistinguishable from "the strategy made no trades in that
+period". Pinned by `test_the_window_is_applied_before_the_bar_cap`.
 
 **D13 — Refused commands are rendered, not hidden.**
 `liquidate_all` and `parameter_override` appear greyed with the sentence that
@@ -239,6 +257,14 @@ carried.
   live socket delivered state at revision 922 (1 open lot, halted) then heartbeats; a
   submitted run returned **202**, completed in **4s** over its own socket, and came back
   with 32 executions and **16 of 16 sells carrying `matched_buy_id`**.
+* **Deferred items, against a running server:** a 2×3 sweep windowed to 2026-03-02..20
+  completed in 4.1s over 5,850 bars and returned all six cells, with `cells[0]` equal to
+  the headline metrics; bars downsampled 5,850 → 390 with every candle well-formed; and
+  an unrelated request during a backtest socket's heartbeat wait took **23 ms**.
+* Two environment traps cost time and are recorded so they are recognised faster: a
+  10-minute "hang" was a server that never started (`nohup` inherited `web/` as its cwd,
+  so `server` was not importable), and a 404 on a new endpoint was a stale uvicorn plus
+  two Vite instances on overlapping ports — not the routing bug it first looked like.
 * **Phase 5 against the real paper store**, through the proxy: deployment reported
   `main@b9f50c7`, the store came back **halted** with "reconciliation required", and
   the ledger showed one adopted TQQQ lot at 72.3127 against a 94.0065 target — **30.52%

@@ -6,14 +6,16 @@ import { FilterPanel } from "@/components/backtest/FilterPanel";
 import { FundComparison } from "@/components/backtest/FundComparison";
 import { ParameterForm } from "@/components/backtest/ParameterForm";
 import { RiskRewardMetrics } from "@/components/backtest/RiskRewardMetrics";
+import { SweepMatrix } from "@/components/backtest/SweepMatrix";
 import { CommandCenter } from "@/components/live/CommandCenter";
 import { DeploymentHealth } from "@/components/live/DeploymentHealth";
 import { LiveOrderLedger } from "@/components/live/LiveOrderLedger";
 import { Card, CardContent } from "@/components/ui/primitives";
 import { useBacktestRun } from "@/hooks/useBacktestRun";
 import { useLiveState } from "@/hooks/useLiveState";
+import { usePriceBars } from "@/hooks/usePriceBars";
 import { api } from "@/lib/api";
-import { type Candle, filterExecutions, openLotIds, toEpochSeconds } from "@/lib/filters";
+import { filterExecutions, openLotIds } from "@/lib/filters";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_FILTERS,
@@ -72,33 +74,16 @@ export default function App() {
   );
   const open = useMemo(() => openLotIds(executions), [executions]);
 
-  // Candles are synthesised from the executions rather than fetched.
-  // The bar endpoint serves recent minute data for LIVE charting; a
-  // historical run may cover ten years, and pulling a million rows into
-  // a browser to draw 40 markers would be the wrong trade. Each
-  // execution contributes its own price point, so the line the markers
-  // sit on is exactly the prices they executed at.
-  const candles = useMemo<Candle[]>(() => {
-    const byTime = new Map<number, Candle>();
-    for (const execution of executions) {
-      const time = toEpochSeconds(execution.timestamp);
-      const existing = byTime.get(time);
-      if (existing) {
-        existing.high = Math.max(existing.high, execution.price);
-        existing.low = Math.min(existing.low, execution.price);
-        existing.close = execution.price;
-      } else {
-        byTime.set(time, {
-          time,
-          open: execution.price,
-          high: execution.price,
-          low: execution.price,
-          close: execution.price,
-        });
-      }
-    }
-    return [...byTime.values()].sort((a, b) => a.time - b.time);
-  }, [executions]);
+  // REAL OHLC, from the server, for the window in view. Previously
+  // these were synthesised from the executions themselves, which drew a
+  // line through the fill prices rather than the market -- fine for
+  // placing markers, useless for seeing what the price actually did
+  // between them.
+  const { candles, meta: barMeta, error: barError } = usePriceBars(
+    selected,
+    filters.range.start,
+    filters.range.end,
+  );
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -170,6 +155,7 @@ export default function App() {
               run={run}
               submitting={submitting}
               error={error}
+              range={filters.range}
             />
 
             {!report ? (
@@ -197,12 +183,17 @@ export default function App() {
                 />
 
                 <BacktestChart
-                  candles={candles}
+                  candles={candles ?? []}
+                  loading={candles === null}
+                  bucketSeconds={barMeta?.bucket_seconds ?? null}
+                  error={barError}
                   executions={visible}
                   timeframe={filters.timeframe}
                   openLotIds={open}
                   profitTarget={report.parameters.profit_target_pct ?? 0.005}
                 />
+
+                <SweepMatrix funds={report.funds} />
 
                 {tickers.length > 1 ? <FundComparison funds={report.funds} /> : null}
               </>

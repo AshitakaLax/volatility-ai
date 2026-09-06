@@ -37,6 +37,7 @@ be a bug the UI discovers at runtime, on a field it happens to read.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -71,10 +72,38 @@ class RunRequest(BaseModel):
     strategy_params: dict[str, Any] = Field(default_factory=dict)
     fill_model: str = "close"
     enforce_no_loss: bool = True
-    # A bar cap, not a date range: these files are a million rows and a
-    # sweep over all of them is minutes per configuration. The UI offers
-    # presets; this is the backstop.
+    # A DATE WINDOW, applied before the engine sees anything. `limit` is
+    # the backstop that remains: these files are a million rows and a
+    # sweep over all of them is minutes per configuration.
+    #
+    # The two compose in that order -- window first, then cap the tail --
+    # so "the last 20k bars of 2022" means what it says.
+    start: str | None = Field(default=None, description="ISO date, inclusive.")
+    end: str | None = Field(default=None, description="ISO date, inclusive of the whole day.")
     limit: int | None = Field(default=200_000, ge=500, le=2_000_000)
+
+
+def window(
+    frame: pd.DataFrame, start: str | None, end: str | None, limit: int | None
+) -> pd.DataFrame:
+    """Apply the date window, then the bar cap. In that order.
+
+    The end bound covers the WHOLE day: a picker gives "2026-03-27", and
+    someone selecting one day means that day, not the instant midnight
+    begins it. Slicing on the bare timestamp would return nothing.
+
+    CAPPING FIRST WOULD BE A REAL BUG. It would take the tail of the
+    FILE and then filter it, so any window that is not recent comes back
+    empty -- indistinguishable, on screen, from "the strategy made no
+    trades in that period".
+    """
+    if start:
+        frame = frame[frame.index >= pd.Timestamp(start, tz="UTC")]
+    if end:
+        frame = frame[frame.index < pd.Timestamp(end, tz="UTC") + pd.Timedelta(days=1)]
+    if limit:
+        frame = frame.tail(limit)
+    return frame
 
 
 def build_config(request: RunRequest) -> BacktestConfig:
@@ -131,22 +160,39 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
     for index, ticker in enumerate(available):
         report(index / len(available), f"running {ticker}")
         frame = pd.read_csv(KNOWN_DATA[ticker], parse_dates=["timestamp"]).set_index("timestamp")
-        if parsed.limit:
-            frame = frame.tail(parsed.limit)
+        frame = window(frame, parsed.start, parsed.end, parsed.limit)
+        if frame.empty:
+            raise ValueError(
+                f"{ticker} has no bars between {parsed.start} and {parsed.end}. "
+                "Widen the window, or check what the file covers."
+            )
 
         kwargs = config.to_run_sweep_kwargs(strategy_class)
         kwargs["return_full_results"] = True
         kwargs["symbol"] = ticker
-        _, full = OptimizationController(historical_data=frame).run_sweep(**kwargs)
+        summary, full = OptimizationController(historical_data=frame).run_sweep(**kwargs)
 
         # The best configuration by the engine's own default ranking.
-        # run_sweep already sorted them, so index 0 is that row and the
-        # UI is not re-ranking by a metric of its own invention.
+        # run_sweep sorted summary and full_results together, so index 0
+        # is that row and the UI is not re-ranking by a metric of its own
+        # invention.
         result = full[0]
         funds[ticker] = {
             "metrics": fund_metrics(result.metrics, ticker),
             "executions": executions(result.trade_blotter, ticker),
             "equity_curve": equity_series(result.equity_curve),
+            # EVERY configuration, for the sweep matrix -- metrics only.
+            # Carrying each one's executions as well would multiply the
+            # payload by the size of the grid to draw a heatmap that
+            # needs one number per cell.
+            "configurations": [
+                {
+                    "grid_step": float(row["Grid Step"]),
+                    "profit_target": float(row["Profit Target"]),
+                    "metrics": fund_metrics(dict(row), ticker),
+                }
+                for _, row in summary.iterrows()
+            ],
             "bars": {
                 "start": pd.Timestamp(frame.index[0]).isoformat(),
                 "end": pd.Timestamp(frame.index[-1]).isoformat(),
@@ -192,6 +238,75 @@ def funds() -> dict[str, Any]:
             for ticker, path in sorted(KNOWN_DATA.items())
         ],
         "sizing_models": sorted(STRATEGIES),
+    }
+
+
+@router.get("/bars")
+def bars(
+    ticker: str,
+    start: str | None = None,
+    end: str | None = None,
+    max_points: int = 3000,
+) -> dict[str, Any]:
+    """OHLC for a window, downsampled SERVER-SIDE.
+
+    Distinct from /api/live/bars, which serves the tail of a file for a
+    running deployment. This one takes a date range, which is what a
+    historical chart needs and what the live endpoint deliberately does
+    not offer.
+
+    THE DOWNSAMPLE IS OHLC, NOT SAMPLING. Buckets are sized so the
+    result lands near max_points, and each keeps first open, max high,
+    min low, last close. Taking every Nth row instead would drop the
+    extremes -- and under the engine's "intrabar" fill model a level
+    TOUCHED during a bar is a fill, so the wicks are exactly where the
+    executions are. A chart that dropped them would show markers hanging
+    off a candle that never reached them.
+
+    A ten-year minute file is a million rows and roughly 60 MB. Sending
+    it whole would stall this process serialising it and the browser
+    parsing it, to draw a few thousand pixels.
+    """
+    path = KNOWN_DATA.get(ticker)
+    if path is None or not Path(path).exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No data file for {ticker!r}. Known: {sorted(KNOWN_DATA)}.",
+        )
+
+    frame = pd.read_csv(path, parse_dates=["timestamp"]).set_index("timestamp")
+    frame = window(frame, start, end, None)
+    if frame.empty:
+        return {"ticker": ticker, "bars": [], "bucket_seconds": 60, "source_rows": 0}
+
+    source_rows = len(frame)
+    # Round the bucket up to a whole number of minutes so the result is
+    # a recognisable timeframe rather than an arbitrary 137-second bar.
+    minutes = max(1, -(-source_rows // max_points))
+    rule = f"{minutes}min"
+    rolled = frame.resample(rule).agg(
+        {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+    )
+    # Gaps -- nights, weekends, holidays -- resample into empty rows.
+    # Dropping them keeps the axis continuous across sessions, which is
+    # what every trading chart does.
+    rolled = rolled.dropna(subset=["close"])
+
+    return {
+        "ticker": ticker,
+        "bucket_seconds": minutes * 60,
+        "source_rows": source_rows,
+        "bars": [
+            {
+                "time": int(timestamp.timestamp()),
+                "open": float(row.open),
+                "high": float(row.high),
+                "low": float(row.low),
+                "close": float(row.close),
+                "volume": float(row.volume),
+            }
+            for timestamp, row in rolled.iterrows()
+        ],
     }
 
 
@@ -247,7 +362,16 @@ async def run_socket(socket: WebSocket, run_id: str) -> None:
     try:
         seen = -1
         while True:
-            current = queue.wait_for_change(run_id, since=seen, timeout=HEARTBEAT_SECONDS)
+            # OFF THE EVENT LOOP. wait_for_change blocks on a
+            # threading.Condition for up to HEARTBEAT_SECONDS, and
+            # calling it directly from this coroutine would stall every
+            # other request for that whole period -- including the
+            # read-only live socket an operator may be watching a real
+            # deployment through. asyncio.to_thread hands the block to a
+            # worker and lets the loop keep serving.
+            current = await asyncio.to_thread(
+                queue.wait_for_change, run_id, seen, HEARTBEAT_SECONDS
+            )
             if current is None:
                 await socket.send_json({"type": "error", "detail": f"No run {run_id!r}."})
                 return

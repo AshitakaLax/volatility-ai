@@ -9,6 +9,7 @@
 import type {
   BacktestRunRequest,
   BacktestRunState,
+  BarSeries,
   MultiFundBacktestReport,
 } from "@/types/backtest";
 import type { DeploymentState, HaltResponse } from "@/types/telemetry";
@@ -83,6 +84,13 @@ export const api = {
 
   funds: () =>
     request<{ funds: FundAvailability[]; sizing_models: string[] }>("/api/backtest/funds"),
+
+  bars: (ticker: string, start?: string | null, end?: string | null, maxPoints = 3000) => {
+    const query = new URLSearchParams({ ticker, max_points: String(maxPoints) });
+    if (start) query.set("start", start);
+    if (end) query.set("end", end);
+    return request<BarSeries>(`/api/backtest/bars?${query.toString()}`);
+  },
 
   runs: () => request<{ runs: BacktestRunState[] }>("/api/backtest/runs"),
 
