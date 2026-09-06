@@ -166,6 +166,14 @@ export interface BacktestParameters {
    * a level TOUCHED during the bar -- roughly 1.85x more fills. */
   fill_model: string;
   enforce_no_loss: boolean;
+  /**
+   * Workers the run ACTUALLY used, not what was asked for.
+   *
+   * 1 is normal and often correct: below roughly 500k bar-configurations
+   * a process pool measured SLOWER than serial on Windows, where every
+   * worker is a fresh interpreter that re-imports pandas.
+   */
+  n_jobs?: number;
 }
 
 export interface BacktestTimeframe {

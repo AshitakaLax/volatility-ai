@@ -38,6 +38,7 @@ be a bug the UI discovers at runtime, on a field it happens to read.
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -61,6 +62,55 @@ router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 # dozens of pointless frames.
 HEARTBEAT_SECONDS = 10.0
 
+# PARALLELISM IS SAFE HERE BECAUSE THIS IS NOT THE TRADING MACHINE.
+#
+# An earlier version of this server pinned every sweep to one core, on
+# the reasoning that saturating a box which might also be running the
+# live loop would starve the thing that actually matters. That premise
+# is wrong for this deployment: the loop runs on separate hardware, so
+# the only process competing for these cores is this API.
+#
+# One core is still left free -- not caution about the trading loop, but
+# so the event loop keeps serving the read-only live socket and the
+# run's own progress frames while a sweep saturates everything else.
+DEFAULT_JOBS = max(1, (os.cpu_count() or 2) - 1)
+MAX_JOBS = max(1, os.cpu_count() or 2)
+
+# BUT A POOL IS NOT FREE, AND BELOW A CERTAIN SIZE IT IS A LOSS.
+#
+# Windows spawns rather than forks, so every worker is a fresh
+# interpreter that re-imports pandas and this module tree, and each task
+# pickles the whole price frame across. Measured on this machine (12
+# cores, 11 workers):
+#
+#     13,260 bars x 12 configs   4.2s serial   ->  0.69x   SLOWER
+#    100,000 bars x  6 configs   8.2s serial   ->  1.35x
+#    300,000 bars x  6 configs  19.8s serial   ->  2.25x
+#
+# The overhead is roughly fixed, so the pool pays for itself once the
+# serial run would take longer than it. The threshold below sits just
+# under the break-even in bar-configurations -- the product is a decent
+# proxy for the work, since the engine is a per-bar loop.
+#
+# The small case is the interactive one: a single configuration over a
+# recent window, run to look at a chart. Making THAT slower to speed up
+# a sweep nobody is watching would be the wrong trade.
+PARALLEL_THRESHOLD_BAR_CONFIGS = 500_000
+
+
+def choose_jobs(bars: int, combinations: int, requested: int | None) -> int:
+    """How many workers this run should use.
+
+    An explicit request is honoured (capped), because someone who has
+    measured their own machine knows more than this heuristic does.
+    """
+    ceiling = max(1, min(MAX_JOBS, combinations))
+    if requested is not None:
+        return max(1, min(requested, ceiling))
+    if bars * combinations < PARALLEL_THRESHOLD_BAR_CONFIGS:
+        return 1
+    return max(1, min(DEFAULT_JOBS, ceiling))
+
 
 class RunRequest(BaseModel):
     """The shape of a submitted run. Semantics are BacktestConfig's."""
@@ -81,6 +131,11 @@ class RunRequest(BaseModel):
     start: str | None = Field(default=None, description="ISO date, inclusive.")
     end: str | None = Field(default=None, description="ISO date, inclusive of the whole day.")
     limit: int | None = Field(default=200_000, ge=500, le=2_000_000)
+    # None means "decide for me" -- DEFAULT_JOBS. Explicit 1 forces the
+    # sequential path, which is worth keeping reachable: a single
+    # configuration gains nothing from a process pool and pays the cost
+    # of pickling the frame to a worker.
+    n_jobs: int | None = Field(default=None, ge=1, le=64)
 
 
 def window(
@@ -157,6 +212,7 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
         )
 
     funds: dict[str, Any] = {}
+    jobs = 1
     for index, ticker in enumerate(available):
         report(index / len(available), f"running {ticker}")
         frame = pd.read_csv(KNOWN_DATA[ticker], parse_dates=["timestamp"]).set_index("timestamp")
@@ -170,6 +226,9 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
         kwargs = config.to_run_sweep_kwargs(strategy_class)
         kwargs["return_full_results"] = True
         kwargs["symbol"] = ticker
+        combinations = len(config.grid.steps) * len(config.grid.profit_targets)
+        jobs = choose_jobs(len(frame), combinations, parsed.n_jobs)
+        kwargs["n_jobs"] = jobs
         summary, full = OptimizationController(historical_data=frame).run_sweep(**kwargs)
 
         # The best configuration by the engine's own default ranking.
@@ -211,6 +270,9 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
             "sizing_model": config.strategy.strategy_id,
             "fill_model": config.execution.fill_model,
             "enforce_no_loss": config.execution.enforce_no_loss,
+            # What the run ACTUALLY used, not what was asked for, so a
+            # reader can tell a slow sweep from a serial one.
+            "n_jobs": jobs,
         },
         "timeframe": {
             "start": min((f["bars"]["start"] for f in funds.values()), default=None),

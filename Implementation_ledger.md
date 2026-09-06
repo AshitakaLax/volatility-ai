@@ -12,7 +12,7 @@ Roadmap: `implementation_plan.md`.
 | **Active phase** | All planned phases complete |
 | **Active step** | — every planned item and three of five deferrals are built |
 | **Branch** | `main` |
-| **Last full suite** | **2100 passed**, 1 skipped — regression baseline byte-identical |
+| **Last full suite** | **2106 passed**, 1 skipped — regression baseline byte-identical |
 | **Frontend** | `tsc -b` clean, `vite build` succeeds, **19 vitest tests** pass |
 
 ---
@@ -114,6 +114,20 @@ forward because the Python contract is now complete.)
 | `.../live/AlgorithmStatus.tsx` | Price, RSI, step, target, allocation — and flags an implausible target rather than only displaying it. |
 | `.../backtest/SweepMatrix.tsx` | Cells stage their parameters in the run form, closing the brief's grid-step / sizing-model filter. |
 
+### Parallel sweeps ✅ 2026-09-05
+
+`server/backtest.py` gains `choose_jobs`, and `jobs.py`'s reasoning is corrected: the
+trading loop runs on separate hardware, so a pool cannot starve it.
+
+| bars × configs | serial | pooled (11 workers) |
+|---|---|---|
+| 13,260 × 12 | 4.2s | **0.69x — slower** |
+| 100,000 × 6 | 8.2s | 1.35x |
+| 300,000 × 6 | 19.8s | 2.25x |
+
+Through uvicorn: 6 × 300k completed in **8.0s, 2.46x**, results identical at every
+worker count.
+
 ---
 
 ## Next actions
@@ -130,16 +144,15 @@ remain, both still deliberate:
 
 Worth doing next if the UI continues:
 
-3. **A sweep run is serial.** Six configurations over 18 days took 4.1s, but the full
-   grid on ten years is the engine cost times the grid size. `run_sweep` accepts
-   `n_jobs`; the API pins it at the default. Exposing it needs care — `jobs.py` runs one
-   worker deliberately, so a machine that may also be trading is not starved.
-4. **The job queue still loses work on restart** (D5). A cheap middle ground that does
+3. **The job queue still loses work on restart** (D5). A cheap middle ground that does
    not contradict D5: persist COMPLETED reports to disk so a finished run survives,
    while queued and running jobs stay disposable.
-5. **Live RSI reads a data FILE**, which can lag the loop's own feed — stated on the
+4. **Live RSI reads a data FILE**, which can lag the loop's own feed — stated on the
    card. Closing that gap means the loop persisting its own indicator readings, which is
    a change to the trading path for a number a reader can already derive.
+5. **The parallel threshold is measured on ONE machine.** 500k bar-configurations is
+   right for 12 cores under Windows spawn; a Linux host that forks would break even far
+   lower. `n_jobs` is explicit-overridable for exactly that reason.
 
 ---
 
@@ -175,6 +188,15 @@ The requested ratio ships beside it as `Harvest to Stuck Ratio`.
 One engine run measured at ~23 seconds on 10y of minute bars. A synchronous POST would
 time out. `POST /api/backtest/runs` returns 202 + `run_id`; progress arrives on
 `/ws/backtest/{run_id}`.
+
+**D19 — Sweeps parallelise above a MEASURED threshold, not by default.**
+The user corrected the premise `jobs.py` was written on: the trading loop is on
+separate hardware, so a pool cannot starve it. But measuring first showed a blanket
+default would have made the common case slower — 0.69x on a small interactive run,
+because Windows spawns a fresh interpreter per worker and pickles the frame per task.
+`choose_jobs` encodes the three measurements: serial below ~500k bar-configurations,
+pooled above, never more workers than combinations, explicit `n_jobs` always honoured.
+The report states what was USED, not what was requested.
 
 **D17 — The loop records its own parameters.**
 The store held what the loop DID and never what it was TOLD to do, so a 30% profit
@@ -286,6 +308,12 @@ carried.
   live socket delivered state at revision 922 (1 open lot, halted) then heartbeats; a
   submitted run returned **202**, completed in **4s** over its own socket, and came back
   with 32 executions and **16 of 16 sells carrying `matched_buy_id`**.
+* **Parallelism, through uvicorn rather than a script** — Windows spawn re-imports
+  `__main__`, which under the server is uvicorn's runner, and that is exactly where it
+  could have failed. 6 configurations × 300k bars: **8.0s against a 19.8s serial
+  baseline (2.46x)**, results identical at every worker count. A first benchmark died
+  with `BrokenProcessPool` — an artifact of running from stdin, not the bug it looked
+  like, which is why the uvicorn check exists rather than a conclusion.
 * **Live parameters and RSI, against a running server:** `GET /api/live/indicators`
   returned RSI **56.95** from 390 bars, matching `WilderRSI` driven directly over the
   same file; the real `paper_ledger.db` correctly reported `{}` for parameters, since it

@@ -309,6 +309,86 @@ class TestDateWindowAndBars:
         assert body["source_rows"] == 0
 
 
+class TestWorkerSelection:
+    """The pool is not free, and below a certain size it is a loss.
+
+    Measured on a 12-core machine, 11 workers, Windows spawn:
+
+        13,260 bars x 12 configs   4.2s serial  ->  0.69x  SLOWER
+       100,000 bars x  6 configs   8.2s serial  ->  1.35x
+       300,000 bars x  6 configs  19.8s serial  ->  2.25x
+
+    So the heuristic is not a guess -- it is those numbers.
+    """
+
+    def test_a_small_interactive_run_stays_serial(self):
+        """The common case: one configuration over a recent window, run
+        to look at a chart. Pooling it measured SLOWER."""
+        from server.backtest import choose_jobs
+
+        assert choose_jobs(13_260, 12, None) == 1
+
+    def test_a_large_sweep_gets_workers(self):
+        from server.backtest import choose_jobs
+
+        assert choose_jobs(300_000, 6, None) > 1
+
+    def test_a_single_configuration_never_pools(self):
+        """There is nothing to spread, and a worker would still pay the
+        cost of pickling the whole frame."""
+        from server.backtest import choose_jobs
+
+        assert choose_jobs(1_000_000, 1, None) == 1
+
+    def test_workers_never_exceed_the_grid_size(self):
+        """Eight workers for three configurations spawns five processes
+        that pickle a DataFrame and exit."""
+        from server.backtest import choose_jobs
+
+        assert choose_jobs(1_000_000, 3, None) <= 3
+        assert choose_jobs(1_000_000, 3, 99) <= 3
+
+    def test_an_explicit_request_is_honoured(self):
+        """Someone who has measured their own machine knows more than
+        this heuristic does."""
+        from server.backtest import choose_jobs
+
+        assert choose_jobs(13_260, 12, 4) == 4
+
+    def test_the_report_states_what_was_actually_used(self, tmp_path):
+        """Not what was asked for -- so a reader can tell a slow sweep
+        from a serial one."""
+        import pandas as pd_
+
+        from server import backtest as module
+        from server.backtest import run_backtest
+
+        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        csv = tmp_path / "TESTQ.csv"
+        frame.to_csv(csv)
+
+        original = dict(module.KNOWN_DATA)
+        module.KNOWN_DATA.clear()
+        module.KNOWN_DATA["TESTQ"] = str(csv)
+        try:
+            report = run_backtest(
+                {
+                    "tickers": ["TESTQ"],
+                    "grid_steps": [0.01],
+                    "profit_targets": [0.005],
+                    "sizing_model": "fixed",
+                    "strategy_params": {"allocation_pct": 0.05},
+                },
+                lambda fraction, note: None,
+            )
+        finally:
+            module.KNOWN_DATA.clear()
+            module.KNOWN_DATA.update(original)
+
+        # A one-configuration run on a tiny fixture must report serial.
+        assert report["parameters"]["n_jobs"] == 1
+
+
 class TestBacktestExecution:
     """The worker actually runs the engine and produces the contract."""
 

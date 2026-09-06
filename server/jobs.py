@@ -17,9 +17,16 @@ every other request for its whole duration, including the read-only live
 WebSocket that an operator may be watching a real deployment through.
 One worker thread keeps the loop responsive.
 
-ONE worker, not a pool. Two concurrent sweeps on a machine that may also
-be running the live trading loop is a way to starve the thing that
-actually matters. Runs queue.
+ONE worker here, but that is about ORDERING, not about cores. Runs queue
+so their progress is legible and so two submissions cannot interleave
+their output; parallelism happens INSIDE a run, where server/backtest.py
+hands run_sweep an n_jobs of one-less-than-the-core-count.
+
+An earlier version of this file justified the single worker by saying a
+pool would starve a live trading loop sharing the machine. That premise
+was wrong for this deployment -- the loop runs on separate hardware --
+and the reasoning is corrected rather than quietly deleted, because the
+constraint it described is real on a box that does run both.
 
 --------------------------------------------------------------------
 WHAT IS DELIBERATELY NOT HERE

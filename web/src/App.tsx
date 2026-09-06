@@ -123,6 +123,9 @@ export default function App() {
               {((report.parameters.grid_step_pct ?? 0) * 100).toFixed(2)}% · target{" "}
               {((report.parameters.profit_target_pct ?? 0) * 100).toFixed(2)}% ·{" "}
               {report.parameters.fill_model} fills
+              {report.parameters.n_jobs && report.parameters.n_jobs > 1
+                ? ` · ${report.parameters.n_jobs} workers`
+                : ""}
             </span>
           ) : null}
         </div>
