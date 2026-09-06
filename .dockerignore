@@ -56,3 +56,10 @@ output/
 .DS_Store
 .idea/
 .vscode/
+
+# The frontend build happens in its own Docker stage from package.json
+# and the lockfile, so a developer node_modules (hundreds of MB, and
+# built for the WRONG architecture on a cross-build) must not enter the
+# context. dist/ is excluded for the same reason: the image builds it.
+web/node_modules/
+web/dist/

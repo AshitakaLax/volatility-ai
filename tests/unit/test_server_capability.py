@@ -220,6 +220,36 @@ class TestAppDefaults:
         assert 'allow_origins=["*"]' not in source
         assert '"*"' not in source.split("allow_origins")[1].split("]")[0]
 
+    def test_the_spa_catch_all_never_shadows_the_api(self):
+        """A catch-all registered before the API swallows all of it.
+
+        FastAPI matches in registration order, so this is decided by
+        where the mount sits in app.py -- and it sat in the wrong place
+        on the first attempt, which is why it is pinned rather than
+        trusted to a comment.
+        """
+        from server.app import app
+
+        paths = [
+            path
+            for path in (getattr(route, "path", None) for route in app.routes)
+            if isinstance(path, str)
+        ]
+        if "/{path:path}" not in paths:
+            pytest.skip("no built frontend mounted in this checkout")
+        catch_all = paths.index("/{path:path}")
+        api = [index for index, path in enumerate(paths) if path.startswith("/api")]
+        assert api, "no API routes at all"
+        assert max(api) < catch_all, "the SPA catch-all is registered before an API route"
+
+    def test_the_worker_ceiling_is_host_configurable(self):
+        """The Pi runs the trading loop and this server on four cores, so
+        the 'parallelism is safe' premise is a property of the HOST. It
+        has to be a setting, and the compose file that puts this next to
+        a live loop is what says so."""
+        source = (SERVER / "backtest.py").read_text(encoding="utf-8")
+        assert "VAI_MAX_JOBS" in source
+
     def test_it_reports_which_commands_it_supports(self):
         """The UI renders the Command Center from what the SERVER says,
         not from a constant baked into the bundle that could disagree

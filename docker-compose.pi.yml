@@ -15,6 +15,16 @@
 #     docker compose -f docker-compose.pi.yml build
 #     docker compose -f docker-compose.pi.yml up -d
 #
+# WHAT RUNS HERE, AND ON WHICH PORT:
+#
+#     paper       the trading loop. No port; it talks to Alpaca.
+#     dashboard   Streamlit, :8501. The operator view.
+#     web         the React UI + read-only API, :8000. Backtesting.
+#
+# dashboard and web overlap on purpose while the React live view is
+# proven against the Streamlit one. Both read the same store through the
+# same module, so they cannot disagree about the data.
+#
 # ONE HOST AT A TIME. Nothing here can enforce that. StateStoreLock is a
 # FILE lock inside this container's volume, so it cannot see another
 # machine trading the same Alpaca account. Before starting this, confirm
@@ -90,6 +100,65 @@ services:
     mem_limit: 512m
     depends_on:
       - paper
+
+  # The backtesting UI and its read-only API, reachable from the LAN.
+  #
+  # ONE CONTAINER SERVES BOTH. server/app.py mounts the built frontend
+  # when web/dist is present, so there is one origin and no CORS -- the
+  # split between :5173 and :8000 exists only in development, where Vite
+  # proxies one to the other.
+  #
+  # WHY THIS IS SAFE TO EXPOSE, AND WHERE THAT ENDS. Its live routes read
+  # the store mode=ro and import no broker; the only write it can perform
+  # is the halt, which reaches the existing CircuitBreaker and blocks new
+  # BUYS while open lots keep exiting. There is NO AUTHENTICATION. That
+  # is acceptable on a trusted LAN and would not be on anything routable
+  # -- the halt is reachable by anyone who can reach the port, and the
+  # read routes show balances, positions and cost bases.
+  web:
+    build: .
+    image: volatility-ai:local
+    entrypoint:
+      - uvicorn
+      - server.app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    environment:
+      TZ: America/New_York
+      PYTHONUNBUFFERED: "1"
+      # ONE WORKER, AND THIS IS THE HOST THAT NEEDS IT.
+      #
+      # server/backtest.py defaults to core-count-minus-one because the
+      # development box does not trade. This one does: `paper` above is
+      # a live loop on the same four cores. A sweep that saturated them
+      # would delay the thing that actually matters, and a backtest is
+      # never worth that.
+      #
+      # The cost is real -- a large sweep here is ~2.5x slower than it
+      # would be unpinned -- and it is the right trade on this machine.
+      VAI_MAX_JOBS: "1"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config:/app/config:ro
+      # READ-ONLY, belt to the application's own mode=ro braces.
+      - state:/app/state:ro
+      # Historical bars for backtesting. Read-only: this service runs
+      # simulations over them and has no reason to write.
+      - ./data:/app/data:ro
+    restart: unless-stopped
+    # Tighter than `paper`'s, deliberately. A sweep loads a million-row
+    # frame and this Pi has 4 GB total with the loop already resident;
+    # the limit is what stops a large backtest from pressuring the
+    # process that is trading.
+    mem_limit: 1200m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   # A NAMED VOLUME, not a bind mount. The ledger is the deployment's

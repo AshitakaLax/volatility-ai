@@ -73,8 +73,21 @@ HEARTBEAT_SECONDS = 10.0
 # One core is still left free -- not caution about the trading loop, but
 # so the event loop keeps serving the read-only live socket and the
 # run's own progress frames while a sweep saturates everything else.
-DEFAULT_JOBS = max(1, (os.cpu_count() or 2) - 1)
-MAX_JOBS = max(1, os.cpu_count() or 2)
+#
+# VAI_MAX_JOBS OVERRIDES BOTH, AND THE RASPBERRY PI SETS IT TO 1.
+# The paragraph above is true of the development box and FALSE of the
+# Pi, which runs the trading loop and this server on the same four
+# cores. The premise is a property of the HOST, so it is a setting
+# rather than a constant -- and the compose file that puts this next to
+# a live loop is the thing that has to say so.
+_CONFIGURED = os.environ.get("VAI_MAX_JOBS")
+_CORES = os.cpu_count() or 2
+if _CONFIGURED and _CONFIGURED.isdigit() and int(_CONFIGURED) >= 1:
+    MAX_JOBS = int(_CONFIGURED)
+    DEFAULT_JOBS = MAX_JOBS
+else:
+    DEFAULT_JOBS = max(1, _CORES - 1)
+    MAX_JOBS = max(1, _CORES)
 
 # BUT A POOL IS NOT FREE, AND BELOW A CERTAIN SIZE IT IS A LOSS.
 #

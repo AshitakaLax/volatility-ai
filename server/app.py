@@ -32,8 +32,12 @@ discovered later by someone who bound it to a LAN.
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from server import backtest, control, deployment, live
 
@@ -81,3 +85,53 @@ def health() -> dict[str, object]:
             "backtest_submit": True,
         },
     }
+
+
+# --------------------------------------------------------------------
+# THE BUILT FRONTEND, WHEN THERE IS ONE.
+#
+# In development Vite serves the app on :5173 and proxies /api here, so
+# there are two ports and CORS above covers the gap. In a deployment
+# there is no Vite: the built bundle is served from THIS process, which
+# means one origin, no CORS involved at all, and one port to expose.
+#
+# Mounted only if the build exists. A checkout that has never run
+# `npm run build` still serves the API perfectly well, and failing to
+# start because a frontend is missing would make the API hostage to a
+# toolchain it does not need.
+_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+
+if (_DIST / "index.html").exists():
+    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    def index() -> FileResponse:
+        return FileResponse(_DIST / "index.html")
+
+    @app.api_route(
+        "/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        include_in_schema=False,
+    )
+    def spa(path: str) -> FileResponse:
+        """Serve a real file if there is one, else the app shell.
+
+        Declared AFTER every /api route, so it can only catch what they
+        did not -- a catch-all registered first would swallow the entire
+        API.
+
+        AND IT REFUSES /api ITSELF, on every method. Registration
+        order alone is not enough. A GET-only catch-all still MATCHES
+        the path for a POST, so Starlette answers 405 before this
+        function runs -- and 405 on a nonexistent endpoint says "wrong
+        verb" about a route that does not exist. A test caught exactly
+        that, on the assertion that there is no /api/live/liquidate.
+        Registering every method means this handler is reached and can
+        say 404, which is what a fetch() expects.
+        """
+        if path == "api" or path.startswith("api/"):
+            raise HTTPException(status_code=404, detail=f"No API route /{path}.")
+        candidate = _DIST / path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_DIST / "index.html")

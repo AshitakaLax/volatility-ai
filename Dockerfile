@@ -1,5 +1,26 @@
 # syntax=docker/dockerfile:1
 
+# --------------------------------------------------------------------
+# The web UI, built in its own stage.
+#
+# node is a BUILD dependency and never a runtime one: nothing from this
+# stage reaches the final image except the static files it produces. The
+# alternative -- building on a developer machine and committing dist/ --
+# makes the image depend on someone remembering to rebuild, which is the
+# drift the rest of this project spends effort avoiding.
+FROM node:22-slim AS web
+
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+# `npm ci`, not `install`: the lockfile is the point, and ci fails
+# loudly on a mismatch instead of quietly resolving something else onto
+# a machine nobody is watching.
+RUN npm ci --no-audit --no-fund
+
+COPY web/ ./
+RUN npm run build
+
+
 # Base image matches pyproject.toml's requires-python floor exactly
 # (>=3.12) -- this is not a rounded-up default, it is the same version
 # constraint the project itself declares.
@@ -26,13 +47,20 @@ WORKDIR /app
 
 # Dependencies installed before source code, so an unchanged
 # requirements.txt keeps this layer cached across ordinary code edits.
-COPY requirements.txt .
+COPY requirements.txt requirements-web.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt -r requirements-web.txt
 
 # Now the actual project. .dockerignore keeps .git, __pycache__, and
 # the various tool caches out of the build context and image.
 COPY . .
+
+# The built frontend, from the node stage above. server/app.py mounts it
+# when index.html is present and serves the API alone when it is not, so
+# this COPY is the single thing that turns the API into a full
+# deployment -- and it means ONE origin in production, with no CORS
+# involved at all.
+COPY --from=web /web/dist ./web/dist
 
 # Runs as a non-root user -- nothing here needs root, and the container
 # may hold live Alpaca credentials in its environment at runtime.

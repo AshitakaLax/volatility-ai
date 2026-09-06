@@ -26,7 +26,41 @@ def compose() -> dict:
 
 
 def test_the_pi_compose_file_parses(compose):
-    assert set(compose["services"]) == {"paper", "dashboard"}
+    """Exactly what the Pi runs, and nothing that belongs elsewhere.
+
+    Pinned as a SET rather than a subset: the file's own docstring
+    promises it describes this machine only, and a service arriving
+    unnoticed is how that promise stops being true.
+    """
+    assert set(compose["services"]) == {"paper", "dashboard", "web"}
+
+
+def test_the_web_service_pins_one_worker(compose):
+    """THE PI IS THE TRADING MACHINE, which inverts the default.
+
+    server/backtest.py parallelises to core-count-minus-one because the
+    development box does not trade. Here `paper` is a live loop on the
+    same four cores, so a sweep that saturated them would delay the
+    thing that actually matters. The compose file is what has to say so,
+    since the code cannot know which host it landed on.
+    """
+    assert compose["services"]["web"]["environment"]["VAI_MAX_JOBS"] == "1"
+
+
+def test_the_web_service_mounts_state_read_only(compose):
+    """Belt to the application's own mode=ro braces. Two independent
+    reasons the backtesting UI cannot corrupt a live ledger."""
+    mounts = compose["services"]["web"]["volumes"]
+    state = next(m for m in mounts if ":/app/state" in m)
+    assert state.endswith(":ro"), f"state is mounted writable: {state}"
+
+
+def test_the_web_service_is_capped_below_the_pi_s_memory(compose):
+    """A sweep loads a million-row frame, and this Pi has 4 GB with the
+    trading loop already resident."""
+    limit = compose["services"]["web"]["mem_limit"]
+    assert limit.endswith("m")
+    assert int(limit.removesuffix("m")) <= 1500
 
 
 def test_the_entrypoint_script_the_compose_file_names_exists(compose):
