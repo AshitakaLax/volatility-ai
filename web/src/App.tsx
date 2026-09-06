@@ -7,6 +7,7 @@ import { FundComparison } from "@/components/backtest/FundComparison";
 import { ParameterForm } from "@/components/backtest/ParameterForm";
 import { RiskRewardMetrics } from "@/components/backtest/RiskRewardMetrics";
 import { SweepMatrix } from "@/components/backtest/SweepMatrix";
+import { AlgorithmStatus } from "@/components/live/AlgorithmStatus";
 import { CommandCenter } from "@/components/live/CommandCenter";
 import { DeploymentHealth } from "@/components/live/DeploymentHealth";
 import { LiveOrderLedger } from "@/components/live/LiveOrderLedger";
@@ -37,6 +38,9 @@ export default function App() {
   const [staticReport, setStaticReport] = useState<MultiFundBacktestReport | null>(null);
   const [filters, setFilters] = useState<ExecutionFilters>(DEFAULT_FILTERS);
   const { run, submit, submitting, error } = useBacktestRun();
+  const [staged, setStaged] = useState<{ gridStep: number; profitTarget: number } | null>(
+    null,
+  );
 
   // --- live ------------------------------------------------------------
   const [stores, setStores] = useState<{ path: string; label: string; paper: boolean }[]>([]);
@@ -127,6 +131,7 @@ export default function App() {
       <main className="mx-auto max-w-[1600px] space-y-4 px-6 py-6">
         {tab === "live" ? (
           <>
+            <AlgorithmStatus state={live.state} />
             <DeploymentHealth
               state={live.state}
               health={live.health}
@@ -156,6 +161,7 @@ export default function App() {
               submitting={submitting}
               error={error}
               range={filters.range}
+              staged={staged}
             />
 
             {!report ? (
@@ -193,7 +199,12 @@ export default function App() {
                   profitTarget={report.parameters.profit_target_pct ?? 0.005}
                 />
 
-                <SweepMatrix funds={report.funds} />
+                <SweepMatrix
+                  funds={report.funds}
+                  onSelectCell={(gridStep, profitTarget) =>
+                    setStaged({ gridStep, profitTarget })
+                  }
+                />
 
                 {tickers.length > 1 ? <FundComparison funds={report.funds} /> : null}
               </>

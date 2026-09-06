@@ -54,6 +54,7 @@ from src.dashboard_data import (
     load_bars,
     load_state,
 )
+from src.sizing_indicators import WilderRSI
 
 router = APIRouter(prefix="/api/live", tags=["live"])
 
@@ -111,6 +112,11 @@ def state_payload(path: str) -> dict[str, Any]:
         "last_write_age": state.last_write_age,
         "last_price": state.last_price,
         "last_tick_at": state.last_tick_at,
+        # WHAT THIS LOOP IS ACTUALLY TRADING. Absent on a store written
+        # before the loop recorded it, which the UI renders as unknown
+        # rather than as zeros. The 30%-instead-of-0.3% profit target
+        # that stranded 94 lots was invisible here until this existed.
+        "parameters": state.parameters,
     }
 
 
@@ -188,6 +194,55 @@ def bars(
             }
             for row in frame.itertuples()
         ],
+    }
+
+
+@router.get("/indicators")
+def indicators(
+    symbol: str = Query(...),
+    period: int = Query(14, ge=2, le=200),
+    root: str = Query("data"),
+) -> dict[str, Any]:
+    """The current reading of the indicators an operator watches.
+
+    WilderRSI, the SAME class RsiMomentumSizing trades on and the same
+    one the backtest blotter records. A second implementation here would
+    be free to disagree with the strategy's own, and the number on the
+    dashboard would then be describing a different indicator than the one
+    making decisions.
+
+    Computed from the most recent session of minute bars rather than
+    stored, because the loop does not persist it -- and adding a field to
+    the trading path for a number a reader can derive would be the wrong
+    trade.
+
+    `value` is null until the period seeds. That is honest: an unseeded
+    Wilder average is a partial mean, and this project has already been
+    caught once trading a moving average that had not warmed up.
+    """
+    files = find_bar_files(symbol, root)
+    if not files:
+        raise HTTPException(status_code=404, detail=f"No bar file for {symbol!r} under {root!r}.")
+    try:
+        frame = load_bars(files[0], limit=max(period * 20, 390))
+    except DashboardError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    tracker = WilderRSI(period=period)
+    value: float | None = None
+    for close in frame["close"]:
+        value = tracker.update(float(close))
+
+    return {
+        "symbol": symbol,
+        "rsi_period": period,
+        "rsi": None if value is None else round(value, 2),
+        "bars_used": len(frame),
+        "as_of": frame["timestamp"].iloc[-1].isoformat() if len(frame) else None,
+        # The bars are a FILE, not the loop's own feed. They can lag a
+        # running deployment, and saying so is cheaper than someone
+        # discovering it during a fast market.
+        "source": files[0],
     }
 
 

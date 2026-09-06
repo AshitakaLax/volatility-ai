@@ -12,7 +12,7 @@ Roadmap: `implementation_plan.md`.
 | **Active phase** | All planned phases complete |
 | **Active step** | — every planned item and three of five deferrals are built |
 | **Branch** | `main` |
-| **Last full suite** | **2095 passed**, 1 skipped — regression baseline byte-identical |
+| **Last full suite** | **2100 passed**, 1 skipped — regression baseline byte-identical |
 | **Frontend** | `tsc -b` clean, `vite build` succeeds, **19 vitest tests** pass |
 
 ---
@@ -104,6 +104,16 @@ forward because the Python contract is now complete.)
 | Parameter sweep matrix | `configurations[]` per fund + `SweepMatrix.tsx` heatmap. |
 | Event-loop stall (found while testing) | The backtest WS blocked on a `threading.Condition` for up to 10s from a coroutine. Now `asyncio.to_thread`: an unrelated request measured **23 ms** where it could have waited 10,000. |
 
+### Live parameters, live RSI, and clickable sweep cells ✅ 2026-09-05
+
+| Item | Notes |
+|---|---|
+| `src/live_trading_loop.py` | Persists `live.parameters` (symbol, step, profit_target, strategy_id, paper, poll interval) through every tick. |
+| `src/dashboard_data.py` | Reads it; malformed JSON reports absent rather than raising. |
+| `server/live.py` | `parameters` on `/state`; new `GET /api/live/indicators` computing RSI with `WilderRSI`. |
+| `.../live/AlgorithmStatus.tsx` | Price, RSI, step, target, allocation — and flags an implausible target rather than only displaying it. |
+| `.../backtest/SweepMatrix.tsx` | Cells stage their parameters in the run form, closing the brief's grid-step / sizing-model filter. |
+
 ---
 
 ## Next actions
@@ -122,8 +132,14 @@ Worth doing next if the UI continues:
 
 3. **A sweep run is serial.** Six configurations over 18 days took 4.1s, but the full
    grid on ten years is the engine cost times the grid size. `run_sweep` accepts
-   `n_jobs`; the API pins it at the default.
-4. **The job queue still loses work on restart** (D5's known limitation).
+   `n_jobs`; the API pins it at the default. Exposing it needs care — `jobs.py` runs one
+   worker deliberately, so a machine that may also be trading is not starved.
+4. **The job queue still loses work on restart** (D5). A cheap middle ground that does
+   not contradict D5: persist COMPLETED reports to disk so a finished run survives,
+   while queued and running jobs stay disposable.
+5. **Live RSI reads a data FILE**, which can lag the loop's own feed — stated on the
+   card. Closing that gap means the loop persisting its own indicator readings, which is
+   a change to the trading path for a number a reader can already derive.
 
 ---
 
@@ -159,6 +175,19 @@ The requested ratio ships beside it as `Harvest to Stuck Ratio`.
 One engine run measured at ~23 seconds on 10y of minute bars. A synchronous POST would
 time out. `POST /api/backtest/runs` returns 202 + `run_id`; progress arrives on
 `/ws/backtest/{run_id}`.
+
+**D17 — The loop records its own parameters.**
+The store held what the loop DID and never what it was TOLD to do, so a 30% profit
+target where 0.3% was meant was invisible without diffing a config against a ledger —
+and it stranded 94 lots before anyone did. Written every tick with the other scalars,
+so a restart under a changed config cannot leave the store describing the previous one.
+Absent (an older store) renders as unknown, never as zeros.
+
+**D18 — Live RSI reuses `WilderRSI`, computed server-side.**
+The same class `RsiMomentumSizing` trades on and the backtest blotter records. A second
+implementation on the dashboard would be free to disagree with the one making
+decisions. Computed from bars rather than persisted, because adding a field to the
+trading path for a number a reader can derive is the wrong trade.
 
 **D15 — Two bar endpoints, deliberately.**
 `/api/live/bars` serves the TAIL of a file for a running deployment and takes no date
@@ -257,6 +286,10 @@ carried.
   live socket delivered state at revision 922 (1 open lot, halted) then heartbeats; a
   submitted run returned **202**, completed in **4s** over its own socket, and came back
   with 32 executions and **16 of 16 sells carrying `matched_buy_id`**.
+* **Live parameters and RSI, against a running server:** `GET /api/live/indicators`
+  returned RSI **56.95** from 390 bars, matching `WilderRSI` driven directly over the
+  same file; the real `paper_ledger.db` correctly reported `{}` for parameters, since it
+  was written before the loop recorded them.
 * **Deferred items, against a running server:** a 2×3 sweep windowed to 2026-03-02..20
   completed in 4.1s over 5,850 bars and returned all six cells, with `cells[0]` equal to
   the headline metrics; bars downsampled 5,850 → 390 with every candle well-formed; and

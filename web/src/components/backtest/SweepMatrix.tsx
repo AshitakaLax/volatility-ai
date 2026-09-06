@@ -25,6 +25,17 @@ import type { FundResult, SweepConfiguration } from "@/types/backtest";
 
 interface Props {
   funds: Record<string, FundResult>;
+  /**
+   * Load a cell's parameters into the run form.
+   *
+   * Clicking cannot show that configuration's EXECUTIONS directly --
+   * only metrics are carried per cell, deliberately, since executions
+   * for every cell would multiply the payload by the grid size. So a
+   * click stages the parameters for a re-run, which is the honest
+   * version: the chart below always shows a configuration that was
+   * actually run for it.
+   */
+  onSelectCell?: (gridStep: number, profitTarget: number) => void;
 }
 
 type MetricKey =
@@ -63,7 +74,7 @@ function shade(value: number, min: number, max: number, higherIsBetter: boolean)
   return `oklch(0.7 0.16 ${hue} / ${alpha.toFixed(3)})`;
 }
 
-export function SweepMatrix({ funds }: Props) {
+export function SweepMatrix({ funds, onSelectCell }: Props) {
   const withGrid = Object.entries(funds).filter(
     ([, fund]) => (fund.configurations?.length ?? 0) > 1,
   );
@@ -171,12 +182,15 @@ export function SweepMatrix({ funds }: Props) {
                       className={cn(
                         "min-w-[86px] rounded p-2 text-right font-medium",
                         "border border-border/40",
+                        onSelectCell && "cursor-pointer hover:ring-1 hover:ring-ring",
                       )}
+                      onClick={() => onSelectCell?.(step, target)}
                       style={{ background: shade(value, min, max, spec.higherIsBetter) }}
                       title={
                         `step ${(step * 100).toFixed(2)}% · target ${(target * 100).toFixed(2)}%\n` +
                         `CAGR ${pct(cell.metrics.cagr_pct)} · DD ${pct(cell.metrics.max_drawdown_pct)}\n` +
-                        `${cell.metrics.closed_trades} closed of ${cell.metrics.total_trades}`
+                        `${cell.metrics.closed_trades} closed of ${cell.metrics.total_trades}` +
+                        (onSelectCell ? "\n\nclick to load these into the run form" : "")
                       }
                     >
                       {spec.format(value)}

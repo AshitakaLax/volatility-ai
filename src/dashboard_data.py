@@ -113,6 +113,10 @@ class DeploymentState:
     # a real heartbeat, where last_write_age is only a file-mtime proxy.
     last_price: float | None = None
     last_tick_at: str | None = None
+    # The configuration the loop is TRADING, written through every tick.
+    # Empty for a store from before the loop recorded it -- absent is a
+    # normal state for an old file, not an error.
+    parameters: dict[str, Any] = field(default_factory=dict)
     exists: bool = True
 
     @property
@@ -347,6 +351,20 @@ def load_state(db_path: str) -> DeploymentState:
                 # target and equity as cash alone.
                 last_price, last_tick_at = None, None
 
+        # Unreadable parameters are reported as absent rather than
+        # raising: a dashboard that will not load because ONE metadata
+        # row is malformed is worse than one that shows everything else
+        # and says the configuration is unknown.
+        parameters: dict[str, Any] = {}
+        params_raw = _meta(conn, "live.parameters")
+        if params_raw:
+            try:
+                loaded = json.loads(params_raw)
+                if isinstance(loaded, dict):
+                    parameters = loaded
+            except (TypeError, ValueError):
+                parameters = {}
+
         return DeploymentState(
             path=str(db_path),
             last_price=last_price,
@@ -361,6 +379,7 @@ def load_state(db_path: str) -> DeploymentState:
             last_write_age=_write_age(db_path),
             revision=int(revision or 0),
             pending_settlement=pending,
+            parameters=parameters,
         )
     finally:
         conn.close()

@@ -119,6 +119,7 @@ _META_PEAK_EQUITY = "live.peak_equity"
 # stopped loop from a closed market.
 _META_LAST_TICK = "live.last_tick"
 _META_OPEN_ORDERS = "live.open_orders"
+_META_PARAMETERS = "live.parameters"
 
 
 @dataclass
@@ -1016,6 +1017,30 @@ class LiveTradingLoop:
             ),
         )
         self.store.set_meta(_META_CASH, str(self.state.cash))
+        # THE PARAMETERS THIS LOOP IS ACTUALLY TRADING. The store held
+        # cash, lots and a halt, but nothing about the configuration
+        # that produced them -- so a reader could see 94 lots sitting at
+        # a 30% target without being able to tell whether that was the
+        # intent or a misplaced decimal. It was a misplaced decimal, and
+        # it took a config file and a ledger side by side to find.
+        #
+        # Written every tick with the other scalars rather than once at
+        # startup, so a restart under a changed config cannot leave the
+        # store describing the previous one.
+        self.store.set_meta(
+            _META_PARAMETERS,
+            json.dumps(
+                {
+                    "symbol": self.symbol,
+                    "step": self.step,
+                    "profit_target": self.profit_target,
+                    "strategy_id": self.config.strategy.strategy_id,
+                    "paper": bool(self.config.live.paper_trading),
+                    "poll_interval_seconds": float(self.config.live.poll_interval_seconds),
+                    "extended_hours": bool(self.config.live.extended_hours),
+                }
+            ),
+        )
         self.store.set_meta(_META_PEAK_EQUITY, str(self.state.peak_equity))
         # The price this tick saw, and when. The loop already knows both
         # and was discarding them, which left every reader downstream

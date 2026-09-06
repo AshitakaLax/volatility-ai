@@ -12,7 +12,7 @@ import type {
   BarSeries,
   MultiFundBacktestReport,
 } from "@/types/backtest";
-import type { DeploymentState, HaltResponse } from "@/types/telemetry";
+import type { DeploymentState, HaltResponse, IndicatorReading } from "@/types/telemetry";
 
 export class ApiError extends Error {
   constructor(
@@ -104,6 +104,11 @@ export const api = {
 
   liveState: (path: string) =>
     request<DeploymentState>(`/api/live/state?path=${encodeURIComponent(path)}`),
+
+  indicators: (symbol: string, period = 14) =>
+    request<IndicatorReading>(
+      `/api/live/indicators?symbol=${encodeURIComponent(symbol)}&period=${period}`,
+    ),
 
   stores: () =>
     request<{ stores: { path: string; label: string; paper: boolean }[] }>("/api/live/stores"),

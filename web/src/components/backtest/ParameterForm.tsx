@@ -33,9 +33,18 @@ interface Props {
    * different period than the metrics beside it.
    */
   range: DateRange;
+  /**
+   * Parameters staged from a sweep-matrix cell, as PERCENTAGES.
+   *
+   * Applied to the inputs rather than submitted, so a click loads a
+   * configuration for review and the run stays an explicit act. A cell
+   * click that silently started 23 seconds of engine time would be a
+   * surprising amount of work for a single click.
+   */
+  staged?: { gridStep: number; profitTarget: number } | null;
 }
 
-export function ParameterForm({ onSubmit, run, submitting, error, range }: Props) {
+export function ParameterForm({ onSubmit, run, submitting, error, range, staged }: Props) {
   const [funds, setFunds] = useState<FundAvailability[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [tickers, setTickers] = useState<string[]>(["TQQQ"]);
@@ -61,6 +70,12 @@ export function ParameterForm({ onSubmit, run, submitting, error, range }: Props
         );
       });
   }, []);
+
+  useEffect(() => {
+    if (!staged) return;
+    setGridStep(Number((staged.gridStep * 100).toFixed(4)));
+    setProfitTarget(Number((staged.profitTarget * 100).toFixed(4)));
+  }, [staged]);
 
   const toggle = (ticker: string) =>
     setTickers((current) =>

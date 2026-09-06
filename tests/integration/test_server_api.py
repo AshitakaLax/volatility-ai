@@ -72,6 +72,66 @@ class TestLiveReads:
         assert response.status_code == 404
 
 
+class TestLiveParametersAndIndicators:
+    def test_a_store_with_no_parameters_reports_an_empty_dict(self, client, store):
+        """Absent is normal for a store written before the loop recorded
+        them -- the UI shows "unknown", not zeros."""
+        assert client.get("/api/live/state", params={"path": store}).json()["parameters"] == {}
+
+    def test_parameters_written_by_the_loop_come_back(self, client, store):
+        """This is the field that would have made the 30%-instead-of-0.3%
+        profit target visible without diffing a config against a ledger."""
+        import json as json_
+
+        from src.persistence import LedgerStore
+
+        writer = LedgerStore(store)
+        writer.set_meta(
+            "live.parameters",
+            json_.dumps({"symbol": "TQQQ", "step": 0.00075, "profit_target": 0.003}),
+        )
+        writer.close()
+
+        body = client.get("/api/live/state", params={"path": store}).json()
+        assert body["parameters"]["profit_target"] == pytest.approx(0.003)
+        assert body["parameters"]["symbol"] == "TQQQ"
+
+    def test_malformed_parameters_do_not_break_the_whole_state(self, client, store):
+        """A dashboard that will not load because one metadata row is
+        malformed is worse than one that says the config is unknown."""
+        from src.persistence import LedgerStore
+
+        writer = LedgerStore(store)
+        writer.set_meta("live.parameters", "{not json")
+        writer.close()
+
+        body = client.get("/api/live/state", params={"path": store})
+        assert body.status_code == 200
+        assert body.json()["parameters"] == {}
+
+    def test_rsi_uses_the_same_class_the_strategy_trades_on(self, client):
+        """A second implementation would be free to disagree with the one
+        making decisions."""
+        body = client.get("/api/live/indicators", params={"symbol": "TQQQ"}).json()
+        assert body["rsi_period"] == 14
+        assert body["bars_used"] > 14
+        assert 0 <= body["rsi"] <= 100
+
+        # And it agrees with WilderRSI driven directly over the same bars.
+        from src.dashboard_data import find_bar_files, load_bars
+        from src.sizing_indicators import WilderRSI
+
+        frame = load_bars(find_bar_files("TQQQ", "data")[0], limit=max(14 * 20, 390))
+        tracker = WilderRSI(period=14)
+        expected = None
+        for close in frame["close"]:
+            expected = tracker.update(float(close))
+        assert body["rsi"] == pytest.approx(round(expected, 2))
+
+    def test_indicators_for_an_unknown_symbol_are_a_404(self, client):
+        assert client.get("/api/live/indicators", params={"symbol": "NOPE"}).status_code == 404
+
+
 class TestHalt:
     def test_it_halts_and_reads_the_state_back(self, client, store):
         body = client.post(

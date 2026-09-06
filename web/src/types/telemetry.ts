@@ -73,6 +73,39 @@ export interface DeploymentState {
    * real heartbeat, where `last_write_age` is only a proxy. */
   last_price: number | null;
   last_tick_at: string | null;
+  /**
+   * The configuration the loop is TRADING, written through every tick.
+   *
+   * Empty for a store written before the loop recorded it, which the UI
+   * renders as unknown rather than as zeros. This is the field that
+   * would have made a 30% profit target where 0.3% was meant visible
+   * without diffing a config file against a ledger.
+   */
+  parameters: LiveParameters;
+}
+
+export interface LiveParameters {
+  symbol?: string;
+  /** Fractional, e.g. 0.00075 for 7.5bps. */
+  step?: number;
+  profit_target?: number;
+  strategy_id?: string;
+  paper?: boolean;
+  poll_interval_seconds?: number;
+  extended_hours?: boolean;
+}
+
+/** A live indicator reading, from the same class the strategy trades on. */
+export interface IndicatorReading {
+  symbol: string;
+  rsi_period: number;
+  /** null until the period seeds -- an unseeded Wilder average is a
+   * partial mean, not a low reading. */
+  rsi: number | null;
+  bars_used: number;
+  as_of: string | null;
+  /** The bar FILE, which can lag a running deployment. */
+  source: string;
 }
 
 /** A row from the loop's activity journal. */
