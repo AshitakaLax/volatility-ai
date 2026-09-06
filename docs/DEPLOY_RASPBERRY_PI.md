@@ -237,3 +237,48 @@ wider.
 **SD cards wear out.** The ledger is written every tick. If this runs
 for months, move Docker's data root to an SSD, or take the backup above
 on a schedule.
+
+---
+
+## The web UI, and why it is split across two machines
+
+`http://172.16.0.137:8000` — the React dashboard, served by the Pi.
+
+The split is forced by where things physically are, not chosen:
+
+| | runs there | because |
+|---|---|---|
+| **Pi** | `paper`, the Streamlit dashboard, the UI, and `/api/live/*` | The ledger lives in **this host's Docker volume**. Nothing else can read it. |
+| **Workstation** (`172.16.0.134:8000`) | the backtest engine and `/api/backtest/*` | Twelve cores and every bar file — and no trading loop competing for them. The Pi has four cores and one of the things using them is placing orders. |
+
+`web` forwards `/api/backtest/*` to `VAI_BACKTEST_UPSTREAM` and serves
+`/api/live/*` itself, so **the browser still talks to one origin**: no
+CORS, no second address to configure, and no way for the two halves to
+disagree about which host to ask. See `server/upstream.py`.
+
+### Starting the workstation half
+
+    python -m uvicorn server.app:app --host 0.0.0.0 --port 8000
+
+`0.0.0.0` rather than the usual loopback, because the Pi has to reach
+it. If the Pi cannot (`curl` from there returns nothing), the cause is
+almost always the workstation's own firewall rather than anything in
+this project.
+
+### If the workstation is off
+
+The UI still loads and live telemetry still works — that half is local
+to the Pi. Backtest requests return **502 naming the host they could not
+reach**, which is the intended behaviour: a page that silently showed
+nothing would be worse.
+
+To run sweeps on the Pi instead, clear `VAI_BACKTEST_UPSTREAM`. Note
+what that costs: sweeps then share four cores with the live loop, which
+is why `VAI_MAX_JOBS: "1"` is set alongside it.
+
+### There is no authentication
+
+The live routes read the store `mode=ro` and import no broker, and the
+only write is the halt — which blocks new **buys** while open lots keep
+exiting, and which any device on the LAN can trigger. That is
+acceptable on a trusted network and would not be on anything routable.
