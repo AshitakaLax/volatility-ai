@@ -62,9 +62,16 @@ export function FundComparison({ funds }: Props) {
       height: 320,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: getComputedStyle(document.documentElement)
-          .getPropertyValue("--muted-foreground")
-          .trim(),
+        // A LITERAL, not the --muted-foreground token. That token is an
+        // oklch() value, and lightweight-charts parses a limited colour
+        // grammar: handed one it throws "Cannot parse color", and since
+        // the throw happens during render it takes the whole view down
+        // with it -- a blank page, not a mis-coloured axis. An e2e test
+        // against the real deployment is what caught it.
+        //
+        // This grey is legible on both themes, which is why a token was
+        // wanted in the first place.
+        textColor: "rgba(140, 140, 150, 0.9)",
         fontFamily: "inherit",
       },
       grid: {

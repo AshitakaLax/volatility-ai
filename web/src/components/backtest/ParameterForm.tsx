@@ -180,6 +180,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
 
         <Field label="Sizing model">
           <Select
+            data-testid="sizing-model"
             value={model}
             disabled={busy}
             onChange={(event) => setModel(event.currentTarget.value)}
@@ -205,6 +206,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
 
         <Field label="Bars">
           <Select
+            data-testid="bars"
             value={String(limit)}
             disabled={busy}
             onChange={(event) => setLimit(Number(event.currentTarget.value))}
@@ -216,7 +218,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
           </Select>
         </Field>
 
-        <Button onClick={submit} disabled={busy || tickers.length === 0}>
+        <Button data-testid="run" onClick={submit} disabled={busy || tickers.length === 0}>
           {busy ? "Running…" : "Run"}
         </Button>
       </CardContent>

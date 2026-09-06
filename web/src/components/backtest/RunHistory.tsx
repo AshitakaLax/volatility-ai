@@ -163,6 +163,7 @@ export function RunHistory({ onOpen, refreshToken }: Props) {
         <div className="flex items-end gap-3">
           <Field label="Rank by">
             <Select
+              data-testid="rank-by"
               value={metric}
               onChange={(event) => setMetric(event.currentTarget.value as MetricKey)}
             >
@@ -223,6 +224,7 @@ export function RunHistory({ onOpen, refreshToken }: Props) {
                 return (
                   <tr
                     key={`${row.run_id}-${row.ticker}-${row.grid_step}-${row.profit_target}`}
+                    data-testid="history-row"
                     className="cursor-pointer border-b border-border/50 last:border-0 hover:bg-accent"
                     onClick={() => onOpen(row.run_id)}
                     title="Open this run"

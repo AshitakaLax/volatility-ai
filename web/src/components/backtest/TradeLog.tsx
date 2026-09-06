@@ -61,6 +61,7 @@ export function TradeLog({ executions, totalBeforeFilters, profitTarget }: Props
   return (
     <Card>
       <CardHeader
+        data-testid="trade-log-toggle"
         className="flex-row cursor-pointer items-center justify-between select-none"
         onClick={() => setOpen((value) => !value)}
       >
