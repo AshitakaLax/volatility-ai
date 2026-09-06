@@ -309,6 +309,139 @@ class TestDateWindowAndBars:
         assert body["source_rows"] == 0
 
 
+class TestRunHistory:
+    """Completed runs outlive the process; queued ones still do not.
+
+    jobs.py's known limitation stands -- a restart loses work in flight,
+    and resubmitting a few seconds of intent is trivial. A COMPLETED run
+    is minutes of engine time and the thing a history view compares
+    against, so only those are written.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolated(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("VAI_RUN_HISTORY_DIR", str(tmp_path / "runs"))
+
+    def test_a_saved_run_reads_back(self):
+        from server import history
+
+        history.save("abc123", {"run_id": "abc123", "status": "complete", "report": {}})
+        assert history.load("abc123")["run_id"] == "abc123"
+        assert [r["run_id"] for r in history.load_all()] == ["abc123"]
+
+    def test_an_unwritable_directory_does_not_raise(self, tmp_path, monkeypatch):
+        """A history feature must never be able to fail a backtest. The
+        run completed; losing the archive copy is the smaller problem.
+
+        A FILE where the directory should be, rather than a path like
+        /proc/... that is unwritable on one platform and merely absent
+        on another -- mkdir over an existing file fails everywhere.
+        """
+        from server import history
+
+        blocker = tmp_path / "not-a-directory"
+        blocker.write_text("", encoding="utf-8")
+        monkeypatch.setenv("VAI_RUN_HISTORY_DIR", str(blocker))
+
+        assert history.save("x", {"run_id": "x"}) is None
+        # And reading it back is empty rather than an exception.
+        assert history.load_all() == []
+        assert history.load("x") is None
+
+    def test_one_corrupt_file_does_not_hide_the_others(self):
+        """A single bad file must not empty the whole listing."""
+        from server import history
+
+        history.save("good", {"run_id": "good"})
+        (history.directory() / "broken.json").write_text("{not json", encoding="utf-8")
+        assert [r["run_id"] for r in history.load_all()] == ["good"]
+
+    def test_a_file_without_a_run_id_is_skipped(self):
+        from server import history
+
+        history.save("good", {"run_id": "good"})
+        (history.directory() / "empty.json").write_text("{}", encoding="utf-8")
+        assert [r["run_id"] for r in history.load_all()] == ["good"]
+
+    def test_pruning_keeps_the_newest(self, monkeypatch):
+        from server import history
+
+        monkeypatch.setattr(history, "MAX_RUNS", 3)
+        for index in range(6):
+            history.save(f"run{index}", {"run_id": f"run{index}"})
+        assert len(history.load_all()) == 3
+
+    def test_history_flattens_to_one_row_per_configuration(self, client):
+        """Ranking compares configurations, not runs: a run can hold
+        several funds and each fund several cells."""
+        from server import history
+
+        history.save(
+            "r1",
+            {
+                "run_id": "r1",
+                "report": {
+                    "parameters": {"sizing_model": "fixed", "fill_model": "close"},
+                    "timeframe": {"start": "2026-01-01", "end": "2026-02-01"},
+                    "funds": {
+                        "TQQQ": {
+                            "bars": {"count": 100},
+                            "metrics": {"cagr_pct": 10.0},
+                            "configurations": [
+                                {
+                                    "grid_step": 0.01,
+                                    "profit_target": 0.005,
+                                    "metrics": {"cagr_pct": 10.0},
+                                },
+                                {
+                                    "grid_step": 0.02,
+                                    "profit_target": 0.005,
+                                    "metrics": {"cagr_pct": 5.0},
+                                },
+                            ],
+                        }
+                    },
+                },
+            },
+        )
+        rows = client.get("/api/backtest/history").json()["rows"]
+        assert len(rows) == 2
+        assert {row["grid_step"] for row in rows} == {0.01, 0.02}
+        # The engine's own ranking is preserved, so a reader can see
+        # when their chosen metric disagrees with it.
+        assert rows[0]["engine_rank"] == 0
+
+    def test_an_old_report_without_configurations_still_appears(self, client):
+        """Reports predating the sweep matrix have headline metrics only.
+        Dropping them would make history start over at every change."""
+        from server import history
+
+        history.save(
+            "old",
+            {
+                "run_id": "old",
+                "report": {
+                    "parameters": {"grid_step_pct": 0.01, "profit_target_pct": 0.005},
+                    "funds": {"TQQQ": {"metrics": {"cagr_pct": 7.0}, "bars": {"count": 10}}},
+                },
+            },
+        )
+        rows = client.get("/api/backtest/history").json()["rows"]
+        assert len(rows) == 1
+        assert rows[0]["metrics"]["cagr_pct"] == 7.0
+
+    def test_a_stored_run_is_served_after_it_leaves_memory(self, client):
+        """A saved link must not 404 because the server restarted."""
+        from server import history
+
+        history.save("kept", {"run_id": "kept", "status": "complete", "report": {"funds": {}}})
+        assert client.get("/api/backtest/runs/kept").json()["run_id"] == "kept"
+
+    def test_an_unknown_run_is_still_a_404(self, client):
+        assert client.get("/api/backtest/runs/nope").status_code == 404
+        assert client.get("/api/backtest/history/nope").status_code == 404
+
+
 class TestSplitDeployment:
     """The Pi serves live state; the workstation runs the engine.
 

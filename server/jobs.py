@@ -88,8 +88,17 @@ class JobQueue:
     would burn a thread doing nothing while it waited.
     """
 
-    def __init__(self, runner: Callable[[dict[str, Any], Callable[[float, str], None]], dict]):
+    def __init__(
+        self,
+        runner: Callable[[dict[str, Any], Callable[[float, str], None]], dict],
+        on_complete: Callable[[Job], None] | None = None,
+    ):
         self._runner = runner
+        # Called once per completed job. Injected rather than imported
+        # so the queue stays a queue: it knows nothing about where a
+        # result is archived, and a test can watch completions without
+        # touching a disk.
+        self._on_complete = on_complete
         self._jobs: dict[str, Job] = {}
         self._pending: queue.Queue[str] = queue.Queue()
         self._condition = threading.Condition()
@@ -174,6 +183,12 @@ class JobQueue:
                 self._update(
                     job, status="complete", progress=1.0, message="complete", result=result
                 )
+                # ARCHIVED AFTER the job is marked complete, never
+                # before: a websocket watcher is woken by that update,
+                # and making it wait on a disk write would add latency
+                # to the thing someone is actually watching.
+                if self._on_complete is not None:
+                    self._on_complete(job)
 
 
 __all__ = ["Job", "JobQueue", "RunStatus"]

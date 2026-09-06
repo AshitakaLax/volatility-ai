@@ -120,6 +120,18 @@ def fund_metrics(metrics: dict, ticker: str) -> dict:
         "capital_velocity_index": round(float(metrics.get("Capital Velocity Index", 0.0)), 4),
         "harvest_to_stuck_ratio": round(float(metrics.get("Harvest to Stuck Ratio", 0.0)), 4),
         "avg_hold_duration": round(float(metrics.get("Average Hold Duration", 0.0)), 2),
+        # CALENDAR-YEAR EXTREMES. The worst year is the one this project
+        # keeps coming back to: a strategy is judged on what it does in
+        # the year it does worst, not on a ten-year average that a single
+        # 2020 can carry. It is also the metric a ranking most needs and
+        # the one an average hides.
+        "worst_year_pct": round(float(metrics.get("Worst Year Return %", 0.0)), 4),
+        "best_year_pct": round(float(metrics.get("Best Year Return %", 0.0)), 4),
+        "avg_annual_pct": round(float(metrics.get("Average Annual Return %", 0.0)), 4),
+        "return_over_drawdown": round(
+            float(metrics.get("Return/Drawdown", 0.0)),
+            4,
+        ),
         "total_trades": int(metrics.get("Trade Count", 0)),
         "closed_trades": int(metrics.get("Closed Trade Count", 0)),
         "open_trades": int(metrics.get("Open Trade Count", 0)),

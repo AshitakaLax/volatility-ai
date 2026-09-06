@@ -48,6 +48,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from optimization_controller import OptimizationController
+from server import history
 from server.jobs import JobQueue
 from src.config import BacktestConfig
 from src.exceptions import ConfigurationError
@@ -296,7 +297,18 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
     }
 
 
-queue = JobQueue(runner=run_backtest)
+def _archive(job) -> None:
+    """Write a completed run to the history directory.
+
+    Stamped with its own id first: run_backtest cannot know the id --
+    the queue mints it after the request is built -- and a stored report
+    whose run_id was the empty string would be unloadable by the very
+    endpoint that serves it back.
+    """
+    history.save(job.run_id, _with_id(job.snapshot(), job.run_id))
+
+
+queue = JobQueue(runner=run_backtest, on_complete=_archive)
 
 
 @router.get("/funds")
@@ -385,6 +397,69 @@ def bars(
     }
 
 
+@router.get("/history")
+def history_rows() -> dict[str, Any]:
+    """Every completed run, flattened to one row PER CONFIGURATION.
+
+    A run can hold several funds and each fund several configurations,
+    so "rank the runs" is the wrong shape -- the thing worth comparing
+    is a (run, fund, grid step, profit target) tuple and its metrics.
+    Flattening here means the client sorts an array rather than walking
+    a tree to find comparable numbers.
+
+    Ranking itself is deliberately NOT done here. The metric is the
+    reader's choice and changing it should be instant, not a round trip.
+    """
+    rows: list[dict[str, Any]] = []
+    for run in history.load_all():
+        report = run.get("report") or {}
+        parameters = report.get("parameters") or {}
+        timeframe = report.get("timeframe") or {}
+        for ticker, fund in (report.get("funds") or {}).items():
+            configurations = fund.get("configurations") or []
+            if not configurations:
+                # A report from before configurations were carried still
+                # has its headline metrics. Synthesised as a single cell
+                # so old runs stay comparable rather than disappearing.
+                configurations = [
+                    {
+                        "grid_step": parameters.get("grid_step_pct"),
+                        "profit_target": parameters.get("profit_target_pct"),
+                        "metrics": fund.get("metrics") or {},
+                    }
+                ]
+            for index, cell in enumerate(configurations):
+                rows.append(
+                    {
+                        "run_id": run.get("run_id"),
+                        "saved_at": run.get("saved_at"),
+                        "ticker": ticker,
+                        "grid_step": cell.get("grid_step"),
+                        "profit_target": cell.get("profit_target"),
+                        "sizing_model": parameters.get("sizing_model"),
+                        "fill_model": parameters.get("fill_model"),
+                        # The engine ranked these; index 0 is its own
+                        # pick, and saying so lets a reader see when
+                        # their chosen metric disagrees with it.
+                        "engine_rank": index,
+                        "start": timeframe.get("start"),
+                        "end": timeframe.get("end"),
+                        "bars": (fund.get("bars") or {}).get("count"),
+                        "metrics": cell.get("metrics") or {},
+                    }
+                )
+    return {"rows": rows, "runs": len({row["run_id"] for row in rows})}
+
+
+@router.get("/history/{run_id}")
+def history_run(run_id: str) -> dict[str, Any]:
+    """One persisted run in full, for loading back into the view."""
+    run = history.load(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"No stored run {run_id!r}.")
+    return run
+
+
 @router.get("/runs")
 def runs() -> dict[str, Any]:
     """Every run this server has seen, newest first."""
@@ -394,9 +469,14 @@ def runs() -> dict[str, Any]:
 @router.get("/runs/{run_id}")
 def run(run_id: str) -> dict[str, Any]:
     job = queue.get(run_id)
-    if job is None:
+    if job is not None:
+        return _with_id(job.snapshot(), run_id)
+    # Not in memory. A completed run outlives the process that made it,
+    # so a restart must not turn a link someone saved into a 404.
+    stored = history.load(run_id)
+    if stored is None:
         raise HTTPException(status_code=404, detail=f"No run {run_id!r}.")
-    return _with_id(job.snapshot(), run_id)
+    return stored
 
 
 @router.post("/runs", status_code=202)

@@ -95,6 +95,20 @@ export interface FundPerformanceMetrics {
   harvest_to_stuck_ratio: number;
   /** In bars, from a lot's first buy to its last sell. */
   avg_hold_duration: number;
+  /**
+   * Calendar-year extremes.
+   *
+   * The worst year is the one this project keeps returning to: a
+   * strategy is judged on the year it does worst, not on a ten-year
+   * average a single 2020 can carry.
+   *
+   * Optional because a report exported before these existed must still
+   * render rather than crashing the page.
+   */
+  worst_year_pct?: number;
+  best_year_pct?: number;
+  avg_annual_pct?: number;
+  return_over_drawdown?: number;
   total_trades: number;
   closed_trades: number;
   open_trades: number;
@@ -282,4 +296,33 @@ export interface BacktestRunState {
   message: string | null;
   report: MultiFundBacktestReport | null;
   error: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* History                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One row of the history table: a (run, fund, grid step, target) tuple.
+ *
+ * Flattened server-side because "rank the runs" is the wrong shape --
+ * a run holds several funds and each fund several configurations, and
+ * the comparable thing is a single configuration's metrics.
+ */
+export interface HistoryRow {
+  run_id: string;
+  /** Epoch seconds, from the stored file's mtime. */
+  saved_at: number | null;
+  ticker: string;
+  grid_step: number | null;
+  profit_target: number | null;
+  sizing_model: string | null;
+  fill_model: string | null;
+  /** Where the ENGINE ranked this cell; 0 is its own pick. Lets a
+   * reader see when their chosen metric disagrees with it. */
+  engine_rank: number;
+  start: string | null;
+  end: string | null;
+  bars: number | null;
+  metrics: FundPerformanceMetrics;
 }

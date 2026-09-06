@@ -6,7 +6,9 @@ import { FilterPanel } from "@/components/backtest/FilterPanel";
 import { FundComparison } from "@/components/backtest/FundComparison";
 import { ParameterForm } from "@/components/backtest/ParameterForm";
 import { RiskRewardMetrics } from "@/components/backtest/RiskRewardMetrics";
+import { RunHistory } from "@/components/backtest/RunHistory";
 import { SweepMatrix } from "@/components/backtest/SweepMatrix";
+import { TradeLog } from "@/components/backtest/TradeLog";
 import { AlgorithmStatus } from "@/components/live/AlgorithmStatus";
 import { CommandCenter } from "@/components/live/CommandCenter";
 import { DeploymentHealth } from "@/components/live/DeploymentHealth";
@@ -41,6 +43,10 @@ export default function App() {
   const [staged, setStaged] = useState<{ gridStep: number; profitTarget: number } | null>(
     null,
   );
+  // A run loaded back out of history. Takes precedence over the live
+  // one so opening an old result actually shows it, and is cleared when
+  // a new run is submitted.
+  const [opened, setOpened] = useState<MultiFundBacktestReport | null>(null);
 
   // --- live ------------------------------------------------------------
   const [stores, setStores] = useState<{ path: string; label: string; paper: boolean }[]>([]);
@@ -66,7 +72,7 @@ export default function App() {
   }, []);
 
   // A completed run wins over the export; nothing else changes the view.
-  const report = run?.report ?? staticReport;
+  const report = opened ?? run?.report ?? staticReport;
   const tickers = report ? Object.keys(report.funds) : [];
   const selected = filters.tickers[0] ?? tickers[0] ?? null;
   const fund = report && selected ? report.funds[selected] : undefined;
@@ -159,7 +165,13 @@ export default function App() {
         ) : (
           <>
             <ParameterForm
-              onSubmit={submit}
+              onSubmit={(request) => {
+                // A new run replaces whatever was opened from history,
+                // or the page would show an old report beside a running
+                // job and give no clue which the metrics belong to.
+                setOpened(null);
+                submit(request);
+              }}
               run={run}
               submitting={submitting}
               error={error}
@@ -202,6 +214,12 @@ export default function App() {
                   profitTarget={report.parameters.profit_target_pct ?? 0.005}
                 />
 
+                <TradeLog
+                  executions={visible}
+                  totalBeforeFilters={executions.length}
+                  profitTarget={report.parameters.profit_target_pct ?? 0.005}
+                />
+
                 <SweepMatrix
                   funds={report.funds}
                   onSelectCell={(gridStep, profitTarget) =>
@@ -210,6 +228,16 @@ export default function App() {
                 />
 
                 {tickers.length > 1 ? <FundComparison funds={report.funds} /> : null}
+
+                <RunHistory
+                  onOpen={(runId) => {
+                    void api
+                      .historyRun(runId)
+                      .then((stored) => setOpened(stored.report))
+                      .catch(() => setOpened(null));
+                  }}
+                  refreshToken={run?.status === "complete" ? 1 : 0}
+                />
               </>
             )}
           </>

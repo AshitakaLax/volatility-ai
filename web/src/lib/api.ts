@@ -8,8 +8,9 @@
  */
 import type {
   BacktestRunRequest,
-  BacktestRunState,
   BarSeries,
+  BacktestRunState,
+  HistoryRow,
   MultiFundBacktestReport,
 } from "@/types/backtest";
 import type { DeploymentState, HaltResponse, IndicatorReading } from "@/types/telemetry";
@@ -91,6 +92,11 @@ export const api = {
     if (end) query.set("end", end);
     return request<BarSeries>(`/api/backtest/bars?${query.toString()}`);
   },
+
+  history: () => request<{ rows: HistoryRow[]; runs: number }>("/api/backtest/history"),
+
+  historyRun: (runId: string) =>
+    request<BacktestRunState>(`/api/backtest/history/${runId}`),
 
   runs: () => request<{ runs: BacktestRunState[] }>("/api/backtest/runs"),
 
