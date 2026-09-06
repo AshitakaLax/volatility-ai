@@ -309,6 +309,82 @@ class TestDateWindowAndBars:
         assert body["source_rows"] == 0
 
 
+class TestSplitDeployment:
+    """The Pi serves live state; the workstation runs the engine.
+
+    The split is forced by where things are: the ledger lives in the
+    Pi's Docker volume so nothing else can read it, and the bar files
+    and cores live on the workstation.
+    """
+
+    def test_without_an_upstream_backtests_run_locally(self, client):
+        body = client.get("/api/health").json()
+        assert body["backtest_local"] is True
+        assert body["backtest_upstream"] is None
+        # And the local routes are actually reachable.
+        assert client.get("/api/backtest/funds").status_code == 200
+
+    def test_health_names_the_upstream_when_set(self, monkeypatch):
+        """So a reader can see WHERE a sweep will run, from the machine
+        they are pointed at."""
+        import importlib
+
+        monkeypatch.setenv("VAI_BACKTEST_UPSTREAM", "http://172.16.0.134:8000")
+        from server import upstream
+
+        importlib.reload(upstream)
+        assert upstream.is_enabled()
+        assert upstream.describe() == {
+            "backtest_upstream": "http://172.16.0.134:8000",
+            "backtest_local": False,
+        }
+
+    def test_a_blank_upstream_is_the_same_as_unset(self, monkeypatch):
+        """An empty environment variable is how a compose file says
+        "not this host", and it must not become a URL of ''."""
+        import importlib
+
+        monkeypatch.setenv("VAI_BACKTEST_UPSTREAM", "   ")
+        from server import upstream
+
+        importlib.reload(upstream)
+        assert upstream.upstream_base() is None
+        assert upstream.is_enabled() is False
+
+    def test_a_trailing_slash_does_not_double_up(self, monkeypatch):
+        import importlib
+
+        monkeypatch.setenv("VAI_BACKTEST_UPSTREAM", "http://host:8000/")
+        from server import upstream
+
+        importlib.reload(upstream)
+        assert upstream.upstream_base() == "http://host:8000"
+
+    def test_an_unreachable_upstream_says_so_rather_than_showing_nothing(self, monkeypatch):
+        """A backtesting UI that silently rendered an empty page would
+        be worse than one naming the host it could not reach."""
+        import importlib
+
+        from fastapi.testclient import TestClient
+
+        monkeypatch.setenv("VAI_BACKTEST_UPSTREAM", "http://127.0.0.1:59999")
+        from server import app as app_module
+        from server import upstream
+
+        importlib.reload(upstream)
+        importlib.reload(app_module)
+
+        response = TestClient(app_module.app).get("/api/backtest/funds")
+        assert response.status_code == 502
+        assert "unreachable" in response.json()["detail"]
+        assert "127.0.0.1:59999" in response.json()["detail"]
+
+        # Leave the module set back to local mode for everything after.
+        monkeypatch.delenv("VAI_BACKTEST_UPSTREAM")
+        importlib.reload(upstream)
+        importlib.reload(app_module)
+
+
 class TestWorkerSelection:
     """The pool is not free, and below a certain size it is a loss.
 

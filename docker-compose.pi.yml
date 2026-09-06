@@ -19,7 +19,12 @@
 #
 #     paper       the trading loop. No port; it talks to Alpaca.
 #     dashboard   Streamlit, :8501. The operator view.
-#     web         the React UI + read-only API, :8000. Backtesting.
+#     web         the React UI + the read-only live API, :8000.
+#
+# THE BACKTEST ENGINE IS NOT ON THIS MACHINE. `web` forwards
+# /api/backtest/* to VAI_BACKTEST_UPSTREAM (the workstation) and serves
+# /api/live/* itself, because the ledger lives in this host's Docker
+# volume and nothing else can read it. Cores here belong to `paper`.
 #
 # dashboard and web overlap on purpose while the React live view is
 # proven against the Streamlit one. Both read the same store through the
@@ -128,16 +133,18 @@ services:
     environment:
       TZ: America/New_York
       PYTHONUNBUFFERED: "1"
-      # ONE WORKER, AND THIS IS THE HOST THAT NEEDS IT.
+      # THE ENGINE DOES NOT RUN HERE. Backtest routes are forwarded to
+      # the workstation, which has twelve cores and every bar file,
+      # while /api/live/* stays local because the ledger lives in this
+      # host's volume and nothing else can read it. One origin for the
+      # browser either way -- see server/upstream.py.
       #
-      # server/backtest.py defaults to core-count-minus-one because the
-      # development box does not trade. This one does: `paper` above is
-      # a live loop on the same four cores. A sweep that saturated them
-      # would delay the thing that actually matters, and a backtest is
-      # never worth that.
-      #
-      # The cost is real -- a large sweep here is ~2.5x slower than it
-      # would be unpinned -- and it is the right trade on this machine.
+      # Blank or unset would run sweeps on this Pi instead, on the same
+      # four cores as the trading loop above.
+      VAI_BACKTEST_UPSTREAM: "${VAI_BACKTEST_UPSTREAM:-http://172.16.0.134:8000}"
+      # Belt and braces. With the upstream set no engine runs here at
+      # all, so this only matters if someone clears that -- at which
+      # point a sweep must not saturate the cores the loop is using.
       VAI_MAX_JOBS: "1"
     ports:
       - "8000:8000"
@@ -145,8 +152,8 @@ services:
       - ./config:/app/config:ro
       # READ-ONLY, belt to the application's own mode=ro braces.
       - state:/app/state:ro
-      # Historical bars for backtesting. Read-only: this service runs
-      # simulations over them and has no reason to write.
+      # Bars for the live view's own chart and its RSI reading. NOT for
+      # sweeps -- those happen upstream, against that host's files.
       - ./data:/app/data:ro
     restart: unless-stopped
     # Tighter than `paper`'s, deliberately. A sweep loads a million-row

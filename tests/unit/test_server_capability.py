@@ -221,26 +221,39 @@ class TestAppDefaults:
         assert '"*"' not in source.split("allow_origins")[1].split("]")[0]
 
     def test_the_spa_catch_all_never_shadows_the_api(self):
-        """A catch-all registered before the API swallows all of it.
+        """Asked of the app's BEHAVIOUR, not its route list.
 
-        FastAPI matches in registration order, so this is decided by
-        where the mount sits in app.py -- and it sat in the wrong place
-        on the first attempt, which is why it is pinned rather than
-        trusted to a comment.
+        The first version of this compared positions in app.routes. That
+        worked until FastAPI began representing an included router as a
+        single entry with no path, at which point the check silently saw
+        only /api/health and stopped covering the routers it existed to
+        protect. Driving real requests cannot rot that way.
+
+        The bug it guards is real and was made twice: a catch-all
+        registered before the API swallowed all of it, and a GET-only
+        catch-all answered 405 to a POST on a route that does not exist.
         """
+        from fastapi.testclient import TestClient
+
         from server.app import app
 
-        paths = [
-            path
-            for path in (getattr(route, "path", None) for route in app.routes)
-            if isinstance(path, str)
-        ]
-        if "/{path:path}" not in paths:
-            pytest.skip("no built frontend mounted in this checkout")
-        catch_all = paths.index("/{path:path}")
-        api = [index for index, path in enumerate(paths) if path.startswith("/api")]
-        assert api, "no API routes at all"
-        assert max(api) < catch_all, "the SPA catch-all is registered before an API route"
+        client = TestClient(app)
+
+        # A real API route answers as itself, not with the app shell.
+        health = client.get("/api/health")
+        assert health.status_code == 200
+        assert health.json()["status"] == "ok"
+
+        # An API route that needs arguments still reaches its own
+        # validation rather than being handed HTML.
+        assert client.get("/api/live/state").status_code == 422
+
+        # And an API path that does not exist is a JSON 404 on every
+        # method -- never 405, and never the HTML shell.
+        for method in ("get", "post"):
+            missing = getattr(client, method)("/api/live/liquidate")
+            assert missing.status_code == 404, f"{method} gave {missing.status_code}"
+            assert "text/html" not in missing.headers.get("content-type", "")
 
     def test_the_worker_ceiling_is_host_configurable(self):
         """The Pi runs the trading loop and this server on four cores, so

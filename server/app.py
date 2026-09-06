@@ -39,7 +39,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from server import backtest, control, deployment, live
+from server import backtest, control, deployment, live, upstream
 
 app = FastAPI(
     title="volatility-ai",
@@ -62,7 +62,19 @@ app.add_middleware(
 
 app.include_router(live.router)
 app.include_router(control.router)
-app.include_router(backtest.router)
+# THE BACKTEST ROUTES COME FROM ONE PLACE OR THE OTHER, NEVER BOTH.
+#
+# With VAI_BACKTEST_UPSTREAM set this host forwards them and never
+# imports an engine run into its own process -- which is the point on
+# the Raspberry Pi, where those cores belong to the trading loop.
+# Without it, they are served locally, which is every other deployment.
+#
+# Mounting both would let registration order decide which one answers,
+# and that is not a thing to leave to ordering.
+if upstream.is_enabled():
+    app.include_router(upstream.router)
+else:
+    app.include_router(backtest.router)
 app.include_router(deployment.router)
 
 
@@ -77,6 +89,7 @@ def health() -> dict[str, object]:
     """
     return {
         "status": "ok",
+        **upstream.describe(),
         "capabilities": {
             "live_read": True,
             "halt": True,
