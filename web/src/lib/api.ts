@@ -72,6 +72,14 @@ export interface DeploymentInfo {
   containerised: boolean;
 }
 
+/** What a sizing model needs, and a working starting point. */
+export interface SizingDetail {
+  /** Constructor arguments with no default. Sending none of these is
+   * what made every non-`fixed` model fail. */
+  required: string[];
+  defaults: Record<string, number | string | boolean>;
+}
+
 export interface FundAvailability {
   ticker: string;
   path: string;
@@ -84,7 +92,11 @@ export const api = {
   deployment: () => request<DeploymentInfo>("/api/deployment"),
 
   funds: () =>
-    request<{ funds: FundAvailability[]; sizing_models: string[] }>("/api/backtest/funds"),
+    request<{
+      funds: FundAvailability[];
+      sizing_models: string[];
+      sizing_details: Record<string, SizingDetail>;
+    }>("/api/backtest/funds"),
 
   bars: (ticker: string, start?: string | null, end?: string | null, maxPoints = 3000) => {
     const query = new URLSearchParams({ ticker, max_points: String(maxPoints) });

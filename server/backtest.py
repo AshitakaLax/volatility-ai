@@ -38,6 +38,7 @@ be a bug the UI discovers at runtime, on a field it happens to read.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -175,6 +176,80 @@ def window(
     return frame
 
 
+# DEFAULTS FOR THE STRATEGIES THAT CANNOT BE CONSTRUCTED WITHOUT THEM.
+#
+# Only `fixed` has an all-optional constructor. Every other strategy has
+# required arguments, and a UI that offered the dropdown without them
+# submitted {} and produced a run that failed twenty seconds later with
+# "rank_by column not found" -- which is what the caller sees when every
+# combination errored and the summary has nothing but error rows. That
+# is what happened.
+#
+# The values are lifted from this project's OWN committed configs, which
+# are the parameter sets its sweeps actually selected, rather than
+# invented here. Where a config sweeps a list, the single value below is
+# one point from it: a starting position to run and adjust, not a claim
+# about what is best.
+STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
+    # config/production.yaml
+    "fixed": {"allocation_pct": 0.05},
+    # config/best_known_2026-08-24.yaml -- the champion parameter set.
+    "hf_local_reference": {
+        "bars_per_day": 387,
+        "per_lot_pct": 0.0002,
+        "lookback_days": 0.02,
+        "vol_scale_exponent": -1.5,
+        "vol_fast_days": 0.25,
+        "vol_slow_days": 10.0,
+        "vol_scale_min": 0.25,
+        "vol_scale_max": 3.0,
+        "volume_scale_exponent": -1.0,
+    },
+    # config/sweep_bell_curve_comparative.yaml, mid of each swept list.
+    "bell_curve": {"max_trade_pct": 0.08, "lookback_days": 20, "bars_per_day": 387},
+    # config/sweep_rsi_comparative.yaml
+    "rsi": {"max_trade_pct": 0.08, "period": 14, "oversold_threshold": 30},
+    # config/search_bayesian_deep.yaml
+    "bayesian_dual_scale": {
+        "max_trade_pct": 0.05,
+        "target_return": 0.0075,
+        "horizon_days": 1.0,
+        "bars_per_day": 387,
+    },
+}
+
+
+def required_parameters(strategy_class: type) -> list[str]:
+    """Constructor arguments with no default, so a caller can be told."""
+    signature = inspect.signature(strategy_class.__init__)
+    return [
+        parameter.name
+        for parameter in signature.parameters.values()
+        if parameter.name != "self"
+        and parameter.default is inspect.Parameter.empty
+        and parameter.kind not in (parameter.VAR_POSITIONAL, parameter.VAR_KEYWORD)
+    ]
+
+
+def resolve_params(request: RunRequest) -> dict[str, Any]:
+    """The parameters a run will actually use.
+
+    An EMPTY strategy_params falls back to the model's defaults rather
+    than erroring. Every model but `fixed` has required constructor
+    arguments, so a bare `{"sizing_model": "rsi"}` would otherwise be a
+    400 for a request that is perfectly clear about what it wants -- and
+    the UI, a script, and a curl all end up carrying the same table.
+
+    Anything the caller DID provide is used as given, including a
+    partial set: someone overriding one parameter has said something
+    deliberate, and silently merging defaults underneath would run a
+    configuration they did not ask for.
+    """
+    if request.strategy_params:
+        return dict(request.strategy_params)
+    return dict(STRATEGY_DEFAULTS.get(request.sizing_model, {}))
+
+
 def build_config(request: RunRequest) -> BacktestConfig:
     """Validate a request the way the engine itself would.
 
@@ -186,7 +261,7 @@ def build_config(request: RunRequest) -> BacktestConfig:
         {
             "strategy": {
                 "strategy_id": request.sizing_model,
-                "strategy_params": request.strategy_params,
+                "strategy_params": resolve_params(request),
             },
             "grid": {
                 "steps": request.grid_steps,
@@ -203,7 +278,66 @@ def build_config(request: RunRequest) -> BacktestConfig:
         }
     )
     config.validate()
-    resolve_strategy(config.strategy.strategy_id)  # fails loudly on a typo
+    strategy_class = resolve_strategy(config.strategy.strategy_id)  # fails loudly on a typo
+
+    # CONSTRUCT IT HERE, where the caller is still waiting. Left to the
+    # worker, a missing argument surfaces as every combination erroring
+    # and then a confusing "rank_by column not found" -- twenty seconds
+    # later, naming a column rather than the argument that was missing.
+    params = dict(config.strategy.strategy_params)
+
+    # TARGET_RETURN MUST MIRROR THE GRID, and the engine refuses when it
+    # does not -- BayesianDualScaleSizing estimates P(reaching
+    # target_return within horizon), so a mismatch has it confidently
+    # answering a different question than the one being traded.
+    #
+    # That guard is right, and it means no single default can span a
+    # sweep of several profit targets. Rather than let the dropdown
+    # submit a run that dies per-combination twenty seconds later, the
+    # value is ALIGNED here when the caller did not choose one, and
+    # refused outright when the grid has more than one target for it to
+    # mirror.
+    if "target_return" in required_parameters(strategy_class) or "target_return" in params:
+        targets = config.grid.profit_targets
+        if len(targets) > 1:
+            raise ConfigurationError(
+                f"{config.strategy.strategy_id!r} estimates the probability of reaching one "
+                f"target_return, so it cannot sweep {len(targets)} profit targets at once. "
+                "Run one profit target per submission, or choose another sizing model."
+            )
+        if targets:
+            params["target_return"] = targets[0]
+
+    try:
+        strategy_class(**params)
+    except TypeError as exc:
+        missing = [name for name in required_parameters(strategy_class) if name not in params]
+        detail = f"{config.strategy.strategy_id!r} cannot be built from the parameters given: {exc}"
+        if missing:
+            suggested = STRATEGY_DEFAULTS.get(config.strategy.strategy_id, {})
+            detail += f". Missing: {missing}."
+            if suggested:
+                detail += f" Try: {suggested}"
+        raise ConfigurationError(detail) from exc
+
+    # Rebuilt so the alignment above is what the ENGINE sees, not just
+    # what was validated. A check that passed on one set of parameters
+    # and ran another would be worse than no check.
+    if params != dict(config.strategy.strategy_params):
+        config = BacktestConfig.from_dict(
+            {
+                "strategy": {"strategy_id": config.strategy.strategy_id, "strategy_params": params},
+                "grid": {
+                    "steps": list(config.grid.steps),
+                    "profit_targets": list(config.grid.profit_targets),
+                },
+                "execution": {
+                    "fill_model": config.execution.fill_model,
+                    "enforce_no_loss": config.execution.enforce_no_loss,
+                },
+            }
+        )
+        config.validate()
     return config
 
 
@@ -325,6 +459,17 @@ def funds() -> dict[str, Any]:
             for ticker, path in sorted(KNOWN_DATA.items())
         ],
         "sizing_models": sorted(STRATEGIES),
+        # What each model NEEDS and a working starting point for it.
+        # Served rather than hard-coded in the bundle so the two cannot
+        # drift -- the frontend should not carry its own idea of what a
+        # strategy's constructor looks like.
+        "sizing_details": {
+            name: {
+                "required": required_parameters(cls),
+                "defaults": STRATEGY_DEFAULTS.get(name, {}),
+            }
+            for name, cls in sorted(STRATEGIES.items())
+        },
     }
 
 

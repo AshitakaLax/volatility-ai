@@ -309,6 +309,123 @@ class TestDateWindowAndBars:
         assert body["source_rows"] == 0
 
 
+class TestStrategyParameters:
+    """The bug a real user hit: pick any model but `fixed`, get a run
+    that fails twenty seconds later complaining about a missing RESULTS
+    COLUMN rather than the missing constructor argument that caused it.
+
+    Only `fixed` has an all-optional constructor. The form sent {} for
+    every model, every combination errored, and run_sweep then raised
+    "rank_by column 'Capital Velocity Index' not found" -- true, and
+    useless.
+    """
+
+    def test_no_parameters_at_all_uses_the_defaults_rather_than_failing(self, client):
+        """This is the request the UI sends, and the one a script would
+        write. It is perfectly clear about what it wants."""
+        response = client.post(
+            "/api/backtest/runs",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "bell_curve",
+            },
+        )
+        assert response.status_code == 202
+
+    def test_a_PARTIAL_parameter_set_still_fails_at_submit(self, client):
+        """Overriding one argument is deliberate, so defaults are NOT
+        merged underneath -- that would run a configuration nobody asked
+        for. It has to fail, and it has to fail here rather than in the
+        worker twenty seconds later."""
+        response = client.post(
+            "/api/backtest/runs",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "bell_curve",
+                "strategy_params": {"lookback_days": 20},
+            },
+        )
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        # It names the ARGUMENTS, not a results column.
+        assert "Missing" in detail
+        assert "max_trade_pct" in detail
+        assert "rank_by" not in detail
+
+    def test_the_error_suggests_working_parameters(self, client):
+        """A message that only says what is wrong leaves the reader
+        where they started."""
+        response = client.post(
+            "/api/backtest/runs",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "rsi",
+                "strategy_params": {"period": 14},
+            },
+        )
+        assert "Try:" in response.json()["detail"]
+
+    def test_every_registered_model_has_defaults_that_construct(self):
+        """The dropdown offers all of them, so all of them must work.
+
+        Sourced from this project's committed configs rather than
+        invented -- and asserted here so a strategy gaining a required
+        argument fails a test rather than a user's run.
+        """
+        from server.backtest import STRATEGY_DEFAULTS
+        from src.strategy_registry import STRATEGIES
+
+        for name, cls in STRATEGIES.items():
+            defaults = STRATEGY_DEFAULTS.get(name)
+            assert defaults is not None, f"{name} is selectable but has no defaults"
+            cls(**defaults)  # raises TypeError if the defaults are insufficient
+
+    def test_the_api_serves_those_defaults_so_the_ui_need_not_guess(self, client):
+        body = client.get("/api/backtest/funds").json()
+        details = body["sizing_details"]
+        assert set(details) == set(body["sizing_models"])
+        assert details["fixed"]["required"] == []
+        assert "max_trade_pct" in details["bell_curve"]["required"]
+        assert details["bell_curve"]["defaults"]["max_trade_pct"] > 0
+
+    def test_target_return_is_aligned_to_the_grid(self):
+        """BayesianDualScaleSizing estimates P(reaching ONE
+        target_return), and the engine refuses a mismatch -- rightly, or
+        it would be confidently answering a different question than the
+        one being traded. No single default can span a sweep, so the
+        value is aligned when the caller did not choose one."""
+        from server.backtest import RunRequest, build_config
+
+        config = build_config(
+            RunRequest(
+                tickers=["TQQQ"],
+                grid_steps=[0.005],
+                profit_targets=[0.01],
+                sizing_model="bayesian_dual_scale",
+            )
+        )
+        assert config.strategy.strategy_params["target_return"] == pytest.approx(0.01)
+
+    def test_it_refuses_to_sweep_several_targets_against_one_posterior(self, client):
+        response = client.post(
+            "/api/backtest/runs",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.005],
+                "profit_targets": [0.005, 0.01],
+                "sizing_model": "bayesian_dual_scale",
+            },
+        )
+        assert response.status_code == 400
+        assert "cannot sweep" in response.json()["detail"]
+
+
 class TestRunHistory:
     """Completed runs outlive the process; queued ones still do not.
 

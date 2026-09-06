@@ -1,7 +1,7 @@
 import { AlertCircle, Play } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { api, type FundAvailability } from "@/lib/api";
+import { api, type FundAvailability, type SizingDetail } from "@/lib/api";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui/primitives";
 import type { BacktestRunRequest, BacktestRunState, DateRange } from "@/types/backtest";
 
@@ -47,6 +47,7 @@ interface Props {
 export function ParameterForm({ onSubmit, run, submitting, error, range, staged }: Props) {
   const [funds, setFunds] = useState<FundAvailability[]>([]);
   const [models, setModels] = useState<string[]>([]);
+  const [details, setDetails] = useState<Record<string, SizingDetail>>({});
   const [tickers, setTickers] = useState<string[]>(["TQQQ"]);
   const [gridStep, setGridStep] = useState(1.0);
   const [profitTarget, setProfitTarget] = useState(0.5);
@@ -61,6 +62,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
       .then((body) => {
         setFunds(body.funds);
         setModels(body.sizing_models);
+        setDetails(body.sizing_details ?? {});
       })
       .catch((cause: unknown) => {
         setLoadError(
@@ -96,7 +98,11 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
       profit_targets: [profitTarget / 100],
       sizing_model: model,
       fill_model: fillModel,
-      strategy_params: model === "fixed" ? { allocation_pct: 0.05 } : {},
+      // FROM THE SERVER, not a constant here. Only `fixed` has an
+      // all-optional constructor; sending {} for any other model
+      // produced a run that failed twenty seconds later complaining
+      // about a missing results column rather than a missing argument.
+      strategy_params: details[model]?.defaults ?? {},
       limit,
       ...(range.start ? { start: range.start } : {}),
       ...(range.end ? { end: range.end } : {}),
@@ -214,6 +220,18 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
           {busy ? "Running…" : "Run"}
         </Button>
       </CardContent>
+
+      {Object.keys(details[model]?.defaults ?? {}).length > 0 ? (
+        <CardContent className="pt-0">
+          <p className="text-xs text-muted-foreground">
+            <span className="text-foreground">{model}</span> runs with{" "}
+            {Object.entries(details[model]?.defaults ?? {})
+              .map(([key, value]) => `${key}=${value}`)
+              .join(", ")}
+            {" — from this project's own committed configs."}
+          </p>
+        </CardContent>
+      ) : null}
 
       {/* intrabar is not a cosmetic setting: it fills a level TOUCHED
           during a bar rather than requiring the close to reach it, which
