@@ -357,3 +357,157 @@ captures what is there — which is worth knowing and costs one Phase 2.
 If it beats it in-sample and fails to transfer, that is Stage 4 again,
 and the right response is to record it and stop, not to add features
 until it passes.
+
+---
+
+# Phase 0 — BUILT AND MEASURED (2026-09-06)
+
+## What exists now
+
+| File | What it does |
+|---|---|
+| `src/ml/sources.py` | Registry of **118 public series**, no API key, with per-source publication lag |
+| `tools/fetch_market_inputs.py` | Pulls them to `data/external/` + `manifest.json`; records failures rather than aborting |
+| `src/ml/features.py` | 73 macro/cross-asset features + 22 bar-local; causal transforms, as-of join |
+| `src/ml/labels.py` | MFE labels (`reached`, `time_to_hit`, `mfe`, `mae`) by binary lifting |
+| `tools/build_ml_dataset.py` | Joins the three layers into parquet + schema |
+| `tools/evaluate_ml_features.py` | Purged walk-forward with paired controls |
+| `tests/unit/test_ml_labels.py` | 36 tests pinning labels to a brute-force reference |
+| `requirements-ml.txt` | lightgbm 4.6.0 + scikit-learn 1.7.2, deliberately separate |
+
+Sources: 51 FRED, 10 CBOE, 54 Yahoo, 3 added later — **113/113 fetched, 0 failed**.
+
+## Publication lag, which was the main correctness risk
+
+A FRED observation is stamped with the date it *describes*, not when it became
+knowable. Joining on the observation date lets a backtest read August CPI during
+August. Every source now declares its lag and is stamped at the moment it could
+first have been read. Verified: July 2026 CPI becomes readable 2026-08-15, which
+is when BLS actually released it.
+
+## Two corrections to standing claims
+
+* **`src/high_frequency_sizing.py` said FRED and BLS "refuse programmatic access".**
+  False, and load-bearing — it is why macro inputs were written off rather than
+  measured. Both serve series data keyless. What is genuinely unavailable is
+  narrower: FRED's *release-calendar* endpoint needs a key (HTTP 400) and bls.gov's
+  schedule pages return 403. Corrected in place.
+* **FRED caps the ICE BofA credit series at a rolling 3 years** without a key
+  (measured: 795 rows from 2023-09-05; `cosd` does not lift it). That is ~28%
+  coverage over a 2016–2026 window. Moody's `BAA10Y`/`AAA10Y` reach 1986 and carry
+  the signal instead — Baa-10y sits at the 100th percentile on both 2018-12-24 and
+  2020-03-23, and the 13th today.
+
+## The measured result, stated plainly
+
+Purged expanding-window walk-forward, 5 folds, paired per fold. Label
+`reached_t0.5_h390` (a 0.5% target within one session):
+
+| Ticker | bar | macro | both | paired lift | folds + | verdict |
+|---|---|---|---|---|---|---|
+| RSP  | 0.628 | 0.623 | 0.626 | −0.001 ± 0.011 | 2/5 | indistinguishable |
+| COWZ | 0.524 | 0.549 | 0.570 | **+0.046 ± 0.012** | 5/5 | adds |
+| SPYD | 0.563 | 0.563 | 0.574 | +0.011 ± 0.011 | 3/5 | indistinguishable |
+
+At `h1950` (five sessions) **all three are indistinguishable** — so the hypothesis
+that daily macro needs a longer horizon to express itself is *not* supported; the
+shorter horizon gave the cleaner read.
+
+**The harness does not leak.** Shuffled-label control over 50 fits: 0.5011 ± 0.0047,
++0.2 SE from chance. Note that single-seed five-fold controls ranged 0.480–0.542, so
+the control is now averaged over several seeds — one seed is not evidence.
+
+### The honest reading, and why it is not "macro works"
+
+One reproducible lift, on one fund, at one horizon — out of **six comparisons**
+(3 tickers × 2 horizons). One hit at roughly p≈0.03 across six tests is close to
+what chance produces. This is the same selection-bias trap Stage 2/3 already walked
+into on indicator sweeps, and the matched-random control does not rescue it: the
+control kills "policy alone", not "we searched a wide feature set against a few
+price paths".
+
+COWZ is therefore a **candidate to pre-register and test out of sample**, not a
+finding. It is also the shortest history (2016-12-22, 102k strided rows), which is
+where an accidental result is most likely.
+
+Absolute AUCs of 0.52–0.63 are weak in any case, and none of this has yet been
+connected to money: AUC is not P&L. A model must beat `hf_local_reference` on
+Harvest-to-Stuck through `SizingStrategy`, not on a classification metric.
+
+## Next, in order
+
+1. Pre-register the COWZ claim and test it on held-out 2025–2026 data only.
+2. Feature ablation by category — is the lift the credit block, the vol block, or one column?
+3. Baselines from Phase 1 *before* any model is wired in.
+4. Only then the `SizingStrategy` integration, against Harvest-to-Stuck.
+
+## Ablation by block (added same day)
+
+Which part of the 118 series carries the COWZ lift. Each block added to the bar-only
+baseline, same folds, paired:
+
+| Block | COWZ lift | folds + | SPYD lift | folds + |
+|---|---|---|---|---|
+| vol (15 cols) | **+0.039 ± 0.010** | 5/5 | +0.020 ± 0.013 | 3/5 |
+| rotation (10) | **+0.028 ± 0.007** | 5/5 | +0.003 ± 0.007 | 3/5 |
+| factor (5) | +0.026 ± 0.009 | 4/5 | −0.031 ± 0.014 | 1/5 |
+| credit (12) | +0.019 ± 0.013 | 3/5 | +0.013 ± 0.012 | 3/5 |
+| rates / curve / labour / fx | ≤ +0.010, inconsistent | | ≤ 0, inconsistent | |
+
+**The volatility block alone (+0.039) accounts for nearly the whole macro lift (+0.046)
+on COWZ** — the VIX term structure, VVIX and SKEW, not the macro calendar. On SPYD
+nothing survives; its best block is 3/5 folds.
+
+Two caveats that keep this from being a finding:
+
+* **28 comparisons** (14 blocks × 2 tickers). P(5/5 by chance) ≈ 0.03 each, so ~1 spurious
+  "consistent" block is expected; COWZ shows five. That is more than chance alone, but the
+  blocks are **strongly correlated** with each other, so these are not 28 independent
+  tests and no clean multiple-comparison correction applies.
+* It remains one fund. The direction is a useful prior for what to test next — *the
+  volatility complex, not the macro calendar* — and nothing more.
+
+---
+
+## UI hookup (2026-09-07)
+
+**A scope decision, stated rather than assumed:** "hook up the AI trading model
+with the UI" is built as a **read-only research view**, not a live-trading
+integration. There is no trained, saved model to deploy as a trading input —
+Phase ML-0 above ran evaluation folds to measure whether the data carries
+signal, and those models are not persisted. And the one measured result
+(COWZ, +0.046 AUC, one horizon) is one hit in six comparisons, which the plan
+itself already flagged as "a candidate to pre-register... not a finding."
+Wiring that into `SizingStrategy` on the machine that runs paper (and
+eventually live) trading would contradict both the evidence and the plan's
+own sequencing (Phase 1 baselines → Phase 2 model → Phase 3 pre-registered
+evaluation → Phase 4 "deployment, **if it survives**").
+
+**What was built instead:** a "Model research" tab, new third section
+alongside Backtesting and Live, showing exactly what Phase ML-0 measured —
+source inventory, dataset coverage, the evaluation table (bar/macro/both AUC,
+paired lift, verdict), and the per-category ablation — with the same honest,
+hedged framing as this document. A banner states plainly that nothing on the
+tab touches trading.
+
+* `server/ml_insights.py` — read-only, reads precomputed JSON only (no
+  `lightgbm`/`sklearn` import, no `src.ml.*` import — see its own docstring).
+  Follows the exact split `live.py`/`control.py` established, extended with
+  new AST guards in `tests/unit/test_server_capability.py`.
+* `server/ml_upstream.py` — Pi-side relay, GET-only, reusing
+  `VAI_BACKTEST_UPSTREAM` rather than a second env var. `data/external/` and
+  `data/ml/` are gitignored and live only on the workstation.
+* `tools/ablate_ml_features.py` — new; persists the per-category breakdown
+  that was previously only an ad hoc computation, as `data/ml/ablation_*.json`.
+  Confirms the earlier read: **COWZ shows 5/14 categories consistent (vol
+  alone: +0.039 of the +0.046 total), RSP and SPYD show 0.** Concentrated on
+  the shortest-history fund is exactly where a false positive is likeliest.
+* `web/src/components/ml/ModelInsights.tsx` + `web/src/types/ml.ts` — new tab.
+
+Full suite green: `pytest tests/unit -q` → 1870 passed; `npm run build` and
+`npm test` clean.
+
+**Deploy:** pushed to `origin/main`. This session has no SSH access to the
+Pi (checked; both configured hosts refused key auth) — the Pi-side
+`git pull && docker compose -f docker-compose.pi.yml up -d --build` needs to
+be run by the user.

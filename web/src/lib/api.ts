@@ -13,6 +13,12 @@ import type {
   HistoryRow,
   MultiFundBacktestReport,
 } from "@/types/backtest";
+import type {
+  AblationResponse,
+  DatasetsResponse,
+  EvaluationResponse,
+  SourcesSummary,
+} from "@/types/ml";
 import type { DeploymentState, HaltResponse, IndicatorReading } from "@/types/telemetry";
 
 export class ApiError extends Error {
@@ -136,6 +142,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ path, reason }),
     }),
+
+  // -- ML research (read-only; see server/ml_insights.py) --------------
+
+  mlSources: () => request<SourcesSummary>("/api/ml/sources"),
+
+  mlDatasets: () => request<DatasetsResponse>("/api/ml/datasets"),
+
+  mlEvaluationLabels: () => request<{ labels: string[] }>("/api/ml/evaluation/available"),
+
+  /** Throws ApiError with status 404 when nobody has run the tool for
+   * this label yet -- the message names the command to run. */
+  mlEvaluation: (label: string) =>
+    request<EvaluationResponse>(`/api/ml/evaluation?label=${encodeURIComponent(label)}`),
+
+  mlAblation: (label: string) =>
+    request<AblationResponse>(`/api/ml/ablation?label=${encodeURIComponent(label)}`),
 
   /**
    * The static export, for looking at a run without the server running.

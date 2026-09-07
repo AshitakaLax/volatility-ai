@@ -80,7 +80,16 @@ def called_names(tree: ast.Module) -> set[str]:
     return found
 
 
-ALL_MODULES = ("live.py", "control.py", "backtest.py", "jobs.py", "app.py", "deployment.py")
+ALL_MODULES = (
+    "live.py",
+    "control.py",
+    "backtest.py",
+    "jobs.py",
+    "app.py",
+    "deployment.py",
+    "ml_insights.py",
+    "ml_upstream.py",
+)
 
 
 @pytest.mark.parametrize("name", ALL_MODULES)
@@ -210,6 +219,63 @@ class TestDeploymentIsNarrow:
             assert "subprocess" not in imported_modules(module_ast(name)), (
                 f"server/{name} imports subprocess"
             )
+
+
+class TestMlInsightsIsReadOnly:
+    """server/ml_insights.py formats artifacts already written to disk.
+
+    It is not on the path from a bar to an order, and it cannot become
+    one by accident: these assertions hold it to that the same way
+    live.py is held to reading through the read-only layer.
+    """
+
+    def test_it_opens_no_writable_store_and_reaches_no_breaker(self):
+        tree = module_ast("ml_insights.py")
+        assert "LedgerStore" not in imported_modules(tree)
+        assert "CircuitBreaker" not in imported_modules(tree)
+        assert "sqlite3" not in imported_modules(tree)
+
+    def test_it_imports_no_ml_training_code(self):
+        """It reads JSON that tools/*.py already wrote. Importing
+        src.ml.sources or .features would pull in network calls and
+        pandas transforms an HTTP GET has no business triggering;
+        importing lightgbm or sklearn would pull in a dependency this
+        project deliberately keeps off the Raspberry Pi image (see
+        requirements-ml.txt and this module's own docstring)."""
+        tree = module_ast("ml_insights.py")
+        imported = imported_modules(tree)
+        assert not imported & {"sources", "features", "labels", "lightgbm", "sklearn"}, (
+            f"ml_insights.py imports {sorted(imported & {'sources', 'features', 'labels', 'lightgbm', 'sklearn'})}"
+        )
+
+    def test_it_exposes_only_get_routes(self):
+        """A research view has nothing to submit. A POST/PUT/DELETE
+        route here would be a second, undocumented write surface."""
+        source = (SERVER / "ml_insights.py").read_text(encoding="utf-8")
+        for verb in ("router.post", "router.put", "router.delete", "router.patch"):
+            assert verb not in source, f"ml_insights.py defines a {verb} route"
+
+
+class TestMlUpstreamIsReadOnly:
+    """server/ml_upstream.py relays to the workstation -- GET only."""
+
+    def test_it_forwards_get_only(self):
+        """Unlike server/upstream.py, there is no job to submit here --
+        only JSON someone already generated. A wider method list would
+        be relaying writes to a route the workstation never exposes as
+        writable in the first place."""
+        source = (SERVER / "ml_upstream.py").read_text(encoding="utf-8")
+        assert 'methods=["GET"]' in source
+        for verb in ("POST", "PUT", "DELETE", "PATCH"):
+            assert f'"{verb}"' not in source
+
+    def test_it_reuses_the_backtest_upstream_decision_rather_than_a_second_env_var(self):
+        """One "is a research/engine host configured" decision, not two
+        that could disagree about whether forwarding is on."""
+        tree = module_ast("ml_upstream.py")
+        assert "upstream" in imported_modules(tree)
+        source = (SERVER / "ml_upstream.py").read_text(encoding="utf-8")
+        assert "os.environ" not in source and "getenv" not in source
 
 
 class TestAppDefaults:

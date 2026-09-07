@@ -1,4 +1,4 @@
-import { Activity, LineChart } from "lucide-react";
+import { Activity, FlaskConical, LineChart } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { BacktestChart } from "@/components/backtest/BacktestChart";
@@ -14,6 +14,7 @@ import { AlgorithmStatus } from "@/components/live/AlgorithmStatus";
 import { CommandCenter } from "@/components/live/CommandCenter";
 import { DeploymentHealth } from "@/components/live/DeploymentHealth";
 import { LiveOrderLedger } from "@/components/live/LiveOrderLedger";
+import { ModelInsights } from "@/components/ml/ModelInsights";
 import { Card, CardContent } from "@/components/ui/primitives";
 import { useBacktestRun } from "@/hooks/useBacktestRun";
 import { useLiveState } from "@/hooks/useLiveState";
@@ -34,7 +35,7 @@ import {
  * falls back to the static export otherwise -- so the page is useful
  * before the API is running, which is also how it was developed.
  */
-type Tab = "backtest" | "live";
+type Tab = "backtest" | "live" | "ml";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("backtest");
@@ -109,6 +110,7 @@ export default function App() {
               [
                 { id: "backtest", label: "Backtesting", icon: LineChart },
                 { id: "live", label: "Live", icon: Activity },
+                { id: "ml", label: "Model research", icon: FlaskConical },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -166,6 +168,8 @@ export default function App() {
               lastPrice={live.state?.last_price ?? null}
             />
           </>
+        ) : tab === "ml" ? (
+          <ModelInsights />
         ) : (
           <>
             <ParameterForm

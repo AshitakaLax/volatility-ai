@@ -256,6 +256,23 @@ The split is forced by where things physically are, not chosen:
 CORS, no second address to configure, and no way for the two halves to
 disagree about which host to ask. See `server/upstream.py`.
 
+`/api/ml/*` — the "Model research" tab — follows the identical split
+and the identical env var. `data/external/` and `data/ml/` (the fetched
+public series, the training parquet, the evaluation and ablation JSON)
+are gitignored and live only on the workstation, and the Pi's image
+never installs `requirements-ml.txt`, so there is nothing local to serve
+even if it wanted to. See `server/ml_insights.py` (the workstation-side
+reader) and `server/ml_upstream.py` (the Pi-side relay, GET-only —
+unlike backtest there is no job to submit, only JSON someone already
+generated with `tools/{fetch_market_inputs,build_ml_dataset,
+evaluate_ml_features,ablate_ml_features}.py`).
+
+**This tab is research, not a trading input.** No sizing strategy reads
+it and no live loop imports it — `tests/unit/test_server_capability.py`
+holds `ml_insights.py` to that the same way `live.py` is held to
+read-only. See `ml_plan.md`, "Phase ML-0" for what has actually been
+measured, and how weak most of it still is.
+
 ### Starting the workstation half
 
     python -m uvicorn server.app:app --host 0.0.0.0 --port 8000

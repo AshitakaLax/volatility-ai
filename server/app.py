@@ -39,7 +39,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from server import backtest, control, deployment, live, upstream
+from server import backtest, control, deployment, live, ml_insights, ml_upstream, upstream
 
 app = FastAPI(
     title="volatility-ai",
@@ -77,6 +77,16 @@ else:
     app.include_router(backtest.router)
 app.include_router(deployment.router)
 
+# THE ML RESEARCH ROUTES FOLLOW THE SAME SPLIT, FOR THE SAME REASON.
+#
+# data/external/ and data/ml/ live on the workstation -- gitignored, and
+# never synced to the Pi's image. With VAI_BACKTEST_UPSTREAM set this
+# host forwards; without it, it reads those files itself.
+if ml_upstream.is_enabled():
+    app.include_router(ml_upstream.router)
+else:
+    app.include_router(ml_insights.router)
+
 
 @app.get("/api/health")
 def health() -> dict[str, object]:
@@ -96,6 +106,10 @@ def health() -> dict[str, object]:
             "liquidate": False,
             "parameter_override": False,
             "backtest_submit": True,
+            # Read-only research artifacts (server/ml_insights.py). Not
+            # a trading capability: nothing behind this flag can reach
+            # a sizing decision. See that module's docstring.
+            "ml_research": True,
         },
     }
 

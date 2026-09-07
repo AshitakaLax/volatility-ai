@@ -358,3 +358,121 @@ carried.
 * **UPRO and SPY are not downloaded.** On hand: TQQQ, QQQ, RSP, SOXL, SQQQ, VIXY.
 * **`tools/stage*_grid.py` outputs** are JSONL under `output/`, which is git-ignored —
   the UI reads them where present and must degrade cleanly where absent.
+
+---
+
+## Phase ML-0 — Training environment and public data ingestion (2026-09-06) — COMPLETE
+
+**Delivered:** `src/ml/{__init__,sources,features,labels}.py`,
+`tools/{fetch_market_inputs,build_ml_dataset,evaluate_ml_features}.py`,
+`tests/unit/test_ml_labels.py` (36 tests), `requirements-ml.txt`.
+Corrected a stale claim in `src/high_frequency_sizing.py`.
+
+**118 public series ingested, 0 failures** — 56 FRED, 10 CBOE, 54 Yahoo (`data/external/`,
+gitignored). No API keys. Datasets built for RSP / COWZ / SPYD: 95 features, 48 labels.
+
+`python -m pytest tests/unit -q` -> **1857 passed, 1 skipped**. ruff clean.
+
+### Decisions worth keeping
+
+* **Publication lag is baked into the timestamps, not left to the caller.** Each source
+  declares how late its number really is and is stamped at the moment it could first have
+  been read, so `ExternalIndexSeries.scalar()` makes the as-of join safe by construction.
+  Reused the dormant `ExternalIndexSeries` rather than writing a second join layer.
+* **One request per FRED series.** The multi-id form returns a malformed body past a few
+  ids and resets the connection at 29. Not worth working around for a few seconds.
+* **Failures are recorded, not raised.** ~113 endpoints; some are retired or rate-limited
+  on any given day. This caught four CBOE indices shipping close-only (`DATE,VVIX`)
+  instead of OHLC on the first run.
+* **Moody's over ICE BofA for credit.** FRED caps the BAML series at a rolling 3 years
+  keyless (~28% coverage of the training window); `BAA10Y`/`AAA10Y` reach 1986.
+* **Labels pinned to a brute-force reference.** This caught a real bug: the sparse table's
+  top level spans `2**ceil(log2(h))`, so MFE for a 17-bar horizon was measured over 32
+  bars. Also moved the table to float64 — float32 shifted MFE by ~1e-8, harmless alone,
+  but `reached` compares against a float64 target and a limit order resting exactly ON
+  its target is the ordinary case. Rounding there flips a label rather than perturbing it.
+* **Paired per-fold comparison, not two means.** Fold-to-fold variance (~0.03) exceeds any
+  lift being looked for; unpaired cannot resolve the question.
+* **Multi-seed shuffled control.** Single-seed five-fold controls ranged 0.480–0.542 and
+  read as leaks when nothing was wrong. Fifty fits: 0.5011 ± 0.0047.
+
+### Result, stated so it can be wrong
+
+Macro adds a consistent lift on **COWZ only** (+0.046 AUC, 5/5 folds) at `h390`;
+RSP and SPYD indistinguishable, and all three indistinguishable at `h1950`. That is one
+hit in six comparisons — about what chance yields. Recorded in `ml_plan.md` as a
+**candidate to pre-register**, not a finding. AUC is not P&L.
+
+### Carried gaps
+
+* Nothing is wired into `SizingStrategy`. No model touches the engine.
+* The COWZ result is un-replicated and on the shortest history of the three.
+* `data/external/` is gitignored, so a fresh clone must re-run the fetch (~40s).
+
+---
+
+## Phase ML-1 — UI hookup, read-only (2026-09-07) — COMPLETE
+
+**Delivered:** `server/ml_insights.py`, `server/ml_upstream.py`,
+`tools/ablate_ml_features.py`, `web/src/components/ml/ModelInsights.tsx`,
+`web/src/types/ml.ts`; extended `server/app.py`, `web/src/App.tsx`,
+`web/src/lib/api.ts`, `tests/unit/test_server_capability.py`.
+
+`pytest tests/unit -q` -> **1870 passed, 1 skipped**. `npm run build` and
+`npm test` clean. ruff clean.
+
+### The scope decision this response made explicit
+
+Request was "hook up the AI trading model with the UI, deploy it to the
+Raspberry Pi." There is no trained/saved model to deploy as a trading
+input -- Phase ML-0's evaluation folds are not persisted -- and the one
+measured result (COWZ) is un-replicated, one hit in six comparisons. Built
+a **read-only research tab** instead of a `SizingStrategy` integration:
+this satisfies "hook up with the UI" honestly, and deliberately does NOT
+put an unvalidated, statistically weak signal on a path to money, which
+would contradict `ml_plan.md`'s own gating (Phase 4 is "deployment, if it
+survives" -- it has not yet survived even Phase 1). Stated here so the
+scope narrowing is a recorded decision, not a silent one.
+
+### Decisions worth keeping
+
+* **Same upstream split as backtest, same env var.** `/api/ml/*` forwards
+  under `VAI_BACKTEST_UPSTREAM` on the Pi, reusing `upstream.upstream_base()`
+  rather than adding a second variable that could disagree with the first
+  about whether a research/engine host is configured.
+* **A new, smaller forwarding module rather than generalising
+  `server/upstream.py`.** `/api/ml/*` is GET-only -- no submitted job, no
+  progress socket -- and `upstream.py`'s POST-and-websocket backtest
+  forwarding is production-critical and already tested; duplicating ~50
+  lines was lower-risk than reshaping it for a caller that needs a third
+  of what it does.
+* **The router imports no `src.ml.*` and no `lightgbm`/`sklearn`.** It only
+  formats JSON `tools/*.py` already wrote — pinned by
+  `TestMlInsightsIsReadOnly::test_it_imports_no_ml_training_code`. Keeps it
+  safe to run anywhere `server/app.py` runs, and keeps `requirements-ml.txt`
+  off the Pi's image as that file's own docstring requires.
+* **A missing artifact 404s naming the exact command to run**, rather than
+  a fabricated empty result. "No data" and "nobody built this yet" are
+  different facts and the UI treats them differently (`NotBuiltYet`).
+* **The ablation tool was formalised, not left as an ad hoc script.** The
+  category breakdown from the prior session's exploration is now
+  `tools/ablate_ml_features.py`, producing a artifact the API can serve —
+  and re-running it confirmed the earlier read: COWZ 5/14 categories
+  consistent (vol block carries nearly all of it), RSP and SPYD both 0/14.
+
+### Deploy status
+
+Pushed to `origin/main`. **Could not deploy to the Pi from this session** —
+checked SSH access to both configured hosts (`pivpn`/172.16.0.137,
+172.16.0.130); both refused key authentication. Handed the user the exact
+pull-and-rebuild command to run themselves.
+
+### Carried gaps
+
+* Nothing is wired into `SizingStrategy`. No model touches the engine —
+  unchanged from Phase ML-0, and deliberately so this response.
+* The Pi has not yet pulled this code; the tab does not exist there until
+  the user runs the deploy step.
+* `ml_insights.py`'s 404-with-hint relies on the workstation actually
+  having run the `tools/*.py` pipeline — true today, but a fresh workstation
+  checkout starts with an empty tab until that is re-run.
