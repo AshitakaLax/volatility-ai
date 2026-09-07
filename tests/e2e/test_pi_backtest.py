@@ -319,25 +319,45 @@ class TestTheBrowserActuallyRendersIt:
         page.wait_for_timeout(400)
         assert page.locator("text=Lowest drawdown").first.is_visible()
 
-    def test_opening_a_run_from_history_loads_its_report(self, page):
+    def test_opening_a_run_from_history_loads_its_report_in_a_new_tab(self, page):
         """The Pi ships no static export -- output/ is git-ignored and
         excluded from the image -- so a fresh page has no report until
         one is opened. That is correct, and it is also how a person
         gets to a chart: click a row.
+
+        A real anchor (target="_blank"), not a same-page state swap: the
+        original page must be left exactly as it was, and Playwright
+        surfaces the new tab as a "popup" event on the shared context.
+        Stashed onto `page` itself (matching how the fixture already
+        hangs `page.errors` off it) so later tests in this class -- which
+        need a report already loaded -- read that tab, not this one.
         """
-        page.get_by_test_id("history-row").first.click()
-        page.wait_for_selector("text=Execution chart", timeout=30_000)
-        assert page.locator("text=Risk and reward").first.is_visible()
+        with page.expect_popup() as popup_info:
+            page.get_by_test_id("history-row").first.click()
+        report_page = popup_info.value
+        report_page.wait_for_selector("text=Execution chart", timeout=30_000)
+        assert report_page.locator("text=Risk and reward").first.is_visible()
+
+        # The tab that did the clicking never navigated. Checked via the
+        # URL, not page content: a development machine can have a static
+        # export (output/) the Pi deliberately excludes, which would
+        # make "no report visible here" a fact about that machine's data
+        # rather than about whether this tab navigated.
+        assert "run=" not in page.url
+        assert page.locator("text=Run a backtest").first.is_visible()
+
+        page.report_page = report_page  # type: ignore[attr-defined]
 
     def test_the_trade_log_expands(self, page):
         """Collapsed by default; opening it is a deliberate act.
 
-        Runs after a report is loaded, because the log describes a run
-        and there is nothing to describe before one is open.
+        Runs after a report is loaded -- in the NEW TAB the previous
+        test opened, not `page` itself, which never gained one.
         """
-        page.get_by_test_id("trade-log-toggle").click()
-        page.wait_for_timeout(500)
-        assert page.locator("text=/one row per lot|every buy and sell/").first.is_visible()
+        report_page = getattr(page, "report_page", page)
+        report_page.get_by_test_id("trade-log-toggle").click()
+        report_page.wait_for_timeout(500)
+        assert report_page.locator("text=/one row per lot|every buy and sell/").first.is_visible()
 
     def test_submitting_a_run_from_the_form_shows_progress_and_results(self, page):
         """The whole feature, driven the way a person drives it."""

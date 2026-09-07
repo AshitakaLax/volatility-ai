@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
-import { cn, pct, usd } from "@/lib/utils";
+import { cn, pct, runUrl, usd } from "@/lib/utils";
 import type { FundPerformanceMetrics, HistoryRow } from "@/types/backtest";
 
 /**
@@ -25,8 +25,6 @@ import type { FundPerformanceMetrics, HistoryRow } from "@/types/backtest";
  */
 
 interface Props {
-  /** Load a stored run back into the view. */
-  onOpen: (runId: string) => void;
   /** Bumped by the caller when a run finishes, to refresh the list. */
   refreshToken?: number;
 }
@@ -112,7 +110,7 @@ function valueOf(row: HistoryRow, key: MetricKey): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export function RunHistory({ onOpen, refreshToken }: Props) {
+export function RunHistory({ refreshToken }: Props) {
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [runs, setRuns] = useState(0);
   const [metric, setMetric] = useState<MetricKey>("cagr_pct");
@@ -226,8 +224,15 @@ export function RunHistory({ onOpen, refreshToken }: Props) {
                     key={`${row.run_id}-${row.ticker}-${row.grid_step}-${row.profit_target}`}
                     data-testid="history-row"
                     className="cursor-pointer border-b border-border/50 last:border-0 hover:bg-accent"
-                    onClick={() => onOpen(row.run_id)}
-                    title="Open this run"
+                    // A real <a> (below, in the Run column) is what gives
+                    // ctrl/cmd-click, middle-click and "copy link" their
+                    // normal browser behaviour; this is the click-anywhere
+                    // convenience for the rest of the row, opening the
+                    // SAME url the same way -- a new, independent tab, so
+                    // this history table is never replaced by the report
+                    // it opens.
+                    onClick={() => window.open(runUrl(row.run_id), "_blank", "noopener,noreferrer")}
+                    title="Open this run in a new tab"
                   >
                     <td className="py-2 text-muted-foreground">{index + 1}</td>
                     <td className="py-2 font-medium">{row.ticker}</td>
@@ -282,7 +287,18 @@ export function RunHistory({ onOpen, refreshToken }: Props) {
                       {row.start?.slice(0, 10) ?? "--"} → {row.end?.slice(0, 10) ?? "--"}
                     </td>
                     <td className="py-2 font-mono text-xs text-muted-foreground">
-                      {row.run_id.slice(0, 8)}
+                      <a
+                        href={runUrl(row.run_id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-foreground hover:underline"
+                        // The row's own onClick already opens this exact
+                        // url in a new tab; without this, clicking the
+                        // link itself would fire BOTH, opening two tabs.
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {row.run_id.slice(0, 8)}
+                      </a>
                     </td>
                   </tr>
                 );

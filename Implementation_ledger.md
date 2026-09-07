@@ -560,3 +560,59 @@ clean. ruff clean.
 * Fresh checkout needs `tools/train_ml_model.py` re-run before these three
   strategies work at all -- `data/ml/models/` is gitignored, same as every
   other derived data directory in this project.
+
+---
+
+## Selecting a run opens a new tab (2026-09-07) — COMPLETE
+
+**Delivered:** `runUrl()` in `web/src/lib/utils.ts` (+ `utils.test.ts`, 4 tests);
+`RunHistory.tsx` and `ActiveRuns.tsx` now render real `<a target="_blank">`
+links instead of in-page callbacks; `App.tsx` reads `?run=<id>` on mount and
+attaches to it, removing the `opened` state entirely; `tests/e2e/
+test_pi_backtest.py` updated to expect a popup rather than a same-page swap.
+
+`npm run build`/`npm test` clean (23 vitest). `pytest tests/unit -q`:
+1890 passed, 1 skipped (frontend-only change; nothing in `server/` touched).
+E2E `TestTheBrowserActuallyRendersIt`, driven with a real Firefox against
+this workstation's own server (rebuilt `web/dist`, no Python restart
+needed — confirmed `server/app.py` serves it fresh per request, not from a
+startup snapshot): **7/7 passed**, including the popup opening with the
+report and the original tab staying on its own, unnavigated, URL.
+
+### Decisions worth keeping
+
+* **`api.run(runId)` already handled both active and historical runs**
+  (checks the in-memory job queue, falls back to `history.load()`) — so
+  the new tab's mount-time load reuses `useBacktestRun.attach()` verbatim,
+  the same function `ActiveRuns`' old callback already called. No new
+  server code, no branching on "was this from history or the queue".
+* **Removed `opened` state rather than adding a second one for the new
+  behavior.** After this change there is no remaining way to view an
+  existing run without it being a real, independently-loaded page — so
+  the old "which report wins, `opened` or `run`" precedence had nothing
+  left to arbitrate.
+* **Real `<a>` elements, not `onClick` + `window.open`,** for the actual
+  link surfaces (the Run-column id in history, the Attach/Watch button) —
+  ctrl/cmd-click, middle-click and "copy link" all need a real href, and
+  `window.open` only covers the plain left-click case. The row-level
+  `onClick` on `RunHistory`'s `<tr>` stays `window.open` (a `<tr>` cannot
+  itself be a valid anchor) with `stopPropagation` on the inner link so
+  the two don't both fire and open two tabs.
+* **`runUrl` takes its base as a parameter** rather than reading
+  `window.location` directly — this project's vitest runs in plain Node
+  with no DOM library installed, and threading the base through is what
+  let 4 real tests exist without adding one just to supply a `window`.
+* **Caught by actually running the E2E suite locally, not just building:**
+  my own first version of the "the original tab didn't navigate" check
+  scanned page TEXT ("Execution chart" not present) and failed on this
+  workstation, which -- unlike the Pi -- has a leftover `output/`
+  static export that fills that text in regardless of any click. Fixed
+  by checking `page.url` instead, which is what the claim actually is.
+
+### Carried gaps
+
+* No E2E test for `ActiveRuns`' own link (only `RunHistory`'s was driven
+  end to end) — it shares the identical `runUrl()` + real-`<a>` pattern
+  just proven, and exercising it needs a run genuinely in flight at test
+  time, which is a timing-dependent addition judged not worth it here.
+* Not yet redeployed to the Pi at the point this entry was written.

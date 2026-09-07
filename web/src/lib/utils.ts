@@ -38,3 +38,27 @@ export function count(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "--";
   return Intl.NumberFormat("en-US", { notation: "compact" }).format(value);
 }
+
+/**
+ * A self-contained link to one run: this origin and path, `?run=<id>`
+ * and nothing else.
+ *
+ * Defaults to window.location.href rather than a hardcoded origin so it
+ * works unchanged wherever the app is actually loaded from -- the Vite
+ * dev server, the built bundle on :8000, or the Pi's LAN address.
+ * `base` is a parameter (not read from `window` directly) so the URL
+ * logic itself -- strip existing params, keep origin and path, set
+ * exactly one -- is a plain function this project's Node-based vitest
+ * setup can call directly, with no DOM library pulled in just to
+ * supply a `window` for four small test cases.
+ *
+ * Existing query params are dropped rather than kept: a run link is
+ * meant to be self-contained and shareable, not carry over whatever
+ * unrelated state happened to be in the opening tab's address bar.
+ */
+export function runUrl(runId: string, base: string = window.location.href): string {
+  const url = new URL(base);
+  url.search = "";
+  url.searchParams.set("run", runId);
+  return url.toString();
+}

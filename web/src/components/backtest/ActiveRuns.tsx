@@ -1,9 +1,9 @@
 import { AlertCircle, CheckCircle2, Loader2, Timer } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, runUrl } from "@/lib/utils";
 import type { BacktestRunState } from "@/types/backtest";
 
 /**
@@ -27,8 +27,6 @@ import type { BacktestRunState } from "@/types/backtest";
  */
 
 interface Props {
-  /** Watch a run this tab did not start. */
-  onAttach: (runId: string) => void;
   /** Called when a run finishes, so history can refresh. */
   onSettled?: () => void;
 }
@@ -39,7 +37,7 @@ const ACTIVE_POLL_MS = 2000;
 // nothing.
 const IDLE_POLL_MS = 15000;
 
-export function ActiveRuns({ onAttach, onSettled }: Props) {
+export function ActiveRuns({ onSettled }: Props) {
   const [runs, setRuns] = useState<BacktestRunState[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,7 +108,7 @@ export function ActiveRuns({ onAttach, onSettled }: Props) {
 
       <CardContent className="space-y-3">
         {[...active, ...recent].map((run) => (
-          <RunRow key={run.run_id} run={run} onAttach={onAttach} />
+          <RunRow key={run.run_id} run={run} />
         ))}
         {error ? (
           <p className="text-xs text-muted-foreground">{error}</p>
@@ -120,13 +118,7 @@ export function ActiveRuns({ onAttach, onSettled }: Props) {
   );
 }
 
-function RunRow({
-  run,
-  onAttach,
-}: {
-  run: BacktestRunState;
-  onAttach: (runId: string) => void;
-}) {
+function RunRow({ run }: { run: BacktestRunState }) {
   const running = run.status === "running" || run.status === "queued";
   const percent = Math.round(run.progress * 100);
 
@@ -164,13 +156,24 @@ function RunRow({
         ) : run.status === "failed" ? (
           <AlertCircle className="size-4 text-loss" />
         ) : null}
-        <Button
-          variant="outline"
-          className="h-7 px-2 text-xs"
-          onClick={() => onAttach(run.run_id)}
+        {/* A real anchor, not a button + callback: this opens in its
+            own tab (target="_blank"), matching every other "view an
+            existing run" action, so the running list here is never
+            replaced by the report it opens. Styled to match Button's
+            outline variant directly rather than making that shared
+            primitive polymorphic for one caller. */}
+        <a
+          href={runUrl(run.run_id)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "inline-flex h-7 items-center justify-center gap-2 rounded-md px-2 text-xs font-medium",
+            "border border-border bg-transparent transition-colors hover:bg-accent",
+            "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+          )}
         >
           {running ? "Watch" : "Open"}
-        </Button>
+        </a>
       </div>
     </div>
   );

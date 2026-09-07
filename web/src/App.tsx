@@ -48,10 +48,6 @@ export default function App() {
   const [staged, setStaged] = useState<{ gridStep: number; profitTarget: number } | null>(
     null,
   );
-  // A run loaded back out of history. Takes precedence over the live
-  // one so opening an old result actually shows it, and is cleared when
-  // a new run is submitted.
-  const [opened, setOpened] = useState<MultiFundBacktestReport | null>(null);
 
   // --- live ------------------------------------------------------------
   const [stores, setStores] = useState<{ path: string; label: string; paper: boolean }[]>([]);
@@ -76,8 +72,22 @@ export default function App() {
     void api.staticReport().then(setStaticReport);
   }, []);
 
+  // Selecting a run (Run history, Active runs) opens ?run=<id> in a NEW
+  // tab rather than swapping the current view -- see runUrl() in
+  // lib/utils.ts. This is that tab's other half: on load, notice the
+  // param and attach to exactly that run, the same way watching one
+  // this tab submitted itself works. Forced onto the backtest tab
+  // because a run is a backtest-tab concept regardless of which tab a
+  // stale bookmark might otherwise land on.
+  useEffect(() => {
+    const runId = new URLSearchParams(window.location.search).get("run");
+    if (!runId) return;
+    setTab("backtest");
+    void attach(runId);
+  }, [attach]);
+
   // A completed run wins over the export; nothing else changes the view.
-  const report = opened ?? run?.report ?? staticReport;
+  const report = run?.report ?? staticReport;
   const tickers = report ? Object.keys(report.funds) : [];
   const selected = filters.tickers[0] ?? tickers[0] ?? null;
   const fund = report && selected ? report.funds[selected] : undefined;
@@ -173,13 +183,7 @@ export default function App() {
         ) : (
           <>
             <ParameterForm
-              onSubmit={(request) => {
-                // A new run replaces whatever was opened from history,
-                // or the page would show an old report beside a running
-                // job and give no clue which the metrics belong to.
-                setOpened(null);
-                submit(request);
-              }}
+              onSubmit={(request) => submit(request)}
               run={run}
               submitting={submitting}
               error={error}
@@ -190,14 +194,13 @@ export default function App() {
             {/* OUTSIDE the report branch, deliberately. Both were
                 previously rendered only when a report was loaded, which
                 hid them on exactly the load where they are most
-                useful -- a fresh page with nothing selected. */}
-            <ActiveRuns
-              onAttach={(runId) => {
-                setOpened(null);
-                void attach(runId);
-              }}
-              onSettled={() => setHistoryToken((value) => value + 1)}
-            />
+                useful -- a fresh page with nothing selected. Selecting
+                a run from either one opens it in its own tab (see
+                runUrl() in lib/utils.ts) rather than replacing this
+                view, so this tab's own in-progress submission is never
+                displaced by a click meant to just glance at something
+                else. */}
+            <ActiveRuns onSettled={() => setHistoryToken((value) => value + 1)} />
 
             {!report ? (
               <Card>
@@ -250,15 +253,7 @@ export default function App() {
                 {tickers.length > 1 ? <FundComparison funds={report.funds} /> : null}
               </>
             )}
-            <RunHistory
-              onOpen={(runId) => {
-                void api
-                  .historyRun(runId)
-                  .then((stored) => setOpened(stored.report))
-                  .catch(() => setOpened(null));
-              }}
-              refreshToken={historyToken}
-            />
+            <RunHistory refreshToken={historyToken} />
           </>
         )}
       </main>
