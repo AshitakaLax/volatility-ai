@@ -53,6 +53,14 @@ KNOWN_DATA = {
     "RSP": "data/RSP_1Min_sip_all_rthuniform_2016-01-01_2026-08-30.csv",
     "SOXL": "data/SOXL_1Min_sip_all_rth_2016-01-01_2026-09-03.csv",
     "SQQQ": "data/SQQQ_1Min_sip_all_ext_2016-01-01_2026-09-01.csv",
+    # Pacer US Cash Cows 100 -- high free-cash-flow-yield equal-weight
+    # value fund. Inception 2016-12-19, so its file starts there rather
+    # than 2016-01-01 like the others; every consumer of KNOWN_DATA reads
+    # the span from the file itself rather than assuming one.
+    "COWZ": "data/COWZ_1Min_sip_all_rth_2016-01-01_2026-09-06.csv",
+    # SPDR Portfolio S&P 500 High Dividend ETF -- the specific SPDR fund
+    # asked for, not SPY or the sector SPDRs.
+    "SPYD": "data/SPYD_1Min_sip_all_rth_2016-01-01_2026-09-06.csv",
 }
 
 
