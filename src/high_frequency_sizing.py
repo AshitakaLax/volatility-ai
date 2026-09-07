@@ -149,11 +149,25 @@ volatility relative to its own longer-horizon baseline:
 
 It also subsumes much of what a calendar would tell us. CPI, payrolls
 and FOMC days are volatile, and this responds to that volatility
-without needing to know why it is there -- which matters because the
-authoritative release calendars for CPI/payrolls are not currently
-obtainable in this environment (bls.gov and fred.stlouisfed.org both
-refuse programmatic access), while realized volatility is already in
-the data.
+without needing to know why it is there, using data already in hand.
+
+  CORRECTED 2026-09-06. This paragraph used to assert that "bls.gov
+  and fred.stlouisfed.org both refuse programmatic access". That is
+  wrong, and it was load-bearing: it is why macro inputs were written
+  off wholesale rather than measured. Both serve SERIES DATA without
+  a key -- src/ml/sources.py now pulls 51 FRED series (DGS10 reaches
+  1962) and the BLS public API v2 answers keyless requests.
+
+  What is genuinely unavailable keyless is narrower: FRED's forward
+  RELEASE CALENDAR endpoint requires an API key, and the bls.gov
+  release-schedule pages return 403 to a scraper. So the original
+  conclusion about calendars happened to survive; its stated reason
+  did not, and the reason is what generalised into a bad inference.
+
+  This does not change the design below. Realized volatility is still
+  the input being scaled on, and the measured result stands. What
+  changes is that "a calendar is unobtainable" is no longer a reason
+  to avoid testing macro inputs -- 113 public series are now on disk.
 
   Direction is NOT assumed. Unlike the event boosts, which are
   constrained to >= 1.0 because they encode a measured claim, the

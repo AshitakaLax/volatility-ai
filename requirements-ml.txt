@@ -1,0 +1,12 @@
+# Model training. Kept SEPARATE from requirements.txt on purpose: the
+# live trading loop and the Raspberry Pi that runs it must never need
+# these to start. Nothing in src/ outside src/ml/ may import them.
+#
+# Gradient boosting rather than a neural network, per ml_plan.md: the
+# inputs are ~100 tabular columns with heavy missingness, which is
+# where GBMs win, and the live sizing path has a <50us inference
+# budget that a deep model would not meet on a Pi.
+
+scikit-learn==1.7.2   # metrics, calibration, baselines
+lightgbm==4.6.0       # the model itself; handles NaN natively
+pyarrow>=15           # parquet, already present as a pandas extra
