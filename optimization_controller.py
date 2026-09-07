@@ -281,6 +281,25 @@ def _run_one_combination(
                 "grid.profit_targets, or pass allow_target_return_mismatch=True to confirm the "
                 "mismatch is deliberate."
             )
+        # The identical failure mode, one level up: MLReachabilitySizing
+        # is trained on ONE ticker's price history (src/ml/
+        # reachability_sizing.py's own module docstring), and
+        # strategy_params has no per-run ticker field to keep in sync
+        # with `symbol` -- the sizing-model dropdown always submits a
+        # fixed committed default (ParameterForm.tsx never edits
+        # strategy_params), so WHICH id was picked is the only thing
+        # that could disagree with which fund is actually running.
+        # getattr, not isinstance, for the same reason as above: this
+        # generalizes to any future per-instrument model without this
+        # function needing to import its type.
+        declared_ticker = getattr(sizing_engine, "ticker", None)
+        if declared_ticker is not None and declared_ticker != symbol:
+            raise ConfigurationError(
+                f"{_strategy_name(strategy_class)} was trained on {declared_ticker}, not "
+                f"{symbol}. It would be confidently scoring a ticker's price action against a "
+                f"different instrument's bars. Pick the sizing model that matches the fund "
+                f"being simulated (e.g. ml_reachability_cowz for COWZ)."
+            )
         result = controller._simulate_single(
             step=step,
             target=target,

@@ -476,3 +476,87 @@ pull-and-rebuild command to run themselves.
 * `ml_insights.py`'s 404-with-hint relies on the workstation actually
   having run the `tools/*.py` pipeline — true today, but a fresh workstation
   checkout starts with an empty tab until that is re-run.
+
+---
+
+## Phase ML-2 — ML strategy wired into the backtest engine (2026-09-07) — COMPLETE
+
+**Delivered:** `src/ml/{rolling,live_features,reachability_sizing}.py`,
+`tools/train_ml_model.py`, `tests/unit/test_ml_{rolling,optional_dependency,
+reachability_wiring}.py`; extended `src/strategy_registry.py`,
+`server/backtest.py`, `optimization_controller.py`, `ParameterForm.tsx`.
+
+Request was "hook up the ai trading model with UI... how do I select the ai
+model for simulations" -- resolved by asking one scoped question (backtest-only,
+no live capital either way) rather than guessing: build for all three funds
+with the COWZ-only-measured caveat stated in the UI, vs. COWZ-only, vs. don't
+build yet. User chose the first. `ml_reachability_rsp/_cowz/_spyd` are now
+real, selectable `SizingStrategy` entries.
+
+`pytest tests/unit -q` -> **1890 passed, 1 skipped**. `npm run build`/`npm test`
+clean. ruff clean.
+
+### Decisions worth keeping
+
+* **36 training features, not the offline dataset's 95** -- exactly what a
+  `SizingStrategy` can compute from `MarketContext` alone at inference time
+  (21 bar-local + the 15-feature volatility block the ablation already
+  singled out). Training on more than inference can supply would validate a
+  model never actually running on its own inputs.
+* **`features.py` refactored (`transformed_sources()`) so live and offline
+  share one transform implementation** for the external block, rather than
+  a second copy of the ratio-then-transform pipeline to keep in sync by hand.
+* **RSI re-derived, not reused from `src.sizing_indicators.WilderRSI`.**
+  That class implements classic Wilder seeding; the offline dataset used
+  pandas' `ewm(adjust=False)`, which converges to the same place but differs
+  during warmup and by a small persistent amount after -- confirmed by the
+  parity test, which failed against `WilderRSI` and passes against the
+  re-derived version.
+* **A calendar train/test cutoff (2024-01-01), recorded in the model's own
+  metadata sidecar as `measured_test_auc`** rather than trusted-but-unverified
+  -- because this is the first tool in the project that PERSISTS a model a
+  user can then backtest over any range, including its own training window.
+* **Confidence only shrinks a position, via `_BaselineScaledStrategy`** --
+  reused, not reimplemented, and consistent with every other model-driven
+  strategy already in `src/size_calculators.py`.
+* **No trigger override.** Shares the grid's known stranding vulnerability
+  with every strategy but `hf_local_reference`; stated in the module
+  docstring as a real, unaddressed limitation.
+* **Measured, not assumed, performance: ~25x slower per bar (~600us vs
+  ~23us).** `predict(num_threads=1, validate_features=False)` recovered
+  ~25% of the model-call cost; a deeper rewrite of the feature tracker was
+  judged not worth it against how weak the underlying signal still is.
+  Surfaced in the UI, not just the code.
+
+### Two bugs caught before they shipped, worth restating
+
+* **A ticker mismatch reintroduced the "rank_by column not found" failure
+  mode `server/backtest.py`'s own comment already named once**, buried
+  behind `optimization_controller.py`'s per-combination error isolation.
+  Caught only by driving the mismatch through the REAL API path
+  (`run_backtest`), not by unit-testing the deep guard alone. Fixed with
+  the same early check `build_config()` already does for `target_return`.
+* **`server/app.py` imports `backtest` -> `strategy_registry`
+  UNCONDITIONALLY at startup**, regardless of `VAI_BACKTEST_UPSTREAM` --
+  so a module-level `import lightgbm` in the new strategy would have
+  crashed the Pi's entire web container, not just backtesting (lightgbm is
+  never installed there). Fixed with a lazy import inside `__init__`;
+  verified by actually blocking the import and re-importing `server.app`
+  fresh, not by code inspection.
+* A third, smaller one, in the tests written to catch the first two: a
+  fixture in `test_ml_optional_dependency.py` popped modules from
+  `sys.modules` and reimported them by NAME at teardown, which is not the
+  same as restoring the ORIGINAL objects -- a sibling test file's
+  module-level `from x import y` held a now-stale reference, failing under
+  the full suite while passing standalone. Fixed by saving and restoring
+  the exact module objects by reference.
+
+### Carried gaps
+
+* Nothing reaches the paper/live loop. This strategy is `server/backtest.py`
+  and `optimization_controller.py` only.
+* No trigger override -- the stranding risk this project has repeatedly
+  measured on other strategies applies here too, unaddressed.
+* Fresh checkout needs `tools/train_ml_model.py` re-run before these three
+  strategies work at all -- `data/ml/models/` is gitignored, same as every
+  other derived data directory in this project.

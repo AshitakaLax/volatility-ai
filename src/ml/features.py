@@ -235,28 +235,30 @@ def _load(path: Path) -> pd.Series:
     return series[~series.index.duplicated(keep="last")].sort_index()
 
 
-def build(
-    bar_index: pd.DatetimeIndex,
+def transformed_sources(
+    features: list[ExternalFeature],
     *,
     directory: Path | None = None,
-    features: list[ExternalFeature] | None = None,
-) -> pd.DataFrame:
-    """As-of join every available feature onto a bar index.
+) -> dict[str, ExternalIndexSeries]:
+    """Every feature's fully-transformed series, wrapped for as-of lookup.
 
-    Missing source files are SKIPPED rather than raising: the registry
-    is intentionally broader than any one machine's data directory, and
-    a partial feature matrix is more useful than an exception. What was
-    skipped is reported by `coverage()`.
+    This is the ONE place the ratio-then-transform pipeline is written.
+    build() below calls it and then does a bulk .vectorized(bar_index)
+    over the result; src/ml/live_features.py calls it and does
+    per-timestamp .scalar() lookups instead, from a SizingStrategy that
+    sees one bar at a time and has no bar_index to vectorize against.
+    Both get IDENTICAL numbers for identical inputs because both run
+    the SAME code up to this point -- which is the only way "the live
+    strategy computes what the offline dataset computed" is actually
+    true rather than merely intended.
+
+    Missing source files are SKIPPED rather than raising, same as
+    build() -- a feature catalogue wider than any one machine's data
+    directory is the whole point of src/ml/sources.py's registry.
     """
     directory = directory or default_directory()
-    features = features if features is not None else catalogue()
-
-    if bar_index.tz is None:
-        raise ValueError("build() needs a tz-aware bar index; publication lag is in UTC.")
-    bar_index = bar_index.sort_values()
-
     cache: dict[str, pd.Series] = {}
-    columns: dict[str, np.ndarray] = {}
+    result: dict[str, ExternalIndexSeries] = {}
 
     for feature in features:
         paths = [directory / name for name in feature.files]
@@ -274,7 +276,10 @@ def build(
             # filled, so a ratio updates whenever EITHER leg prints --
             # then the transform runs on the ratio itself.
             joined = (
-                pd.concat({"n": numerator, "d": denominator}, axis=1).sort_index().ffill().dropna()
+                pd.concat({"n": numerator, "d": denominator}, axis=1, sort=False)
+                .sort_index()
+                .ffill()
+                .dropna()
             )
             if joined.empty:
                 continue
@@ -289,9 +294,32 @@ def build(
         if transformed.empty:
             continue
 
-        frame = transformed.rename("close").to_frame()
-        columns[feature.name] = ExternalIndexSeries(frame).vectorized(bar_index)
+        result[feature.name] = ExternalIndexSeries(transformed.rename("close").to_frame())
 
+    return result
+
+
+def build(
+    bar_index: pd.DatetimeIndex,
+    *,
+    directory: Path | None = None,
+    features: list[ExternalFeature] | None = None,
+) -> pd.DataFrame:
+    """As-of join every available feature onto a bar index.
+
+    Missing source files are SKIPPED rather than raising: the registry
+    is intentionally broader than any one machine's data directory, and
+    a partial feature matrix is more useful than an exception. What was
+    skipped is reported by `coverage()`.
+    """
+    features = features if features is not None else catalogue()
+
+    if bar_index.tz is None:
+        raise ValueError("build() needs a tz-aware bar index; publication lag is in UTC.")
+    bar_index = bar_index.sort_values()
+
+    sources = transformed_sources(features, directory=directory)
+    columns = {name: series.vectorized(bar_index) for name, series in sources.items()}
     return pd.DataFrame(columns, index=bar_index)
 
 

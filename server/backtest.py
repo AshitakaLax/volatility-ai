@@ -216,6 +216,21 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
         "horizon_days": 1.0,
         "bars_per_day": 387,
     },
+    # No committed config for these three -- there is no production
+    # deployment of this strategy yet, only tools/train_ml_model.py's
+    # own measured held-out AUC (RSP 0.60, COWZ 0.57, SPYD 0.57;
+    # ml_plan.md, "Phase ML-0"). `ticker` is what makes these three
+    # entries distinct rather than duplicates: MLReachabilitySizing
+    # takes one shared class and a ticker kwarg, and the sizing-model
+    # dropdown has no per-run field editor (it submits exactly a
+    # strategy's committed defaults -- see ParameterForm.tsx), so
+    # WHICH id is picked is what selects the ticker. Simulating a fund
+    # that does not match costs a ConfigurationError naming the
+    # mismatch, not a silent wrong answer (optimization_controller.py,
+    # mirroring the existing target_return guard).
+    "ml_reachability_rsp": {"max_trade_pct": 0.05, "ticker": "RSP", "confidence_floor": 0.25},
+    "ml_reachability_cowz": {"max_trade_pct": 0.05, "ticker": "COWZ", "confidence_floor": 0.25},
+    "ml_reachability_spyd": {"max_trade_pct": 0.05, "ticker": "SPYD", "confidence_floor": 0.25},
 }
 
 
@@ -309,7 +324,7 @@ def build_config(request: RunRequest) -> BacktestConfig:
             params["target_return"] = targets[0]
 
     try:
-        strategy_class(**params)
+        instance = strategy_class(**params)
     except TypeError as exc:
         missing = [name for name in required_parameters(strategy_class) if name not in params]
         detail = f"{config.strategy.strategy_id!r} cannot be built from the parameters given: {exc}"
@@ -319,6 +334,25 @@ def build_config(request: RunRequest) -> BacktestConfig:
             if suggested:
                 detail += f" Try: {suggested}"
         raise ConfigurationError(detail) from exc
+
+    # THE SAME "catch it here" REASONING, for a per-instrument model
+    # (MLReachabilitySizing) rather than a missing argument. Without
+    # this, submitting ml_reachability_cowz against RSP fails deep
+    # inside the sweep -- optimization_controller.py's own mismatch
+    # guard fires, but per-combination error isolation there turns it
+    # into an ordinary "combination failed" row, and with every
+    # combination failing the same way, the caller sees "rank_by
+    # column 'Capital Velocity Index' not found" rather than the
+    # actual reason. getattr, not isinstance, so this generalizes to
+    # any future per-instrument model declaring the same convention.
+    declared_ticker = getattr(instance, "ticker", None)
+    if declared_ticker is not None and declared_ticker not in request.tickers:
+        raise ConfigurationError(
+            f"{config.strategy.strategy_id!r} was trained on {declared_ticker}, which is not "
+            f"among the tickers being simulated ({', '.join(request.tickers)}). Pick the sizing "
+            f"model that matches the fund (e.g. ml_reachability_cowz for COWZ), or add "
+            f"{declared_ticker} to the funds being run."
+        )
 
     # Rebuilt so the alignment above is what the ENGINE sees, not just
     # what was validated. A check that passed on one set of parameters

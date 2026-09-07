@@ -19,6 +19,7 @@ from __future__ import annotations
 from src.bayesian_sizing_calculators import BayesianDualScaleSizing
 from src.exceptions import ConfigurationError
 from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from src.ml.reachability_sizing import MLReachabilitySizing
 from src.size_calculators import (
     BellCurveProbabilitySizing,
     FixedPortfolioPercentage,
@@ -32,6 +33,24 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     "rsi": RsiMomentumSizing,
     "bayesian_dual_scale": BayesianDualScaleSizing,
     "hf_local_reference": HighFrequencyLocalReferenceSizing,
+    # Three ids, one class: MLReachabilitySizing takes `ticker` as a
+    # constructor kwarg, and each id's STRATEGY_DEFAULTS entry
+    # (server/backtest.py) supplies a different one. The sizing-model
+    # dropdown has no per-run field editor -- it always submits exactly
+    # a strategy's committed defaults (see ParameterForm.tsx) -- so the
+    # ticker has to be chosen by WHICH id is picked, not by a value
+    # typed into a form. optimization_controller.py separately checks
+    # the chosen id's .ticker against the fund actually being simulated
+    # and refuses a mismatch, the same way it already does for
+    # BayesianDualScaleSizing's target_return.
+    #
+    # Only COWZ showed a measured, fold-consistent lift over the
+    # bar-only baseline (ml_plan.md, "Ablation by block"); RSP and SPYD
+    # are offered to test against, not because they are proven --
+    # server/backtest.py's /funds response and the UI both say so.
+    "ml_reachability_rsp": MLReachabilitySizing,
+    "ml_reachability_cowz": MLReachabilitySizing,
+    "ml_reachability_spyd": MLReachabilitySizing,
 }
 
 

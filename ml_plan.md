@@ -511,3 +511,78 @@ Full suite green: `pytest tests/unit -q` → 1870 passed; `npm run build` and
 Pi (checked; both configured hosts refused key auth) — the Pi-side
 `git pull && docker compose -f docker-compose.pi.yml up -d --build` needs to
 be run by the user.
+
+---
+
+## Phase ML-2 — Wired into the backtest engine as a selectable strategy (2026-09-07)
+
+Answers "how do I select the AI model for simulations": it is now a real,
+selectable, backtest-only `SizingStrategy` -- `ml_reachability_rsp` /
+`_cowz` / `_spyd` in the same dropdown as `fixed`/`hf_local_reference`/etc.
+**Still nowhere near the paper/live loop** -- see Phase ML-1's scope decision,
+unchanged.
+
+### What actually got built, and the two things that don't fit in a summary
+
+* **21 bar-local features, computed ONE BAR AT A TIME** (`src/ml/rolling.py`),
+  because `SizingStrategy` genuinely cannot see more than that: `strategy_class(**params)`
+  gets no DataFrame, only per-bar `MarketContext` -- the same constraint live
+  trading has. Pinned against the offline `features.bar_features()` batch
+  computation in `tests/unit/test_ml_rolling.py`; this caught two real bugs
+  (RSI needed re-deriving to match `ewm(adjust=False)` exactly rather than
+  classic Wilder smoothing, and the true-range buffer was missing row 0's
+  partial value, both invisible in isolation and both exact-zero once fixed).
+* **The persisted model trains on 36 features, not the offline dataset's 95** --
+  21 bar-local (`volume_ratio_390b` dropped: `MarketContext` carries no
+  volume, the same gap already deferred once for RSI-at-entry) + the
+  15-column volatility block, which `tools/ablate_ml_features.py` measured
+  as carrying nearly all of the macro lift that survived walk-forward at
+  all (+0.039 of +0.046 on COWZ). `src/ml/features.py` was refactored
+  (`transformed_sources()`) so the live and offline paths share the SAME
+  transform code for that block, not two copies to keep in sync by hand.
+* **A held-out calendar cutoff (2024-01-01), not a walk-forward average.**
+  `tools/train_ml_model.py` persists ONE model a user can then backtest
+  over any date range the UI offers -- unlike every upstream evaluation
+  tool, which throws its models away after each fold. Measured test AUC on
+  the held-out tail: RSP 0.60, COWZ 0.57, SPYD 0.57.
+* **Confidence can only shrink a position, never grow it past the base
+  ceiling.** Built on `_BaselineScaledStrategy`, the same composition
+  `RsiMomentumSizing`/`BellCurveProbabilitySizing` already use -- consistent
+  with every other model-driven strategy here, and the conservative
+  direction for three funds whose stated purpose is reducing risk.
+* **Shares the grid's stranding vulnerability.** No trigger override; this
+  changes only how much a confirmed buy is worth, matching every strategy
+  but `hf_local_reference`. Stated in the module docstring rather than
+  fixed, given the scope already spent here.
+* **Measured, not assumed, to be ~25x slower per bar** (~600us vs ~23us) --
+  a full-length run is minutes, not seconds. `predict(num_threads=1,
+  validate_features=False)` recovered about a quarter of the model-call
+  cost; rewriting the feature tracker for throughput was judged not worth
+  it given how weak the signal it feeds still is. The UI's ParameterForm
+  states this plainly when one of the three is selected, alongside the
+  "only COWZ is measured" caveat from the scope decision.
+
+### The bug this caught before it shipped
+
+First pass reintroduced a variant of a failure this project already fixed
+once (`server/backtest.py`'s own comment on missing-argument errors): a
+ticker mismatch detected deep in `optimization_controller.py`'s
+per-combination isolation surfaced to the API caller as "rank_by column
+'Capital Velocity Index' not found in results" -- true, but useless. Found
+by actually driving the mismatch through `server.backtest.run_backtest`
+(the real path a browser takes) rather than unit-testing the deep guard
+alone. Fixed by adding the SAME check `build_config()` already performs
+for `target_return`, catching it immediately with the real reason;
+`tests/unit/test_ml_reachability_wiring.py` pins both the fix and (via
+`run_sweep` directly) that the deeper guard still fires for callers that
+bypass the API layer.
+
+Also caught: the lazy-lightgbm-import guarantee (`server/app.py` imports
+`backtest` -> `strategy_registry` UNCONDITIONALLY, so a module-level
+`import lightgbm` in `reachability_sizing.py` would have crashed the
+Pi's ENTIRE web container on startup, not just backtesting -- lightgbm
+is never installed there). Verified by actually blocking `lightgbm`/
+`sklearn` at import time and re-importing `server.app` fresh
+(`tests/unit/test_ml_optional_dependency.py`), not by inspection.
+
+`pytest tests/unit -q` -> **1890 passed, 1 skipped**. `npm run build`/`npm test` clean.

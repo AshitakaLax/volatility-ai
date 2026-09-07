@@ -235,6 +235,28 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
         </CardContent>
       ) : null}
 
+      {/* Only COWZ showed a measured, fold-consistent lift over the
+          bar-only baseline (Model research tab, "Which feature category").
+          RSP and SPYD are offered to test against, not because they are
+          proven -- stating that here is cheaper than a reader assuming
+          three equally-validated options because all three are equally
+          selectable. */}
+      {model.startsWith("ml_reachability") ? (
+        <CardContent className="pt-0">
+          <p className="text-xs text-muted-foreground">
+            Research strategy, backtest-only —{" "}
+            <span className="text-foreground">
+              only {model === "ml_reachability_cowz" ? "this fund" : "COWZ"}
+            </span>{" "}
+            has shown a measured, fold-consistent edge over the bar-only baseline (see the{" "}
+            <span className="text-foreground">Model research</span> tab); the others are here to
+            test against, not because they are proven. It also runs roughly 25x slower than this
+            project's other strategies — a per-bar model call, not a per-trade one — so a full
+            run is minutes, not seconds.
+          </p>
+        </CardContent>
+      ) : null}
+
       {/* intrabar is not a cosmetic setting: it fills a level TOUCHED
           during a bar rather than requiring the close to reach it, which
           this project measured at roughly 1.85x more fills on both
