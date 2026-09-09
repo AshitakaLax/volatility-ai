@@ -20,10 +20,10 @@ from pathlib import Path
 
 import pytest
 
-from src.duplicate_order_guard import DecisionState, DuplicateOrderGuard
-from src.exceptions import ReconciliationError
-from src.idempotency import compute_decision_id
-from src.persistence import LedgerStore
+from src.trading.duplicate_order_guard import DecisionState, DuplicateOrderGuard
+from src.core.exceptions import ReconciliationError
+from src.core.idempotency import compute_decision_id
+from src.core.persistence import LedgerStore
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -79,7 +79,7 @@ def test_decision_id_stable_across_processes():
         f"""
         import sys
         sys.path.insert(0, {str(REPO_ROOT)!r})
-        from src.idempotency import compute_decision_id
+        from src.core.idempotency import compute_decision_id
         print(compute_decision_id(**{DECISION_KWARGS!r}))
         """
     )
@@ -283,7 +283,7 @@ def test_state_of_reports_new_for_an_unseen_decision(store):
 
 
 def test_oms_accepts_and_echoes_client_order_id():
-    from src.order_management_system import OrderManagementSystem
+    from src.execution.order_management_system import OrderManagementSystem
 
     oms = OrderManagementSystem(mode="SIMULATION")
     decision_id = compute_decision_id(**DECISION_KWARGS)
@@ -294,7 +294,7 @@ def test_oms_accepts_and_echoes_client_order_id():
 
 
 def test_oms_client_order_id_is_optional_for_existing_callers():
-    from src.order_management_system import OrderManagementSystem
+    from src.execution.order_management_system import OrderManagementSystem
 
     oms = OrderManagementSystem(mode="SIMULATION")
     result = oms.execute_buy("TQQQ", 1000.0, 50.0)  # no client_order_id

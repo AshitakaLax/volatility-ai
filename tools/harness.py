@@ -51,8 +51,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.config import BacktestConfig
-from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from src.core.config import BacktestConfig
+from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 
 # The datasets the probes share. Named here so a path change is one edit
 # rather than eight, and so a typo fails at import rather than in the

@@ -73,7 +73,7 @@ def check_imports(report: Report) -> None:
 
 
 def check_config(report: Report, path: str):
-    from src.config import BacktestConfig
+    from src.core.config import BacktestConfig
 
     if not os.path.exists(path):
         report.add(FAIL, "config file", f"{path} does not exist")
@@ -108,7 +108,7 @@ def check_config(report: Report, path: str):
 
 def check_credentials(report: Report) -> bool:
     """Presence and shape only. NEVER prints or logs a secret value."""
-    from src.secrets import load_live_credentials
+    from src.core.secrets import load_live_credentials
 
     try:
         creds = load_live_credentials()
@@ -126,8 +126,8 @@ def check_credentials(report: Report) -> bool:
 
 def check_broker(report: Report, config) -> None:
     """One authenticated GET, proving the keys work and are the right kind."""
-    from src.alpaca_broker import AlpacaBroker
-    from src.secrets import load_live_credentials
+    from src.brokers.alpaca_broker import AlpacaBroker
+    from src.core.secrets import load_live_credentials
 
     try:
         broker = AlpacaBroker(load_live_credentials(), paper=config.live.paper_trading)
@@ -185,8 +185,8 @@ def check_extended_clock(report: Report, config) -> None:
 
     from alpaca.trading.client import TradingClient
 
-    from src.alpaca_market_data import AlpacaMarketData
-    from src.secrets import load_live_credentials
+    from src.data.alpaca_market_data import AlpacaMarketData
+    from src.core.secrets import load_live_credentials
 
     creds = load_live_credentials()
     try:
@@ -204,8 +204,8 @@ def check_market_data(report: Report, config) -> None:
     a subscription authenticates and then fails every bar request."""
     from alpaca.trading.client import TradingClient
 
-    from src.alpaca_market_data import AlpacaMarketData
-    from src.secrets import load_live_credentials
+    from src.data.alpaca_market_data import AlpacaMarketData
+    from src.core.secrets import load_live_credentials
 
     creds = load_live_credentials()
     symbol = getattr(config.live, "symbol", None) or "TQQQ"
@@ -255,7 +255,7 @@ def check_not_already_running(report: Report, db_path: str) -> None:
     a ledger that diverges from the venue while both hosts believe they
     are authoritative.
     """
-    from src.process_lock import LockHeldError, StateStoreLock
+    from src.core.process_lock import LockHeldError, StateStoreLock
 
     try:
         StateStoreLock(db_path).acquire().release()

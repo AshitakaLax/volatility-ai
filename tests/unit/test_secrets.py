@@ -1,7 +1,7 @@
 import pytest
 
-from src.exceptions import ConfigurationError
-from src.secrets import (
+from src.core.exceptions import ConfigurationError
+from src.core.secrets import (
     REDACTED,
     FidelityCredentials,
     LiveCredentials,

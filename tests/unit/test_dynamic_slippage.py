@@ -18,10 +18,10 @@ from datetime import UTC, datetime
 import pandas as pd
 import pytest
 
-from optimization_controller import OptimizationController
-from src.cost_models import DynamicSlippageModel, SlippageCommissionModel, ZeroCostModel
-from src.market_context import MarketContext
-from src.size_calculators import FixedPortfolioPercentage
+from src.optimization.optimization_controller import OptimizationController
+from src.analysis.cost_models import DynamicSlippageModel, SlippageCommissionModel, ZeroCostModel
+from src.strategies.market_context import MarketContext
+from src.strategies.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 
 

@@ -70,7 +70,7 @@ if _REPO_ROOT not in _sys.path:
 
 import pandas as pd
 
-from src.performance_analyzer import annual_returns
+from src.analysis.performance_analyzer import annual_returns
 
 TQQQ = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 SQQQ = "data/SQQQ_1Min_sip_all_ext_2016-01-01_2026-09-01.csv"

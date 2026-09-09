@@ -95,7 +95,7 @@ def fetch_daily(symbols: list[str], start: str, end: str) -> dict[str, pd.Series
     from alpaca.data.requests import StockBarsRequest
     from alpaca.data.timeframe import TimeFrame
 
-    from src.secrets import load_live_credentials
+    from src.core.secrets import load_live_credentials
 
     creds = load_live_credentials()
     client = StockHistoricalDataClient(creds.api_key_id, creds.api_secret_key)

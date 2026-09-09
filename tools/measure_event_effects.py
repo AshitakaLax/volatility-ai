@@ -108,8 +108,8 @@ if _REPO_ROOT not in _sys.path:
 import numpy as np
 import pandas as pd
 
-from src.earnings_calendar import EARNINGS_REACTION_DATES
-from src.fomc_calendar import FOMC_DECISION_DATES
+from src.data.earnings_calendar import EARNINGS_REACTION_DATES
+from src.data.fomc_calendar import FOMC_DECISION_DATES
 from tools.session_bars import (
     OPEN_WINDOW_END,
     SESSION_OPEN,

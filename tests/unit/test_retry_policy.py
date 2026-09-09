@@ -26,8 +26,8 @@ import pytest
 import requests.exceptions as rex
 from alpaca.common.exceptions import APIError, RetryException
 
-from src.exceptions import ExecutionError
-from src.retry_policy import (
+from src.core.exceptions import ExecutionError
+from src.core.retry_policy import (
     AmbiguousSubmissionError,
     ErrorClass,
     RetryConfig,

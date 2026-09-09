@@ -199,7 +199,7 @@ proliferation, just no longer claiming zero consumers.
 import re
 from pathlib import Path
 
-from src.market_context import MarketContext
+from src.strategies.market_context import MarketContext
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -409,7 +409,7 @@ def test_the_named_bayesian_strategy_now_exists_and_is_still_not_macroeconomic()
     remain the live gate; this test now guards the narrower claim that
     the Bayesian strategy did not become such a consumer.
     """
-    from src.bayesian_sizing_calculators import BayesianDualScaleSizing
+    from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 
     source = (REPO_ROOT / "src" / "bayesian_sizing_calculators.py").read_text()
 

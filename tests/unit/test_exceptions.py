@@ -12,8 +12,8 @@ Acceptance criteria:
 
 import pytest
 
-from src.data_validation import DataValidationError, validate
-from src.exceptions import (
+from src.data.data_validation import DataValidationError, validate
+from src.core.exceptions import (
     ConfigurationError,
     ExecutionError,
     PersistenceError,
@@ -22,11 +22,11 @@ from src.exceptions import (
     StrategyError,
     TradingSystemError,
 )
-from src.exceptions import (
+from src.core.exceptions import (
     DataValidationError as CanonicalDataValidationError,
 )
-from src.order_management_system import OrderManagementSystem
-from src.size_calculators import FixedPortfolioPercentage
+from src.execution.order_management_system import OrderManagementSystem
+from src.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def test_all_seven_domain_exceptions_descend_from_the_common_root():

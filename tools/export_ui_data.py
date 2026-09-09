@@ -40,9 +40,9 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from optimization_controller import OptimizationController
-from src.config import BacktestConfig
-from src.strategy_registry import resolve_strategy
+from src.optimization.optimization_controller import OptimizationController
+from src.core.config import BacktestConfig
+from src.trading.strategy_registry import resolve_strategy
 
 # Every instrument with a full-history minute file in data/. Kept here
 # rather than discovered by glob so a half-downloaded file cannot

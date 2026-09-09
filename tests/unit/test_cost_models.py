@@ -1,6 +1,6 @@
 import pytest
 
-from src.cost_models import SlippageCommissionModel, ZeroCostModel
+from src.analysis.cost_models import SlippageCommissionModel, ZeroCostModel
 
 
 def test_zero_cost_model_returns_price_unchanged_and_zero_cost():

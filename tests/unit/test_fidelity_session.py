@@ -22,8 +22,8 @@ import json
 
 import pytest
 
-from src.exceptions import ConfigurationError
-from src.fidelity_session import (
+from src.core.exceptions import ConfigurationError
+from src.brokers.fidelity_session import (
     FIDELITY_ORIGIN,
     ORDER_ENDPOINTS,
     PLACE_ENDPOINTS,

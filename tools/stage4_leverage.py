@@ -75,8 +75,8 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 warnings.filterwarnings("ignore")
 
-from src.config import BacktestConfig
-from src.indicator_library import available
+from src.core.config import BacktestConfig
+from src.strategies.indicator_library import available
 from tools.indicator_sweep import Journal, config_id, param_grid
 from tools.stage2_grid import LOOKBACKS, daily_regime, score
 from tools.stage3_grid import matched_random_regime, realised

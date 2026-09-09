@@ -14,9 +14,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from optimization_controller import OptimizationController
-from src.market_context import MarketContext
-from src.size_calculators import FixedPortfolioPercentage, SizingStrategy
+from src.optimization.optimization_controller import OptimizationController
+from src.strategies.market_context import MarketContext
+from src.strategies.size_calculators import FixedPortfolioPercentage, SizingStrategy
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "drawdown_non_trigger_bar.csv"
 GRID_STEP = 0.01

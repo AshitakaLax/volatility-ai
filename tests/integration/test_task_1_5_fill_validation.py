@@ -29,9 +29,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from optimization_controller import OptimizationController
-from src.order_management_system import OrderManagementSystem, OrderStatus
-from src.size_calculators import FixedPortfolioPercentage
+from src.optimization.optimization_controller import OptimizationController
+from src.execution.order_management_system import OrderManagementSystem, OrderStatus
+from src.strategies.size_calculators import FixedPortfolioPercentage
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv"
 
@@ -81,7 +81,7 @@ def _run_one_bar_sweep_with_stub_oms(monkeypatch, df, buy_response=None, sell_re
             created.append(stub)
             return stub
 
-    import optimization_controller as oc_module
+    import src.optimization.optimization_controller as oc_module
 
     monkeypatch.setattr(oc_module, "OrderManagementSystem", _StubOMSFactory())
 

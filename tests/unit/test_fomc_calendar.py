@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from src.fomc_calendar import is_fomc_day, is_fomc_day_at
+from src.data.fomc_calendar import is_fomc_day, is_fomc_day_at
 
 EASTERN = ZoneInfo("America/New_York")
 
@@ -53,7 +53,7 @@ def test_non_decision_dates_are_not_flagged(d):
 def test_every_quarterly_era_year_has_exactly_four_dates():
     """2016-2018: only the SEP-projection meetings (Mar/Jun/Sep/Dec)
     had a press conference -- four per year, not eight."""
-    from src.fomc_calendar import FOMC_DECISION_DATES
+    from src.data.fomc_calendar import FOMC_DECISION_DATES
 
     for year in (2016, 2017, 2018):
         assert sum(1 for d in FOMC_DECISION_DATES if d.year == year) == 4
@@ -62,7 +62,7 @@ def test_every_quarterly_era_year_has_exactly_four_dates():
 def test_every_meeting_era_year_has_eight_dates():
     """2021 onward (a full, non-pandemic year): every regular meeting
     has a press conference -- eight per year."""
-    from src.fomc_calendar import FOMC_DECISION_DATES
+    from src.data.fomc_calendar import FOMC_DECISION_DATES
 
     for year in (2021, 2022, 2023, 2024, 2025):
         assert sum(1 for d in FOMC_DECISION_DATES if d.year == year) == 8

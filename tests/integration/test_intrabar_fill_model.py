@@ -17,9 +17,9 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from optimization_controller import OptimizationController
-from src.exceptions import ConfigurationError
-from src.size_calculators import FixedPortfolioPercentage
+from src.optimization.optimization_controller import OptimizationController
+from src.core.exceptions import ConfigurationError
+from src.strategies.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 
 FIXTURE = "tests/fixtures/regression_ohlcv.csv"

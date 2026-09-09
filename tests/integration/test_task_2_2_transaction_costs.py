@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from optimization_controller import OptimizationController
-from src.cost_models import SlippageCommissionModel, TransactionCostModel, ZeroCostModel
-from src.size_calculators import FixedPortfolioPercentage
+from src.optimization.optimization_controller import OptimizationController
+from src.analysis.cost_models import SlippageCommissionModel, TransactionCostModel, ZeroCostModel
+from src.strategies.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv"

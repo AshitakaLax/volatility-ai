@@ -19,10 +19,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.exceptions import DataValidationError
-from src.external_index_series import ExternalIndexSeries
-from src.fomc_calendar import EASTERN_TZ
-from src.implied_vol_signal import (
+from src.core.exceptions import DataValidationError
+from src.data.external_index_series import ExternalIndexSeries
+from src.data.fomc_calendar import EASTERN_TZ
+from src.strategies.implied_vol_signal import (
     CHANGE_COLUMN,
     NO_SIGNAL,
     build_session_change_series,

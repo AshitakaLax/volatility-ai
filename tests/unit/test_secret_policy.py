@@ -11,10 +11,10 @@ import json
 
 import pytest
 
-from src.artifacts import DeploymentArtifact, canonical_hash
-from src.config import BacktestConfig
-from src.exceptions import ConfigurationError
-from src.secrets import (
+from src.core.artifacts import DeploymentArtifact, canonical_hash
+from src.core.config import BacktestConfig
+from src.core.exceptions import ConfigurationError
+from src.core.secrets import (
     API_KEY_ID_ENV_VAR,
     API_SECRET_KEY_ENV_VAR,
     REDACTED,

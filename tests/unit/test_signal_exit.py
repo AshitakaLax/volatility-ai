@@ -19,12 +19,12 @@ from __future__ import annotations
 
 import pytest
 
-from optimization_controller import OptimizationController
-from src import decision_cycle
-from src.cost_models import ZeroCostModel
-from src.ledger import AssetLotLedger
-from src.no_loss_guard import NoLossViolation, SellReason, validate_sell
-from src.size_calculators import FixedPortfolioPercentage
+from src.optimization.optimization_controller import OptimizationController
+from src.trading import decision_cycle
+from src.analysis.cost_models import ZeroCostModel
+from src.core.ledger import AssetLotLedger
+from src.trading.no_loss_guard import NoLossViolation, SellReason, validate_sell
+from src.strategies.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import (
     GRID_STEP,
     PROFIT_TARGET,
@@ -318,9 +318,9 @@ def test_every_sell_site_routes_through_the_shared_helper():
     """
     import inspect
 
-    import optimization_controller
-    import src.intraday_validation
-    import src.live_trading_loop
+    import src.optimization.optimization_controller
+    import src.optimization.intraday_validation
+    import src.trading.live_trading_loop
 
     sites = {
         "_simulate_single": inspect.getsource(
@@ -357,9 +357,9 @@ def test_every_sell_site_names_the_reason_it_is_selling():
     import inspect
     import re
 
-    import optimization_controller
-    import src.intraday_validation
-    import src.live_trading_loop
+    import src.optimization.optimization_controller
+    import src.optimization.intraday_validation
+    import src.trading.live_trading_loop
 
     for name, source in (
         (
@@ -427,7 +427,7 @@ def test_a_buy_cannot_be_funded_from_unsettled_proceeds():
     test_settlement_is_not_monotonic_and_this_is_expected for why an
     aggregate cannot carry that claim.
     """
-    from optimization_controller import BacktestState
+    from src.optimization.optimization_controller import BacktestState
 
     state = BacktestState(0.0, 50.0)
     state.advance_session(1000)
@@ -441,7 +441,7 @@ def test_a_buy_cannot_be_funded_from_unsettled_proceeds():
 def test_unsettled_proceeds_still_count_as_equity():
     """They are really yours -- they just cannot be SPENT yet. Excluding
     them from equity would understate the account and corrupt drawdown."""
-    from optimization_controller import BacktestState
+    from src.optimization.optimization_controller import BacktestState
 
     state = BacktestState(1_000.0, 50.0)
     state.credit_sale(500.0, settlement_days=1)
@@ -453,7 +453,7 @@ def test_buying_power_floors_at_zero_rather_than_going_negative():
     """A buy debits total cash while unsettled is unchanged, so cash can
     legitimately fall below unsettled. That means nothing spendable, and
     a negative would silently invert the comparison at the buy gate."""
-    from optimization_controller import BacktestState
+    from src.optimization.optimization_controller import BacktestState
 
     state = BacktestState(100.0, 50.0)
     state.credit_sale(900.0, settlement_days=1)
@@ -463,7 +463,7 @@ def test_buying_power_floors_at_zero_rather_than_going_negative():
 
 def test_proceeds_settle_on_a_later_session_not_a_later_bar():
     """T+1 means the next TRADING DAY, not the next minute."""
-    from optimization_controller import BacktestState
+    from src.optimization.optimization_controller import BacktestState
 
     state = BacktestState(0.0, 50.0)
     state.advance_session(1000)

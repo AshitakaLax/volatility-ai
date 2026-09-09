@@ -17,7 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.app import app
-from src.persistence import LedgerStore
+from src.core.persistence import LedgerStore
 
 FIXTURE = "tests/fixtures/regression_ohlcv.csv"
 
@@ -83,7 +83,7 @@ class TestLiveParametersAndIndicators:
         profit target visible without diffing a config against a ledger."""
         import json as json_
 
-        from src.persistence import LedgerStore
+        from src.core.persistence import LedgerStore
 
         writer = LedgerStore(store)
         writer.set_meta(
@@ -99,7 +99,7 @@ class TestLiveParametersAndIndicators:
     def test_malformed_parameters_do_not_break_the_whole_state(self, client, store):
         """A dashboard that will not load because one metadata row is
         malformed is worse than one that says the config is unknown."""
-        from src.persistence import LedgerStore
+        from src.core.persistence import LedgerStore
 
         writer = LedgerStore(store)
         writer.set_meta("live.parameters", "{not json")
@@ -118,8 +118,8 @@ class TestLiveParametersAndIndicators:
         assert 0 <= body["rsi"] <= 100
 
         # And it agrees with WilderRSI driven directly over the same bars.
-        from src.dashboard_data import find_bar_files, load_bars
-        from src.sizing_indicators import WilderRSI
+        from src.data.dashboard_data import find_bar_files, load_bars
+        from src.strategies.sizing_indicators import WilderRSI
 
         frame = load_bars(find_bar_files("TQQQ", "data")[0], limit=max(14 * 20, 390))
         tracker = WilderRSI(period=14)
@@ -379,7 +379,7 @@ class TestStrategyParameters:
         argument fails a test rather than a user's run.
         """
         from server.backtest import STRATEGY_DEFAULTS
-        from src.strategy_registry import STRATEGIES
+        from src.trading.strategy_registry import STRATEGIES
 
         for name, cls in STRATEGIES.items():
             defaults = STRATEGY_DEFAULTS.get(name)

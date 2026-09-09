@@ -99,7 +99,7 @@ def test_each_documented_example_runs_verbatim(tmp_path, name):
 
 def test_the_documented_yaml_is_accepted_by_the_real_config_loader(tmp_path):
     """The YAML is validated by BacktestConfig, not merely parsed."""
-    from src.config import BacktestConfig
+    from src.core.config import BacktestConfig
 
     path = tmp_path / "config.yaml"
     path.write_text(block("example-config.yaml"), encoding="utf-8")
@@ -123,7 +123,7 @@ def test_every_documented_yaml_field_is_a_real_config_field():
 
     import yaml
 
-    from src import config as config_module
+    from src.core import config as config_module
 
     sections = {
         "strategy": config_module.StrategyConfig,
@@ -148,7 +148,7 @@ def test_every_documented_yaml_field_is_a_real_config_field():
 
 def test_every_documented_run_sweep_kwarg_is_real():
     """The capabilities list is checked against the real signature."""
-    from optimization_controller import OptimizationController
+    from src.optimization.optimization_controller import OptimizationController
 
     documented = set(re.findall(r"^- (\w+)", block("run-sweep-kwargs"), flags=re.MULTILINE))
     real = set(inspect.signature(OptimizationController.run_sweep).parameters)
@@ -161,7 +161,7 @@ def test_the_example_uses_the_real_constructor_keyword():
     """Guards the drift this file was originally written to catch:
     Run_Instructions once documented `allocations`, which has never
     been a parameter of anything."""
-    from src.size_calculators import FixedPortfolioPercentage
+    from src.strategies.size_calculators import FixedPortfolioPercentage
 
     FixedPortfolioPercentage(allocation_pct=0.05)  # TypeError if the name is wrong
 

@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
-from src.exceptions import ConfigurationError
+from src.core.exceptions import ConfigurationError
 
 # The lifecycle a parameter set must walk. Index order IS the required
 # order -- promotion may not skip a stage.

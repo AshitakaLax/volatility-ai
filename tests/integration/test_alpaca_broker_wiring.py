@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import pytest
 
-from src.alpaca_broker import AlpacaBroker, alpaca_broker_factory
-from src.config import BacktestConfig
-from src.live_execution import LiveExecutionLoop
-from src.retry_policy import RetryConfig
-from src.size_calculators import FixedPortfolioPercentage
+from src.brokers.alpaca_broker import AlpacaBroker, alpaca_broker_factory
+from src.core.config import BacktestConfig
+from src.execution.live_execution import LiveExecutionLoop
+from src.core.retry_policy import RetryConfig
+from src.strategies.size_calculators import FixedPortfolioPercentage
 from tests.unit.test_alpaca_broker import FakeClient
 
 FAST_RETRY = RetryConfig(base_delay=0.001, max_attempts=2)
@@ -61,7 +61,7 @@ def test_start_builds_an_alpaca_broker_through_the_factory(credentials_in_env):
 def test_loop_submit_buy_reaches_a_notional_alpaca_request(credentials_in_env):
     """The full path: LiveDecision -> loop -> protocol -> adapter ->
     alpaca-py request object."""
-    from src.live_execution import LiveDecision
+    from src.execution.live_execution import LiveDecision
 
     client = FakeClient()
     loop = build_loop(client, credentials_in_env)
@@ -79,7 +79,7 @@ def test_loop_submit_buy_reaches_a_notional_alpaca_request(credentials_in_env):
 
 def test_loop_submits_the_clamped_value_not_the_strategy_proposal(credentials_in_env):
     """A risk clamp that the adapter ignored would be no clamp at all."""
-    from src.live_execution import LiveDecision
+    from src.execution.live_execution import LiveDecision
 
     client = FakeClient()
     loop = build_loop(client, credentials_in_env)
@@ -98,7 +98,7 @@ def test_loop_submits_the_clamped_value_not_the_strategy_proposal(credentials_in
 
 def test_a_fully_clamped_decision_never_contacts_the_broker(credentials_in_env):
     """Zero clamped value must end quietly, not as a rejected order."""
-    from src.live_execution import LiveDecision
+    from src.execution.live_execution import LiveDecision
 
     client = FakeClient()
     loop = build_loop(client, credentials_in_env)
@@ -140,7 +140,7 @@ def test_a_live_config_without_promotion_evidence_is_refused(credentials_in_env)
     reached real capital anyway. Asserted here so a future change that
     routes around the gate fails loudly.
     """
-    from src.exceptions import ConfigurationError
+    from src.core.exceptions import ConfigurationError
 
     with pytest.raises(ConfigurationError, match="promotion"):
         build_loop(FakeClient(), credentials_in_env, paper=False)

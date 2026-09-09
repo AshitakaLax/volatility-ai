@@ -14,9 +14,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.bayesian_sizing_calculators import BayesianDualScaleSizing, DecayedBetaPosterior
-from src.exceptions import ConfigurationError
-from src.market_context import MarketContext
+from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing, DecayedBetaPosterior
+from src.core.exceptions import ConfigurationError
+from src.strategies.market_context import MarketContext
 
 EQUITY = 100_000.0
 
@@ -394,7 +394,7 @@ def test_lookback_days_none_reproduces_the_default_trigger():
     """The default (off) behavior must be byte-for-byte the base
     class's formula -- every existing config's measured results must
     stay unchanged."""
-    from src.size_calculators import SizingStrategy
+    from src.strategies.size_calculators import SizingStrategy
 
     s = make(lookback_days=None)
     feed(s, [100.0, 101.0, 102.0])
@@ -550,7 +550,7 @@ def test_vol_scale_multiplies_independently_of_the_posterior():
 
 
 def a_lot_ledger():
-    from src.ledger import AssetLotLedger
+    from src.core.ledger import AssetLotLedger
 
     return AssetLotLedger()
 
@@ -625,7 +625,7 @@ def test_retain_lots_is_a_no_op_when_trailing_is_off():
 def test_decision_cycle_drives_bayesian_trailing_the_same_way_as_hf():
     """End-to-end through the shared helper every harvest path calls --
     not just the strategy's own method in isolation."""
-    from src import decision_cycle
+    from src.trading import decision_cycle
 
     ledger = a_lot_ledger()
     lot = ledger.register_buy("o1", "TQQQ", 100.0, 10.0, 0.30)

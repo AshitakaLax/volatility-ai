@@ -13,14 +13,14 @@ Acceptance criteria:
 
 import pytest
 
-from src.duplicate_order_guard import DuplicateOrderGuard
-from src.exceptions import ExecutionError
-from src.idempotency import compute_decision_id
-from src.ledger import AssetLotLedger
-from src.persistence import LedgerStore
-from src.reconciliation import BrokerSnapshot, Reconciler
-from src.risk_manager import CircuitBreaker, CircuitBreakerState
-from src.runtime_lifecycle import BLOCKED_STATES, STARTUP_SEQUENCE, RuntimeLifecycle, RuntimeState
+from src.trading.duplicate_order_guard import DuplicateOrderGuard
+from src.core.exceptions import ExecutionError
+from src.core.idempotency import compute_decision_id
+from src.core.ledger import AssetLotLedger
+from src.core.persistence import LedgerStore
+from src.execution.reconciliation import BrokerSnapshot, Reconciler
+from src.trading.risk_manager import CircuitBreaker, CircuitBreakerState
+from src.trading.runtime_lifecycle import BLOCKED_STATES, STARTUP_SEQUENCE, RuntimeLifecycle, RuntimeState
 
 
 class FakeClock:

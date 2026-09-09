@@ -16,11 +16,11 @@ import json
 
 import pytest
 
-from src.artifacts import DeploymentArtifact
-from src.config import BacktestConfig
-from src.exceptions import ConfigurationError
-from src.live_execution import LiveExecutionLoop
-from src.order_management_system import NON_CAPITAL_MODES, Mode, OrderManagementSystem
+from src.core.artifacts import DeploymentArtifact
+from src.core.config import BacktestConfig
+from src.core.exceptions import ConfigurationError
+from src.execution.live_execution import LiveExecutionLoop
+from src.execution.order_management_system import NON_CAPITAL_MODES, Mode, OrderManagementSystem
 from src.promotion import (
     PROMOTION_STAGES,
     PaperTradingRecord,
@@ -28,8 +28,8 @@ from src.promotion import (
     assert_promotable_to_live,
     evaluate_promotion,
 )
-from src.secrets import API_KEY_ID_ENV_VAR, API_SECRET_KEY_ENV_VAR
-from src.size_calculators import FixedPortfolioPercentage
+from src.core.secrets import API_KEY_ID_ENV_VAR, API_SECRET_KEY_ENV_VAR
+from src.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def _good_record(**overrides) -> PaperTradingRecord:

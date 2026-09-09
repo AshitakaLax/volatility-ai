@@ -92,9 +92,9 @@ import logging
 
 import pandas as pd
 
-from optimization_controller import OptimizationController
-from src.config import BacktestConfig
-from src.risk_manager import RiskManager
+from src.optimization.optimization_controller import OptimizationController
+from src.core.config import BacktestConfig
+from src.trading.risk_manager import RiskManager
 from tools.harness import Escalating
 
 DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"

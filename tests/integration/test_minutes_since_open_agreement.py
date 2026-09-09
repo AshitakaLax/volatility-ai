@@ -35,8 +35,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from optimization_controller import OptimizationController
-from src.intraday_profile import SESSION_MINUTES, minutes_since_open
+from src.optimization.optimization_controller import OptimizationController
+from src.optimization.intraday_profile import SESSION_MINUTES, minutes_since_open
 
 # Both 2026 US DST transitions, plus an ordinary winter and summer day.
 # 2026-03-08 is the spring-forward Sunday and 2026-11-01 the fall-back

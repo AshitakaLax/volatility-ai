@@ -78,11 +78,11 @@ import logging
 
 import pandas as pd
 
-from optimization_controller import OptimizationController
-from src.config import BacktestConfig
-from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
-from src.performance_analyzer import annual_returns
-from src.risk_manager import RiskManager
+from src.optimization.optimization_controller import OptimizationController
+from src.core.config import BacktestConfig
+from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from src.analysis.performance_analyzer import annual_returns
+from src.trading.risk_manager import RiskManager
 
 DATA = "data/SQQQ_rth_full.csv"
 

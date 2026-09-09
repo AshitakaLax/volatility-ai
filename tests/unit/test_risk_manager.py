@@ -1,7 +1,7 @@
 import pytest
 
-from src.exceptions import ConfigurationError
-from src.risk_manager import RiskManager
+from src.core.exceptions import ConfigurationError
+from src.trading.risk_manager import RiskManager
 
 
 def test_both_limits_none_is_a_no_op_for_any_input():

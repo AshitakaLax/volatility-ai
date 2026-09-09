@@ -55,9 +55,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from src.dashboard_data import load_state
-from src.persistence import LedgerStore
-from src.risk_manager import CircuitBreaker
+from src.data.dashboard_data import load_state
+from src.core.persistence import LedgerStore
+from src.trading.risk_manager import CircuitBreaker
 
 router = APIRouter(prefix="/api/live", tags=["control"])
 

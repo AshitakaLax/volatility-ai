@@ -48,12 +48,12 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from optimization_controller import OptimizationController
+from src.optimization.optimization_controller import OptimizationController
 from server import history
 from server.jobs import JobQueue
-from src.config import BacktestConfig
-from src.exceptions import ConfigurationError
-from src.strategy_registry import STRATEGIES, resolve_strategy
+from src.core.config import BacktestConfig
+from src.core.exceptions import ConfigurationError
+from src.trading.strategy_registry import STRATEGIES, resolve_strategy
 from tools.export_ui_data import KNOWN_DATA, equity_series, executions, fund_metrics
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])

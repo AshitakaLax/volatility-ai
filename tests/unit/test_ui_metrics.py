@@ -19,7 +19,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.performance_analyzer import PerformanceAnalyzer, curve_metrics, trade_metrics
+from src.analysis.performance_analyzer import PerformanceAnalyzer, curve_metrics, trade_metrics
 
 
 def blotter(rows: list[dict]) -> pd.DataFrame:
@@ -207,9 +207,9 @@ class TestBlotterLinkage:
     def test_a_real_run_produces_joinable_buy_and_sell_rows(self):
         import pandas as pd_
 
-        from optimization_controller import OptimizationController
-        from src.config import BacktestConfig
-        from src.strategy_registry import resolve_strategy
+        from src.optimization.optimization_controller import OptimizationController
+        from src.core.config import BacktestConfig
+        from src.trading.strategy_registry import resolve_strategy
 
         frame = pd_.read_csv(
             "tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]
@@ -235,9 +235,9 @@ class TestBlotterLinkage:
         early trade into an RSI<30 query. NaN says "not yet known"."""
         import pandas as pd_
 
-        from optimization_controller import OptimizationController
-        from src.config import BacktestConfig
-        from src.strategy_registry import resolve_strategy
+        from src.optimization.optimization_controller import OptimizationController
+        from src.core.config import BacktestConfig
+        from src.trading.strategy_registry import resolve_strategy
 
         frame = pd_.read_csv(
             "tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]

@@ -9,9 +9,9 @@ Task 4.4 acceptance tests (A5).
 
 import pandas as pd
 
-from optimization_controller import OptimizationController
-from src.market_context import MarketContext
-from src.size_calculators import FixedPortfolioPercentage, SizingStrategy
+from src.optimization.optimization_controller import OptimizationController
+from src.strategies.market_context import MarketContext
+from src.strategies.size_calculators import FixedPortfolioPercentage, SizingStrategy
 from tests.fixtures.regression_baseline import BASELINE
 
 

@@ -316,7 +316,7 @@ def test_the_shipped_deployment_configs_are_valid_and_complete():
     these would otherwise only surface when a container failed to start
     in a 24/7 deployment, which is the worst place to find out.
     """
-    from src.config import BacktestConfig
+    from src.core.config import BacktestConfig
 
     for name, expected_paper in (("staging", True), ("production", False)):
         path = REPO_ROOT / "config" / f"{name}.yaml"
@@ -332,7 +332,7 @@ def test_the_shipped_deployment_configs_are_valid_and_complete():
 def test_production_config_is_the_only_one_routing_real_capital():
     """A staging config that silently pointed at real capital is the
     single most expensive configuration mistake available here."""
-    from src.config import BacktestConfig
+    from src.core.config import BacktestConfig
 
     staging = BacktestConfig.from_yaml(str(REPO_ROOT / "config" / "staging.yaml"))
     assert staging.live.paper_trading is True, "staging must never touch real capital"
@@ -349,9 +349,9 @@ def test_run_trading_loop_drives_ticks_and_shuts_down_cleanly(tmp_path, monkeypa
     """
     import importlib
 
-    from src.persistence import LedgerStore
-    from src.risk_manager import CircuitBreaker
-    from src.runtime_lifecycle import RuntimeLifecycle
+    from src.core.persistence import LedgerStore
+    from src.trading.risk_manager import CircuitBreaker
+    from src.trading.runtime_lifecycle import RuntimeLifecycle
     from tests.integration.test_live_trading_loop import (
         FakeBroker,
         FakeMarketData,
@@ -382,7 +382,7 @@ def test_run_trading_loop_drives_ticks_and_shuts_down_cleanly(tmp_path, monkeypa
 
 
 def _bayesian_live_config(target_return, profit_target, **strategy_extra):
-    from src.config import BacktestConfig
+    from src.core.config import BacktestConfig
 
     return BacktestConfig.from_dict(
         {
@@ -416,7 +416,7 @@ def test_a_live_target_return_mismatch_is_rejected_before_the_loop_starts(monkey
     parameter set real capital would actually trade."""
     import importlib
 
-    from src.exceptions import ConfigurationError
+    from src.core.exceptions import ConfigurationError
     from tests.integration.test_live_trading_loop import FakeBroker, FakeMarketData
 
     cli = importlib.import_module("cli")
@@ -439,9 +439,9 @@ def test_a_live_target_return_mismatch_is_rejected_before_the_loop_starts(monkey
 def test_a_matching_live_target_return_starts_the_loop(monkeypatch):
     import importlib
 
-    from src.persistence import LedgerStore
-    from src.risk_manager import CircuitBreaker
-    from src.runtime_lifecycle import RuntimeLifecycle
+    from src.core.persistence import LedgerStore
+    from src.trading.risk_manager import CircuitBreaker
+    from src.trading.runtime_lifecycle import RuntimeLifecycle
     from tests.integration.test_live_trading_loop import FakeBroker, FakeMarketData
 
     cli = importlib.import_module("cli")
@@ -470,9 +470,9 @@ def test_a_matching_live_target_return_starts_the_loop(monkeypatch):
 def test_allow_target_return_mismatch_lets_a_live_deployment_start(monkeypatch):
     import importlib
 
-    from src.persistence import LedgerStore
-    from src.risk_manager import CircuitBreaker
-    from src.runtime_lifecycle import RuntimeLifecycle
+    from src.core.persistence import LedgerStore
+    from src.trading.risk_manager import CircuitBreaker
+    from src.trading.runtime_lifecycle import RuntimeLifecycle
     from tests.integration.test_live_trading_loop import FakeBroker, FakeMarketData
 
     cli = importlib.import_module("cli")

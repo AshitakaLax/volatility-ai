@@ -112,6 +112,7 @@ grid:
   steps: [0.00075]
   profit_targets: [0.3]
 backtest: {symbol: TQQQ, initial_cash: 100000.0}
+#backtest: {symbol: COWZ, initial_cash: 100000.0}
 costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
 risk: {max_concurrent_lots: 6000, max_total_exposure: null}
 search: {strategy: grid, rank_by: Total Return %, direction: maximize, seed: 42}

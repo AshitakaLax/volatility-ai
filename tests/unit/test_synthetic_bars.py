@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.synthetic_bars import is_synthetic_bar
+from src.data.synthetic_bars import is_synthetic_bar
 
 
 def test_a_flat_unchanged_bar_is_synthetic():
@@ -76,7 +76,7 @@ def test_both_strategies_call_the_shared_predicate_rather_than_inlining_it():
 
     for module in ("src/high_frequency_sizing.py", "src/bayesian_sizing_calculators.py"):
         source = Path(module).read_text(encoding="utf-8")
-        assert "from src.synthetic_bars import is_synthetic_bar" in source, (
+        assert "from src.data.synthetic_bars import is_synthetic_bar" in source, (
             f"{module} no longer imports the shared predicate"
         )
         # The inlined form was `high == low and ... price == prev_price`.

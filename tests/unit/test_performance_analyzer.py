@@ -1,8 +1,8 @@
 import pandas as pd
 import pytest
 
-from src.ledger import AssetLotLedger
-from src.performance_analyzer import PerformanceAnalyzer, annual_returns
+from src.core.ledger import AssetLotLedger
+from src.analysis.performance_analyzer import PerformanceAnalyzer, annual_returns
 
 
 def test_no_trades_returns_zeroed_metrics_without_dividing_by_zero():
@@ -102,7 +102,7 @@ def test_cagr_compounds_back_to_the_total_return():
     import numpy as np
     import pandas as pd
 
-    from optimization_controller import OptimizationController
+    from src.optimization.optimization_controller import OptimizationController
 
     years = 10.63
     days = round(years * 365.25)

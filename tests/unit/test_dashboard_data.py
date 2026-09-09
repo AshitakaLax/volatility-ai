@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from src.dashboard_data import (
+from src.data.dashboard_data import (
     DashboardError,
     DeploymentState,
     Lot,
@@ -29,10 +29,10 @@ from src.dashboard_data import (
     load_order_journal,
     load_state,
 )
-from src.ledger import AssetLotLedger
-from src.live_trading_loop import _META_CASH, _META_UNSETTLED
-from src.persistence import LedgerStore
-from src.risk_manager import HALT_REASON_KEY, HALT_STATE_KEY
+from src.core.ledger import AssetLotLedger
+from src.trading.live_trading_loop import _META_CASH, _META_UNSETTLED
+from src.core.persistence import LedgerStore
+from src.trading.risk_manager import HALT_REASON_KEY, HALT_STATE_KEY
 
 
 @pytest.fixture
@@ -277,7 +277,7 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 
 @pytest.fixture
 def demo_db(tmp_path):
-    from src.live_trading_loop import _META_CASH, _META_UNSETTLED
+    from src.trading.live_trading_loop import _META_CASH, _META_UNSETTLED
 
     path = tmp_path / "demo.db"
     s = LedgerStore(str(path))
@@ -352,7 +352,7 @@ def test_no_lots_are_flagged_when_the_market_is_below_every_target(demo_db, monk
 
 
 def test_a_halt_is_shown_as_an_error_not_a_footnote(tmp_path, monkeypatch):
-    from src.live_trading_loop import _META_CASH
+    from src.trading.live_trading_loop import _META_CASH
 
     path = tmp_path / "halted.db"
     s = LedgerStore(str(path))
@@ -377,7 +377,7 @@ def test_drawdown_uses_the_persisted_high_water_mark(store, tmp_path):
     """peak_equity was loaded and never displayed, so a deployment
     approaching its halt threshold looked exactly like one that was
     not -- and drawdown is the thing the circuit breaker acts on."""
-    from src.live_trading_loop import _META_PEAK_EQUITY
+    from src.trading.live_trading_loop import _META_PEAK_EQUITY
 
     _with_lots(store, n=2)  # 20 shares at 100 and 99
     store.set_meta(_META_CASH, "1000.00")
@@ -537,7 +537,7 @@ def _tick(price=69.14, ago_seconds=0.0):
 def test_the_loops_own_tick_price_is_read_back(store, tmp_path):
     """The loop knew the price every tick and discarded it, leaving every
     reader with no mark to value the book at."""
-    from src.live_trading_loop import _META_LAST_TICK
+    from src.trading.live_trading_loop import _META_LAST_TICK
 
     store.set_meta(_META_CASH, "1000.0")
     store.set_meta(_META_LAST_TICK, _tick(69.14))
@@ -550,7 +550,7 @@ def test_tick_age_separates_a_stopped_loop_from_a_closed_market(store, tmp_path)
     """last_write_age moves on ANY write; this moves only when the loop
     actually saw a price. That is the distinction the file-mtime proxy
     could never make."""
-    from src.live_trading_loop import _META_LAST_TICK
+    from src.trading.live_trading_loop import _META_LAST_TICK
 
     store.set_meta(_META_LAST_TICK, _tick(69.14, ago_seconds=3600))
     state = load_state(str(tmp_path / "live.db"))
@@ -561,7 +561,7 @@ def test_tick_age_separates_a_stopped_loop_from_a_closed_market(store, tmp_path)
 def test_an_unreadable_tick_is_no_mark_rather_than_zero(store, tmp_path):
     """A zero would render every lot as infinitely far from its target
     and equity as cash alone -- a wrong number that looks like data."""
-    from src.live_trading_loop import _META_LAST_TICK
+    from src.trading.live_trading_loop import _META_LAST_TICK
 
     store.set_meta(_META_CASH, "1000.0")
     store.set_meta(_META_LAST_TICK, "{ not json")
@@ -610,7 +610,7 @@ def test_missing_bar_files_are_an_empty_list_not_an_error(tmp_path):
 def demo_with_tick(tmp_path):
     import pandas as pd
 
-    from src.live_trading_loop import _META_LAST_TICK, _META_PEAK_EQUITY
+    from src.trading.live_trading_loop import _META_LAST_TICK, _META_PEAK_EQUITY
 
     path = tmp_path / "demo.db"
     s = LedgerStore(str(path))

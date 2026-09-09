@@ -45,7 +45,7 @@ def readme() -> str:
 def test_the_readme_does_not_deny_the_strategy_registry(readme):
     """src/strategy_registry.py exists and is imported by the config
     layer, so a claim that there is no registry is simply false."""
-    from src.strategy_registry import STRATEGIES
+    from src.trading.strategy_registry import STRATEGIES
 
     assert STRATEGIES, "the registry is empty; this test's premise changed"
     assert "No strategy registry" not in readme, (

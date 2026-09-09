@@ -111,7 +111,7 @@ def test_the_three_escalating_copies_still_agree():
     """
     from dataclasses import dataclass
 
-    from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+    from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 
     @dataclass
     class Ctx:

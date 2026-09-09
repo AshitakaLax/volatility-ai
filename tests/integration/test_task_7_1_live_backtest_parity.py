@@ -22,15 +22,15 @@ from datetime import UTC, datetime
 import pandas as pd
 import pytest
 
-from optimization_controller import OptimizationController
-from src import decision_cycle as decision_cycle_module
-from src.config import BacktestConfig
-from src.exceptions import ConfigurationError
-from src.live_execution import LiveExecutionLoop
-from src.market_context import MarketContext
-from src.risk_manager import RiskManager
-from src.secrets import API_KEY_ID_ENV_VAR, API_SECRET_KEY_ENV_VAR
-from src.size_calculators import FixedPortfolioPercentage, SizingStrategy
+from src.optimization.optimization_controller import OptimizationController
+from src.trading import decision_cycle as decision_cycle_module
+from src.core.config import BacktestConfig
+from src.core.exceptions import ConfigurationError
+from src.execution.live_execution import LiveExecutionLoop
+from src.strategies.market_context import MarketContext
+from src.trading.risk_manager import RiskManager
+from src.core.secrets import API_KEY_ID_ENV_VAR, API_SECRET_KEY_ENV_VAR
+from src.strategies.size_calculators import FixedPortfolioPercentage, SizingStrategy
 
 
 class RecordingStrategy(SizingStrategy):
@@ -102,8 +102,8 @@ def _context(close: float, cash: float = 100_000.0, equity: float = 100_000.0) -
 def test_both_paths_route_through_the_shared_decision_cycle_module():
     import inspect
 
-    import optimization_controller
-    import src.live_execution
+    import src.optimization.optimization_controller
+    import src.execution.live_execution
 
     backtest_src = inspect.getsource(
         optimization_controller.OptimizationController._simulate_single

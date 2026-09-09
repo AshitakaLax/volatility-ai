@@ -19,10 +19,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from optimization_controller import OptimizationController
-from src.cost_models import SlippageCommissionModel
-from src.risk_manager import RiskManager
-from src.size_calculators import FixedPortfolioPercentage
+from src.optimization.optimization_controller import OptimizationController
+from src.analysis.cost_models import SlippageCommissionModel
+from src.trading.risk_manager import RiskManager
+from src.strategies.size_calculators import FixedPortfolioPercentage
 
 INITIAL_CASH = 100_000.0
 

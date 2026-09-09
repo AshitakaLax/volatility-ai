@@ -1,7 +1,7 @@
 import pytest
 
-from src.exceptions import ConfigurationError
-from src.order_management_system import OrderManagementSystem, OrderStatus
+from src.core.exceptions import ConfigurationError
+from src.execution.order_management_system import OrderManagementSystem, OrderStatus
 from src.promotion import PaperTradingRecord, evaluate_promotion
 
 

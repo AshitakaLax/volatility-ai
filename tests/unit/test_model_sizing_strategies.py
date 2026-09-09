@@ -14,9 +14,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.exceptions import ConfigurationError
-from src.market_context import MarketContext
-from src.size_calculators import BellCurveProbabilitySizing, RsiMomentumSizing
+from src.core.exceptions import ConfigurationError
+from src.strategies.market_context import MarketContext
+from src.strategies.size_calculators import BellCurveProbabilitySizing, RsiMomentumSizing
 
 EQUITY = 100_000.0
 CEILING = EQUITY * 0.05

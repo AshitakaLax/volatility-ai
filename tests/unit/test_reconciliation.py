@@ -12,11 +12,11 @@ Every row of the 2.7 reconciliation decision table has a test.
 
 import pytest
 
-from src.ledger import AssetLotLedger
-from src.order_lifecycle import TERMINAL_STATES, OrderRecord, OrderState
-from src.persistence import LedgerStore
-from src.reconciliation import BrokerSnapshot, Reconciler, ReconciliationOutcome
-from src.risk_manager import CircuitBreaker, CircuitBreakerState
+from src.core.ledger import AssetLotLedger
+from src.execution.order_lifecycle import TERMINAL_STATES, OrderRecord, OrderState
+from src.core.persistence import LedgerStore
+from src.execution.reconciliation import BrokerSnapshot, Reconciler, ReconciliationOutcome
+from src.trading.risk_manager import CircuitBreaker, CircuitBreakerState
 
 
 @pytest.fixture

@@ -12,10 +12,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from optimization_controller import OptimizationController
-from src.exceptions import ConfigurationError
-from src.size_calculators import FixedPortfolioPercentage
-from src.walk_forward import WalkForwardRunner
+from src.optimization.optimization_controller import OptimizationController
+from src.core.exceptions import ConfigurationError
+from src.strategies.size_calculators import FixedPortfolioPercentage
+from src.optimization.walk_forward import WalkForwardRunner
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv"
 

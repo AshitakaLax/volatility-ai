@@ -6,10 +6,10 @@ chat this was produced in.
 
 import pytest
 
-from src.exceptions import ConfigurationError
-from src.order_management_system import Mode, OrderManagementSystem
-from src.risk_manager import RiskManager
-from src.size_calculators import FixedPortfolioPercentage
+from src.core.exceptions import ConfigurationError
+from src.execution.order_management_system import Mode, OrderManagementSystem
+from src.trading.risk_manager import RiskManager
+from src.strategies.size_calculators import FixedPortfolioPercentage
 
 # --- FixedPortfolioPercentage: percentage / allocation_pct dual support ---
 

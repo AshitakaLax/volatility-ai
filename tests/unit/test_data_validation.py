@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.data_validation import DataValidationError, validate
+from src.data.data_validation import DataValidationError, validate
 
 
 def _df(closes, start="2024-01-01"):

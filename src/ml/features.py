@@ -49,7 +49,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.external_index_series import ExternalIndexSeries
+from src.data.external_index_series import ExternalIndexSeries
 from src.ml.sources import default_directory
 
 # Trading days. 21 ~ a month, 63 ~ a quarter, 252 ~ a year.

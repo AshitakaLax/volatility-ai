@@ -60,7 +60,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 warnings.filterwarnings("ignore")
 
-from src.indicator_library import (
+from src.strategies.indicator_library import (
     available,
     compute,
     exposure,

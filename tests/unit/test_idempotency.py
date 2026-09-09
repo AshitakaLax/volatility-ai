@@ -12,9 +12,9 @@ Task 4.10 acceptance tests.
 
 import pandas as pd
 
-from optimization_controller import OptimizationController
-from src.idempotency import ProcessedEventStore
-from src.size_calculators import FixedPortfolioPercentage
+from src.optimization.optimization_controller import OptimizationController
+from src.core.idempotency import ProcessedEventStore
+from src.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def _load_fixture() -> pd.DataFrame:
@@ -98,7 +98,7 @@ def test_simulate_single_applies_a_collided_fill_id_exactly_once(monkeypatch):
     df = _load_fixture()
     controller = OptimizationController(historical_data=df)
 
-    from src.order_management_system import OrderManagementSystem as RealOMS
+    from src.execution.order_management_system import OrderManagementSystem as RealOMS
 
     class _FixedIdOMS:
         def __init__(self, mode="SIMULATION"):
@@ -112,7 +112,7 @@ def test_simulate_single_applies_a_collided_fill_id_exactly_once(monkeypatch):
         def execute_sell(self, symbol, qty, price):
             return self._real.execute_sell(symbol, qty, price)
 
-    import optimization_controller as oc_module
+    import src.optimization.optimization_controller as oc_module
 
     monkeypatch.setattr(oc_module, "OrderManagementSystem", _FixedIdOMS)
 
@@ -131,7 +131,7 @@ def test_simulate_single_applies_a_collided_fill_id_exactly_once(monkeypatch):
 
 
 def test_module_documents_the_shared_id_scheme_for_future_tasks():
-    import src.idempotency as idempotency_module
+    import src.core.idempotency as idempotency_module
 
     doc = idempotency_module.__doc__
     assert "7.4" in doc

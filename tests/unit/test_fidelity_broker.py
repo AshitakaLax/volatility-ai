@@ -20,17 +20,17 @@ from pathlib import Path
 
 import pytest
 
-from src import fidelity_broker
-from src.exceptions import ConfigurationError, ExecutionError
-from src.fidelity_broker import (
+from src.brokers import fidelity_broker
+from src.core.exceptions import ConfigurationError, ExecutionError
+from src.brokers.fidelity_broker import (
     PENDING_PATH,
     PREVIEW_PATH,
     FidelityBroker,
     FidelityOrder,
     derive_order_state,
 )
-from src.fidelity_session import PLACE_ENDPOINTS, FidelitySession
-from src.order_lifecycle import OrderState
+from src.brokers.fidelity_session import PLACE_ENDPOINTS, FidelitySession
+from src.execution.order_lifecycle import OrderState
 
 # A DELIBERATELY FAKE account number. This was the operator's real
 # Fidelity account until it was noticed that this repository is public,

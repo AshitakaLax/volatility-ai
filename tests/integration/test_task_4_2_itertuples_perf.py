@@ -18,8 +18,8 @@ import timeit
 
 import pandas as pd
 
-from optimization_controller import OptimizationController
-from src.size_calculators import FixedPortfolioPercentage
+from src.optimization.optimization_controller import OptimizationController
+from src.strategies.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 
 

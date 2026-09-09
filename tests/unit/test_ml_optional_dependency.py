@@ -92,8 +92,8 @@ def test_strategy_registry_imports_and_lists_ml_strategies(lightgbm_and_sklearn_
 def test_only_constructing_the_ml_strategy_needs_the_missing_dependency(
     lightgbm_and_sklearn_unavailable,
 ):
-    from src.exceptions import ConfigurationError
-    from src.strategy_registry import resolve_strategy
+    from src.core.exceptions import ConfigurationError
+    from src.trading.strategy_registry import resolve_strategy
 
     with pytest.raises(ConfigurationError, match=r"requirements-ml.txt"):
         resolve_strategy("ml_reachability_cowz")(max_trade_pct=0.05, ticker="COWZ")

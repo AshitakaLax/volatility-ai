@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import pytest
 
-# Deliberately NOT `from src.strategy_registry import STRATEGIES` at
+# Deliberately NOT `from src.trading.strategy_registry import STRATEGIES` at
 # module level: that snapshots the dict object at COLLECTION time, and
 # test_ml_optional_dependency.py in this same suite legitimately pops
 # and re-imports src.ml.reachability_sizing / src.strategy_registry to
@@ -37,8 +37,8 @@ import pytest
 # reading .STRATEGIES/.resolve_strategy off it fresh each time sidesteps
 # the whole class of bug rather than requiring every OTHER test file
 # to leave global module state pristine.
-import src.strategy_registry as strategy_registry
-from src.exceptions import ConfigurationError
+import src.trading.strategy_registry as strategy_registry
+from src.core.exceptions import ConfigurationError
 
 
 def test_all_three_tickers_are_registered_to_the_same_class():
@@ -116,7 +116,7 @@ def test_the_deeper_guard_in_optimization_controller_also_names_the_mismatch(cap
     """
     import pandas as pd
 
-    from optimization_controller import OptimizationController
+    from src.optimization.optimization_controller import OptimizationController
 
     index = pd.date_range("2024-01-02 14:30", periods=200, freq="1min", tz="UTC")
     frame = pd.DataFrame(

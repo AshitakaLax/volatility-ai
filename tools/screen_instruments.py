@@ -73,9 +73,9 @@ _REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _REPO_ROOT not in _sys.path:
     _sys.path.insert(0, _REPO_ROOT)
 
-from src.data_validation import validate
-from src.hf_market_data import HFMarketData
-from src.historical_data import FetchSpec, write_csv
+from src.data.data_validation import validate
+from src.data.hf_market_data import HFMarketData
+from src.data.historical_data import FetchSpec, write_csv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 logger = logging.getLogger("screen")

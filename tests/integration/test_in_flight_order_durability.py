@@ -32,10 +32,10 @@ from datetime import timedelta
 
 import pytest
 
-from src.exceptions import PersistenceError
-from src.fill_accounting import FillTracker
-from src.live_trading_loop import _META_OPEN_ORDERS, _TrackedOrder
-from src.no_loss_guard import SellReason
+from src.core.exceptions import PersistenceError
+from src.execution.fill_accounting import FillTracker
+from src.trading.live_trading_loop import _META_OPEN_ORDERS, _TrackedOrder
+from src.trading.no_loss_guard import SellReason
 from tests.integration.test_live_trading_loop import (
     BASE_TS,
     FakeBroker,

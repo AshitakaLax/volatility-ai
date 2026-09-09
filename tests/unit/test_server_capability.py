@@ -24,7 +24,7 @@ SERVER = Path(__file__).resolve().parents[2] / "server"
 
 # Anything that could reach a venue, a credential, or an order. Matched
 # against imported MODULE names, so `src.alpaca_broker` and
-# `from src.alpaca_broker import X` are both caught.
+# `from src.brokers.alpaca_broker import X` are both caught.
 FORBIDDEN_MODULES = (
     "alpaca",
     "alpaca_broker",

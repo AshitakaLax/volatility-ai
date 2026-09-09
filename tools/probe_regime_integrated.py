@@ -94,12 +94,12 @@ import logging
 
 import pandas as pd
 
-from optimization_controller import OptimizationController
-from src.config import BacktestConfig
-from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
-from src.performance_analyzer import annual_returns
-from src.risk_manager import RiskManager
-from src.sizing_indicators import RollingMean
+from src.optimization.optimization_controller import OptimizationController
+from src.core.config import BacktestConfig
+from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from src.analysis.performance_analyzer import annual_returns
+from src.trading.risk_manager import RiskManager
+from src.strategies.sizing_indicators import RollingMean
 
 DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 

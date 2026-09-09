@@ -80,10 +80,10 @@ import logging
 
 import pandas as pd
 
-from optimization_controller import OptimizationController
-from src.config import BacktestConfig
-from src.performance_analyzer import annual_returns
-from src.risk_manager import RiskManager
+from src.optimization.optimization_controller import OptimizationController
+from src.core.config import BacktestConfig
+from src.analysis.performance_analyzer import annual_returns
+from src.trading.risk_manager import RiskManager
 from tools.probe_downturn_tactics import Escalating
 from tools.probe_regime_integrated import RegimeSwitched
 from tools.probe_vol_filtered_regime import (

@@ -18,9 +18,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from optimization_controller import OptimizationController
-from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
-from src.size_calculators import FixedPortfolioPercentage
+from src.optimization.optimization_controller import OptimizationController
+from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from src.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def _chop_fixture(n: int = 2000, seed: int = 7) -> pd.DataFrame:

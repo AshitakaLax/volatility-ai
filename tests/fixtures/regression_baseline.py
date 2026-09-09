@@ -48,8 +48,8 @@ _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from optimization_controller import OptimizationController  # noqa: E402
-from src.size_calculators import FixedPortfolioPercentage  # noqa: E402
+from src.optimization.optimization_controller import OptimizationController  # noqa: E402
+from src.strategies.size_calculators import FixedPortfolioPercentage  # noqa: E402
 
 OHLCV_FIXTURE_PATH = os.path.join(_THIS_DIR, "regression_ohlcv.csv")
 

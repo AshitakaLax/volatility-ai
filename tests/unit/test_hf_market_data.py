@@ -16,9 +16,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.exceptions import ConfigurationError, DataValidationError
-from src.hf_market_data import HFMarketData
-from src.historical_data import FetchSpec
+from src.core.exceptions import ConfigurationError, DataValidationError
+from src.data.hf_market_data import HFMarketData
+from src.data.historical_data import FetchSpec
 
 
 def bar(dt: str, close: float = 100.0, volume: float = 1000.0) -> dict:
@@ -203,7 +203,7 @@ def uniform_frame(times, closes=None, volumes=None):
 
 
 def test_every_session_gets_the_same_bar_count():
-    from src.historical_data import resample_to_uniform_minutes
+    from src.data.historical_data import resample_to_uniform_minutes
 
     df = uniform_frame(["09:30", "09:33", "16:05"])
     out, synth = resample_to_uniform_minutes(df)
@@ -217,7 +217,7 @@ def test_every_session_gets_the_same_bar_count():
 
 def test_synthesized_bars_are_flat_and_zero_volume():
     """They must claim 'nothing traded, price stood', never a move."""
-    from src.historical_data import resample_to_uniform_minutes
+    from src.data.historical_data import resample_to_uniform_minutes
 
     df = uniform_frame(["09:30", "09:33"], closes=[100.0, 105.0])
     out, _ = resample_to_uniform_minutes(df)
@@ -233,7 +233,7 @@ def test_synthesized_bars_are_flat_and_zero_volume():
 
 def test_a_flat_synthetic_bar_cannot_manufacture_an_intrabar_fill():
     """high == low means it reaches no level it was not already at."""
-    from src.historical_data import resample_to_uniform_minutes
+    from src.data.historical_data import resample_to_uniform_minutes
 
     df = uniform_frame(["09:30", "09:35"], closes=[100.0, 100.0])
     out, _ = resample_to_uniform_minutes(df)
@@ -244,7 +244,7 @@ def test_a_flat_synthetic_bar_cannot_manufacture_an_intrabar_fill():
 
 
 def test_real_bars_are_left_untouched():
-    from src.historical_data import resample_to_uniform_minutes
+    from src.data.historical_data import resample_to_uniform_minutes
 
     df = uniform_frame(["09:30", "09:31"], closes=[100.0, 101.0], volumes=[5.0, 7.0])
     out, _ = resample_to_uniform_minutes(df)
@@ -259,7 +259,7 @@ def test_real_bars_are_left_untouched():
 def test_absent_sessions_are_never_invented():
     """Only minutes inside a session that already traded are filled --
     a weekend or holiday must not appear."""
-    from src.historical_data import resample_to_uniform_minutes
+    from src.data.historical_data import resample_to_uniform_minutes
 
     df = uniform_frame(["09:30"])
     out, _ = resample_to_uniform_minutes(df)
@@ -271,7 +271,7 @@ def test_absent_sessions_are_never_invented():
 def test_off_grid_prints_outside_the_window_are_dropped():
     """A 03:59 print would otherwise survive as an off-grid row and
     break the exact bar count."""
-    from src.historical_data import resample_to_uniform_minutes
+    from src.data.historical_data import resample_to_uniform_minutes
 
     df = uniform_frame(["03:59", "09:30"])
     out, _ = resample_to_uniform_minutes(df)
@@ -284,7 +284,7 @@ def test_off_grid_prints_outside_the_window_are_dropped():
 def test_an_empty_frame_is_returned_unchanged():
     import pandas as pd
 
-    from src.historical_data import resample_to_uniform_minutes
+    from src.data.historical_data import resample_to_uniform_minutes
 
     empty = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
     empty.index = pd.DatetimeIndex([], tz="UTC")

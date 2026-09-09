@@ -9,11 +9,11 @@ import re
 
 import pytest
 
-from src.broker_selection import build_broker
-from src.config import BacktestConfig
-from src.exceptions import ConfigurationError
-from src.fidelity_broker import FidelityBroker
-from src.secrets import LiveCredentials
+from src.brokers.broker_selection import build_broker
+from src.core.config import BacktestConfig
+from src.core.exceptions import ConfigurationError
+from src.brokers.fidelity_broker import FidelityBroker
+from src.core.secrets import LiveCredentials
 from tests.unit.test_fidelity_broker import ACCOUNT, FakeSession
 
 CREDS = LiveCredentials(api_key_id="PKTEST", api_secret_key="secret")

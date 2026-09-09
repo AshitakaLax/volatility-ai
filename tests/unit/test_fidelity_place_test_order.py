@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-import fidelity_place_test_order as script
-from src.fidelity_placing_broker import FileConfNumJournal
-from src.fidelity_session import PLACE_ENDPOINTS
+import src.scripts.fidelity_place_test_order as script
+from src.brokers.fidelity_placing_broker import FileConfNumJournal
+from src.brokers.fidelity_session import PLACE_ENDPOINTS
 
 PREVIEW = "/ftgw/digital/trade-equity/previewSrvc"
 ACCOUNT = "999888777"
@@ -71,10 +71,10 @@ def test_order_endpoints_are_unlocked_only_when_a_place_is_intended(kw, should_p
 
 
 def test_the_transport_refuses_placing_when_not_unlocked():
-    from src.fidelity_session import FidelitySession
+    from src.brokers.fidelity_session import FidelitySession
 
     session = FidelitySession(object(), allow_order_endpoints=False, allow_preview_endpoints=True)
-    from src.exceptions import ConfigurationError
+    from src.core.exceptions import ConfigurationError
 
     for path in PLACE_ENDPOINTS:
         with pytest.raises(ConfigurationError, match="PLACES OR CANCELS A REAL ORDER"):

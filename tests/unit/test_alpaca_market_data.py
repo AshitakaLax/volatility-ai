@@ -15,8 +15,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.alpaca_market_data import AlpacaMarketData, LiveBar
-from src.exceptions import ConfigurationError, DataValidationError
+from src.data.alpaca_market_data import AlpacaMarketData, LiveBar
+from src.core.exceptions import ConfigurationError, DataValidationError
 
 
 def alpaca_bar(**kw):
@@ -123,7 +123,7 @@ def _calendar_client(now, close_hour=16, close_minute=0, trading_day=True):
 def _at(hour, minute=0):
     from datetime import datetime
 
-    from src.fomc_calendar import EASTERN_TZ
+    from src.data.fomc_calendar import EASTERN_TZ
 
     return datetime(2026, 9, 3, hour, minute, tzinfo=EASTERN_TZ)
 
@@ -141,7 +141,7 @@ def _at(hour, minute=0):
     ],
 )
 def test_the_extended_window_runs_from_0400_to_2000(hour, minute, expected, monkeypatch):
-    import src.alpaca_market_data as module
+    import src.data.alpaca_market_data as module
 
     now = _at(hour, minute)
     monkeypatch.setattr(module, "datetime", _FrozenDatetime(now))
@@ -155,7 +155,7 @@ def test_a_half_day_ends_after_hours_four_hours_after_the_early_close(monkeypatc
     exactly when after-hours ends on those days, and it falls out of
     anchoring to the calendar's own close rather than a hardcoded 20:00.
     """
-    import src.alpaca_market_data as module
+    import src.data.alpaca_market_data as module
 
     now = _at(18, 0)
     monkeypatch.setattr(module, "datetime", _FrozenDatetime(now))
@@ -169,7 +169,7 @@ def test_a_half_day_ends_after_hours_four_hours_after_the_early_close(monkeypatc
 def test_a_non_trading_day_has_no_extended_session_either(monkeypatch):
     """Holidays stay authoritative because the window is derived from
     the calendar, not from a weekday rule."""
-    import src.alpaca_market_data as module
+    import src.data.alpaca_market_data as module
 
     now = _at(12, 0)
     monkeypatch.setattr(module, "datetime", _FrozenDatetime(now))

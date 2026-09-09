@@ -16,17 +16,17 @@ from __future__ import annotations
 
 import pytest
 
-from src.alpaca_broker import (
+from src.brokers.alpaca_broker import (
     MINIMUM_NOTIONAL,
     AlpacaBroker,
     _ceil_to_tick,
     _floor_to_cent,
     alpaca_broker_factory,
 )
-from src.exceptions import ConfigurationError, ExecutionError
-from src.order_lifecycle import OrderState
-from src.retry_policy import AmbiguousSubmissionError, RetryConfig
-from src.secrets import LiveCredentials
+from src.core.exceptions import ConfigurationError, ExecutionError
+from src.execution.order_lifecycle import OrderState
+from src.core.retry_policy import AmbiguousSubmissionError, RetryConfig
+from src.core.secrets import LiveCredentials
 
 CREDS = LiveCredentials(api_key_id="PKTEST", api_secret_key="secret")
 
@@ -222,7 +222,7 @@ def test_from_mode_refuses_simulation():
 
 
 def test_from_mode_accepts_the_real_mode_enum():
-    from src.order_management_system import Mode
+    from src.execution.order_management_system import Mode
 
     assert AlpacaBroker.from_mode(Mode.PAPER, CREDS, client=FakeClient()).paper is True
     assert AlpacaBroker.from_mode(Mode.LIVE, CREDS, client=FakeClient()).paper is False
@@ -307,7 +307,7 @@ def test_snapshot_requests_all_orders_not_just_open_ones():
 def test_snapshot_feeds_the_real_reconciler_without_adaptation():
     """End-to-end shape check: the Reconciler must accept this object
     as-is, or the adapter's contract is only theoretically correct."""
-    from src.reconciliation import Reconciler
+    from src.execution.reconciliation import Reconciler
 
     class Store:
         def has_processed(self, _):
@@ -369,7 +369,7 @@ def test_lookup_does_not_swallow_an_error_carrying_no_http_status():
 
 
 def test_lookup_resolves_an_ambiguous_submission_through_the_real_guard():
-    from src.duplicate_order_guard import DuplicateOrderGuard
+    from src.trading.duplicate_order_guard import DuplicateOrderGuard
 
     class Store:
         def __init__(self):
@@ -402,7 +402,7 @@ def test_ping_hits_an_authenticated_endpoint():
 
 
 def test_ping_failure_surfaces_as_an_execution_error():
-    from src.exceptions import ExecutionError
+    from src.core.exceptions import ExecutionError
 
     class Dead(FakeClient):
         def get_account(self):
@@ -573,7 +573,7 @@ def test_extended_hours_comes_from_the_deployment_config_not_a_caller_kwarg():
     deployment must be what decides it."""
     from types import SimpleNamespace
 
-    from src.broker_selection import build_broker
+    from src.brokers.broker_selection import build_broker
 
     config = SimpleNamespace(
         live=SimpleNamespace(

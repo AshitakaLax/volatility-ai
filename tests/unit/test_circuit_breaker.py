@@ -17,14 +17,14 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.config import BacktestConfig
-from src.exceptions import ConfigurationError
-from src.live_execution import LiveExecutionLoop
-from src.market_context import MarketContext
-from src.persistence import LedgerStore
-from src.risk_manager import HALT_STATE_KEY, CircuitBreaker, CircuitBreakerState, RiskManager
-from src.secrets import API_KEY_ID_ENV_VAR, API_SECRET_KEY_ENV_VAR
-from src.size_calculators import FixedPortfolioPercentage
+from src.core.config import BacktestConfig
+from src.core.exceptions import ConfigurationError
+from src.execution.live_execution import LiveExecutionLoop
+from src.strategies.market_context import MarketContext
+from src.core.persistence import LedgerStore
+from src.trading.risk_manager import HALT_STATE_KEY, CircuitBreaker, CircuitBreakerState, RiskManager
+from src.core.secrets import API_KEY_ID_ENV_VAR, API_SECRET_KEY_ENV_VAR
+from src.strategies.size_calculators import FixedPortfolioPercentage
 
 THRESHOLD = 0.20  # halt if drawdown exceeds 20%
 

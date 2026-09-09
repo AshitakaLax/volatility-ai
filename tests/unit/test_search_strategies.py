@@ -24,10 +24,10 @@ true optimum, so finding it is a genuine test of convergence.
 import pandas as pd
 import pytest
 
-from optimization_controller import OptimizationController
-from src.exceptions import ConfigurationError
-from src.search_strategies import BayesianSearch, GridSearch, RandomSearch, SearchStrategy
-from src.size_calculators import FixedPortfolioPercentage
+from src.optimization.optimization_controller import OptimizationController
+from src.core.exceptions import ConfigurationError
+from src.optimization.search_strategies import BayesianSearch, GridSearch, RandomSearch, SearchStrategy
+from src.strategies.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 
 GRID_STEPS = [0.01, 0.02, 0.03, 0.04]
@@ -200,8 +200,8 @@ def test_search_strategy_bayesian_string_uses_search_seed():
 
 
 def test_failed_evaluation_reported_to_bayesian_search_without_crashing():
-    from src.market_context import MarketContext
-    from src.size_calculators import SizingStrategy
+    from src.strategies.market_context import MarketContext
+    from src.strategies.size_calculators import SizingStrategy
 
     class _ExplodingStrategy(SizingStrategy):
         def __init__(self, divisor: float):

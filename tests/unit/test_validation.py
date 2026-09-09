@@ -11,10 +11,10 @@ Task 4.9 acceptance tests.
 import pandas as pd
 import pytest
 
-from optimization_controller import OptimizationController
-from src.exceptions import ConfigurationError
-from src.size_calculators import FixedPortfolioPercentage
-from src.validation import (
+from src.optimization.optimization_controller import OptimizationController
+from src.core.exceptions import ConfigurationError
+from src.strategies.size_calculators import FixedPortfolioPercentage
+from src.analysis.validation import (
     validate_grid_steps,
     validate_non_negative,
     validate_one_of,

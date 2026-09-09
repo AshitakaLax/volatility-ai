@@ -39,7 +39,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from src.exceptions import ConfigurationError
+from src.core.exceptions import ConfigurationError
 from src.ml.features import catalogue, default_directory, transformed_sources
 from src.ml.rolling import IncrementalBarFeatures
 

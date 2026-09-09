@@ -1,7 +1,7 @@
 import pytest
 
-from src.config import BacktestConfig, GridConfig, StrategyConfig
-from src.exceptions import ConfigurationError
+from src.core.config import BacktestConfig, GridConfig, StrategyConfig
+from src.core.exceptions import ConfigurationError
 
 
 def _valid_dict():
@@ -101,7 +101,7 @@ def test_validate_rejects_out_of_range_risk_values():
 def test_enforce_no_loss_defaults_to_true_and_round_trips():
     """The guard stays ON unless a config explicitly turns it off, so
     every pre-existing config keeps today's behavior."""
-    from src.config import BacktestConfig
+    from src.core.config import BacktestConfig
 
     base = {
         "strategy": {"strategy_id": "fixed", "strategy_params": {"allocation_pct": 0.05}},

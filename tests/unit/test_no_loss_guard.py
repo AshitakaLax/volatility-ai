@@ -19,10 +19,10 @@ from pathlib import Path
 
 import pytest
 
-from src.cost_models import SlippageCommissionModel, ZeroCostModel
-from src.exceptions import ExecutionError
-from src.ledger import AssetLotLedger
-from src.no_loss_guard import (
+from src.analysis.cost_models import SlippageCommissionModel, ZeroCostModel
+from src.core.exceptions import ExecutionError
+from src.core.ledger import AssetLotLedger
+from src.trading.no_loss_guard import (
     MONEY_EPSILON,
     NoLossViolation,
     SellEconomics,
@@ -205,9 +205,9 @@ def test_no_operational_module_can_force_a_loss_making_sell():
     """Circuit breaker, shutdown, and reconciliation each expose no
     liquidation path at all -- so there is nothing that could bypass
     this guard even if it wanted to."""
-    from src.reconciliation import Reconciler
-    from src.risk_manager import CircuitBreaker
-    from src.runtime_lifecycle import RuntimeLifecycle
+    from src.execution.reconciliation import Reconciler
+    from src.trading.risk_manager import CircuitBreaker
+    from src.trading.runtime_lifecycle import RuntimeLifecycle
 
     forbidden = ("liquidate", "close_all", "emergency_sell", "flatten", "force_exit", "force_sell")
     for obj in (CircuitBreaker(), RuntimeLifecycle(), Reconciler(store=None)):
@@ -252,8 +252,8 @@ def test_sell_economics_is_immutable():
 def test_volatility_aware_cost_model_is_supported_at_the_guard():
     from datetime import datetime
 
-    from src.cost_models import DynamicSlippageModel
-    from src.market_context import MarketContext
+    from src.analysis.cost_models import DynamicSlippageModel
+    from src.strategies.market_context import MarketContext
 
     _, lot = _lot(buy_price=100.0, shares=10.0)
     context = MarketContext(

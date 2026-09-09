@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from optimization_controller import OptimizationController
-from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from src.optimization.optimization_controller import OptimizationController
+from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 
 NON_FOMC_DATE = "2024-01-30"  # ordinary trading day
 FOMC_DATE = "2024-01-31"  # real FOMC decision date, per src/fomc_calendar.py
@@ -62,7 +62,7 @@ def test_the_vectorized_flag_cache_agrees_with_the_scalar_helper():
     Two implementations of the same rule can drift, so this pins that
     they agree bar-for-bar -- including across the FOMC/non-FOMC
     boundary, which is the case that would actually matter."""
-    from src.fomc_calendar import is_fomc_day_at
+    from src.data.fomc_calendar import is_fomc_day_at
 
     df = pd.concat([_one_day_dip_fixture(NON_FOMC_DATE), _one_day_dip_fixture(FOMC_DATE)])
     controller = OptimizationController(historical_data=df)

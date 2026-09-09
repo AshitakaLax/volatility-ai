@@ -12,9 +12,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.exceptions import ConfigurationError
-from src.high_frequency_sizing import HighFrequencyLocalReferenceSizing
-from src.market_context import MarketContext
+from src.core.exceptions import ConfigurationError
+from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from src.strategies.market_context import MarketContext
 
 INITIAL_CASH = 100_000.0
 
@@ -93,7 +93,7 @@ def test_default_trigger_semantics_are_unreachable_from_a_stale_last_buy_price()
     instance defines, so calling it unbound on an HF instance would
     (correctly) use HF's level and prove nothing. The base FORMULA is
     the thing this strategy is meant to differ from."""
-    from src.size_calculators import SizingStrategy
+    from src.strategies.size_calculators import SizingStrategy
 
     s = hf(lookback_days=0.01, bars_per_day=390)
     last_buy_price = 99.0
