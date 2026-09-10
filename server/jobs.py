@@ -57,6 +57,10 @@ class Job:
 
     run_id: str
     request: dict[str, Any]
+    # A descriptive label lifted off the request at submit time, so a
+    # queued or running job can be shown by name before its report
+    # exists. None for an unnamed run.
+    name: str | None = None
     status: RunStatus = "queued"
     progress: float = 0.0
     message: str | None = None
@@ -69,6 +73,7 @@ class Job:
     def snapshot(self) -> dict[str, Any]:
         return {
             "run_id": self.run_id,
+            "name": self.name,
             "status": self.status,
             "progress": round(self.progress, 4),
             "message": self.message,
@@ -115,7 +120,10 @@ class JobQueue:
             self._worker.start()
 
     def submit(self, request: dict[str, Any]) -> Job:
-        job = Job(run_id=uuid.uuid4().hex[:12], request=request)
+        # Whitespace-only is treated as unnamed, matching what the report
+        # records -- a job labelled "   " in the running list helps nobody.
+        label = str(request.get("name") or "").strip() or None
+        job = Job(run_id=uuid.uuid4().hex[:12], request=request, name=label)
         with self._condition:
             self._jobs[job.run_id] = job
             self._condition.notify_all()

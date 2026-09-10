@@ -10,7 +10,10 @@ import type {
   BacktestExecution,
   DateRange,
   ExecutionFilters,
+  FundPerformanceMetrics,
+  HistoryRow,
   OrderStatusFilter,
+  RunHistoryFilters,
   Timeframe,
 } from "@/types/backtest";
 
@@ -199,4 +202,201 @@ export function aggregate(candles: Candle[], timeframe: Timeframe): Candle[] {
 /** Epoch seconds, which is what lightweight-charts wants. */
 export function toEpochSeconds(iso: string): number {
   return Math.floor(new Date(iso).getTime() / 1000);
+}
+
+/* ------------------------------------------------------------------ */
+/* Run-history filtering                                              */
+/*                                                                    */
+/* The history table is flattened to one row per (run, fund, grid     */
+/* cell). Filtering it is the same shape of problem as filtering       */
+/* executions -- pure, conjunctive, and easy to get quietly wrong on  */
+/* the "unknown value" case -- so it lives here beside the other      */
+/* filter and is covered by the same test file.                       */
+/* ------------------------------------------------------------------ */
+
+/** Floats that came from the same computation but a different path
+ * (a stored chip value vs. a freshly derived row value) can differ in
+ * the last bit; treat them as equal within a hair. */
+export function sameNumber(a: number, b: number): boolean {
+  return Math.abs(a - b) <= 1e-9;
+}
+
+/**
+ * The value of one namespaced numeric field on a history row, in the
+ * SAME unit the table and the filter inputs use:
+ *
+ *   grid_step / profit_target   stored as a fraction, read as a PERCENT
+ *   param:<name>                the raw argument, when it is numeric
+ *   metric:<key>                the raw metric (cagr_pct etc. are
+ *                               already percent-scaled by the engine)
+ *
+ * Returns null when the field does not apply -- an old report with no
+ * such metric, a model that never took the argument, or a non-numeric
+ * argument such as `ticker`.
+ */
+export function historyFieldValue(row: HistoryRow, key: string): number | null {
+  if (key === "grid_step") return row.grid_step === null ? null : row.grid_step * 100;
+  if (key === "profit_target") {
+    return row.profit_target === null ? null : row.profit_target * 100;
+  }
+  if (key.startsWith("param:")) {
+    const raw = row.strategy_params?.[key.slice("param:".length)];
+    return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+  }
+  if (key.startsWith("metric:")) {
+    const raw = row.metrics[key.slice("metric:".length) as keyof FundPerformanceMetrics];
+    return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+  }
+  return null;
+}
+
+function numericFieldPasses(row: HistoryRow, key: string, filters: RunHistoryFilters): boolean {
+  const values = filters.values[key];
+  const range = filters.ranges[key];
+  const hasValues = values !== undefined && values.length > 0;
+  const hasRange = range !== undefined && (range.min !== null || range.max !== null);
+  if (!hasValues && !hasRange) return true;
+
+  const actual = historyFieldValue(row, key);
+  // UNKNOWN IS NOT A MATCH. A row missing this field must not slip
+  // through a gate the reader deliberately set -- same rule the RSI
+  // filter follows for an execution inside the indicator warmup.
+  if (actual === null) return false;
+
+  const inValues = hasValues && values.some((value) => sameNumber(value, actual));
+  const inRange =
+    hasRange &&
+    (range.min === null || actual >= range.min) &&
+    (range.max === null || actual <= range.max);
+
+  // values OR range: either one satisfied is enough, so a discrete pick
+  // and a band can be combined on the same field without fighting.
+  return Boolean(inValues || inRange);
+}
+
+/** The namespaced keys of every numeric field the filter actually
+ * gates -- an empty `values` list or an all-null range does not count. */
+export function activeNumericFieldKeys(filters: RunHistoryFilters): string[] {
+  const keys = new Set<string>();
+  for (const [key, values] of Object.entries(filters.values)) {
+    if (values.length > 0) keys.add(key);
+  }
+  for (const [key, range] of Object.entries(filters.ranges)) {
+    if (range.min !== null || range.max !== null) keys.add(key);
+  }
+  return [...keys];
+}
+
+/** True when any part of the filter would remove a row. */
+export function runHistoryFilterActive(filters: RunHistoryFilters): boolean {
+  return (
+    filters.name.trim() !== "" ||
+    filters.tickers.length > 0 ||
+    filters.models.length > 0 ||
+    filters.fillModels.length > 0 ||
+    activeNumericFieldKeys(filters).length > 0
+  );
+}
+
+/** Apply every run-history filter. All clauses are conjunctive. */
+export function filterHistoryRows(
+  rows: HistoryRow[],
+  filters: RunHistoryFilters,
+): HistoryRow[] {
+  const needle = filters.name.trim().toLowerCase();
+  const numericKeys = activeNumericFieldKeys(filters);
+
+  return rows.filter((row) => {
+    if (needle && !(row.name ?? "").toLowerCase().includes(needle)) return false;
+    if (filters.tickers.length > 0 && !filters.tickers.includes(row.ticker)) return false;
+    if (
+      filters.models.length > 0 &&
+      !(row.sizing_model !== null && filters.models.includes(row.sizing_model))
+    ) {
+      return false;
+    }
+    if (
+      filters.fillModels.length > 0 &&
+      !(row.fill_model !== null && filters.fillModels.includes(row.fill_model))
+    ) {
+      return false;
+    }
+    for (const key of numericKeys) {
+      if (!numericFieldPasses(row, key, filters)) return false;
+    }
+    return true;
+  });
+}
+
+/** One filterable field, plus the distinct values present for its
+ * "pick specific values" chips (ascending; empty for a continuous
+ * field like a metric). */
+export interface HistoryFieldOption {
+  key: string;
+  label: string;
+  group: "Input arguments" | "Results";
+  values: number[];
+}
+
+/** The curated result metrics offered as range filters, in the order
+ * the table shows them. */
+export const HISTORY_METRIC_FIELDS: { key: keyof FundPerformanceMetrics; label: string }[] = [
+  { key: "net_yield_pct", label: "Net yield %" },
+  { key: "cagr_pct", label: "CAGR %" },
+  { key: "worst_year_pct", label: "Worst year %" },
+  { key: "best_year_pct", label: "Best year %" },
+  { key: "max_drawdown_pct", label: "Max drawdown %" },
+  { key: "return_over_drawdown", label: "Return / drawdown" },
+  { key: "sharpe_ratio", label: "Sharpe" },
+  { key: "sortino_ratio", label: "Sortino" },
+  { key: "profit_factor", label: "Profit factor" },
+  { key: "win_rate_pct", label: "Win rate %" },
+  { key: "capital_velocity_index", label: "Capital velocity" },
+  { key: "stuck_capital_value", label: "Stuck capital $" },
+  { key: "avg_hold_duration", label: "Avg hold (bars)" },
+  { key: "total_trades", label: "Total trades" },
+];
+
+function distinctValues(rows: HistoryRow[], key: string): number[] {
+  const seen: number[] = [];
+  for (const row of rows) {
+    const value = historyFieldValue(row, key);
+    if (value !== null && !seen.some((existing) => sameNumber(existing, value))) {
+      seen.push(value);
+    }
+  }
+  return seen.sort((a, b) => a - b);
+}
+
+/**
+ * The numeric INPUT-argument fields present across the loaded rows.
+ *
+ * `grid_step` and `profit_target` are always offered -- they are the
+ * swept dimensions -- even when the loaded history holds a single value
+ * of each. Every numeric sizing-model argument seen in any row is
+ * offered too; non-numeric arguments (`ticker`) are left to the Fund
+ * control.
+ */
+export function historyInputFields(rows: HistoryRow[]): HistoryFieldOption[] {
+  const out: HistoryFieldOption[] = [
+    { key: "grid_step", label: "Grid step %", group: "Input arguments", values: distinctValues(rows, "grid_step") },
+    {
+      key: "profit_target",
+      label: "Profit target %",
+      group: "Input arguments",
+      values: distinctValues(rows, "profit_target"),
+    },
+  ];
+
+  const paramKeys = new Set<string>();
+  for (const row of rows) {
+    for (const [name, value] of Object.entries(row.strategy_params ?? {})) {
+      if (typeof value === "number" && Number.isFinite(value)) paramKeys.add(name);
+    }
+  }
+  for (const name of [...paramKeys].sort()) {
+    const key = `param:${name}`;
+    out.push({ key, label: name, group: "Input arguments", values: distinctValues(rows, key) });
+  }
+  return out;
 }

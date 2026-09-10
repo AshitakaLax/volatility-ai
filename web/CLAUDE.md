@@ -17,9 +17,10 @@ npm run build          # tsc -b && vite build -> dist/ (mounted by server/app.py
 
 ```
 src/
-├── App.tsx                # tab shell: "backtest" | "live" | "ml" — that order is deliberate
+├── App.tsx                # tab shell: "backtest" | "result" | "live" | "ml" — that order is deliberate
 ├── components/
-│   ├── backtest/          # ParameterForm, SweepMatrix, BacktestChart, RunHistory, ActiveRuns, ...
+│   ├── backtest/          # ParameterForm/ActiveRuns/RunHistory live on "backtest"; BacktestResult
+│   │                      #   (chart, trade log, sweep matrix, fund comparison) is the "result" tab
 │   ├── live/               # CommandCenter, DeploymentHealth, LiveOrderLedger, AlgorithmStatus
 │   ├── ml/                 # ModelInsights — reads server/ml_insights.py's read-only artifacts
 │   └── ui/primitives.tsx  # shadcn/ui-style primitives

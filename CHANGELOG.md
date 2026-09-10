@@ -1,5 +1,75 @@
 # Changelog
 
+## "Backtest result" nav tab (web UI)
+
+Opening a run (from Run history or Active runs) already opened `?run=<id>`
+in a new browser tab. That tab now lands on a **fourth nav tab**,
+"Backtest result", instead of rendering the report inline under
+Backtesting. The report — summary metrics, OHLC chart, trade log, sweep
+surface, fund comparison — moved into `web/src/components/backtest/
+BacktestResult.tsx`; the Backtesting tab is now just the instrument
+(ParameterForm, ActiveRuns, RunHistory).
+
+- A deep link (`?run=`) selects the result tab on load and attaches.
+- A run submitted from the form finishes on the Backtesting tab (the Run
+  button and status badge report it there), and a "Run complete → Backtest
+  result" card offers the jump. It deliberately does **not** force-navigate
+  on completion — that races the "complete" state a reader and the e2e
+  suite both watch for.
+- A sweep-matrix cell click on the result tab still stages the
+  configuration onto the form and switches back to Backtesting, so the
+  prefilled form is in view rather than changed on a hidden tab.
+- The execution filter (its date range doubles as the submitted run's
+  window) stays lifted in `App`; `BacktestResult` derives the chart data
+  from it.
+
+## Run-history filtering (web UI)
+
+The **Run history** table can now be narrowed before it is ranked.
+
+- **Categorical**, as multi-select chips: fund, algorithm (`sizing_model`),
+  fill model. Empty = no restriction; picking several is OR-within,
+  AND-between.
+- **Name**, as a case-insensitive substring. A row with no name drops
+  out once the box is non-empty.
+- **Input arguments**: `grid_step` and `profit_target` are always shown
+  (in percent, matching the table); every numeric sizing-model argument
+  seen across the loaded rows is offered through an "add filter"
+  dropdown. Each takes a set of exact values (chips, when the distinct
+  count is 2–12) **and** a min/max band — a row passes on either, so
+  "1% or 1.5%" and "0.5%–2%" both work.
+- **Results**: every `FundPerformanceMetrics` field (CAGR, worst year,
+  max drawdown, Sharpe, return/drawdown, trade count, …) can be added as
+  a min/max band from the same dropdown.
+
+A row missing a gated field — an old report with no `worst_year_pct`, a
+model that never took `period` — is **excluded**, not passed through, the
+same rule `filterExecutions` already follows for an execution with no
+RSI. The filtering itself is `filterHistoryRows` and friends in
+`web/src/lib/filters.ts`, pure and covered in `filters.test.ts`; the
+panel only edits the filter object.
+
+To make an input argument filterable at all, the resolved
+`strategy_params` (what the engine was built with, after defaults and
+`target_return` alignment) now ride on the report's `parameters` and on
+every flattened history row — `{}` for a run archived before this.
+
+## Named backtest runs (web UI)
+
+"Run a backtest" now has an optional **Name** field. It is descriptive
+only — the engine never reads it — and deliberately stops at the server
+boundary rather than entering `BacktestConfig`: it is a UI/history
+concern, so it is carried on the `Job` snapshot (`server/jobs.py`) and
+the archived report's `parameters.name` (`server/backtest.py`), never
+handed to `from_dict()`.
+
+Because it rides the job snapshot, a queued or running sweep shows by
+name in **Active runs** before its report exists; once complete it labels
+the header strip and gets its own column in **Run history**, repeated on
+every configuration row since that table is flattened one row per cell.
+Blank and whitespace-only names normalise to unnamed at both the queue
+and the report, so the history table never shows a row labelled `"   "`.
+
 ## Analytical warehouse (DuckDB + Polars)
 
 Sweep output previously landed in four stores that could not be joined:

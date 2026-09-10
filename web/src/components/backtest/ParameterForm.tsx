@@ -49,6 +49,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   const [models, setModels] = useState<string[]>([]);
   const [details, setDetails] = useState<Record<string, SizingDetail>>({});
   const [tickers, setTickers] = useState<string[]>(["TQQQ"]);
+  const [name, setName] = useState("");
   const [gridStep, setGridStep] = useState(1.0);
   const [profitTarget, setProfitTarget] = useState(0.5);
   const [model, setModel] = useState("fixed");
@@ -90,6 +91,10 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
 
   const submit = () =>
     onSubmit({
+      // Trimmed, and omitted entirely when blank -- an empty string on
+      // the wire would show up as a name that is just whitespace in the
+      // history table rather than as "unnamed".
+      ...(name.trim() ? { name: name.trim() } : {}),
       tickers,
       // Percentages in the UI, fractions on the wire. The engine works
       // in fractions and a form that sent 1.0 meaning "one percent"
@@ -120,7 +125,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
             Queued on the server. A full ten-year run is roughly 23 seconds per
             configuration.
             {range.start || range.end
-              ? ` Windowed to ${range.start ?? "start"} – ${range.end ?? "end"} from the filters below.`
+              ? ` Windowed to ${range.start ?? "start"} – ${range.end ?? "end"} from the Backtest result filters.`
               : ""}
           </p>
         </div>
@@ -128,6 +133,18 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
       </CardHeader>
 
       <CardContent className="flex flex-wrap items-end gap-4">
+        <Field label="Name">
+          <Input
+            type="text"
+            className="w-48"
+            placeholder="optional — labels this sweep"
+            maxLength={120}
+            value={name}
+            disabled={busy}
+            onChange={(event) => setName(event.currentTarget.value)}
+          />
+        </Field>
+
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">Funds</span>
           <div className="flex flex-wrap gap-1.5">

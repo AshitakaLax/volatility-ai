@@ -9,6 +9,13 @@
 :root {
   --radius: 0.625rem;
 
+  /* Tell the browser which way its native chrome should lean -- the
+     <select> pop-up list, scrollbars, spin buttons. Without this the
+     option list is drawn on the platform default (white) while the
+     inherited text is near-white, so it reads white-on-white until a
+     row is hovered. */
+  color-scheme: light;
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
@@ -40,6 +47,8 @@
 }
 
 .dark {
+  color-scheme: dark;
+
   --background: oklch(0.141 0.005 285.823);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.21 0.006 285.885);

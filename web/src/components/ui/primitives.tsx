@@ -101,7 +101,23 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
 }
 
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn(CONTROL, "pr-6", className)} {...props} />;
+  return (
+    <select
+      className={cn(
+        CONTROL,
+        "pr-6",
+        // The closed control is fine transparent over a card, but the
+        // POP-UP list is drawn by the browser. color-scheme (index.css)
+        // handles most engines; pinning the option colours to the dark
+        // popover tokens makes it deterministic on the ones that still
+        // paint the list white -- otherwise the near-white inherited
+        // text is invisible until a row is highlighted.
+        "[&>option]:bg-popover [&>option]:text-popover-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 type Tone = "neutral" | "profit" | "loss" | "stuck";
