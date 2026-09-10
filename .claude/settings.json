@@ -8,5 +8,39 @@
     "pyright-lsp@claude-plugins-official": true,
     "remember@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true
+  },
+  "respectGitignore": true,
+  "permissions": {
+    "deny": [
+      "Read(**/__pycache__/**)",
+      "Read(**/*.pyc)",
+      "Read(**/*.pyo)",
+      "Read(.pytest_cache/**)",
+      "Read(.ruff_cache/**)",
+      "Read(**/*.egg-info/**)",
+      "Read(.venv/**)",
+      "Read(venv/**)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(state/**)",
+      "Read(data/**)",
+      "Read(output/**)",
+      "Read(logs/**)",
+      "Read(**/*.db)",
+      "Read(**/*.db.lock)",
+      "Read(Fidelity.json)",
+      "Read(Fidelity_*.json)",
+      "Read(fidelity_trace*.zip)",
+      "Read(Statements/**)",
+      "Read(Portfolio_Positions*.csv)",
+      "Read(.fidelity_recon/**)",
+      "Read(recon_*.json)",
+      "Read(**/*.har)",
+      "Read(**/*.parquet)",
+      "Read(web/node_modules/**)",
+      "Read(web/dist/**)",
+      "Read(**/*.tsbuildinfo)",
+      "Read(.git/**)"
+    ]
   }
 }
