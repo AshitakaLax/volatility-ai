@@ -21,6 +21,7 @@ export function usePriceBars(
   ticker: string | null,
   start: string | null,
   end: string | null,
+  maxPoints?: number,
 ): { candles: Candle[] | null; meta: Omit<BarSeries, "bars"> | null; error: string | null } {
   const [candles, setCandles] = useState<Candle[] | null>(null);
   const [meta, setMeta] = useState<Omit<BarSeries, "bars"> | null>(null);
@@ -37,7 +38,7 @@ export function usePriceBars(
     setError(null);
 
     api
-      .bars(ticker, start, end)
+      .bars(ticker, start, end, maxPoints)
       .then((series) => {
         // A stale response from a previous ticker must not overwrite the
         // current one -- the user can change funds faster than a 60 MB
@@ -59,7 +60,7 @@ export function usePriceBars(
     return () => {
       cancelled = true;
     };
-  }, [ticker, start, end]);
+  }, [ticker, start, end, maxPoints]);
 
   return { candles, meta, error };
 }

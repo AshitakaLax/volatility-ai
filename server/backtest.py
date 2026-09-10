@@ -38,21 +38,25 @@ be a bug the UI discovers at runtime, on a field it happens to read.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import os
+import re
+import sys
+import types
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from src.optimization.optimization_controller import OptimizationController
 from server import history
 from server.jobs import JobQueue
 from src.core.config import BacktestConfig
 from src.core.exceptions import ConfigurationError
+from src.optimization.optimization_controller import OptimizationController
 from src.trading.strategy_registry import STRATEGIES, resolve_strategy
 from tools.export_ui_data import KNOWN_DATA, equity_series, executions, fund_metrics
 
@@ -252,6 +256,200 @@ def required_parameters(strategy_class: type) -> list[str]:
         and parameter.default is inspect.Parameter.empty
         and parameter.kind not in (parameter.VAR_POSITIONAL, parameter.VAR_KEYWORD)
     ]
+
+
+# -- Per-strategy parameter schema, for the dynamic form ----------------
+#
+# The "Run a backtest" form renders one input per sizing-model
+# constructor argument and swaps the set when the model changes. That
+# needs more than `required_parameters()` gives: a type to pick the
+# widget, a default to seed it, whether it may be left blank, and which
+# arguments the operator must NOT touch because the engine owns them.
+#
+# THREE THINGS inspect.signature CANNOT SEE, named here once:
+
+# str arguments with a closed choice set -- the annotation is a bare
+# `str`, and the allowed values only exist as a guard in the ctor body
+# (`if vol_measure not in ("stdev", "range"): raise`). A unit test
+# asserts every key here is a real parameter of some registered
+# strategy, so this cannot rot silently.
+_PARAM_ENUMS: dict[str, list[str]] = {"vol_measure": ["stdev", "range"]}
+
+# Filesystem wiring the engine supplies. Never shown, never sent -- the
+# constructor's own default is used.
+_HIDDEN_PARAMS: frozenset[str] = frozenset({"model_dir", "external_dir"})
+
+# Shown but locked: the engine captures these at run time (the first
+# bar), so a value typed into a form would only be right for a
+# walk-forward replay.
+_DERIVED_PARAMS: frozenset[str] = frozenset({"baseline_price"})
+
+
+def _wire_type(hint: object, has_default: bool, default: object) -> tuple[str, bool]:
+    """(wire type, nullable) from a resolved annotation and its default.
+
+    The strategy modules use ``from __future__ import annotations``, so a
+    raw ``parameter.annotation`` is a string; callers resolve it with
+    ``typing.get_type_hints`` first. ``bool`` is tested before ``int``
+    because ``bool`` is a subclass of ``int`` and a checkbox is not a
+    number field.
+
+    ``nullable`` means the field may legitimately be left blank: either
+    the annotation admits ``None``, or there is an explicit ``= None``
+    default. A REQUIRED argument is never nullable -- a blank there must
+    block the run, not be omitted.
+    """
+    nullable = has_default and default is None
+    if get_origin(hint) in (Union, types.UnionType):  # PEP 604 "T | None"
+        args = get_args(hint)
+        real = [a for a in args if a is not type(None)]
+        nullable = nullable or len(real) < len(args)
+        hint = real[0] if real else str
+    if hint is bool:
+        return "bool", nullable
+    if hint is int:
+        return "int", nullable
+    if hint is float:
+        return "float", nullable
+    if hint is str:
+        return "str", nullable
+    return "float", nullable  # tolerant: an exotic annotation renders as a number
+
+
+def _apply_locks(
+    spec: dict[str, Any], strategy_id: str, required: set[str], committed: dict
+) -> None:
+    """Mark the arguments the operator must not set directly.
+
+    Each rule mirrors something ``build_config`` already enforces, so the
+    form and the engine agree about what is editable.
+    """
+    name = spec["name"]
+    if name in _DERIVED_PARAMS:
+        spec["editable"] = False
+        spec["locked_reason"] = (
+            "captured from the first bar at run time; set only for walk-forward replay"
+        )
+    # `percentage` is FixedPortfolioPercentage's legacy alias of
+    # `allocation_pct`, kept only for one internal caller; the form
+    # offers the canonical name. Scoped to `fixed` so a future strategy
+    # that legitimately takes a `percentage` is not caught by it.
+    if name == "percentage" and strategy_id == "fixed":
+        spec["editable"] = False
+        spec["locked_reason"] = "deprecated alias of allocation_pct -- use allocation_pct"
+    # `allocation_pct` is annotated `float | None`, but FixedPortfolioPercentage
+    # raises without one (or the now-locked `percentage`), so for the form
+    # it is required, not blankable -- a blank there blocks the run rather
+    # than falling through to the server's committed-default substitution.
+    if name == "allocation_pct" and strategy_id == "fixed":
+        spec["required"] = True
+        spec["nullable"] = False
+    # build_config force-aligns target_return to the grid's single profit
+    # target exactly when this branch is true (and refuses >1 target).
+    if name == "target_return" and ("target_return" in required or "target_return" in committed):
+        spec["editable"] = False
+        spec["mirrors"] = "profit_target"
+        spec["locked_reason"] = (
+            "the posterior estimates P(reaching the run's profit target); the server sets "
+            "this to the grid's profit target"
+        )
+    # ml_reachability_*: build_config refuses the run unless the declared
+    # ticker is among the simulated funds, and the id picks the ticker.
+    if name == "ticker" and strategy_id.startswith("ml_reachability"):
+        spec["editable"] = False
+        spec["locked_reason"] = f"{strategy_id} is trained on {committed.get('ticker')}"
+
+
+def _resolve_hints(func: object) -> dict[str, object]:
+    """Resolved type hints for a constructor, per parameter.
+
+    The strategy modules use ``from __future__ import annotations``, so
+    every annotation is a string. ``get_type_hints`` resolves them all in
+    one call -- and fails the whole call if ONE name does not resolve (a
+    ``TYPE_CHECKING``-only import, a moved symbol). A single bad
+    annotation would then untype every field of that strategy: every
+    ``bool`` would render as a number, every ``int`` would lose its step.
+    So fall back to resolving each annotation on its own, and lose only
+    the field that actually broke.
+    """
+    try:
+        return dict(get_type_hints(func))
+    except Exception:
+        pass
+    raw = getattr(func, "__annotations__", {}) or {}
+    module = sys.modules.get(getattr(func, "__module__", ""), None)
+    scope = getattr(module, "__dict__", {})
+    resolved: dict[str, object] = {}
+    for name, annotation in raw.items():
+        if not isinstance(annotation, str):
+            resolved[name] = annotation
+            continue
+        # A name that will not resolve just falls through -- _wire_type
+        # renders that one field as a number rather than untyping the lot.
+        with contextlib.suppress(Exception):
+            resolved[name] = eval(annotation, scope)
+    return resolved
+
+
+def describe_params(strategy_id: str, strategy_class: type) -> list[dict[str, Any]]:
+    """Every constructor argument of one strategy, in constructor order.
+
+    Served by ``/funds`` so the frontend carries no idea of its own about
+    what a strategy's constructor looks like -- the same reason
+    ``sizing_details`` is served rather than hard-coded.
+    """
+    signature = inspect.signature(strategy_class.__init__)
+    hints = _resolve_hints(strategy_class.__init__)
+    committed = STRATEGY_DEFAULTS.get(strategy_id, {})
+    required = set(required_parameters(strategy_class))
+
+    out: list[dict[str, Any]] = []
+    for parameter in signature.parameters.values():
+        if parameter.name == "self" or parameter.kind in (
+            parameter.VAR_POSITIONAL,
+            parameter.VAR_KEYWORD,
+        ):
+            continue
+        if parameter.name in _HIDDEN_PARAMS:
+            continue
+        has_default = parameter.default is not inspect.Parameter.empty
+        default = parameter.default if has_default else None
+        wire_type, nullable = _wire_type(hints.get(parameter.name), has_default, default)
+        has_suggested = parameter.name in committed
+        spec: dict[str, Any] = {
+            "name": parameter.name,
+            "type": wire_type,
+            "nullable": nullable,
+            "required": parameter.name in required,
+            "default": default,
+            # What the field is seeded to and what "reset" restores: the
+            # project's committed value when there is one, else the bare
+            # constructor default.
+            "suggested": committed[parameter.name] if has_suggested else default,
+            "has_suggested": has_suggested,
+            "enum": _PARAM_ENUMS.get(parameter.name),
+            # "primary" is exactly "required or in a committed config" --
+            # the same line every tuned parameter in this project's sweeps
+            # falls on. Everything else is "advanced".
+            "group": "primary" if (parameter.name in required or has_suggested) else "advanced",
+            "editable": True,
+            "locked_reason": None,
+            "mirrors": None,
+            "step": None
+            if parameter.name in _PARAM_ENUMS
+            else {"int": "1", "float": "any"}.get(wire_type),
+        }
+        _apply_locks(spec, strategy_id, required, committed)
+        out.append(spec)
+    return out
+
+
+def _safe_describe(strategy_id: str, strategy_class: type) -> dict[str, Any]:
+    """describe_params, but one broken strategy never 500s /funds."""
+    try:
+        return {"params": describe_params(strategy_id, strategy_class)}
+    except Exception:
+        return {"params": []}
 
 
 def resolve_params(request: RunRequest) -> dict[str, Any]:
@@ -546,6 +744,13 @@ def funds() -> dict[str, Any]:
             }
             for name, cls in sorted(STRATEGIES.items())
         },
+        # The dynamic-form schema: every constructor argument of every
+        # model, typed and seeded, so the form can swap its fields when
+        # the model changes. `sizing_details` above is left exactly as it
+        # was for its existing consumers; this is a strict addition.
+        "sizing_params": {
+            name: _safe_describe(name, cls) for name, cls in sorted(STRATEGIES.items())
+        },
     }
 
 
@@ -728,6 +933,99 @@ def submit(request: RunRequest) -> dict[str, Any]:
     return _with_id(job.snapshot(), job.run_id)
 
 
+class ValidateError(BaseModel):
+    """One thing wrong with a would-be run, attached to a field when it
+    can be, so the form can render it under the offending input."""
+
+    field: str | None = None
+    message: str
+
+
+class ValidateResponse(BaseModel):
+    ok: bool
+    # The parameters the engine would actually build with -- defaults
+    # filled in, target_return aligned. None when the request is invalid.
+    resolved_strategy_params: dict[str, Any] | None = None
+    # The subset of resolved_strategy_params the server set or changed
+    # relative to what was submitted (today: target_return).
+    aligned: dict[str, Any] = Field(default_factory=dict)
+    errors: list[ValidateError] = Field(default_factory=list)
+
+
+# `build_config`'s missing-argument message names them as `Missing: [...]`.
+_MISSING_RE = re.compile(r"Missing: \[([^\]]*)\]")
+
+
+def _error_field(message: str, names: list[str]) -> str | None:
+    """The parameter a validation message is about, if exactly one is
+    named. Leading token first (the engine's messages start with the id
+    or the offending key), then a whole-word scan."""
+    head = message.strip().split(" ", 1)[0].strip("'\"")
+    if head in names:
+        return head
+    hits = [n for n in names if re.search(rf"\b{re.escape(n)}\b", message)]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _explode_error(message: str, names: list[str]) -> list[ValidateError]:
+    """One ConfigurationError string -> field-attached errors. A
+    `Missing: [a, b]` message becomes one error per missing name."""
+    found = _MISSING_RE.search(message)
+    if found:
+        missing = [
+            token.strip().strip("'\"") for token in found.group(1).split(",") if token.strip()
+        ]
+        if missing:
+            return [
+                ValidateError(field=name if name in names else None, message=message)
+                for name in missing
+            ]
+    # The multi-target refusal names `target_return` in passing ("reaching
+    # one target_return, so it cannot sweep ..."), but it is about the
+    # profit-target GRID, not a constructor argument -- leave it
+    # unattached so the form shows it as a banner, not under a locked
+    # field the user cannot change to fix it.
+    if "cannot sweep" in message and "profit target" in message:
+        return [ValidateError(field=None, message=message)]
+    return [ValidateError(field=_error_field(message, names), message=message)]
+
+
+@router.post("/validate")
+def validate(request: RunRequest) -> ValidateResponse:
+    """Dry-run the exact validation `submit` runs, without queuing.
+
+    The form calls this while the operator types so a bad parameter is a
+    red line under a field, not a 400 on click or a job that dies twenty
+    seconds later. It goes through the SAME `build_config(request)` the
+    submit path uses -- there is no second definition of "valid" to
+    drift -- and `build_config` opens no store, imports no broker and
+    touches neither the queue nor history (the capability test holds
+    this module to that). Always HTTP 200: the errors are the payload,
+    which is easier to consume from a debounced keystroke than a 400.
+    """
+    submitted = dict(request.strategy_params)
+    strategy_class = STRATEGIES.get(request.sizing_model)
+    names = (
+        [spec["name"] for spec in _safe_describe(request.sizing_model, strategy_class)["params"]]
+        if strategy_class is not None
+        else []
+    )
+    try:
+        config = build_config(request)
+    except ConfigurationError as exc:
+        return ValidateResponse(ok=False, errors=_explode_error(str(exc), names))
+    except Exception as exc:
+        return ValidateResponse(ok=False, errors=[ValidateError(field=None, message=str(exc))])
+
+    resolved = dict(config.strategy.strategy_params)
+    aligned = {
+        key: value
+        for key, value in resolved.items()
+        if key not in submitted or submitted[key] != value
+    }
+    return ValidateResponse(ok=True, resolved_strategy_params=resolved, aligned=aligned)
+
+
 @router.websocket("/ws/{run_id}")
 async def run_socket(socket: WebSocket, run_id: str) -> None:
     """Stream one run's progress, then its result.
@@ -784,4 +1082,12 @@ def _with_id(snapshot: dict[str, Any], run_id: str) -> dict[str, Any]:
     return snapshot
 
 
-__all__ = ["RunRequest", "build_config", "queue", "router", "run_backtest"]
+__all__ = [
+    "RunRequest",
+    "ValidateResponse",
+    "build_config",
+    "describe_params",
+    "queue",
+    "router",
+    "run_backtest",
+]

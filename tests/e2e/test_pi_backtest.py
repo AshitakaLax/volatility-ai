@@ -311,9 +311,11 @@ class TestTheBrowserActuallyRendersIt:
         """The selectable ranking is the feature; a fixed column would
         assert an answer the data does not settle.
 
-        Targeted by data-testid rather than by position among the
-        page's four selects -- an index would silently start testing a
-        different control the moment a field is added above it.
+        Targeted by data-testid rather than by position among the page's
+        selects -- an index would silently start testing a different
+        control the moment a field is added above it. (The parameter form
+        renders a variable number of selects now: enum/bool sizing-model
+        arguments each get one when their model is picked.)
         """
         page.get_by_test_id("rank-by").select_option(label="Lowest drawdown")
         page.wait_for_timeout(400)

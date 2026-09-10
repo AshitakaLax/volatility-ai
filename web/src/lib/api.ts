@@ -12,6 +12,8 @@ import type {
   BacktestRunState,
   HistoryRow,
   MultiFundBacktestReport,
+  SizingParamsEntry,
+  ValidateResponse,
 } from "@/types/backtest";
 import type {
   AblationResponse,
@@ -102,6 +104,9 @@ export const api = {
       funds: FundAvailability[];
       sizing_models: string[];
       sizing_details: Record<string, SizingDetail>;
+      /** Per-model constructor schema for the dynamic parameter form.
+       * Absent from an older server -- callers must treat it as `{}`. */
+      sizing_params?: Record<string, SizingParamsEntry>;
     }>("/api/backtest/funds"),
 
   bars: (ticker: string, start?: string | null, end?: string | null, maxPoints = 3000) => {
@@ -125,6 +130,38 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  /**
+   * Dry-run the same validation `submitRun` performs, without queuing a
+   * job. Used by the parameter form to show a bad argument as a red line
+   * under its field before the run is ever submitted.
+   *
+   * Returns `{ ok: true, degraded: true }` on a 404 -- a deployment
+   * whose backtest half predates this route -- so the form quietly falls
+   * back to submit-time validation rather than blocking on a missing
+   * endpoint.
+   */
+  validateRun: async (body: BacktestRunRequest): Promise<ValidateResponse> => {
+    try {
+      return await request<ValidateResponse>("/api/backtest/validate", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 404) {
+        // A deployment whose backtest half predates this route -- fall
+        // back to submit-time validation, do not block the form.
+        return { ok: true, degraded: true, errors: [] };
+      }
+      if (cause instanceof ApiError && cause.status === 422) {
+        // The body failed FastAPI's own shape checks before the handler
+        // ran (e.g. more funds than the list allows). It is genuinely
+        // invalid -- surface it and block Run, same as any other error.
+        return { ok: false, errors: [{ field: null, message: cause.message }] };
+      }
+      throw cause;
+    }
+  },
 
   liveState: (path: string) =>
     request<DeploymentState>(`/api/live/state?path=${encodeURIComponent(path)}`),

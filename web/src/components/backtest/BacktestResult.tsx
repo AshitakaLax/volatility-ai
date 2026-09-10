@@ -7,10 +7,11 @@ import { RiskRewardMetrics } from "@/components/backtest/RiskRewardMetrics";
 import { SweepMatrix } from "@/components/backtest/SweepMatrix";
 import { TradeLog } from "@/components/backtest/TradeLog";
 import { Card, CardContent } from "@/components/ui/primitives";
-import { usePriceBars } from "@/hooks/usePriceBars";
 import { filterExecutions, openLotIds } from "@/lib/filters";
 import type {
   BacktestRunState,
+  ChartResolution,
+  DateRange,
   ExecutionFilters,
   MultiFundBacktestReport,
 } from "@/types/backtest";
@@ -63,14 +64,13 @@ export function BacktestResult({
   );
   const open = useMemo(() => openLotIds(executions), [executions]);
 
-  // REAL OHLC from the server for the window in view -- synthesising it
-  // from the fills themselves drew a line through fill prices rather
-  // than the market between them.
-  const { candles, meta: barMeta, error: barError } = usePriceBars(
-    selected,
-    filters.range.start,
-    filters.range.end,
-  );
+  // The run's actual data bounds -- the anchor the chart's zoom levels
+  // measure back from when the filter range is open. Per-fund `bars` is
+  // more precise than the report-wide `timeframe`.
+  const dataRange: DateRange = {
+    start: fund?.bars.start ?? report?.timeframe.start ?? null,
+    end: fund?.bars.end ?? report?.timeframe.end ?? null,
+  };
 
   if (!report) {
     if (run && (run.status === "queued" || run.status === "running")) {
@@ -130,12 +130,14 @@ export function BacktestResult({
       />
 
       <BacktestChart
-        candles={candles ?? []}
-        loading={candles === null}
-        bucketSeconds={barMeta?.bucket_seconds ?? null}
-        error={barError}
+        ticker={selected}
         executions={visible}
-        timeframe={filters.timeframe}
+        resolution={filters.chartResolution}
+        onResolutionChange={(chartResolution: ChartResolution) =>
+          onFiltersChange({ ...filters, chartResolution })
+        }
+        range={filters.range}
+        dataRange={dataRange}
         openLotIds={open}
         profitTarget={report.parameters.profit_target_pct ?? 0.005}
       />

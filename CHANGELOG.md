@@ -1,5 +1,79 @@
 # Changelog
 
+## Execution-chart zoom: 1D / 1H / 1m (web UI)
+
+The Execution chart's candle resolution used to be a dropdown on the
+filter panel (1Min…1Day) that only *re-aggregated* a fixed ~3000-point
+server payload -- so "1Min" over a ten-year run was a rollup of a
+rollup, never actual minute bars. It is now a **1D / 1H / 1m** toggle on
+the chart itself, and each level bounds the window it pulls so the
+resolution is real:
+
+- **1D** — daily candles over the whole backtest.
+- **1H** — hourly candles, at most a 10-day window.
+- **1m** — minute candles, at most a 2-day window.
+
+Each level fetches `/api/backtest/bars` for its capped window with a high
+`max_points`, anchored to the end of the filter range (or the run's data
+end when the range is open) and never starting before the range does --
+so narrowing the filter panel's dates first, then zooming, works as
+expected. The window math is `chartWindow()` in `lib/filters.ts`, pure
+and unit-tested. `ExecutionFilters.timeframe` becomes `chartResolution`
+(`"1d" | "1h" | "1m"`); the filter panel's Timeframe control is removed.
+No server change -- `/bars` already took `max_points` and an arbitrary
+window.
+
+## Dynamic sizing-model parameters (web UI + backtest API)
+
+"Run a backtest" now renders one input per sizing-model constructor
+argument and swaps the whole set when the Sizing Model changes -- so
+picking `rsi` shows `period` / `oversold_threshold`, picking
+`bell_curve` shows `lookback_days` / `bars_per_day` / `mu` / `sigma`,
+and so on. Fields are pre-filled from this project's committed configs,
+grouped Primary vs a collapsed **Advanced** block, and each carries a
+reset-to-suggested control; a readout says which values differ from the
+committed defaults.
+
+**Server (`server/backtest.py`).** `describe_params()` introspects each
+strategy's `__init__` (`inspect.signature` + `typing.get_type_hints`,
+which is needed because the strategy modules use
+`from __future__ import annotations`) into a typed spec per argument:
+`type` (float/int/bool/str), `nullable`, `required`, `default`,
+`suggested`, `enum`, `group`, `editable`, `mirrors`, `step`. Three
+things `inspect` cannot see are named once: `_PARAM_ENUMS`
+(`vol_measure` -> stdev/range), `_HIDDEN_PARAMS` (`model_dir` /
+`external_dir` -- never shown or sent), `_DERIVED_PARAMS`
+(`baseline_price` -- shown locked). `bayesian_dual_scale.target_return`
+is surfaced locked with `mirrors: "profit_target"` (the form tracks the
+Profit target field and never sends it -- `build_config` already
+aligns it to the grid); `ml_reachability_*` `ticker` is locked to the
+id's fund. `GET /funds` gains a `sizing_params` key; `sizing_details`
+(`required` / `defaults`) is byte-for-byte unchanged for its existing
+consumers.
+
+**"More than read-only": `POST /api/backtest/validate`.** Dry-runs the
+*same* `build_config(request)` the submit path uses -- one definition of
+"valid", no second to drift -- queues nothing, writes no history, opens
+no store, and returns `{ ok, resolved_strategy_params, aligned, errors:
+[{field, message}] }` always as HTTP 200. The form debounces a call to
+it and renders a bad argument as a red line under its field, so
+`max_trade_pct = 1.5` or a partial parameter set is caught before the
+run is ever queued instead of as a 400 on click or a job that dies
+twenty seconds in. A 404 (a deployment whose backtest half predates the
+route) degrades silently to submit-time validation.
+
+**Client.** `strategyParams.ts` holds the pure schema->form->wire logic
+(covered in `strategyParams.test.ts`): a blank field is omitted (never
+sent as `null`); a `mirrors` field and the `percentage` alias are never
+sent; an `editable:false` field is never sent except `ticker`; ints go
+out as integers and bools as JSON booleans (the server does no
+coercion). A no-edit submit of any model therefore sends exactly that
+model's committed defaults -- byte-identical to the old blind
+`sizing_details.defaults` splat. The e2e hooks (`sizing-model` /
+`bars` / `run` test-ids, the `bars` option order, the `Run a backtest`
+title) are untouched; the Advanced block is collapsed on load so no new
+`<select>` shifts.
+
 ## "Backtest result" nav tab (web UI)
 
 Opening a run (from Run history or Active runs) already opened `?run=<id>`

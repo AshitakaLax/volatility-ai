@@ -8,6 +8,7 @@
  */
 import type {
   BacktestExecution,
+  ChartResolution,
   DateRange,
   ExecutionFilters,
   FundPerformanceMetrics,
@@ -202,6 +203,58 @@ export function aggregate(candles: Candle[], timeframe: Timeframe): Candle[] {
 /** Epoch seconds, which is what lightweight-charts wants. */
 export function toEpochSeconds(iso: string): number {
   return Math.floor(new Date(iso).getTime() / 1000);
+}
+
+/* ------------------------------------------------------------------ */
+/* Execution-chart zoom                                               */
+/* ------------------------------------------------------------------ */
+
+const DAY = 86_400;
+
+/**
+ * What each Execution-chart zoom level pulls and draws.
+ *
+ *   bucket          the candle size after client-side aggregation.
+ *   maxSpanSeconds  the widest window this level will fetch, anchored to
+ *                   the end of the run (or the end of the filter range).
+ *                   null = the whole run.
+ *   maxPoints       the `/bars` downsample hint. Set high enough that the
+ *                   server bucket for the CAPPED window is at or below
+ *                   `bucket` -- so "1m" really shows minute bars, not a
+ *                   server rollup of the whole ten-year file.
+ */
+export const CHART_RESOLUTIONS: Record<
+  ChartResolution,
+  { label: string; bucket: Timeframe; maxSpanSeconds: number | null; maxPoints: number }
+> = {
+  "1d": { label: "1D", bucket: "1Day", maxSpanSeconds: null, maxPoints: 4000 },
+  "1h": { label: "1H", bucket: "1Hour", maxSpanSeconds: 10 * DAY, maxPoints: 6000 },
+  "1m": { label: "1m", bucket: "1Min", maxSpanSeconds: 2 * DAY, maxPoints: 6000 },
+};
+
+/**
+ * The date window the Execution chart should fetch for a zoom level.
+ *
+ * The anchor is the end of the filter range (or, when that is open, the
+ * end of the run's data). A capped level starts `maxSpanSeconds` before
+ * that anchor, but never earlier than the filter range / data actually
+ * begins. Pure and unit-tested -- the off-by-a-window bug here is
+ * invisible on screen (it just looks like the run traded less).
+ */
+export function chartWindow(
+  resolution: ChartResolution,
+  range: DateRange,
+  data: DateRange,
+): DateRange {
+  const spec = CHART_RESOLUTIONS[resolution];
+  const end = range.end ?? data.end;
+  const lower = range.start ?? data.start;
+  if (spec.maxSpanSeconds === null || !end) return { start: lower, end };
+
+  const cappedStart = new Date(new Date(end).getTime() - spec.maxSpanSeconds * 1000).toISOString();
+  const start =
+    lower && new Date(lower).getTime() > new Date(cappedStart).getTime() ? lower : cappedStart;
+  return { start, end };
 }
 
 /* ------------------------------------------------------------------ */

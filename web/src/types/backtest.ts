@@ -217,8 +217,20 @@ export interface MultiFundBacktestReport {
 /* Client-side view state                                             */
 /* ------------------------------------------------------------------ */
 
-/** Chart aggregation. The engine runs on 1Min; the rest are rollups. */
+/** Candle-aggregation buckets. The engine runs on 1Min; the rest are
+ * rollups. */
 export type Timeframe = "1Min" | "5Min" | "15Min" | "1Hour" | "1Day";
+
+/**
+ * The Execution chart's zoom level. Each caps how wide a window it will
+ * pull so the payload stays small and the resolution stays REAL rather
+ * than a server downsample of the whole run:
+ *
+ *   "1d"  daily candles over the whole backtest
+ *   "1h"  hourly candles, at most a 10-day window
+ *   "1m"  minute candles, at most a 2-day window
+ */
+export type ChartResolution = "1d" | "1h" | "1m";
 
 /**
  * "Stuck" is this project's word for an open lot: capital committed and
@@ -232,7 +244,9 @@ export interface DateRange {
 }
 
 export interface ExecutionFilters {
-  timeframe: Timeframe;
+  /** The Execution chart's zoom level. Persisted here (not local to the
+   * chart) so it survives a tab switch, like the rest of the view. */
+  chartResolution: ChartResolution;
   range: DateRange;
   status: OrderStatusFilter;
   /** Inclusive bounds. Executions with no `rsi_at_entry` are excluded
@@ -244,7 +258,7 @@ export interface ExecutionFilters {
 }
 
 export const DEFAULT_FILTERS: ExecutionFilters = {
-  timeframe: "1Day",
+  chartResolution: "1d",
   range: { start: null, end: null },
   status: "all",
   rsiMin: null,
@@ -414,4 +428,81 @@ export interface HistoryRow {
   end: string | null;
   bars: number | null;
   metrics: FundPerformanceMetrics;
+}
+
+/* ------------------------------------------------------------------ */
+/* Dynamic sizing-model parameters                                    */
+/*                                                                    */
+/* `GET /api/backtest/funds` carries `sizing_params[id].params` -- one */
+/* spec per constructor argument of every sizing model -- so the      */
+/* "Run a backtest" form can render exactly that model's inputs and   */
+/* swap them when the model changes. Mirrors server/backtest.py's     */
+/* `describe_params()`; `sizing_details` still carries the older      */
+/* `required` / `defaults` shape for its existing consumers.          */
+/* ------------------------------------------------------------------ */
+
+/** A concrete parameter value on the wire. `null` is never sent -- a
+ * blank field is omitted from `strategy_params` entirely. */
+export type ParamValue = number | string | boolean;
+
+export interface ParamSpec {
+  /** Constructor keyword. The exact key the form puts in `strategy_params`. */
+  name: string;
+  /** Drives the widget and the client-side parse. `bool` is a two-option
+   * select; `int` steps by 1; `str` is free text unless `enum` is set. */
+  type: "float" | "int" | "bool" | "str";
+  /** May legitimately be left blank (annotation admits `None`, or the
+   * constructor default is `None`). A blank non-nullable required field
+   * blocks the run. */
+  nullable: boolean;
+  /** No constructor default -- must be supplied. */
+  required: boolean;
+  /** The bare constructor default, or `null` when required / when the
+   * real default is `None`. */
+  default: ParamValue | null;
+  /** What the field is seeded to and what "reset" restores: the
+   * project's committed value when there is one, else `default`. */
+  suggested: ParamValue | null;
+  /** `name` came from a committed project config -> shown in Primary and
+   * counted in the "differs from committed defaults" readout. */
+  has_suggested: boolean;
+  /** Closed choice set for a `str` field (today: `vol_measure`); render
+   * a `<select>`. `null` otherwise. */
+  enum: string[] | null;
+  group: "primary" | "advanced";
+  /** `false` -> render disabled with `locked_reason`; the engine owns
+   * this value (derived at run time, or set by the server). */
+  editable: boolean;
+  locked_reason: string | null;
+  /** Non-null only for `bayesian_dual_scale.target_return`: the form
+   * shows it tracking the Profit target field and NEVER sends it -- the
+   * server aligns it to the grid's single profit target. */
+  mirrors: "profit_target" | null;
+  /** Suggested `<input type="number" step>`: `"1"` for int, `"any"` for
+   * float, `null` for bool/enum/str. Advisory -- the server bounds it. */
+  step: string | null;
+}
+
+export interface SizingParamsEntry {
+  params: ParamSpec[];
+}
+
+/** One reason a would-be run is invalid, attached to a field when the
+ * server can pin it there. */
+export interface ValidateError {
+  field: string | null;
+  message: string;
+}
+
+export interface ValidateResponse {
+  ok: boolean;
+  /** What the engine would build with -- defaults filled in,
+   * `target_return` aligned. `null`/absent when invalid. */
+  resolved_strategy_params?: Record<string, ParamValue> | null;
+  /** The subset the server set or changed vs. what was submitted. */
+  aligned?: Record<string, ParamValue>;
+  errors: ValidateError[];
+  /** Set by the client when the server has no `/validate` route yet
+   * (older deployment mid-rollout): treated as "not blocking". */
+  degraded?: boolean;
 }

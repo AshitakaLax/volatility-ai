@@ -11,8 +11,10 @@ import {
 import { useEffect, useRef } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
-import { type Candle, aggregate, buildCycles, toEpochSeconds } from "@/lib/filters";
-import type { BacktestExecution, Timeframe } from "@/types/backtest";
+import { usePriceBars } from "@/hooks/usePriceBars";
+import { CHART_RESOLUTIONS, aggregate, buildCycles, chartWindow, toEpochSeconds } from "@/lib/filters";
+import { cn } from "@/lib/utils";
+import type { BacktestExecution, ChartResolution, DateRange } from "@/types/backtest";
 
 /**
  * Price with executions on it.
@@ -26,7 +28,13 @@ import type { BacktestExecution, Timeframe } from "@/types/backtest";
  *                needs the buy and the sell to name the same lot, which
  *                the blotter could not express until `lot_id` was added
  *                to both sides.
- *   candles      aggregated properly to the selected timeframe.
+ *   candles      pulled at the selected zoom level and aggregated to it.
+ *
+ * ZOOM IS A FETCH, NOT JUST AN AGGREGATION. "1m" pulls at most a 2-day
+ * window and "1H" at most 10 days, each with a high `max_points`, so the
+ * server sends real minute / near-minute bars for that span rather than
+ * a downsample of the whole ten-year file that no client-side rollup
+ * could recover detail from. "1D" pulls the whole run.
  *
  * CONNECTORS ARE DRAWN ON A CANVAS, NOT AS SERIES. lightweight-charts
  * has no segment primitive, and one LineSeries per cycle would mean
@@ -35,9 +43,17 @@ import type { BacktestExecution, Timeframe } from "@/types/backtest";
  */
 
 interface Props {
-  candles: Candle[];
+  ticker: string | null;
   executions: BacktestExecution[];
-  timeframe: Timeframe;
+  /** The Execution-chart zoom level, and how to change it. Held in the
+   * parent's filters so it survives a tab switch. */
+  resolution: ChartResolution;
+  onResolutionChange: (resolution: ChartResolution) => void;
+  /** The filter-panel window (may be open); the chart pulls a sub-window
+   * of it at the current zoom. */
+  range: DateRange;
+  /** The run's actual data bounds -- the anchor when `range` is open. */
+  dataRange: DateRange;
   /** Lots with no matching sell, so their targets are still live. */
   openLotIds: Set<string>;
   /**
@@ -47,11 +63,6 @@ interface Props {
    * actually at -- wrong in a way that looks entirely plausible.
    */
   profitTarget: number;
-  /** null candles means "still fetching", which is not "none". */
-  loading?: boolean;
-  /** The bucket the server rolled up to, so the chart can say so. */
-  bucketSeconds?: number | null;
-  error?: string | null;
   height?: number;
 }
 
@@ -60,15 +71,17 @@ interface Props {
 // reported in the UI rather than applied silently.
 const MAX_CONNECTORS = 400;
 
+const RESOLUTION_ORDER: ChartResolution[] = ["1d", "1h", "1m"];
+
 export function BacktestChart({
-  candles,
+  ticker,
   executions,
-  timeframe,
+  resolution,
+  onResolutionChange,
+  range,
+  dataRange,
   openLotIds,
   profitTarget,
-  loading = false,
-  bucketSeconds = null,
-  error = null,
   height = 460,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
@@ -76,6 +89,11 @@ export function BacktestChart({
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const priceLines = useRef<IPriceLine[]>([]);
+
+  const spec = CHART_RESOLUTIONS[resolution];
+  const win = chartWindow(resolution, range, dataRange);
+  const { candles, error } = usePriceBars(ticker, win.start, win.end, spec.maxPoints);
+  const loading = candles === null;
 
   const cycles = buildCycles(executions);
   const closed = cycles.filter((cycle) => !cycle.open);
@@ -88,17 +106,12 @@ export function BacktestChart({
       height,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        // Read from the live theme rather than hard-coded, so the chart
-        // follows the same tokens as everything around it.
         // A LITERAL, not the --muted-foreground token. That token is an
         // oklch() value, and lightweight-charts parses a limited colour
         // grammar: handed one it throws "Cannot parse color", and since
         // the throw happens during render it takes the whole view down
         // with it -- a blank page, not a mis-coloured axis. An e2e test
         // against the real deployment is what caught it.
-        //
-        // This grey is legible on both themes, which is why a token was
-        // wanted in the first place.
         textColor: "rgba(140, 140, 150, 0.9)",
         fontFamily: "inherit",
       },
@@ -143,10 +156,14 @@ export function BacktestChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height]);
 
-  // --- data ------------------------------------------------------------
+  // --- data ----------------------------------------------------------
   useEffect(() => {
     if (!series.current) return;
-    const rolled = aggregate(candles, timeframe);
+    // null candles = a zoom-level refetch is in flight. Leave the last
+    // frame on screen rather than blanking it to []; the "Loading…" line
+    // below already signals the wait.
+    if (candles === null) return;
+    const rolled = aggregate(candles, spec.bucket);
     series.current.setData(
       rolled.map(
         (candle): CandlestickData<Time> => ({
@@ -203,7 +220,7 @@ export function BacktestChart({
     chart.current?.timeScale().fitContent();
     drawConnectors();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, executions, timeframe, openLotIds, profitTarget]);
+  }, [candles, executions, resolution, openLotIds, profitTarget]);
 
   // --- connectors ------------------------------------------------------
   function sizeOverlay() {
@@ -255,23 +272,47 @@ export function BacktestChart({
     drawConnectors();
   });
 
+  const spanLabel =
+    spec.maxSpanSeconds === null
+      ? "whole test"
+      : `${Math.round(spec.maxSpanSeconds / 86_400)}-day max`;
+
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
         <CardTitle>Execution chart</CardTitle>
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+          <div className="flex overflow-hidden rounded-md border border-border">
+            {RESOLUTION_ORDER.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => onResolutionChange(option)}
+                title={
+                  option === "1d"
+                    ? "daily candles, whole backtest"
+                    : option === "1h"
+                      ? "hourly candles, last 10 days"
+                      : "minute candles, last 2 days"
+                }
+                className={cn(
+                  "px-2.5 py-1 transition-colors",
+                  resolution === option
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-accent",
+                )}
+              >
+                {CHART_RESOLUTIONS[option].label}
+              </button>
+            ))}
+          </div>
           <Legend color="#3b82f6" label="buy" />
           <Legend color="#22c55e" label="harvest" />
           <Legend color="#ef4444" label="loss exit" />
           <Legend color="rgba(234,179,8,0.8)" label="open target" />
           <span>
             {closed.length} cycle{closed.length === 1 ? "" : "s"}
-            {truncated > 0 ? ` (${truncated} connectors not drawn)` : ""}
-            {/* Said out loud: the server chose this bucket to keep the
-                payload sane, and it may not be the timeframe selected. */}
-            {bucketSeconds && bucketSeconds > 60
-              ? ` · ${Math.round(bucketSeconds / 60)}m candles`
-              : ""}
+            {truncated > 0 ? ` (${truncated} connectors not drawn)` : ""} · {spanLabel}
           </span>
         </div>
       </CardHeader>
@@ -292,6 +333,10 @@ export function BacktestChart({
             No executions in this range. A low-volatility fund on a grid tuned for a
             leveraged one legitimately never trades -- widen the date range, or lower the
             grid step.
+          </p>
+        ) : candles !== null && candles.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            No price bars for this window. Try a wider zoom.
           </p>
         ) : null}
       </CardContent>

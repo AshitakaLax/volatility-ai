@@ -1,0 +1,207 @@
+/**
+ * The dynamic-parameter helpers: schema -> seeded form state -> a
+ * `strategy_params` payload. Each case below is one where a wrong answer
+ * (a stray key, a float where an int is wanted, sending a field the
+ * server aligns itself) looks fine on screen and fails on the run.
+ */
+import { describe, expect, it } from "vitest";
+
+import type { ParamSpec } from "@/types/backtest";
+
+import {
+  blankRequired,
+  buildStrategyParams,
+  diffFromDefaults,
+  paramErrorsFor,
+  seedOf,
+  seedValues,
+} from "./strategyParams";
+
+function spec(over: Partial<ParamSpec> = {}): ParamSpec {
+  return {
+    name: "x",
+    type: "float",
+    nullable: false,
+    required: false,
+    default: 0,
+    suggested: 0,
+    has_suggested: false,
+    enum: null,
+    group: "advanced",
+    editable: true,
+    locked_reason: null,
+    mirrors: null,
+    step: "any",
+    ...over,
+  };
+}
+
+// The two swept dimensions of `fixed` and `bell_curve`, close to what
+// server describe_params() actually emits.
+const FIXED: ParamSpec[] = [
+  // `float | None` on the ctor, but the server marks it required for the
+  // form (FixedPortfolioPercentage raises without one).
+  spec({ name: "allocation_pct", required: true, nullable: false, default: null, suggested: 0.05, has_suggested: true, group: "primary" }),
+  spec({
+    name: "percentage",
+    nullable: true,
+    default: null,
+    suggested: null,
+    editable: false,
+    locked_reason: "deprecated alias of allocation_pct -- use allocation_pct",
+  }),
+];
+
+const BELL: ParamSpec[] = [
+  spec({ name: "max_trade_pct", required: true, default: null, suggested: 0.08, has_suggested: true, group: "primary" }),
+  spec({ name: "lookback_days", required: true, default: null, suggested: 20, has_suggested: true, group: "primary" }),
+  spec({ name: "bars_per_day", type: "int", required: true, default: null, suggested: 387, has_suggested: true, group: "primary", step: "1" }),
+  spec({ name: "mu", default: 0.2, suggested: 0.2 }),
+  spec({ name: "sigma", default: 0.1, suggested: 0.1 }),
+  spec({ name: "baseline_price", type: "float", nullable: true, default: null, suggested: null, editable: false, locked_reason: "captured from the first bar" }),
+];
+
+const BAYES_HEAD: ParamSpec[] = [
+  spec({ name: "max_trade_pct", required: true, default: null, suggested: 0.05, has_suggested: true, group: "primary" }),
+  spec({
+    name: "target_return",
+    required: true,
+    default: null,
+    suggested: 0.0075,
+    has_suggested: true,
+    group: "primary",
+    editable: false,
+    mirrors: "profit_target",
+    locked_reason: "the server sets this to the grid's profit target",
+  }),
+  spec({ name: "bars_per_day", type: "int", required: true, default: null, suggested: 387, has_suggested: true, group: "primary", step: "1" }),
+  spec({ name: "vol_measure", type: "str", default: "stdev", suggested: "stdev", enum: ["stdev", "range"], step: null }),
+  spec({ name: "allow_target_return_mismatch", type: "bool", default: false, suggested: false, step: null }),
+];
+
+const ML: ParamSpec[] = [
+  spec({ name: "max_trade_pct", required: true, default: null, suggested: 0.05, has_suggested: true, group: "primary" }),
+  spec({ name: "ticker", type: "str", required: true, default: null, suggested: "COWZ", has_suggested: true, group: "primary", editable: false, locked_reason: "trained on COWZ", step: null }),
+  spec({ name: "confidence_floor", default: 0.25, suggested: 0.25, has_suggested: true, group: "primary" }),
+];
+
+describe("seedValues", () => {
+  it("seeds each field to its suggested value as a string, blank for null", () => {
+    const seed = seedValues(BELL);
+    expect(seed.max_trade_pct).toBe("0.08");
+    expect(seed.bars_per_day).toBe("387");
+    expect(seed.baseline_price).toBe(""); // suggested null -> blank
+  });
+
+  it("omits mirrors fields entirely -- they are not stored", () => {
+    expect("target_return" in seedValues(BAYES_HEAD)).toBe(false);
+  });
+
+  it("seedOf stringifies bool and enum suggestions", () => {
+    expect(seedOf(spec({ type: "bool", suggested: false }))).toBe("false");
+    expect(seedOf(spec({ type: "str", suggested: "stdev" }))).toBe("stdev");
+  });
+});
+
+describe("buildStrategyParams", () => {
+  it("a no-edit fixed submit sends exactly {allocation_pct: 0.05}", () => {
+    expect(buildStrategyParams(FIXED, seedValues(FIXED))).toEqual({ allocation_pct: 0.05 });
+  });
+
+  it("a no-edit bell_curve submit sends exactly its committed defaults", () => {
+    expect(buildStrategyParams(BELL, seedValues(BELL))).toEqual({
+      max_trade_pct: 0.08,
+      lookback_days: 20,
+      bars_per_day: 387,
+    });
+  });
+
+  it("never sends the deprecated `percentage` alias or a locked derived field", () => {
+    const values = { ...seedValues(BELL), baseline_price: "71.5" };
+    expect("baseline_price" in buildStrategyParams(BELL, values)).toBe(false);
+    const fv = { ...seedValues(FIXED), percentage: "0.1" };
+    expect("percentage" in buildStrategyParams(FIXED, fv)).toBe(false);
+  });
+
+  it("never sends a mirrors field even if a value leaks into the map", () => {
+    const values = { ...seedValues(BAYES_HEAD), target_return: "0.9" };
+    expect("target_return" in buildStrategyParams(BAYES_HEAD, values)).toBe(false);
+  });
+
+  it("omits a blank field rather than sending null or empty string", () => {
+    const values = { ...seedValues(BELL), mu: "" };
+    expect("mu" in buildStrategyParams(BELL, values)).toBe(false);
+  });
+
+  it("omits a pure-optional field left at its constructor default, includes it when moved", () => {
+    expect("mu" in buildStrategyParams(BELL, seedValues(BELL))).toBe(false); // at default 0.2
+    const moved = { ...seedValues(BELL), mu: "0.25" };
+    expect(buildStrategyParams(BELL, moved).mu).toBe(0.25);
+  });
+
+  it("types int fields as integers, bool as JSON boolean, enum as string", () => {
+    const values = {
+      ...seedValues(BAYES_HEAD),
+      bars_per_day: "390",
+      vol_measure: "range",
+      allow_target_return_mismatch: "true",
+    };
+    const out = buildStrategyParams(BAYES_HEAD, values);
+    expect(out.bars_per_day).toBe(390);
+    expect(Number.isInteger(out.bars_per_day)).toBe(true);
+    expect(out.vol_measure).toBe("range");
+    expect(out.allow_target_return_mismatch).toBe(true);
+  });
+
+  it("includes ticker for an ml model (required, server does not inject it)", () => {
+    expect(buildStrategyParams(ML, seedValues(ML)).ticker).toBe("COWZ");
+  });
+
+  it("drops a half-typed number rather than sending NaN", () => {
+    const values = { ...seedValues(BELL), max_trade_pct: "-" };
+    expect("max_trade_pct" in buildStrategyParams(BELL, values)).toBe(false);
+  });
+});
+
+describe("diffFromDefaults", () => {
+  it("is empty when every editable field is at its seed", () => {
+    expect(diffFromDefaults(BELL, seedValues(BELL))).toEqual([]);
+  });
+
+  it("reports only changed editable non-mirror fields", () => {
+    const values = { ...seedValues(BELL), mu: "0.3", max_trade_pct: "0.12" };
+    const diff = diffFromDefaults(BELL, values);
+    expect(diff.map((d) => d.name).sort()).toEqual(["max_trade_pct", "mu"]);
+    expect(diff.find((d) => d.name === "mu")).toEqual({ name: "mu", from: "0.2", to: "0.3" });
+  });
+
+  it("ignores the locked target_return even if the map carries a stale value", () => {
+    const values = { ...seedValues(BAYES_HEAD), target_return: "0.5" };
+    expect(diffFromDefaults(BAYES_HEAD, values).some((d) => d.name === "target_return")).toBe(false);
+  });
+});
+
+describe("blankRequired", () => {
+  it("names a required editable field left blank", () => {
+    const values = { ...seedValues(BELL), max_trade_pct: "" };
+    expect(blankRequired(BELL, values)).toEqual(["max_trade_pct"]);
+  });
+
+  it("is empty when required fields are filled, and ignores the locked ticker", () => {
+    expect(blankRequired(BELL, seedValues(BELL))).toEqual([]);
+    expect(blankRequired(ML, { ...seedValues(ML), ticker: "" })).toEqual([]); // ticker not editable
+  });
+});
+
+describe("paramErrorsFor", () => {
+  const errors = [
+    { field: "max_trade_pct", message: "must be in (0, 1]" },
+    { field: null, message: "cannot sweep 2 profit targets" },
+  ];
+  it("filters to one field, and to the unattached errors for null", () => {
+    expect(paramErrorsFor("max_trade_pct", errors)).toHaveLength(1);
+    expect(paramErrorsFor(null, errors)[0]!.message).toContain("cannot sweep");
+    expect(paramErrorsFor("mu", errors)).toEqual([]);
+    expect(paramErrorsFor("x", undefined)).toEqual([]);
+  });
+});

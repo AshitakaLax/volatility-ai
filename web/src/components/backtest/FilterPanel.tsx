@@ -1,7 +1,7 @@
 import { Filter, RotateCcw } from "lucide-react";
 
 import { Badge, Button, Card, CardContent, Field, Input, Select } from "@/components/ui/primitives";
-import { DEFAULT_FILTERS, type ExecutionFilters, type Timeframe } from "@/types/backtest";
+import { DEFAULT_FILTERS, type ExecutionFilters } from "@/types/backtest";
 
 /**
  * Drill-down controls over a run's executions.
@@ -22,8 +22,6 @@ interface Props {
   showing: number;
   total: number;
 }
-
-const TIMEFRAMES: Timeframe[] = ["1Min", "5Min", "15Min", "1Hour", "1Day"];
 
 /** Presets, as day offsets from the report's end. */
 const PRESETS: { label: string; days: number | null }[] = [
@@ -58,19 +56,6 @@ export function FilterPanel({ filters, onChange, availableTickers, showing, tota
   return (
     <Card>
       <CardContent className="flex flex-wrap items-end gap-4 pt-5">
-        <Field label="Timeframe">
-          <Select
-            value={filters.timeframe}
-            onChange={(event) => set("timeframe", event.currentTarget.value as Timeframe)}
-          >
-            {TIMEFRAMES.map((timeframe) => (
-              <option key={timeframe} value={timeframe}>
-                {timeframe}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
         <Field label="From">
           <Input
             type="date"

@@ -473,6 +473,219 @@ class TestStrategyParameters:
         assert "cannot sweep" in response.json()["detail"]
 
 
+class TestParameterSchema:
+    """`/funds` now also carries `sizing_params` -- one typed spec per
+    constructor argument -- so the form can render a model's inputs and
+    swap them when the model changes. The older `sizing_details` shape is
+    left exactly as it was."""
+
+    def test_sizing_details_is_byte_for_byte_the_old_shape(self, client):
+        """Its existing consumers (the e2e model-coverage test, older
+        bundles) must not notice this change."""
+        from server.backtest import STRATEGY_DEFAULTS, required_parameters
+        from src.trading.strategy_registry import STRATEGIES
+
+        body = client.get("/api/backtest/funds").json()
+        for name, cls in STRATEGIES.items():
+            assert body["sizing_details"][name]["required"] == required_parameters(cls)
+            assert body["sizing_details"][name]["defaults"] == STRATEGY_DEFAULTS.get(name, {})
+
+    def test_sizing_params_covers_every_model_and_carries_typed_specs(self, client):
+        body = client.get("/api/backtest/funds").json()
+        assert set(body["sizing_params"]) == set(body["sizing_models"])
+        bell = {s["name"]: s for s in body["sizing_params"]["bell_curve"]["params"]}
+        assert bell["max_trade_pct"]["required"] is True
+        assert bell["bars_per_day"]["type"] == "int"
+        assert "model_dir" not in bell  # hidden filesystem wiring
+        target = {s["name"]: s for s in body["sizing_params"]["bayesian_dual_scale"]["params"]}[
+            "target_return"
+        ]
+        assert target["editable"] is False and target["mirrors"] == "profit_target"
+
+    def test_one_broken_strategy_does_not_500_funds(self, client, monkeypatch):
+        """`test_every_offered_sizing_model_can_actually_run` reads /funds
+        first; an unguarded introspection raise would cascade to it."""
+        import server.backtest as module
+
+        def boom(strategy_id, cls):
+            raise RuntimeError("introspection blew up")
+
+        monkeypatch.setattr(module, "describe_params", boom)
+        response = client.get("/api/backtest/funds")
+        assert response.status_code == 200
+        assert all(entry == {"params": []} for entry in response.json()["sizing_params"].values())
+
+
+class TestValidateEndpoint:
+    """`POST /api/backtest/validate` dry-runs the exact `build_config`
+    the submit path uses, without queuing -- so the form can show a bad
+    argument under its field before a run is ever started."""
+
+    @pytest.fixture(autouse=True)
+    def _no_side_effects_guard(self, tmp_path, monkeypatch):
+        # If a bug ever made /validate archive or queue, these would catch
+        # it: history writes land in a tmp dir we can inspect, and the
+        # queue length is asserted unchanged in every test below.
+        import time as _time
+
+        from server.backtest import queue as _queue
+
+        deadline = _time.monotonic() + 30
+        while _time.monotonic() < deadline and any(
+            job.status in {"queued", "running"} for job in _queue.all()
+        ):
+            _time.sleep(0.05)
+        monkeypatch.setenv("VAI_RUN_HISTORY_DIR", str(tmp_path / "runs"))
+        self._queue_len = len(_queue.all())
+
+    def _assert_no_side_effects(self):
+        from server import history
+        from server.backtest import queue as _queue
+
+        assert len(_queue.all()) == self._queue_len, "/validate queued a job"
+        assert history.load_all() == [], "/validate wrote history"
+
+    def test_a_valid_request_reports_the_resolved_params(self, client):
+        body = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+                "strategy_params": {"allocation_pct": 0.05},
+            },
+        ).json()
+        assert body["ok"] is True
+        assert body["resolved_strategy_params"] == {"allocation_pct": 0.05}
+        assert body["aligned"] == {}
+        assert body["errors"] == []
+        self._assert_no_side_effects()
+
+    def test_a_partial_set_is_not_ok_and_names_the_missing_argument(self, client):
+        body = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "bell_curve",
+                "strategy_params": {"lookback_days": 20},
+            },
+        ).json()
+        assert body["ok"] is False
+        joined = " ".join(error["message"] for error in body["errors"])
+        assert "Missing" in joined and "max_trade_pct" in joined
+        assert "rank_by" not in joined
+        # The missing argument is pinned to its field.
+        assert any(error["field"] == "max_trade_pct" for error in body["errors"])
+
+    def test_an_out_of_range_value_is_pinned_to_its_field(self, client):
+        body = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "bell_curve",
+                "strategy_params": {
+                    "max_trade_pct": 1.5,
+                    "lookback_days": 20,
+                    "bars_per_day": 387,
+                },
+            },
+        ).json()
+        assert body["ok"] is False
+        offending = [e for e in body["errors"] if e["field"] == "max_trade_pct"]
+        assert offending and "(0, 1]" in offending[0]["message"]
+
+    def test_bayesian_target_return_is_reported_as_aligned(self, client):
+        body = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.005],
+                "profit_targets": [0.01],
+                "sizing_model": "bayesian_dual_scale",
+                # target_return omitted -- the form never sends it.
+                "strategy_params": {
+                    "max_trade_pct": 0.05,
+                    "horizon_days": 1.0,
+                    "bars_per_day": 387,
+                },
+            },
+        ).json()
+        assert body["ok"] is True
+        assert body["resolved_strategy_params"]["target_return"] == pytest.approx(0.01)
+        assert body["aligned"]["target_return"] == pytest.approx(0.01)
+
+    def test_multi_target_bayesian_is_refused(self, client):
+        body = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.005],
+                "profit_targets": [0.005, 0.01],
+                "sizing_model": "bayesian_dual_scale",
+            },
+        ).json()
+        assert body["ok"] is False
+        assert "cannot sweep" in " ".join(e["message"] for e in body["errors"])
+        # It is about the profit-target GRID, not a constructor argument,
+        # so it is left unattached -- the form shows it as a banner, not
+        # under the locked target_return field.
+        assert all(e["field"] is None for e in body["errors"])
+
+    def test_an_ml_ticker_fund_mismatch_is_reported(self, client):
+        body = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "ml_reachability_cowz",
+            },
+        ).json()
+        assert body["ok"] is False
+        assert "COWZ" in " ".join(e["message"] for e in body["errors"])
+
+    def test_an_unknown_key_is_reported_not_silently_dropped(self, client):
+        body = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "rsi",
+                "strategy_params": {"max_trade_pct": 0.08, "not_a_real_arg": 1},
+            },
+        ).json()
+        assert body["ok"] is False
+        assert "not_a_real_arg" in " ".join(e["message"] for e in body["errors"])
+
+    def test_an_unknown_sizing_model_is_not_ok(self, client):
+        body = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "not_a_strategy",
+            },
+        ).json()
+        assert body["ok"] is False
+        assert body["errors"]
+
+    def test_validate_shares_build_config_with_submit(self):
+        """One definition of 'valid' -- not a second that can drift."""
+        import inspect
+
+        from server import backtest as module
+
+        source = inspect.getsource(module.validate)
+        assert "build_config(request)" in source
+
+
 class TestRunHistory:
     """Completed runs outlive the process; queued ones still do not.
 

@@ -18,8 +18,10 @@ import {
 } from "@/types/backtest";
 
 import {
+  CHART_RESOLUTIONS,
   aggregate,
   buildCycles,
+  chartWindow,
   filterExecutions,
   filterHistoryRows,
   historyFieldValue,
@@ -56,7 +58,7 @@ function sell(lot: string, bar: number, extra: Partial<BacktestExecution> = {}):
 }
 
 const BASE: ExecutionFilters = {
-  timeframe: "1Day",
+  chartResolution: "1d",
   range: { start: null, end: null },
   status: "all",
   rsiMin: null,
@@ -206,6 +208,54 @@ describe("aggregate", () => {
 
   it("handles an empty series", () => {
     expect(aggregate([], "1Day")).toEqual([]);
+  });
+});
+
+describe("chartWindow", () => {
+  const data = { start: "2016-01-04T14:30:00+00:00", end: "2026-09-05T20:00:00+00:00" };
+
+  it("1d over an open range is the whole run", () => {
+    expect(chartWindow("1d", { start: null, end: null }, data)).toEqual({
+      start: data.start,
+      end: data.end,
+    });
+  });
+
+  it("1m caps to a 2-day window anchored at the data end", () => {
+    const win = chartWindow("1m", { start: null, end: null }, data);
+    expect(win.end).toBe(data.end);
+    const spanMs = new Date(win.end!).getTime() - new Date(win.start!).getTime();
+    expect(spanMs).toBe(CHART_RESOLUTIONS["1m"].maxSpanSeconds! * 1000);
+  });
+
+  it("1h caps to a 10-day window", () => {
+    const win = chartWindow("1h", { start: null, end: null }, data);
+    const spanMs = new Date(win.end!).getTime() - new Date(win.start!).getTime();
+    expect(spanMs).toBe(10 * 86_400 * 1000);
+  });
+
+  it("anchors to the filter range end when one is set", () => {
+    const win = chartWindow("1m", { start: null, end: "2020-06-15T00:00:00+00:00" }, data);
+    expect(win.end).toBe("2020-06-15T00:00:00+00:00");
+    expect(new Date(win.start!).getTime()).toBe(
+      new Date("2020-06-13T00:00:00+00:00").getTime(),
+    );
+  });
+
+  it("never starts earlier than the filter range does", () => {
+    // A 1-day filter range is narrower than 1m's 2-day cap -- the cap
+    // must not pull data from before the range the user chose.
+    const range = { start: "2020-06-15T00:00:00+00:00", end: "2020-06-15T23:59:00+00:00" };
+    const win = chartWindow("1m", range, data);
+    expect(win.start).toBe(range.start);
+    expect(win.end).toBe(range.end);
+  });
+
+  it("falls back to the data end as the anchor when the range is open", () => {
+    expect(chartWindow("1h", { start: null, end: null }, { start: null, end: null })).toEqual({
+      start: null,
+      end: null,
+    });
   });
 });
 
