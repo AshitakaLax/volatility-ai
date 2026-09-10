@@ -185,8 +185,8 @@ def check_extended_clock(report: Report, config) -> None:
 
     from alpaca.trading.client import TradingClient
 
-    from src.data.alpaca_market_data import AlpacaMarketData
     from src.core.secrets import load_live_credentials
+    from src.data.alpaca_market_data import AlpacaMarketData
 
     creds = load_live_credentials()
     try:
@@ -204,8 +204,8 @@ def check_market_data(report: Report, config) -> None:
     a subscription authenticates and then fails every bar request."""
     from alpaca.trading.client import TradingClient
 
-    from src.data.alpaca_market_data import AlpacaMarketData
     from src.core.secrets import load_live_credentials
+    from src.data.alpaca_market_data import AlpacaMarketData
 
     creds = load_live_credentials()
     symbol = getattr(config.live, "symbol", None) or "TQQQ"

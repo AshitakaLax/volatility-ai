@@ -58,8 +58,8 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 warnings.filterwarnings("ignore")
 
-from src.optimization.optimization_controller import OptimizationController
 from src.core.config import BacktestConfig
+from src.optimization.optimization_controller import OptimizationController
 from src.strategies.indicator_library import available, compute, load_bars, signals, warmup_bars
 from src.trading.risk_manager import RiskManager
 from tools.indicator_sweep import (

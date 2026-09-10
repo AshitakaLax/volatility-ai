@@ -76,15 +76,14 @@ if _REPO_ROOT not in _sys.path:
 
 import logging
 
-import pandas as pd
-
-from src.optimization.optimization_controller import OptimizationController
-from src.core.config import BacktestConfig
-from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.analysis.performance_analyzer import annual_returns
+from src.core.config import BacktestConfig
+from src.optimization.optimization_controller import OptimizationController
+from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.trading.risk_manager import RiskManager
+from tools.harness import SQQQ, load_bars
 
-DATA = "data/SQQQ_rth_full.csv"
+DATA = SQQQ  # the shared dataset; the literal lives in tools/harness.py
 
 
 class Stopped(HighFrequencyLocalReferenceSizing):
@@ -149,7 +148,7 @@ def main(argv=None) -> int:
         logging.disable(logging.WARNING)
 
     cfg = BacktestConfig.from_yaml("config/probe_dipbuy_full.yaml")
-    frame = pd.read_csv(DATA, parse_dates=["timestamp"]).set_index("timestamp")
+    frame = load_bars(DATA)
     controller = OptimizationController(historical_data=frame)
 
     price = frame["close"]
