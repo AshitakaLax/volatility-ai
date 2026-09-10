@@ -130,6 +130,14 @@ def choose_jobs(bars: int, combinations: int, requested: int | None) -> int:
 class RunRequest(BaseModel):
     """The shape of a submitted run. Semantics are BacktestConfig's."""
 
+    # A DESCRIPTIVE LABEL, never read by the engine. It is carried onto
+    # the job snapshot and the archived report so a sweep can be found
+    # later by what it was for rather than only by its 12-hex id. Not
+    # part of BacktestConfig -- it is a UI/history concern, so it stops
+    # here and is never handed to from_dict().
+    name: str | None = Field(
+        default=None, max_length=120, description="Optional label for the run."
+    )
     tickers: list[str] = Field(..., min_length=1, max_length=8)
     grid_steps: list[float] = Field(..., min_length=1, max_length=12)
     profit_targets: list[float] = Field(..., min_length=1, max_length=12)
@@ -468,11 +476,22 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
     return {
         "run_id": "",  # filled in by the route from the job's own id
         "parameters": {
+            # Descriptive only; None when the run was submitted unnamed
+            # or with nothing but whitespace.
+            "name": (parsed.name or "").strip() or None,
             "grid_step_pct": config.grid.steps[0] if config.grid.steps else None,
             "profit_target_pct": (
                 config.grid.profit_targets[0] if config.grid.profit_targets else None
             ),
             "sizing_model": config.strategy.strategy_id,
+            # The RESOLVED strategy parameters -- what the engine was
+            # actually constructed with, after defaults were filled in
+            # and target_return was aligned to the grid. Carried so the
+            # history view can filter on an input argument rather than
+            # only on the swept grid step and profit target. All values
+            # are plain numbers/strings/bools; nothing here needs a
+            # custom encoder.
+            "strategy_params": dict(config.strategy.strategy_params),
             "fill_model": config.execution.fill_model,
             "enforce_no_loss": config.execution.enforce_no_loss,
             # What the run ACTUALLY used, not what was asked for, so a
@@ -634,11 +653,20 @@ def history_rows() -> dict[str, Any]:
                 rows.append(
                     {
                         "run_id": run.get("run_id"),
+                        # Repeated on every configuration row of a run --
+                        # the table is flattened one row per cell, and a
+                        # reader scanning it should see the label on each.
+                        "name": parameters.get("name"),
                         "saved_at": run.get("saved_at"),
                         "ticker": ticker,
                         "grid_step": cell.get("grid_step"),
                         "profit_target": cell.get("profit_target"),
                         "sizing_model": parameters.get("sizing_model"),
+                        # The resolved input arguments, so the client can
+                        # filter on one. {} for a run archived before this
+                        # was recorded -- the UI treats absent as "no such
+                        # input" rather than erroring.
+                        "strategy_params": parameters.get("strategy_params") or {},
                         "fill_model": parameters.get("fill_model"),
                         # The engine ranked these; index 0 is its own
                         # pick, and saying so lets a reader see when

@@ -205,9 +205,27 @@ git pull && docker compose -f docker-compose.pi.yml up -d --build
 # Stop trading. The ledger survives in the named volume.
 docker compose -f docker-compose.pi.yml stop paper
 
-# Back up the ledger
+# Back up the ledger (one-off, manual)
 docker compose -f docker-compose.pi.yml run --rm --entrypoint sh paper \
   -c 'cat /app/state/paper_ledger.db' > "ledger-$(date +%F).db"
+```
+
+For a scheduled backup, `tools/backup_databases.py` does the snapshot,
+archive, and off-machine copy in one script. On the **workstation** it
+bundles `warehouse/*.duckdb` plus any local ledger and pushes to the Pi:
+
+```powershell
+python tools/backup_databases.py --install-daily --remote-host pi@172.16.0.137 --at 03:30
+```
+
+To back up the **Pi's own** ledger with it, run the same script inside
+the container against the state volume (it uses `sqlite3`'s online
+`.backup()`, so the loop keeps trading):
+
+```bash
+docker compose -f docker-compose.pi.yml run --rm --entrypoint python paper \
+  tools/backup_databases.py --db /app/state/paper_ledger.db \
+  --remote-host user@workstation --remote-dir volatility-ai-backups
 ```
 
 `docker compose down` leaves the `state` volume intact. `down -v`
@@ -235,8 +253,9 @@ result came from regular-hours bars. Those books are thinner and spreads
 wider.
 
 **SD cards wear out.** The ledger is written every tick. If this runs
-for months, move Docker's data root to an SSD, or take the backup above
-on a schedule.
+for months, move Docker's data root to an SSD, or schedule
+`tools/backup_databases.py` (see Operations above) so a card failure
+costs a day, not the whole ledger.
 
 ---
 

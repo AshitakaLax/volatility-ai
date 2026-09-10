@@ -172,10 +172,19 @@ export interface FundResult {
 
 /** The parameters a run was produced under. */
 export interface BacktestParameters {
+  /** The label the run was submitted with, or null if it was unnamed.
+   * Descriptive only -- see `BacktestRunRequest.name`. */
+  name?: string | null;
   grid_step_pct: number | null;
   profit_target_pct: number | null;
   /** A `strategy_id` from `src/strategy_registry.py`. */
   sizing_model: string;
+  /**
+   * The RESOLVED sizing-model arguments -- what the engine was built
+   * with after defaults were filled in and `target_return` was aligned
+   * to the grid. Absent on a report predating this field.
+   */
+  strategy_params?: Record<string, number | string | boolean>;
   /** "close" requires the bar's CLOSE to reach a level; "intrabar" fills
    * a level TOUCHED during the bar -- roughly 1.85x more fills. */
   fill_model: string;
@@ -243,6 +252,68 @@ export const DEFAULT_FILTERS: ExecutionFilters = {
   tickers: [],
 };
 
+/** An inclusive numeric band. `null` on an end means "unbounded". */
+export interface NumericRange {
+  min: number | null;
+  max: number | null;
+}
+
+/**
+ * A view filter over the flattened run-history table.
+ *
+ * Categorical fields (`tickers`, `models`, `fillModels`) are
+ * OR-within / AND-between: an empty list is no restriction, a non-empty
+ * one keeps rows whose value is in it.
+ *
+ * Numeric fields are addressed by a NAMESPACED key so an input argument
+ * and a result metric can never collide:
+ *
+ *   `grid_step`, `profit_target`   the swept dimensions, in PERCENT
+ *   `param:<name>`                 a numeric sizing-model argument
+ *   `metric:<key>`                 a `FundPerformanceMetrics` field
+ *
+ * Each numeric field carries both a set of exact values to keep
+ * (`values`) and a band (`ranges`); a row passes when it satisfies
+ * whichever of the two is set (OR), so "1% or 1.5%" and "0.5%–2%" are
+ * both expressible and setting neither leaves the field open. A row that
+ * does not have the field at all is excluded once the field is gated --
+ * unknown is not a match, the same rule the RSI filter follows.
+ */
+export interface RunHistoryFilters {
+  /** Case-insensitive substring over the run name. "" = no restriction;
+   * a row with no name drops out once this is non-empty. */
+  name: string;
+  tickers: string[];
+  models: string[];
+  fillModels: string[];
+  /** Namespaced field key -> exact values to keep. Empty list / absent
+   * key = no restriction. */
+  values: Record<string, number[]>;
+  /** Namespaced field key -> inclusive band. Absent key = no
+   * restriction. */
+  ranges: Record<string, NumericRange>;
+  /**
+   * Optional numeric fields the reader has ADDED to the panel (a
+   * sizing-model argument, a result metric) but may not have typed a
+   * bound into yet. Purely presentational -- `filterHistoryRows`
+   * ignores it -- so a freshly added field does not vanish before it
+   * is used, and stays put while its inputs are cleared and retyped.
+   * `grid_step` and `profit_target` are always shown and never listed
+   * here.
+   */
+  extraFields: string[];
+}
+
+export const EMPTY_RUN_HISTORY_FILTERS: RunHistoryFilters = {
+  name: "",
+  tickers: [],
+  models: [],
+  fillModels: [],
+  values: {},
+  ranges: {},
+  extraFields: [],
+};
+
 /**
  * A submitted run, for the bidirectional half of the UI.
  *
@@ -253,6 +324,13 @@ export const DEFAULT_FILTERS: ExecutionFilters = {
 export type RunStatus = "queued" | "running" | "complete" | "failed";
 
 export interface BacktestRunRequest {
+  /**
+   * An optional human label for the run, carried through to the report
+   * and the history table. Purely descriptive -- the engine never reads
+   * it -- so a sweep can be found later by "what it was for" rather than
+   * only by its 12-hex id.
+   */
+  name?: string;
   tickers: string[];
   grid_steps: number[];
   profit_targets: number[];
@@ -290,6 +368,10 @@ export interface BarSeries {
 
 export interface BacktestRunState {
   run_id: string;
+  /** The label this run was submitted with, echoed on the job snapshot
+   * so an in-flight run can be shown by name before its report exists.
+   * null for an unnamed run. */
+  name?: string | null;
   status: RunStatus;
   /** 0-1. Coarse: the server reports per-configuration completion. */
   progress: number;
@@ -311,12 +393,19 @@ export interface BacktestRunState {
  */
 export interface HistoryRow {
   run_id: string;
+  /** The label the run was submitted with; null for older or unnamed
+   * runs. Repeated on every row of a run because the table is flattened
+   * to one row per configuration. */
+  name: string | null;
   /** Epoch seconds, from the stored file's mtime. */
   saved_at: number | null;
   ticker: string;
   grid_step: number | null;
   profit_target: number | null;
   sizing_model: string | null;
+  /** The resolved sizing-model arguments the run used. `{}` for a run
+   * archived before this was recorded. Repeated on every row of a run. */
+  strategy_params: Record<string, number | string | boolean>;
   fill_model: string | null;
   /** Where the ENGINE ranked this cell; 0 is its own pick. Lets a
    * reader see when their chosen metric disagrees with it. */

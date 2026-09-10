@@ -253,6 +253,53 @@ class TestBacktestSubmission:
     def test_an_unknown_run_is_a_404(self, client):
         assert client.get("/api/backtest/runs/deadbeef").status_code == 404
 
+    def test_a_run_can_be_given_a_name_and_it_rides_the_snapshot(self, client):
+        """The label is descriptive only -- the engine never reads it --
+        but it must be on the job snapshot immediately so a queued or
+        running sweep shows by name before its report exists."""
+        body = client.post(
+            "/api/backtest/runs",
+            json={
+                "name": "  rsi oversold sweep  ",
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+                "strategy_params": {"allocation_pct": 0.05},
+                "limit": 500,
+            },
+        ).json()
+        # Trimmed on the way in: "   x   " helps nobody in the running list.
+        assert body["name"] == "rsi oversold sweep"
+
+    def test_a_whitespace_only_name_is_treated_as_unnamed(self, client):
+        body = client.post(
+            "/api/backtest/runs",
+            json={
+                "name": "   ",
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+                "strategy_params": {"allocation_pct": 0.05},
+                "limit": 500,
+            },
+        ).json()
+        assert body["name"] is None
+
+    def test_an_over_long_name_is_rejected_by_shape(self, client):
+        response = client.post(
+            "/api/backtest/runs",
+            json={
+                "name": "x" * 121,
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+            },
+        )
+        assert response.status_code == 422
+
 
 class TestDateWindowAndBars:
     def test_the_window_is_applied_before_the_bar_cap(self):
@@ -437,6 +484,23 @@ class TestRunHistory:
 
     @pytest.fixture(autouse=True)
     def _isolated(self, tmp_path, monkeypatch):
+        # Let any run an earlier test queued on the module-global job
+        # queue finish and archive into the DEFAULT directory before we
+        # repoint history at this test's tmp dir. `_archive` reads the
+        # env var at call time, so a background completion that lands
+        # after the setenv below would otherwise drop a stray run into a
+        # fixture whose assertions say "only what I saved is here". Test
+        # order is randomised, so this is seed-dependent without the wait.
+        import time as _time
+
+        from server.backtest import queue as _queue
+
+        deadline = _time.monotonic() + 30
+        while _time.monotonic() < deadline and any(
+            job.status in {"queued", "running"} for job in _queue.all()
+        ):
+            _time.sleep(0.05)
+
         monkeypatch.setenv("VAI_RUN_HISTORY_DIR", str(tmp_path / "runs"))
 
     def test_a_saved_run_reads_back(self):
@@ -527,6 +591,92 @@ class TestRunHistory:
         # The engine's own ranking is preserved, so a reader can see
         # when their chosen metric disagrees with it.
         assert rows[0]["engine_rank"] == 0
+
+    def test_a_runs_name_is_flattened_onto_every_configuration_row(self, client):
+        """The table is one row per (run, fund, cell); a reader scanning
+        it should see the label on each row, not only the first."""
+        from server import history
+
+        history.save(
+            "named",
+            {
+                "run_id": "named",
+                "report": {
+                    "parameters": {"name": "champion re-run", "sizing_model": "fixed"},
+                    "timeframe": {"start": "2026-01-01", "end": "2026-02-01"},
+                    "funds": {
+                        "TQQQ": {
+                            "bars": {"count": 100},
+                            "metrics": {"cagr_pct": 10.0},
+                            "configurations": [
+                                {"grid_step": 0.01, "profit_target": 0.005, "metrics": {}},
+                                {"grid_step": 0.02, "profit_target": 0.005, "metrics": {}},
+                            ],
+                        }
+                    },
+                },
+            },
+        )
+        rows = client.get("/api/backtest/history").json()["rows"]
+        assert len(rows) == 2
+        assert all(row["name"] == "champion re-run" for row in rows)
+
+    def test_history_rows_carry_the_resolved_strategy_params(self, client):
+        """So the client can filter history by an input argument. `{}`
+        for a run archived before this was recorded, never a missing
+        key."""
+        from server import history
+
+        history.save(
+            "with-params",
+            {
+                "run_id": "with-params",
+                "report": {
+                    "parameters": {
+                        "sizing_model": "rsi",
+                        "strategy_params": {"period": 14, "max_trade_pct": 0.08},
+                    },
+                    "funds": {
+                        "TQQQ": {
+                            "bars": {"count": 10},
+                            "metrics": {"cagr_pct": 3.0},
+                            "configurations": [
+                                {"grid_step": 0.01, "profit_target": 0.005, "metrics": {}},
+                            ],
+                        }
+                    },
+                },
+            },
+        )
+        history.save(
+            "legacy",
+            {
+                "run_id": "legacy",
+                "report": {
+                    "parameters": {"sizing_model": "fixed"},
+                    "funds": {"TQQQ": {"metrics": {"cagr_pct": 1.0}, "bars": {"count": 5}}},
+                },
+            },
+        )
+        rows = {row["run_id"]: row for row in client.get("/api/backtest/history").json()["rows"]}
+        assert rows["with-params"]["strategy_params"] == {"period": 14, "max_trade_pct": 0.08}
+        assert rows["legacy"]["strategy_params"] == {}
+
+    def test_an_unnamed_run_reports_a_null_name_rather_than_omitting_it(self, client):
+        from server import history
+
+        history.save(
+            "anon",
+            {
+                "run_id": "anon",
+                "report": {
+                    "parameters": {"grid_step_pct": 0.01, "profit_target_pct": 0.005},
+                    "funds": {"TQQQ": {"metrics": {"cagr_pct": 7.0}, "bars": {"count": 10}}},
+                },
+            },
+        )
+        rows = client.get("/api/backtest/history").json()["rows"]
+        assert rows[0]["name"] is None
 
     def test_an_old_report_without_configurations_still_appears(self, client):
         """Reports predating the sweep matrix have headline metrics only.
@@ -764,6 +914,91 @@ class TestBacktestExecution:
         }
         assert sells, "the fixture produced no sells"
         assert buys <= buy_lots, "a sell references a lot with no buy row"
+
+    def test_the_report_echoes_the_submitted_name(self, tmp_path):
+        """Descriptive only, but it must survive from the request through
+        to the archived report so history can show what a sweep was for."""
+        import pandas as pd_
+
+        from server import backtest as module
+        from server.backtest import run_backtest
+
+        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        csv = tmp_path / "TESTQ.csv"
+        frame.to_csv(csv)
+
+        original = dict(module.KNOWN_DATA)
+        module.KNOWN_DATA.clear()
+        module.KNOWN_DATA["TESTQ"] = str(csv)
+        try:
+            named = run_backtest(
+                {
+                    "name": "  five percent baseline  ",
+                    "tickers": ["TESTQ"],
+                    "grid_steps": [0.01],
+                    "profit_targets": [0.005],
+                    "sizing_model": "fixed",
+                    "strategy_params": {"allocation_pct": 0.05},
+                    "limit": 5000,
+                },
+                lambda fraction, note: None,
+            )
+            anon = run_backtest(
+                {
+                    "tickers": ["TESTQ"],
+                    "grid_steps": [0.01],
+                    "profit_targets": [0.005],
+                    "sizing_model": "fixed",
+                    "strategy_params": {"allocation_pct": 0.05},
+                    "limit": 5000,
+                },
+                lambda fraction, note: None,
+            )
+        finally:
+            module.KNOWN_DATA.clear()
+            module.KNOWN_DATA.update(original)
+
+        assert named["parameters"]["name"] == "five percent baseline"
+        assert anon["parameters"]["name"] is None
+        # The RESOLVED sizing-model arguments ride along too, so the
+        # history view can filter on an input rather than only the grid.
+        assert named["parameters"]["strategy_params"] == {"allocation_pct": 0.05}
+
+    def test_the_report_records_resolved_strategy_params(self, tmp_path):
+        """Not what was submitted -- what the engine was built with, after
+        defaults are filled in. `bell_curve` takes no params in the
+        request below, so the report must still name the three it ran."""
+        import pandas as pd_
+
+        from server import backtest as module
+        from server.backtest import run_backtest
+
+        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        csv = tmp_path / "TESTQ.csv"
+        frame.to_csv(csv)
+
+        original = dict(module.KNOWN_DATA)
+        module.KNOWN_DATA.clear()
+        module.KNOWN_DATA["TESTQ"] = str(csv)
+        try:
+            report = run_backtest(
+                {
+                    "tickers": ["TESTQ"],
+                    "grid_steps": [0.01],
+                    "profit_targets": [0.005],
+                    "sizing_model": "bell_curve",
+                    "limit": 5000,
+                },
+                lambda fraction, note: None,
+            )
+        finally:
+            module.KNOWN_DATA.clear()
+            module.KNOWN_DATA.update(original)
+
+        params = report["parameters"]["strategy_params"]
+        assert params["max_trade_pct"] == 0.08
+        assert params["lookback_days"] == 20
+        assert params["bars_per_day"] == 387
 
     def test_a_multi_configuration_run_returns_every_cell(self, tmp_path):
         """The sweep matrix needs the whole surface, not the best row."""

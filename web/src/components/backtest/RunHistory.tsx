@@ -1,10 +1,17 @@
 import { ArrowDown, ArrowUp, History, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { RunHistoryFilterBar } from "@/components/backtest/RunHistoryFilterBar";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
+import { filterHistoryRows } from "@/lib/filters";
 import { cn, pct, runUrl, usd } from "@/lib/utils";
-import type { FundPerformanceMetrics, HistoryRow } from "@/types/backtest";
+import {
+  EMPTY_RUN_HISTORY_FILTERS,
+  type FundPerformanceMetrics,
+  type HistoryRow,
+  type RunHistoryFilters,
+} from "@/types/backtest";
 
 /**
  * Every run this server has completed, ranked by a metric you choose.
@@ -112,8 +119,8 @@ function valueOf(row: HistoryRow, key: MetricKey): number | null {
 
 export function RunHistory({ refreshToken }: Props) {
   const [rows, setRows] = useState<HistoryRow[]>([]);
-  const [runs, setRuns] = useState(0);
   const [metric, setMetric] = useState<MetricKey>("cagr_pct");
+  const [filters, setFilters] = useState<RunHistoryFilters>(EMPTY_RUN_HISTORY_FILTERS);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -123,7 +130,6 @@ export function RunHistory({ refreshToken }: Props) {
       .history()
       .then((body) => {
         setRows(body.rows);
-        setRuns(body.runs);
         setError(null);
       })
       .catch((cause: unknown) =>
@@ -134,8 +140,17 @@ export function RunHistory({ refreshToken }: Props) {
 
   useEffect(load, [load, refreshToken]);
 
+  // The filter narrows the flattened rows; ranking then orders whatever
+  // survives. Both are cheap, but memoised so typing in a range box
+  // does not re-sort a thousand rows on every keystroke.
+  const visible = useMemo(() => filterHistoryRows(rows, filters), [rows, filters]);
+  const visibleRuns = useMemo(
+    () => new Set(visible.map((row) => row.run_id)).size,
+    [visible],
+  );
+
   const spec = RANKINGS.find((entry) => entry.key === metric) ?? RANKINGS[0]!;
-  const ranked = [...rows].sort((a, b) => {
+  const ranked = [...visible].sort((a, b) => {
     const left = valueOf(a, spec.key);
     const right = valueOf(b, spec.key);
     if (left === null && right === null) return 0;
@@ -153,8 +168,11 @@ export function RunHistory({ refreshToken }: Props) {
             Run history
           </CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            {rows.length} configuration{rows.length === 1 ? "" : "s"} across {runs} run
-            {runs === 1 ? "" : "s"}, ranked by {spec.label.toLowerCase()}
+            {visible.length === rows.length
+              ? `${rows.length}`
+              : `${visible.length} of ${rows.length}`}{" "}
+            configuration{rows.length === 1 ? "" : "s"} across {visibleRuns} run
+            {visibleRuns === 1 ? "" : "s"}, ranked by {spec.label.toLowerCase()}
             {spec.hint ? ` — ${spec.hint}` : ""}.
           </p>
         </div>
@@ -178,6 +196,18 @@ export function RunHistory({ refreshToken }: Props) {
         </div>
       </CardHeader>
 
+      {!error && rows.length > 0 ? (
+        <CardContent className="pt-0">
+          <RunHistoryFilterBar
+            rows={rows}
+            filters={filters}
+            onChange={setFilters}
+            showing={visible.length}
+            total={rows.length}
+          />
+        </CardContent>
+      ) : null}
+
       <CardContent className="overflow-x-auto">
         {error ? (
           <p className="text-sm text-loss">
@@ -188,11 +218,24 @@ export function RunHistory({ refreshToken }: Props) {
             No completed runs yet. Submit one above; every finished run is kept and appears
             here, including across a server restart.
           </p>
+        ) : visible.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No runs match these filters. Loosen a bound or{" "}
+            <button
+              type="button"
+              className="underline hover:text-foreground"
+              onClick={() => setFilters(EMPTY_RUN_HISTORY_FILTERS)}
+            >
+              reset
+            </button>
+            .
+          </p>
         ) : (
-          <table className="w-full min-w-[980px] text-sm">
+          <table className="w-full min-w-[1080px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
                 <th className="pb-2 font-medium">#</th>
+                <th className="pb-2 font-medium">Name</th>
                 <th className="pb-2 font-medium">Fund</th>
                 <th className="pb-2 text-right font-medium">Step</th>
                 <th className="pb-2 text-right font-medium">Target</th>
@@ -235,6 +278,12 @@ export function RunHistory({ refreshToken }: Props) {
                     title="Open this run in a new tab"
                   >
                     <td className="py-2 text-muted-foreground">{index + 1}</td>
+                    <td
+                      className="max-w-[180px] truncate py-2 text-xs"
+                      title={row.name ?? undefined}
+                    >
+                      {row.name ?? <span className="text-muted-foreground">--</span>}
+                    </td>
                     <td className="py-2 font-medium">{row.ticker}</td>
                     <td className="py-2 text-right">
                       {row.grid_step === null ? "--" : pct(row.grid_step * 100, 3)}
@@ -306,7 +355,7 @@ export function RunHistory({ refreshToken }: Props) {
             </tbody>
           </table>
         )}
-        {rows.some((row) => row.metrics.total_trades === 0) &&
+        {visible.some((row) => row.metrics.total_trades === 0) &&
         !spec.higherIsBetter ? (
           <p className="mt-3 text-xs text-stuck">
             Some configurations never traded. A book that sits in cash has no drawdown and

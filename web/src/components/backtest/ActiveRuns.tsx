@@ -124,8 +124,18 @@ function RunRow({ run }: { run: BacktestRunState }) {
 
   return (
     <div className="flex items-center gap-4">
-      <span className="w-24 shrink-0 font-mono text-xs text-muted-foreground">
-        {run.run_id.slice(0, 10)}
+      {/* The submitted label when there is one, the id otherwise -- a
+          list of "which of my sweeps is this" is exactly what the name
+          was added for. The id stays reachable via the Open/Watch link. */}
+      <span
+        className="w-24 shrink-0 truncate text-xs text-muted-foreground"
+        title={run.name ? `${run.name} · ${run.run_id}` : run.run_id}
+      >
+        {run.name ? (
+          <span className="text-foreground">{run.name}</span>
+        ) : (
+          <span className="font-mono">{run.run_id.slice(0, 10)}</span>
+        )}
       </span>
 
       <div className="flex-1">

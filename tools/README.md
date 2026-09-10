@@ -35,6 +35,29 @@ documentation that makes them findable.
 | `install_paper_service.ps1` | Register the paper supervisor as a daily Windows scheduled task. |
 | `run_paper_session.cmd` | The task's entry point on Windows. |
 | `docker_session_loop.sh` | The same session loop inside the Raspberry Pi container. |
+| `backup_databases.py` | Snapshot every local database (SQLite ledger + `warehouse/*.duckdb`), archive it under `backups/`, and scp it to the Pi. `--install-daily` schedules it. See below. |
+
+### Database backups
+
+`backup_databases.py` is one file doing snapshot → archive → push → prune.
+Each engine gets the right method: SQLite via `sqlite3`'s online
+`.backup()` (safe while the live loop writes every tick), DuckDB by
+copying the file while holding a read-only handle open (which blocks a
+sweep from starting mid-copy; if one already holds it, that DB is
+skipped with a non-zero exit rather than a torn copy).
+
+    python tools/backup_databases.py --local-only            # just the archive
+    python tools/backup_databases.py --remote-host pi@172.16.0.137
+    python tools/backup_databases.py --install-daily --at 03:30
+
+The push is `scp` (Git ships it; `rsync` it does not) over
+`BatchMode=yes` SSH, so key auth must be non-interactive. Set the target
+once with `$VAI_BACKUP_REMOTE` / `$VAI_BACKUP_REMOTE_DIR` or pass
+`--remote-host` / `--remote-dir`; `--install-daily` bakes the resolved
+values into a Windows Scheduled Task (`VolatilityAI-DbBackup`) or a cron
+line. `--keep N` (default 14) trims old archives at both ends. The
+Parquet lakes are left out by default as regenerable — `--include
+warehouse/executions` folds the non-regenerable trade blotters back in.
 
 ## Data preparation — produces inputs the rest of the project consumes
 

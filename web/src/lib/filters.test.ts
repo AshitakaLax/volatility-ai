@@ -8,9 +8,26 @@
  */
 import { describe, expect, it } from "vitest";
 
-import type { BacktestExecution, ExecutionFilters } from "@/types/backtest";
+import {
+  EMPTY_RUN_HISTORY_FILTERS,
+  type BacktestExecution,
+  type ExecutionFilters,
+  type FundPerformanceMetrics,
+  type HistoryRow,
+  type RunHistoryFilters,
+} from "@/types/backtest";
 
-import { aggregate, buildCycles, filterExecutions, lotIdOf, openLotIds } from "./filters";
+import {
+  aggregate,
+  buildCycles,
+  filterExecutions,
+  filterHistoryRows,
+  historyFieldValue,
+  historyInputFields,
+  lotIdOf,
+  openLotIds,
+  runHistoryFilterActive,
+} from "./filters";
 
 function buy(lot: string, bar: number, extra: Partial<BacktestExecution> = {}): BacktestExecution {
   return {
@@ -189,5 +206,236 @@ describe("aggregate", () => {
 
   it("handles an empty series", () => {
     expect(aggregate([], "1Day")).toEqual([]);
+  });
+});
+
+/* ---------------- run-history filtering ---------------------------- */
+
+function metrics(over: Partial<FundPerformanceMetrics> = {}): FundPerformanceMetrics {
+  return {
+    ticker: "TQQQ",
+    net_yield_pct: 0,
+    cagr_pct: 0,
+    max_drawdown_pct: 0,
+    sharpe_ratio: 0,
+    sortino_ratio: 0,
+    profit_factor: 0,
+    win_rate_pct: 0,
+    max_consecutive_losses: 0,
+    stuck_capital_value: 0,
+    capital_velocity_index: 0,
+    harvest_to_stuck_ratio: 0,
+    avg_hold_duration: 0,
+    total_trades: 0,
+    closed_trades: 0,
+    open_trades: 0,
+    signal_exits: 0,
+    final_equity: 0,
+    ...over,
+  };
+}
+
+type HistRowOverride = Partial<Omit<HistoryRow, "metrics">> & {
+  metrics?: Partial<FundPerformanceMetrics>;
+};
+
+function histRow(over: HistRowOverride = {}): HistoryRow {
+  return {
+    run_id: "r1",
+    name: null,
+    saved_at: 0,
+    ticker: "TQQQ",
+    grid_step: 0.01,
+    profit_target: 0.005,
+    sizing_model: "fixed",
+    strategy_params: {},
+    fill_model: "close",
+    engine_rank: 0,
+    start: "2026-01-01",
+    end: "2026-02-01",
+    bars: 1000,
+    ...over,
+    metrics: metrics(over.metrics),
+  };
+}
+
+const NONE: RunHistoryFilters = EMPTY_RUN_HISTORY_FILTERS;
+
+describe("historyFieldValue", () => {
+  it("reads the swept dimensions as a PERCENT, not a fraction", () => {
+    // The table shows grid_step * 100, so the filter inputs are percents
+    // too -- comparing a typed "1" against a stored 0.01 would match
+    // nothing.
+    expect(historyFieldValue(histRow({ grid_step: 0.015 }), "grid_step")).toBeCloseTo(1.5);
+    expect(historyFieldValue(histRow({ profit_target: 0.005 }), "profit_target")).toBeCloseTo(0.5);
+  });
+
+  it("reads a numeric sizing-model argument by its param: key", () => {
+    const row = histRow({ strategy_params: { allocation_pct: 0.05, ticker: "COWZ" } });
+    expect(historyFieldValue(row, "param:allocation_pct")).toBe(0.05);
+    // A non-numeric argument is not a numeric field -- Fund handles it.
+    expect(historyFieldValue(row, "param:ticker")).toBeNull();
+  });
+
+  it("reads a result metric by its metric: key, and null when absent", () => {
+    expect(historyFieldValue(histRow({ metrics: { cagr_pct: 12.5 } }), "metric:cagr_pct")).toBe(
+      12.5,
+    );
+    // worst_year_pct is optional; a row without it must read as unknown,
+    // not zero.
+    expect(historyFieldValue(histRow(), "metric:worst_year_pct")).toBeNull();
+  });
+});
+
+describe("filterHistoryRows", () => {
+  it("matches the name as a case-insensitive substring", () => {
+    const rows = [histRow({ name: "RSI oversold sweep" }), histRow({ name: "bell curve" }), histRow()];
+    const out = filterHistoryRows(rows, { ...NONE, name: "oversold" });
+    expect(out.map((r) => r.name)).toEqual(["RSI oversold sweep"]);
+  });
+
+  it("drops an unnamed row once a name filter is set", () => {
+    expect(filterHistoryRows([histRow({ name: null })], { ...NONE, name: "x" })).toHaveLength(0);
+  });
+
+  it("treats a categorical list as OR-within, AND-between", () => {
+    const rows = [
+      histRow({ ticker: "TQQQ", sizing_model: "fixed" }),
+      histRow({ ticker: "RSP", sizing_model: "fixed" }),
+      histRow({ ticker: "TQQQ", sizing_model: "rsi" }),
+    ];
+    const out = filterHistoryRows(rows, { ...NONE, tickers: ["TQQQ", "RSP"], models: ["fixed"] });
+    expect(out).toHaveLength(2);
+    expect(out.every((r) => r.sizing_model === "fixed")).toBe(true);
+  });
+
+  it("filters a swept dimension by a percent RANGE", () => {
+    const rows = [
+      histRow({ grid_step: 0.005 }),
+      histRow({ grid_step: 0.01 }),
+      histRow({ grid_step: 0.02 }),
+    ];
+    const out = filterHistoryRows(rows, {
+      ...NONE,
+      ranges: { grid_step: { min: 0.75, max: 1.5 } },
+    });
+    expect(out.map((r) => r.grid_step)).toEqual([0.01]);
+  });
+
+  it("filters a swept dimension by a set of exact values", () => {
+    const rows = [
+      histRow({ grid_step: 0.005 }),
+      histRow({ grid_step: 0.01 }),
+      histRow({ grid_step: 0.02 }),
+    ];
+    const out = filterHistoryRows(rows, { ...NONE, values: { grid_step: [0.5, 2] } });
+    expect(out.map((r) => r.grid_step).sort()).toEqual([0.005, 0.02]);
+  });
+
+  it("passes a row that satisfies EITHER the value set or the range", () => {
+    const rows = [histRow({ grid_step: 0.005 }), histRow({ grid_step: 0.03 })];
+    const out = filterHistoryRows(rows, {
+      ...NONE,
+      values: { grid_step: [3] },
+      ranges: { grid_step: { min: null, max: 0.6 } },
+    });
+    expect(out).toHaveLength(2);
+  });
+
+  it("filters on a result metric range", () => {
+    const rows = [
+      histRow({ metrics: { cagr_pct: 5 } }),
+      histRow({ metrics: { cagr_pct: 20 } }),
+      histRow({ metrics: { cagr_pct: 40 } }),
+    ];
+    const out = filterHistoryRows(rows, { ...NONE, ranges: { "metric:cagr_pct": { min: 10, max: 30 } } });
+    expect(out.map((r) => r.metrics.cagr_pct)).toEqual([20]);
+  });
+
+  it("EXCLUDES a row missing the gated field rather than letting it through", () => {
+    // The same rule filterExecutions follows for an execution with no
+    // RSI: a run that never recorded worst_year_pct, or a model that
+    // never took `period`, must not slip past a bound the reader set.
+    const rows = [
+      histRow({ metrics: { cagr_pct: 10, worst_year_pct: -5 } }),
+      histRow({ metrics: { cagr_pct: 10 } }), // no worst_year_pct
+    ];
+    const out = filterHistoryRows(rows, {
+      ...NONE,
+      ranges: { "metric:worst_year_pct": { min: -10, max: 0 } },
+    });
+    expect(out).toHaveLength(1);
+
+    const paramRows = [
+      histRow({ strategy_params: { period: 14 } }),
+      histRow({ strategy_params: {} }),
+    ];
+    expect(
+      filterHistoryRows(paramRows, { ...NONE, ranges: { "param:period": { min: 10, max: 20 } } }),
+    ).toHaveLength(1);
+  });
+
+  it("is conjunctive across every clause", () => {
+    const rows = [
+      histRow({ name: "keep", ticker: "TQQQ", grid_step: 0.01, metrics: { cagr_pct: 25 } }),
+      histRow({ name: "keep", ticker: "RSP", grid_step: 0.01, metrics: { cagr_pct: 25 } }),
+      histRow({ name: "drop", ticker: "TQQQ", grid_step: 0.01, metrics: { cagr_pct: 25 } }),
+      histRow({ name: "keep", ticker: "TQQQ", grid_step: 0.05, metrics: { cagr_pct: 25 } }),
+      histRow({ name: "keep", ticker: "TQQQ", grid_step: 0.01, metrics: { cagr_pct: 1 } }),
+    ];
+    const out = filterHistoryRows(rows, {
+      ...NONE,
+      name: "keep",
+      tickers: ["TQQQ"],
+      ranges: { grid_step: { min: 0.5, max: 2 }, "metric:cagr_pct": { min: 10, max: null } },
+    });
+    expect(out).toHaveLength(1);
+  });
+});
+
+describe("runHistoryFilterActive", () => {
+  it("is false for the empty filter and for empty sub-parts", () => {
+    expect(runHistoryFilterActive(NONE)).toBe(false);
+    expect(runHistoryFilterActive({ ...NONE, name: "   " })).toBe(false);
+    expect(runHistoryFilterActive({ ...NONE, values: { grid_step: [] } })).toBe(false);
+    expect(
+      runHistoryFilterActive({ ...NONE, ranges: { grid_step: { min: null, max: null } } }),
+    ).toBe(false);
+    // extraFields is presentational -- adding a row without typing a
+    // bound does not make the view "filtered".
+    expect(runHistoryFilterActive({ ...NONE, extraFields: ["metric:cagr_pct"] })).toBe(false);
+  });
+
+  it("is true as soon as any clause would remove a row", () => {
+    expect(runHistoryFilterActive({ ...NONE, name: "x" })).toBe(true);
+    expect(runHistoryFilterActive({ ...NONE, tickers: ["TQQQ"] })).toBe(true);
+    expect(runHistoryFilterActive({ ...NONE, ranges: { grid_step: { min: 1, max: null } } })).toBe(
+      true,
+    );
+  });
+});
+
+describe("historyInputFields", () => {
+  it("always offers the two swept dimensions, with their distinct values sorted", () => {
+    const rows = [
+      histRow({ grid_step: 0.02 }),
+      histRow({ grid_step: 0.005 }),
+      histRow({ grid_step: 0.02 }),
+    ];
+    const fields = historyInputFields(rows);
+    const gridStep = fields.find((f) => f.key === "grid_step")!;
+    expect(gridStep.values).toEqual([0.5, 2]);
+    expect(fields.some((f) => f.key === "profit_target")).toBe(true);
+  });
+
+  it("offers every numeric sizing-model argument and skips non-numeric ones", () => {
+    const rows = [
+      histRow({ strategy_params: { allocation_pct: 0.05 } }),
+      histRow({ strategy_params: { max_trade_pct: 0.08, ticker: "COWZ" } }),
+    ];
+    const keys = historyInputFields(rows).map((f) => f.key);
+    expect(keys).toContain("param:allocation_pct");
+    expect(keys).toContain("param:max_trade_pct");
+    expect(keys).not.toContain("param:ticker");
   });
 });
