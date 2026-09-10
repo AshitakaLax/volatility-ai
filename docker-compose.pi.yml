@@ -18,7 +18,6 @@
 # WHAT RUNS HERE, AND ON WHICH PORT:
 #
 #     paper       the trading loop. No port; it talks to Alpaca.
-#     dashboard   Streamlit, :8501. The operator view.
 #     web         the React UI + the read-only live API, :8000.
 #
 # THE BACKTEST ENGINE IS NOT ON THIS MACHINE. `web` forwards
@@ -26,9 +25,9 @@
 # /api/live/* itself, because the ledger lives in this host's Docker
 # volume and nothing else can read it. Cores here belong to `paper`.
 #
-# dashboard and web overlap on purpose while the React live view is
-# proven against the Streamlit one. Both read the same store through the
-# same module, so they cannot disagree about the data.
+# The old Streamlit `dashboard` service was removed: the React `web` UI
+# is the live view now, and the `src/` reorg left the Streamlit
+# entrypoint pointing at a moved file anyway.
 #
 # ONE HOST AT A TIME. Nothing here can enforce that. StateStoreLock is a
 # FILE lock inside this container's volume, so it cannot see another
@@ -74,37 +73,6 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-
-  # Read-only view of the ledger, reachable from the LAN.
-  #
-  # It imports no broker code and opens the store with mode=ro, so it
-  # cannot place an order or corrupt state no matter what it is asked
-  # to render. That is what makes exposing it on the LAN reasonable.
-  dashboard:
-    build: .
-    image: volatility-ai:local
-    entrypoint:
-      - streamlit
-      - run
-      - dashboard.py
-      - --server.port=8501
-      - --server.address=0.0.0.0
-      - --server.headless=true
-      - --browser.gatherUsageStats=false
-      - --
-      - --db=/app/state/paper_ledger.db
-    environment:
-      TZ: America/New_York
-    ports:
-      - "8501:8501"
-    volumes:
-      # READ-ONLY mount, belt to the application's own mode=ro braces.
-      # Two independent reasons the window cannot become a hand.
-      - state:/app/state:ro
-    restart: unless-stopped
-    mem_limit: 512m
-    depends_on:
-      - paper
 
   # The backtesting UI and its read-only API, reachable from the LAN.
   #
