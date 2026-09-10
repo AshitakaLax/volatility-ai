@@ -92,37 +92,42 @@ def test_importing_a_tool_is_fast_and_silent(name, capsys):
     assert capsys.readouterr().out == "", f"tools.{name} printed during import"
 
 
-def test_the_three_escalating_copies_still_agree():
-    """Three independent definitions of the same strategy.
+def test_there_is_exactly_one_escalating_definition():
+    """Formerly "the three escalating copies still agree".
 
-    They ARE equivalent -- verified by running all three over the 2020
-    COVID episode and getting identical returns and trade counts to ten
-    decimal places, which is why every cross-probe comparison in this
-    project is valid. This pins that agreement, because three copies
-    that agree today are three chances to disagree tomorrow, silently,
-    invalidating every published comparison between them.
+    There are no longer three copies to compare: the strategy has a
+    single definition in tools/harness.py and the probes import it. That
+    makes the old comparison structurally vacuous -- it would be diffing
+    one class against itself and passing no matter what -- so this now
+    pins the stronger property that replaced it: there is only ONE
+    definition to disagree with.
 
-    Compares BEHAVIOUR, not source. An earlier version diffed normalised
-    ASTs and failed: the copies genuinely differ in text -- one carries a
-    `max_mult <= 1.0` short-circuit, another uses a ternary -- while
-    computing the identical number. Testing the text would have
-    forbidden harmless edits and still missed a harmful one written to
-    look the same.
+    The behavioural assertions below are kept exactly as they were, so
+    the escalation curve itself is still checked and this cannot rot
+    into a pure identity test that verifies no arithmetic.
     """
     from dataclasses import dataclass
 
     from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+    from tools.harness import Escalating as Canonical
 
     @dataclass
     class Ctx:
         price: float
 
-    # Pin the PARENT's contribution to a constant so what is compared is
-    # the escalation multiplier alone -- the only part these three copies
-    # actually implement. Without this the parent returns 0 on an
-    # unwarmed strategy, every copy "agrees" on 0.0, and the test passes
-    # while measuring nothing. The trailing sanity assert exists because
-    # the first version did exactly that.
+    consumers = ("probe_downturn_tactics", "probe_escalating_risk", "probe_regime_combo")
+    for module in consumers:
+        cls = importlib.import_module(f"tools.{module}").Escalating
+        assert cls is Canonical, (
+            f"tools/{module}.py has its own Escalating again. The point of "
+            "harness.Escalating is that a cross-probe comparison cannot be "
+            "invalidated by two definitions drifting apart."
+        )
+
+    # Pin the PARENT's contribution to a constant so what is measured is
+    # the escalation multiplier alone. Without this the parent returns 0
+    # on an unwarmed strategy and every assertion below passes against
+    # 0.0 while measuring nothing.
     monkey = pytest.MonkeyPatch()
     monkey.setattr(
         HighFrequencyLocalReferenceSizing,
@@ -130,31 +135,73 @@ def test_the_three_escalating_copies_still_agree():
         lambda self, context: 1000.0,
     )
     try:
-        sized = {}
-        for module in ("probe_downturn_tactics", "probe_escalating_risk", "probe_regime_combo"):
-            cls = importlib.import_module(f"tools.{module}").Escalating
-            strategy = cls(
-                lookback_days=20,
-                bars_per_day=390,
-                per_lot_pct=0.02,
-                max_mult=400.0,
-                dd_ref=0.75,
-            )
-            strategy._price_peak = 100.0
-            sized[module] = [
-                round(strategy.calculate_trade_value(Ctx(price=p)), 9)
-                for p in (100.0, 90.0, 75.0, 50.0, 25.0, 10.0)
-            ]
+        strategy = Canonical(
+            lookback_days=20,
+            bars_per_day=390,
+            per_lot_pct=0.02,
+            max_mult=400.0,
+            dd_ref=0.75,
+        )
+        strategy._price_peak = 100.0
+        values = [
+            round(strategy.calculate_trade_value(Ctx(price=p)), 9)
+            for p in (100.0, 90.0, 75.0, 50.0, 25.0, 10.0)
+        ]
     finally:
         monkey.undo()
 
-    unique = {tuple(v) for v in sized.values()}
-    assert len(unique) == 1, (
-        "the Escalating copies have DIVERGED. Every cross-probe comparison "
-        "in this project assumed they were the same strategy.\n"
-        + "\n".join(f"  {k}: {v}" for k, v in sized.items())
-    )
-    values = next(iter(unique))
     assert values[0] == 1000.0, "no drawdown means no escalation"
     assert values[-1] > values[0], "the multiplier must rise with drawdown"
     assert values[-1] == pytest.approx(400_000.0), "and saturate at max_mult"
+
+
+def test_the_escalation_mechanism_is_written_exactly_once():
+    """The formula and the peak-tracking line, in EXECUTABLE code only.
+
+    tools/harness.py was written to absorb these and then adopted by
+    three of thirty-seven scripts, so the copies it named kept being
+    re-typed into new probes. This is the guard that makes the
+    consolidation stick -- the same shape as
+    tests/unit/test_no_loss_guard.py's duplicate scanner, and for the
+    same reason: two definitions that agree today are two chances to
+    disagree tomorrow, silently, invalidating every comparison between
+    the probes that use them.
+
+    Docstrings and comments are stripped before scanning, because
+    several probes legitimately DESCRIBE the formula in their headers --
+    that is documentation, not a second implementation.
+    """
+    import ast
+
+    def executable_source(path: Path) -> str:
+        src = path.read_text(encoding="utf-8")
+        doc_lines: set[int] = set()
+        for node in ast.walk(ast.parse(src)):
+            if (
+                isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                and ast.get_docstring(node, clean=False) is not None
+                and node.body
+            ):
+                first = node.body[0]
+                doc_lines.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+        return "\n".join(
+            line.split("#")[0]
+            for i, line in enumerate(src.splitlines(), 1)
+            if i not in doc_lines
+        )
+
+    for label, needles in (
+        ("the escalation formula", ("max_mult **", "max_mult**")),
+        ("the trailing-peak update", ("_price_peak is None else max(",)),
+    ):
+        sites = {}
+        for path in sorted(Path("tools").glob("*.py")):
+            code = executable_source(path)
+            count = sum(code.count(n) for n in needles)
+            if count:
+                sites[path.name] = count
+        assert sites == {"harness.py": 1}, (
+            f"{label} should exist once, in tools/harness.py. Found: {sites}. "
+            "Use harness.escalation() / DrawdownEscalation._track_peak instead "
+            "of re-typing it."
+        )

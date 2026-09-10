@@ -12,12 +12,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from src.data.alpaca_market_data import LiveBar
 from src.core.config import BacktestConfig
 from src.core.exceptions import ConfigurationError, DataValidationError
-from src.trading.live_trading_loop import LiveTradingLoop
 from src.core.persistence import LedgerStore
+from src.data.alpaca_market_data import LiveBar
 from src.strategies.size_calculators import FixedPortfolioPercentage
+from src.trading.live_trading_loop import LiveTradingLoop
 
 BASE_TS = datetime(2026, 3, 2, 15, 0, tzinfo=UTC)
 
@@ -786,7 +786,7 @@ def test_the_live_buy_gate_reads_the_same_quantity_the_backtest_does(store):
     still CLAIMED parity after _simulate_single had moved on."""
     import inspect
 
-    import src.optimization.optimization_controller
+    from src.optimization import optimization_controller
 
     backtest = inspect.getsource(optimization_controller.OptimizationController._simulate_single)
     live = inspect.getsource(LiveTradingLoop._maybe_buy)

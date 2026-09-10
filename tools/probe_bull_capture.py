@@ -109,16 +109,16 @@ if _REPO_ROOT not in _sys.path:
 
 import logging
 
-import pandas as pd
-
-from src.optimization.optimization_controller import OptimizationController
-from src.core.config import BacktestConfig
-from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.analysis.performance_analyzer import annual_returns
-from src.trading.risk_manager import RiskManager
+from src.core.config import BacktestConfig
+from src.optimization.optimization_controller import OptimizationController
+from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.strategies.sizing_indicators import RollingMean
+from src.trading.risk_manager import RiskManager
+from tools.harness import TQQQ as TQQQ_CSV
+from tools.harness import DrawdownEscalation, load_bars
 
-DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
+DATA = TQQQ_CSV  # the shared dataset; the literal lives in tools/harness.py
 
 # SMA200-else-cash, measured earlier in this project. The number to beat.
 BENCHMARK = {
@@ -143,7 +143,7 @@ BENCHMARK_CAGR = 34.55
 HOLD_TARGET = 50.0
 
 
-class RegimeHold(HighFrequencyLocalReferenceSizing):
+class RegimeHold(DrawdownEscalation, HighFrequencyLocalReferenceSizing):
     """Hold the trend in bull, harvest deep dips in bear, rotate on flip."""
 
     def __init__(
@@ -170,12 +170,11 @@ class RegimeHold(HighFrequencyLocalReferenceSizing):
         # which is most of why it printed -80% in 2022. One change at a
         # time, or the result is uninterpretable.
         self.bull_lot_scale = bull_lot_scale
-        self.max_mult, self.dd_ref = max_mult, dd_ref
+        self._init_escalation(max_mult, dd_ref)
         self.hold_in_bull = hold_in_bull
         self._regime_mean = RollingMean(max(2, regime_days))
         self._session = None
         self._prior_close: float | None = None
-        self._price_peak: float | None = None
         self._is_bull = False
         self._flipped = False
 
@@ -218,7 +217,7 @@ class RegimeHold(HighFrequencyLocalReferenceSizing):
         self._prior_close = price
         # Flip in EITHER direction rotates the book.
         self._flipped = was_bull != self._is_bull
-        self._price_peak = price if self._price_peak is None else max(self._price_peak, price)
+        self._track_peak(price)
 
     # --- entries ---
 
@@ -235,12 +234,7 @@ class RegimeHold(HighFrequencyLocalReferenceSizing):
         base = super().calculate_trade_value(context)
         if self._is_bull:
             return base * self.bull_lot_scale
-        if not self._price_peak:
-            return base
-        drawdown = 1.0 - context.price / self._price_peak
-        if drawdown <= 0:
-            return base
-        return base * min(self.max_mult, self.max_mult ** (drawdown / self.dd_ref))
+        return self._escalate(base, context.price)
 
     # --- exits ---
 
@@ -299,7 +293,7 @@ def main(argv=None) -> int:
         logging.disable(logging.WARNING)
 
     cfg = BacktestConfig.from_yaml("config/probe_dipbuy_full.yaml")
-    frame = pd.read_csv(DATA, parse_dates=["timestamp"]).set_index("timestamp")
+    frame = load_bars(DATA)
     controller = OptimizationController(historical_data=frame)
 
     print("bull = hold the trend, bear = 5%/4% escalating dips, flip = rotate the book")

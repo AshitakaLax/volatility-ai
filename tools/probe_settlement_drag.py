@@ -78,12 +78,12 @@ if _REPO_ROOT not in _sys.path:
 
 import logging
 
-import pandas as pd
-
-from src.optimization.optimization_controller import OptimizationController
-from src.core.config import BacktestConfig
 from src.analysis.performance_analyzer import annual_returns
+from src.core.config import BacktestConfig
+from src.optimization.optimization_controller import OptimizationController
 from src.trading.risk_manager import RiskManager
+from tools.harness import TQQQ as TQQQ_CSV
+from tools.harness import load_bars
 from tools.probe_downturn_tactics import Escalating
 from tools.probe_regime_integrated import RegimeSwitched
 from tools.probe_vol_filtered_regime import (
@@ -91,7 +91,7 @@ from tools.probe_vol_filtered_regime import (
     build_signal,
 )
 
-DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
+DATA = TQQQ_CSV  # the shared dataset; the literal lives in tools/harness.py
 
 
 def run(controller, cfg, cls, params, *, step, target, cap, exits, days):
@@ -123,7 +123,7 @@ def main(argv=None) -> int:
         logging.disable(logging.WARNING)
 
     cfg = BacktestConfig.from_yaml("config/probe_dipbuy_full.yaml")
-    frame = pd.read_csv(DATA, parse_dates=["timestamp"]).set_index("timestamp")
+    frame = load_bars(DATA)
     controller = OptimizationController(historical_data=frame)
     base = dict(cfg.strategy.strategy_params)
     price = frame["close"].resample("D").last().dropna()

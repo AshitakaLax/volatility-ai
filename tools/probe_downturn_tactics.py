@@ -92,12 +92,13 @@ import logging
 
 import pandas as pd
 
-from src.optimization.optimization_controller import OptimizationController
 from src.core.config import BacktestConfig
+from src.optimization.optimization_controller import OptimizationController
 from src.trading.risk_manager import RiskManager
-from tools.harness import Escalating
+from tools.harness import TQQQ as TQQQ_CSV
+from tools.harness import Escalating, load_bars
 
-DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
+DATA = TQQQ_CSV  # the shared dataset; the literal lives in tools/harness.py
 
 
 # Escalating now lives in tools/harness.py -- ONE definition. Three
@@ -206,7 +207,7 @@ def main(argv=None) -> int:
         logging.disable(logging.WARNING)
 
     cfg = BacktestConfig.from_yaml("config/probe_dipbuy_full.yaml")
-    frame = pd.read_csv(DATA, parse_dates=["timestamp"]).set_index("timestamp")
+    frame = load_bars(DATA)
     daily = frame["close"].resample("D").last().dropna()
     episodes = find_episodes(daily, args.min_depth)
 

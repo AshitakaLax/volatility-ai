@@ -63,7 +63,52 @@ VIXY = "data/VIXY_1Min_sip_all_ext_2016-01-01_2026-09-01.csv"
 PROBE_CONFIG = "config/probe_dipbuy_full.yaml"
 
 
-class Escalating(HighFrequencyLocalReferenceSizing):
+class DrawdownEscalation:
+    """Escalate-into-drawdown, as a mixin rather than a base class.
+
+    Escalating (below) is the whole strategy and can be inherited. But
+    five other probes are DIFFERENT strategies -- a regime switcher, a
+    stop, a cash-fraction recorder -- that each merely embed this same
+    mechanism, so they cannot inherit it. Each had re-typed both halves:
+
+        self._price_peak = price if self._price_peak is None else max(...)
+        ... min(self.max_mult, self.max_mult ** (drawdown / self.dd_ref))
+
+    Supplied here as two small operations they call from their own
+    record_tick/calculate_trade_value, which leaves their MRO and their
+    custom per-bar logic untouched -- the point is to stop the FORMULA
+    being re-typed, not to restructure five working probes.
+
+    ONE BEHAVIORAL NOTE, since it is the only way this differs from the
+    copies it replaces: escalation() short-circuits max_mult <= 1.0 to a
+    flat 1.0, where the inline copies computed
+    min(max_mult, max_mult ** x). Those agree exactly for every
+    max_mult >= 1.0 -- verified numerically across the full drawdown
+    range and every dd_ref in use -- and 1.0 and 400.0 are the only
+    values this repository ever passes. They diverge below 1.0, which
+    would mean sizing DOWN into a drawdown; if that is ever wanted, it
+    needs its own function rather than a smaller max_mult here.
+    """
+
+    max_mult: float
+    dd_ref: float
+    _price_peak: float | None
+
+    def _init_escalation(self, max_mult: float = 1.0, dd_ref: float = 0.75) -> None:
+        self.max_mult, self.dd_ref = max_mult, dd_ref
+        self._price_peak = None
+
+    def _track_peak(self, price: float) -> None:
+        """The UNDERLYING's trailing peak. Call once per bar."""
+        if price > 0:
+            self._price_peak = price if self._price_peak is None else max(self._price_peak, price)
+
+    def _escalate(self, base: float, price: float) -> float:
+        """base, scaled by the drawdown multiplier."""
+        return base * escalation(price, self._price_peak, self.max_mult, self.dd_ref)
+
+
+class Escalating(DrawdownEscalation, HighFrequencyLocalReferenceSizing):
     """Lot size scales log-linearly with the UNDERLYING's drawdown.
 
     Against the underlying's own trailing peak, NOT the portfolio's --
@@ -85,19 +130,14 @@ class Escalating(HighFrequencyLocalReferenceSizing):
 
     def __init__(self, *args, max_mult: float = 1.0, dd_ref: float = 0.75, **kwargs):
         super().__init__(*args, **kwargs)
-        self.max_mult, self.dd_ref = max_mult, dd_ref
-        self._price_peak: float | None = None
+        self._init_escalation(max_mult, dd_ref)
 
     def record_tick(self, context) -> None:
         super().record_tick(context)
-        if context.price > 0:
-            self._price_peak = (
-                context.price if self._price_peak is None else max(self._price_peak, context.price)
-            )
+        self._track_peak(context.price)
 
     def calculate_trade_value(self, context) -> float:
-        base = super().calculate_trade_value(context)
-        return base * escalation(context.price, self._price_peak, self.max_mult, self.dd_ref)
+        return self._escalate(super().calculate_trade_value(context), context.price)
 
 
 def escalation(price: float, peak: float | None, max_mult: float, dd_ref: float) -> float:

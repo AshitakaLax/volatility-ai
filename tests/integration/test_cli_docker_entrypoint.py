@@ -365,7 +365,7 @@ def test_run_trading_loop_drives_ticks_and_shuts_down_cleanly(tmp_path, monkeypa
     market = FakeMarketData()
     market.push(100.0)
     monkeypatch.setattr(
-        "src.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
+        "src.data.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
     )
 
     store = LedgerStore(str(tmp_path / "ledger.db"))
@@ -422,7 +422,7 @@ def test_a_live_target_return_mismatch_is_rejected_before_the_loop_starts(monkey
     cli = importlib.import_module("cli")
     market = FakeMarketData()
     monkeypatch.setattr(
-        "src.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
+        "src.data.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
     )
 
     class Args:
@@ -450,7 +450,7 @@ def test_a_matching_live_target_return_starts_the_loop(monkeypatch):
     market = FakeMarketData()
     market.push(100.0)
     monkeypatch.setattr(
-        "src.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
+        "src.data.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
     )
 
     class Args:
@@ -481,7 +481,7 @@ def test_allow_target_return_mismatch_lets_a_live_deployment_start(monkeypatch):
     market = FakeMarketData()
     market.push(100.0)
     monkeypatch.setattr(
-        "src.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
+        "src.data.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
     )
 
     class Args:

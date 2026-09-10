@@ -62,7 +62,7 @@ def lightgbm_and_sklearn_unavailable(monkeypatch):
         name
         for name in list(sys.modules)
         if (name.split(".")[0] in {"server", "src"} and "ml" in name)
-        or name in ("server.app", "server.backtest", "src.strategy_registry")
+        or name in ("server.app", "server.backtest", "src.trading.strategy_registry")
     ]
     saved = {name: sys.modules[name] for name in reload_targets}
     for name in reload_targets:
@@ -85,7 +85,7 @@ def test_server_app_imports_without_lightgbm_or_sklearn(lightgbm_and_sklearn_una
 
 
 def test_strategy_registry_imports_and_lists_ml_strategies(lightgbm_and_sklearn_unavailable):
-    registry = importlib.import_module("src.strategy_registry")
+    registry = importlib.import_module("src.trading.strategy_registry")
     assert "ml_reachability_cowz" in registry.STRATEGIES
 
 

@@ -73,13 +73,15 @@ import logging
 
 import pandas as pd
 
-from src.optimization.optimization_controller import OptimizationController
-from src.core.config import BacktestConfig
-from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.analysis.performance_analyzer import annual_returns
+from src.core.config import BacktestConfig
+from src.optimization.optimization_controller import OptimizationController
+from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.trading.risk_manager import RiskManager
+from tools.harness import TQQQ as TQQQ_CSV
+from tools.harness import DrawdownEscalation, load_bars
 
-DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
+DATA = TQQQ_CSV  # the shared dataset; the literal lives in tools/harness.py
 HOLD_TARGET = 50.0  # finite but unreachable, so persistence's derivation check still holds
 
 
@@ -91,7 +93,7 @@ def build_signal(px: pd.Series, *, trend: int, vol_win: int, lookback: int, q: f
     return {ts.date(): bool(v) for ts, v in bull.items()}
 
 
-class VolFilteredRegime(HighFrequencyLocalReferenceSizing):
+class VolFilteredRegime(DrawdownEscalation, HighFrequencyLocalReferenceSizing):
     """Hold when trend and calm agree; harvest dips otherwise."""
 
     def __init__(
@@ -112,11 +114,10 @@ class VolFilteredRegime(HighFrequencyLocalReferenceSizing):
         self.signal = signal or {}
         self.bull_step, self.bear_step = bull_step, bear_step
         self.bear_target, self.bull_lot_scale = bear_target, bull_lot_scale
-        self.max_mult, self.dd_ref = max_mult, dd_ref
+        self._init_escalation(max_mult, dd_ref)
         self.hold_in_bull, self.use_dip_in_bear = hold_in_bull, use_dip_in_bear
         self._is_bull = False
         self._flipped = False
-        self._price_peak = None
         self._seen = False
 
     def wants_lot_retargeting(self) -> bool:
@@ -132,9 +133,7 @@ class VolFilteredRegime(HighFrequencyLocalReferenceSizing):
         self._is_bull = self.signal.get(context.timestamp.date(), False)
         self._flipped = self._seen and (was != self._is_bull)
         self._seen = True
-        self._price_peak = (
-            context.price if self._price_peak is None else max(self._price_peak, context.price)
-        )
+        self._track_peak(context.price)
 
     def _grid_trigger_level(self, context, last_buy_price: float, step: float) -> float:
         high = self._rolling_high.value
@@ -147,12 +146,7 @@ class VolFilteredRegime(HighFrequencyLocalReferenceSizing):
             return base * self.bull_lot_scale
         if not self.use_dip_in_bear:
             return 0.0  # the control: sit in cash, like the daily-level study
-        if not self._price_peak:
-            return base
-        dd = 1.0 - context.price / self._price_peak
-        if dd <= 0:
-            return base
-        return base * min(self.max_mult, self.max_mult ** (dd / self.dd_ref))
+        return self._escalate(base, context.price)
 
     def adjust_profit_target(self, lot, context):
         if not self.hold_in_bull:
@@ -203,7 +197,7 @@ def main(argv=None) -> int:
         logging.disable(logging.WARNING)
 
     cfg = BacktestConfig.from_yaml("config/probe_dipbuy_full.yaml")
-    frame = pd.read_csv(DATA, parse_dates=["timestamp"]).set_index("timestamp")
+    frame = load_bars(DATA)
     controller = OptimizationController(historical_data=frame)
     px = frame["close"].resample("D").last().dropna()
     signal = build_signal(px, trend=200, vol_win=20, lookback=250, q=0.75)

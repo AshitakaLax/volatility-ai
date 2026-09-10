@@ -77,13 +77,15 @@ import logging
 
 import pandas as pd
 
-from src.optimization.optimization_controller import OptimizationController
 from src.core.config import BacktestConfig
+from src.optimization.optimization_controller import OptimizationController
 from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.trading.risk_manager import RiskManager
+from tools.harness import TQQQ as TQQQ_CSV
+from tools.harness import DrawdownEscalation, load_bars
 from tools.probe_regime_integrated import RegimeSwitched
 
-TQQQ = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
+TQQQ = TQQQ_CSV  # the shared dataset; the literal lives in tools/harness.py
 
 # APPROXIMATE annual average money-market/sweep yields, percent.
 #
@@ -138,29 +140,19 @@ class RegimeCash(_RecordsCashFraction, RegimeSwitched):
     pass
 
 
-class DipCash(_RecordsCashFraction, HighFrequencyLocalReferenceSizing):
+class DipCash(_RecordsCashFraction, DrawdownEscalation, HighFrequencyLocalReferenceSizing):
     """The deep-dip escalating book, whose own header calls it ~90% cash."""
 
     def __init__(self, *args, max_mult: float = 400.0, dd_ref: float = 0.75, **kwargs):
         super().__init__(*args, **kwargs)
-        self.max_mult, self.dd_ref = max_mult, dd_ref
-        self._price_peak: float | None = None
+        self._init_escalation(max_mult, dd_ref)
 
     def record_tick(self, context) -> None:
         super().record_tick(context)
-        if context.price > 0:
-            self._price_peak = (
-                context.price if self._price_peak is None else max(self._price_peak, context.price)
-            )
+        self._track_peak(context.price)
 
     def calculate_trade_value(self, context) -> float:
-        base = super().calculate_trade_value(context)
-        if not self._price_peak:
-            return base
-        drawdown = 1.0 - context.price / self._price_peak
-        if drawdown <= 0:
-            return base
-        return base * min(self.max_mult, self.max_mult ** (drawdown / self.dd_ref))
+        return self._escalate(super().calculate_trade_value(context), context.price)
 
 
 def measure(controller, cfg, label, strategy_class, params, *, cap, step, target, signal_exits):
@@ -225,7 +217,7 @@ def main(argv=None) -> int:
         logging.disable(logging.WARNING)
 
     cfg = BacktestConfig.from_yaml("config/probe_dipbuy_full.yaml")
-    frame = pd.read_csv(TQQQ, parse_dates=["timestamp"]).set_index("timestamp")
+    frame = load_bars(TQQQ)
     controller = OptimizationController(historical_data=frame)
 
     print("Every backtest here values idle cash at 0%. These strategies hold a lot")

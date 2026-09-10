@@ -50,6 +50,18 @@ Shared plumbing: `harness.py` (probe scaffolding) and `session_bars.py`
 (session aggregation). `check_syntax.py` asserts every `.py` in the repo
 parses.
 
+**Use `harness.py` rather than re-typing what is in it.** It holds the
+dataset paths and `load_bars()` (parquet-cached, ~12x faster than a bare
+`read_csv` of the 1M-row TQQQ file), the `Escalating` strategy, the
+`escalation()` formula, and `DrawdownEscalation` -- a mixin for probes
+that are a *different* strategy but embed the same escalate-into-drawdown
+mechanism. Two tests in
+`tests/unit/test_tools_are_importable.py` enforce this: one pins that
+`Escalating` has a single definition, the other scans every script's
+executable code (docstrings stripped, since several legitimately
+describe the formula in prose) and fails if the formula or the
+trailing-peak update is written anywhere but `harness.py`.
+
 **The staged indicator sweep** — see `plan.md`, which records each
 stage's result and the prediction it was read against:
 

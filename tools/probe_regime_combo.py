@@ -19,11 +19,11 @@ import numpy as np
 import pandas as pd
 
 logging.disable(logging.WARNING)
-from src.optimization.optimization_controller import OptimizationController
-from src.core.config import BacktestConfig
 from src.analysis.performance_analyzer import annual_returns
+from src.core.config import BacktestConfig
+from src.optimization.optimization_controller import OptimizationController
 from src.trading.risk_manager import RiskManager
-from tools.harness import Escalating
+from tools.harness import Escalating, load_bars
 
 
 # Escalating now lives in tools/harness.py -- ONE definition. Three
@@ -40,9 +40,7 @@ def main() -> int:
     noticed because nobody had imported them until now.
     """
     cfg = BacktestConfig.from_yaml("config/probe_dipbuy_full.yaml")
-    df = pd.read_csv(
-        "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv", parse_dates=["timestamp"]
-    ).set_index("timestamp")
+    df = load_bars()
     controller = OptimizationController(historical_data=df)
 
     # The dip-buyer, simulated independently, at two risk caps.

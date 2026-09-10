@@ -92,19 +92,19 @@ if _REPO_ROOT not in _sys.path:
 
 import logging
 
-import pandas as pd
-
-from src.optimization.optimization_controller import OptimizationController
-from src.core.config import BacktestConfig
-from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.analysis.performance_analyzer import annual_returns
-from src.trading.risk_manager import RiskManager
+from src.core.config import BacktestConfig
+from src.optimization.optimization_controller import OptimizationController
+from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.strategies.sizing_indicators import RollingMean
+from src.trading.risk_manager import RiskManager
+from tools.harness import TQQQ as TQQQ_CSV
+from tools.harness import DrawdownEscalation, load_bars
 
-DATA = "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
+DATA = TQQQ_CSV  # the shared dataset; the literal lives in tools/harness.py
 
 
-class RegimeSwitched(HighFrequencyLocalReferenceSizing):
+class RegimeSwitched(DrawdownEscalation, HighFrequencyLocalReferenceSizing):
     """Trend-follow above the moving average, deep-dip escalate below."""
 
     def __init__(
@@ -121,7 +121,7 @@ class RegimeSwitched(HighFrequencyLocalReferenceSizing):
     ):
         super().__init__(*args, **kwargs)
         self.bull_step, self.bear_step = bull_step, bear_step
-        self.max_mult, self.dd_ref = max_mult, dd_ref
+        self._init_escalation(max_mult, dd_ref)
         # daily_signal=True evaluates the regime ONCE PER SESSION, from
         # the prior session's close, which is what the 34.55% benchmark
         # actually is. On minute bars the same 200-session average is
@@ -137,7 +137,6 @@ class RegimeSwitched(HighFrequencyLocalReferenceSizing):
         self.stand_aside_until_warm = stand_aside_until_warm
         self._session: object | None = None
         self._prior_close: float | None = None
-        self._price_peak: float | None = None
         self._is_bull = False  # cold start reads bear, as the daily study did
         self._flipped_to_bear = False
 
@@ -172,7 +171,7 @@ class RegimeSwitched(HighFrequencyLocalReferenceSizing):
         # down -- which is the opposite of what the bear leg is for.
         # Only the transition closes the book.
         self._flipped_to_bear = was_bull and not self._is_bull
-        self._price_peak = price if self._price_peak is None else max(self._price_peak, price)
+        self._track_peak(price)
 
     @property
     def _warm(self) -> bool:
@@ -225,12 +224,9 @@ class RegimeSwitched(HighFrequencyLocalReferenceSizing):
         if self.stand_aside_until_warm and not self._warm:
             return 0.0
         base = super().calculate_trade_value(context)
-        if self._is_bull or not self._price_peak:
+        if self._is_bull:
             return base
-        drawdown = 1.0 - context.price / self._price_peak
-        if drawdown <= 0:
-            return base
-        return base * min(self.max_mult, self.max_mult ** (drawdown / self.dd_ref))
+        return self._escalate(base, context.price)
 
 
 def run(
@@ -320,7 +316,7 @@ def main(argv=None) -> int:
         logging.disable(logging.WARNING)
 
     cfg = BacktestConfig.from_yaml("config/probe_dipbuy_full.yaml")
-    frame = pd.read_csv(DATA, parse_dates=["timestamp"]).set_index("timestamp")
+    frame = load_bars(DATA)
     controller = OptimizationController(historical_data=frame)
 
     print("ONE ledger. Signal exits ON: the book is closed at every bull->bear flip.")

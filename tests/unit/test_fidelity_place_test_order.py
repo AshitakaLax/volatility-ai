@@ -149,7 +149,7 @@ def test_each_journal_line_is_flushed_and_readable_on_its_own(tmp_path):
 def test_the_script_never_reads_a_password():
     """It attaches to a browser a human logged into. It must not contain
     a credential path at all."""
-    source = Path("fidelity_place_test_order.py").read_text(encoding="utf-8")
+    source = Path("src/scripts/fidelity_place_test_order.py").read_text(encoding="utf-8")
     for forbidden in ("FIDELITY_PASSWORD", "load_fidelity_credentials", "totp"):
         assert forbidden not in source, f"{forbidden} has no business here"
 
@@ -165,7 +165,7 @@ def test_it_places_through_the_gated_adapter_not_a_raw_post():
     """
     import ast
 
-    source = Path("fidelity_place_test_order.py").read_text(encoding="utf-8")
+    source = Path("src/scripts/fidelity_place_test_order.py").read_text(encoding="utf-8")
     assert "FidelityPlacingBroker" in source, "placing must go through the adapter"
 
     tree = ast.parse(source)

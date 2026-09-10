@@ -21,7 +21,6 @@ from pathlib import Path
 import pytest
 
 from src.brokers import fidelity_broker
-from src.core.exceptions import ConfigurationError, ExecutionError
 from src.brokers.fidelity_broker import (
     PENDING_PATH,
     PREVIEW_PATH,
@@ -30,6 +29,7 @@ from src.brokers.fidelity_broker import (
     derive_order_state,
 )
 from src.brokers.fidelity_session import PLACE_ENDPOINTS, FidelitySession
+from src.core.exceptions import ConfigurationError, ExecutionError
 from src.execution.order_lifecycle import OrderState
 
 # A DELIBERATELY FAKE account number. This was the operator's real
@@ -166,7 +166,7 @@ def test_no_string_constant_in_the_module_names_a_place_endpoint():
     other string constant is inspected, which is what "no code path can
     reach placeOrder" actually means.
     """
-    tree = ast.parse(Path("src/fidelity_broker.py").read_text(encoding="utf-8"))
+    tree = ast.parse(Path("src/brokers/fidelity_broker.py").read_text(encoding="utf-8"))
     docstrings = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef)):
@@ -576,7 +576,7 @@ def test_the_adapter_never_calls_the_multi_account_positions_endpoint():
     name -- the only fix was to stop calling it."""
     import ast
 
-    source = Path("src/fidelity_broker.py").read_text(encoding="utf-8")
+    source = Path("src/brokers/fidelity_broker.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     docs = {
         ast.get_docstring(n, clean=False)
