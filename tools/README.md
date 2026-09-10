@@ -43,6 +43,37 @@ documentation that makes them findable.
 | `build_earnings_calendar.py` | `data/earnings_releases_derived.csv`. **Load-bearing for a fresh checkout** — `data/` is git-ignored, so this is absent after a clone and `src/event_calendar.py` needs it. Makes network requests; slow. |
 | `pull_extended_history.py` | Extended-hours minute datasets under `data/`, year by year. |
 | `export_strategy_curves.py` | One JSON blob of every strategy measured here, for the dashboard and the artifact. |
+| `build_warehouse.py` | `warehouse/` — two DuckDB catalogs plus ZSTD Parquet lakes for bars (`ticker/year`), macro series (`provider/series_key`) and trade executions (`simulation_id`). Needs `requirements-warehouse.txt`; prints an install hint and exits 2 without it, so a core-only checkout is unaffected. See below. |
+
+### The warehouse
+
+`build_warehouse.py --ingest-all` turns the CSVs in `data/` into a
+queryable store: ~7.4M bars compress to ~87 MB of Parquet plus ~0.7M
+`data/external/` macro rows to ~6 MB, and the `.duckdb` files stay ~2 MB
+because they are catalogs, not data stores.
+
+    python tools/build_warehouse.py --ingest-all --events   # bars + events + external
+    python tools/build_warehouse.py --external              # just data/external/
+    python cli.py backtest --config C --data D --warehouse
+    python tools/build_warehouse.py --top 20
+    python tools/build_warehouse.py --explain-execution <simulation_id>
+    python tools/build_warehouse.py --explain-series fred_DGS10 TQQQ
+
+The `--warehouse` flag on `cli.py backtest` / `cli.py search` records
+every combination *and its trade blotter* — the blotter that
+`cli.py:150` used to say it had no writer for. `--explain-execution`
+runs an `ASOF JOIN` matching each fill to the market bar in force at
+that instant, which is what makes recorded slippage checkable against
+`src/analysis/cost_models.py`'s assumptions. `--explain-series` does the
+same for a macro series, but **lag-aware**: `external_series.lag_days`
+(from `data/external/manifest.json`) shifts each observation to its
+publication time before the match, so a bar never joins a FRED print
+that did not exist yet.
+
+Unlike every other script here, this one has a library behind it
+(`src/warehouse/`) because `cli.py` imports the sink too. The
+`tools/`-scripts-are-never-imported-by-`src/` rule still holds: nothing
+in `src/` imports *this file*.
 
 ## Research — measurements and probes. Read-only; they answer questions
 

@@ -75,6 +75,76 @@ def _load_strategy_registry() -> dict:
     return STRATEGY_REGISTRY
 
 
+def _open_result_sink(args: argparse.Namespace, config, data_path: Path):
+    """Wire up the DuckDB warehouse for one sweep, or return None.
+
+    Returns {"sink", "finalize"} rather than the sink alone because the
+    lake VIEWs can only be (re)created once the sweep has actually
+    written a Parquet file into them -- read_parquet over an empty glob
+    is an error at CREATE VIEW time. finalize() runs after the sweep.
+
+    Never fatal: a warehouse is an addition to a sweep, not a
+    precondition for one. A missing dependency or an unwritable
+    directory prints a warning and the sweep runs exactly as it would
+    have without the flag.
+    """
+    try:
+        # Probed directly: src.warehouse imports duckdb/polars lazily, so
+        # importing it succeeds even where neither is installed and the
+        # real failure would surface later as a traceback rather than
+        # the actionable message below.
+        import duckdb  # noqa: F401
+        import polars  # noqa: F401
+
+        from src.warehouse import ingest, schema
+        from src.warehouse.connection import open_warehouse
+        from src.warehouse.duckdb_sink import DuckDBResultSink, ensure_broker_environment
+        from src.warehouse.hashing import broker_id_for
+    except ImportError as e:
+        print(
+            f"--warehouse needs its optional dependencies ({e}); "
+            "run `pip install -r requirements-warehouse.txt`. Continuing without it.",
+            file=sys.stderr,
+        )
+        return None
+
+    try:
+        root = Path(args.warehouse)
+        con = open_warehouse(root)
+        schema.initialize(con, root)
+
+        version = ingest.dataset_version(data_path)
+        broker_id = broker_id_for(config.costs)
+        ensure_broker_environment(con, broker_id, config.costs, f"{config.costs.model_type} costs")
+
+        sink = DuckDBResultSink(con, root, dataset_version=version)
+        sink.open_sweep(
+            algorithm=config.search.strategy,
+            base_parameters=config.to_dict(),
+            broker_id=broker_id,
+            dataset_version=version,
+        )
+        print(f"Warehouse: {root} (dataset_version={version[:12]}, broker={broker_id})")
+
+        def finalize() -> None:
+            schema.refresh_views(con, root)
+            stats = sink.stats
+            print(
+                f"Warehouse recorded {stats['recorded']} simulation(s), "
+                f"{stats['failed']} failed, {stats['skipped_duplicate']} already present, "
+                f"{stats['errors']} storage error(s)."
+            )
+            con.close()
+
+        return {"sink": sink, "finalize": finalize}
+    except Exception as e:
+        print(
+            f"Could not open the warehouse ({type(e).__name__}: {e}). Continuing without it.",
+            file=sys.stderr,
+        )
+        return None
+
+
 def cmd_test(pytest_args: list[str]) -> int:
     """Run pytest, forwarding arguments verbatim.
 
@@ -131,7 +201,23 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     from src.optimization.optimization_controller import OptimizationController
 
     controller = OptimizationController(historical_data=df)
-    results = controller.run_sweep(**config.to_run_sweep_kwargs(strategy_class))
+    sweep_kwargs = config.to_run_sweep_kwargs(strategy_class)
+
+    # Optional durable storage. Imported only when asked for: duckdb and
+    # polars live in requirements-warehouse.txt, and `cli.py backtest`
+    # must keep working on a machine that has never installed them.
+    warehouse = (
+        _open_result_sink(args, config, data_path) if getattr(args, "warehouse", None) else None
+    )
+    if warehouse is not None:
+        sweep_kwargs["result_sink"] = warehouse["sink"]
+
+    try:
+        results = controller.run_sweep(**sweep_kwargs)
+    finally:
+        if warehouse is not None:
+            warehouse["sink"].close_sweep()
+            warehouse["finalize"]()
 
     # output.return_full_results=True makes run_sweep return
     # (summary_df, full_results) instead of summary_df alone -- a real
@@ -357,6 +443,14 @@ def cmd_search(args: argparse.Namespace) -> int:
     cost_model = config.costs.build()
     risk_manager = config.risk.build()
 
+    # This command drives the inner loop itself rather than calling
+    # run_sweep, so it wires the sink here rather than inheriting
+    # run_sweep's hook. Same contract, same parent-process guarantee.
+    warehouse = (
+        _open_result_sink(args, config, data_path) if getattr(args, "warehouse", None) else None
+    )
+    sink = warehouse["sink"] if warehouse else None
+
     rows, trial_log = [], []
     started = time.time()
     trial_number = 0
@@ -380,6 +474,8 @@ def cmd_search(args: argparse.Namespace) -> int:
         )
         search.report(suggestion, sim_result)
         rows.append(row)
+        if sink is not None:
+            sink.record(row=row, sim_result=sim_result, elapsed_ms=int((time.time() - t0) * 1000))
 
         objective = None if "error" in row else row.get(config.search.rank_by)
         trial_log.append(
@@ -404,6 +500,10 @@ def cmd_search(args: argparse.Namespace) -> int:
                 f"step={suggestion['grid_step']:.4f} target={suggestion['profit_target']:.4f}  "
                 f"({time.time() - started:.0f}s elapsed)"
             )
+
+    if warehouse is not None:
+        sink.close_sweep()
+        warehouse["finalize"]()
 
     elapsed = time.time() - started
     print(
@@ -682,6 +782,16 @@ def main() -> int:
     p_backtest.add_argument(
         "--output", default=None, help="Optional path to write full results CSV"
     )
+    p_backtest.add_argument(
+        "--warehouse",
+        nargs="?",
+        const="warehouse",
+        default=None,
+        metavar="DIR",
+        help="Also record every combination and its trade blotter into the DuckDB "
+        "warehouse at DIR (default: warehouse/). Needs requirements-warehouse.txt; "
+        "without the flag nothing changes and neither dependency is imported.",
+    )
     p_backtest.set_defaults(func=cmd_backtest)
 
     p_fetch = sub.add_parser("fetch-data", help="Download historical bars for backtesting")
@@ -745,6 +855,15 @@ def main() -> int:
     )
     p_search.add_argument(
         "--log-every", type=int, default=10, help="Print progress every N trials (default: 10)"
+    )
+    p_search.add_argument(
+        "--warehouse",
+        nargs="?",
+        const="warehouse",
+        default=None,
+        metavar="DIR",
+        help="Also record every trial and its trade blotter into the DuckDB warehouse "
+        "at DIR (default: warehouse/). Needs requirements-warehouse.txt.",
     )
     p_search.set_defaults(func=cmd_search)
 

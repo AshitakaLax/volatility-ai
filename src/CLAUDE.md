@@ -15,6 +15,7 @@ before assuming behavior):
 | `optimization/` | `optimization_controller.py`, `search_strategies.py`, `walk_forward.py`, `monte_carlo.py` | sweep orchestration (`_simulate_single` runs one combo), grid/Bayesian/random search, out-of-sample validation |
 | `brokers/` | `alpaca_broker.py`, `fidelity_broker.py`, `fidelity_capture.py`, `broker_selection.py` | `LiveBroker` implementations |
 | `ml/` | `features.py`, `labels.py`, `rolling.py`, `live_features.py`, `reachability_sizing.py`, `sources.py` | the reachability-sizing research line — see caveat below |
+| `warehouse/` | `connection.py`, `schema.py`, `hashing.py`, `ingest.py`, `duckdb_sink.py`, `queries.py` | the DuckDB/Polars analytical warehouse: bars, sweep results, macro series, `ASOF` joins — see caveat below |
 | `ui/` | `dashboard.py` | Streamlit view of a running deployment |
 | `scripts/` | `run_hf_sweep.py`, `fidelity_recon.py`, `fidelity_place_test_order.py` | entry points too specific to live at repo root |
 
@@ -74,6 +75,44 @@ backtest and it fails silently — don't add a feature that violates it.
 `SizingStrategy` sees the run bar-by-bar with no "whole DataFrame" hook —
 it must agree with `features.py`'s offline computation by construction,
 not by two implementations kept in sync by hand.
+
+## `src/warehouse/` is the second optional-dependency package
+
+`requirements.txt`'s rule is that the live loop and the Raspberry Pi must
+never need an optional dependency to start, and that only `src/ml/` may
+import one. `warehouse/` is the **second** exemption: it needs `duckdb`
+and `polars` from `requirements-warehouse.txt`, and nothing in `src/`
+outside it may import it.
+
+The seam that keeps that true is `optimization/result_sink.py` — a
+stdlib-only `Protocol`. `run_sweep` gained one keyword, `result_sink=None`,
+and calls it in the parent process in both the sequential and parallel
+branches. With no sink the behavior is byte-for-byte what it was, and
+neither optional dependency is imported. `DuckDBResultSink` satisfies the
+Protocol **structurally** — it never imports it — so the dependency arrow
+only ever points one way.
+
+Two rules a sink implementation must honor, both learned from real
+incidents recorded in `optimization_controller.py`: it must not raise
+(a storage fault must not destroy a multi-hour sweep), and it must not
+retain the `SimulationResult` it is handed (retaining them is what
+exhausted RAM on a 1,260-combination run). The blotter itself is built
+unconditionally by `_simulate_single` because `trade_metrics` needs it,
+so writing it out costs no extra memory — only holding it does.
+
+`parameter_hash` builds on `core/artifacts.py`'s `canonical_hash` rather
+than adding a third hashing scheme. Its `UNIQUE` constraint is the dedup
+mechanism, so `dataset_version` and `broker_id` are inside the hash:
+the same parameters against different data, or a different cost model,
+are different experiments and must not collide.
+
+The `external` lake (FRED/CBOE/Yahoo macro series from `data/external/`,
+manifest-driven) carries a per-series `lag_days`. The lag-aware query in
+`queries.py` shifts every observation forward by it before the `ASOF`
+match, so a backtest bar only ever joins a macro value that had actually
+been *published* by then — joining on the raw observation timestamp
+leaks a print weeks early, the same silent lookahead `ml/`'s
+causal-transform rule guards against.
 
 ## Exception hierarchy
 

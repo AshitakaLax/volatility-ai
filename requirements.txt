@@ -36,6 +36,13 @@ optuna>=4.9.0
 # live broker path touch alpaca-py types.
 alpaca-py>=0.44.0
 
+# NOT HERE: the analytical warehouse (duckdb, polars). It lives in
+# requirements-warehouse.txt, on the same principle as
+# requirements-ml.txt -- src/warehouse/ is the second subpackage allowed
+# to import an optional dependency, and nothing in src/ outside it may.
+# A sweep run without `--warehouse` imports neither library, so the Pi
+# and the live loop are unaffected.
+
 # NOT HERE: the Fidelity live-trading dependencies. They live in
 # requirements-fidelity.txt instead, deliberately -- Dockerfile does
 # `pip install -r requirements.txt` for every image, and Playwright

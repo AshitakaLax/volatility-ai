@@ -1,5 +1,111 @@
 # Changelog
 
+## Analytical warehouse (DuckDB + Polars)
+
+Sweep output previously landed in four stores that could not be joined:
+flat CSVs (`cli.py`, `run_hf_sweep.py`), per-run JSON (`server/history.py`),
+JSONL probe journals (`tools/stage*_grid.py`), and SQLite for live state
+only (`src/core/persistence.py`, which deliberately refuses backtest
+results). Three consequences drove this change:
+
+1. **Trade blotters were computed and discarded.** `_simulate_single`
+   builds the blotter unconditionally because `trade_metrics` needs it,
+   then `run_sweep` drops it unless `return_full_results` is set.
+   `cli.py:150` said so outright: *"cli.py does not yet write them to
+   disk."*
+2. **No dedup survived a process.** The only one was an in-process dict
+   in `run_hf_sweep.py`, which measured 140 of 200 TPE trials as
+   re-measurements of 60 unique combinations.
+3. **No lineage.** A results CSV recorded parameters and metrics but not
+   *which data file* produced them.
+
+`warehouse/` now holds `market_data.duckdb` (assets, market_events,
+external_series) and `sim_results.duckdb` (broker_environments, sweeps,
+simulations), linked by `ATTACH`, over ZSTD Parquet lakes partitioned
+`ticker/year`, `provider/series_key` and `simulation_id`. Build it with
+`tools/build_warehouse.py --ingest-all`; record into it with
+`cli.py backtest --warehouse`. On this repo's data, 7.36M bars compress
+to 87 MB and 0.69M macro rows to 6 MB, with the catalogs at ~2 MB.
+
+### Decisions worth keeping
+
+**The sweep engine does not import duckdb.** `run_sweep` gained one
+keyword, `result_sink=None`, typed against a stdlib `Protocol` in
+`src/optimization/result_sink.py`. `src/optimization` is reachable from
+the live path, and the Pi must not need an analytics library to boot.
+`DuckDBResultSink` satisfies the Protocol structurally and never imports
+it.
+
+**`parameter_hash` includes `dataset_version` and `broker_id`.** It
+carries the `UNIQUE` constraint that *is* the dedup, so it must cover
+everything that changes what a run means. A hash that is "purely about
+parameters" reads cleaner and silently makes the warehouse refuse to
+re-measure a strategy on newer data. `rank_by` is excluded: ranking
+chooses which row you look at, not what was computed. It builds on
+`core/artifacts.canonical_hash` rather than adding a third hashing
+scheme to a project that already had two.
+
+**Sorting at write time replaces the index that a view cannot have.**
+DuckDB refuses `CREATE INDEX` on a view ("can only create an index on a
+base table"), so the OHLCV lake is written `ORDER BY ticker, timestamp`.
+Partition pruning plus row-group zonemaps do the work — but zonemaps
+only prune if the data was sorted. Dropping the `ORDER BY` fails no
+query; it just silently makes every `ASOF JOIN` a full scan.
+
+**`TimeZone` is pinned to UTC.** Measured: DuckDB defaults to the system
+zone (America/Denver on this machine), and it changes what
+`TIMESTAMPTZ::TIMESTAMP` yields — the same instant read back as 14:30
+under UTC and 07:30 under America/Denver. A casting mistake in an ASOF
+join does **not** raise; it shifts the instant and joins anyway.
+
+**Blotter columns are cast explicitly.** Polars types an all-null column
+as `String`. A combination that closes no trades has an all-null
+`profit_realized`, whose Parquet file would then disagree about that
+column's type with every other run's and break the view. `BLOTTER_SCHEMA`
+pins all twelve columns.
+
+**Cross-database foreign keys do not exist**, so `dataset_version` is a
+plain `VARCHAR`. Lineage is recorded, not enforced — the alternative was
+collapsing both catalogs into one file.
+
+**A sink may not raise, and may not retain its `SimulationResult`.**
+Both come from incidents already recorded in `optimization_controller.py`:
+losing hours of engine time to a storage fault, and the 1,260-combination
+run whose RAM was exhausted by holding results. Writing the blotter costs
+nothing extra because it already exists; only *keeping* it does.
+
+**`/warehouse/` is anchored in `.gitignore`.** A bare `warehouse/` also
+matches `src/warehouse/`, which would leave the package's own source
+untracked and missing from every clone — precisely what the bare `data/`
+rule still does to `src/data/`.
+
+### External-series lake — `data/external/` (FRED / CBOE / Yahoo)
+
+`build_warehouse.py --external` (also folded into `--ingest-all`) ingests
+the 118 macro series in `data/external/` — 56 FRED, 52 Yahoo, 10 CBOE,
+~0.69M rows → 6 MB — into a Parquet lake partitioned `provider/series_key`
+with an `external` view and an `external_series` dimension table.
+
+**Manifest-driven, not glob-driven.** `data/external/manifest.json`
+(written by `tools/fetch_market_inputs.py`) is the list of series and the
+only source of each one's provider, category and — critically —
+`lag_days`. A CSV with no manifest entry is skipped rather than guessed
+at: its publication lag would be unknown, and lag is not optional.
+
+**The join is lag-aware.** 55 of 56 FRED series carry a real publication
+lag (CPI +45d, GDP +90d, ...). `queries.EXTERNAL_SERIES_AT_BARS` shifts
+every observation forward by `lag_days` to a `known_at` and does the
+`ASOF` match on that, so a March backtest bar sees the January CPI print,
+not the March one that wasn't released until mid-April. Verified against
+real data: 0 of 1,035,332 TQQQ bars joined a CPI value dated less than
+45 days before them. `EXTERNAL_VALUE_AT` is the raw
+`ExternalIndexSeries.scalar()` equivalent for non-backtest lookups.
+
+**Heterogeneous shapes, one view.** FRED is `timestamp,close`; some CBOE
+series add `high,low`; Yahoo adds `volume`. Every series is projected
+onto a fixed 8-column superset with NULLs, and `union_by_name` binds the
+differing per-partition files.
+
 ## Tooling — Docker
 
 The project runs in a container via `cli.py`, a single entrypoint with

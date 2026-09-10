@@ -87,3 +87,22 @@ logs/
 # the Raspberry Pi's. data/ was already ignored; the rule was simply
 # scoped to a directory the file did not land in.
 *.parquet
+
+# The DuckDB analytical warehouse (src/warehouse/, tools/build_warehouse.py):
+# two database files plus a Parquet lake, all derived from data/ and from
+# sweep runs. Regenerable by definition, and the OHLCV lake alone is the
+# same tens of MB per symbol-year that data/ already excludes.
+#
+# *.db above does NOT match *.duckdb -- the suffix differs, exactly the
+# way *.db.lock needed its own rule. Both the WAL sidecar and the spill
+# directory a memory_limit forces are listed for the same reason.
+#
+# LEADING SLASH IS LOAD-BEARING. A bare `warehouse/` matches at ANY
+# depth, so it would also swallow src/warehouse/ -- the package's own
+# source code, silently untracked and missing from every clone. That is
+# not hypothetical: the bare `data/` rule above does exactly this to
+# src/data/, which is what broke CI on this branch. Anchored here so
+# only the generated top-level directory is excluded.
+/warehouse/
+*.duckdb
+*.duckdb.wal
