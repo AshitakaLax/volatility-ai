@@ -17,7 +17,7 @@ venv/
 # even though the comment above always claimed to cover it; the
 # directory stayed untracked only because it happened to be empty.
 state/
-data/
+/data/
 output/
 *.db
 
