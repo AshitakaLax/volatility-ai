@@ -152,16 +152,24 @@ def test_only_one_no_loss_comparison_exists_in_the_codebase():
     """
     comparison = re.compile(r"net_sell_proceeds\s*<\s*allocated_cost_basis")
     offenders = []
-    for path in [*(REPO_ROOT / "src").glob("*.py"), REPO_ROOT / "optimization_controller.py"]:
+    # rglob, not glob: src/ was flat when this was written, so a
+    # non-recursive glob covered the whole library. After the split into
+    # subpackages it matched only src/__init__.py and src/promotion.py --
+    # the scan silently stopped covering decision_cycle, the controller,
+    # and every strategy, which is the entire point of the test.
+    for path in (REPO_ROOT / "src").rglob("*.py"):
         if path.name == "no_loss_guard.py":
             continue  # the one legitimate home
-        if comparison.search(path.read_text()):
-            offenders.append(path.name)
+        if comparison.search(path.read_text(encoding="utf-8")):
+            offenders.append(str(path.relative_to(REPO_ROOT)))
     assert offenders == [], f"Duplicate no-loss comparison found in: {offenders}"
 
 
 def test_both_former_inline_sites_now_call_the_guard():
-    for filename in ("optimization_controller.py", "src/intraday_validation.py"):
+    for filename in (
+        "src/optimization/optimization_controller.py",
+        "src/optimization/intraday_validation.py",
+    ):
         source = (REPO_ROOT / filename).read_text()
         assert "validate_sell(" in source, f"{filename} no longer calls the canonical guard"
 

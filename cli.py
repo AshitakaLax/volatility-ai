@@ -174,6 +174,7 @@ def cmd_fetch_data(args: argparse.Namespace) -> int:
     invocation would silently compare different data.
     """
     from src.core.exceptions import ConfigurationError, DataValidationError, TradingSystemError
+    from src.core.secrets import load_live_credentials
     from src.data.historical_data import (
         AlpacaHistoricalData,
         FetchSpec,
@@ -182,7 +183,6 @@ def cmd_fetch_data(args: argparse.Namespace) -> int:
         resolve_window,
         validate_timeframe,
     )
-    from src.core.secrets import load_live_credentials
 
     try:
         start, end = resolve_window(days=args.days, start=args.start, end=args.end)
@@ -298,9 +298,12 @@ def cmd_search(args: argparse.Namespace) -> int:
 
     import pandas as pd
 
-    from src.optimization.optimization_controller import OptimizationController, _run_one_combination
     from src.core.config import BacktestConfig, expand_strategy_params
     from src.core.exceptions import ConfigurationError
+    from src.optimization.optimization_controller import (
+        OptimizationController,
+        _run_one_combination,
+    )
     from src.optimization.search_strategies import BayesianSearch
     from src.trading.strategy_registry import resolve_strategy
 
@@ -435,12 +438,12 @@ def cmd_live(args: argparse.Namespace) -> int:
     from src.brokers.alpaca_broker import AlpacaBroker
     from src.core.config import BacktestConfig
     from src.core.exceptions import ConfigurationError
-    from src.execution.order_management_system import Mode
     from src.core.persistence import LedgerStore
+    from src.core.secrets import load_live_credentials
+    from src.execution.order_management_system import Mode
     from src.execution.reconciliation import Reconciler
     from src.trading.risk_manager import CircuitBreaker
     from src.trading.runtime_lifecycle import RuntimeLifecycle
-    from src.core.secrets import load_live_credentials
 
     config_path = Path(args.config)
     if not config_path.exists():
@@ -554,9 +557,9 @@ def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -
     """
     import signal
 
+    from src.core.secrets import load_live_credentials
     from src.data.alpaca_market_data import AlpacaMarketData
     from src.trading.live_trading_loop import LiveTradingLoop
-    from src.core.secrets import load_live_credentials
 
     strategy_class = _load_strategy_registry()[config.strategy.strategy_id]
     strategy = strategy_class(**config.strategy.strategy_params)

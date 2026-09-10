@@ -22,15 +22,15 @@ from datetime import UTC, datetime
 import pandas as pd
 import pytest
 
-from src.optimization.optimization_controller import OptimizationController
-from src.trading import decision_cycle as decision_cycle_module
 from src.core.config import BacktestConfig
 from src.core.exceptions import ConfigurationError
-from src.execution.live_execution import LiveExecutionLoop
-from src.strategies.market_context import MarketContext
-from src.trading.risk_manager import RiskManager
 from src.core.secrets import API_KEY_ID_ENV_VAR, API_SECRET_KEY_ENV_VAR
+from src.execution.live_execution import LiveExecutionLoop
+from src.optimization.optimization_controller import OptimizationController
+from src.strategies.market_context import MarketContext
 from src.strategies.size_calculators import FixedPortfolioPercentage, SizingStrategy
+from src.trading import decision_cycle as decision_cycle_module
+from src.trading.risk_manager import RiskManager
 
 
 class RecordingStrategy(SizingStrategy):
@@ -102,13 +102,13 @@ def _context(close: float, cash: float = 100_000.0, equity: float = 100_000.0) -
 def test_both_paths_route_through_the_shared_decision_cycle_module():
     import inspect
 
-    import src.optimization.optimization_controller
-    import src.execution.live_execution
+    from src.execution import live_execution
+    from src.optimization import optimization_controller
 
     backtest_src = inspect.getsource(
         optimization_controller.OptimizationController._simulate_single
     )
-    live_src = inspect.getsource(src.live_execution.LiveExecutionLoop.decision_cycle)
+    live_src = inspect.getsource(live_execution.LiveExecutionLoop.decision_cycle)
 
     for source, name in (
         (backtest_src, "_simulate_single"),

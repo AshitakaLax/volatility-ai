@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from src.core.ledger import AssetLotLedger
+from src.core.persistence import LedgerStore
 from src.data.dashboard_data import (
     DashboardError,
     DeploymentState,
@@ -29,10 +31,16 @@ from src.data.dashboard_data import (
     load_order_journal,
     load_state,
 )
-from src.core.ledger import AssetLotLedger
 from src.trading.live_trading_loop import _META_CASH, _META_UNSETTLED
-from src.core.persistence import LedgerStore
 from src.trading.risk_manager import HALT_REASON_KEY, HALT_STATE_KEY
+
+# Anchored to this file rather than the working directory. The AST scans
+# below read these modules off disk by path, and bare relative paths made
+# them depend on pytest being invoked from the repo root -- the same
+# assumption that silently broke cli.py when it moved.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DASHBOARD_DATA = REPO_ROOT / "src" / "data" / "dashboard_data.py"
+DASHBOARD_UI = REPO_ROOT / "src" / "ui" / "dashboard.py"
 
 
 @pytest.fixture
@@ -85,7 +93,7 @@ def test_no_broker_or_session_is_reachable_from_the_dashboard():
         "fidelity_session",
         "broker_selection",
     )
-    for module in ("src/dashboard_data.py", "dashboard.py"):
+    for module in (DASHBOARD_DATA, DASHBOARD_UI):
         tree = ast.parse(Path(module).read_text(encoding="utf-8"))
         imported = []
         for node in ast.walk(tree):
@@ -100,7 +108,7 @@ def test_no_broker_or_session_is_reachable_from_the_dashboard():
 def test_the_dashboard_has_no_control_that_submits_anything():
     """Property 3. Every streamlit control on the page selects what to
     LOOK at; none of them act."""
-    source = Path("dashboard.py").read_text(encoding="utf-8")
+    source = DASHBOARD_UI.read_text(encoding="utf-8")
     for widget in ("st.button", "st.form_submit_button", "st.download_button", "st.form("):
         assert widget not in source, f"{widget} appeared in a read-only view"
 
@@ -294,7 +302,7 @@ def demo_db(tmp_path):
     return str(path)
 
 
-APP = str(Path("dashboard.py").resolve())
+APP = str(DASHBOARD_UI)
 
 
 def _app(db, price=None, monkeypatch=None):

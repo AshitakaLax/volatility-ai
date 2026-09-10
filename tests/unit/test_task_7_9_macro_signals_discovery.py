@@ -233,15 +233,15 @@ MACRO_FIELDS = (
 # appearing, rather than only ever checking the one already known
 # about.
 STRATEGY_MODULES = (
-    "src/size_calculators.py",
-    "src/decision_cycle.py",
-    "src/risk_manager.py",
-    "src/bayesian_sizing_calculators.py",
+    "src/strategies/size_calculators.py",
+    "src/trading/decision_cycle.py",
+    "src/trading/risk_manager.py",
+    "src/strategies/bayesian_sizing_calculators.py",
 )
 
 # The one documented, deliberate consumer (see module docstring's
 # "DISCOVERY OUTCOME, RE-RUN" section for the full step-3 writeup).
-CONFIRMED_CONSUMER_MODULE = "src/high_frequency_sizing.py"
+CONFIRMED_CONSUMER_MODULE = "src/strategies/high_frequency_sizing.py"
 # Now two fields, not one: the same strategy branches on both event
 # flags, with a separate multiplier each (see that module's docstring
 # for why they are not folded into a single flag).
@@ -411,7 +411,7 @@ def test_the_named_bayesian_strategy_now_exists_and_is_still_not_macroeconomic()
     """
     from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 
-    source = (REPO_ROOT / "src" / "bayesian_sizing_calculators.py").read_text()
+    source = (REPO_ROOT / "src" / "strategies" / "bayesian_sizing_calculators.py").read_text()
 
     for field in MACRO_FIELDS:
         assert field not in source, (

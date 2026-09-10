@@ -19,12 +19,12 @@ from __future__ import annotations
 
 import pytest
 
-from src.optimization.optimization_controller import OptimizationController
-from src.trading import decision_cycle
 from src.analysis.cost_models import ZeroCostModel
 from src.core.ledger import AssetLotLedger
-from src.trading.no_loss_guard import NoLossViolation, SellReason, validate_sell
+from src.optimization.optimization_controller import OptimizationController
 from src.strategies.size_calculators import FixedPortfolioPercentage
+from src.trading import decision_cycle
+from src.trading.no_loss_guard import NoLossViolation, SellReason, validate_sell
 from tests.fixtures.regression_baseline import (
     GRID_STEP,
     PROFIT_TARGET,
@@ -318,19 +318,18 @@ def test_every_sell_site_routes_through_the_shared_helper():
     """
     import inspect
 
-    import src.optimization.optimization_controller
-    import src.optimization.intraday_validation
-    import src.trading.live_trading_loop
+    from src.optimization import intraday_validation, optimization_controller
+    from src.trading import live_trading_loop
 
     sites = {
         "_simulate_single": inspect.getsource(
             optimization_controller.OptimizationController._simulate_single
         ),
         "simulate_single_intraday": inspect.getsource(
-            src.intraday_validation.simulate_single_intraday
+            intraday_validation.simulate_single_intraday
         ),
         "LiveTradingLoop._harvest": inspect.getsource(
-            src.live_trading_loop.LiveTradingLoop._harvest
+            live_trading_loop.LiveTradingLoop._harvest
         ),
     }
     for name, source in sites.items():
@@ -357,9 +356,8 @@ def test_every_sell_site_names_the_reason_it_is_selling():
     import inspect
     import re
 
-    import src.optimization.optimization_controller
-    import src.optimization.intraday_validation
-    import src.trading.live_trading_loop
+    from src.optimization import intraday_validation, optimization_controller
+    from src.trading import live_trading_loop
 
     for name, source in (
         (
@@ -368,11 +366,11 @@ def test_every_sell_site_names_the_reason_it_is_selling():
         ),
         (
             "simulate_single_intraday",
-            inspect.getsource(src.intraday_validation.simulate_single_intraday),
+            inspect.getsource(intraday_validation.simulate_single_intraday),
         ),
         (
             "LiveTradingLoop._apply_sell_fill",
-            inspect.getsource(src.live_trading_loop.LiveTradingLoop._apply_sell_fill),
+            inspect.getsource(live_trading_loop.LiveTradingLoop._apply_sell_fill),
         ),
     ):
         calls = re.findall(r"validate_sell\((.*?)\n\s*\)", source, re.DOTALL)

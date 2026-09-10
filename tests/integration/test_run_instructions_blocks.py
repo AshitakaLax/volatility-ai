@@ -54,7 +54,9 @@ def _sandbox(tmp_path: Path) -> Path:
     walkthrough should not depend on which symbol-years someone
     happens to have fetched.
     """
-    shutil.copy(REPO_ROOT / "optimization_controller.py", tmp_path / "optimization_controller.py")
+    # optimization_controller.py used to sit at the repo root and needed
+    # its own copy; it now lives in src/optimization/, so copying src/
+    # already brings it along.
     shutil.copytree(REPO_ROOT / "src", tmp_path / "src")
     (tmp_path / "data").mkdir()
     shutil.copy(

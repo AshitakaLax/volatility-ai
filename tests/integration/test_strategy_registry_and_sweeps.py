@@ -13,10 +13,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 from src.core.config import BacktestConfig, expand_strategy_params
 from src.core.exceptions import ConfigurationError
+from src.optimization.optimization_controller import OptimizationController
+from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 from src.strategies.size_calculators import (
     BellCurveProbabilitySizing,
     FixedPortfolioPercentage,
@@ -69,7 +69,7 @@ def test_an_unknown_id_fails_listing_the_valid_ones():
 def test_the_cli_registry_is_the_same_table():
     """Two hand-maintained copies of this mapping is the drift the
     registry exists to prevent."""
-    import src.cli
+    import cli
 
     cli.STRATEGY_REGISTRY.clear()
     assert cli._load_strategy_registry() == STRATEGIES
