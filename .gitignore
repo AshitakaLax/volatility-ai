@@ -106,3 +106,10 @@ logs/
 /warehouse/
 *.duckdb
 *.duckdb.wal
+
+# Database snapshot archives from tools/backup_databases.py. Each is a
+# tar.gz of the live ledger + the warehouse catalogs; they are point-in
+# -time copies of state, never source. Anchored (leading slash) for the
+# same reason /warehouse/ is -- a bare `backups/` would also match any
+# nested directory that happened to be named that.
+/backups/
