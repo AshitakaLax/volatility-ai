@@ -37,6 +37,7 @@
       "Read(recon_*.json)",
       "Read(**/*.har)",
       "Read(**/*.parquet)",
+      "Read(**/*.duckdb)",
       "Read(web/node_modules/**)",
       "Read(web/dist/**)",
       "Read(**/*.tsbuildinfo)",

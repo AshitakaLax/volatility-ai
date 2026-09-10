@@ -1,0 +1,24 @@
+# The analytical warehouse. Kept SEPARATE from requirements.txt for the
+# same reason as requirements-ml.txt: the live trading loop and the
+# Raspberry Pi that runs it must never need these to start. Nothing in
+# src/ outside src/warehouse/ may import them.
+#
+# src/warehouse/ is the SECOND subpackage granted that exemption (src/ml/
+# was the first). It earns it the same way: everything here is offline
+# analysis over already-recorded runs, and a sweep with no --warehouse
+# flag never imports the package at all.
+#
+# WHY DUCKDB RATHER THAN THE SQLITE ALREADY IN THE PROJECT
+#
+# src/core/persistence.py is deliberately SQLite and stays that way --
+# it holds live trading state, where the workload is single-row point
+# reads and one transaction per decision. The warehouse is the opposite
+# workload: scans over ~1M-row-per-symbol bar history joined against
+# sweep output. DuckDB reads partitioned Parquet natively (so the heavy
+# data never enters a database file), and has ASOF JOIN, which is the
+# whole point -- matching a fill to the bar in force at that instant is
+# otherwise a correlated subquery per row.
+
+duckdb>=1.1           # columnar engine, Parquet views, ASOF JOIN
+polars>=1.0           # streaming CSV scan + zero-copy Arrow handoff
+pyarrow>=15           # the Arrow bridge between polars and duckdb

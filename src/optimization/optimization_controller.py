@@ -16,6 +16,7 @@ import concurrent.futures
 import contextlib
 import dataclasses
 import logging
+import time
 from collections.abc import Callable
 
 import pandas as pd
@@ -1231,6 +1232,7 @@ class OptimizationController:
         search_strategy=None,
         search_seed: int | None = None,
         search_direction: str = "maximize",
+        result_sink=None,
     ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
@@ -1309,6 +1311,24 @@ class OptimizationController:
             affects search_strategy="bayesian" (passed to Optuna). Grid
             search always enumerates exhaustively regardless of direction;
             ranking/sorting is controlled separately by rank_by/ascending.
+        :param result_sink: Optional SweepResultSink
+            (src/optimization/result_sink.py) handed every finished
+            combination as it lands, for durable storage. None (default)
+            is exactly today's behavior -- nothing is written anywhere
+            and no optional dependency is imported.
+
+            Typed structurally against a stdlib Protocol rather than
+            against the DuckDB implementation on purpose: this module is
+            reachable from the live trading path, and requirements.txt's
+            standing rule is that the Raspberry Pi running that path must
+            never need an analytics library to start. See
+            result_sink.py's header.
+
+            Called in the PARENT process in both the sequential and
+            parallel branches, so a sink may assume single-threaded
+            access and does not need its own locking. A sink is
+            contractually forbidden from raising and from retaining the
+            SimulationResult it is handed.
         """
         # Task 4.9: validate everything up front, before building
         # combinations or running anything -- a bad config fails
@@ -1363,6 +1383,22 @@ class OptimizationController:
             with contextlib.suppress(Exception):
                 progress_callback(completed, total_combinations)
 
+        def _record_to_sink(row: dict, sim_result, elapsed_ms: int) -> None:
+            """Hand one finished combination to the durable store.
+
+            Suppressed for the same reason _report_progress is: a sink
+            is contractually forbidden from raising, but "contractually"
+            is not "structurally", and twenty minutes of engine time is
+            not worth losing to a full disk in a storage layer the sweep
+            itself does not need. A misbehaving sink degrades the sweep
+            to exactly today's behavior -- results in memory, nothing
+            persisted -- rather than destroying it.
+            """
+            if result_sink is None:
+                return
+            with contextlib.suppress(Exception):
+                result_sink.record(row=row, sim_result=sim_result, elapsed_ms=elapsed_ms)
+
         idx = 0
         if n_jobs == 1:
             while True:
@@ -1374,6 +1410,7 @@ class OptimizationController:
                     f"Evaluating iteration [{idx}]: Step={suggestion['grid_step']}, "
                     f"Target={suggestion['profit_target']}, Params={suggestion['strategy_params']}"
                 )
+                started_at = time.perf_counter()
                 row, sim_result = _run_one_combination(
                     self,
                     suggestion["grid_step"],
@@ -1391,10 +1428,12 @@ class OptimizationController:
                     allow_signal_exit,
                     settlement_days,
                 )
+                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
                 resolved_search_strategy.report(suggestion, sim_result)
                 results.append(row)
                 completed += 1
                 _report_progress()
+                _record_to_sink(row, sim_result, elapsed_ms)
                 # Retained ONLY when the caller asked for them. Each
                 # SimulationResult carries a per-bar equity curve (one
                 # entry per bar -- ~1.03M on this repo's 10-year minute
@@ -1443,13 +1482,23 @@ class OptimizationController:
                         ): s
                         for s in batch
                     }
+                    batch_started_at = time.perf_counter()
                     for future in concurrent.futures.as_completed(future_to_suggestion):
                         suggestion = future_to_suggestion[future]
                         row, sim_result = future.result()
+                        # Wall time since the batch was submitted, not this
+                        # combination's own CPU time -- the workers ran
+                        # concurrently, so there is no per-combination
+                        # figure to recover here. Recorded rather than
+                        # left null because relative cost within a batch
+                        # is still the useful signal, but it is NOT
+                        # comparable to the sequential branch's number.
+                        elapsed_ms = int((time.perf_counter() - batch_started_at) * 1000)
                         resolved_search_strategy.report(suggestion, sim_result)
                         results.append(row)
                         completed += 1
                         _report_progress()
+                        _record_to_sink(row, sim_result, elapsed_ms)
                         if return_full_results:  # see the sequential branch
                             full_results.append(sim_result)
 
