@@ -39,6 +39,16 @@ export function count(value: number | null | undefined): string {
   return Intl.NumberFormat("en-US", { notation: "compact" }).format(value);
 }
 
+/** A local date-time string from epoch SECONDS (not ms) -- `saved_at`
+ * and every other timestamp this project hands the frontend are
+ * seconds, matching Python's `time.time()`/`Path.stat().st_mtime`. */
+export function timestamp(epochSeconds: number | null | undefined): string {
+  if (epochSeconds === null || epochSeconds === undefined || Number.isNaN(epochSeconds)) {
+    return "--";
+  }
+  return new Date(epochSeconds * 1000).toLocaleString();
+}
+
 /**
  * A self-contained link to one run: this origin and path, `?run=<id>`
  * and nothing else.

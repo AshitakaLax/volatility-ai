@@ -406,6 +406,35 @@ describe("sortHistoryRows", () => {
     sortHistoryRows(rows, { column: "run_id", direction: "asc" }, "cagr_pct");
     expect(rows).toEqual(copy);
   });
+
+  describe("saved_at", () => {
+    it("sorts by recorded save time", () => {
+      const rows = [
+        histRow({ run_id: "old", saved_at: 100 }),
+        histRow({ run_id: "new", saved_at: 300 }),
+        histRow({ run_id: "mid", saved_at: 200 }),
+      ];
+      expect(
+        sortHistoryRows(rows, { column: "saved_at", direction: "asc" }, "cagr_pct").map(
+          (r) => r.run_id,
+        ),
+      ).toEqual(["old", "mid", "new"]);
+    });
+
+    it("a row with no saved_at is treated as NOW, not as missing -- it sorts among the most recent, not last", () => {
+      const rows = [
+        histRow({ run_id: "old", saved_at: 100 }),
+        histRow({ run_id: "unknown", saved_at: null }),
+      ];
+      // Descending (newest first): the unknown row -- "now" -- outranks
+      // a row genuinely saved in 1970.
+      expect(
+        sortHistoryRows(rows, { column: "saved_at", direction: "desc" }, "cagr_pct").map(
+          (r) => r.run_id,
+        ),
+      ).toEqual(["unknown", "old"]);
+    });
+  });
 });
 
 describe("filterHistoryRows", () => {

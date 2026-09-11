@@ -11,7 +11,7 @@ import {
   type RunHistoryColumn,
   type RunHistorySort,
 } from "@/lib/filters";
-import { cn, pct, runUrl, usd } from "@/lib/utils";
+import { cn, pct, runUrl, timestamp, usd } from "@/lib/utils";
 import {
   EMPTY_RUN_HISTORY_FILTERS,
   type FundPerformanceMetrics,
@@ -206,6 +206,13 @@ export function RunHistory({ refreshToken }: Props) {
     [visible],
   );
 
+  // When a simulation's own save time is unknown, it's treated as having
+  // happened right now -- read once at mount via useState's lazy
+  // initializer (React's sanctioned escape hatch for an impure read like
+  // this one; a bare Date.now() in the render body, even inside useMemo,
+  // trips the purity lint rule), not once per row, so every row missing
+  // `saved_at` agrees on what "now" means for the life of this view.
+  const [nowSeconds] = useState(() => Date.now() / 1000);
   const spec = RANKINGS.find((entry) => entry.key === metric) ?? RANKINGS[0]!;
   // A column click overrides the ranking's fixed direction while it is
   // active; "off" (columnSort === null) is exactly today's Rank-by sort.
@@ -362,6 +369,12 @@ export function RunHistory({ refreshToken }: Props) {
                   onSort={toggleSort}
                 />
                 <SortableHeader column="window" label="Window" active={columnSort} onSort={toggleSort} />
+                <SortableHeader
+                  column="saved_at"
+                  label="Timestamp"
+                  active={columnSort}
+                  onSort={toggleSort}
+                />
                 <SortableHeader column="run_id" label="Run" active={columnSort} onSort={toggleSort} />
               </tr>
             </thead>
@@ -441,6 +454,16 @@ export function RunHistory({ refreshToken }: Props) {
                     </td>
                     <td className="py-2 text-xs text-muted-foreground">
                       {row.start?.slice(0, 10) ?? "--"} → {row.end?.slice(0, 10) ?? "--"}
+                    </td>
+                    <td
+                      className="py-2 text-xs text-muted-foreground"
+                      title={
+                        row.saved_at === null
+                          ? "no recorded save time -- shown as now"
+                          : undefined
+                      }
+                    >
+                      {timestamp(row.saved_at ?? nowSeconds)}
                     </td>
                     <td className="py-2 font-mono text-xs text-muted-foreground">
                       <a

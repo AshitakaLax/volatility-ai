@@ -1,5 +1,27 @@
 # Changelog
 
+## Run History gains a Timestamp column (web UI)
+
+`HistoryRow.saved_at` (epoch seconds, from the archived report file's
+mtime) was already on the wire and already used behind the scenes, but
+never shown. Run History now has a sortable "Timestamp" column for it.
+
+- A row with no recorded save time (an old/legacy report, or a
+  corrupted mtime) is shown, and SORTS, as if it happened right now --
+  not "unknown," and not pushed to the bottom the way a genuinely
+  missing metric is. Computed once per render (`RunHistory.tsx`) and
+  once per sort pass (`lib/filters.ts`'s `sortHistoryRows`), not once
+  per row, so every such row agrees on what "now" means within one
+  view/sort.
+- `lib/utils.ts` gains `timestamp()` (epoch seconds -> a local
+  date-time string; "--" for null/undefined/NaN), tested.
+- `Date.now()` can't be called directly in a component's render body
+  (React's purity lint rule flags it even inside `useMemo`) -- the
+  "now" fallback is read once via `useState`'s lazy initializer, the
+  sanctioned escape hatch for exactly this.
+- No backend change -- `saved_at` was already served by
+  `GET /api/backtest/history`.
+
 ## Sweep summary + per-configuration selection (Backtest result, web UI)
 
 The result page used to show one fund's top-ranked configuration

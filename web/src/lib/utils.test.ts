@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { runUrl } from "./utils";
+import { runUrl, timestamp } from "./utils";
 
 describe("runUrl", () => {
   it("carries a run id as the only query parameter", () => {
@@ -34,5 +34,18 @@ describe("runUrl", () => {
   it("url-encodes a run id that needs it", () => {
     const url = new URL(runUrl("has space/slash", "http://localhost:8000/"));
     expect(url.searchParams.get("run")).toBe("has space/slash");
+  });
+});
+
+describe("timestamp", () => {
+  it("converts epoch SECONDS, not milliseconds", () => {
+    // 2024-01-01T00:00:00Z in seconds; a ms-unit bug would land in 1970.
+    expect(timestamp(1704067200)).toBe(new Date(1704067200 * 1000).toLocaleString());
+  });
+
+  it("is -- for null, undefined and NaN", () => {
+    expect(timestamp(null)).toBe("--");
+    expect(timestamp(undefined)).toBe("--");
+    expect(timestamp(Number.NaN)).toBe("--");
   });
 });

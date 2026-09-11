@@ -442,7 +442,8 @@ export type RunHistoryColumn =
   | "worst_year_pct"
   | "total_trades"
   | "window"
-  | "run_id";
+  | "run_id"
+  | "saved_at";
 
 export interface RunHistorySort {
   column: RunHistoryColumn;
@@ -467,11 +468,14 @@ export function nextRunHistorySort(
  * field for the FILTER inputs) -- this is the bare value the column
  * itself displays. `metric` reads whichever `FundPerformanceMetrics`
  * key the "Rank by" dropdown currently has selected, so the dynamic
- * metric column sorts by whatever it is showing. */
+ * metric column sorts by whatever it is showing. `now` (epoch seconds)
+ * is what `saved_at` falls back to when a row doesn't have one -- see
+ * `sortHistoryRows`. */
 function runHistoryColumnValue(
   row: HistoryRow,
   column: RunHistoryColumn,
   metric: keyof FundPerformanceMetrics,
+  now: number,
 ): string | number | null {
   const metricValue = (key: keyof FundPerformanceMetrics): number | null => {
     const value = row.metrics[key];
@@ -502,6 +506,12 @@ function runHistoryColumnValue(
       return row.start;
     case "run_id":
       return row.run_id;
+    case "saved_at":
+      // A row with no recorded save time is treated as having happened
+      // NOW -- the caller's own stated rule, not "unknown" -- so it
+      // reads as the most recent row rather than falling to the bottom
+      // of the table the way a genuinely absent metric does.
+      return row.saved_at ?? now;
   }
 }
 
@@ -534,10 +544,13 @@ export function sortHistoryRows(
   metric: keyof FundPerformanceMetrics,
 ): HistoryRow[] {
   if (!sort) return rows;
+  // Computed once per sort, not once per row/comparison, so every row
+  // missing `saved_at` in this one pass agrees on what "now" means.
+  const now = Date.now() / 1000;
   return [...rows].sort((a, b) =>
     compareRunHistoryValues(
-      runHistoryColumnValue(a, sort.column, metric),
-      runHistoryColumnValue(b, sort.column, metric),
+      runHistoryColumnValue(a, sort.column, metric, now),
+      runHistoryColumnValue(b, sort.column, metric, now),
       sort.direction,
     ),
   );
