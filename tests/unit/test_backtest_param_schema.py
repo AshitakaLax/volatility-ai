@@ -170,6 +170,67 @@ class TestDescribeParams:
         assert by_name["broken"]["type"] == "float"  # only this one degraded
 
 
+class TestSweepable:
+    """`sweepable` is what the "enable sweep" checkbox renders on --
+    a numeric argument the operator actually owns. It must track the
+    same rule everywhere, not drift into a second definition."""
+
+    def test_the_rule_holds_for_every_param_of_every_strategy(self):
+        for strategy_id, cls in STRATEGIES.items():
+            for spec in describe_params(strategy_id, cls):
+                expected = (
+                    spec["type"] in ("int", "float")
+                    and spec["editable"]
+                    and spec["mirrors"] is None
+                )
+                assert spec["sweepable"] is expected, (strategy_id, spec["name"])
+
+    def test_target_return_is_not_sweepable(self):
+        """It mirrors the grid's profit target -- sweeping it
+        independently would silently fight that alignment."""
+        by_name = {
+            s["name"]: s
+            for s in describe_params("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
+        }
+        assert by_name["target_return"]["sweepable"] is False
+
+    def test_ml_ticker_is_not_sweepable(self):
+        """Locked to the model id -- the engine owns it, not the operator."""
+        by_name = {
+            s["name"]: s
+            for s in describe_params("ml_reachability_cowz", STRATEGIES["ml_reachability_cowz"])
+        }
+        assert by_name["ticker"]["sweepable"] is False
+
+    def test_baseline_price_and_the_fixed_percentage_alias_are_not_sweepable(self):
+        ml_by_name = {
+            s["name"]: s
+            for s in describe_params("ml_reachability_cowz", STRATEGIES["ml_reachability_cowz"])
+        }
+        assert ml_by_name["baseline_price"]["sweepable"] is False
+        fixed_by_name = {s["name"]: s for s in describe_params("fixed", STRATEGIES["fixed"])}
+        assert fixed_by_name["percentage"]["sweepable"] is False
+
+    def test_allocation_pct_is_sweepable(self):
+        by_name = {s["name"]: s for s in describe_params("fixed", STRATEGIES["fixed"])}
+        assert by_name["allocation_pct"]["sweepable"] is True
+
+    def test_a_str_enum_param_is_not_sweepable(self):
+        by_name = {
+            s["name"]: s
+            for s in describe_params("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
+        }
+        assert by_name["vol_measure"]["sweepable"] is False
+
+    def test_an_editable_int_param_is_sweepable(self):
+        by_name = {
+            s["name"]: s
+            for s in describe_params("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
+        }
+        assert by_name["bars_per_day"]["type"] == "int"
+        assert by_name["bars_per_day"]["sweepable"] is True
+
+
 def _simulate_build_strategy_params(specs: list[dict]) -> dict:
     """A faithful port of web/src/lib/strategyParams.ts
     seedValues + buildStrategyParams for a NO-EDIT submit, so the

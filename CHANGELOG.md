@@ -1,5 +1,59 @@
 # Changelog
 
+## Per-argument "enable sweep" + Sweep Strategy (web UI + backtest API)
+
+Generalizes the Fixed | Sweep toggle below into a per-argument "enable
+sweep" checkbox, usable on grid step, profit target, *and* any numeric
+strategy param (`ParamSpec.sweepable`), each revealing a **Sweep
+Strategy** dropdown: Linear, Logarithmic, Random / Monte Carlo, and two
+disabled "(coming soon)" entries -- Multi-Resolution/coarse-to-fine and
+Adaptive/Heuristic, which imply a coarse pass inspecting its own results
+before refining, i.e. genuine multi-round orchestration nothing reachable
+from the web submit path does today. Faking either as a static list
+would have claimed behavior that doesn't exist, so both are stubs
+(`sweepStrategies.ts`) that error rather than silently do the wrong
+thing.
+
+- `web/src/lib/sweepStrategies.ts` (new, pure, tested) holds the three
+  working generators (`buildLinearSweep`/`buildLogarithmicSweep`/
+  `buildRandomSweep`) plus the two stubs, unit-agnostic so grid step,
+  profit target, and a strategy param all share one implementation
+  instead of three copies. `gridSteps.ts`'s existing Sweep-mode math
+  became a thin percent-domain wrapper over it -- `buildGridSteps` is
+  byte-identical for `strategy: "linear"` (the default), so nothing
+  built earlier this session regressed.
+- The engine turned out to already be wired for a 3-axis sweep:
+  `BacktestConfig.to_run_sweep_kwargs()` already calls
+  `expand_strategy_params()` to build a `strategy_params_grid`, and
+  `GridSearch` already cross-products `grid_steps × profit_targets ×
+  strategy_params_grid` -- confirmed by reading the code, not assumed.
+  So `server/backtest.py` needed wiring, not new engine surface:
+  `RunRequest.strategy_params` already accepted a list value per key
+  (`dict[str, Any]`); `build_config()` now expands it, guards against a
+  swept `target_return` (would otherwise be silently discarded by the
+  existing mirror-alignment code), and caps the resulting combination
+  count at `MAX_SWEEP_COMBINATIONS` (2000, `VAI_MAX_SWEEP_COMBINATIONS`
+  overridable); `run_backtest()`'s `combinations` count gained the third
+  factor and each result cell now carries the exact `strategy_params`
+  combo it ran with (`_native()` coerces the numpy scalars `summary.iterrows()`
+  yields, since `history.save()` calls bare `json.dumps`); `history_rows()`
+  prefers a cell's own combo over the run-level snapshot, fixing a real
+  bug this feature would otherwise have introduced (every row of a swept
+  run showing the same first-resolved combo).
+- `describe_params()` gains `sweepable` per param
+  (`type in ("int","float") and editable and mirrors is None`) --
+  server-computed, matching this project's "server describes capability"
+  pattern (`_apply_locks`, `describe_grid_trigger`), so `target_return`
+  (mirrors the grid) and every locked/non-numeric field never render the
+  checkbox.
+- `SweepMatrix.tsx`'s heatmap was hard-keyed to `(grid_step, profit_target)`
+  -- once a strategy param is also swept, several cells share that key.
+  A "Params" selector (reusing the existing Fund-selector idiom) now
+  picks which combo's 2D slice to render when more than one is present,
+  rather than the old `Map` construction silently keeping only the last.
+
+A no-edit, no-sweep submit is still byte-identical to before.
+
 ## Grid-step method + Fixed/Sweep (web UI + backtest API)
 
 The lone "Grid step %" input in "Run a Backtest" becomes a small panel

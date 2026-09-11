@@ -3,12 +3,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { GridStepPanel } from "@/components/backtest/GridStepPanel";
 import { ParamField } from "@/components/backtest/ParamField";
+import { SweepableParamField } from "@/components/backtest/SweepableParamField";
+import { SweepControls } from "@/components/backtest/SweepControls";
 import { api, type FundAvailability } from "@/lib/api";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui/primitives";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Field, Input, Select } from "@/components/ui/primitives";
 import { buildGridSteps } from "@/lib/gridSteps";
 import { GENERIC_GRID_TRIGGER, initialTriggerMethod } from "@/lib/gridTrigger";
+import { DEFAULT_SWEEP_FIELD_STATE, type SweepFieldState } from "@/lib/sweepStrategies";
 import {
   blankRequired,
+  buildParamSweep,
   buildStrategyParams,
   diffFromDefaults,
   paramErrorsFor,
@@ -20,9 +24,14 @@ import type {
   DateRange,
   GridTrigger,
   GridTriggerMethod,
+  ParamSpec,
   SizingParamsEntry,
   ValidateResponse,
 } from "@/types/backtest";
+
+// Mirrors server/backtest.py's MAX_SWEEP_COMBINATIONS default -- catches
+// an oversized sweep client-side, before the round trip to a 400.
+const MAX_SWEEP_COMBINATIONS = 2000;
 
 /**
  * The bidirectional half: submit a run and watch it.
@@ -72,11 +81,13 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   const [tickers, setTickers] = useState<string[]>(["TQQQ"]);
   const [name, setName] = useState("");
   const [gridStep, setGridStep] = useState(1.0);
-  // The Fixed | Sweep step control. Sweep bounds are raw text.
-  const [stepMode, setStepMode] = useState<"fixed" | "sweep">("fixed");
-  const [sweepMin, setSweepMin] = useState("0.5");
-  const [sweepMax, setSweepMax] = useState("1.5");
-  const [sweepCount, setSweepCount] = useState("5");
+  // The "enable sweep" state, one entry per sweepable argument: always
+  // `grid_step` and `profit_target`, plus one per sweepable strategy
+  // param of the current model (reseeded on model change, below).
+  const [sweepFields, setSweepFields] = useState<Record<string, SweepFieldState>>({
+    grid_step: { ...DEFAULT_SWEEP_FIELD_STATE, start: "0.5", end: "1.5" },
+    profit_target: DEFAULT_SWEEP_FIELD_STATE,
+  });
   // The grid-step trigger method, used only when the model offers a choice.
   const [triggerMethod, setTriggerMethod] = useState<GridTriggerMethod>("last_buy");
   const [profitTarget, setProfitTarget] = useState(0.5);
@@ -105,17 +116,60 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   const method: GridTriggerMethod = methodLocked ? trigger.methods[0]! : triggerMethod;
   const windowParam = trigger.window_param;
 
+  const gridStepSweep = sweepFields.grid_step ?? DEFAULT_SWEEP_FIELD_STATE;
+  const profitTargetSweep = sweepFields.profit_target ?? DEFAULT_SWEEP_FIELD_STATE;
+
   const gridSteps = useMemo(
     () =>
       buildGridSteps({
-        mode: stepMode,
+        mode: gridStepSweep.enabled ? "sweep" : "fixed",
         fixedPct: String(gridStep),
-        minPct: sweepMin,
-        maxPct: sweepMax,
-        count: sweepCount,
+        minPct: gridStepSweep.start,
+        maxPct: gridStepSweep.end,
+        count: gridStepSweep.count,
+        strategy: gridStepSweep.strategy,
+        seed: gridStepSweep.seed,
       }),
-    [stepMode, gridStep, sweepMin, sweepMax, sweepCount],
+    [gridStep, gridStepSweep],
   );
+  const profitSteps = useMemo(
+    () =>
+      buildGridSteps({
+        mode: profitTargetSweep.enabled ? "sweep" : "fixed",
+        fixedPct: String(profitTarget),
+        minPct: profitTargetSweep.start,
+        maxPct: profitTargetSweep.end,
+        count: profitTargetSweep.count,
+        strategy: profitTargetSweep.strategy,
+        seed: profitTargetSweep.seed,
+      }),
+    [profitTarget, profitTargetSweep],
+  );
+
+  const setSweepField = (name: string, next: SweepFieldState) =>
+    setSweepFields((current) => ({ ...current, [name]: next }));
+
+  // Every currently-enabled strategy-param sweep's own generated result,
+  // so its errors surface the same way grid step/profit target's do and
+  // its value count feeds the combinations estimate below.
+  const paramSweepResults = useMemo(
+    () =>
+      specs
+        .filter((entry) => entry.sweepable && sweepFields[entry.name]?.enabled)
+        .map((entry) => buildParamSweep(entry, sweepFields[entry.name]!)),
+    [specs, sweepFields],
+  );
+  const sweepErrors = [
+    ...gridSteps.errors,
+    ...profitSteps.errors,
+    ...paramSweepResults.flatMap((result) => result.errors),
+  ];
+  // 1 for a param with no valid sweep yet -- the combinations estimate
+  // stays a lower bound rather than momentarily reading 0.
+  const totalCombinations =
+    Math.max(1, gridSteps.steps.length) *
+    Math.max(1, profitSteps.steps.length) *
+    paramSweepResults.reduce((product, result) => product * Math.max(1, result.values.length), 1);
 
   useEffect(() => {
     api
@@ -157,6 +211,19 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     // report reloaded, or hf's committed lookback_days) preselects
     // local_reference.
     setTriggerMethod(initialTriggerMethod(gridTriggerMap[model] ?? GENERIC_GRID_TRIGGER, seeded));
+    // REPLACE the strategy-param slice of sweepFields the same way --
+    // grid_step/profit_target are untouched, they are not tied to the
+    // model.
+    setSweepFields((current) => {
+      const next: Record<string, SweepFieldState> = {
+        grid_step: current.grid_step ?? DEFAULT_SWEEP_FIELD_STATE,
+        profit_target: current.profit_target ?? DEFAULT_SWEEP_FIELD_STATE,
+      };
+      for (const spec of specs) {
+        if (spec.sweepable) next[spec.name] = DEFAULT_SWEEP_FIELD_STATE;
+      }
+      return next;
+    });
     const tickerSpec = specs.find((spec) => spec.name === "ticker" && !spec.editable);
     const requiredFund =
       tickerSpec && typeof tickerSpec.suggested === "string" ? tickerSpec.suggested : null;
@@ -174,9 +241,13 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   useEffect(() => {
     if (!staged) return;
     // One sweep-matrix cell is one step -- drop back to a Fixed value.
-    setStepMode("fixed");
     setGridStep(Number((staged.gridStep * 100).toFixed(4)));
     setProfitTarget(Number((staged.profitTarget * 100).toFixed(4)));
+    setSweepFields((current) => ({
+      ...current,
+      grid_step: { ...(current.grid_step ?? DEFAULT_SWEEP_FIELD_STATE), enabled: false },
+      profit_target: { ...(current.profit_target ?? DEFAULT_SWEEP_FIELD_STATE), enabled: false },
+    }));
   }, [staged]);
 
   const toggle = (ticker: string) =>
@@ -194,13 +265,14 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     // Percentages in the UI, fractions on the wire. A well-formed list
     // even mid-edit (Run is disabled while gridSteps has errors).
     grid_steps: gridSteps.steps.length > 0 ? gridSteps.steps : [gridStep / 100],
-    profit_targets: [profitTarget / 100],
+    profit_targets: profitSteps.steps.length > 0 ? profitSteps.steps : [profitTarget / 100],
     sizing_model: model,
     fill_model: fillModel,
     // Built explicitly from the rendered fields -- see buildStrategyParams
-    // for exactly which are included. A no-edit submit reproduces the
-    // model's committed defaults byte-for-byte.
-    strategy_params: buildStrategyParams(specs, paramValues),
+    // for exactly which are included. A sweepable field with its
+    // checkbox on is sent as a list; a no-edit, no-sweep submit
+    // reproduces the model's committed defaults byte-for-byte.
+    strategy_params: buildStrategyParams(specs, paramValues, sweepFields),
     limit,
     ...(range.start ? { start: range.start } : {}),
     ...(range.end ? { end: range.end } : {}),
@@ -211,13 +283,16 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   // is dropped via the sequence counter.
   const paramsKey = JSON.stringify(paramValues);
   const stepsKey = JSON.stringify(gridSteps.steps);
+  const profitStepsKey = JSON.stringify(profitSteps.steps);
+  const sweepFieldsKey = JSON.stringify(sweepFields);
   useEffect(() => {
     const request = buildRequest();
     const seq = ++validateSeq.current;
     const timer = window.setTimeout(() => {
-      // A client-invalid step sweep never gets a pre-flight -- clearing
-      // validation stops a stale green from showing under a bad field.
-      if (gridSteps.errors.length > 0) {
+      // A client-invalid sweep (grid step, profit target, or any
+      // strategy param) never gets a pre-flight -- clearing validation
+      // stops a stale green from showing under a bad field.
+      if (sweepErrors.length > 0) {
         setValidation(null);
         return;
       }
@@ -232,7 +307,19 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     }, 400);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, tickers, profitTarget, fillModel, limit, range.start, range.end, paramsKey, stepsKey]);
+  }, [
+    model,
+    tickers,
+    profitTarget,
+    fillModel,
+    limit,
+    range.start,
+    range.end,
+    paramsKey,
+    stepsKey,
+    profitStepsKey,
+    sweepFieldsKey,
+  ]);
 
   const setParam = (paramName: string, value: string) =>
     setParamValues((current) => ({ ...current, [paramName]: value }));
@@ -244,6 +331,13 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     const seeded = seedValues(specs);
     setParamValues(seeded);
     setTriggerMethod(initialTriggerMethod(trigger, seeded));
+    setSweepFields((current) => {
+      const next = { ...current };
+      for (const spec of specs) {
+        if (spec.sweepable) next[spec.name] = DEFAULT_SWEEP_FIELD_STATE;
+      }
+      return next;
+    });
   };
 
   // Writing the trigger method's window param is the ONLY place the
@@ -264,8 +358,8 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   // The FULL specs array stays load-bearing for buildStrategyParams /
   // blankRequired / diffFromDefaults; only the RENDER lists drop the
   // window param -- it gets its one editor inside the grid-step panel.
-  const blanks = blankRequired(specs, paramValues);
-  const diffs = diffFromDefaults(specs, paramValues);
+  const blanks = blankRequired(specs, paramValues, sweepFields);
+  const diffs = diffFromDefaults(specs, paramValues, sweepFields);
   const primary = specs.filter((spec) => spec.group === "primary" && spec.name !== windowParam);
   const advanced = specs.filter((spec) => spec.group === "advanced" && spec.name !== windowParam);
   // Unattached errors, PLUS any pinned to a field that is not on screen
@@ -288,6 +382,36 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     if (value == null) return undefined;
     return typeof value === "number" ? cleanNumber(value) : String(value);
   };
+
+  // A sweepable spec gets the checkbox-and-dropdown treatment; every
+  // other spec (locked, mirrored, or non-numeric) renders exactly as
+  // before -- ParamField is otherwise untouched by this feature.
+  const renderParamField = (spec: ParamSpec) =>
+    spec.sweepable ? (
+      <SweepableParamField
+        key={spec.name}
+        spec={spec}
+        value={paramValues[spec.name] ?? ""}
+        onChange={setParam}
+        onReset={resetParam}
+        sweep={sweepFields[spec.name] ?? DEFAULT_SWEEP_FIELD_STATE}
+        onSweepChange={setSweepField}
+        errors={paramErrorsFor(spec.name, validation?.errors)}
+        disabled={busy}
+      />
+    ) : (
+      <ParamField
+        key={spec.name}
+        spec={spec}
+        value={paramValues[spec.name] ?? ""}
+        onChange={setParam}
+        onReset={resetParam}
+        errors={paramErrorsFor(spec.name, validation?.errors)}
+        disabled={busy}
+        mirroredValue={spec.mirrors === "profit_target" ? mirroredTarget : undefined}
+        alignedNote={spec.mirrors === "profit_target" ? alignedNoteFor(spec.name) : undefined}
+      />
+    );
 
   const submit = () => onSubmit(buildRequest());
 
@@ -350,16 +474,10 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
         </div>
 
         <GridStepPanel
-          stepMode={stepMode}
-          onStepModeChange={setStepMode}
           gridStep={gridStep}
           onGridStepChange={setGridStep}
-          sweepMin={sweepMin}
-          sweepMax={sweepMax}
-          sweepCount={sweepCount}
-          onSweepMinChange={setSweepMin}
-          onSweepMaxChange={setSweepMax}
-          onSweepCountChange={setSweepCount}
+          sweep={gridStepSweep}
+          onSweepChange={(next) => setSweepField("grid_step", next)}
           gridSteps={gridSteps}
           trigger={trigger}
           method={method}
@@ -370,17 +488,45 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
           disabled={busy}
         />
 
-        <Field label="Profit target %">
-          <Input
-            type="number"
-            step="0.05"
-            min="0.01"
-            className="w-24"
-            value={profitTarget}
-            disabled={busy}
-            onChange={(event) => setProfitTarget(Number(event.currentTarget.value))}
-          />
-        </Field>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">Profit target %</span>
+            <label className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Checkbox
+                data-testid="profit-target-sweep"
+                checked={profitTargetSweep.enabled}
+                disabled={busy}
+                onChange={(event) =>
+                  setSweepField("profit_target", { ...profitTargetSweep, enabled: event.currentTarget.checked })
+                }
+              />
+              Sweep
+            </label>
+          </div>
+          {profitTargetSweep.enabled ? (
+            <SweepControls
+              label="Profit Target %"
+              state={profitTargetSweep}
+              onChange={(next) => setSweepField("profit_target", next)}
+              disabled={busy}
+            />
+          ) : (
+            <Input
+              type="number"
+              step="0.05"
+              min="0.01"
+              className="w-24"
+              value={profitTarget}
+              disabled={busy}
+              onChange={(event) => setProfitTarget(Number(event.currentTarget.value))}
+            />
+          )}
+          {profitSteps.errors.map((error, index) => (
+            <p key={index} className="text-[11px] leading-tight text-loss">
+              {error}
+            </p>
+          ))}
+        </div>
 
         <Field label="Sizing model">
           <Select
@@ -430,7 +576,8 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
             tickers.length === 0 ||
             blanks.length > 0 ||
             validation?.ok === false ||
-            gridSteps.errors.length > 0 ||
+            sweepErrors.length > 0 ||
+            totalCombinations > MAX_SWEEP_COMBINATIONS ||
             (method === "local_reference" &&
               windowParam !== null &&
               ((paramValues[windowParam] ?? "").trim() === "" ||
@@ -443,23 +590,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
 
       {specs.length > 0 ? (
         <CardContent className="flex flex-col gap-3 pt-0">
-          <div className="flex flex-wrap items-start gap-4">
-            {primary.map((spec) => (
-              <ParamField
-                key={spec.name}
-                spec={spec}
-                value={paramValues[spec.name] ?? ""}
-                onChange={setParam}
-                onReset={resetParam}
-                errors={paramErrorsFor(spec.name, validation?.errors)}
-                disabled={busy}
-                mirroredValue={spec.mirrors === "profit_target" ? mirroredTarget : undefined}
-                alignedNote={
-                  spec.mirrors === "profit_target" ? alignedNoteFor(spec.name) : undefined
-                }
-              />
-            ))}
-          </div>
+          <div className="flex flex-wrap items-start gap-4">{primary.map(renderParamField)}</div>
 
           {advanced.length > 0 ? (
             <div>
@@ -472,17 +603,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
               </button>
               {showAdvanced ? (
                 <div className="mt-2 flex flex-wrap items-start gap-4">
-                  {advanced.map((spec) => (
-                    <ParamField
-                      key={spec.name}
-                      spec={spec}
-                      value={paramValues[spec.name] ?? ""}
-                      onChange={setParam}
-                      onReset={resetParam}
-                      errors={paramErrorsFor(spec.name, validation?.errors)}
-                      disabled={busy}
-                    />
-                  ))}
+                  {advanced.map(renderParamField)}
                 </div>
               ) : null}
             </div>
@@ -510,6 +631,21 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
               </>
             )}
           </p>
+
+          {totalCombinations > 1 ? (
+            <p
+              className={
+                totalCombinations > MAX_SWEEP_COMBINATIONS
+                  ? "text-[11px] leading-tight text-loss"
+                  : "text-[11px] leading-tight text-muted-foreground"
+              }
+            >
+              {totalCombinations} configurations across every enabled sweep
+              {totalCombinations > MAX_SWEEP_COMBINATIONS
+                ? ` — exceeds the ${MAX_SWEEP_COMBINATIONS} limit for one submission; narrow a swept range.`
+                : "."}
+            </p>
+          ) : null}
 
           {validation?.degraded ? (
             <p className="text-[11px] text-muted-foreground">

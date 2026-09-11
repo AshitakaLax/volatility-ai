@@ -8,8 +8,11 @@ import { describe, expect, it } from "vitest";
 
 import type { ParamSpec } from "@/types/backtest";
 
+import type { SweepFieldState } from "@/lib/sweepStrategies";
+
 import {
   blankRequired,
+  buildParamSweep,
   buildStrategyParams,
   diffFromDefaults,
   paramErrorsFor,
@@ -32,8 +35,13 @@ function spec(over: Partial<ParamSpec> = {}): ParamSpec {
     locked_reason: null,
     mirrors: null,
     step: "any",
+    sweepable: true,
     ...over,
   };
+}
+
+function sweep(over: Partial<SweepFieldState> = {}): SweepFieldState {
+  return { enabled: true, strategy: "linear", start: "1", end: "5", count: "3", seed: "", ...over };
 }
 
 // The two swept dimensions of `fixed` and `bell_curve`, close to what
@@ -48,6 +56,7 @@ const FIXED: ParamSpec[] = [
     default: null,
     suggested: null,
     editable: false,
+    sweepable: false,
     locked_reason: "deprecated alias of allocation_pct -- use allocation_pct",
   }),
 ];
@@ -58,7 +67,7 @@ const BELL: ParamSpec[] = [
   spec({ name: "bars_per_day", type: "int", required: true, default: null, suggested: 387, has_suggested: true, group: "primary", step: "1" }),
   spec({ name: "mu", default: 0.2, suggested: 0.2 }),
   spec({ name: "sigma", default: 0.1, suggested: 0.1 }),
-  spec({ name: "baseline_price", type: "float", nullable: true, default: null, suggested: null, editable: false, locked_reason: "captured from the first bar" }),
+  spec({ name: "baseline_price", type: "float", nullable: true, default: null, suggested: null, editable: false, sweepable: false, locked_reason: "captured from the first bar" }),
 ];
 
 const BAYES_HEAD: ParamSpec[] = [
@@ -71,12 +80,13 @@ const BAYES_HEAD: ParamSpec[] = [
     has_suggested: true,
     group: "primary",
     editable: false,
+    sweepable: false,
     mirrors: "profit_target",
     locked_reason: "the server sets this to the grid's profit target",
   }),
   spec({ name: "bars_per_day", type: "int", required: true, default: null, suggested: 387, has_suggested: true, group: "primary", step: "1" }),
-  spec({ name: "vol_measure", type: "str", default: "stdev", suggested: "stdev", enum: ["stdev", "range"], step: null }),
-  spec({ name: "allow_target_return_mismatch", type: "bool", default: false, suggested: false, step: null }),
+  spec({ name: "vol_measure", type: "str", default: "stdev", suggested: "stdev", enum: ["stdev", "range"], step: null, sweepable: false }),
+  spec({ name: "allow_target_return_mismatch", type: "bool", default: false, suggested: false, step: null, sweepable: false }),
   // The grid-step trigger's local-reference window: optional, nullable,
   // seeds blank -> omitted unless the method selector sets it.
   spec({ name: "lookback_days", nullable: true, default: null, suggested: null, group: "advanced" }),
@@ -84,7 +94,7 @@ const BAYES_HEAD: ParamSpec[] = [
 
 const ML: ParamSpec[] = [
   spec({ name: "max_trade_pct", required: true, default: null, suggested: 0.05, has_suggested: true, group: "primary" }),
-  spec({ name: "ticker", type: "str", required: true, default: null, suggested: "COWZ", has_suggested: true, group: "primary", editable: false, locked_reason: "trained on COWZ", step: null }),
+  spec({ name: "ticker", type: "str", required: true, default: null, suggested: "COWZ", has_suggested: true, group: "primary", editable: false, sweepable: false, locked_reason: "trained on COWZ", step: null }),
   spec({ name: "confidence_floor", default: 0.25, suggested: 0.25, has_suggested: true, group: "primary" }),
 ];
 
@@ -201,6 +211,67 @@ describe("blankRequired", () => {
   it("is empty when required fields are filled, and ignores the locked ticker", () => {
     expect(blankRequired(BELL, seedValues(BELL))).toEqual([]);
     expect(blankRequired(ML, { ...seedValues(ML), ticker: "" })).toEqual([]); // ticker not editable
+  });
+});
+
+describe("buildParamSweep", () => {
+  it("resolves a linear range for a float param", () => {
+    const r = buildParamSweep(spec({ name: "max_trade_pct", type: "float" }), sweep({ start: "0.05", end: "0.1", count: "3" }));
+    expect(r.errors).toEqual([]);
+    expect(r.values).toEqual([0.05, 0.075, 0.1]);
+  });
+
+  it("rounds to whole numbers for an int param", () => {
+    const r = buildParamSweep(spec({ name: "bars_per_day", type: "int" }), sweep({ start: "1", end: "3", count: "5" }));
+    expect(r.errors).toEqual([]);
+    expect(r.values).toEqual([1, 2, 3]); // 1, 1.5, 2, 2.5, 3 -> rounded, deduped
+  });
+
+  it("a blank start or end errors rather than treating it as zero", () => {
+    expect(buildParamSweep(spec(), sweep({ start: "" })).errors.length).toBeGreaterThan(0);
+    expect(buildParamSweep(spec(), sweep({ end: "" })).errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe("buildStrategyParams -- sweep-aware", () => {
+  it("a sweep-enabled sweepable param is sent as a list, ignoring its scalar text", () => {
+    const sweepFields = { max_trade_pct: sweep({ start: "0.05", end: "0.1", count: "2" }) };
+    const out = buildStrategyParams(BELL, { ...seedValues(BELL), max_trade_pct: "0.9" }, sweepFields);
+    expect(out.max_trade_pct).toEqual([0.05, 0.1]);
+  });
+
+  it("a sweep with client errors is omitted, not sent as an empty/partial list", () => {
+    const sweepFields = { max_trade_pct: sweep({ start: "", end: "0.1" }) };
+    const out = buildStrategyParams(BELL, seedValues(BELL), sweepFields);
+    expect("max_trade_pct" in out).toBe(false);
+  });
+
+  it("sweepFields is ignored for a non-sweepable (locked/mirrored) param", () => {
+    const sweepFields = { target_return: sweep() };
+    const out = buildStrategyParams(BAYES_HEAD, seedValues(BAYES_HEAD), sweepFields);
+    expect("target_return" in out).toBe(false);
+  });
+});
+
+describe("blankRequired -- sweep-aware", () => {
+  it("a required field with an enabled, valid sweep is not blank", () => {
+    const values = { ...seedValues(BELL), max_trade_pct: "" };
+    const sweepFields = { max_trade_pct: sweep({ start: "0.05", end: "0.1", count: "2" }) };
+    expect(blankRequired(BELL, values, sweepFields)).toEqual([]);
+  });
+
+  it("a required field with an enabled but invalid sweep is still blank", () => {
+    const values = { ...seedValues(BELL), max_trade_pct: "" };
+    const sweepFields = { max_trade_pct: sweep({ start: "", end: "0.1" }) };
+    expect(blankRequired(BELL, values, sweepFields)).toEqual(["max_trade_pct"]);
+  });
+});
+
+describe("diffFromDefaults -- sweep-aware", () => {
+  it("reports a swept field as changed, labeled 'swept'", () => {
+    const sweepFields = { mu: sweep() };
+    const diff = diffFromDefaults(BELL, seedValues(BELL), sweepFields);
+    expect(diff.find((d) => d.name === "mu")).toEqual({ name: "mu", from: "0.2", to: "swept" });
   });
 });
 

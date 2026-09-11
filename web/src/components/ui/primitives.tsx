@@ -100,6 +100,21 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return <input className={cn(CONTROL, className)} {...props} />;
 }
 
+export function Checkbox({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      type="checkbox"
+      className={cn(
+        "size-3.5 rounded border border-input accent-primary " +
+          "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none " +
+          "disabled:cursor-not-allowed disabled:opacity-50",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select

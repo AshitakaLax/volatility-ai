@@ -150,6 +150,10 @@ export interface BarWindow {
 export interface SweepConfiguration {
   grid_step: number;
   profit_target: number;
+  /** The resolved strategy-param combo THIS cell ran with -- distinct
+   * per cell once a strategy param is swept. `{}` for a report predating
+   * this field. */
+  strategy_params: Record<string, ParamValue>;
   metrics: FundPerformanceMetrics;
 }
 
@@ -183,8 +187,14 @@ export interface BacktestParameters {
    * The RESOLVED sizing-model arguments -- what the engine was built
    * with after defaults were filled in and `target_return` was aligned
    * to the grid. Absent on a report predating this field.
+   *
+   * A value is a LIST when that argument was swept (server-side
+   * `expand_strategy_params`): the run-level snapshot then shows every
+   * value that argument took across the whole sweep, while each
+   * `SweepConfiguration.strategy_params` cell shows only the one
+   * combination that produced it.
    */
-  strategy_params?: Record<string, number | string | boolean>;
+  strategy_params?: Record<string, ParamValue | ParamValue[]>;
   /** "close" requires the bar's CLOSE to reach a level; "intrabar" fills
    * a level TOUCHED during the bar -- roughly 1.85x more fills. */
   fill_model: string;
@@ -349,7 +359,10 @@ export interface BacktestRunRequest {
   grid_steps: number[];
   profit_targets: number[];
   sizing_model: string;
-  strategy_params?: Record<string, number | string | boolean>;
+  /** A value is a list to sweep that argument -- server/backtest.py's
+   * `expand_strategy_params` cross-products it against grid_steps and
+   * profit_targets, exactly like those two already sweep. */
+  strategy_params?: Record<string, ParamValue | ParamValue[]>;
   fill_model?: "close" | "intrabar";
   enforce_no_loss?: boolean;
   /** ISO date, inclusive. Applied BEFORE the bar cap. */
@@ -417,9 +430,10 @@ export interface HistoryRow {
   grid_step: number | null;
   profit_target: number | null;
   sizing_model: string | null;
-  /** The resolved sizing-model arguments the run used. `{}` for a run
-   * archived before this was recorded. Repeated on every row of a run. */
-  strategy_params: Record<string, number | string | boolean>;
+  /** The resolved sizing-model arguments THIS ROW's cell ran with (or,
+   * for a report predating per-cell values, the run-level snapshot).
+   * `{}` for a run archived before either existed. */
+  strategy_params: Record<string, ParamValue>;
   fill_model: string | null;
   /** Where the ENGINE ranked this cell; 0 is its own pick. Lets a
    * reader see when their chosen metric disagrees with it. */
@@ -481,6 +495,11 @@ export interface ParamSpec {
   /** Suggested `<input type="number" step>`: `"1"` for int, `"any"` for
    * float, `null` for bool/enum/str. Advisory -- the server bounds it. */
   step: string | null;
+  /** Whether the "enable sweep" checkbox may render for this argument --
+   * `type in ("int","float") && editable && mirrors === null`. A locked
+   * (engine-owned) or grid-mirrored value cannot also be independently
+   * swept, and a str/bool/enum field has no numeric range to sweep. */
+  sweepable: boolean;
 }
 
 export interface SizingParamsEntry {
@@ -538,8 +557,9 @@ export interface ValidateError {
 export interface ValidateResponse {
   ok: boolean;
   /** What the engine would build with -- defaults filled in,
-   * `target_return` aligned. `null`/absent when invalid. */
-  resolved_strategy_params?: Record<string, ParamValue> | null;
+   * `target_return` aligned. `null`/absent when invalid. A value is a
+   * list when that argument was submitted as a sweep. */
+  resolved_strategy_params?: Record<string, ParamValue | ParamValue[]> | null;
   /** The subset the server set or changed vs. what was submitted. */
   aligned?: Record<string, ParamValue>;
   errors: ValidateError[];

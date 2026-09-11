@@ -74,20 +74,42 @@ function shade(value: number, min: number, max: number, higherIsBetter: boolean)
   return `oklch(0.7 0.16 ${hue} / ${alpha.toFixed(3)})`;
 }
 
+/** A stable, human-readable label for one cell's resolved combo --
+ * dictionary order isn't guaranteed on the wire, so entries are sorted
+ * by key before joining. `{}` (no strategy param swept) reads as "—". */
+function comboKey(params: SweepConfiguration["strategy_params"]): string {
+  return JSON.stringify(Object.entries(params ?? {}).sort(([a], [b]) => a.localeCompare(b)));
+}
+function comboLabel(params: SweepConfiguration["strategy_params"]): string {
+  const entries = Object.entries(params ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  return entries.length === 0 ? "—" : entries.map(([key, value]) => `${key}=${value}`).join(", ");
+}
+
 export function SweepMatrix({ funds, onSelectCell }: Props) {
   const withGrid = Object.entries(funds).filter(
     ([, fund]) => (fund.configurations?.length ?? 0) > 1,
   );
   const [metric, setMetric] = useState<MetricKey>("cagr_pct");
   const [ticker, setTicker] = useState<string>(withGrid[0]?.[0] ?? "");
+  const [combo, setCombo] = useState<string>("");
 
   // A single-configuration run has no surface to show. Rendering an
   // empty 1x1 grid would suggest the sweep did something it did not.
   if (withGrid.length === 0) return null;
 
   const fund = funds[ticker] ?? withGrid[0]?.[1];
-  const cells: SweepConfiguration[] = fund?.configurations ?? [];
+  const allCells: SweepConfiguration[] = fund?.configurations ?? [];
   const spec = METRICS.find((entry) => entry.key === metric) ?? METRICS[0]!;
+
+  // Once a strategy param is ALSO swept, several cells can share one
+  // (grid_step, profit_target) pair -- one per combo. The 2D heatmap
+  // below can only show one combo at a time, so when more than one is
+  // present, a "Params" selector picks which slice to render; the
+  // lookup below is built from that slice, never the whole cell set, so
+  // no combo is silently dropped by the last-write-wins Map underneath.
+  const combos = [...new Map(allCells.map((cell) => [comboKey(cell.strategy_params), cell.strategy_params])).entries()];
+  const activeCombo = combos.some(([key]) => key === combo) ? combo : (combos[0]?.[0] ?? "");
+  const cells = combos.length > 1 ? allCells.filter((cell) => comboKey(cell.strategy_params) === activeCombo) : allCells;
 
   const steps = [...new Set(cells.map((cell) => cell.grid_step))].sort((a, b) => a - b);
   const targets = [...new Set(cells.map((cell) => cell.profit_target))].sort((a, b) => a - b);
@@ -121,6 +143,17 @@ export function SweepMatrix({ funds, onSelectCell }: Props) {
                 {withGrid.map(([name]) => (
                   <option key={name} value={name}>
                     {name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
+          {combos.length > 1 ? (
+            <Field label="Params">
+              <Select value={activeCombo} onChange={(event) => setCombo(event.currentTarget.value)}>
+                {combos.map(([key, params]) => (
+                  <option key={key} value={key}>
+                    {comboLabel(params)}
                   </option>
                 ))}
               </Select>

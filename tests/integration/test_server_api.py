@@ -472,6 +472,64 @@ class TestStrategyParameters:
         assert response.status_code == 400
         assert "cannot sweep" in response.json()["detail"]
 
+    def test_a_swept_numeric_strategy_param_is_accepted(self, client):
+        """A list-valued strategy param is a sweep axis, exactly like
+        grid_steps/profit_targets already are -- the "enable sweep"
+        checkbox's server-side counterpart."""
+        response = client.post(
+            "/api/backtest/runs",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+                "strategy_params": {"allocation_pct": [0.03, 0.05, 0.08]},
+            },
+        )
+        assert response.status_code == 202
+
+    def test_it_refuses_to_sweep_target_return_independently(self, client):
+        """target_return mirrors the grid's profit target -- sweeping it
+        on its own would have the mirror-alignment silently discard it."""
+        response = client.post(
+            "/api/backtest/runs",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.005],
+                "profit_targets": [0.01],
+                "sizing_model": "bayesian_dual_scale",
+                "strategy_params": {
+                    "max_trade_pct": 0.05,
+                    "horizon_days": 1.0,
+                    "bars_per_day": 387,
+                    "target_return": [0.005, 0.0075, 0.01],
+                },
+            },
+        )
+        assert response.status_code == 400
+        assert "swept independently" in response.json()["detail"]
+
+    def test_it_refuses_a_sweep_that_exceeds_the_combinations_cap(self, client, monkeypatch):
+        """Unbounded, a single request could ask for an arbitrarily long
+        sweep -- narrowed here to a cap small enough to hit with an
+        ordinary request, rather than actually submitting thousands."""
+        import server.backtest as module
+
+        monkeypatch.setattr(module, "MAX_SWEEP_COMBINATIONS", 3)
+        response = client.post(
+            "/api/backtest/runs",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+                "strategy_params": {"allocation_pct": [0.02, 0.03, 0.05, 0.08]},
+            },
+        )
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert "4" in detail and "3" in detail
+
 
 class TestParameterSchema:
     """`/funds` now also carries `sizing_params` -- one typed spec per
@@ -689,6 +747,41 @@ class TestValidateEndpoint:
         assert body["ok"] is False
         assert body["errors"]
 
+    def test_a_swept_strategy_param_resolves_to_a_list(self, client):
+        body = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+                "strategy_params": {"allocation_pct": [0.03, 0.05]},
+            },
+        ).json()
+        assert body["ok"] is True
+        assert body["resolved_strategy_params"] == {"allocation_pct": [0.03, 0.05]}
+        self._assert_no_side_effects()
+
+    def test_a_swept_target_return_is_refused(self, client):
+        body = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.005],
+                "profit_targets": [0.01],
+                "sizing_model": "bayesian_dual_scale",
+                "strategy_params": {
+                    "max_trade_pct": 0.05,
+                    "horizon_days": 1.0,
+                    "bars_per_day": 387,
+                    "target_return": [0.005, 0.01],
+                },
+            },
+        ).json()
+        assert body["ok"] is False
+        assert "swept independently" in " ".join(e["message"] for e in body["errors"])
+        self._assert_no_side_effects()
+
     def test_validate_shares_build_config_with_submit(self):
         """One definition of 'valid' -- not a second that can drift."""
         import inspect
@@ -887,6 +980,49 @@ class TestRunHistory:
         rows = {row["run_id"]: row for row in client.get("/api/backtest/history").json()["rows"]}
         assert rows["with-params"]["strategy_params"] == {"period": 14, "max_trade_pct": 0.08}
         assert rows["legacy"]["strategy_params"] == {}
+
+    def test_a_cells_own_strategy_params_beat_the_run_level_value(self, client):
+        """Once a strategy param is swept, cells of the same run can
+        differ -- the run-level value (the FIRST combination the engine
+        happened to resolve) must not be flattened onto every row."""
+        from server import history
+
+        history.save(
+            "swept-param",
+            {
+                "run_id": "swept-param",
+                "report": {
+                    "parameters": {
+                        "sizing_model": "fixed",
+                        "strategy_params": {"allocation_pct": 0.03},
+                    },
+                    "funds": {
+                        "TQQQ": {
+                            "bars": {"count": 10},
+                            "metrics": {"cagr_pct": 3.0},
+                            "configurations": [
+                                {
+                                    "grid_step": 0.01,
+                                    "profit_target": 0.005,
+                                    "strategy_params": {"allocation_pct": 0.03},
+                                    "metrics": {},
+                                },
+                                {
+                                    "grid_step": 0.01,
+                                    "profit_target": 0.005,
+                                    "strategy_params": {"allocation_pct": 0.05},
+                                    "metrics": {},
+                                },
+                            ],
+                        }
+                    },
+                },
+            },
+        )
+        rows = client.get("/api/backtest/history").json()["rows"]
+        by_params = [row["strategy_params"] for row in rows]
+        assert {"allocation_pct": 0.03} in by_params
+        assert {"allocation_pct": 0.05} in by_params
 
     def test_an_unnamed_run_reports_a_null_name_rather_than_omitting_it(self, client):
         from server import history
@@ -1263,6 +1399,48 @@ class TestBacktestExecution:
         # Index 0 is the engine's own top-ranked row, and `metrics`
         # above describes that same configuration.
         assert cells[0]["metrics"] == report["funds"]["TESTQ"]["metrics"]
+
+    def test_a_swept_strategy_param_produces_one_cell_per_value_with_its_own_combo(self, tmp_path):
+        """The engine already cross-products grid_steps x profit_targets x
+        strategy_params_grid (src/optimization/search_strategies.py's
+        GridSearch); this pins the web API's own wiring of that third
+        axis: `combinations` counts it, and each cell carries the exact
+        combo it ran with rather than the run's first-resolved value."""
+        import pandas as pd_
+
+        from server import backtest as module
+        from server.backtest import run_backtest
+
+        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        csv = tmp_path / "TESTQ.csv"
+        frame.to_csv(csv)
+
+        original = dict(module.KNOWN_DATA)
+        module.KNOWN_DATA.clear()
+        module.KNOWN_DATA["TESTQ"] = str(csv)
+        try:
+            report = run_backtest(
+                {
+                    "tickers": ["TESTQ"],
+                    "grid_steps": [0.01],
+                    "profit_targets": [0.005],
+                    "sizing_model": "fixed",
+                    "strategy_params": {"allocation_pct": [0.03, 0.05]},
+                    "limit": 5000,
+                },
+                lambda fraction, note: None,
+            )
+        finally:
+            module.KNOWN_DATA.clear()
+            module.KNOWN_DATA.update(original)
+
+        cells = report["funds"]["TESTQ"]["configurations"]
+        assert len(cells) == 2, "1 step x 1 target x 2 allocation_pct values should be 2 cells"
+        assert {c["strategy_params"]["allocation_pct"] for c in cells} == {0.03, 0.05}
+        # A plain Python float, not a numpy scalar -- history archiving
+        # calls bare json.dumps with no custom encoder.
+        for cell in cells:
+            assert isinstance(cell["strategy_params"]["allocation_pct"], float)
 
     def test_a_window_with_no_bars_fails_with_a_useful_message(self, tmp_path):
         import pandas as pd_

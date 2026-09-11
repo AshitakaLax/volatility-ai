@@ -54,7 +54,7 @@ from pydantic import BaseModel, Field
 
 from server import history
 from server.jobs import JobQueue
-from src.core.config import BacktestConfig
+from src.core.config import BacktestConfig, expand_strategy_params
 from src.core.exceptions import ConfigurationError
 from src.optimization.optimization_controller import OptimizationController
 from src.trading.strategy_registry import STRATEGIES, resolve_strategy
@@ -129,6 +129,28 @@ def choose_jobs(bars: int, combinations: int, requested: int | None) -> int:
     if bars * combinations < PARALLEL_THRESHOLD_BAR_CONFIGS:
         return 1
     return max(1, min(DEFAULT_JOBS, ceiling))
+
+
+# HOW MANY (grid step x profit target x strategy-params) COMBINATIONS ONE
+# SUBMISSION MAY REQUEST.
+#
+# grid_steps/profit_targets were already capped at 12 each (144 combinations,
+# max) by RunRequest's own Field bounds. A swept strategy_params entry is a
+# third axis, multiplying that further -- and unlike the other two, its size
+# is not bounded by a RunRequest Field, since strategy_params is a free-form
+# dict. Left unbounded, one submission could ask this box (or the
+# Pi, which sets VAI_MAX_JOBS=1) to run an arbitrarily long sweep.
+#
+# 2000 sits comfortably above today's implicit 144-combination ceiling while
+# keeping worst case bounded -- per the combinations x bars timings recorded
+# above choose_jobs(), that is on the order of tens of minutes, not hours.
+# A product/ops knob, not an architectural constant, hence the override.
+_CONFIGURED_MAX_SWEEP = os.environ.get("VAI_MAX_SWEEP_COMBINATIONS")
+MAX_SWEEP_COMBINATIONS = (
+    int(_CONFIGURED_MAX_SWEEP)
+    if _CONFIGURED_MAX_SWEEP and _CONFIGURED_MAX_SWEEP.isdigit()
+    else 2000
+)
 
 
 class RunRequest(BaseModel):
@@ -498,6 +520,14 @@ def describe_params(strategy_id: str, strategy_class: type) -> list[dict[str, An
             else {"int": "1", "float": "any"}.get(wire_type),
         }
         _apply_locks(spec, strategy_id, required, committed)
+        # SWEEPABLE, for the "enable sweep" checkbox: a numeric argument
+        # the operator actually owns. Computed AFTER _apply_locks so a
+        # param it locked (editable=False) or mirrored (target_return ->
+        # profit_target) is correctly excluded -- an engine-owned or
+        # grid-mirrored value cannot also be independently swept.
+        spec["sweepable"] = (
+            spec["type"] in ("int", "float") and spec["editable"] and spec["mirrors"] is None
+        )
         out.append(spec)
     return out
 
@@ -565,6 +595,20 @@ def build_config(request: RunRequest) -> BacktestConfig:
     # later, naming a column rather than the argument that was missing.
     params = dict(config.strategy.strategy_params)
 
+    # A SWEPT target_return WOULD BE SILENTLY DISCARDED BELOW, not run:
+    # the mirror-alignment block just past this force-aligns target_return
+    # to the grid's single profit target, so a list here would have its
+    # sweep attempt overwritten with no error. describe_params() already
+    # marks target_return non-sweepable (mirrors="profit_target") so the
+    # form never offers this checkbox -- this is defense-in-depth for a
+    # caller reaching the API directly.
+    if isinstance(params.get("target_return"), list):
+        raise ConfigurationError(
+            f"{config.strategy.strategy_id!r} estimates the probability of reaching one "
+            "target_return, so it cannot be swept independently -- the server aligns it to "
+            "the grid's profit target automatically."
+        )
+
     # TARGET_RETURN MUST MIRROR THE GRID, and the engine refuses when it
     # does not -- BayesianDualScaleSizing estimates P(reaching
     # target_return within horizon), so a mismatch has it confidently
@@ -587,8 +631,35 @@ def build_config(request: RunRequest) -> BacktestConfig:
         if targets:
             params["target_return"] = targets[0]
 
+    # A LIST-VALUED strategy_param IS A SWEEP AXIS, expanded here the same
+    # way the CLI/config-file path already does (BacktestConfig.to_run_sweep_kwargs
+    # -> expand_strategy_params). Scalars-only pass through as the single
+    # combination they always were, so nothing about this changes behavior
+    # for a request that never sweeps a strategy param.
+    strategy_params_grid = expand_strategy_params(params)
+
+    total_combinations = (
+        len(config.grid.steps) * len(config.grid.profit_targets) * len(strategy_params_grid)
+    )
+    if total_combinations > MAX_SWEEP_COMBINATIONS:
+        raise ConfigurationError(
+            f"This sweep would run {total_combinations} combinations "
+            f"({len(config.grid.steps)} grid steps x {len(config.grid.profit_targets)} profit "
+            f"targets x {len(strategy_params_grid)} strategy-parameter combinations), which "
+            f"exceeds the {MAX_SWEEP_COMBINATIONS} limit for one submission. Narrow a swept "
+            "range, or split this into more than one run."
+        )
+
     try:
-        instance = strategy_class(**params)
+        # Every combination is constructed here, not just the first --
+        # a bad value anywhere in a swept strategy param must fail this
+        # request now, not twenty combinations into a worker thread.
+        # `instance` stays the first: enough for the ticker check below,
+        # since `ticker` is locked (never sweepable) and so is identical
+        # across every combination.
+        instance = strategy_class(**strategy_params_grid[0])
+        for combo in strategy_params_grid[1:]:
+            strategy_class(**combo)
     except TypeError as exc:
         missing = [name for name in required_parameters(strategy_class) if name not in params]
         detail = f"{config.strategy.strategy_id!r} cannot be built from the parameters given: {exc}"
@@ -639,6 +710,20 @@ def build_config(request: RunRequest) -> BacktestConfig:
     return config
 
 
+def _native(value: Any) -> Any:
+    """A pandas/numpy scalar as a plain Python one.
+
+    summary.iterrows() (below) yields numpy scalars -- np.float64,
+    np.int64, ... -- for any column pulled straight through pandas, and
+    history.save() calls bare json.dumps with no custom encoder. An
+    uncoerced value here would raise TypeError at archive time, well
+    after the run itself succeeded. grid_step/profit_target already
+    avoid this with an explicit float(...); this generalizes it to a
+    strategy param of unknown type (int, float, bool, str).
+    """
+    return value.item() if hasattr(value, "item") else value
+
+
 def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) -> dict[str, Any]:
     """Execute one submitted run. Called on the worker thread.
 
@@ -665,9 +750,17 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
     # that the page has not crashed. The engine now reports each
     # combination as it finishes, so the fraction below is real work
     # done across every ticker in the request.
-    combinations = len(config.grid.steps) * len(config.grid.profit_targets)
+    strategy_params_grid = expand_strategy_params(config.strategy.strategy_params)
+    combinations = (
+        len(config.grid.steps) * len(config.grid.profit_targets) * len(strategy_params_grid)
+    )
     total_units = max(1, combinations * len(available))
     finished_units = 0
+    # Which summary columns are strategy params, not "Grid Step"/"Profit
+    # Target"/"Strategy"/a metric -- optimization_controller.py's
+    # result_row spreads the resolved combo's own keys straight into the
+    # row, so this is exactly the set to pull back out per cell.
+    strategy_param_keys = set(config.strategy.strategy_params)
 
     for ticker in available:
         report(finished_units / total_units, f"running {ticker}")
@@ -714,6 +807,14 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
                 {
                     "grid_step": float(row["Grid Step"]),
                     "profit_target": float(row["Profit Target"]),
+                    # The resolved strategy-param combo THIS cell ran
+                    # with -- distinct per cell once a strategy param is
+                    # swept, so the sweep matrix/history can tell one
+                    # combo's row from another's rather than showing the
+                    # same (wrong) run-level value on every row.
+                    "strategy_params": {
+                        key: _native(row[key]) for key in strategy_param_keys if key in row
+                    },
                     "metrics": fund_metrics(dict(row), ticker),
                 }
                 for _, row in summary.iterrows()
@@ -931,10 +1032,15 @@ def history_rows() -> dict[str, Any]:
                         "profit_target": cell.get("profit_target"),
                         "sizing_model": parameters.get("sizing_model"),
                         # The resolved input arguments, so the client can
-                        # filter on one. {} for a run archived before this
-                        # was recorded -- the UI treats absent as "no such
-                        # input" rather than erroring.
-                        "strategy_params": parameters.get("strategy_params") or {},
+                        # filter on one. Prefer the CELL's own combo --
+                        # once a strategy param is swept, cells of the
+                        # same run can differ; falling back to the run-
+                        # level value keeps a pre-sweep report (which
+                        # never carried a per-cell value) unchanged, and
+                        # {} covers a run archived before either existed.
+                        "strategy_params": cell.get("strategy_params")
+                        or parameters.get("strategy_params")
+                        or {},
                         "fill_model": parameters.get("fill_model"),
                         # The engine ranked these; index 0 is its own
                         # pick, and saying so lets a reader see when
