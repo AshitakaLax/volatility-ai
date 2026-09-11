@@ -1,4 +1,4 @@
-import { Grid3x3 } from "lucide-react";
+import { FileInput, Grid3x3 } from "lucide-react";
 import { useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
@@ -26,16 +26,24 @@ import type { FundResult, SweepConfiguration } from "@/types/backtest";
 interface Props {
   funds: Record<string, FundResult>;
   /**
-   * Load a cell's parameters into the run form.
-   *
-   * Clicking cannot show that configuration's EXECUTIONS directly --
-   * only metrics are carried per cell, deliberately, since executions
-   * for every cell would multiply the payload by the grid size. So a
-   * click stages the parameters for a re-run, which is the honest
-   * version: the chart below always shows a configuration that was
-   * actually run for it.
+   * A cell was clicked -- selects it as BacktestResult's current
+   * configuration, so RiskRewardMetrics (instant, metrics are already
+   * carried per cell) and, on request, the chart/trade log ("View full
+   * detail", a scoped re-run) reflect exactly this configuration. Fired
+   * with the whole cell, not just the two axes, since a cell's identity
+   * also depends on its resolved strategy_params once one of those is
+   * swept too.
    */
-  onSelectCell?: (gridStep: number, profitTarget: number) => void;
+  onSelectConfiguration?: (config: SweepConfiguration) => void;
+  /**
+   * Stage a cell's grid_step/profit_target onto the Run-a-Backtest form
+   * and switch to the Backtesting tab -- for launching a broader NEW
+   * sweep around this point, not for viewing this one's own detail
+   * (onSelectConfiguration does that, in place). A separate, explicit
+   * affordance per cell so this still-useful capability isn't lost
+   * merely because a bare cell click now means something else.
+   */
+  onLoadIntoForm?: (gridStep: number, profitTarget: number) => void;
 }
 
 type MetricKey =
@@ -85,7 +93,7 @@ function comboLabel(params: SweepConfiguration["strategy_params"]): string {
   return entries.length === 0 ? "—" : entries.map(([key, value]) => `${key}=${value}`).join(", ");
 }
 
-export function SweepMatrix({ funds, onSelectCell }: Props) {
+export function SweepMatrix({ funds, onSelectConfiguration, onLoadIntoForm }: Props) {
   const withGrid = Object.entries(funds).filter(
     ([, fund]) => (fund.configurations?.length ?? 0) > 1,
   );
@@ -213,19 +221,32 @@ export function SweepMatrix({ funds, onSelectCell }: Props) {
                     <td
                       key={target}
                       className={cn(
-                        "min-w-[86px] rounded p-2 text-right font-medium",
+                        "relative min-w-[86px] rounded p-2 text-right font-medium",
                         "border border-border/40",
-                        onSelectCell && "cursor-pointer hover:ring-1 hover:ring-ring",
+                        onSelectConfiguration && "cursor-pointer hover:ring-1 hover:ring-ring",
                       )}
-                      onClick={() => onSelectCell?.(step, target)}
+                      onClick={() => onSelectConfiguration?.(cell)}
                       style={{ background: shade(value, min, max, spec.higherIsBetter) }}
                       title={
                         `step ${(step * 100).toFixed(2)}% · target ${(target * 100).toFixed(2)}%\n` +
                         `CAGR ${pct(cell.metrics.cagr_pct)} · DD ${pct(cell.metrics.max_drawdown_pct)}\n` +
                         `${cell.metrics.closed_trades} closed of ${cell.metrics.total_trades}` +
-                        (onSelectCell ? "\n\nclick to load these into the run form" : "")
+                        (onSelectConfiguration ? "\n\nclick to view this configuration below" : "")
                       }
                     >
+                      {onLoadIntoForm ? (
+                        <button
+                          type="button"
+                          title="Load into form for a new sweep"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onLoadIntoForm(step, target);
+                          }}
+                          className="absolute top-0.5 left-0.5 text-muted-foreground/60 hover:text-foreground"
+                        >
+                          <FileInput className="size-3" />
+                        </button>
+                      ) : null}
                       {spec.format(value)}
                     </td>
                   );

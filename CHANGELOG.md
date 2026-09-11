@@ -1,5 +1,45 @@
 # Changelog
 
+## Sweep summary + per-configuration selection (Backtest result, web UI)
+
+The result page used to show one fund's top-ranked configuration
+implicitly and silently: the metrics cards, chart and trade log were
+always that configuration's, with no on-screen indication a sweep had
+produced any others, and the only way to look at another was
+`SweepMatrix`'s heatmap (metrics-only) or clicking a cell, which jumped
+to the *other* tab to stage a brand-new sweep rather than showing that
+cell's own detail. Now: a **Sweep details** overview at the top (which
+arguments actually varied, and by how much), a **Simulations** list of
+every configuration the sweep ran, and selecting one populates the
+metrics/chart/trade log below for exactly that configuration.
+
+- Per-cell trade-level data (chart, trade log) doesn't exist on the wire
+  for any configuration except the winner — an explicit, deliberate prior
+  decision (`server/backtest.py`: "carrying each one's executions...
+  would multiply the payload by the size of the grid"), not reopened by
+  this feature. Selecting a non-winning configuration shows its
+  **metrics instantly** (already shipped for every cell); the chart/trade
+  log offer a **"View full detail"** button that re-runs just that one
+  configuration (~23s, the existing `POST /api/backtest/runs`, no new
+  backend surface) and shows its real data once that completes, cached
+  per configuration for the page's lifetime. **No backend changes at
+  all** — confirmed each `SweepConfiguration.strategy_params` cell
+  already carries its full resolved combo (`server/backtest.py`'s
+  `strategy_param_keys` covers the whole run, not just the swept subset),
+  so the re-run request needs no merging.
+- `lib/sweepSummary.ts` (new, pure, tested): `configurationKey()` — a
+  stable per-cell identity (grid_step + profit_target + resolved
+  strategy_params together) — fixes a real bug in `SweepMatrix`'s own
+  narrower, pre-existing combo key (strategy_params alone), which would
+  have collided two cells sharing a strategy-params combo but differing
+  in grid_step/profit_target. `describeSweepAxes()` reports only the axes
+  that actually varied.
+- `SweepMatrix`'s cell click now selects in place (no tab navigation) —
+  a strictly better version of "see this configuration's detail" than
+  jumping tabs. The old capability (stage a cell into the form to launch
+  a broader new sweep) is preserved, not dropped: a small per-cell "load
+  into form" icon does that explicitly.
+
 ## Click-to-sort Run History columns (web UI)
 
 Every column header in "Run history" is now clickable and cycles

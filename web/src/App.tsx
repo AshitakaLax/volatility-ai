@@ -189,7 +189,7 @@ export default function App() {
             run={run}
             filters={filters}
             onFiltersChange={setFilters}
-            onStageCell={stageCell}
+            onLoadIntoForm={stageCell}
           />
         ) : (
           <>
