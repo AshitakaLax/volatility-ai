@@ -9,6 +9,7 @@ import { AlgorithmStatus } from "@/components/live/AlgorithmStatus";
 import { CommandCenter } from "@/components/live/CommandCenter";
 import { DeploymentHealth } from "@/components/live/DeploymentHealth";
 import { LiveOrderLedger } from "@/components/live/LiveOrderLedger";
+import { LivePriceChart } from "@/components/live/LivePriceChart";
 import { ModelInsights } from "@/components/ml/ModelInsights";
 import { Button, Card, CardContent } from "@/components/ui/primitives";
 import { useBacktestRun } from "@/hooks/useBacktestRun";
@@ -170,6 +171,11 @@ export default function App() {
               </Card>
             ) : null}
             <CommandCenter path={store} state={live.state} onHalted={live.refresh} />
+            <LivePriceChart
+              symbol={live.state?.parameters?.symbol ?? null}
+              lastPrice={live.state?.last_price ?? null}
+              lastPriceAt={live.state?.last_tick_at ?? null}
+            />
             <LiveOrderLedger
               lots={live.state?.lots ?? []}
               lastPrice={live.state?.last_price ?? null}

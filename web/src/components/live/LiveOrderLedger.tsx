@@ -1,6 +1,7 @@
-import { Package } from "lucide-react";
+import { ChevronLeft, ChevronRight, Package, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
-import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from "@/components/ui/primitives";
 import { cn, pct, usd } from "@/lib/utils";
 import type { InventoryLot } from "@/types/telemetry";
 
@@ -26,32 +27,90 @@ interface Props {
 }
 
 export function LiveOrderLedger({ lots, lastPrice }: Props) {
-  const sorted = [...lots].sort((a, b) => {
-    // null (no mark to compare against) sorts last -- it is not "far",
-    // it is unknown, and putting it first would push real rows down.
-    if (a.distance_to_target === null) return 1;
-    if (b.distance_to_target === null) return -1;
-    return a.distance_to_target - b.distance_to_target;
-  });
+  const [filterText, setFilterText] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterText, filterStatus, pageSize]);
+
+  const filteredLots = useMemo(() => {
+    return lots.filter((lot) => {
+      if (filterText && !lot.order_id.toLowerCase().includes(filterText.toLowerCase())) {
+        return false;
+      }
+      if (filterStatus !== "all") {
+        const distance = lot.distance_to_target;
+        const reached = distance !== null && distance <= 0;
+        const stuck = distance !== null && distance > 0.02;
+        
+        if (filterStatus === "at_target" && !reached) return false;
+        if (filterStatus === "stuck" && !stuck) return false;
+      }
+      return true;
+    });
+  }, [lots, filterText, filterStatus]);
+
+  const sortedLots = useMemo(() => {
+    return [...filteredLots].sort((a, b) => {
+      // null (no mark to compare against) sorts last -- it is not "far",
+      // it is unknown, and putting it first would push real rows down.
+      if (a.distance_to_target === null) return 1;
+      if (b.distance_to_target === null) return -1;
+      return a.distance_to_target - b.distance_to_target;
+    });
+  }, [filteredLots]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedLots.length / pageSize));
+  const paginatedLots = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedLots.slice(start, start + pageSize);
+  }, [sortedLots, currentPage, pageSize]);
 
   const stuckValue = lots.reduce((total, lot) => total + (lot.current_value ?? 0), 0);
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2">
-          <Package className="size-4" />
-          Inventory lots
-        </CardTitle>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>
-            {lots.length} open · {usd(stuckValue, 0)} committed
-          </span>
-          {lastPrice === null ? (
-            <Badge tone="stuck">no mark</Badge>
-          ) : (
-            <span className="tnum">mark {usd(lastPrice)}</span>
-          )}
+      <CardHeader className="space-y-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Package className="size-4" />
+            Inventory lots
+          </CardTitle>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span>
+              {lots.length} open · {usd(stuckValue, 0)} committed
+            </span>
+            {lastPrice === null ? (
+              <Badge tone="stuck">no mark</Badge>
+            ) : (
+              <span className="tnum">mark {usd(lastPrice)}</span>
+            )}
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="relative max-w-sm flex-1">
+            <Search className="absolute left-2.5 top-2 size-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by order ID..."
+              className="pl-8"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+            />
+          </div>
+          <Select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="w-40"
+          >
+            <option value="all">All statuses</option>
+            <option value="at_target">At target</option>
+            <option value="stuck">Stuck</option>
+          </Select>
         </div>
       </CardHeader>
       <CardContent className="overflow-x-auto">
@@ -74,7 +133,7 @@ export function LiveOrderLedger({ lots, lastPrice }: Props) {
               </tr>
             </thead>
             <tbody className="tnum">
-              {sorted.map((lot) => {
+              {paginatedLots.map((lot) => {
                 const distance = lot.distance_to_target;
                 // Zero is "already there", which is a real and different
                 // state from null ("no price to compare against").
@@ -105,6 +164,50 @@ export function LiveOrderLedger({ lots, lastPrice }: Props) {
               })}
             </tbody>
           </table>
+        )}
+        
+        {sortedLots.length > 0 && (
+          <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span>Show</span>
+              <Select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="w-20"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </Select>
+              <span>entries</span>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <span>
+                Showing {(currentPage - 1) * pageSize + 1} to{" "}
+                {Math.min(currentPage * pageSize, sortedLots.length)} of {sortedLots.length} entries
+              </span>
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
       </CardContent>
     </Card>
