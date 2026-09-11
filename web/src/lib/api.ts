@@ -10,6 +10,7 @@ import type {
   BacktestRunRequest,
   BarSeries,
   BacktestRunState,
+  GridTrigger,
   HistoryRow,
   MultiFundBacktestReport,
   SizingParamsEntry,
@@ -107,6 +108,9 @@ export const api = {
       /** Per-model constructor schema for the dynamic parameter form.
        * Absent from an older server -- callers must treat it as `{}`. */
       sizing_params?: Record<string, SizingParamsEntry>;
+      /** Per-model grid-step trigger methods. Absent from an older
+       * server -- callers fall back to GENERIC_GRID_TRIGGER. */
+      grid_trigger?: Record<string, GridTrigger>;
     }>("/api/backtest/funds"),
 
   bars: (ticker: string, start?: string | null, end?: string | null, maxPoints = 3000) => {

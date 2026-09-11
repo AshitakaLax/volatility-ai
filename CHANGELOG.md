@@ -1,5 +1,39 @@
 # Changelog
 
+## Grid-step method + Fixed/Sweep (web UI + backtest API)
+
+The lone "Grid step %" input in "Run a Backtest" becomes a small panel
+with two orthogonal controls:
+
+- **Fixed | Sweep** for the step *value*. Fixed is one % (as today);
+  Sweep takes min / max / count and submits a sorted, de-duped
+  `grid_steps` list so the engine tries them all and the Sweep Matrix /
+  Run history fill in — with a live "N configurations · ~23s each"
+  readout. No server change: `RunRequest.grid_steps` was already a
+  1–12 `list[float]` and the sweep path already flattens per cell.
+  `web/src/lib/gridSteps.ts` (pure, tested) maps the inputs to the list
+  with hard client validation (0 < step < 100 %, count an integer 1–12,
+  min < max, no oversized array even mid-paste).
+
+- **Trigger method**, where the strategy has a choice: "Last buy price"
+  (`last_buy_price × (1 − step)`) vs "Local reference (rolling high)"
+  (`max(last_buy, N-day high) × (1 − step)` — re-fires on local dips).
+  `GET /funds` gains a `grid_trigger[id]` descriptor
+  (`{methods, default, controlled_by, window_param, window_default}`)
+  from an explicit `_GRID_TRIGGER` map in `server/backtest.py` — this
+  is *presentation* over the existing `_grid_trigger_level` override
+  point, not a new engine param. `hf_local_reference` is locked to
+  local-reference; `bayesian_dual_scale` is the one model that switches
+  (via its optional `lookback_days`); everything else is locked to
+  last-buy. A `test_backtest_grid_trigger.py` anti-rot check ties the
+  descriptor to whether the class actually overrides the trigger, and a
+  behavioural check confirms the advertised strategies build a rolling
+  high. The window param (`lookback_days` for hf *and* bayesian, never
+  bell_curve's Gaussian-sizing `lookback_days`) moves out of the param
+  grid into one "reference window (days)" input in the panel.
+
+A no-edit submit of any model is byte-identical to before.
+
 ## Execution-chart zoom: 1D / 1H / 1m (web UI)
 
 The Execution chart's candle resolution used to be a dropdown on the

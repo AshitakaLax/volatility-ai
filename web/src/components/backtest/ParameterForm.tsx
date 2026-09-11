@@ -1,9 +1,12 @@
 import { AlertCircle, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { GridStepPanel } from "@/components/backtest/GridStepPanel";
 import { ParamField } from "@/components/backtest/ParamField";
 import { api, type FundAvailability } from "@/lib/api";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui/primitives";
+import { buildGridSteps } from "@/lib/gridSteps";
+import { GENERIC_GRID_TRIGGER, initialTriggerMethod } from "@/lib/gridTrigger";
 import {
   blankRequired,
   buildStrategyParams,
@@ -15,6 +18,8 @@ import type {
   BacktestRunRequest,
   BacktestRunState,
   DateRange,
+  GridTrigger,
+  GridTriggerMethod,
   SizingParamsEntry,
   ValidateResponse,
 } from "@/types/backtest";
@@ -63,9 +68,17 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   const [funds, setFunds] = useState<FundAvailability[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [paramSpecs, setParamSpecs] = useState<Record<string, SizingParamsEntry>>({});
+  const [gridTriggerMap, setGridTriggerMap] = useState<Record<string, GridTrigger>>({});
   const [tickers, setTickers] = useState<string[]>(["TQQQ"]);
   const [name, setName] = useState("");
   const [gridStep, setGridStep] = useState(1.0);
+  // The Fixed | Sweep step control. Sweep bounds are raw text.
+  const [stepMode, setStepMode] = useState<"fixed" | "sweep">("fixed");
+  const [sweepMin, setSweepMin] = useState("0.5");
+  const [sweepMax, setSweepMax] = useState("1.5");
+  const [sweepCount, setSweepCount] = useState("5");
+  // The grid-step trigger method, used only when the model offers a choice.
+  const [triggerMethod, setTriggerMethod] = useState<GridTriggerMethod>("last_buy");
   const [profitTarget, setProfitTarget] = useState(0.5);
   const [model, setModel] = useState("fixed");
   const [fillModel, setFillModel] = useState<"close" | "intrabar">("close");
@@ -82,6 +95,28 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
 
   const specs = useMemo(() => paramSpecs[model]?.params ?? [], [paramSpecs, model]);
 
+  // Grid-step trigger method for the current model. `method` is the
+  // EFFECTIVE choice -- forced to the only option when the model has no
+  // choice, so a stale selection cannot leak onto a model after a fast
+  // switch. `hidden` is the strategy_param that IS the rolling-high
+  // window: it moves out of the param grid and into the grid-step panel.
+  const trigger = gridTriggerMap[model] ?? GENERIC_GRID_TRIGGER;
+  const methodLocked = trigger.methods.length === 1;
+  const method: GridTriggerMethod = methodLocked ? trigger.methods[0]! : triggerMethod;
+  const windowParam = trigger.window_param;
+
+  const gridSteps = useMemo(
+    () =>
+      buildGridSteps({
+        mode: stepMode,
+        fixedPct: String(gridStep),
+        minPct: sweepMin,
+        maxPct: sweepMax,
+        count: sweepCount,
+      }),
+    [stepMode, gridStep, sweepMin, sweepMax, sweepCount],
+  );
+
   useEffect(() => {
     api
       .funds()
@@ -89,6 +124,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
         setFunds(body.funds);
         setModels(body.sizing_models);
         setParamSpecs(body.sizing_params ?? {});
+        setGridTriggerMap(body.grid_trigger ?? {});
       })
       .catch((cause: unknown) => {
         setLoadError(
@@ -112,9 +148,15 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   // is not downloaded).
   const priorTickers = useRef<string[] | null>(null);
   useEffect(() => {
-    setParamValues(seedValues(specs));
+    const seeded = seedValues(specs);
+    setParamValues(seeded);
     setValidation(null);
     setShowAdvanced(false);
+    // Reconcile the trigger method to the new model: locked models pin
+    // their only option; a model whose window param was seeded (a saved
+    // report reloaded, or hf's committed lookback_days) preselects
+    // local_reference.
+    setTriggerMethod(initialTriggerMethod(gridTriggerMap[model] ?? GENERIC_GRID_TRIGGER, seeded));
     const tickerSpec = specs.find((spec) => spec.name === "ticker" && !spec.editable);
     const requiredFund =
       tickerSpec && typeof tickerSpec.suggested === "string" ? tickerSpec.suggested : null;
@@ -131,6 +173,8 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
 
   useEffect(() => {
     if (!staged) return;
+    // One sweep-matrix cell is one step -- drop back to a Fixed value.
+    setStepMode("fixed");
     setGridStep(Number((staged.gridStep * 100).toFixed(4)));
     setProfitTarget(Number((staged.profitTarget * 100).toFixed(4)));
   }, [staged]);
@@ -147,8 +191,9 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   const buildRequest = (): BacktestRunRequest => ({
     ...(name.trim() ? { name: name.trim() } : {}),
     tickers,
-    // Percentages in the UI, fractions on the wire.
-    grid_steps: [gridStep / 100],
+    // Percentages in the UI, fractions on the wire. A well-formed list
+    // even mid-edit (Run is disabled while gridSteps has errors).
+    grid_steps: gridSteps.steps.length > 0 ? gridSteps.steps : [gridStep / 100],
     profit_targets: [profitTarget / 100],
     sizing_model: model,
     fill_model: fillModel,
@@ -165,10 +210,17 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   // minus the queue. A stale response (model switched while in flight)
   // is dropped via the sequence counter.
   const paramsKey = JSON.stringify(paramValues);
+  const stepsKey = JSON.stringify(gridSteps.steps);
   useEffect(() => {
     const request = buildRequest();
     const seq = ++validateSeq.current;
     const timer = window.setTimeout(() => {
+      // A client-invalid step sweep never gets a pre-flight -- clearing
+      // validation stops a stale green from showing under a bad field.
+      if (gridSteps.errors.length > 0) {
+        setValidation(null);
+        return;
+      }
       api
         .validateRun(request)
         .then((result) => {
@@ -180,7 +232,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     }, 400);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, tickers, gridStep, profitTarget, fillModel, limit, range.start, range.end, paramsKey]);
+  }, [model, tickers, profitTarget, fillModel, limit, range.start, range.end, paramsKey, stepsKey]);
 
   const setParam = (paramName: string, value: string) =>
     setParamValues((current) => ({ ...current, [paramName]: value }));
@@ -188,18 +240,42 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     const spec = specs.find((entry) => entry.name === paramName);
     if (spec) setParam(paramName, spec.suggested == null ? "" : String(spec.suggested));
   };
-  const resetAll = () => setParamValues(seedValues(specs));
+  const resetAll = () => {
+    const seeded = seedValues(specs);
+    setParamValues(seeded);
+    setTriggerMethod(initialTriggerMethod(trigger, seeded));
+  };
 
+  // Writing the trigger method's window param is the ONLY place the
+  // method touches strategy_params -- always via setParam so paramsKey
+  // changes and the debounced /validate refires.
+  const changeMethod = (next: GridTriggerMethod) => {
+    if (windowParam) {
+      setParam(
+        windowParam,
+        next === "local_reference"
+          ? (paramValues[windowParam] ?? "").trim() || String(trigger.window_default ?? "")
+          : "",
+      );
+    }
+    setTriggerMethod(next);
+  };
+
+  // The FULL specs array stays load-bearing for buildStrategyParams /
+  // blankRequired / diffFromDefaults; only the RENDER lists drop the
+  // window param -- it gets its one editor inside the grid-step panel.
   const blanks = blankRequired(specs, paramValues);
   const diffs = diffFromDefaults(specs, paramValues);
-  const primary = specs.filter((spec) => spec.group === "primary");
-  const advanced = specs.filter((spec) => spec.group === "advanced");
+  const primary = specs.filter((spec) => spec.group === "primary" && spec.name !== windowParam);
+  const advanced = specs.filter((spec) => spec.group === "advanced" && spec.name !== windowParam);
   // Unattached errors, PLUS any pinned to a field that is not on screen
-  // right now (an advanced field while Advanced is collapsed) -- so a
-  // disabled Run button always has a visible reason next to it.
+  // right now (an advanced field while Advanced is collapsed, or the
+  // window param when its input is showing in the grid-step panel) --
+  // so a disabled Run button always has a visible reason.
   const renderedFields = new Set(
     [...primary, ...(showAdvanced ? advanced : [])].map((spec) => spec.name),
   );
+  if (method === "local_reference" && windowParam) renderedFields.add(windowParam);
   const bannerErrors = (validation?.errors ?? []).filter(
     (entry) => entry.field === null || !renderedFields.has(entry.field),
   );
@@ -273,17 +349,26 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
           </div>
         </div>
 
-        <Field label="Grid step %">
-          <Input
-            type="number"
-            step="0.05"
-            min="0.01"
-            className="w-24"
-            value={gridStep}
-            disabled={busy}
-            onChange={(event) => setGridStep(Number(event.currentTarget.value))}
-          />
-        </Field>
+        <GridStepPanel
+          stepMode={stepMode}
+          onStepModeChange={setStepMode}
+          gridStep={gridStep}
+          onGridStepChange={setGridStep}
+          sweepMin={sweepMin}
+          sweepMax={sweepMax}
+          sweepCount={sweepCount}
+          onSweepMinChange={setSweepMin}
+          onSweepMaxChange={setSweepMax}
+          onSweepCountChange={setSweepCount}
+          gridSteps={gridSteps}
+          trigger={trigger}
+          method={method}
+          onMethodChange={changeMethod}
+          windowValue={windowParam ? (paramValues[windowParam] ?? "") : ""}
+          onWindowChange={(value) => windowParam && setParam(windowParam, value)}
+          windowErrors={windowParam ? paramErrorsFor(windowParam, validation?.errors) : []}
+          disabled={busy}
+        />
 
         <Field label="Profit target %">
           <Input
@@ -340,7 +425,17 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
         <Button
           data-testid="run"
           onClick={submit}
-          disabled={busy || tickers.length === 0 || blanks.length > 0 || validation?.ok === false}
+          disabled={
+            busy ||
+            tickers.length === 0 ||
+            blanks.length > 0 ||
+            validation?.ok === false ||
+            gridSteps.errors.length > 0 ||
+            (method === "local_reference" &&
+              windowParam !== null &&
+              ((paramValues[windowParam] ?? "").trim() === "" ||
+                Number(paramValues[windowParam]) <= 0))
+          }
         >
           {busy ? "Running…" : "Run"}
         </Button>

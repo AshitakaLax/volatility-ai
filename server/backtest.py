@@ -285,6 +285,64 @@ _HIDDEN_PARAMS: frozenset[str] = frozenset({"model_dir", "external_dir"})
 _DERIVED_PARAMS: frozenset[str] = frozenset({"baseline_price"})
 
 
+# -- Grid-step TRIGGER method, per strategy ----------------------------
+#
+# `strategy._grid_trigger_level(context, last_buy_price, step)` is the
+# only seam for WHEN a grid buy fires. The base SizingStrategy returns
+# `last_buy_price * (1 - step)` ("last_buy" -- a fresh low below the
+# last fill). HighFrequencyLocalReferenceSizing overrides it
+# UNCONDITIONALLY to `max(last_buy_price, rolling_high) * (1 - step)`
+# ("local_reference" -- retriggers on any local pullback).
+# BayesianDualScaleSizing overrides it too but falls back to the base
+# unless its OPTIONAL `lookback_days` is set -- the one strategy with a
+# real per-run choice, toggled by that param's presence.
+#
+# This is PRESENTATION over those existing overrides -- there is no
+# base-class grid-reference argument and this must not add one.
+# `window_param` is keyed here, never inferred from a name, because
+# bell_curve also takes a required `lookback_days` that is a Gaussian
+# SIZING window, not a trigger window. tests/unit/test_backtest_grid_trigger.py
+# ties this table to the actual override.
+_GRID_TRIGGER_LAST_BUY: dict[str, Any] = {
+    "methods": ["last_buy"],
+    "default": "last_buy",
+    "controlled_by": None,
+    "window_param": None,
+    "window_default": None,
+}
+_GRID_TRIGGER: dict[str, dict[str, Any]] = {
+    "hf_local_reference": {
+        "methods": ["local_reference"],
+        "default": "local_reference",
+        "controlled_by": None,
+        "window_param": "lookback_days",
+        "window_default": None,
+    },
+    "bayesian_dual_scale": {
+        "methods": ["last_buy", "local_reference"],
+        "default": "last_buy",
+        "controlled_by": "lookback_days",
+        "window_param": "lookback_days",
+        "window_default": 0.03,
+    },
+}
+
+
+def describe_grid_trigger(strategy_id: str) -> dict[str, Any]:
+    """The grid-step trigger methods a strategy supports, for the form.
+
+    ``methods`` (display order; entry 0 is the default) lists what
+    ``_grid_trigger_level`` actually does. ``controlled_by`` names the
+    strategy_param whose PRESENCE selects ``local_reference`` (None when
+    the method is locked). ``window_param`` is the strategy_param that
+    IS the rolling-high window; ``window_default`` seeds it the first
+    time ``local_reference`` is picked (None when it seeds itself, as
+    hf's committed ``lookback_days`` does).
+    """
+    spec = _GRID_TRIGGER.get(strategy_id, _GRID_TRIGGER_LAST_BUY)
+    return {**spec, "methods": list(spec["methods"])}
+
+
 def _wire_type(hint: object, has_default: bool, default: object) -> tuple[str, bool]:
     """(wire type, nullable) from a resolved annotation and its default.
 
@@ -751,6 +809,11 @@ def funds() -> dict[str, Any]:
         "sizing_params": {
             name: _safe_describe(name, cls) for name, cls in sorted(STRATEGIES.items())
         },
+        # Which grid-step trigger method(s) each model supports, so the
+        # form can offer the choice only where the engine has one. A
+        # sibling key -- `sizing_params` and its broken-strategy guard
+        # are untouched -- and a plain dict lookup, no try/except.
+        "grid_trigger": {name: describe_grid_trigger(name) for name in sorted(STRATEGIES)},
     }
 
 
@@ -1086,6 +1149,7 @@ __all__ = [
     "RunRequest",
     "ValidateResponse",
     "build_config",
+    "describe_grid_trigger",
     "describe_params",
     "queue",
     "router",

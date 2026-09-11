@@ -77,6 +77,9 @@ const BAYES_HEAD: ParamSpec[] = [
   spec({ name: "bars_per_day", type: "int", required: true, default: null, suggested: 387, has_suggested: true, group: "primary", step: "1" }),
   spec({ name: "vol_measure", type: "str", default: "stdev", suggested: "stdev", enum: ["stdev", "range"], step: null }),
   spec({ name: "allow_target_return_mismatch", type: "bool", default: false, suggested: false, step: null }),
+  // The grid-step trigger's local-reference window: optional, nullable,
+  // seeds blank -> omitted unless the method selector sets it.
+  spec({ name: "lookback_days", nullable: true, default: null, suggested: null, group: "advanced" }),
 ];
 
 const ML: ParamSpec[] = [
@@ -126,6 +129,14 @@ describe("buildStrategyParams", () => {
   it("never sends a mirrors field even if a value leaks into the map", () => {
     const values = { ...seedValues(BAYES_HEAD), target_return: "0.9" };
     expect("target_return" in buildStrategyParams(BAYES_HEAD, values)).toBe(false);
+  });
+
+  it("omits the local-reference window when blank, sends it as a number when the method sets it", () => {
+    // last_buy method: lookback_days seeds blank -> not on the wire.
+    expect("lookback_days" in buildStrategyParams(BAYES_HEAD, seedValues(BAYES_HEAD))).toBe(false);
+    // local_reference method: the selector wrote "0.03".
+    const set = { ...seedValues(BAYES_HEAD), lookback_days: "0.03" };
+    expect(buildStrategyParams(BAYES_HEAD, set).lookback_days).toBe(0.03);
   });
 
   it("omits a blank field rather than sending null or empty string", () => {

@@ -502,6 +502,19 @@ class TestParameterSchema:
         ]
         assert target["editable"] is False and target["mirrors"] == "profit_target"
 
+    def test_grid_trigger_describes_every_model(self, client):
+        """The grid-step trigger method(s) each model supports -- a
+        sibling key, so `sizing_params` and its broken-strategy guard
+        stay exactly as they were."""
+        body = client.get("/api/backtest/funds").json()
+        assert set(body["grid_trigger"]) == set(body["sizing_models"])
+        assert body["grid_trigger"]["fixed"]["methods"] == ["last_buy"]
+        assert body["grid_trigger"]["hf_local_reference"]["methods"] == ["local_reference"]
+        bayes = body["grid_trigger"]["bayesian_dual_scale"]
+        assert bayes["methods"] == ["last_buy", "local_reference"]
+        assert bayes["controlled_by"] == "lookback_days"
+        assert bayes["window_param"] == "lookback_days"
+
     def test_one_broken_strategy_does_not_500_funds(self, client, monkeypatch):
         """`test_every_offered_sizing_model_can_actually_run` reads /funds
         first; an unguarded introspection raise would cascade to it."""

@@ -487,6 +487,47 @@ export interface SizingParamsEntry {
   params: ParamSpec[];
 }
 
+/* ------------------------------------------------------------------ */
+/* Grid-step trigger method                                           */
+/*                                                                    */
+/* `/funds` carries `grid_trigger[id]` -- which methods a sizing model */
+/* supports for deciding WHEN a grid buy fires. Mirrors                */
+/* server/backtest.py's `describe_grid_trigger()`.                     */
+/* ------------------------------------------------------------------ */
+
+/** "last_buy": level = last_buy_price × (1 − step) (a fresh low below
+ * the last fill). "local_reference": level = max(last_buy_price,
+ * rolling_high) × (1 − step) (retriggers on any local pullback). */
+export type GridTriggerMethod = "last_buy" | "local_reference";
+
+export interface GridTrigger {
+  /** Supported methods in display order; index 0 is the default. A
+   * single-entry list renders as a locked (disabled) control. */
+  methods: GridTriggerMethod[];
+  default: GridTriggerMethod;
+  /** The strategy_param whose PRESENCE selects `local_reference`. null
+   * when the method is locked. */
+  controlled_by: string | null;
+  /** The strategy_param that IS the rolling-high window (set for
+   * hf_local_reference and bayesian_dual_scale; null elsewhere -- so
+   * bell_curve's Gaussian-window `lookback_days` is never mistaken for
+   * a trigger window). */
+  window_param: string | null;
+  /** Value written to `window_param` the first time `local_reference`
+   * is picked. null when it seeds itself. */
+  window_default: number | null;
+}
+
+/** The fallback for a model an older server did not describe: last_buy
+ * only, no window, no choice -- today's behaviour. */
+export const GENERIC_GRID_TRIGGER: GridTrigger = {
+  methods: ["last_buy"],
+  default: "last_buy",
+  controlled_by: null,
+  window_param: null,
+  window_default: null,
+};
+
 /** One reason a would-be run is invalid, attached to a field when the
  * server can pin it there. */
 export interface ValidateError {
