@@ -421,6 +421,128 @@ function distinctValues(rows: HistoryRow[], key: string): number[] {
   return seen.sort((a, b) => a - b);
 }
 
+/* ------------------------------------------------------------------ */
+/* Run-history column sort                                            */
+/*                                                                    */
+/* Clicking a column header cycles ascending -> descending -> off; the*/
+/* "off" state is not a third sort of its own -- RunHistory.tsx falls */
+/* back to its existing "Rank by" ranking, so this never replaces that*/
+/* default, only overrides it while a column is actively picked.      */
+/* ------------------------------------------------------------------ */
+
+export type RunHistoryColumn =
+  | "name"
+  | "ticker"
+  | "grid_step"
+  | "profit_target"
+  | "sizing_model"
+  | "metric"
+  | "cagr_pct"
+  | "max_drawdown_pct"
+  | "worst_year_pct"
+  | "total_trades"
+  | "window"
+  | "run_id";
+
+export interface RunHistorySort {
+  column: RunHistoryColumn;
+  direction: "asc" | "desc";
+}
+
+/** The 3-state cycle for one header click: not-active -> asc, asc ->
+ * desc, desc -> off (null). Clicking a DIFFERENT column always starts
+ * IT at asc and discards whatever was active before -- only one column
+ * sorts at a time, the same convention a spreadsheet or data grid uses. */
+export function nextRunHistorySort(
+  current: RunHistorySort | null,
+  column: RunHistoryColumn,
+): RunHistorySort | null {
+  if (!current || current.column !== column) return { column, direction: "asc" };
+  if (current.direction === "asc") return { column, direction: "desc" };
+  return null;
+}
+
+/** One column's raw sortable value off a row. Distinct from
+ * `historyFieldValue` above (which percent-scales and namespaces a
+ * field for the FILTER inputs) -- this is the bare value the column
+ * itself displays. `metric` reads whichever `FundPerformanceMetrics`
+ * key the "Rank by" dropdown currently has selected, so the dynamic
+ * metric column sorts by whatever it is showing. */
+function runHistoryColumnValue(
+  row: HistoryRow,
+  column: RunHistoryColumn,
+  metric: keyof FundPerformanceMetrics,
+): string | number | null {
+  const metricValue = (key: keyof FundPerformanceMetrics): number | null => {
+    const value = row.metrics[key];
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  };
+  switch (column) {
+    case "name":
+      return row.name;
+    case "ticker":
+      return row.ticker;
+    case "grid_step":
+      return row.grid_step;
+    case "profit_target":
+      return row.profit_target;
+    case "sizing_model":
+      return row.sizing_model;
+    case "metric":
+      return metricValue(metric);
+    case "cagr_pct":
+      return metricValue("cagr_pct");
+    case "max_drawdown_pct":
+      return metricValue("max_drawdown_pct");
+    case "worst_year_pct":
+      return metricValue("worst_year_pct");
+    case "total_trades":
+      return metricValue("total_trades");
+    case "window":
+      return row.start;
+    case "run_id":
+      return row.run_id;
+  }
+}
+
+/** Compares two column values for one direction. `null` (a metric
+ * absent from an older report, an unset grid axis) sorts LAST
+ * regardless of direction -- missing is not "smallest" or "largest",
+ * the same rule the Rank-by ranking in RunHistory.tsx already follows. */
+function compareRunHistoryValues(
+  a: string | number | null,
+  b: string | number | null,
+  direction: "asc" | "desc",
+): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  const cmp =
+    typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
+  return direction === "asc" ? cmp : -cmp;
+}
+
+/**
+ * Sort history rows by one clicked column, or return them UNCHANGED
+ * when `sort` is null -- the caller applies its own default ranking in
+ * that case, "off" being "go back to Rank by" rather than a sort of
+ * its own.
+ */
+export function sortHistoryRows(
+  rows: HistoryRow[],
+  sort: RunHistorySort | null,
+  metric: keyof FundPerformanceMetrics,
+): HistoryRow[] {
+  if (!sort) return rows;
+  return [...rows].sort((a, b) =>
+    compareRunHistoryValues(
+      runHistoryColumnValue(a, sort.column, metric),
+      runHistoryColumnValue(b, sort.column, metric),
+      sort.direction,
+    ),
+  );
+}
+
 /**
  * The numeric INPUT-argument fields present across the loaded rows.
  *

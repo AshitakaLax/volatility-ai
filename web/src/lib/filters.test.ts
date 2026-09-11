@@ -27,8 +27,10 @@ import {
   historyFieldValue,
   historyInputFields,
   lotIdOf,
+  nextRunHistorySort,
   openLotIds,
   runHistoryFilterActive,
+  sortHistoryRows,
 } from "./filters";
 
 function buy(lot: string, bar: number, extra: Partial<BacktestExecution> = {}): BacktestExecution {
@@ -334,6 +336,75 @@ describe("historyFieldValue", () => {
     // worst_year_pct is optional; a row without it must read as unknown,
     // not zero.
     expect(historyFieldValue(histRow(), "metric:worst_year_pct")).toBeNull();
+  });
+});
+
+describe("nextRunHistorySort", () => {
+  it("clicking an inactive column starts it ascending", () => {
+    expect(nextRunHistorySort(null, "name")).toEqual({ column: "name", direction: "asc" });
+  });
+
+  it("clicking the active column cycles asc -> desc -> off", () => {
+    const asc: { column: "name"; direction: "asc" } = { column: "name", direction: "asc" };
+    const desc = nextRunHistorySort(asc, "name");
+    expect(desc).toEqual({ column: "name", direction: "desc" });
+    expect(nextRunHistorySort(desc, "name")).toBeNull();
+  });
+
+  it("clicking a DIFFERENT column always restarts it at ascending", () => {
+    const active = { column: "name", direction: "desc" } as const;
+    expect(nextRunHistorySort(active, "ticker")).toEqual({ column: "ticker", direction: "asc" });
+  });
+});
+
+describe("sortHistoryRows", () => {
+  it("a null sort returns the rows completely unchanged (caller applies its own default)", () => {
+    const rows = [histRow({ run_id: "b" }), histRow({ run_id: "a" })];
+    expect(sortHistoryRows(rows, null, "cagr_pct")).toBe(rows);
+  });
+
+  it("sorts a plain string column both directions", () => {
+    const rows = [histRow({ name: "beta" }), histRow({ name: "alpha" }), histRow({ name: "gamma" })];
+    expect(sortHistoryRows(rows, { column: "name", direction: "asc" }, "cagr_pct").map((r) => r.name)).toEqual([
+      "alpha",
+      "beta",
+      "gamma",
+    ]);
+    expect(sortHistoryRows(rows, { column: "name", direction: "desc" }, "cagr_pct").map((r) => r.name)).toEqual([
+      "gamma",
+      "beta",
+      "alpha",
+    ]);
+  });
+
+  it("sorts a numeric column", () => {
+    const rows = [histRow({ grid_step: 0.02 }), histRow({ grid_step: 0.01 }), histRow({ grid_step: 0.03 })];
+    expect(
+      sortHistoryRows(rows, { column: "grid_step", direction: "asc" }, "cagr_pct").map((r) => r.grid_step),
+    ).toEqual([0.01, 0.02, 0.03]);
+  });
+
+  it("a null value sorts LAST regardless of direction", () => {
+    const rows = [histRow({ name: "known" }), histRow({ name: null }), histRow({ name: "also known" })];
+    expect(sortHistoryRows(rows, { column: "name", direction: "asc" }, "cagr_pct").at(-1)!.name).toBeNull();
+    expect(sortHistoryRows(rows, { column: "name", direction: "desc" }, "cagr_pct").at(-1)!.name).toBeNull();
+  });
+
+  it("the 'metric' column reads whichever FundPerformanceMetrics key is passed", () => {
+    const rows = [
+      histRow({ run_id: "hi", metrics: { sharpe_ratio: 2 } }),
+      histRow({ run_id: "lo", metrics: { sharpe_ratio: 1 } }),
+    ];
+    expect(
+      sortHistoryRows(rows, { column: "metric", direction: "desc" }, "sharpe_ratio").map((r) => r.run_id),
+    ).toEqual(["hi", "lo"]);
+  });
+
+  it("does not mutate the input array", () => {
+    const rows = [histRow({ run_id: "b" }), histRow({ run_id: "a" })];
+    const copy = [...rows];
+    sortHistoryRows(rows, { column: "run_id", direction: "asc" }, "cagr_pct");
+    expect(rows).toEqual(copy);
   });
 });
 

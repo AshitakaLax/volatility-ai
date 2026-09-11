@@ -1,10 +1,16 @@
-import { ArrowDown, ArrowUp, History, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown, History, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { RunHistoryFilterBar } from "@/components/backtest/RunHistoryFilterBar";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
-import { filterHistoryRows } from "@/lib/filters";
+import {
+  filterHistoryRows,
+  nextRunHistorySort,
+  sortHistoryRows,
+  type RunHistoryColumn,
+  type RunHistorySort,
+} from "@/lib/filters";
 import { cn, pct, runUrl, usd } from "@/lib/utils";
 import {
   EMPTY_RUN_HISTORY_FILTERS,
@@ -117,9 +123,60 @@ function valueOf(row: HistoryRow, key: MetricKey): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function sortIcon(direction: "asc" | "desc" | null) {
+  if (direction === "asc") return <ArrowUp className="size-3" />;
+  if (direction === "desc") return <ArrowDown className="size-3" />;
+  // Faint, undirected -- a hint that the header is clickable without
+  // claiming a direction that is not actually applied.
+  return <ArrowUpDown className="size-3 opacity-30" />;
+}
+
+/**
+ * One clickable, sortable column header. Module-scope like the other
+ * small pieces in this codebase's tables/forms -- redefined inside
+ * RunHistory on every render, it would remount on every keystroke
+ * elsewhere on the page.
+ */
+function SortableHeader({
+  column,
+  label,
+  align = "left",
+  active,
+  onSort,
+}: {
+  column: RunHistoryColumn;
+  label: ReactNode;
+  align?: "left" | "right";
+  active: RunHistorySort | null;
+  onSort: (column: RunHistoryColumn) => void;
+}) {
+  const direction = active?.column === column ? active.direction : null;
+  return (
+    <th className={cn("pb-2 font-medium", align === "right" && "text-right")}>
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className={cn(
+          "inline-flex items-center gap-1 hover:text-foreground",
+          direction && "text-foreground",
+        )}
+      >
+        {label}
+        {sortIcon(direction)}
+      </button>
+    </th>
+  );
+}
+
 export function RunHistory({ refreshToken }: Props) {
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [metric, setMetric] = useState<MetricKey>("cagr_pct");
+  // Clicking a column header overrides Rank by's fixed direction for as
+  // long as it is active; null ("off") falls back to Rank by exactly as
+  // before this existed.
+  const [columnSort, setColumnSort] = useState<RunHistorySort | null>(null);
+  const toggleSort = (column: RunHistoryColumn) =>
+    setColumnSort((current) => nextRunHistorySort(current, column));
   const [filters, setFilters] = useState<RunHistoryFilters>(EMPTY_RUN_HISTORY_FILTERS);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -150,14 +207,18 @@ export function RunHistory({ refreshToken }: Props) {
   );
 
   const spec = RANKINGS.find((entry) => entry.key === metric) ?? RANKINGS[0]!;
-  const ranked = [...visible].sort((a, b) => {
-    const left = valueOf(a, spec.key);
-    const right = valueOf(b, spec.key);
-    if (left === null && right === null) return 0;
-    if (left === null) return 1;
-    if (right === null) return -1;
-    return spec.higherIsBetter ? right - left : left - right;
-  });
+  // A column click overrides the ranking's fixed direction while it is
+  // active; "off" (columnSort === null) is exactly today's Rank-by sort.
+  const ranked = columnSort
+    ? sortHistoryRows(visible, columnSort, metric)
+    : [...visible].sort((a, b) => {
+        const left = valueOf(a, spec.key);
+        const right = valueOf(b, spec.key);
+        if (left === null && right === null) return 0;
+        if (left === null) return 1;
+        if (right === null) return -1;
+        return spec.higherIsBetter ? right - left : left - right;
+      });
 
   return (
     <Card>
@@ -235,27 +296,73 @@ export function RunHistory({ refreshToken }: Props) {
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
                 <th className="pb-2 font-medium">#</th>
-                <th className="pb-2 font-medium">Name</th>
-                <th className="pb-2 font-medium">Fund</th>
-                <th className="pb-2 text-right font-medium">Step</th>
-                <th className="pb-2 text-right font-medium">Target</th>
-                <th className="pb-2 font-medium">Model</th>
+                <SortableHeader column="name" label="Name" active={columnSort} onSort={toggleSort} />
+                <SortableHeader column="ticker" label="Fund" active={columnSort} onSort={toggleSort} />
+                <SortableHeader
+                  column="grid_step"
+                  label="Step"
+                  align="right"
+                  active={columnSort}
+                  onSort={toggleSort}
+                />
+                <SortableHeader
+                  column="profit_target"
+                  label="Target"
+                  align="right"
+                  active={columnSort}
+                  onSort={toggleSort}
+                />
+                <SortableHeader
+                  column="sizing_model"
+                  label="Model"
+                  active={columnSort}
+                  onSort={toggleSort}
+                />
                 <th className="pb-2 text-right font-medium">
-                  <span className="inline-flex items-center gap-1">
-                    {spec.label}
-                    {spec.higherIsBetter ? (
-                      <ArrowUp className="size-3" />
-                    ) : (
-                      <ArrowDown className="size-3" />
+                  <button
+                    type="button"
+                    onClick={() => toggleSort("metric")}
+                    className={cn(
+                      "inline-flex items-center gap-1 hover:text-foreground",
+                      columnSort?.column === "metric" && "text-foreground",
                     )}
-                  </span>
+                  >
+                    {spec.label}
+                    {columnSort?.column === "metric"
+                      ? sortIcon(columnSort.direction)
+                      : sortIcon(spec.higherIsBetter ? "asc" : "desc")}
+                  </button>
                 </th>
-                <th className="pb-2 text-right font-medium">CAGR</th>
-                <th className="pb-2 text-right font-medium">Max DD</th>
-                <th className="pb-2 text-right font-medium">Worst yr</th>
-                <th className="pb-2 text-right font-medium">Trades</th>
-                <th className="pb-2 font-medium">Window</th>
-                <th className="pb-2 font-medium">Run</th>
+                <SortableHeader
+                  column="cagr_pct"
+                  label="CAGR"
+                  align="right"
+                  active={columnSort}
+                  onSort={toggleSort}
+                />
+                <SortableHeader
+                  column="max_drawdown_pct"
+                  label="Max DD"
+                  align="right"
+                  active={columnSort}
+                  onSort={toggleSort}
+                />
+                <SortableHeader
+                  column="worst_year_pct"
+                  label="Worst yr"
+                  align="right"
+                  active={columnSort}
+                  onSort={toggleSort}
+                />
+                <SortableHeader
+                  column="total_trades"
+                  label="Trades"
+                  align="right"
+                  active={columnSort}
+                  onSort={toggleSort}
+                />
+                <SortableHeader column="window" label="Window" active={columnSort} onSort={toggleSort} />
+                <SortableHeader column="run_id" label="Run" active={columnSort} onSort={toggleSort} />
               </tr>
             </thead>
             <tbody className="tnum">

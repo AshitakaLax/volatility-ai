@@ -1,5 +1,27 @@
 # Changelog
 
+## Click-to-sort Run History columns (web UI)
+
+Every column header in "Run history" is now clickable and cycles
+ascending -> descending -> off, the same convention a spreadsheet or
+data grid uses. "Off" is not a third sort of its own -- it falls back to
+exactly today's "Rank by" behavior (a fixed direction per metric,
+`higherIsBetter`), so a column click *overrides* that default only while
+it is active, rather than replacing the concept.
+
+- `lib/filters.ts` gains `nextRunHistorySort()` (the 3-state cycle, pure)
+  and `sortHistoryRows()` (one column's sort, `null` returns the rows
+  unchanged so the caller's default applies) -- both unit-tested in
+  `filters.test.ts`, following this codebase's pure-function-first
+  pattern rather than living inline in the component.
+- The dynamic "Rank by" metric column keeps its existing default arrow
+  (up when higher is better, down otherwise) until clicked; clicking it
+  sorts by whichever metric is currently selected and shows the real
+  direction instead.
+- A `null` value (a metric absent from an older report, an unset grid
+  axis) sorts LAST regardless of direction, matching the existing
+  Rank-by ranking's own rule.
+
 ## Per-argument "enable sweep" + Sweep Strategy (web UI + backtest API)
 
 Generalizes the Fixed | Sweep toggle below into a per-argument "enable
