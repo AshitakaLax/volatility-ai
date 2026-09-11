@@ -57,7 +57,10 @@ export function BacktestResult({
   const selected = filters.tickers[0] ?? tickers[0] ?? null;
   const fund = report && selected ? report.funds[selected] : undefined;
 
-  const executions = fund?.executions ?? [];
+  // Stabilise `executions` so the two downstream useMemos don't see a new
+  // array reference on every render (fund?.executions ?? [] creates a new
+  // [] literal each time fund is undefined).
+  const executions = useMemo(() => fund?.executions ?? [], [fund]);
   const visible = useMemo(
     () => filterExecutions(executions, filters),
     [executions, filters],
