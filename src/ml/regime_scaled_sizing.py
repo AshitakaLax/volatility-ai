@@ -136,6 +136,37 @@ would be tuning noise rather than signal (see the SOXL config's own
 header for the CI/p-value table). Do not put this in a `live:` config;
 see server/backtest.py's STRATEGY_DEFAULTS comments for the per-fund
 detail cited above.
+
+RSP AND COWZ WERE DELIBERATELY RE-CHALLENGED, NOT JUST LEFT AT "NOT
+SIGNIFICANT". A wider label search (5 horizons x 9 thresholds x
+vol-block on/off, 90 candidates per fund) asked whether a DIFFERENT
+label than the one originally calibrated might carry a real signal
+using only data already on disk -- no new fetch, since this
+workstation holds no Alpaca credentials at all (they moved to the Pi
+with live trading; see docs/DEPLOY_RASPBERRY_PI.md) and COWZ cannot
+have pre-2016-12-19 data regardless of credentials (fund inception).
+
+One candidate looked promising on a first pass -- RSP at
+horizon=20/threshold=6%, AUC 0.700, p=0.049 -- and did NOT survive
+contact with the real trainer: that number came from an unweighted fit
+in the scan script, and tools/train_qlib_regime.py's own default
+(recency-weighted training, on by default, not only under --use-qlib)
+scores the SAME label at AUC 0.6057, 95% CI [0.395, 0.736], p=0.387 --
+chance. The scan script's bug (no default sample weighting) is now
+known and is not fixed, since the negative result itself is the
+finding worth keeping, not the tool. COWZ's best candidate under the
+same search (vol-block, horizon=40/threshold=8%, p=0.014) failed for a
+different, equally instructive reason: its bootstrap CI reached down to
+0.235 -- crossing chance despite the low p-value -- which is what
+overfitting to 5 test episodes looks like from the outside, not a
+real effect a permutation test alone would have caught.
+
+Neither fund's installed model or committed defaults changed as a
+result -- both are exactly the artifacts server/backtest.py's
+STRATEGY_DEFAULTS comments already describe. Enhancement was attempted
+in good faith and failed; that is the answer, not a reason to sweep
+thresholds for a signal that was specifically re-tested for and still
+is not there.
 """
 
 from __future__ import annotations
