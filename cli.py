@@ -162,6 +162,57 @@ def cmd_test(pytest_args: list[str]) -> int:
     return subprocess.run(cmd, cwd=REPO_ROOT).returncode
 
 
+def _apply_backtest_window(df, config):
+    """Slice `df` (timestamp-indexed) to `config.backtest.start_date` /
+    `end_date`, or return it unchanged if neither is set.
+
+    FOUND BY RUNNING A SWEEP, NOT BY READING THE SCHEMA: `BacktestConfig`
+    parses and round-trips `start_date`/`end_date` (src/core/config.py's
+    `from_dict`/`to_dict`), but until this existed NOTHING in the CLI
+    path read them back. `cli.py backtest`/`search` handed
+    OptimizationController the FULL CSV regardless of what a config's
+    `backtest:` block said -- config/search_soxl_regime_bayesian.yaml's
+    `start_date: "2024-01-01"` silently searched all 10.6 years of
+    history instead of the intended held-out post-training-cutoff
+    window, and every threshold candidate in that sweep produced
+    IDENTICAL trade counts across wildly different values, which is what
+    surfaced this: a config field that LOOKS load-bearing and is quietly
+    inert should never fail silently like that again.
+
+    server/backtest.py's `window()` already solved this correctly for
+    the HTTP path (`RunRequest.start`/`.end`) and is not imported here on
+    purpose -- `server/` depends on `src/` and `cli.py`, not the other
+    way around, and cli.py must keep working without FastAPI installed.
+    The slicing rule is duplicated rather than shared through a new
+    module for two lines of logic; if a THIRD call site needs it, that
+    is the point to extract one.
+
+    `end_date` covers the WHOLE day, matching `window()`'s own
+    convention: a config author writing "2024-01-01" means that day
+    included, not excluded at its first instant.
+    """
+    start, end = config.backtest.start_date, config.backtest.end_date
+    if start:
+        df = df[df.index >= _to_utc_timestamp(start)]
+    if end:
+        import pandas as pd
+
+        df = df[df.index < _to_utc_timestamp(end) + pd.Timedelta(days=1)]
+    return df
+
+
+def _to_utc_timestamp(value: str):
+    import pandas as pd
+
+    # A naive date string ("2024-01-01") localizes to UTC directly.
+    # `tz="UTC"` on an ALREADY-aware string would raise rather than
+    # convert, so a value that already carries an offset is converted
+    # instead -- config authors here have written only naive dates so
+    # far, but a future one should not fail confusingly.
+    ts = pd.Timestamp(value)
+    return ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+
+
 def cmd_backtest(args: argparse.Namespace) -> int:
     """Run a parameter sweep from a YAML config against a CSV."""
     import pandas as pd
@@ -197,6 +248,7 @@ def cmd_backtest(args: argparse.Namespace) -> int:
 
     df = pd.read_csv(data_path, parse_dates=["timestamp"])
     df.set_index("timestamp", inplace=True)
+    df = _apply_backtest_window(df, config)
 
     from src.optimization.optimization_controller import OptimizationController
 
@@ -439,6 +491,15 @@ def cmd_search(args: argparse.Namespace) -> int:
     print()
 
     df = pd.read_csv(data_path, parse_dates=["timestamp"]).set_index("timestamp")
+    df = _apply_backtest_window(df, config)
+    if config.backtest.start_date or config.backtest.end_date:
+        # Printed explicitly, not left implicit -- a windowed search
+        # that silently searched the whole file was exactly the bug
+        # _apply_backtest_window's docstring records finding.
+        print(
+            f"Date window  : {config.backtest.start_date or 'file start'} -> "
+            f"{config.backtest.end_date or 'file end'} ({len(df):,} bars)"
+        )
     controller = OptimizationController(historical_data=df)
     cost_model = config.costs.build()
     risk_manager = config.risk.build()
