@@ -20,6 +20,7 @@ from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 from src.core.exceptions import ConfigurationError
 from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.ml.reachability_sizing import MLReachabilitySizing
+from src.ml.regime_scaled_sizing import MLRegimeScaledSizing
 from src.strategies.size_calculators import (
     BellCurveProbabilitySizing,
     FixedPortfolioPercentage,
@@ -51,6 +52,21 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     "ml_reachability_rsp": MLReachabilitySizing,
     "ml_reachability_cowz": MLReachabilitySizing,
     "ml_reachability_spyd": MLReachabilitySizing,
+    # Same one-id-per-ticker convention, same reason: MLRegimeScaledSizing
+    # takes `ticker` as a constructor kwarg, the sizing-model dropdown
+    # submits a strategy's committed defaults with no per-run field
+    # editor, so WHICH id is picked is the only thing that can select
+    # the model -- and .ticker is checked against the simulated symbol
+    # in optimization_controller.py.
+    #
+    # UNMEASURED. Unlike the reachability ids above, none of these has
+    # been through a sweep, a walk-forward, or a paired test against
+    # hf_local_reference. They are registered so they can BE measured;
+    # see src/ml/regime_scaled_sizing.py's "UNMEASURED AS OF THIS
+    # COMMIT" note before putting one in a `live:` config.
+    "ml_regime_xbi": MLRegimeScaledSizing,
+    "ml_regime_cowz": MLRegimeScaledSizing,
+    "ml_regime_ursp": MLRegimeScaledSizing,
 }
 
 

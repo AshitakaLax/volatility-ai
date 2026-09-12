@@ -118,6 +118,40 @@ class MarketContext:
     # index was flat" and "we have no reading" both warrant leaving size
     # unchanged.
     implied_vol_change: float = 0.0
+    # --- Model-derived regime state (src/ml/qlib_regime.py) ---------
+    #
+    # BOTH DEFAULT TO -1.0, A SENTINEL, NOT TO A NEUTRAL VALUE. This
+    # follows minutes_to_event's convention above rather than
+    # implied_vol_change's, and the choice is load-bearing in a way that
+    # is easy to get backwards:
+    #
+    #   implied_vol_change=0.0 can safely mean "unknown" because 0.0 is
+    #   ALSO the no-op -- a consumer's multiplier is exactly 1.0 there,
+    #   so the two readings call for the same action.
+    #
+    #   qlib_regime_score=0.0 is NOT a no-op. 0.0 is the model actively
+    #   asserting "trending", which is the most aggressive reading on
+    #   the scale. Defaulting to it would mean a deployment with no
+    #   model, a first-bar cold start, or a context builder that simply
+    #   forgot the field, all silently claim maximum confidence in a
+    #   trend. -1.0 is outside [0, 1] and cannot be mistaken for one.
+    #
+    # A consumer MUST branch on `< 0.0` before using either value; see
+    # MLRegimeScaledSizing._reading_from_context, which is the only
+    # in-tree reader and treats a sentinel as "fall back to my own
+    # inference, else size at the conservative floor".
+    #
+    # qlib_regime_score: P(the next `horizon` sessions draw down by more
+    # than the trained threshold), in [0, 1]. 0.0 trending, 1.0 crash.
+    # NOT a directional return forecast -- it is deliberately a DOWNSIDE
+    # probability, because the only thing this project's grid does with
+    # it is decide how much dry powder to keep for deeper levels.
+    qlib_regime_score: float = -1.0
+    # Forward realized-volatility forecast over the same horizon,
+    # ANNUALIZED (0.35 = 35%/yr), so it is comparable to the trailing
+    # realized-vol readings tools/probe_vol_filtered_regime.py measured
+    # its filter against. >= 0.0 when known.
+    expected_volatility: float = -1.0
 
     @property
     def price(self) -> float:

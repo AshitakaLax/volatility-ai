@@ -1,0 +1,26 @@
+# Factor mining and concept-drift training. THE THIRD optional
+# dependency file, and the most isolated of them.
+#
+# requirements.txt's rule: the live loop and the Raspberry Pi that runs
+# it must never need an optional dependency to start. requirements-ml.txt
+# is already excluded from the Pi's image; this file goes further --
+# nothing in src/ may import any of it, at all, including src/ml/.
+#
+# The boundary is enforced by shape rather than by good intentions:
+#   tools/train_qlib_regime.py       MAY import qlib (training only)
+#   tools/rdagent_factor_pipeline.py MAY shell out to rdagent/qlib
+#   src/ml/qlib_regime.py            MAY NOT, and does not -- it loads
+#                                    a plain LightGBM text booster
+#
+# So a workstation trains with these and the Pi runs the result with
+# nothing but lightgbm. See src/ml/qlib_regime.py's module docstring.
+#
+# Install on the WORKSTATION only:
+#   pip install -r requirements-ml.txt -r requirements-qlib.txt
+
+pyqlib>=0.9.6         # Alpha158 expressions, DDG-DA concept drift
+rdagent>=0.6.0        # the LLM-driven factor/model evolution loop
+
+# rdagent additionally needs Docker running locally -- it executes every
+# candidate factor in a sandbox container, not in this interpreter.
+# `docker info` must succeed before `rdagent fin_factor` will.

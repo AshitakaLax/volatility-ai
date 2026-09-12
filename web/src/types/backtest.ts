@@ -534,8 +534,12 @@ export interface SizingParamsEntry {
 
 /** "last_buy": level = last_buy_price × (1 − step) (a fresh low below
  * the last fill). "local_reference": level = max(last_buy_price,
- * rolling_high) × (1 − step) (retriggers on any local pullback). */
-export type GridTriggerMethod = "last_buy" | "local_reference";
+ * rolling_high) × (1 − step) (retriggers on any local pullback).
+ * "regime_widened": last_buy's formula with the STEP multiplied by a
+ * model-driven latch — the reference is still the last fill, but the
+ * spacing widens while a regime model reads crash. Always locked; the
+ * widening is what the strategy is, not an operator choice. */
+export type GridTriggerMethod = "last_buy" | "local_reference" | "regime_widened";
 
 export interface GridTrigger {
   /** Supported methods in display order; index 0 is the default. A

@@ -18,11 +18,14 @@ import type { GridTrigger, GridTriggerMethod, ValidateError } from "@/types/back
 const METHOD_LABEL: Record<GridTriggerMethod, string> = {
   last_buy: "Last buy price",
   local_reference: "Local reference (rolling high)",
+  regime_widened: "Last buy price, regime-widened",
 };
 const METHOD_HELP: Record<GridTriggerMethod, string> = {
   last_buy: "Buy when price falls one step below the last fill.",
   local_reference:
     "Buy on a step-sized pullback from max(last fill, N-day high) — re-fires on local dips, not only on a fresh low.",
+  regime_widened:
+    "Buy one step below the last fill, but widen that step (×4 by default) while the regime model reads crash — fewer, deeper buys that keep cash for lower levels.",
 };
 
 interface Props {

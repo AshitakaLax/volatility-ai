@@ -265,6 +265,56 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     "ml_reachability_rsp": {"max_trade_pct": 0.05, "ticker": "RSP", "confidence_floor": 0.25},
     "ml_reachability_cowz": {"max_trade_pct": 0.05, "ticker": "COWZ", "confidence_floor": 0.25},
     "ml_reachability_spyd": {"max_trade_pct": 0.05, "ticker": "SPYD", "confidence_floor": 0.25},
+    # MLRegimeScaledSizing, one id per ticker for the identical reason.
+    #
+    # NO MEASURED NUMBER BACKS THESE DEFAULTS, unlike every other entry
+    # in this table -- there is no committed config and no sweep result
+    # to copy from, because the strategy has never been run. They are
+    # STARTING POINTS chosen from adjacent measurements in this repo,
+    # and each is stated so it can be argued with:
+    #
+    #   crash_step_multiplier 4.0  the 4% spacing
+    #       tools/probe_downturn_tactics.py's escalating dip book used,
+    #       against a 1% base step.
+    #   regime_enter/exit 0.65/0.45  a wide band, because the models
+    #       these read are weak (ml_plan.md: AUC 0.52-0.63) and a narrow
+    #       band on a weak score is just flapping.
+    #   vol_reference 0.45  roughly where an annualized 20-day realized
+    #       vol sits near the 75th percentile that
+    #       tools/probe_vol_filtered_regime.py measured its filter at.
+    #       Instrument-specific -- XBI and COWZ do not share a vol
+    #       regime, and this is the first parameter to re-derive per
+    #       fund rather than inherit.
+    #   drawdown_response 0.0  inert, following inverse_scale_kappa's
+    #       opt-in convention. Turn it on deliberately, one direction at
+    #       a time; see the strategy's own __init__ on the sign.
+    "ml_regime_xbi": {
+        "max_trade_pct": 0.05,
+        "ticker": "XBI",
+        "crash_step_multiplier": 4.0,
+        "regime_enter_threshold": 0.30,
+        "regime_exit_threshold": 0.20,
+        "regime_floor": 0.25,
+        "vol_reference": 0.45,
+    },
+    "ml_regime_cowz": {
+        "max_trade_pct": 0.05,
+        "ticker": "COWZ",
+        "crash_step_multiplier": 4.0,
+        "regime_enter_threshold": 0.30,
+        "regime_exit_threshold": 0.20,
+        "regime_floor": 0.25,
+        "vol_reference": 0.30,
+    },
+    "ml_regime_ursp": {
+        "max_trade_pct": 0.05,
+        "ticker": "URSP",
+        "crash_step_multiplier": 4.0,
+        "regime_enter_threshold": 0.30,
+        "regime_exit_threshold": 0.20,
+        "regime_floor": 0.25,
+        "vol_reference": 0.55,
+    },
 }
 
 
@@ -348,6 +398,27 @@ _GRID_TRIGGER: dict[str, dict[str, Any]] = {
         "window_default": 0.03,
     },
 }
+# MLRegimeScaledSizing's level is last_buy's formula with the STEP
+# scaled by a model-driven latch, so it is neither of the two methods
+# above: not plain last_buy (the multiplier is not 1), and not
+# local_reference (the reference is still the last fill, not a rolling
+# high). It gets its own locked method rather than being described as
+# last_buy, because tests/unit/test_backtest_grid_trigger.py's anti-rot
+# check ties this table to whether the class actually overrides
+# _grid_trigger_level -- and describing a widened grid as an unwidened
+# one is exactly the drift that check exists to catch.
+#
+# Locked (single-entry list), with no window_param: the widening is not
+# an operator choice, it is what the strategy IS, and there is no
+# rolling window to configure.
+for _regime_id in ("ml_regime_xbi", "ml_regime_cowz", "ml_regime_ursp"):
+    _GRID_TRIGGER[_regime_id] = {
+        "methods": ["regime_widened"],
+        "default": "regime_widened",
+        "controlled_by": None,
+        "window_param": None,
+        "window_default": None,
+    }
 
 
 def describe_grid_trigger(strategy_id: str) -> dict[str, Any]:

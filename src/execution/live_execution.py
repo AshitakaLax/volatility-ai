@@ -166,6 +166,8 @@ class LiveExecutionLoop:
         event_intensity: float = 0.0,
         minutes_to_event: float = -1.0,
         implied_vol_change: float = 0.0,
+        qlib_regime_score: float = -1.0,
+        expected_volatility: float = -1.0,
     ) -> MarketContext:
         """Build the per-tick MarketContext the strategy sees.
 
@@ -189,6 +191,26 @@ class LiveExecutionLoop:
         context blinder than the one every other path produces. That
         asymmetry is the bug this signature existed to avoid, so a new
         field goes in all four places or none.
+
+        qlib_regime_score/expected_volatility are the deliberate "none"
+        case of that rule, and the reason is worth stating so the next
+        person does not read it as an oversight. Every other field here
+        is derived from a calendar or a file that the CONTEXT BUILDER can
+        cheaply look up; a regime score is derived from a MODEL, and
+        wiring model inference into all four builders would mean four
+        places that could disagree about which model, which cadence, and
+        which warmup. src/ml/qlib_regime.RegimeInferenceSource is
+        instead owned by the STRATEGY and driven from record_tick, which
+        the shared decision cycle already guarantees fires identically
+        in backtest, intrabar replay and live -- so parity is structural
+        rather than maintained by hand across four call sites.
+
+        The parameters exist anyway because they are the injection seam:
+        a caller that has a reading from somewhere else (a precomputed
+        per-bar array, a test fixture, a future engine-side pass) can
+        supply it here and MLRegimeScaledSizing will prefer it over its
+        own inference. Left at the sentinel, all four builders are
+        equally blind, which is the symmetry the rule actually protects.
         """
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
@@ -212,6 +234,8 @@ class LiveExecutionLoop:
             event_intensity=float(event_intensity),
             minutes_to_event=float(minutes_to_event),
             implied_vol_change=float(implied_vol_change),
+            qlib_regime_score=float(qlib_regime_score),
+            expected_volatility=float(expected_volatility),
         )
 
     def decision_cycle(
