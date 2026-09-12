@@ -336,22 +336,67 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
         "regime_floor": 0.25,
         "vol_reference": 0.172,
     },
-    # SOXL: -30% over 20 sessions, 43tr/17te episodes, held-out AUC 0.7559.
-    # Thresholds are p90/p50 of THIS model's own output (range
-    # 0.043-0.494); vol_reference is the fwdvol head's p75.
+    # SOXL: -30% over 20 sessions, 43tr/17te episodes, held-out AUC 0.7559
+    # -- one of exactly two funds (with SQQQ, below) whose crash
+    # classifier cleared a moving-block-bootstrap significance test
+    # (95% CI [0.635, 0.859], p=0.001).
+    #
+    # THRESHOLDS ARE SWEEP-DERIVED, NOT HAND-PICKED, per
+    # config/search_soxl_regime_bayesian.yaml -- an 80-trial Optuna TPE
+    # search over this exact space, on the held-out 2024-01-01+ window
+    # (261,248 bars), ranked by Return/Drawdown. The prior committed
+    # values here (p90/p50 of the model's own quantiles: enter 0.331,
+    # vol_reference 1.262) were the reasoned STARTING point the sweep
+    # was built to test, not its answer -- the search never sampled that
+    # exact combination and found a materially different one instead:
+    # a markedly lower regime_enter_threshold (0.331 -> 0.20, latching
+    # into the widened grid far more readily) paired with a lower
+    # vol_reference (1.262 -> 0.9, damping size sooner as forecast vol
+    # rises). Verified directly against the OLD defaults on the
+    # identical window/engine: Sharpe 0.3715 vs 0.3503 (+6%), Sortino
+    # 0.1679 vs 0.1504 (+12%), max drawdown 8.32% vs 12.22%, for lower
+    # absolute return (4.52% vs 6.21%) and fewer trades (48 vs 54) --
+    # the designed capital-preservation tradeoff, and both Sharpe and
+    # Return/Drawdown rankings agree on this combination among the 80
+    # trials, which is what makes it a real signal rather than a
+    # rank_by artifact (see that config's own header on the failure
+    # mode this guards against: near-zero-activity configs inflate
+    # Return/Drawdown on almost no risk taken).
+    #
+    # STILL LOSES TO hf_local_reference ON THE SAME WINDOW (Sharpe 0.59
+    # at this grid step) -- an improvement over this strategy's own
+    # prior defaults, not a claim it beats the incumbent. See
+    # src/ml/regime_scaled_sizing.py's "UNMEASURED" note; this sweep is
+    # the measurement, and the answer is still "not yet."
     "ml_regime_soxl": {
         "max_trade_pct": 0.05,
         "ticker": "SOXL",
         "history_path": "data/SOXL_1Min_sip_all_rth_2016-01-01_2026-09-03.csv",
         "crash_step_multiplier": 4.0,
-        "regime_enter_threshold": 0.3310,
-        "regime_exit_threshold": 0.1656,
+        "regime_enter_threshold": 0.20,
+        "regime_exit_threshold": 0.166,
         "regime_floor": 0.25,
-        "vol_reference": 1.262,
+        "vol_reference": 0.9,
     },
-    # SQQQ: -25% over 20 sessions, 41tr/8te episodes, held-out AUC 0.8521.
-    # Thresholds are p90/p50 of THIS model's own output (range
-    # 0.091-0.179); vol_reference is the fwdvol head's p75.
+    # SQQQ: -25% over 20 sessions, 41tr/8te episodes, held-out AUC
+    # 0.8521 -- the stronger of the two significant funds (95% CI
+    # [0.690, 0.987], p=0.001).
+    #
+    # THRESHOLDS UNCHANGED FROM THE MODEL'S OWN QUANTILES DELIBERATELY,
+    # because the sweep that was supposed to improve on them
+    # (config/search_sqqq_regime_bayesian.yaml, the same 80-trial
+    # design as SOXL's, identical held-out window) found NO PROFITABLE
+    # POINT ANYWHERE IN THIS SPACE. All 80 trials lost money -- Total
+    # Return % ranged -29.57% to -7.42%, real trading activity throughout
+    # (81-154 trades, not a near-zero-activity artifact), 9-28 open lots
+    # stuck under the no-loss guard at the "best" (least-bad) trial. This
+    # matches the paired simulation from the same session: ml_regime,
+    # fixed, AND hf_local_reference were all negative on SQQQ post-cutoff.
+    # SQQQ appears to have simply been a structural loser in this window
+    # regardless of sizing strategy, not a hyperparameter problem --
+    # replacing these with the "least-bad" sampled combination would
+    # misrepresent a negative result as a tuned improvement, so they stay
+    # at the quantile-derived starting point instead.
     "ml_regime_sqqq": {
         "max_trade_pct": 0.05,
         "ticker": "SQQQ",
@@ -722,8 +767,10 @@ def describe_params(strategy_id: str, strategy_class: type) -> list[dict[str, An
         # the identical reason), so `spec["enum"]` and
         # `spec["type"] in ("int", "float")` cannot both hold for one
         # spec -- no ambiguity for a caller branching on `enum` alone.
-        spec["sweepable"] = spec["editable"] and spec["mirrors"] is None and (
-            spec["type"] in ("int", "float") or spec["enum"] is not None
+        spec["sweepable"] = (
+            spec["editable"]
+            and spec["mirrors"] is None
+            and (spec["type"] in ("int", "float") or spec["enum"] is not None)
         )
         out.append(spec)
     return out

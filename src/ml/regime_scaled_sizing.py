@@ -87,16 +87,35 @@ src/trading/decision_cycle.collect_liquidations already gates signal
 exits behind a separate config flag for that reason.
 
 --------------------------------------------------------------------
-UNMEASURED AS OF THIS COMMIT
+MEASURED ON TWO FUNDS, NOT YET HELD TO THE BAR
 
-No sweep, walk-forward or paired test has been run on this strategy.
-Every number above is either a measurement of something ELSE in this
-repo (cited where used) or an argument about mechanism. The bar
-ml_plan.md sets is explicit -- "a model must beat hf_local_reference"
--- and this has not been held to it yet. Treat it as a hypothesis with
-an implementation, not as a validated configuration, and do not put it
-in a `live:` config before running tools/ the way every other strategy
-here was.
+A paired simulation (identical grid step/target cells, strictly
+post-training-cutoff) plus an 80-trial Optuna TPE sweep
+(config/search_soxl_regime_bayesian.yaml,
+config/search_sqqq_regime_bayesian.yaml) exist for SOXL and SQQQ -- the
+only two of seven trained funds whose crash classifier cleared a
+moving-block-bootstrap significance test at all. Results:
+
+  SOXL  the sweep found a real, non-degenerate improvement over the
+        first hand-picked defaults (Sharpe 0.35 -> 0.37, drawdown
+        12.2% -> 8.3%, both Sharpe and Return/Drawdown rankings
+        agreeing on the same combination among 80 trials) -- but still
+        loses to hf_local_reference on the identical window (0.59).
+  SQQQ  the identical sweep design found NO profitable point anywhere
+        in the search space; every one of 80 trials lost money. Not
+        a tuning failure -- the paired simulation independently found
+        every strategy tried (including the incumbent) negative on
+        SQQQ post-cutoff, so this reads as the fund itself having been
+        a structural loser in that window.
+
+ml_plan.md's bar -- "a model must beat hf_local_reference" -- is
+therefore MEASURED and NOT MET on both funds tested, not merely
+untested. The other five funds have no sweep at all: their crash
+classifiers did not clear significance, so searching their thresholds
+would be tuning noise rather than signal (see the SOXL config's own
+header for the CI/p-value table). Do not put this in a `live:` config;
+see server/backtest.py's STRATEGY_DEFAULTS comments for the per-fund
+detail cited above.
 """
 
 from __future__ import annotations
