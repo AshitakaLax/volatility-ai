@@ -1,0 +1,57 @@
+# search_sqqq_regime_bayesian -- TPE search over MLRegimeScaledSizing on
+# SQQQ. See search_soxl_regime_bayesian.yaml's header for the full
+# rationale (rank_by choice, held-out window, why only these two funds);
+# repeated here only where SQQQ's own numbers differ.
+#
+# SQQQ is the stronger of the two significant funds: AUC 0.852, 95% CI
+# [0.690, 0.987], p=0.001 -- and the one where the paired simulation
+# lost money outright under EVERY sizing model tried (ml_regime, fixed,
+# hf_local_reference all negative Sharpe post-cutoff). A search here is
+# asking a sharper question than SOXL's: not just "better than the one
+# point tried", but whether any point in this space is TRADEABLE at
+# all on the window measured, or whether the fund was simply a loser
+# post-cutoff regardless of sizing.
+#
+# CANDIDATES FROM data/ml/models/SQQQ_regime_crash.json's own
+# score_quantiles (p50=0.093, p75=0.105, p90=0.124, p95=0.134,
+# p99=0.161, max=0.179) -- a MUCH narrower live range than SOXL's,
+# which is why every candidate here is closer together. enter tops out
+# at 0.16, under the p99=0.161 ceiling; exit tops out at 0.098, below
+# every enter candidate. fwdvol quantiles (p50=0.565, p75=0.689 --
+# today's committed default, p90=0.800) set vol_reference's range.
+strategy:
+  strategy_id: ml_regime_sqqq
+  strategy_params:
+    ticker: SQQQ
+    max_trade_pct: 0.05
+    regime_floor: 0.25
+    history_path: data/SQQQ_1Min_sip_all_ext_2016-01-01_2026-09-01.csv
+    crash_step_multiplier: [1.5, 2.0, 3.0, 4.0, 6.0]
+    regime_enter_threshold: [0.104, 0.124, 0.134, 0.16]
+    regime_exit_threshold: [0.093, 0.098]
+    vol_reference: [0.55, 0.69, 0.80, 0.92]
+grid:
+  steps: [0.01, 0.02]
+  profit_targets: [0.03]
+backtest:
+  symbol: SQQQ
+  initial_cash: 100000.0
+  start_date: "2024-01-01"
+costs:
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Return/Drawdown
+  direction: maximize
+  n_trials: 80
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false

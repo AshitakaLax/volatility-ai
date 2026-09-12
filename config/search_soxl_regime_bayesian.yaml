@@ -1,0 +1,93 @@
+# search_soxl_regime_bayesian -- TPE search over MLRegimeScaledSizing on
+# SOXL, the sweep the paired backtest in tools/regime_simulation.py (see
+# the 2026-09-11 conversation) said was owed: every threshold committed
+# to server/backtest.py's STRATEGY_DEFAULTS was read off the trained
+# model's own score_quantiles BY HAND (p90 for entry, p50 for exit) --
+# a defensible starting point, never searched.
+#
+# SOXL is one of exactly two funds (with SQQQ, see
+# search_sqqq_regime_bayesian.yaml) whose crash classifier cleared a
+# moving-block-bootstrap significance test: AUC 0.756, 95% CI
+# [0.635, 0.859], block-permutation p=0.001. The other five funds'
+# CIs span 0.5 -- searching their thresholds would be tuning noise, so
+# this sweep exists only where a signal was actually measured.
+#
+# THE BASELINE THIS MUST BEAT. The paired simulation (identical cells,
+# strictly post-cutoff) found ml_regime beating `fixed` on every
+# SOXL cell but losing to `hf_local_reference` on both -- e.g. at a 2%
+# step, Sharpe 0.49 vs 0.71. That comparison used ONE hand-picked point
+# in a 4-parameter space at 2 grid steps. This sweep is what actually
+# answers whether a better point exists, rather than assuming the one
+# point tried was representative.
+#
+# WHY "Return/Drawdown", NOT "Total Return %". optimization_controller.py
+# measured ranking by Total Return % alone walking straight into ~80%
+# drawdown on this dataset, because return has no term pulling the
+# other way. Return/Drawdown prices exactly the tradeoff this strategy
+# exists to make (fewer, deeper buys that preserve capital), so it is
+# the rank_by that can actually tell a real improvement from a config
+# that just took more risk.
+#
+# THE HELD-OUT WINDOW: backtest.start_date pins this sweep to
+# 2024-01-01+, the SAME post-training-cutoff window the significance
+# test and the paired simulation both used. Sweeping the pre-cutoff
+# window too would let the threshold search see price action the
+# crash model was ITSELF fit on -- a second-order version of the same
+# leakage tools/train_qlib_regime.py's own cutoff exists to prevent.
+# Chosen thresholds are only meaningful if they generalize to data the
+# model has never scored before.
+#
+# CANDIDATE VALUES ARE READ FROM THE MODEL, NOT GUESSED. enter/exit
+# thresholds are spaced across data/ml/models/SOXL_regime_crash.json's
+# own score_quantiles (p50=0.166, p75=0.261, p90=0.331, p95=0.365,
+# p99=0.398, max=0.494) -- every enter candidate sits at or below p95,
+# safely under the p99 ceiling MLRegimeScaledSizing._check_threshold_is_
+# reachable enforces, and every exit candidate sits strictly below the
+# smallest enter candidate so no combination can violate
+# `0 <= exit < enter <= 1` regardless of what TPE pairs together.
+# vol_reference spans the fwdvol head's own quantiles (p50=1.065,
+# p75=1.262 -- today's committed default, p90=1.514).
+strategy:
+  strategy_id: ml_regime_soxl
+  strategy_params:
+    ticker: SOXL
+    max_trade_pct: 0.05
+    regime_floor: 0.25
+    # Project-relative, matching --data below -- RegimeInferenceSource
+    # resolves history_path relative to the process's working directory
+    # (cli.py search is always invoked from the repo root), not to this
+    # file's own location.
+    history_path: data/SOXL_1Min_sip_all_rth_2016-01-01_2026-09-03.csv
+    crash_step_multiplier: [1.5, 2.0, 3.0, 4.0, 6.0]
+    regime_enter_threshold: [0.20, 0.26, 0.331, 0.365]
+    regime_exit_threshold: [0.08, 0.12, 0.166]
+    vol_reference: [0.9, 1.065, 1.262, 1.6]
+grid:
+  # Fixed to exactly the two steps the paired simulation already
+  # measured -- this sweep is answering "is there a better POINT in the
+  # strategy-param space", not re-opening the grid-step question, which
+  # would confound the two.
+  steps: [0.01, 0.02]
+  profit_targets: [0.03]
+backtest:
+  symbol: SOXL
+  initial_cash: 100000.0
+  start_date: "2024-01-01"
+costs:
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Return/Drawdown
+  direction: maximize
+  n_trials: 80
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false
