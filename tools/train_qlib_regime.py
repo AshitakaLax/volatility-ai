@@ -173,6 +173,22 @@ def build_features(daily: pd.DataFrame, *, vol_block: bool) -> pd.DataFrame:
     return features
 
 
+def count_episodes(flags: pd.Series) -> int:
+    """Contiguous runs of 1 -- the number of INDEPENDENT events.
+
+    The count that decides whether an AUC means anything. A forward
+    label over H sessions is 1 on every day within H of the event, so
+    ONE drawdown produces up to H correlated positive rows. Counting
+    rows flatters the sample by exactly that factor; counting
+    transitions from 0 to 1 does not.
+    """
+    values = flags.to_numpy().astype(int)
+    if values.size == 0:
+        return 0
+    starts = int(((values[1:] == 1) & (values[:-1] == 0)).sum())
+    return starts + (1 if values[0] == 1 else 0)
+
+
 def build_labels(daily: pd.DataFrame, horizon: int, threshold: float) -> pd.DataFrame:
     """Forward crash flag and forward realized vol. Strictly future."""
     close = daily["close"].astype(float)
@@ -359,15 +375,40 @@ def main() -> int:
     weights = drift_weights(features[train_mask], enabled=args.use_qlib, half_life=args.half_life)
 
     base_rate = float(labels.loc[train_mask, "crash"].mean())
+    train_episodes = count_episodes(labels.loc[train_mask, "crash"])
+    test_episodes = count_episodes(labels.loc[test_mask, "crash"])
     print(
         f"  train {int(train_mask.sum())} / test {int(test_mask.sum())} sessions; "
         f"crash base rate {base_rate:.1%} at -{args.threshold:.0%} over {args.horizon} sessions"
     )
+    print(f"  independent episodes: {train_episodes} train / {test_episodes} test")
     if base_rate < 0.02 or base_rate > 0.60:
         print(
             f"  ! base rate {base_rate:.1%} makes this label nearly constant. AUC will look "
             "fine and mean little -- adjust --threshold/--horizon so the event is neither "
             "rare nor typical.",
+            file=sys.stderr,
+        )
+    if test_episodes < 4:
+        # THE MOST IMPORTANT WARNING THIS SCRIPT EMITS, and it was added
+        # because the first real run printed AUC 0.9963 and meant
+        # nothing. COWZ at -10%/20 sessions has exactly ONE drawdown
+        # episode after 2024-01-01, so its 19 positive test days are 19
+        # views of a single event; a model that recognises "this is the
+        # volatile stretch of 2025" scores near-perfectly and has
+        # learned one observation.
+        #
+        # tools/probe_regime_signals.py's docstring already names this
+        # trap for regime work generally -- "there is exactly ONE full
+        # bear market in this dataset, so a signal tuned to it has a
+        # sample size of one". Overlapping forward labels make it worse
+        # by turning one event into dozens of correlated rows, which is
+        # what makes the AUC look trustworthy.
+        print(
+            f"  ! ONLY {test_episodes} INDEPENDENT EPISODE(S) IN THE TEST WINDOW. The AUC below "
+            f"is measuring recognition of {test_episodes} event(s), not predictive skill, and "
+            "will look excellent regardless. Lower --threshold or shorten --horizon until this "
+            "is at least 4-5, or treat the number as decoration.",
             file=sys.stderr,
         )
 
@@ -383,6 +424,11 @@ def main() -> int:
         "train_sessions": int(train_mask.sum()),
         "test_sessions": int(test_mask.sum()),
         "concept_drift_weights": bool(args.use_qlib),
+        # Recorded next to the AUC because the AUC cannot be read
+        # without it -- see the count_episodes docstring.
+        "train_episodes": train_episodes,
+        "test_episodes": test_episodes,
+        "train_base_rate": base_rate,
         "trained_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "source_bars": str(source),
     }

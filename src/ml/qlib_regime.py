@@ -90,6 +90,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from collections import deque
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -428,11 +429,35 @@ class RegimeInferenceSource:
         model_dir: Path | str = "data/ml/models",
         external_dir: Path | str | None = None,
         min_sessions: int = _MIN_SESSIONS,
+        history_path: Path | str | None = None,
     ) -> None:
         if not ticker:
             raise ConfigurationError("RegimeInferenceSource requires a ticker")
         self.ticker = ticker
         self.min_sessions = min_sessions
+        # Bars from BEFORE the run, used to warm the daily features so
+        # the first scored session is the run's first session.
+        #
+        # WITHOUT THIS THE STRATEGY IS BLIND FOR ITS FIRST 60 SESSIONS,
+        # and that is not a small edge case -- it was measured. A
+        # backtest from 2024-01-01 got its first reading on 2024-03-28,
+        # 86 calendar days in, and sized every lot at regime_floor until
+        # then. A ratchet-down last_buy grid fires most of its triggers
+        # in the first decline it meets, so on QQQ ALL FOUR fills of a
+        # 650-session run landed inside that blind window: the run
+        # reported a quarter of the baseline's yield at an identical
+        # Sharpe, which is the signature of a constant size multiplier,
+        # not of a regime model doing anything at all.
+        #
+        # Replaying prior bars is not lookahead. These are sessions that
+        # had already closed before the run's first bar, and they are
+        # fed through the same causal record() every other session is.
+        # It is the same argument src/ml/live_features.py makes for
+        # loading its daily vol-block CSVs at construction: a daily
+        # model needs daily history, and that history is not "the
+        # future of this run".
+        self.history_path = Path(history_path) if history_path else None
+        self._history_loaded = False
 
         directory = Path(model_dir)
         self._crash = _load_booster(directory / f"{ticker}_regime_crash.txt")
@@ -539,6 +564,53 @@ class RegimeInferenceSource:
             warm=True,
         )
 
+    def _warm_from_history(self, first_session: date) -> None:
+        """Replay sessions strictly before `first_session` into the features.
+
+        Runs once, on the first observed bar, because that is the first
+        moment this object knows when the run starts. Failure is
+        non-fatal and warns rather than raises: a missing or unreadable
+        history file costs the warmup this exists to provide, which is
+        the behavior before it existed, and refusing to run a backtest
+        over it would be the worse trade.
+        """
+        if self.history_path is None:
+            return
+        try:
+            import pandas as pd
+
+            frame = (
+                pd.read_parquet(self.history_path)
+                if self.history_path.suffix == ".parquet"
+                else pd.read_csv(
+                    self.history_path, parse_dates=["timestamp"], index_col="timestamp"
+                )
+            )
+            # utc=True for the mixed-offset DST reason recorded in
+            # tools/train_qlib_regime.to_daily -- a tz-aware bar file
+            # spanning a DST change is object dtype otherwise.
+            index = pd.to_datetime(frame.index, utc=True).tz_convert(_NY)
+            frame = frame.set_index(index)
+            prior = frame[frame.index.date < first_session]
+            if prior.empty:
+                return
+            daily = (
+                prior.resample("1D")
+                .agg({"high": "max", "low": "min", "close": "last"})
+                .dropna(subset=["close"])
+            )
+            # Only what the widest feature window can use. Replaying a
+            # decade to fill a 250-session ring is wasted work.
+            for row in daily.tail(_MAX_WINDOW + 10).itertuples():
+                self._features.record(float(row.high), float(row.low), float(row.close))
+        except Exception as exc:
+            print(
+                f"RegimeInferenceSource({self.ticker}): could not warm from "
+                f"{self.history_path} ({exc}); the first {self.min_sessions} sessions of this "
+                "run will be unscored and will size at the floor.",
+                file=sys.stderr,
+            )
+
     def observe(self, timestamp: datetime, high: float, low: float, close: float) -> RegimeReading:
         """Fold one bar in; return the reading in force FOR that bar.
 
@@ -550,6 +622,10 @@ class RegimeInferenceSource:
         a session is not scored until a bar from the next one arrives.
         """
         session = timestamp.astimezone(_NY).date() if timestamp.tzinfo else timestamp.date()
+
+        if not self._history_loaded:
+            self._history_loaded = True
+            self._warm_from_history(session)
 
         if self._session is None:
             self._session = session

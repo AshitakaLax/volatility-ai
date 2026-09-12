@@ -130,6 +130,7 @@ class MLRegimeScaledSizing(_BaselineScaledStrategy):
         model_dir: str = "data/ml/models",
         external_dir: str | None = None,
         min_sessions: int = 60,
+        history_path: str | None = None,
         baseline_price: float | None = None,
         inverse_scale_kappa: float = 0.0,
     ) -> None:
@@ -255,6 +256,11 @@ class MLRegimeScaledSizing(_BaselineScaledStrategy):
             "model_dir": Path(model_dir),
             "external_dir": external_dir,
             "min_sessions": min_sessions,
+            # Bars from before the run, so the model is scored on the
+            # run's FIRST session rather than 60 sessions in. See
+            # RegimeInferenceSource.__init__ for the measurement that
+            # made this necessary rather than nice.
+            "history_path": history_path,
         }
         self._source: RegimeInferenceSource | None = None
         self._reading: RegimeReading = NO_READING

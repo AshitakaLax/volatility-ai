@@ -64,6 +64,12 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     # hf_local_reference. They are registered so they can BE measured;
     # see src/ml/regime_scaled_sizing.py's "UNMEASURED AS OF THIS
     # COMMIT" note before putting one in a `live:` config.
+    "ml_regime_tqqq": MLRegimeScaledSizing,
+    "ml_regime_qqq": MLRegimeScaledSizing,
+    "ml_regime_rsp": MLRegimeScaledSizing,
+    "ml_regime_soxl": MLRegimeScaledSizing,
+    "ml_regime_sqqq": MLRegimeScaledSizing,
+    "ml_regime_spyd": MLRegimeScaledSizing,
     "ml_regime_xbi": MLRegimeScaledSizing,
     "ml_regime_cowz": MLRegimeScaledSizing,
     "ml_regime_ursp": MLRegimeScaledSizing,

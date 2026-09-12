@@ -391,6 +391,8 @@ def test_reading_is_computed_from_completed_sessions_only(monkeypatch):
         self._high, self._low, self._close = -math.inf, math.inf, math.nan
         self._reading = __import__("src.ml.qlib_regime", fromlist=["NO_READING"]).NO_READING
         self._external = {}
+        self.history_path = None
+        self._history_loaded = True
 
     monkeypatch.setattr(RegimeInferenceSource, "__init__", _no_model)
     monkeypatch.setattr(

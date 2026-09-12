@@ -297,14 +297,114 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
         "regime_floor": 0.25,
         "vol_reference": 0.45,
     },
+    # TQQQ: -25% over 20 sessions, 24tr/5te episodes, held-out AUC 0.7255.
+    # Thresholds are p90/p50 of THIS model's own output (range
+    # 0.073-0.285); vol_reference is the fwdvol head's p75.
+    "ml_regime_tqqq": {
+        "max_trade_pct": 0.05,
+        "ticker": "TQQQ",
+        "history_path": "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv",
+        "crash_step_multiplier": 4.0,
+        "regime_enter_threshold": 0.1757,
+        "regime_exit_threshold": 0.0793,
+        "regime_floor": 0.25,
+        "vol_reference": 0.638,
+    },
+    # QQQ: -7% over 20 sessions, 52tr/14te episodes, held-out AUC 0.6748.
+    # Thresholds are p90/p50 of THIS model's own output (range
+    # 0.161-0.180); vol_reference is the fwdvol head's p75.
+    "ml_regime_qqq": {
+        "max_trade_pct": 0.05,
+        "ticker": "QQQ",
+        "history_path": "data/QQQ_1Min_sip_all_rth_2016-01-01_2026-09-05.csv",
+        "crash_step_multiplier": 4.0,
+        "regime_enter_threshold": 0.1742,
+        "regime_exit_threshold": 0.1610,
+        "regime_floor": 0.25,
+        "vol_reference": 0.218,
+    },
+    # RSP: -5% over 20 sessions, 46tr/10te episodes, held-out AUC 0.5369.
+    # Thresholds are p90/p50 of THIS model's own output (range
+    # 0.057-0.601); vol_reference is the fwdvol head's p75.
+    "ml_regime_rsp": {
+        "max_trade_pct": 0.05,
+        "ticker": "RSP",
+        "history_path": "data/RSP_1Min_sip_all_rthuniform_2016-01-01_2026-08-30.csv",
+        "crash_step_multiplier": 4.0,
+        "regime_enter_threshold": 0.4180,
+        "regime_exit_threshold": 0.2286,
+        "regime_floor": 0.25,
+        "vol_reference": 0.172,
+    },
+    # SOXL: -30% over 20 sessions, 43tr/17te episodes, held-out AUC 0.7559.
+    # Thresholds are p90/p50 of THIS model's own output (range
+    # 0.043-0.494); vol_reference is the fwdvol head's p75.
+    "ml_regime_soxl": {
+        "max_trade_pct": 0.05,
+        "ticker": "SOXL",
+        "history_path": "data/SOXL_1Min_sip_all_rth_2016-01-01_2026-09-03.csv",
+        "crash_step_multiplier": 4.0,
+        "regime_enter_threshold": 0.3310,
+        "regime_exit_threshold": 0.1656,
+        "regime_floor": 0.25,
+        "vol_reference": 1.262,
+    },
+    # SQQQ: -25% over 20 sessions, 41tr/8te episodes, held-out AUC 0.8521.
+    # Thresholds are p90/p50 of THIS model's own output (range
+    # 0.091-0.179); vol_reference is the fwdvol head's p75.
+    "ml_regime_sqqq": {
+        "max_trade_pct": 0.05,
+        "ticker": "SQQQ",
+        "history_path": "data/SQQQ_1Min_sip_all_ext_2016-01-01_2026-09-01.csv",
+        "crash_step_multiplier": 4.0,
+        "regime_enter_threshold": 0.1239,
+        "regime_exit_threshold": 0.0935,
+        "regime_floor": 0.25,
+        "vol_reference": 0.689,
+    },
+    # SPYD: -5% over 20 sessions, 53tr/5te episodes, held-out AUC 0.3797.
+    # Thresholds are p90/p50 of THIS model's own output (range
+    # 0.200-0.268); vol_reference is the fwdvol head's p75.
+    "ml_regime_spyd": {
+        "max_trade_pct": 0.05,
+        "ticker": "SPYD",
+        "history_path": "data/SPYD_1Min_sip_all_rth_2016-01-01_2026-09-06.csv",
+        "crash_step_multiplier": 4.0,
+        "regime_enter_threshold": 0.2476,
+        "regime_exit_threshold": 0.2248,
+        "regime_floor": 0.25,
+        "vol_reference": 0.182,
+    },
+    # COWZ IS THE ONE ENTRY HERE CALIBRATED AGAINST A REAL TRAINED
+    # MODEL rather than guessed. data/ml/models/COWZ_regime_crash.json,
+    # trained on 2016-12-19..2024-01-01 (1,768 sessions, 49 independent
+    # episodes) at -5% over 20 sessions, held-out AUC 0.5987 over 7 test
+    # episodes.
+    #
+    # The thresholds come straight off that model's score_quantiles and
+    # could not have been guessed: its entire output range is
+    # 0.106-0.114. enter = p90 (0.1090) latches the top decile;
+    # exit = p50 (0.1063) releases at the median.
+    #
+    # THIS ENTRY HAS NOW BEEN WRONG TWICE, BOTH TIMES CAUGHT BY
+    # _check_threshold_is_reachable RATHER THAN BY A BAD BACKTEST. First
+    # a guessed 0.30 against a p99 of 0.218; then 0.211 left stale when
+    # the label moved from -5% to -7% and the whole output range shifted
+    # to 0.106-0.114. Retraining a model INVALIDATES these two
+    # numbers -- they are properties of a specific artifact, not of the
+    # fund.
+    #
+    # vol_reference 0.30 is still a guess -- the fwdvol head's own
+    # output range should be read the same way before trusting it.
     "ml_regime_cowz": {
         "max_trade_pct": 0.05,
         "ticker": "COWZ",
+        "history_path": "data/COWZ_1Min_sip_all_rth_2016-01-01_2026-09-06.csv",
         "crash_step_multiplier": 4.0,
-        "regime_enter_threshold": 0.30,
-        "regime_exit_threshold": 0.20,
+        "regime_enter_threshold": 0.1090,
+        "regime_exit_threshold": 0.1063,
         "regime_floor": 0.25,
-        "vol_reference": 0.30,
+        "vol_reference": 0.181,
     },
     "ml_regime_ursp": {
         "max_trade_pct": 0.05,
@@ -411,7 +511,11 @@ _GRID_TRIGGER: dict[str, dict[str, Any]] = {
 # Locked (single-entry list), with no window_param: the widening is not
 # an operator choice, it is what the strategy IS, and there is no
 # rolling window to configure.
-for _regime_id in ("ml_regime_xbi", "ml_regime_cowz", "ml_regime_ursp"):
+# Derived from the registry rather than listed, so registering a new
+# ml_regime_* id cannot forget its trigger descriptor -- which is
+# exactly what happened when six funds were added at once and
+# tests/unit/test_backtest_grid_trigger.py's anti-rot check caught it.
+for _regime_id in (_i for _i in STRATEGIES if _i.startswith("ml_regime_")):
     _GRID_TRIGGER[_regime_id] = {
         "methods": ["regime_widened"],
         "default": "regime_widened",
