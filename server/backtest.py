@@ -46,7 +46,7 @@ import sys
 import types
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Union, get_args, get_origin, get_type_hints
+from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -57,6 +57,7 @@ from server.jobs import JobQueue
 from src.core.config import BacktestConfig, expand_strategy_params
 from src.core.exceptions import ConfigurationError
 from src.optimization.optimization_controller import OptimizationController
+from src.optimization.search_strategies import BayesianSearch
 from src.trading.strategy_registry import STRATEGIES, resolve_strategy
 from tools.export_ui_data import KNOWN_DATA, equity_series, executions, fund_metrics
 
@@ -152,6 +153,21 @@ MAX_SWEEP_COMBINATIONS = (
     else 2000
 )
 
+# THE BAYESIAN CEILING IS MUCH HIGHER, DELIBERATELY -- the entire reason
+# to submit search_strategy="bayesian" instead of "grid" is to search a
+# space larger than anyone wants to run in full; RunRequest.n_trials
+# (<= 500) is what actually bounds the ENGINE's work in that mode, the
+# same way config/search_cowz1_bayesian_dual_scale.yaml's own combination
+# count (well past a million) was never the CLI search path's limiting
+# factor. This ceiling exists for a narrower reason: build_config's own
+# combination-construction and expand_strategy_params still run
+# synchronously in the request handler, before any job is queued, and
+# an unbounded strategy_params_grid would make THAT expensive/slow to
+# reject even though nothing has been searched yet. 100x the grid
+# ceiling is generous headroom for real sweeps while still bounding a
+# single request's own bookkeeping cost.
+MAX_SWEEP_COMBINATIONS_BAYESIAN = MAX_SWEEP_COMBINATIONS * 100
+
 
 class RunRequest(BaseModel):
     """The shape of a submitted run. Semantics are BacktestConfig's."""
@@ -185,6 +201,40 @@ class RunRequest(BaseModel):
     # configuration gains nothing from a process pool and pays the cost
     # of pickling the frame to a worker.
     n_jobs: int | None = Field(default=None, ge=1, le=64)
+
+    # HOW THE COMBINATION SPACE IS EXPLORED, not how big it is -- that is
+    # still every enabled per-field "Sweep" checkbox (lib/sweepStrategies.ts
+    # on the frontend, expand_strategy_params on the engine). "grid"
+    # (default) enumerates every combination exhaustively, exactly
+    # today's behavior for every existing caller. "bayesian" samples
+    # n_trials of them via Optuna's TPE sampler
+    # (src/optimization/search_strategies.BayesianSearch) -- the same
+    # engine `cli.py search` already drives, now reachable from a
+    # submitted run instead of only a YAML config file.
+    search_strategy: Literal["grid", "bayesian"] = "grid"
+    # REQUIRED for "bayesian" (see build_config), meaningless for "grid".
+    # No default budget is offered on purpose: to_run_sweep_kwargs's
+    # plain-string dispatch would default an unset budget to the FULL
+    # combination count, which defeats the reason to choose Optuna over
+    # grid in the first place (cli.py search's own cmd_search makes the
+    # identical choice, for the identical reason). Bounded well under
+    # MAX_SWEEP_COMBINATIONS's spirit: this queue is a single-worker
+    # FIFO, and one submission should not be able to monopolize it for
+    # hours.
+    n_trials: int | None = Field(default=None, ge=2, le=500)
+    # The objective Optuna optimizes toward AND the column the final
+    # summary is sorted by -- one value serves both, so the ranked
+    # output always agrees with what was actually searched for. Also
+    # used to sort a plain "grid" sweep's summary, unchanged from
+    # before. Restricted to columns _simulate_single's own metrics dict
+    # actually carries (see optimization_controller.py) -- "Sharpe
+    # Ratio" is NOT one of these; it is computed later, only for display,
+    # and is not a valid target here.
+    rank_by: str = "Capital Velocity Index"
+    search_direction: Literal["maximize", "minimize"] = "maximize"
+    # Ignored for "grid" (nothing stochastic to seed). None -> a fresh
+    # exploration order each submission.
+    search_seed: int | None = None
 
 
 def window(
@@ -824,6 +874,12 @@ def build_config(request: RunRequest) -> BacktestConfig:
                 "fill_model": request.fill_model,
                 "enforce_no_loss": request.enforce_no_loss,
             },
+            "search": {
+                "strategy": request.search_strategy,
+                "rank_by": request.rank_by,
+                "direction": request.search_direction,
+                "seed": request.search_seed,
+            },
             # NO `live` SECTION, EVER. This process has no credentials and
             # no broker; accepting live settings from a browser would be
             # accepting them from anyone who can reach this port. The
@@ -832,6 +888,13 @@ def build_config(request: RunRequest) -> BacktestConfig:
     )
     config.validate()
     strategy_class = resolve_strategy(config.strategy.strategy_id)  # fails loudly on a typo
+
+    if request.search_strategy == "bayesian" and request.n_trials is None:
+        raise ConfigurationError(
+            "search_strategy='bayesian' requires n_trials -- the whole reason to choose "
+            "Optuna over an exhaustive grid is to search a space larger than you want to run "
+            "in full. Pick a trial budget (2-500)."
+        )
 
     # CONSTRUCT IT HERE, where the caller is still waiting. Left to the
     # worker, a missing argument surfaces as every combination erroring
@@ -885,12 +948,18 @@ def build_config(request: RunRequest) -> BacktestConfig:
     total_combinations = (
         len(config.grid.steps) * len(config.grid.profit_targets) * len(strategy_params_grid)
     )
-    if total_combinations > MAX_SWEEP_COMBINATIONS:
+    # Bayesian mode is bounded by n_trials, already validated above --
+    # the combination-space ceiling here exists for a different reason
+    # (see MAX_SWEEP_COMBINATIONS_BAYESIAN's own comment) and is
+    # correspondingly looser.
+    is_bayesian = request.search_strategy == "bayesian"
+    combination_ceiling = MAX_SWEEP_COMBINATIONS_BAYESIAN if is_bayesian else MAX_SWEEP_COMBINATIONS
+    if total_combinations > combination_ceiling:
         raise ConfigurationError(
             f"This sweep would run {total_combinations} combinations "
             f"({len(config.grid.steps)} grid steps x {len(config.grid.profit_targets)} profit "
             f"targets x {len(strategy_params_grid)} strategy-parameter combinations), which "
-            f"exceeds the {MAX_SWEEP_COMBINATIONS} limit for one submission. Narrow a swept "
+            f"exceeds the {combination_ceiling} limit for one submission. Narrow a swept "
             "range, or split this into more than one run."
         )
 
@@ -901,9 +970,18 @@ def build_config(request: RunRequest) -> BacktestConfig:
         # `instance` stays the first: enough for the ticker check below,
         # since `ticker` is locked (never sweepable) and so is identical
         # across every combination.
+        #
+        # BAYESIAN MODE ONLY VALIDATES THE FIRST COMBINATION. Optuna will
+        # construct at most n_trials (<= 500) of the space it actually
+        # samples, at engine run time, where a per-combination failure is
+        # already isolated and reported per-row -- validating every
+        # combination of a space that can run to MAX_SWEEP_COMBINATIONS_BAYESIAN
+        # here, synchronously, before the job even queues, would defeat
+        # the point of choosing Optuna to avoid touching the whole space.
         instance = strategy_class(**strategy_params_grid[0])
-        for combo in strategy_params_grid[1:]:
-            strategy_class(**combo)
+        if not is_bayesian:
+            for combo in strategy_params_grid[1:]:
+                strategy_class(**combo)
     except TypeError as exc:
         missing = [name for name in required_parameters(strategy_class) if name not in params]
         detail = f"{config.strategy.strategy_id!r} cannot be built from the parameters given: {exc}"
@@ -947,6 +1025,16 @@ def build_config(request: RunRequest) -> BacktestConfig:
                 "execution": {
                     "fill_model": config.execution.fill_model,
                     "enforce_no_loss": config.execution.enforce_no_loss,
+                },
+                # Carried through explicitly -- from_dict defaults an
+                # absent "search" key to plain grid, which would
+                # silently downgrade a bayesian request the instant
+                # target_return alignment (above) triggers this rebuild.
+                "search": {
+                    "strategy": config.search.strategy,
+                    "rank_by": config.search.rank_by,
+                    "direction": config.search.direction,
+                    "seed": config.search.seed,
                 },
             }
         )
@@ -1021,6 +1109,32 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
         kwargs["symbol"] = ticker
         jobs = choose_jobs(len(frame), combinations, parsed.n_jobs)
         kwargs["n_jobs"] = jobs
+
+        # kwargs["search_strategy"] is still the bare string "bayesian"
+        # at this point -- to_run_sweep_kwargs has no n_trials field to
+        # put on it (BacktestConfig/SearchConfig has none; it is a
+        # REQUEST-only concept, the web equivalent of cli.py search's
+        # own --trials flag, not a YAML config field). Passed as a
+        # string, _resolve_search_strategy would default the budget to
+        # the FULL combination count -- see BayesianSearch's own
+        # docstring on exactly this trap. Replaced here, per ticker,
+        # with a real pre-configured instance carrying parsed.n_trials;
+        # everything else it needs (grid_steps/profit_targets/
+        # strategy_params_grid/rank_by/direction/seed) is already in
+        # kwargs from to_run_sweep_kwargs, read back rather than
+        # recomputed. One fresh BayesianSearch per ticker, matching how
+        # a plain grid sweep already runs the identical combination
+        # space once per ticker in this same loop.
+        if kwargs["search_strategy"] == "bayesian":
+            kwargs["search_strategy"] = BayesianSearch(
+                kwargs["grid_steps"],
+                kwargs["profit_targets"],
+                kwargs["strategy_params_grid"],
+                rank_by=kwargs["rank_by"],
+                direction=kwargs["search_direction"],
+                n_trials=parsed.n_trials,
+                seed=kwargs["search_seed"],
+            )
 
         def on_combination(
             done: int, of: int, _base: int = finished_units, _t: str = ticker

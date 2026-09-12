@@ -4,12 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { GridStepPanel } from "@/components/backtest/GridStepPanel";
 import { OptionsSweepField } from "@/components/backtest/OptionsSweepField";
 import { ParamField } from "@/components/backtest/ParamField";
+import { SearchMethodPanel } from "@/components/backtest/SearchMethodPanel";
 import { SweepableParamField } from "@/components/backtest/SweepableParamField";
 import { SweepControls } from "@/components/backtest/SweepControls";
 import { api, type FundAvailability } from "@/lib/api";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Field, Input, Select } from "@/components/ui/primitives";
 import { buildGridSteps } from "@/lib/gridSteps";
 import { GENERIC_GRID_TRIGGER, initialTriggerMethod } from "@/lib/gridTrigger";
+import { DEFAULT_SEARCH_METHOD_STATE, searchMethodErrors, type SearchMethodState } from "@/lib/searchMethod";
 import { DEFAULT_SWEEP_FIELD_STATE, type SweepFieldState } from "@/lib/sweepStrategies";
 import {
   blankRequired,
@@ -36,6 +38,13 @@ import type {
 // Mirrors server/backtest.py's MAX_SWEEP_COMBINATIONS default -- catches
 // an oversized sweep client-side, before the round trip to a 400.
 const MAX_SWEEP_COMBINATIONS = 2000;
+// Mirrors server/backtest.py's MAX_SWEEP_COMBINATIONS_BAYESIAN -- a
+// bayesian search is bounded by its OWN trial budget (searchMethodErrors
+// already enforces that), not by the size of the space it samples from,
+// so the client-side ceiling has to relax the identical amount the
+// server's does or a legitimate large bayesian sweep would be blocked
+// here before ever reaching the server that would have accepted it.
+const MAX_SWEEP_COMBINATIONS_BAYESIAN = MAX_SWEEP_COMBINATIONS * 100;
 
 /**
  * The bidirectional half: submit a run and watch it.
@@ -101,6 +110,11 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   const [optionSweepFields, setOptionSweepFields] = useState<Record<string, OptionsSweepFieldState>>(
     {},
   );
+  // How the combination space above is walked -- grid (exhaustive, the
+  // default) or bayesian (Optuna, a trial budget). Orthogonal to which
+  // model is selected, so unlike sweepFields/optionSweepFields this is
+  // NOT reset on a model change.
+  const [searchMethod, setSearchMethod] = useState<SearchMethodState>(DEFAULT_SEARCH_METHOD_STATE);
   // The grid-step trigger method, used only when the model offers a choice.
   const [triggerMethod, setTriggerMethod] = useState<GridTriggerMethod>("last_buy");
   const [profitTarget, setProfitTarget] = useState(0.5);
@@ -183,11 +197,13 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
         .map((entry) => buildOptionsSweep(entry, optionSweepFields[entry.name]!)),
     [specs, optionSweepFields],
   );
+  const searchMethodValidationErrors = searchMethodErrors(searchMethod);
   const sweepErrors = [
     ...gridSteps.errors,
     ...profitSteps.errors,
     ...paramSweepResults.flatMap((result) => result.errors),
     ...optionSweepResults.flatMap((result) => result.errors),
+    ...searchMethodValidationErrors,
   ];
   // 1 for a param with no valid sweep yet -- the combinations estimate
   // stays a lower bound rather than momentarily reading 0.
@@ -196,6 +212,12 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     Math.max(1, profitSteps.steps.length) *
     paramSweepResults.reduce((product, result) => product * Math.max(1, result.values.length), 1) *
     optionSweepResults.reduce((product, result) => product * Math.max(1, result.values.length), 1);
+  // A bayesian search is bounded by its own trial budget, not by the
+  // size of the space it samples from -- see MAX_SWEEP_COMBINATIONS_BAYESIAN's
+  // own comment. The grid ceiling still applies in "grid" mode exactly
+  // as before this feature existed.
+  const combinationCeiling =
+    searchMethod.strategy === "bayesian" ? MAX_SWEEP_COMBINATIONS_BAYESIAN : MAX_SWEEP_COMBINATIONS;
 
   useEffect(() => {
     api
@@ -316,6 +338,18 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     limit,
     ...(range.start ? { start: range.start } : {}),
     ...(range.end ? { end: range.end } : {}),
+    // Omitted entirely for "grid" (the default) -- a grid submission's
+    // wire payload stays byte-identical to before this feature existed,
+    // same discipline as every other optional field above.
+    ...(searchMethod.strategy === "bayesian"
+      ? {
+          search_strategy: "bayesian" as const,
+          n_trials: Number(searchMethod.nTrials),
+          rank_by: searchMethod.rankBy,
+          search_direction: searchMethod.direction,
+          ...(searchMethod.seed.trim() !== "" ? { search_seed: Number(searchMethod.seed) } : {}),
+        }
+      : {}),
   });
 
   // Debounced pre-flight: the same build_config the submit path runs,
@@ -326,6 +360,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   const profitStepsKey = JSON.stringify(profitSteps.steps);
   const sweepFieldsKey = JSON.stringify(sweepFields);
   const optionSweepFieldsKey = JSON.stringify(optionSweepFields);
+  const searchMethodKey = JSON.stringify(searchMethod);
   useEffect(() => {
     const request = buildRequest();
     const seq = ++validateSeq.current;
@@ -361,6 +396,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     profitStepsKey,
     sweepFieldsKey,
     optionSweepFieldsKey,
+    searchMethodKey,
   ]);
 
   const setParam = (paramName: string, value: string) =>
@@ -631,6 +667,14 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
           </Select>
         </Field>
 
+        <SearchMethodPanel
+          state={searchMethod}
+          onChange={setSearchMethod}
+          totalCombinations={totalCombinations}
+          errors={searchMethodValidationErrors}
+          disabled={busy}
+        />
+
         <Button
           data-testid="run"
           onClick={submit}
@@ -640,7 +684,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
             blanks.length > 0 ||
             validation?.ok === false ||
             sweepErrors.length > 0 ||
-            totalCombinations > MAX_SWEEP_COMBINATIONS ||
+            totalCombinations > combinationCeiling ||
             (method === "local_reference" &&
               windowParam !== null &&
               ((paramValues[windowParam] ?? "").trim() === "" ||
@@ -707,15 +751,17 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
           {totalCombinations > 1 ? (
             <p
               className={
-                totalCombinations > MAX_SWEEP_COMBINATIONS
+                totalCombinations > combinationCeiling
                   ? "text-[11px] leading-tight text-loss"
                   : "text-[11px] leading-tight text-muted-foreground"
               }
             >
               {totalCombinations} configurations across every enabled sweep
-              {totalCombinations > MAX_SWEEP_COMBINATIONS
-                ? ` — exceeds the ${MAX_SWEEP_COMBINATIONS} limit for one submission; narrow a swept range.`
-                : "."}
+              {totalCombinations > combinationCeiling
+                ? ` — exceeds the ${combinationCeiling} limit for one submission; narrow a swept range.`
+                : searchMethod.strategy === "bayesian"
+                  ? ` — Optuna will sample ${searchMethod.nTrials || "the requested"} of them.`
+                  : "."}
             </p>
           ) : null}
 

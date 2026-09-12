@@ -371,6 +371,29 @@ export interface BacktestRunRequest {
   end?: string;
   /** Cap on bars fed to the engine. A full file is a million rows. */
   limit?: number;
+  /** How the combination space (every enabled per-field Sweep checkbox
+   * cross-producted with grid_steps/profit_targets) is EXPLORED, not
+   * how big it is. "grid" (default, omit to get it) enumerates every
+   * combination exhaustively. "bayesian" samples n_trials of them via
+   * Optuna's TPE sampler -- the same engine `cli.py search` already
+   * drives from a YAML config, now reachable from a submitted run. */
+  search_strategy?: "grid" | "bayesian";
+  /** REQUIRED when search_strategy is "bayesian" -- the server rejects
+   * a bayesian request without one rather than defaulting to the full
+   * combination count, which would defeat the reason to choose Optuna
+   * over grid at all. Meaningless (and ignored) for "grid". */
+  n_trials?: number;
+  /** The objective Optuna optimizes toward AND the column the returned
+   * `configurations` are sorted by -- one value serves both. Also sorts
+   * a plain grid sweep's summary, unchanged from before. Restricted to
+   * columns the engine's per-combination metrics actually carry --
+   * "Sharpe Ratio" is computed only for DISPLAY and is not a valid
+   * target here. */
+  rank_by?: string;
+  search_direction?: "maximize" | "minimize";
+  /** Ignored for "grid" (nothing stochastic to seed). Omit for a fresh
+   * exploration order each submission. */
+  search_seed?: number;
 }
 
 /** One OHLC bar from /api/backtest/bars, already downsampled. */

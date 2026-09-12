@@ -1505,3 +1505,178 @@ class TestBacktestExecution:
                 },
                 lambda fraction, note: None,
             )
+
+
+class TestBayesianSearch:
+    """search_strategy="bayesian": the web equivalent of cli.py search's
+    own --trials flag, reachable from a submitted run instead of only a
+    YAML config file. See RunRequest's own field comments for why
+    n_trials is required rather than defaulted, and
+    MAX_SWEEP_COMBINATIONS_BAYESIAN's comment for why the ceiling differs
+    from a plain grid sweep's."""
+
+    @pytest.fixture
+    def known_data(self, tmp_path):
+        """Points KNOWN_DATA at the tiny regression fixture for the
+        duration of one test, the same substitution
+        TestBacktestExecution's own tests perform inline -- pulled into
+        a fixture here since every test below needs it."""
+        frame = pd.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        csv = tmp_path / "TESTQ.csv"
+        frame.to_csv(csv)
+
+        from server import backtest as module
+
+        original = dict(module.KNOWN_DATA)
+        module.KNOWN_DATA.clear()
+        module.KNOWN_DATA["TESTQ"] = str(csv)
+        try:
+            yield "TESTQ"
+        finally:
+            module.KNOWN_DATA.clear()
+            module.KNOWN_DATA.update(original)
+
+    def test_n_trials_is_required_for_bayesian(self, client):
+        response = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+                "search_strategy": "bayesian",
+            },
+        )
+        body = response.json()
+        assert response.status_code == 200  # errors are the payload, see TestValidateEndpoint
+        assert body["ok"] is False
+        assert "n_trials" in body["errors"][0]["message"]
+
+    def test_n_trials_is_accepted_and_ignored_for_a_plain_grid_request(self, client):
+        """Setting a trial budget while search_strategy is still "grid"
+        (its default) must not be an error -- the field is meaningless
+        there, not invalid there."""
+        response = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+                "n_trials": 10,
+            },
+        )
+        assert response.json()["ok"] is True
+
+    def test_bayesian_samples_exactly_n_trials_not_the_full_combination_space(self, known_data):
+        """The regression this class exists for: a plain string
+        search_strategy="bayesian" (passed straight through
+        to_run_sweep_kwargs with no n_trials attached) would default
+        Optuna's budget to the FULL combination count -- see
+        BayesianSearch's own docstring. run_backtest must replace it
+        with a real pre-configured instance carrying the request's
+        n_trials before run_sweep ever sees it."""
+        from server.backtest import run_backtest
+
+        report = run_backtest(
+            {
+                "tickers": [known_data],
+                "grid_steps": [0.01, 0.02, 0.03],
+                "profit_targets": [0.003, 0.005],
+                "sizing_model": "fixed",
+                "strategy_params": {"allocation_pct": [0.03, 0.05, 0.08, 0.10]},
+                # 3 steps x 2 targets x 4 allocation_pct values = 24
+                # combinations; a plain grid would run all 24.
+                "search_strategy": "bayesian",
+                "n_trials": 5,
+                "rank_by": "Total Return %",
+                "n_jobs": 1,
+                "limit": 5000,
+            },
+            lambda fraction, note: None,
+        )
+        configurations = report["funds"][known_data]["configurations"]
+        assert len(configurations) == 5, (
+            f"expected exactly the requested 5 trials, got {len(configurations)} -- a bayesian "
+            "request silently ran the full 24-combination grid"
+        )
+
+    def test_target_return_alignment_does_not_downgrade_a_bayesian_search_to_grid(self, known_data):
+        """THE bug this class exists to guard against. build_config
+        rebuilds `config` via a second BacktestConfig.from_dict(...) once
+        target_return alignment changes `params` -- bayesian_dual_scale's
+        single profit_target always triggers this. That rebuild dict
+        must carry the search section through explicitly; from_dict
+        defaults an absent one to plain grid, which would silently run
+        every combination despite a small n_trials having been
+        requested. Asserted the same way as the test above: by the
+        actual number of configurations a real run produces, not by
+        inspecting config internals that could pass while the real
+        behavior still regresses."""
+        from server.backtest import run_backtest
+
+        report = run_backtest(
+            {
+                "tickers": [known_data],
+                "grid_steps": [0.01, 0.02],
+                # ONE profit target -- required for bayesian_dual_scale,
+                # and exactly what makes build_config align target_return
+                # and rebuild `config` with the params dict.
+                "profit_targets": [0.005],
+                "sizing_model": "bayesian_dual_scale",
+                "strategy_params": {
+                    "max_trade_pct": [0.03, 0.05, 0.08],
+                    "bars_per_day": 387,
+                    "horizon_days": [0.25, 1.0],
+                },
+                # 2 steps x 1 target x 3 max_trade_pct x 2 horizon_days
+                # = 12 combinations; a downgraded-to-grid run would run
+                # all 12.
+                "search_strategy": "bayesian",
+                "n_trials": 4,
+                "n_jobs": 1,
+                "limit": 5000,
+            },
+            lambda fraction, note: None,
+        )
+        configurations = report["funds"][known_data]["configurations"]
+        assert len(configurations) == 4, (
+            f"expected exactly the requested 4 trials, got {len(configurations)} -- "
+            "target_return alignment's config rebuild silently dropped the bayesian search "
+            "and ran the full grid instead"
+        )
+
+    def test_bayesian_relaxes_the_combination_ceiling_grid_does_not(self, client):
+        """Same combination count (2100, past MAX_SWEEP_COMBINATIONS'
+        2000), two outcomes: grid must still refuse it -- that ceiling
+        exists independently of search mode -- bayesian with a small
+        trial budget must not, since MAX_SWEEP_COMBINATIONS_BAYESIAN is
+        the ceiling that actually governs it."""
+        big_sweep = [round(0.01 + i * 0.0001, 6) for i in range(2100)]
+
+        grid = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+                "strategy_params": {"allocation_pct": big_sweep},
+            },
+        ).json()
+        assert grid["ok"] is False
+        assert "2000" in grid["errors"][0]["message"]
+
+        bayesian = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+                "strategy_params": {"allocation_pct": big_sweep},
+                "search_strategy": "bayesian",
+                "n_trials": 5,
+            },
+        ).json()
+        assert bayesian["ok"] is True, bayesian["errors"]
