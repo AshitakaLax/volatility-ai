@@ -1,5 +1,43 @@
 # Changelog
 
+## Grouped sweep progress + follow-on queuing (web UI + backtest API)
+
+The Backtesting page's "Active runs" showed every queued/running job as a
+bare row with no sense of what it actually covers or how many other
+sweeps were waiting behind it -- and pressing Run while a previous sweep
+was still processing was blocked outright, even though the backend
+already queues a second submission correctly (`server/jobs.py`'s
+`JobQueue` is a real single-worker FIFO). Both gaps are closed:
+
+- `Job.snapshot()` (`server/jobs.py`) now echoes the submitted request
+  back (`"request": self.request`) -- a pure echo of what the browser
+  itself POSTed, nothing new exposed -- so a QUEUED or RUNNING job can be
+  described (tickers, grid, strategy params) before it has a report.
+- `lib/requestSummary.ts` (new): `expandStrategyParams()` is a TS port of
+  `src/core/config.py`'s own function, so a frontend-computed simulation
+  count (`grid_steps × profit_targets × strategy-param combos × tickers`)
+  matches the engine's exactly; `describeSweepAxes()`'s sibling
+  `describeRequestAxes()` answers the same "what varies" question from a
+  submitted request instead of a completed report.
+- `lib/runQueue.ts` (new): `queuePositions()` computes each queued job's
+  1-indexed position purely client-side, safe because the single-worker
+  FIFO guarantees at most one job is ever running and every other
+  non-terminal job is strictly queued in submission order.
+- `ActiveRuns.tsx`: each row now shows its own simulation count, swept
+  axes, and (when queued) "next up" / "position N of M" instead of a
+  bare pulsing bar -- one job already is one sweep, so "grouping by
+  sweep" means describing what one job covers, not merging jobs together.
+- `ParameterForm.tsx`: the Run button/form no longer disables itself
+  because a *previously submitted* run is still processing -- only the
+  POST itself gates it now, so a follow-on sweep actually queues instead
+  of being blocked. A non-gating hint explains this when it applies.
+
+`App.tsx`'s single tracked `run` (and the "jump to result" banner keyed
+on it) is left as-is on purpose -- `ActiveRuns` is now the authoritative
+multi-job view; rewriting `App.tsx` into full multi-run tracking would be
+the same scope this feature's own aggregate-progress (not
+per-simulation) decision already ruled out one level down.
+
 ## Run History gains a Timestamp column (web UI)
 
 `HistoryRow.saved_at` (epoch seconds, from the archived report file's

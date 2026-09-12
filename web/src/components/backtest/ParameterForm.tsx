@@ -257,7 +257,13 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
         : [...current, ticker],
     );
 
-  const busy = submitting || run?.status === "queued" || run?.status === "running";
+  // Only the POST itself gates the form -- a PREVIOUSLY submitted run
+  // still processing does not. The server already queues a follow-on
+  // sweep correctly (server/jobs.py's JobQueue is a real FIFO); this is
+  // what actually lets a reader submit one instead of being blocked
+  // until the first sweep finishes.
+  const busy = submitting;
+  const priorRunActive = run?.status === "queued" || run?.status === "running";
 
   const buildRequest = (): BacktestRunRequest => ({
     ...(name.trim() ? { name: name.trim() } : {}),
@@ -587,6 +593,15 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
           {busy ? "Running…" : "Run"}
         </Button>
       </CardContent>
+
+      {priorRunActive ? (
+        <CardContent className="pt-0">
+          <p className="text-xs text-muted-foreground">
+            A previous sweep is still processing — this one will queue behind it. See Active
+            runs below for the queue.
+          </p>
+        </CardContent>
+      ) : null}
 
       {specs.length > 0 ? (
         <CardContent className="flex flex-col gap-3 pt-0">

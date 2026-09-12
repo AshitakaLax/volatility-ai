@@ -405,6 +405,24 @@ export interface BacktestRunState {
   message: string | null;
   report: MultiFundBacktestReport | null;
   error: string | null;
+  /**
+   * The submitted request, echoed back on the job snapshot -- present
+   * for a QUEUED or RUNNING job too, not just a completed one, so a
+   * client can describe what a sweep covers (tickers, grid, strategy
+   * params) before it has a report to read that from. Optional only
+   * for a server predating this field. A narrow shape: only what
+   * ActiveRuns/requestSummary.ts actually read, not every RunRequest
+   * field (start/end/limit/n_jobs/enforce_no_loss are on the wire too,
+   * just not carried through this type).
+   */
+  request?: {
+    tickers: string[];
+    grid_steps: number[];
+    profit_targets: number[];
+    sizing_model: string;
+    strategy_params?: Record<string, ParamValue | ParamValue[]>;
+    fill_model?: string;
+  };
 }
 
 /* ------------------------------------------------------------------ */

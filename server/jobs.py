@@ -80,6 +80,12 @@ class Job:
             "report": self.result,
             "error": self.error,
             "revision": self.revision,
+            # The submitted request, echoed back verbatim -- exactly what
+            # the browser itself just POSTed, nothing new exposed. Lets a
+            # client describe a QUEUED or RUNNING job's shape (tickers,
+            # grid, strategy params) before it has a report to read that
+            # from.
+            "request": self.request,
         }
 
 

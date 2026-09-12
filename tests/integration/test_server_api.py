@@ -272,6 +272,26 @@ class TestBacktestSubmission:
         # Trimmed on the way in: "   x   " helps nobody in the running list.
         assert body["name"] == "rsi oversold sweep"
 
+    def test_the_submitted_request_rides_the_snapshot(self, client):
+        """A queued or running job carries its own submitted shape --
+        tickers/grid/strategy_params -- so a client can describe what a
+        sweep covers (e.g. how many simulations it is) before it has a
+        report to read that from."""
+        body = client.post(
+            "/api/backtest/runs",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01, 0.02],
+                "profit_targets": [0.005],
+                "sizing_model": "fixed",
+                "strategy_params": {"allocation_pct": 0.05},
+                "limit": 500,
+            },
+        ).json()
+        assert body["request"]["tickers"] == ["TQQQ"]
+        assert body["request"]["grid_steps"] == [0.01, 0.02]
+        assert body["request"]["strategy_params"] == {"allocation_pct": 0.05}
+
     def test_a_whitespace_only_name_is_treated_as_unnamed(self, client):
         body = client.post(
             "/api/backtest/runs",

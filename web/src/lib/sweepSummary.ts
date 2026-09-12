@@ -60,7 +60,10 @@ export interface SweepSummary {
   axes: SweepAxis[];
 }
 
-function distinct<T extends ParamValue>(values: T[]): T[] {
+/** Exported so lib/requestSummary.ts (the SUBMITTED-request counterpart
+ * to this file's completed-report one) can reuse it rather than
+ * redefine it -- both answer "what varied," just from different shapes. */
+export function distinct<T extends ParamValue>(values: T[]): T[] {
   const seen: T[] = [];
   for (const value of values) {
     if (!seen.includes(value)) seen.push(value);
@@ -68,7 +71,8 @@ function distinct<T extends ParamValue>(values: T[]): T[] {
   return seen;
 }
 
-function sortValues(values: ParamValue[]): ParamValue[] {
+/** Exported for the same reason as `distinct` above. */
+export function sortValues(values: ParamValue[]): ParamValue[] {
   if (values.every((value) => typeof value === "number")) {
     return [...(values as number[])].sort((a, b) => a - b);
   }
