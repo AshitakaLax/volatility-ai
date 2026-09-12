@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from src.core.exceptions import ConfigurationError
+from src.core.ledger import Lot
 from src.ml.qlib_regime import NO_READING, DailyRegimeFeatures, RegimeInferenceSource
 from src.ml.regime_scaled_sizing import MLRegimeScaledSizing
 from src.strategies.market_context import MarketContext
@@ -269,12 +270,94 @@ def test_no_multiplier_combination_exceeds_the_ceiling(strategy):
 # --- the exits it must NOT have --------------------------------------
 
 
-def test_cannot_move_a_target_or_liquidate(strategy):
-    """This strategy proposes buys only. Both selling hooks must stay at
-    SizingStrategy's defaults, or it could realize a loss."""
+def test_cannot_liquidate(strategy):
+    """Nothing in this strategy can close a lot outright, with or
+    without trail_pct -- lots_to_liquidate must stay at SizingStrategy's
+    default, or it could realize a loss on demand."""
     sizing = strategy()
-    assert sizing.adjust_profit_target(object(), context()) is None
     assert sizing.lots_to_liquidate([object(), object()], context()) == []
+
+
+def test_default_cannot_move_a_target_either(strategy):
+    """trail_pct unset (the default) is a full no-op on the exit side,
+    matching every other strategy here that has never touched it."""
+    sizing = strategy()
+    assert sizing.wants_lot_retargeting() is False
+    assert sizing.adjust_profit_target(object(), context()) is None
+
+
+# --- the exit side: trail_pct ------------------------------------------
+
+
+def make_lot(buy_price: float, profit_target: float) -> Lot:
+    return Lot(
+        order_id="o1", symbol="XBI", buy_price=buy_price, shares=1.0, profit_target=profit_target
+    )
+
+
+def test_wants_lot_retargeting_tracks_trail_pct(strategy):
+    assert strategy().wants_lot_retargeting() is False
+    assert strategy(trail_pct=0.05).wants_lot_retargeting() is True
+
+
+def test_no_target_change_while_not_in_crash(strategy):
+    sizing = strategy(trail_pct=0.05, regime_enter_threshold=0.65, regime_exit_threshold=0.45)
+    sizing.record_tick(context(score=0.10))  # calm
+    lot = make_lot(buy_price=90.0, profit_target=0.50)  # target = 135.0
+    assert sizing.adjust_profit_target(lot, context(price=110.0, score=0.10)) is None
+
+
+def test_peak_is_tracked_through_the_calm_period_before_a_crash(strategy):
+    """The correctness property the docstring calls out explicitly:
+    propose() must run every bar (to keep the peak current) even while
+    _in_crash is false, or a lot's gains from BEFORE the crash started
+    are silently discarded and the eventual trim is deeper than the
+    lot's real high-water mark justifies.
+
+    Sequence: calm at 100, calm at 110 (a new peak), then the latch
+    fires at 108. If the peak were only tracked while in-crash, it would
+    seed from buy_price and observe only 108 -- trailing from 108 gives
+    108*0.95=102.6. Tracking through the calm period trails from the
+    TRUE peak of 110 -- 110*0.95=104.5. The two are different enough
+    (104.5 vs 102.6) that a regression collapsing them is caught here,
+    not just "some value came back".
+    """
+    sizing = strategy(trail_pct=0.05, regime_enter_threshold=0.65, regime_exit_threshold=0.45)
+    lot = make_lot(buy_price=90.0, profit_target=0.50)  # target = 135.0
+
+    sizing.record_tick(context(score=0.10))
+    assert sizing.adjust_profit_target(lot, context(price=100.0, score=0.10)) is None
+
+    sizing.record_tick(context(score=0.10))
+    assert sizing.adjust_profit_target(lot, context(price=110.0, score=0.10)) is None  # new peak
+
+    sizing.record_tick(context(score=0.95))  # latch fires
+    assert sizing._in_crash
+    proposed = sizing.adjust_profit_target(lot, context(price=108.0, score=0.95))
+    assert proposed == pytest.approx(104.5 / 90.0 - 1.0)
+
+
+def test_never_raises_the_target_even_while_latched(strategy):
+    """TrailingTargetPolicy's own ratchet-down-only guard, exercised
+    through this strategy: a peak below the floor must return None, not
+    a value above the lot's current target."""
+    sizing = strategy(trail_pct=0.05, regime_enter_threshold=0.65, regime_exit_threshold=0.45)
+    lot = make_lot(buy_price=90.0, profit_target=0.50)  # target = 135.0
+    sizing.record_tick(context(score=0.95))
+    # Peak never exceeded buy_price by enough to clear the floor.
+    assert sizing.adjust_profit_target(lot, context(price=90.5, score=0.95)) is None
+
+
+def test_retain_lots_delegates_to_the_trailing_policy(strategy):
+    sizing = strategy(trail_pct=0.05)
+    calls = []
+    sizing._trailing.retain_lots = lambda ids: calls.append(ids)
+    sizing.retain_lots({"a", "b"})
+    assert calls == [{"a", "b"}]
+
+
+def test_retain_lots_is_a_safe_no_op_without_trail_pct(strategy):
+    strategy().retain_lots({"a", "b"})  # must not raise
 
 
 # --- configuration guards --------------------------------------------

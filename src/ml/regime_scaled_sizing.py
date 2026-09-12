@@ -72,19 +72,39 @@ from score to step width, which would be inventing precision the
 evidence has not earned.
 
 --------------------------------------------------------------------
-NOTHING HERE CAN SELL
+THE EXIT SIDE: THE SAME SIGNAL BANKS PROFIT EARLY, NEVER LATER
 
-adjust_profit_target and lots_to_liquidate are NOT overridden, so they
-keep SizingStrategy's defaults (None for every lot, empty for every
-bar). This class cannot move an exit, cannot close a position, and
-cannot realize a loss -- the no-loss guard is not even reached by
-anything it does. Every effect it has runs through two methods that
-only ever propose a BUY: _grid_trigger_level and calculate_trade_value.
+lots_to_liquidate is NOT overridden -- this class still cannot close a
+position outright or realize a loss on demand. A regime model good
+enough to size entries is not thereby good enough to liquidate a book,
+and src/trading/decision_cycle.collect_liquidations already gates
+signal exits behind a separate config flag for that reason.
 
-That is deliberate and worth keeping. A regime model good enough to
-size entries is not thereby good enough to liquidate a book, and
-src/trading/decision_cycle.collect_liquidations already gates signal
-exits behind a separate config flag for that reason.
+adjust_profit_target IS overridden now, opt-in via trail_pct (None by
+default, matching this class's own inverse_scale_kappa/drawdown_response
+convention: unset means exactly today's behavior). When set, it composes
+src/optimization/trailing_target.TrailingTargetPolicy -- battle-tested
+ratchet-down mechanics, not reimplemented here a third time -- and gates
+it on the SAME self._in_crash latch that widens the entry grid, so no
+new threshold or tuning surface is added: one model, symmetric behavior
+on both sides of a trade. While _in_crash is true, each lot's target
+trails its own peak by trail_pct, same as HighFrequencyLocalReferenceSizing's
+own trailing; while false, the peak is still tracked (so a lot's true
+high-water mark survives across a crash's start) but no target change is
+returned.
+
+THIS ADDS NO WAY TO RAISE A TARGET OR STRAND A LOT. TrailingTargetPolicy
+enforces ratchet-down-only by construction -- propose() returns None or
+a value strictly below the current target, never above -- and the
+no-loss guard remains the sole authority on whether a sell is allowed at
+all, reading buy_price independently of anything this proposes. The
+failure mode a preemptive-exit model COULD have (locking in a needlessly
+small gain right before the crash that never comes) is accepted
+deliberately: it costs foregone upside, the same asymmetry every other
+model-driven decision in this class already accepts, never a loss.
+
+UNMEASURED LIKE THE REST OF THIS CLASS'S EXTENSIONS. No sweep has run
+with trail_pct set; it is off by default and stays off until one has.
 
 --------------------------------------------------------------------
 MEASURED ON TWO FUNDS, NOT YET HELD TO THE BAR
@@ -125,6 +145,7 @@ from pathlib import Path
 
 from src.core.exceptions import ConfigurationError
 from src.ml.qlib_regime import NO_READING, RegimeInferenceSource, RegimeReading
+from src.optimization.trailing_target import TrailingTargetPolicy
 from src.strategies.market_context import MarketContext
 from src.strategies.size_calculators import _BaselineScaledStrategy
 from src.strategies.sizing_indicators import clamp
@@ -150,6 +171,8 @@ class MLRegimeScaledSizing(_BaselineScaledStrategy):
         external_dir: str | None = None,
         min_sessions: int = 60,
         history_path: str | None = None,
+        trail_pct: float | None = None,
+        trail_min_profit_target: float = 0.001,
         baseline_price: float | None = None,
         inverse_scale_kappa: float = 0.0,
     ) -> None:
@@ -211,6 +234,22 @@ class MLRegimeScaledSizing(_BaselineScaledStrategy):
             under its trailing 250-day 75th percentile), which is why
             the vol term is graded where the step response is binary --
             the underlying evidence is stronger.
+
+        trail_pct -- the exit side. None (the default) leaves every
+            lot's target exactly as fixed at entry, matching every other
+            strategy's default behavior. Set it and, ONLY while
+            self._in_crash (the SAME latch that widens the entry grid --
+            no separate threshold to tune), each open lot's target
+            trails its own peak price by trail_pct, via
+            src/optimization/trailing_target.TrailingTargetPolicy. See
+            the module docstring's "THE EXIT SIDE" section for why this
+            cannot raise a target or strand a lot.
+
+        trail_min_profit_target -- the floor TrailingTargetPolicy will
+            not trail below, in the same units as profit_target. Only
+            meaningful once trail_pct is set; see that class's own
+            docstring on why this is a policy floor, not a safety one --
+            the no-loss guard is what actually prevents a loss.
         """
         super().__init__(max_trade_pct, baseline_price, inverse_scale_kappa)
 
@@ -250,6 +289,18 @@ class MLRegimeScaledSizing(_BaselineScaledStrategy):
         self.drawdown_response = drawdown_response
         self.vol_reference = vol_reference
         self.vol_floor = vol_floor
+
+        # None (the default) leaves exits exactly as they were: fixed at
+        # entry from grid.profit_targets, same as every other strategy
+        # here that has never touched this. See adjust_profit_target and
+        # the module docstring's "THE EXIT SIDE" section.
+        self.trail_pct = trail_pct
+        self.trail_min_profit_target = trail_min_profit_target
+        self._trailing = (
+            TrailingTargetPolicy(trail_pct, min_profit_target=trail_min_profit_target)
+            if trail_pct is not None
+            else None
+        )
 
         # THE MODEL IS LOADED LAZILY, AND THAT IS A DEPARTURE FROM
         # MLReachabilitySizing, WHICH LOADS IN ITS CONSTRUCTOR.
@@ -518,6 +569,55 @@ class MLRegimeScaledSizing(_BaselineScaledStrategy):
         return clamp(combined, 0.0, 1.0)
 
     # ---------------------------------------------------------------
+    # The exit side
+    # ---------------------------------------------------------------
+
+    def wants_lot_retargeting(self) -> bool:
+        """False when trail_pct is unset, so decision_cycle can skip
+        walking every open lot on every bar -- the identical early-out
+        HighFrequencyLocalReferenceSizing's own trailing uses, and for
+        the identical measured reason: that walk profiled at 63% of
+        total runtime doing nothing, whenever it has nothing to do.
+
+        Answering False promises adjust_profit_target AND retain_lots
+        are both inert, which is exactly what self._trailing is None
+        means here.
+        """
+        return self._trailing is not None
+
+    def adjust_profit_target(self, lot, context: MarketContext) -> float | None:
+        """Tighten this lot's exit target while the crash latch is on;
+        leave it alone otherwise.
+
+        propose() is called UNCONDITIONALLY whenever trailing is
+        configured, not only while self._in_crash -- it is what keeps
+        this lot's peak price current (TrailingTargetPolicy.observe()
+        runs inside it). Calling it only during a crash would mean a
+        lot's peak resets to buy_price at the crash's start, discarding
+        every gain it made during the calm period beforehand, and
+        trailing from that understated peak would tighten the target
+        FURTHER than the lot's real high-water mark justifies. The
+        result is still only ever applied -- returned rather than
+        discarded -- while _in_crash is true, so the target itself never
+        moves outside a crash; only the peak bookkeeping runs constantly.
+
+        Cannot raise a target or strand a lot: TrailingTargetPolicy
+        returns None or a value strictly below the current target, never
+        above, by construction -- see its own module docstring.
+        """
+        if self._trailing is None:
+            return None
+        proposed = self._trailing.propose(lot, context.price)
+        return proposed if self._in_crash else None
+
+    def retain_lots(self, open_order_ids) -> None:
+        """Release peak-price state for lots that have closed. See
+        decision_cycle.adjust_open_lot_targets and
+        TrailingTargetPolicy.retain_lots."""
+        if self._trailing is not None:
+            self._trailing.retain_lots(open_order_ids)
+
+    # ---------------------------------------------------------------
 
     def diagnostics(self) -> dict[str, float | bool | str | None]:
         """Current model state, for logging and the UI.
@@ -535,6 +635,7 @@ class MLRegimeScaledSizing(_BaselineScaledStrategy):
             "step_multiplier": self.step_multiplier,
             "regime_multiplier": self._regime_multiplier(),
             "volatility_multiplier": self._volatility_multiplier(),
+            "trailing_active": self._trailing is not None,
         }
 
 
