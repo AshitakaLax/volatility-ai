@@ -501,6 +501,16 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
         "regime_floor": 0.25,
         "vol_reference": 0.181,
     },
+    # UNVALIDATED PLACEHOLDER, AND CURRENTLY INFEASIBLE TO FIX. No
+    # model exists at data/ml/models/URSP_regime_*; selecting this id
+    # fails at ensure_model_available() with a clear ConfigurationError
+    # naming that, per src/ml/regime_scaled_sizing.py's own lazy-load
+    # design. Not just untrained: Alpaca's own history for URSP starts
+    # 2025-08-27 (~260 sessions total, confirmed by fetching it), well
+    # under the 250 TRAIN sessions alone every other fund's model
+    # needed before any held-out test window -- there is currently not
+    # enough history to train one, not merely a step skipped. Revisit
+    # once the symbol has accumulated several more years.
     "ml_regime_ursp": {
         "max_trade_pct": 0.05,
         "ticker": "URSP",

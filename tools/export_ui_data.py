@@ -61,6 +61,15 @@ KNOWN_DATA = {
     # SPDR Portfolio S&P 500 High Dividend ETF -- the specific SPDR fund
     # asked for, not SPY or the sector SPDRs.
     "SPYD": "data/SPYD_1Min_sip_all_rth_2016-01-01_2026-09-06.csv",
+    # Alpaca's own history for this symbol starts 2025-08-27 -- ~260
+    # trading days total, NOT a fetch artifact (requested back to
+    # 2016-01-01; that is simply all there is). Present here so the
+    # backtest UI and manual inspection can use it; NOT enough for
+    # src/ml/qlib_regime's training pipeline, which needs 250+ TRAIN
+    # sessions alone before a held-out test window on top -- see
+    # src/ml/regime_scaled_sizing.py's module docstring and
+    # ml_regime_ursp's own STRATEGY_DEFAULTS comment below.
+    "URSP": "data/URSP_1Min_sip_all_rth_2016-01-01_2026-09-11.csv",
 }
 
 
