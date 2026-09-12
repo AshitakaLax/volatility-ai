@@ -2,6 +2,7 @@ import { AlertCircle, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { GridStepPanel } from "@/components/backtest/GridStepPanel";
+import { OptionsSweepField } from "@/components/backtest/OptionsSweepField";
 import { ParamField } from "@/components/backtest/ParamField";
 import { SweepableParamField } from "@/components/backtest/SweepableParamField";
 import { SweepControls } from "@/components/backtest/SweepControls";
@@ -12,11 +13,14 @@ import { GENERIC_GRID_TRIGGER, initialTriggerMethod } from "@/lib/gridTrigger";
 import { DEFAULT_SWEEP_FIELD_STATE, type SweepFieldState } from "@/lib/sweepStrategies";
 import {
   blankRequired,
+  buildOptionsSweep,
   buildParamSweep,
   buildStrategyParams,
+  DEFAULT_OPTIONS_SWEEP_FIELD_STATE,
   diffFromDefaults,
   paramErrorsFor,
   seedValues,
+  type OptionsSweepFieldState,
 } from "@/lib/strategyParams";
 import type {
   BacktestRunRequest,
@@ -88,6 +92,15 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     grid_step: { ...DEFAULT_SWEEP_FIELD_STATE, start: "0.5", end: "1.5" },
     profit_target: DEFAULT_SWEEP_FIELD_STATE,
   });
+  // The enum counterpart: one entry per sweepable enum strategy param of
+  // the current model (`spec.enum` set), reseeded on model change the
+  // same way sweepFields is -- see that effect. Kept as a SEPARATE map
+  // rather than folded into sweepFields because the two shapes (a
+  // generated range vs a checked subset of named options) share no
+  // fields worth unioning; see OptionsSweepFieldState's own docstring.
+  const [optionSweepFields, setOptionSweepFields] = useState<Record<string, OptionsSweepFieldState>>(
+    {},
+  );
   // The grid-step trigger method, used only when the model offers a choice.
   const [triggerMethod, setTriggerMethod] = useState<GridTriggerMethod>("last_buy");
   const [profitTarget, setProfitTarget] = useState(0.5);
@@ -148,28 +161,41 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
 
   const setSweepField = (name: string, next: SweepFieldState) =>
     setSweepFields((current) => ({ ...current, [name]: next }));
+  const setOptionSweepField = (name: string, next: OptionsSweepFieldState) =>
+    setOptionSweepFields((current) => ({ ...current, [name]: next }));
 
   // Every currently-enabled strategy-param sweep's own generated result,
   // so its errors surface the same way grid step/profit target's do and
-  // its value count feeds the combinations estimate below.
+  // its value count feeds the combinations estimate below. Split by
+  // `entry.enum` the same way renderParamField is, since an enum spec's
+  // sweep state lives in optionSweepFields, not sweepFields.
   const paramSweepResults = useMemo(
     () =>
       specs
-        .filter((entry) => entry.sweepable && sweepFields[entry.name]?.enabled)
+        .filter((entry) => entry.sweepable && !entry.enum && sweepFields[entry.name]?.enabled)
         .map((entry) => buildParamSweep(entry, sweepFields[entry.name]!)),
     [specs, sweepFields],
+  );
+  const optionSweepResults = useMemo(
+    () =>
+      specs
+        .filter((entry) => entry.enum && entry.sweepable && optionSweepFields[entry.name]?.enabled)
+        .map((entry) => buildOptionsSweep(entry, optionSweepFields[entry.name]!)),
+    [specs, optionSweepFields],
   );
   const sweepErrors = [
     ...gridSteps.errors,
     ...profitSteps.errors,
     ...paramSweepResults.flatMap((result) => result.errors),
+    ...optionSweepResults.flatMap((result) => result.errors),
   ];
   // 1 for a param with no valid sweep yet -- the combinations estimate
   // stays a lower bound rather than momentarily reading 0.
   const totalCombinations =
     Math.max(1, gridSteps.steps.length) *
     Math.max(1, profitSteps.steps.length) *
-    paramSweepResults.reduce((product, result) => product * Math.max(1, result.values.length), 1);
+    paramSweepResults.reduce((product, result) => product * Math.max(1, result.values.length), 1) *
+    optionSweepResults.reduce((product, result) => product * Math.max(1, result.values.length), 1);
 
   useEffect(() => {
     api
@@ -213,14 +239,22 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     setTriggerMethod(initialTriggerMethod(gridTriggerMap[model] ?? GENERIC_GRID_TRIGGER, seeded));
     // REPLACE the strategy-param slice of sweepFields the same way --
     // grid_step/profit_target are untouched, they are not tied to the
-    // model.
+    // model. Enum specs go to optionSweepFields instead; sweepFields
+    // keeps only the numeric-range ones.
     setSweepFields((current) => {
       const next: Record<string, SweepFieldState> = {
         grid_step: current.grid_step ?? DEFAULT_SWEEP_FIELD_STATE,
         profit_target: current.profit_target ?? DEFAULT_SWEEP_FIELD_STATE,
       };
       for (const spec of specs) {
-        if (spec.sweepable) next[spec.name] = DEFAULT_SWEEP_FIELD_STATE;
+        if (spec.sweepable && !spec.enum) next[spec.name] = DEFAULT_SWEEP_FIELD_STATE;
+      }
+      return next;
+    });
+    setOptionSweepFields(() => {
+      const next: Record<string, OptionsSweepFieldState> = {};
+      for (const spec of specs) {
+        if (spec.sweepable && spec.enum) next[spec.name] = DEFAULT_OPTIONS_SWEEP_FIELD_STATE;
       }
       return next;
     });
@@ -278,7 +312,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     // for exactly which are included. A sweepable field with its
     // checkbox on is sent as a list; a no-edit, no-sweep submit
     // reproduces the model's committed defaults byte-for-byte.
-    strategy_params: buildStrategyParams(specs, paramValues, sweepFields),
+    strategy_params: buildStrategyParams(specs, paramValues, sweepFields, optionSweepFields),
     limit,
     ...(range.start ? { start: range.start } : {}),
     ...(range.end ? { end: range.end } : {}),
@@ -291,6 +325,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   const stepsKey = JSON.stringify(gridSteps.steps);
   const profitStepsKey = JSON.stringify(profitSteps.steps);
   const sweepFieldsKey = JSON.stringify(sweepFields);
+  const optionSweepFieldsKey = JSON.stringify(optionSweepFields);
   useEffect(() => {
     const request = buildRequest();
     const seq = ++validateSeq.current;
@@ -325,6 +360,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     stepsKey,
     profitStepsKey,
     sweepFieldsKey,
+    optionSweepFieldsKey,
   ]);
 
   const setParam = (paramName: string, value: string) =>
@@ -340,7 +376,14 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     setSweepFields((current) => {
       const next = { ...current };
       for (const spec of specs) {
-        if (spec.sweepable) next[spec.name] = DEFAULT_SWEEP_FIELD_STATE;
+        if (spec.sweepable && !spec.enum) next[spec.name] = DEFAULT_SWEEP_FIELD_STATE;
+      }
+      return next;
+    });
+    setOptionSweepFields((current) => {
+      const next = { ...current };
+      for (const spec of specs) {
+        if (spec.sweepable && spec.enum) next[spec.name] = DEFAULT_OPTIONS_SWEEP_FIELD_STATE;
       }
       return next;
     });
@@ -364,8 +407,8 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   // The FULL specs array stays load-bearing for buildStrategyParams /
   // blankRequired / diffFromDefaults; only the RENDER lists drop the
   // window param -- it gets its one editor inside the grid-step panel.
-  const blanks = blankRequired(specs, paramValues, sweepFields);
-  const diffs = diffFromDefaults(specs, paramValues, sweepFields);
+  const blanks = blankRequired(specs, paramValues, sweepFields, optionSweepFields);
+  const diffs = diffFromDefaults(specs, paramValues, sweepFields, optionSweepFields);
   const primary = specs.filter((spec) => spec.group === "primary" && spec.name !== windowParam);
   const advanced = specs.filter((spec) => spec.group === "advanced" && spec.name !== windowParam);
   // Unattached errors, PLUS any pinned to a field that is not on screen
@@ -389,11 +432,25 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     return typeof value === "number" ? cleanNumber(value) : String(value);
   };
 
-  // A sweepable spec gets the checkbox-and-dropdown treatment; every
-  // other spec (locked, mirrored, or non-numeric) renders exactly as
-  // before -- ParamField is otherwise untouched by this feature.
+  // A sweepable NUMERIC spec gets the checkbox-and-range treatment; a
+  // sweepable ENUM spec gets the checkbox-and-checklist treatment
+  // instead (OptionsSweepField); every other spec (locked, mirrored, or
+  // a plain str/bool) renders exactly as before -- ParamField is
+  // otherwise untouched by this feature.
   const renderParamField = (spec: ParamSpec) =>
-    spec.sweepable ? (
+    spec.enum ? (
+      <OptionsSweepField
+        key={spec.name}
+        spec={spec}
+        value={paramValues[spec.name] ?? ""}
+        onChange={setParam}
+        onReset={resetParam}
+        sweep={optionSweepFields[spec.name] ?? DEFAULT_OPTIONS_SWEEP_FIELD_STATE}
+        onSweepChange={setOptionSweepField}
+        errors={paramErrorsFor(spec.name, validation?.errors)}
+        disabled={busy}
+      />
+    ) : spec.sweepable ? (
       <SweepableParamField
         key={spec.name}
         spec={spec}

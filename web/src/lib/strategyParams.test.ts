@@ -12,12 +12,14 @@ import type { SweepFieldState } from "@/lib/sweepStrategies";
 
 import {
   blankRequired,
+  buildOptionsSweep,
   buildParamSweep,
   buildStrategyParams,
   diffFromDefaults,
   paramErrorsFor,
   seedOf,
   seedValues,
+  type OptionsSweepFieldState,
 } from "./strategyParams";
 
 function spec(over: Partial<ParamSpec> = {}): ParamSpec {
@@ -42,6 +44,10 @@ function spec(over: Partial<ParamSpec> = {}): ParamSpec {
 
 function sweep(over: Partial<SweepFieldState> = {}): SweepFieldState {
   return { enabled: true, strategy: "linear", start: "1", end: "5", count: "3", seed: "", ...over };
+}
+
+function optionsSweep(over: Partial<OptionsSweepFieldState> = {}): OptionsSweepFieldState {
+  return { enabled: true, selected: [], ...over };
 }
 
 // The two swept dimensions of `fixed` and `bell_curve`, close to what
@@ -85,7 +91,7 @@ const BAYES_HEAD: ParamSpec[] = [
     locked_reason: "the server sets this to the grid's profit target",
   }),
   spec({ name: "bars_per_day", type: "int", required: true, default: null, suggested: 387, has_suggested: true, group: "primary", step: "1" }),
-  spec({ name: "vol_measure", type: "str", default: "stdev", suggested: "stdev", enum: ["stdev", "range"], step: null, sweepable: false }),
+  spec({ name: "vol_measure", type: "str", default: "stdev", suggested: "stdev", enum: ["stdev", "range"], step: null, sweepable: true }),
   spec({ name: "allow_target_return_mismatch", type: "bool", default: false, suggested: false, step: null, sweepable: false }),
   // The grid-step trigger's local-reference window: optional, nullable,
   // seeds blank -> omitted unless the method selector sets it.
@@ -233,6 +239,32 @@ describe("buildParamSweep", () => {
   });
 });
 
+describe("buildOptionsSweep", () => {
+  const vm = spec({ name: "vol_measure", type: "str", enum: ["stdev", "range"], sweepable: true });
+
+  it("submits the selected subset, in the enum's own order", () => {
+    const r = buildOptionsSweep(vm, optionsSweep({ selected: ["range", "stdev"] }));
+    expect(r.errors).toEqual([]);
+    expect(r.values).toEqual(["stdev", "range"]);
+  });
+
+  it("a single selected option is a valid sweep of one", () => {
+    const r = buildOptionsSweep(vm, optionsSweep({ selected: ["range"] }));
+    expect(r.values).toEqual(["range"]);
+  });
+
+  it("nothing checked errors rather than sending an empty list", () => {
+    const r = buildOptionsSweep(vm, optionsSweep({ selected: [] }));
+    expect(r.values).toEqual([]);
+    expect(r.errors.length).toBeGreaterThan(0);
+  });
+
+  it("ignores a stale selection outside the current enum", () => {
+    const r = buildOptionsSweep(vm, optionsSweep({ selected: ["range", "log"] }));
+    expect(r.values).toEqual(["range"]);
+  });
+});
+
 describe("buildStrategyParams -- sweep-aware", () => {
   it("a sweep-enabled sweepable param is sent as a list, ignoring its scalar text", () => {
     const sweepFields = { max_trade_pct: sweep({ start: "0.05", end: "0.1", count: "2" }) };
@@ -251,6 +283,25 @@ describe("buildStrategyParams -- sweep-aware", () => {
     const out = buildStrategyParams(BAYES_HEAD, seedValues(BAYES_HEAD), sweepFields);
     expect("target_return" in out).toBe(false);
   });
+
+  it("an enabled enum options sweep is sent as a list, ignoring its scalar text", () => {
+    const optionSweepFields = { vol_measure: optionsSweep({ selected: ["stdev", "range"] }) };
+    const out = buildStrategyParams(BAYES_HEAD, seedValues(BAYES_HEAD), {}, optionSweepFields);
+    expect(out.vol_measure).toEqual(["stdev", "range"]);
+  });
+
+  it("an options sweep with nothing checked is omitted, not sent as an empty list", () => {
+    const optionSweepFields = { vol_measure: optionsSweep({ selected: [] }) };
+    const out = buildStrategyParams(BAYES_HEAD, seedValues(BAYES_HEAD), {}, optionSweepFields);
+    expect("vol_measure" in out).toBe(false);
+  });
+
+  it("sweepFields (the numeric map) is ignored for an enum param even if it carries a stale entry", () => {
+    const values = { ...seedValues(BAYES_HEAD), vol_measure: "range" };
+    const sweepFields = { vol_measure: sweep({ enabled: true }) }; // a numeric range, wrongly keyed
+    const out = buildStrategyParams(BAYES_HEAD, values, sweepFields);
+    expect(out.vol_measure).toBe("range"); // the scalar text, not buildParamSweep's numeric output
+  });
 });
 
 describe("blankRequired -- sweep-aware", () => {
@@ -265,6 +316,22 @@ describe("blankRequired -- sweep-aware", () => {
     const sweepFields = { max_trade_pct: sweep({ start: "", end: "0.1" }) };
     expect(blankRequired(BELL, values, sweepFields)).toEqual(["max_trade_pct"]);
   });
+
+  it("a required enum field with nothing checked is blank", () => {
+    // vol_measure is not required in the fixture; check the mechanism
+    // directly the way the numeric case does, on a required copy of it.
+    const required = [spec({ name: "vol_measure", type: "str", enum: ["stdev", "range"], sweepable: true, required: true, default: "stdev", suggested: "stdev" })];
+    const values = { vol_measure: "" };
+    const optionSweepFields = { vol_measure: optionsSweep({ selected: [] }) };
+    expect(blankRequired(required, values, {}, optionSweepFields)).toEqual(["vol_measure"]);
+  });
+
+  it("a required enum field with an enabled, non-empty options sweep is not blank", () => {
+    const required = [spec({ name: "vol_measure", type: "str", enum: ["stdev", "range"], sweepable: true, required: true, default: "stdev", suggested: "stdev" })];
+    const values = { vol_measure: "" };
+    const optionSweepFields = { vol_measure: optionsSweep({ selected: ["stdev"] }) };
+    expect(blankRequired(required, values, {}, optionSweepFields)).toEqual([]);
+  });
 });
 
 describe("diffFromDefaults -- sweep-aware", () => {
@@ -272,6 +339,22 @@ describe("diffFromDefaults -- sweep-aware", () => {
     const sweepFields = { mu: sweep() };
     const diff = diffFromDefaults(BELL, seedValues(BELL), sweepFields);
     expect(diff.find((d) => d.name === "mu")).toEqual({ name: "mu", from: "0.2", to: "swept" });
+  });
+
+  it("reports an enum options sweep as changed, labeled 'swept'", () => {
+    const optionSweepFields = { vol_measure: optionsSweep({ selected: ["stdev", "range"] }) };
+    const diff = diffFromDefaults(BAYES_HEAD, seedValues(BAYES_HEAD), {}, optionSweepFields);
+    expect(diff.find((d) => d.name === "vol_measure")).toEqual({
+      name: "vol_measure",
+      from: "stdev",
+      to: "swept",
+    });
+  });
+
+  it("a disabled options sweep does not mark an unchanged enum field as swept", () => {
+    const optionSweepFields = { vol_measure: optionsSweep({ enabled: false, selected: ["range"] }) };
+    const diff = diffFromDefaults(BAYES_HEAD, seedValues(BAYES_HEAD), {}, optionSweepFields);
+    expect(diff.some((d) => d.name === "vol_measure")).toBe(false);
   });
 });
 

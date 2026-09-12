@@ -53,6 +53,11 @@ function parseValue(spec: ParamSpec, raw: string): ParamValue {
  * has no fixed percent domain -- bounds are whatever raw numbers the
  * param's own range is, and `opts.integer` follows `spec.type` so a
  * sweep over an `int` param never emits a fraction.
+ *
+ * NUMERIC RANGE sweep only -- an `enum` field's sweep goes through
+ * `buildOptionsSweep` below instead. A caller decides which to call by
+ * checking `spec.enum`, the same dispatch `ParameterForm.tsx` uses to
+ * pick `SweepableParamField` vs `OptionsSweepField`.
  */
 export function buildParamSweep(spec: ParamSpec, sweep: SweepFieldState): SweepGenerationResult {
   if (sweep.start.trim() === "" || sweep.end.trim() === "") {
@@ -63,6 +68,54 @@ export function buildParamSweep(spec: ParamSpec, sweep: SweepFieldState): SweepG
     { min: Number(sweep.start), max: Number(sweep.end), count: Number(sweep.count), seed: sweep.seed },
     { integer: spec.type === "int" },
   );
+}
+
+/**
+ * An enum strategy param's "enable sweep" state: not a generated range
+ * (there is nothing to interpolate between "stdev" and "range"), but a
+ * CHECKLIST of which of `spec.enum`'s own values to include -- rendered
+ * by OptionsSweepField, submitted as that literal string subset.
+ *
+ * Deliberately its own type rather than a reuse of SweepFieldState:
+ * that shape is min/max/count/strategy, none of which describe a
+ * bounded set of named choices, and forcing an enum sweep through it
+ * would mean either fields that are always blank (start/end/count/
+ * strategy) or overloading them to mean something else per field type --
+ * two readings of one shape, which is the kind of drift
+ * lib/sweepStrategies.ts's own docstring already calls out avoiding.
+ */
+export interface OptionsSweepFieldState {
+  enabled: boolean;
+  /** Subset of `spec.enum` to submit. Order does not matter -- the
+   * server sorts nothing and the engine treats strategy_params as an
+   * unordered combination axis either way. */
+  selected: string[];
+}
+
+export const DEFAULT_OPTIONS_SWEEP_FIELD_STATE: OptionsSweepFieldState = {
+  enabled: false,
+  selected: [],
+};
+
+export interface OptionsSweepResult {
+  /** `spec.enum`'s own values, in `spec.enum`'s order, filtered to
+   * `selected` -- never a value outside the enum, even if `selected`
+   * somehow carried a stale one from a prior model's schema. */
+  values: string[];
+  errors: string[];
+}
+
+/** `state.selected` -> the literal string list to submit, or an error
+ * naming the one way this can be invalid: nothing checked. Unlike a
+ * numeric range, there is no "count" or "min < max" to violate -- every
+ * subset of a fixed, already-valid option set is itself valid. */
+export function buildOptionsSweep(spec: ParamSpec, state: OptionsSweepFieldState): OptionsSweepResult {
+  const valid = new Set(spec.enum ?? []);
+  const values = (spec.enum ?? []).filter((option) => state.selected.includes(option) && valid.has(option));
+  if (values.length === 0) {
+    return { values: [], errors: ["select at least one option"] };
+  }
+  return { values, errors: [] };
 }
 
 /**
@@ -89,24 +142,44 @@ export function buildParamSweep(spec: ParamSpec, sweep: SweepFieldState): SweepG
  * defaults -- byte-identical to the old blind `sizing_details.defaults`
  * splat and to what the server's empty-`strategy_params` fallback
  * produces.
+ *
+ * `optionSweepFields` is the enum counterpart of `sweepFields`, keyed
+ * the same way (by `spec.name`) and consulted only for a spec with
+ * `enum` set -- see buildOptionsSweep. Both maps default to `{}` so
+ * every existing call site (none of which sweeps an enum yet) is
+ * unaffected.
  */
 export function buildStrategyParams(
   specs: ParamSpec[],
   values: Record<string, string>,
   sweepFields: Record<string, SweepFieldState> = {},
+  optionSweepFields: Record<string, OptionsSweepFieldState> = {},
 ): Record<string, ParamValue | ParamValue[]> {
   const out: Record<string, ParamValue | ParamValue[]> = {};
   for (const spec of specs) {
     if (spec.mirrors !== null) continue;
     if (!spec.editable && spec.name !== "ticker") continue;
-    const sweep = spec.sweepable ? sweepFields[spec.name] : undefined;
-    if (sweep?.enabled) {
-      const generated = buildParamSweep(spec, sweep);
-      if (generated.errors.length === 0 && generated.values.length > 0) {
-        out[spec.name] = generated.values;
+
+    if (spec.enum) {
+      const optionSweep = spec.sweepable ? optionSweepFields[spec.name] : undefined;
+      if (optionSweep?.enabled) {
+        const generated = buildOptionsSweep(spec, optionSweep);
+        if (generated.errors.length === 0 && generated.values.length > 0) {
+          out[spec.name] = generated.values;
+        }
+        continue;
       }
-      continue;
+    } else {
+      const sweep = spec.sweepable ? sweepFields[spec.name] : undefined;
+      if (sweep?.enabled) {
+        const generated = buildParamSweep(spec, sweep);
+        if (generated.errors.length === 0 && generated.values.length > 0) {
+          out[spec.name] = generated.values;
+        }
+        continue;
+      }
     }
+
     const raw = (values[spec.name] ?? "").trim();
     if (raw === "") continue;
     const value = parseValue(spec, raw);
@@ -127,17 +200,21 @@ export interface ParamDiff {
 /** Editable, non-mirrored fields whose current value differs from their
  * seed -- what the "differs from committed defaults" readout shows. A
  * swept field always counts as changed (there is no single seed value
- * to compare against once it is a range), shown as "swept". */
+ * to compare against once it is a range or an option subset), shown as
+ * "swept". */
 export function diffFromDefaults(
   specs: ParamSpec[],
   values: Record<string, string>,
   sweepFields: Record<string, SweepFieldState> = {},
+  optionSweepFields: Record<string, OptionsSweepFieldState> = {},
 ): ParamDiff[] {
   const out: ParamDiff[] = [];
   for (const spec of specs) {
     if (!spec.editable || spec.mirrors !== null) continue;
-    const sweep = spec.sweepable ? sweepFields[spec.name] : undefined;
-    if (sweep?.enabled) {
+    const swept = spec.enum
+      ? spec.sweepable && (optionSweepFields[spec.name]?.enabled ?? false)
+      : spec.sweepable && (sweepFields[spec.name]?.enabled ?? false);
+    if (swept) {
       out.push({ name: spec.name, from: seedOf(spec) || "—", to: "swept" });
       continue;
     }
@@ -151,19 +228,28 @@ export function diffFromDefaults(
 /** Required editable fields left blank -- the run cannot be submitted
  * while any of these exist. A required field whose sweep is enabled and
  * resolves to at least one value is NOT blank, even though its scalar
- * text is -- the sweep supplies the value(s) instead. */
+ * text is -- the sweep (range or options) supplies the value(s)
+ * instead. */
 export function blankRequired(
   specs: ParamSpec[],
   values: Record<string, string>,
   sweepFields: Record<string, SweepFieldState> = {},
+  optionSweepFields: Record<string, OptionsSweepFieldState> = {},
 ): string[] {
   return specs
     .filter((spec) => {
       if (!spec.editable || !spec.required) return false;
-      const sweep = spec.sweepable ? sweepFields[spec.name] : undefined;
-      if (sweep?.enabled) {
-        const generated = buildParamSweep(spec, sweep);
-        return generated.errors.length > 0 || generated.values.length === 0;
+      if (spec.enum) {
+        const optionSweep = spec.sweepable ? optionSweepFields[spec.name] : undefined;
+        if (optionSweep?.enabled) {
+          return buildOptionsSweep(spec, optionSweep).values.length === 0;
+        }
+      } else {
+        const sweep = spec.sweepable ? sweepFields[spec.name] : undefined;
+        if (sweep?.enabled) {
+          const generated = buildParamSweep(spec, sweep);
+          return generated.errors.length > 0 || generated.values.length === 0;
+        }
       }
       return (values[spec.name] ?? "").trim() === "";
     })

@@ -172,16 +172,15 @@ class TestDescribeParams:
 
 class TestSweepable:
     """`sweepable` is what the "enable sweep" checkbox renders on --
-    a numeric argument the operator actually owns. It must track the
-    same rule everywhere, not drift into a second definition."""
+    a numeric RANGE or an enum OPTIONS checklist, whichever the
+    operator's argument actually is. It must track the same rule
+    everywhere, not drift into a second definition."""
 
     def test_the_rule_holds_for_every_param_of_every_strategy(self):
         for strategy_id, cls in STRATEGIES.items():
             for spec in describe_params(strategy_id, cls):
-                expected = (
-                    spec["type"] in ("int", "float")
-                    and spec["editable"]
-                    and spec["mirrors"] is None
+                expected = spec["editable"] and spec["mirrors"] is None and (
+                    spec["type"] in ("int", "float") or spec["enum"] is not None
                 )
                 assert spec["sweepable"] is expected, (strategy_id, spec["name"])
 
@@ -215,12 +214,32 @@ class TestSweepable:
         by_name = {s["name"]: s for s in describe_params("fixed", STRATEGIES["fixed"])}
         assert by_name["allocation_pct"]["sweepable"] is True
 
-    def test_a_str_enum_param_is_not_sweepable(self):
+    def test_a_str_enum_param_is_sweepable_as_options(self):
+        """vol_measure has exactly two valid values (_PARAM_ENUMS) and
+        expand_strategy_params accepts a list of either type -- there is
+        no engine reason to withhold the sweep checkbox from an enum the
+        way there is for `str` free text (no bounded set to check boxes
+        for) or `bool` (not offered a checklist here; see the module
+        docstring on the two sweepable shapes)."""
         by_name = {
             s["name"]: s
             for s in describe_params("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
         }
-        assert by_name["vol_measure"]["sweepable"] is False
+        assert by_name["vol_measure"]["sweepable"] is True
+        assert by_name["vol_measure"]["enum"] == ["stdev", "range"]
+        assert by_name["vol_measure"]["type"] == "str"
+
+    def test_a_plain_str_param_is_not_sweepable(self):
+        """No `enum` means no bounded set of options to check boxes for
+        -- widening `sweepable` to plain `str` would need free-text entry
+        of a list, a different UI this task does not add."""
+
+        def ctor(self, ticker_note: str = "COWZ"):
+            pass
+
+        Fake = type("Fake", (), {"__init__": ctor})
+        by_name = {s["name"]: s for s in describe_params("fake", Fake)}
+        assert by_name["ticker_note"]["sweepable"] is False
 
     def test_an_editable_int_param_is_sweepable(self):
         by_name = {

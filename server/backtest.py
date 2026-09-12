@@ -695,13 +695,35 @@ def describe_params(strategy_id: str, strategy_class: type) -> list[dict[str, An
             else {"int": "1", "float": "any"}.get(wire_type),
         }
         _apply_locks(spec, strategy_id, required, committed)
-        # SWEEPABLE, for the "enable sweep" checkbox: a numeric argument
-        # the operator actually owns. Computed AFTER _apply_locks so a
-        # param it locked (editable=False) or mirrored (target_return ->
-        # profit_target) is correctly excluded -- an engine-owned or
-        # grid-mirrored value cannot also be independently swept.
-        spec["sweepable"] = (
-            spec["type"] in ("int", "float") and spec["editable"] and spec["mirrors"] is None
+        # SWEEPABLE, for the "enable sweep" checkbox: an argument the
+        # operator actually owns, whose values expand_strategy_params
+        # (src/core/config.py) can turn into a real sweep axis. Computed
+        # AFTER _apply_locks so a param it locked (editable=False) or
+        # mirrored (target_return -> profit_target) is correctly
+        # excluded -- an engine-owned or grid-mirrored value cannot also
+        # be independently swept.
+        #
+        # TWO SWEEPABLE SHAPES, DISTINGUISHED BY `enum`, NOT BY A THIRD
+        # FIELD. A numeric (int/float) param sweeps as a RANGE -- the
+        # frontend's min/max/count/strategy generator
+        # (web/src/lib/sweepStrategies.ts). A `str` param with `enum` set
+        # sweeps as OPTIONS -- a checklist of which of its own named
+        # values to include, submitted as that literal subset (e.g.
+        # `vol_measure: ["stdev", "range"]`). expand_strategy_params
+        # already treats any list-valued strategy_param as an axis
+        # regardless of element type, so this widens what the FORM
+        # offers, not what the engine accepts -- a config file could
+        # already do this by hand.
+        #
+        # The two are mutually exclusive rather than a lookup on a
+        # combined condition: `_wire_type` resolves an `_PARAM_ENUMS`
+        # entry to `"str"`, never `"int"`/`"float"` (see the `step`
+        # assignment above, which already special-cases enum names for
+        # the identical reason), so `spec["enum"]` and
+        # `spec["type"] in ("int", "float")` cannot both hold for one
+        # spec -- no ambiguity for a caller branching on `enum` alone.
+        spec["sweepable"] = spec["editable"] and spec["mirrors"] is None and (
+            spec["type"] in ("int", "float") or spec["enum"] is not None
         )
         out.append(spec)
     return out

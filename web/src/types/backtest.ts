@@ -514,9 +514,21 @@ export interface ParamSpec {
    * float, `null` for bool/enum/str. Advisory -- the server bounds it. */
   step: string | null;
   /** Whether the "enable sweep" checkbox may render for this argument --
-   * `type in ("int","float") && editable && mirrors === null`. A locked
-   * (engine-owned) or grid-mirrored value cannot also be independently
-   * swept, and a str/bool/enum field has no numeric range to sweep. */
+   * `editable && mirrors === null && (type in ("int","float") || enum)`.
+   * A locked (engine-owned) or grid-mirrored value cannot also be
+   * independently swept.
+   *
+   * TWO SWEEPABLE SHAPES, dispatched on `enum` at render time (mirrors
+   * server/backtest.py's own `describe_params`, which is why there is no
+   * separate `sweep_kind` field -- `enum` already says which this is,
+   * since a `_PARAM_ENUMS` field is never typed int/float):
+   *   RANGE   int/float, enum === null -- SweepableParamField's
+   *           min/max/count/strategy generator (lib/sweepStrategies.ts).
+   *   OPTIONS str with enum set -- OptionsSweepField's checklist of
+   *           which of `enum`'s own values to include
+   *           (lib/strategyParams.ts's buildOptionsSweep).
+   * A plain `str` (no enum) or a `bool` is never sweepable -- neither
+   * has a bounded set of named options to check boxes for. */
   sweepable: boolean;
 }
 
