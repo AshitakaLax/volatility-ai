@@ -137,6 +137,52 @@ header for the CI/p-value table). Do not put this in a `live:` config;
 see server/backtest.py's STRATEGY_DEFAULTS comments for the per-fund
 detail cited above.
 
+XBI WAS FETCHED TO TEST THE PATTERN THE OTHER SEVEN IMPLY, AND IT HELD.
+Sorted by realized volatility the original funds fall into two useless
+clusters: ~20% vol (RSP/SPYD/COWZ/QQQ -- 3-10 deep-drawdown episodes in
+a decade, too few events to learn a crash from, none significant) and
+~65-100% (TQQQ/SQQQ/SOXL -- 78-140 episodes, but leveraged, so decay
+strands lots the no-loss guard can never sell). Nothing sat between 22%
+and 67%. XBI does, at 32.8%: 61 episodes at -10%/20 sessions, no decay,
+and biotech drawdowns are FDA/trial-driven rather than pure market beta,
+so its episodes are largely NOT the same 2018/2020/2022 events every
+other fund here re-observes.
+
+It cleared: AUC 0.7310, 95% CI [0.575, 0.839], p=0.031, 64 train / 10
+test episodes -- the most training episodes of any fund here. Third
+significant fund, and the only one without leverage decay.
+
+Its 80-trial sweep (config/search_xbi_regime_bayesian.yaml) then
+produced the closest this strategy has come to the bar, and still did
+not clear it. Against the incumbent on an identical window and grid
+step:
+
+  ml_regime  Sharpe 1.12, yield 1.66%, max drawdown 0.65%,   28 fills
+  fixed      Sharpe 0.45, yield 3.14%, max drawdown 4.70%,   42 fills
+  hf_local   Sharpe 1.24, yield 0.36%, max drawdown 0.17%, 2221 fills
+
+Beating `fixed` by 2.5x on Sharpe at a seventh of the drawdown is the
+widest margin over that baseline any fund has produced. Losing to
+hf_local_reference by 10% (1.12 vs 1.24) is the narrowest gap any fund
+has produced -- SOXL's was 38%. The bar is still not met.
+
+TWO FINDINGS FROM THAT SWEEP WORTH MORE THAN THE RANKING. First, the
+sweep barely improved on the committed thresholds at all: p90/p50 read
+straight off the model's quantiles scored Sharpe 1.11 against the
+swept winner's 1.12. The quantile heuristic was already essentially
+optimal here, and 80 TPE trials bought ~1%. The committed defaults are
+therefore LEFT ALONE rather than updated to the winner -- a 0.01
+Sharpe difference across 24 vs 28 fills is noise, and writing it in
+would be fitting the defaults to it.
+
+Second, and the reason none of the above is tradeable: every one of
+the 80 trials landed between 4 and 18 trades. A 1-2% grid on a 33%-vol
+fund with a ratchet-down last_buy trigger barely fires, so the entire
+search space is near-no-op strategies, and a Sharpe of 1.12 resting on
+28 fills and 1.66% total return over 2.7 years is a good ratio on
+approximately nothing. The next real question for XBI is the grid step
+and trigger, not the regime thresholds.
+
 RSP AND COWZ WERE DELIBERATELY RE-CHALLENGED, NOT JUST LEFT AT "NOT
 SIGNIFICANT". A wider label search (5 horizons x 9 thresholds x
 vol-block on/off, 90 candidates per fund) asked whether a DIFFERENT
