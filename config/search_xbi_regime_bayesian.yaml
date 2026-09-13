@@ -1,0 +1,84 @@
+# search_xbi_regime_bayesian -- TPE search over MLRegimeScaledSizing on
+# XBI. See search_soxl_regime_bayesian.yaml's header for the shared
+# rationale (rank_by choice, held-out window, why candidate values are
+# read off the model's own quantiles); repeated here only where XBI
+# differs -- and it differs in the way that made it worth fetching.
+#
+# WHY THIS FUND EXISTS IN THE SET AT ALL. The original seven funds
+# cluster at two extremes, and neither is a good target:
+#
+#   ~20% annualized vol  RSP, SPYD, COWZ, QQQ -- 3-10 deep-drawdown
+#       episodes in a decade. Too few events for a crash classifier to
+#       learn from; none cleared significance, and a 90-candidate
+#       relabelling search on RSP and COWZ could not manufacture events
+#       the price history does not contain.
+#   ~65-100% vol  TQQQ, SQQQ, SOXL -- 78-140 episodes, plenty to learn
+#       from, but LEVERAGED. Decay strands lots the no-loss guard can
+#       then never sell: SQQQ has the strongest signal of any fund
+#       (AUC 0.852) and its 80-trial sweep still lost money on every
+#       single trial, with 9-28 permanently stuck lots.
+#
+# XBI sits in the gap: 32.8% annualized vol, 61 episodes at -10% over
+# 20 sessions, and no leverage decay. Its drawdowns are also
+# FDA/trial-driven rather than pure market beta, so its episodes are
+# largely INDEPENDENT of the 2018/2020/2022 events every other fund
+# here shares -- this is the first fund in the set that is not another
+# view of the same three crashes.
+#
+# THE SIGNAL IS REAL BUT WEAKER THAN SOXL/SQQQ's, and the sweep should
+# be read in that light: AUC 0.7310, 95% CI [0.575, 0.839], p=0.031
+# (against p=0.001 for both others), verified twice -- once by the
+# candidate scan and again independently against the saved artifact,
+# the check that previously caught a false-positive RSP candidate whose
+# apparent significance came from a scan bug rather than the data. What
+# XBI has that neither other fund does is EPISODE COUNT: 64 train / 10
+# test, the most here.
+#
+# CANDIDATES from data/ml/models/XBI_regime_crash.json's own
+# score_quantiles (p50=0.111, p75=0.157, p90=0.187, p95=0.222,
+# p99=0.292, max=0.394). Every enter candidate sits at or below p95 and
+# under the p99 ceiling _check_threshold_is_reachable enforces; every
+# exit candidate sits strictly below the smallest enter candidate, so no
+# combination TPE tries can violate 0 <= exit < enter <= 1. The 0.28-wide
+# output range is what makes this axis worth sweeping at all -- COWZ's
+# 0.008-wide range would have every candidate behave identically.
+# vol_reference spans the fwdvol head's own quantiles (p50=0.294,
+# p75=0.319 -- the committed default, p90=0.336).
+strategy:
+  strategy_id: ml_regime_xbi
+  strategy_params:
+    ticker: XBI
+    max_trade_pct: 0.05
+    regime_floor: 0.25
+    history_path: data/XBI_1Min_sip_all_rth_2016-01-01_2026-09-11.csv
+    crash_step_multiplier: [1.5, 2.0, 3.0, 4.0, 6.0]
+    regime_enter_threshold: [0.130, 0.157, 0.187, 0.222]
+    regime_exit_threshold: [0.080, 0.100, 0.111]
+    vol_reference: [0.280, 0.294, 0.319, 0.336]
+grid:
+  # The same two steps SOXL and SQQQ were swept at, so the three funds'
+  # results sit on one axis rather than three.
+  steps: [0.01, 0.02]
+  profit_targets: [0.03]
+backtest:
+  symbol: XBI
+  initial_cash: 100000.0
+  start_date: "2024-01-01"
+costs:
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Return/Drawdown
+  direction: maximize
+  n_trials: 80
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false

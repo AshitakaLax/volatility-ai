@@ -338,14 +338,37 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     #   drawdown_response 0.0  inert, following inverse_scale_kappa's
     #       opt-in convention. Turn it on deliberately, one direction at
     #       a time; see the strategy's own __init__ on the sign.
+    # XBI: -8% over 10 sessions, 64tr/10te episodes, held-out AUC 0.7310
+    # -- the THIRD fund to clear the moving-block-bootstrap significance
+    # test (95% CI [0.575, 0.839], block-permutation p=0.031), and the
+    # one with the most training episodes of any fund here.
+    #
+    # FETCHED AND TRAINED TO TEST A HYPOTHESIS, and it held. The other
+    # seven funds cluster at ~20% annualized vol (3-10 deep-drawdown
+    # episodes in a decade -- too few events to learn a crash from) or
+    # ~65-100% (78-140 episodes, but leveraged, so decay strands lots
+    # the no-loss guard can never sell -- SQQQ's sweep lost money on
+    # every one of 80 trials with 9-28 stuck lots). XBI sits in the gap
+    # at 32.8% vol with 61 episodes at -10%/20 sessions: enough events,
+    # no leverage decay. Its drawdowns are also FDA/trial-driven rather
+    # than pure market beta, so they are largely independent of the
+    # 2018/2020/2022 events every other fund here shares.
+    #
+    # Thresholds are p90/p50 of THIS model's own output (range
+    # 0.058-0.394 -- a 0.28-wide band, third widest here, so a threshold
+    # sweep has room to differentiate rather than collapsing the way
+    # COWZ's 0.008-wide range does); vol_reference is the fwdvol head's
+    # p75. NOT yet swept -- ml_plan.md's bar (beat hf_local_reference)
+    # is untested for this fund.
     "ml_regime_xbi": {
         "max_trade_pct": 0.05,
         "ticker": "XBI",
+        "history_path": "data/XBI_1Min_sip_all_rth_2016-01-01_2026-09-11.csv",
         "crash_step_multiplier": 4.0,
-        "regime_enter_threshold": 0.30,
-        "regime_exit_threshold": 0.20,
+        "regime_enter_threshold": 0.1874,
+        "regime_exit_threshold": 0.1112,
         "regime_floor": 0.25,
-        "vol_reference": 0.45,
+        "vol_reference": 0.319,
     },
     # TQQQ: -25% over 20 sessions, 24tr/5te episodes, held-out AUC 0.7255.
     # Thresholds are p90/p50 of THIS model's own output (range

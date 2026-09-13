@@ -70,6 +70,17 @@ KNOWN_DATA = {
     # src/ml/regime_scaled_sizing.py's module docstring and
     # ml_regime_ursp's own STRATEGY_DEFAULTS comment below.
     "URSP": "data/URSP_1Min_sip_all_rth_2016-01-01_2026-09-11.csv",
+    # SPDR S&P Biotech -- fetched to fill the volatility gap every other
+    # fund here leaves open. The seven funds above cluster at either
+    # ~20% annualized vol (RSP/SPYD/COWZ/QQQ, 3-10 deep-drawdown
+    # episodes in a decade -- too few events for a crash model to learn
+    # from) or ~65-100% (TQQQ/SQQQ/SOXL, 78-140 episodes but leveraged,
+    # so decay strands lots the no-loss guard can then never sell).
+    # XBI sits between at ~30%: enough events to train on, no leverage
+    # decay, and biotech's drawdowns are FDA/trial-driven rather than
+    # pure market beta, so its episodes are largely INDEPENDENT of the
+    # 2018/2020/2022 events every other fund here shares.
+    "XBI": "data/XBI_1Min_sip_all_rth_2016-01-01_2026-09-11.csv",
 }
 
 
