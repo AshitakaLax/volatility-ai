@@ -101,6 +101,38 @@
 # an optimum. hf_local_reference is smooth across steps and trades on
 # every window tested, which is why it stays the recommendation for XBI
 # even though it yields a third as much.
+#
+# ---------------------------------------------------------------
+# AND THE COMPARISON THAT SUBSUMES ALL OF THE ABOVE: BUY-AND-HOLD.
+# Nothing in either XBI sweep was ever scored against simply owning the
+# fund, which is the same omission the instrument-fitness work found
+# across 53 earlier result files.
+#
+#   window                    XBI buy & hold    best configuration
+#   train 2024-01..2025-08             2.02%   25.34%  (fixed+reset)
+#   held-out 2025-09..EOF             72.15%   11.13%  (hf default)
+#   held-out 2025-11..EOF             41.06%   35.15%  (fixed+reset)
+#
+# On the training window the grid wins by 12x, because that window is
+# XBI going nowhere (2.02% end to end) through a -24% drawdown -- the
+# ideal harvesting tape. On BOTH held-out windows it loses outright, and
+# on the longer one it loses by a factor of six. The 2025-09 window is
+# the same one where every last_buy configuration took zero trades; the
+# fund returned 72% during it.
+#
+# This is the mechanism the RSP work already documented: every sale
+# swaps an uncapped position for one capped at +profit_target, and the
+# no-loss guard means only WINNERS can be capped. It is not specific to
+# RSP, and XBI's screen numbers do not save it -- XBI has the LOWEST
+# efficiency of any fund held locally (2.04%, against SOXL 3.41 and
+# TQQQ 4.51), which is supposed to be the strongest possible harvesting
+# signal, and it still lost to holding over the validation period.
+#
+# So the honest scope of every number above is: these are the best
+# settings for harvesting XBI, on a window chosen before anyone checked
+# what XBI did during it. Sweeping parameters cannot answer whether the
+# strategy should be pointed at this fund at all, and on the evidence
+# here the answer over 2025-2026 is no.
 # ---------------------------------------------------------------
 strategy:
   strategy_id: hf_local_reference
