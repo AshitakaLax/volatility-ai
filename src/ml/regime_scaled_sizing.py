@@ -183,6 +183,64 @@ search space is near-no-op strategies, and a Sharpe of 1.12 resting on
 approximately nothing. The next real question for XBI is the grid step
 and trigger, not the regime thresholds.
 
+THAT QUESTION WAS THEN ANSWERED, AND THE ANSWER IS THAT ON XBI THIS
+STRATEGY IS INERT OUT OF SAMPLE. config/search_xbi_full_bayesian.yaml
+swept all ten parameters over 2024-01-01 -> 2025-08-31 and returned a
+plausible winner. Held-out validation on 2025-09-01 -> file end broke
+it in two separate ways, both worth recording because neither is
+visible from a sweep's own output.
+
+First, ZERO FILLS on the held-out tail -- for every ml_regime config
+AND for plain `fixed`. Not a poor score; no trades at all. XBI opens
+that window at 91.10 and never trades more than 0.45% below it again on
+its way to 156.82, and a last_buy grid seeds its reference at the first
+bar and ratchets DOWN only, so the first trigger level is never
+reached. The one bar at or below it IS the seed bar.
+hf_local_reference, referencing max(last_buy, rolling_high), took
+30,511 fills on the identical window. A held-out window can therefore
+be degenerate for a whole class of strategy while looking like a
+perfectly ordinary year of prices -- check fill counts before reading
+any held-out metric on this fund.
+
+Second, and the reason this section's earlier optimism should be read
+narrowly: crash_step_multiplier does nothing out of sample. Counting
+_check_grid_trigger's True returns against the latch state:
+
+  window                    buys   latched buys   csm 1.0 -> 4.0
+  train 2024-01..2025-08    1570      866 (55%)   ret/dd 0.55 -> 1.38
+  held-out 2025-11..EOF       17        0 ( 0%)   ret/dd 1.30 -> 1.30
+
+The latch is ON for 23% of held-out bars and not one buy lands on one
+of them; csm=50.0 returns byte-identical results to csm=1.0. Disabling
+the vol-shrink channel too (vol_reference=9.99) moves held-out yield by
+0.03pp. The train window contains XBI's -24% drawdown, which is the
+only reason the parameter appeared to matter. The AUC result above is
+real -- the model does rank crash risk on this fund -- but ranking
+crash risk only pays when the grid is actually trading INTO the crash,
+and a ratchet-down trigger in a bull market never is.
+
+THE PARAMETER THAT ACTUALLY MATTERS ON XBI WAS IN NO SWEEP'S SEARCH
+SPACE. It is execution.on_flat_reentry, and it is not a strategy
+parameter at all -- optimization_controller.py resets last_buy_price to
+market on a sell that leaves the book flat, but only under
+"reset_to_market"; the default "stale_reference" leaves the reference
+at the old, lower level so the next buy needs a still-lower low. On a
+fund taking ~17 buys a year that is a ratchet the grid never climbs
+back out of. At step 0.2% / target 3%, changing nothing else:
+
+  window / model              stale_reference      reset_to_market
+  train,    ml_regime      6.17%  ret/dd 1.38   22.83%  ret/dd 2.22
+  held-out, ml_regime      1.10%  ret/dd 1.30   23.68%  ret/dd 3.47
+  held-out, fixed          2.53%  ret/dd 1.06   35.15%  ret/dd 3.68
+
+It improves BOTH windows, so it is not window-fitting, and it dominates
+every one of the ten swept parameters by an order of magnitude. It does
+NOT rescue the zero-fill window -- the reset fires inside the sell
+handler, so with no buys there is never a sell. Note also that `fixed`
+under reset_to_market beats ml_regime under reset_to_market on the
+held-out window (35.15% vs 23.68%): once the trigger is fixed, the
+regime layer is a net cost on this fund, not a benefit.
+
 RSP AND COWZ WERE DELIBERATELY RE-CHALLENGED, NOT JUST LEFT AT "NOT
 SIGNIFICANT". A wider label search (5 horizons x 9 thresholds x
 vol-block on/off, 90 candidates per fund) asked whether a DIFFERENT

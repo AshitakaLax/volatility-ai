@@ -1,0 +1,175 @@
+# search_xbi_hf_local_reference -- the sweep the previous two XBI
+# sweeps should have been.
+#
+# WHY THIS EXISTS. config/search_xbi_full_bayesian.yaml swept all ten
+# MLRegimeScaledSizing parameters over 2024-01-01 -> 2025-08-31 and
+# produced a defensible-looking answer. Held-out validation then showed
+# the answer was about the window, not the strategy:
+#
+#   1. ZERO FILLS on the 2025-09-01 tail, for EVERY ml_regime config and
+#      for plain `fixed` too. Not a bad score -- no trades at all. XBI
+#      opens that window at 91.10 and never trades more than 0.45% below
+#      it again on its way to 156.82. A `last_buy` grid seeds its
+#      reference at the first bar and ratchets DOWN only, so its very
+#      first trigger (seed * (1 - step)) is never reached. The single
+#      bar at or below that level IS the seed bar. hf_local_reference,
+#      whose reference is max(last_buy, rolling_high), took 30,511 fills
+#      on the identical window.
+#
+#   2. crash_step_multiplier IS INERT OUT OF SAMPLE. Instrumenting
+#      _check_grid_trigger over the two windows:
+#
+#        window                  buys   latched buys   csm 1.0 -> 4.0
+#        train 2024-01..2025-08   1570      866 (55%)   ret/dd 0.55 -> 1.38
+#        held-out 2025-11..EOF      17        0 ( 0%)   ret/dd 1.30 -> 1.30
+#
+#      The crash latch is ON for 23% of held-out bars, and not one buy
+#      lands on one of them -- csm=50.0 returns byte-identical results
+#      to csm=1.0. The train window contains XBI's -24% drawdown, which
+#      is the only reason the parameter appeared to matter there.
+#      Disabling the vol-shrink channel too (vol_reference=9.99) moves
+#      held-out yield by 0.03pp. On this fund, out of sample, the entire
+#      regime apparatus is a plain grid wearing a hat.
+#
+# So the binding parameter on XBI was never any of the ten swept: it is
+# the TRIGGER, and lookback_days below is the knob that sets it.
+# HighFrequencyLocalReferenceSizing measures its pullback from
+# max(last_buy_price, rolling_high) over a lookback_days window, so it
+# re-arms after every rally instead of waiting for a fresh multi-month
+# low. lookback_days is swept across three orders of magnitude because
+# 0.02 (~8 minutes at 387 bars/day) is a TQQQ-tuned default and there is
+# no reason a 33%-vol biotech fund shares it.
+#
+# TWO-LEVEL SPLIT, unchanged from the previous config and now with a
+# demonstrated reason to keep it:
+#
+#   model trained  ...  -> 2024-01-01
+#   THIS SWEEP     2024-01-01 -> 2025-08-31
+#   held out       2025-09-01 -> file end
+#
+# The held-out re-run must be done at 2025-09-01 AND at a later start,
+# because 2025-09-01 is a degenerate seed point for any last_buy
+# strategy (finding 1) and would flatter this one by comparison.
+#
+# ---------------------------------------------------------------
+# RESULT: THIS SWEEP DID NOT BEAT THE DEFAULT. Recorded here rather
+# than left for someone to rediscover.
+#
+#   candidate            train ret/dd   held-out 2025-09      2025-11
+#   sweep winner              0.726   3.17%  rd 3.78     2.89%  rd 3.45
+#   sweep max-return          0.672   9.58%  rd 4.59     8.77%  rd 4.17
+#   DEFAULT, untouched        0.358  11.13%  rd 4.50    10.07%  rd 4.03
+#
+# The winner doubled train ret/dd (0.358 -> 0.726) and then returned
+# LESS yield at LOWER ret/dd than the shipped TQQQ-tuned default on both
+# held-out windows. rank_by: Return/Drawdown is what invited it:
+# per_lot_pct turns out to be a pure linear scaler on this strategy --
+# 0.0002 / 0.0005 / 0.0010 give 1.051% / 2.628% / 5.257% return on an
+# identical 3,614 trades, exactly 1x / 2.5x / 5x -- so it divides out of
+# the objective entirely and TPE spent budget on a knob the ranking
+# could not see. 122 of 200 trials were duplicate re-evaluations of 78
+# distinct configurations.
+#
+# WHAT IT DID ESTABLISH, and the reason to keep the file:
+#   lookback_days 0.02 wins decisively -- median ret/dd 0.544 against
+#     0.014-0.274 for 0.1 through 3.0, at 7.5% drawdown against 31-34%.
+#     The premise above (that a TQQQ default could not suit a biotech
+#     fund) was simply wrong, and this is the one axis with clean
+#     signal. Caveat: TPE put 41 of 78 configurations on that value, so
+#     the marginal is confounded by its own sampling -- the top-10
+#     clustering is the stronger evidence, not the median.
+#   dd_throttle_start is inert (one pair identical to 6 decimals on vs
+#     off), matching drawdown_response's result on the other strategy.
+#   volume_scale_exponent does nothing: 0.300 against 0.274.
+#   corr(return, drawdown) = 0.108 here, against 0.966 for ml_regime --
+#     unlike that strategy, these parameters are not merely an exposure
+#     dial.
+#
+# trail_pct re-tested against the winner, as promised above: inert at
+# this configuration's 184 open lots (identical 7,050 / 4,363 fills;
+# ret/dd 0.726 -> 0.688 at 0.03, 0.726 at 0.05). Dead on this fund at
+# both ends of the lot-count range.
+#
+# AND THE COMPARISON THAT MATTERS. `fixed` with on_flat_reentry set to
+# reset_to_market posts far larger numbers -- 35.15% at ret/dd 3.68 on
+# the 2025-11 held-out window -- but two things disqualify it from being
+# called the answer. It takes ZERO trades on the 2025-09 window at every
+# grid step tested (0.002 through 0.01), so the seed fragility is
+# structural to the last_buy trigger and not tunable. And its train
+# results across adjacent steps run 25.34% / 1.30% / 17.55% / 6.96% /
+# 6.21% -- a surface that discontinuous is fitting noise, not locating
+# an optimum. hf_local_reference is smooth across steps and trades on
+# every window tested, which is why it stays the recommendation for XBI
+# even though it yields a third as much.
+# ---------------------------------------------------------------
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 387
+    # THE TRIGGER. 0.02 days ~ 8 minutes; 3.0 ~ three sessions. This is
+    # the axis the previous two sweeps held fixed at a TQQQ default.
+    lookback_days: [0.02, 0.1, 0.5, 1.0, 3.0]
+    # XBI fills two orders of magnitude less often than TQQQ, so the
+    # per-lot size that keeps TQQQ from exhausting cash may simply
+    # leave XBI under-deployed.
+    per_lot_pct: [0.0002, 0.0005, 0.001, 0.002]
+    # Negative = size DOWN when short-horizon vol runs hot. 0.0 turns
+    # the channel off, which is the control this needs.
+    vol_scale_exponent: [0.0, -0.75, -1.5]
+    volume_scale_exponent: [0.0, -1.0]
+    # trail_pct IS DELIBERATELY NOT SWEPT HERE. It was measured first,
+    # and it loses on both cost and result.
+    #
+    # COST: it is evaluated per open lot per bar, and this strategy
+    # carries ~2,900 open lots against 161,962 bars, so one trial goes
+    # from 7.7s to 238.5s -- a 31x slowdown that two of three candidate
+    # values would pay. A first attempt at this sweep WITH the axis was
+    # killed after projecting out to roughly six hours.
+    #
+    # RESULT: off is better, at both ends of the lot-count range, so
+    # there is nothing to buy with those six hours:
+    #
+    #   ~2910 lots  trail None 0.358 | 0.03 0.270 | 0.05 0.356  (ret/dd)
+    #    ~511 lots  trail None 0.134 | 0.03 0.068 | 0.05 0.115
+    #
+    # Tightening exits while latched is a real feature elsewhere; on a
+    # fund whose edge is entry price it just caps winners early. It is
+    # re-tested against this sweep's winner as a follow-up rather than
+    # assumed dead -- the same treatment on_flat_reentry got.
+    #
+    # null = no drawdown throttle. The ml_regime sweep's drawdown_response
+    # axis was inert; this is the same idea on the strategy that trades.
+    dd_throttle_start: [null, 0.15]
+grid:
+  steps: [0.0015, 0.002, 0.003, 0.005]
+  profit_targets: [0.005, 0.01, 0.02, 0.03]
+backtest:
+  symbol: XBI
+  initial_cash: 100000.0
+  start_date: "2024-01-01"
+  end_date: "2025-08-31"
+costs:
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  # Return/Drawdown here, NOT the Total Return % the ml_regime sweep
+  # used. That choice was made because ranking XBI on Return/Drawdown
+  # picked the do-nothing corner -- 14 fills, R/D 3.1. That corner does
+  # not exist for this strategy: its floor is ~14k fills on this window,
+  # so the ratio cannot be won by refusing to trade, and ranking on raw
+  # return would just buy exposure (the previous sweep measured
+  # corr(return, drawdown) = 0.9663).
+  rank_by: Return/Drawdown
+  direction: maximize
+  n_trials: 200
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false

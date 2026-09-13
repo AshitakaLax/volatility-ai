@@ -1,0 +1,87 @@
+# search_xbi_full_bayesian -- every MLRegimeScaledSizing parameter on
+# XBI at once, not just the regime thresholds.
+#
+# WHY THIS EXISTS. config/search_xbi_regime_bayesian.yaml swept the four
+# regime knobs at two grid steps and returned Sharpe 1.12 on 28 fills
+# and 1.66% total return over 2.7 years -- a good ratio on nothing. A
+# probe across grid steps showed why, and it was not the thresholds:
+#
+#   step 2.0%   14 fills   0.28% yield   Sharpe 1.62
+#   step 1.0%   24 fills   0.49% yield   Sharpe 1.29
+#   step 0.5%   48 fills   0.99% yield   Sharpe 1.03
+#   step 0.2%  100 fills   6.17% yield   Sharpe 0.78   (target 3%)
+#
+# Activity and absolute return are set by the GRID STEP, and Sharpe on
+# this fund runs INVERSELY to both -- the highest-Sharpe configurations
+# are the ones that barely trade. The regime thresholds were never the
+# binding parameter.
+#
+# WHY rank_by IS "Total Return %" HERE, against this project's usual
+# advice. optimization_controller.py warns that ranking on return alone
+# walks into the corner of the space where drawdown saturates, and that
+# is right in general. On XBI the opposite failure is the live one:
+# Return/Drawdown is maximised by the do-nothing corner (step 2%,
+# 14 fills, R/D 3.1), which is not a strategy. Return steers TPE into
+# the region where the fund actually trades; the frontier is then read
+# off the full trial log, where every trial's drawdown is recorded, so
+# nothing is hidden by the choice of objective. Max Drawdown % is a
+# column on every row of the output.
+#
+# TWO-LEVEL SPLIT, because sweeping and then reporting the winner's
+# score on the same window is how a parameter set gets fitted to noise:
+#
+#   model trained    ...  -> 2024-01-01   (tools/train_qlib_regime.py)
+#   THIS SWEEP       2024-01-01 -> 2025-08-31
+#   held out         2025-09-01 -> file end   (never seen by either)
+#
+# The winner is re-run on that held-out tail separately. A parameter set
+# that only works on the sweep window is exactly what this catches, and
+# no earlier sweep in this project had a second level to catch it with.
+strategy:
+  strategy_id: ml_regime_xbi
+  strategy_params:
+    ticker: XBI
+    history_path: data/XBI_1Min_sip_all_rth_2016-01-01_2026-09-11.csv
+    # Every knob the strategy exposes, including the two the entry-side
+    # sweeps left inert (drawdown_response) and the exit-side feature
+    # that has never been swept at all (trail_pct).
+    max_trade_pct: [0.02, 0.05, 0.10]
+    crash_step_multiplier: [1.0, 2.0, 3.0, 4.0]
+    regime_enter_threshold: [0.157, 0.187, 0.222]
+    regime_exit_threshold: [0.100, 0.111]
+    regime_floor: [0.10, 0.25, 0.50]
+    vol_reference: [0.294, 0.319, 0.336]
+    # SIGNED. >0 de-risks into drawdown, <0 escalates into it. 0.0 is
+    # the inert default every prior sweep left it at.
+    drawdown_response: [0.0, -1.5, 1.5]
+    # null = exits stay fixed at entry (today's behavior). Set = open
+    # lots trail their peak while the crash latch is on.
+    trail_pct: [null, 0.05, 0.10]
+grid:
+  # Down to 0.15%, an order of magnitude tighter than the regime sweep's
+  # 1-2%, because that is where the probe above shows XBI trading.
+  steps: [0.0015, 0.002, 0.003, 0.005, 0.0075, 0.01]
+  profit_targets: [0.005, 0.01, 0.02, 0.03]
+backtest:
+  symbol: XBI
+  initial_cash: 100000.0
+  start_date: "2024-01-01"
+  end_date: "2025-08-31"
+costs:
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  n_trials: 250
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false
