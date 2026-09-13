@@ -13,6 +13,7 @@ import type {
   GridTrigger,
   HistoryRow,
   MultiFundBacktestReport,
+  QueueState,
   SizingParamsEntry,
   ValidateResponse,
 } from "@/types/backtest";
@@ -125,7 +126,41 @@ export const api = {
   historyRun: (runId: string) =>
     request<BacktestRunState>(`/api/backtest/history/${runId}`),
 
-  runs: () => request<{ runs: BacktestRunState[] }>("/api/backtest/runs"),
+  /** `queue` is absent from a server that predates queue controls. */
+  runs: () => request<{ runs: BacktestRunState[]; queue?: QueueState }>("/api/backtest/runs"),
+
+  // -- Queue controls (server/jobs.py). Each answers with the run's new
+  // snapshot. Pause/cancel on a RUNNING run are requests: the snapshot
+  // comes back still "running" with stop_requested set, and the status
+  // changes once its in-flight configurations finish. 409 means the
+  // action does not apply to the run's current state.
+
+  pauseRun: (runId: string) =>
+    request<BacktestRunState>(`/api/backtest/runs/${runId}/pause`, { method: "POST" }),
+
+  resumeRun: (runId: string) =>
+    request<BacktestRunState>(`/api/backtest/runs/${runId}/resume`, { method: "POST" }),
+
+  /** Discards a paused or running run's checkpoint; there is no undo. */
+  cancelRun: (runId: string) =>
+    request<BacktestRunState>(`/api/backtest/runs/${runId}/cancel`, { method: "POST" }),
+
+  /** To the front of the queue, resuming it if it was paused. */
+  runNext: (runId: string) =>
+    request<BacktestRunState>(`/api/backtest/runs/${runId}/run-next`, { method: "POST" }),
+
+  /** `position` is 0-based among pending runs with this one taken out;
+   * see lib/runQueue.ts's moveTarget. */
+  moveRun: (runId: string, position: number) =>
+    request<BacktestRunState>(`/api/backtest/runs/${runId}/move`, {
+      method: "POST",
+      body: JSON.stringify({ position }),
+    }),
+
+  pauseQueue: () => request<{ queue: QueueState }>("/api/backtest/queue/pause", { method: "POST" }),
+
+  resumeQueue: () =>
+    request<{ queue: QueueState }>("/api/backtest/queue/resume", { method: "POST" }),
 
   run: (runId: string) => request<BacktestRunState>(`/api/backtest/runs/${runId}`),
 

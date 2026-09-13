@@ -40,6 +40,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import json
+import math
 import os
 import re
 import sys
@@ -53,11 +55,19 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from server import history
-from server.jobs import JobQueue
+from server.jobs import (
+    TERMINAL,
+    JobQueue,
+    QueueError,
+    QueueStore,
+    RunControl,
+    RunStopped,
+    UnknownRun,
+)
 from src.core.config import BacktestConfig, expand_strategy_params
 from src.core.exceptions import ConfigurationError
 from src.optimization.optimization_controller import OptimizationController
-from src.optimization.search_strategies import BayesianSearch
+from src.optimization.search_strategies import BayesianSearch, GridSearch, SearchStrategy
 from src.trading.strategy_registry import STRATEGIES, resolve_strategy
 from tools.export_ui_data import KNOWN_DATA, equity_series, executions, fund_metrics
 
@@ -1089,12 +1099,153 @@ def _native(value: Any) -> Any:
     return value.item() if hasattr(value, "item") else value
 
 
-def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) -> dict[str, Any]:
+def _combination_key(grid_step: Any, profit_target: Any, params: dict[str, Any]) -> str:
+    """One configuration's identity, stable across a JSON round trip.
+
+    Used to recognise a configuration already finished before a pause or
+    restart. json with sorted keys rather than a tuple of the dict's
+    items because the checkpointed side has been through json once and
+    the live side has not -- serialising both the same way is what makes
+    0.15 from a request and 0.15 read back from disk compare equal.
+    """
+    return json.dumps(
+        [float(grid_step), float(profit_target), params], sort_keys=True, default=_native
+    )
+
+
+def _rank_key(row: dict[str, Any], rank_by: str, tie_break_by: str | None) -> tuple:
+    """run_sweep's ordering -- descending, missing or NaN last -- as a sort key.
+
+    Needed because a resumed run's rows no longer all come out of one
+    run_sweep call, so the ranking has to be applied here, over rows that
+    finished in different processes. Sorted with Python's stable sort, so
+    among exact ties the configuration that finished FIRST ranks first --
+    which _BestOnlySink below relies on to agree about which row is best.
+    """
+
+    def part(column: str | None) -> tuple[int, float]:
+        if column is None:
+            return (0, 0.0)
+        try:
+            value = float(row.get(column))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return (1, 0.0)
+        return (1, 0.0) if math.isnan(value) else (0, -value)
+
+    return (*part(rank_by), *part(tie_break_by))
+
+
+class _ResumableSearch(SearchStrategy):
+    """Wraps the real search: skips finished configurations, honours stops.
+
+    The stop hook lives in suggest() because that is the one seam
+    run_sweep already has that is consulted before EVERY new
+    configuration, in both its sequential and parallel branches, and
+    whose None already means "no more work" -- so a pause ends the sweep
+    through the engine's own clean exit rather than an exception thrown
+    through a process pool. progress_callback could not do this: run_sweep
+    deliberately swallows anything it raises.
+    """
+
+    def __init__(
+        self, inner: SearchStrategy, skip: set[str], should_stop: Callable[[], bool]
+    ) -> None:
+        self._inner = inner
+        self._skip = skip
+        self._should_stop = should_stop
+        self.stopped = False
+
+    def suggest(self) -> dict | None:
+        # Checked BEFORE asking the inner search: BayesianSearch.suggest
+        # opens an Optuna trial, and one opened and never run would be a
+        # dangling trial in a study that is about to be abandoned anyway.
+        if self._should_stop():
+            self.stopped = True
+            return None
+        while True:
+            suggestion = self._inner.suggest()
+            if suggestion is None or not self._skip:
+                return suggestion
+            key = _combination_key(
+                suggestion["grid_step"], suggestion["profit_target"], suggestion["strategy_params"]
+            )
+            if key not in self._skip:
+                return suggestion
+
+    def report(self, params: dict, result) -> None:
+        self._inner.report(params, result)
+
+
+class _BestOnlySink:
+    """A run_sweep result sink: checkpoints every row, keeps ONE full result.
+
+    THIS REPLACES return_full_results=True, AND THE REASON IS A CRASH.
+    The report needs every configuration's metrics row but only the BEST
+    configuration's full SimulationResult (its trade log and equity
+    curve). run_backtest used to ask run_sweep to retain every result
+    anyway, and on a full-history intrabar RSP run each one is ~35 MB --
+    so a 1,536-configuration sweep needed ~54 GB. On 2026-09-13 the
+    server process reached 31.4 GB on this 15 GB machine, Windows logged
+    low-virtual-memory warnings for twenty minutes, and it bugchecked.
+    run_sweep's own docstring had already recorded the same failure on a
+    1,260-configuration run.
+
+    Holding only the running best bounds a run at about two results
+    however large it is. result_sink is the right seam because run_sweep
+    hands it each (row, SimulationResult) in the parent process as the
+    configuration lands; it is contractually forbidden from retaining the
+    results, which this honours for every one but the current best.
+    """
+
+    def __init__(
+        self,
+        first_index: int,
+        rank_by: str,
+        tie_break_by: str | None,
+        on_row: Callable[[dict[str, Any]], None] | None,
+    ) -> None:
+        self.rows: list[dict[str, Any]] = []
+        self._first_index = first_index
+        self._rank_by = rank_by
+        self._tie_break_by = tie_break_by
+        self._on_row = on_row
+        self.best_index: int | None = None
+        self.best_result = None
+        self._best_key: tuple | None = None
+
+    def record(self, row: dict[str, Any], sim_result, elapsed_ms: int) -> None:
+        index = self._first_index + len(self.rows)
+        self.rows.append(row)
+        if self._on_row is not None:
+            self._on_row(row)
+        if sim_result is None:
+            return
+        key = _rank_key(row, self._rank_by, self._tie_break_by)
+        # Strictly better only: an exact tie keeps the earlier row, the
+        # same one the stable sort in run_backtest will put first.
+        if self._best_key is None or key < self._best_key:
+            self._best_key = key
+            self.best_index = index
+            self.best_result = sim_result
+
+
+def run_backtest(
+    request: dict[str, Any],
+    report: Callable[[float, str], None],
+    control: RunControl | None = None,
+) -> dict[str, Any]:
     """Execute one submitted run. Called on the worker thread.
 
     `report` is the job queue's progress callback. Progress is per
     (ticker x configuration), which is as fine as the engine's own
     reporting allows -- run_sweep returns when it returns.
+
+    `control`, when the queue passes one, makes the run resumable and
+    stoppable: configurations it reports as already finished are skipped,
+    every newly finished one is checkpointed through it, and once it says
+    stop, no new configuration starts and RunStopped is raised after the
+    ones in flight land. None -- a direct call from a script -- runs to
+    completion exactly as before.
     """
     parsed = RunRequest(**request)
     config = build_config(parsed)
@@ -1119,8 +1270,15 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
     combinations = (
         len(config.grid.steps) * len(config.grid.profit_targets) * len(strategy_params_grid)
     )
-    total_units = max(1, combinations * len(available))
+    bayesian = config.search.strategy == "bayesian"
+    # What one ticker will actually evaluate. For a Bayesian run that is
+    # the trial budget, not the size of the space -- measuring progress
+    # against the space left a 200-trial search over 11,520 combinations
+    # topping out at 1.7%.
+    per_ticker = parsed.n_trials if bayesian and parsed.n_trials else combinations
+    total_units = max(1, per_ticker * len(available))
     finished_units = 0
+    should_stop = control.should_stop if control is not None else (lambda: False)
     # Which summary columns are strategy params, not "Grid Step"/"Profit
     # Target"/"Strategy"/a metric -- optimization_controller.py's
     # result_row spreads the resolved combo's own keys straight into the
@@ -1138,10 +1296,12 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
             )
 
         kwargs = config.to_run_sweep_kwargs(strategy_class)
-        kwargs["return_full_results"] = True
+        # False, deliberately -- see _BestOnlySink for the crash this was.
+        kwargs["return_full_results"] = False
         kwargs["symbol"] = ticker
-        jobs = choose_jobs(len(frame), combinations, parsed.n_jobs)
-        kwargs["n_jobs"] = jobs
+        rank_by = kwargs["rank_by"]
+        tie_break_by = kwargs.get("tie_break_by")
+        param_keys = sorted({key for params in kwargs["strategy_params_grid"] for key in params})
 
         # kwargs["search_strategy"] is still the bare string "bayesian"
         # at this point -- to_run_sweep_kwargs has no n_trials field to
@@ -1158,34 +1318,158 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
         # recomputed. One fresh BayesianSearch per ticker, matching how
         # a plain grid sweep already runs the identical combination
         # space once per ticker in this same loop.
+        prior = control.completed_rows(ticker) if control is not None else []
+        inner: SearchStrategy
+        skip: set[str] = set()
         if kwargs["search_strategy"] == "bayesian":
-            kwargs["search_strategy"] = BayesianSearch(
+            inner = BayesianSearch(
                 kwargs["grid_steps"],
                 kwargs["profit_targets"],
                 kwargs["strategy_params_grid"],
-                rank_by=kwargs["rank_by"],
+                rank_by=rank_by,
                 direction=kwargs["search_direction"],
                 n_trials=parsed.n_trials,
                 seed=kwargs["search_seed"],
             )
+            expected = inner.n_trials
+            if prior:
+                # Replayed, not skipped: TPE legitimately proposes the same
+                # configuration twice, so "already done" is a count against
+                # the budget plus a history for the sampler, not a set.
+                inner.seed_completed(
+                    [
+                        (
+                            {
+                                "grid_step": row.get("Grid Step"),
+                                "profit_target": row.get("Profit Target"),
+                                "strategy_params": {key: row.get(key) for key in param_keys},
+                            },
+                            None if "error" in row else row.get(rank_by),
+                        )
+                        for row in prior
+                    ]
+                )
+        else:
+            inner = GridSearch(
+                kwargs["grid_steps"], kwargs["profit_targets"], kwargs["strategy_params_grid"]
+            )
+            expected = combinations
+            if prior:
+                # Only rows that belong to THIS grid, once each. A checkpoint
+                # cannot outlive a change to its request today, but a row
+                # counted twice would end the run one configuration short.
+                in_grid = {
+                    _combination_key(step, target, params)
+                    for step in kwargs["grid_steps"]
+                    for target in kwargs["profit_targets"]
+                    for params in kwargs["strategy_params_grid"]
+                }
+                kept = []
+                for row in prior:
+                    key = _combination_key(
+                        row.get("Grid Step"),
+                        row.get("Profit Target"),
+                        {k: row.get(k) for k in param_keys},
+                    )
+                    if key in in_grid and key not in skip:
+                        skip.add(key)
+                        kept.append(row)
+                prior = kept
+
+        remaining = max(0, expected - len(prior))
+        jobs = choose_jobs(len(frame), max(1, remaining), parsed.n_jobs)
+        kwargs["n_jobs"] = jobs
+        controller = OptimizationController(historical_data=frame)
+        search = _ResumableSearch(inner, skip, should_stop)
+        sink = _BestOnlySink(
+            first_index=len(prior),
+            rank_by=rank_by,
+            tie_break_by=tie_break_by,
+            on_row=(
+                (lambda row, _t=ticker: control.record_row(_t, row))
+                if control is not None
+                else None
+            ),
+        )
+        if prior:
+            report(
+                (finished_units + len(prior)) / total_units,
+                f"{ticker}: resuming -- {len(prior)}/{expected} configurations already done",
+            )
 
         def on_combination(
-            done: int, of: int, _base: int = finished_units, _t: str = ticker
+            done: int,
+            of: int,
+            _base: int = finished_units,
+            _t: str = ticker,
+            _prior: int = len(prior),
+            _expected: int = expected,
         ) -> None:
             # Bound as defaults so the closure reports THIS ticker's
             # offset even if it were ever called after the loop moved
             # on -- the same late-binding hazard the engine's own fill
-            # closures bind against.
-            report((_base + done) / total_units, f"{_t}: {done}/{of} configurations")
+            # closures bind against. `of` is run_sweep's view of the whole
+            # space; _expected is what this ticker will really evaluate.
+            finished = min(_prior + done, _expected)
+            report((_base + finished) / total_units, f"{_t}: {finished}/{_expected} configurations")
 
-        kwargs["progress_callback"] = on_combination
-        summary, full = OptimizationController(historical_data=frame).run_sweep(**kwargs)
+        if remaining > 0:
+            kwargs["search_strategy"] = search
+            kwargs["result_sink"] = sink
+            kwargs["progress_callback"] = on_combination
+            try:
+                controller.run_sweep(**kwargs)
+            except ConfigurationError:
+                # The one ConfigurationError that is not a real error: the
+                # stop landed before a single new configuration ran, so
+                # run_sweep had no rows to rank by. Anything else is real.
+                if not search.stopped:
+                    raise
 
-        # The best configuration by the engine's own default ranking.
-        # run_sweep sorted summary and full_results together, so index 0
-        # is that row and the UI is not re-ranking by a metric of its own
-        # invention.
-        result = full[0]
+        rows = prior + sink.rows
+        if search.stopped and len(rows) < expected:
+            raise RunStopped(f"{ticker}: stopped at {len(rows)}/{expected} configurations")
+
+        # run_sweep's own rank_by / tie_break_by checks, applied to the
+        # combined rows since the ranking now happens here.
+        for column in (rank_by, tie_break_by):
+            if column is not None and not any(column in row for row in rows):
+                available_columns = sorted({key for row in rows for key in row})
+                raise ConfigurationError(
+                    f"rank_by column {column!r} not found in results. "
+                    f"Available columns: {available_columns}"
+                )
+        order = sorted(range(len(rows)), key=lambda i: _rank_key(rows[i], rank_by, tie_break_by))
+        summary = pd.DataFrame([rows[i] for i in order])
+
+        # The best configuration by the engine's own default ranking -- the
+        # row the UI is not re-ranking by a metric of its own invention.
+        best = rows[order[0]]
+        if sink.best_index == order[0] and sink.best_result is not None:
+            result = sink.best_result
+        else:
+            # The best finished in an earlier attempt, so its full result
+            # was never in THIS process. The engine is deterministic, so one
+            # more configuration reproduces it exactly -- far cheaper than
+            # checkpointing a ~35 MB trade log for every new leader.
+            report(
+                (finished_units + expected) / total_units,
+                f"{ticker}: rebuilding the best configuration's trade log",
+            )
+            single = dict(kwargs)
+            single.update(
+                grid_steps=[best.get("Grid Step")],
+                profit_targets=[best.get("Profit Target")],
+                strategy_params_grid=[{key: best.get(key) for key in param_keys}],
+                search_strategy=None,
+                result_sink=None,
+                progress_callback=None,
+                return_full_results=True,
+                n_jobs=1,
+            )
+            _, full = controller.run_sweep(**single)
+            result = full[0]
+        sink.best_result = None
         funds[ticker] = {
             "metrics": fund_metrics(result.metrics, ticker),
             "executions": executions(result.trade_blotter, ticker),
@@ -1218,7 +1502,7 @@ def run_backtest(request: dict[str, Any], report: Callable[[float, str], None]) 
         }
         # This ticker's combinations are done; the next one's callback
         # counts from here rather than restarting at zero.
-        finished_units += combinations
+        finished_units += per_ticker
 
     report(1.0, "assembling report")
     return {
@@ -1266,7 +1550,10 @@ def _archive(job) -> None:
     history.save(job.run_id, _with_id(job.snapshot(), job.run_id))
 
 
-queue = JobQueue(runner=run_backtest, on_complete=_archive)
+# DURABLE: pending runs, their order and per-configuration checkpoints
+# survive a restart under VAI_QUEUE_DIR. Restored by server/app.py's
+# startup hook, never at import -- see JobQueue.restore.
+queue = JobQueue(runner=run_backtest, on_complete=_archive, store=QueueStore())
 
 
 @router.get("/funds")
@@ -1457,8 +1744,16 @@ def history_run(run_id: str) -> dict[str, Any]:
 
 @router.get("/runs")
 def runs() -> dict[str, Any]:
-    """Every run this server has seen, newest first."""
-    return {"runs": [job.snapshot() for job in queue.all()]}
+    """Every run this server has seen, newest first, plus the queue's state.
+
+    Each snapshot carries its own queue_position; the order a client
+    should show pending runs in is that, not submission order -- the two
+    differ the moment anything has been moved.
+    """
+    return {
+        "runs": [job.snapshot() for job in queue.all()],
+        "queue": {"paused": queue.paused},
+    }
 
 
 @router.get("/runs/{run_id}")
@@ -1491,6 +1786,92 @@ def submit(request: RunRequest) -> dict[str, Any]:
 
     job = queue.submit(request.model_dump())
     return _with_id(job.snapshot(), job.run_id)
+
+
+# ---------------------------------------------------------------------
+# QUEUE CONTROLS
+#
+# Every action answers with the job's new snapshot, so a client can
+# render the result of what it asked for without a second request.
+#
+# Pause and cancel on a RUNNING job are requests: the job keeps running
+# until the configurations already handed to the process pool finish
+# (up to about a minute on a full-history run), and its snapshot carries
+# stop_requested meanwhile. That is the engine's clean exit rather than a
+# killed worker, and it is why a paused run loses nothing -- see
+# server/jobs.py's module docstring.
+#
+# 404 for an id this server has never queued; 409 for an action that does
+# not apply to the job's current state (cancelling a completed run,
+# moving a running one). Neither is a 400: the request is well-formed,
+# the target is simply in the wrong state or absent.
+# ---------------------------------------------------------------------
+
+
+class MoveRequest(BaseModel):
+    """Where to put a pending run: 0 is next, larger is later. Clamped."""
+
+    position: int = Field(..., ge=0)
+
+
+def _control(action: Callable[[], Any], run_id: str) -> dict[str, Any]:
+    try:
+        job = action()
+    except UnknownRun as exc:
+        raise HTTPException(
+            status_code=404, detail=f"No queued or running run {run_id!r}."
+        ) from exc
+    except QueueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _with_id(job.snapshot(), run_id)
+
+
+@router.post("/runs/{run_id}/pause")
+def pause_run(run_id: str) -> dict[str, Any]:
+    """Queued: paused at once. Running: pauses after its in-flight batch."""
+    return _control(lambda: queue.pause(run_id), run_id)
+
+
+@router.post("/runs/{run_id}/resume")
+def resume_run(run_id: str) -> dict[str, Any]:
+    """Paused: back in the queue, at its place, resuming from its checkpoint."""
+    return _control(lambda: queue.resume(run_id), run_id)
+
+
+@router.post("/runs/{run_id}/cancel")
+def cancel_run(run_id: str) -> dict[str, Any]:
+    """Queued/paused: cancelled at once. Running: after its in-flight batch.
+
+    Cancelling discards the run's checkpoint -- unlike pausing, there is
+    nothing left to come back to.
+    """
+    return _control(lambda: queue.cancel(run_id), run_id)
+
+
+@router.post("/runs/{run_id}/move")
+def move_run(run_id: str, body: MoveRequest) -> dict[str, Any]:
+    """Reorder a pending run among the other pending runs."""
+    return _control(lambda: queue.move(run_id, body.position), run_id)
+
+
+@router.post("/runs/{run_id}/run-next")
+def run_next(run_id: str) -> dict[str, Any]:
+    """Make a pending run the next to start, resuming it if it was paused."""
+    return _control(lambda: queue.run_next(run_id), run_id)
+
+
+@router.post("/queue/pause")
+def pause_queue() -> dict[str, Any]:
+    """Stop starting runs; the running one pauses after its in-flight batch."""
+    queue.pause_all()
+    return {"queue": {"paused": queue.paused}}
+
+
+@router.post("/queue/resume")
+def resume_queue() -> dict[str, Any]:
+    """Start runs again, resuming whatever the queue pause paused."""
+    queue.resume_all()
+    return {"queue": {"paused": queue.paused}}
 
 
 class ValidateError(BaseModel):
@@ -1623,7 +2004,7 @@ async def run_socket(socket: WebSocket, run_id: str) -> None:
                 continue
             seen = current.revision
             await socket.send_json({"type": "run", "run": _with_id(current.snapshot(), run_id)})
-            if current.status in {"complete", "failed"}:
+            if current.status in TERMINAL:
                 return
     except WebSocketDisconnect:
         return

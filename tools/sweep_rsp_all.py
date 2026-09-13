@@ -305,6 +305,32 @@ def request_for(
     }
 
 
+def already_handled(api: str) -> tuple[set[str], set[str]]:
+    """(names already completed, names already pending) on the server.
+
+    WHY THIS EXISTS. The first submission of this series was lost to a
+    machine reboot eleven hours in, with only its first run archived --
+    and resubmitting everything would have spent twelve minutes re-running
+    what was already in Run History. Matching is by run name, which this
+    script makes unique per chunk.
+
+    Completed names come from /history, which keeps at most MAX_RUNS
+    runs; a completed run pruned from there is indistinguishable from one
+    that never ran, and would be queued again. Pending names come from
+    /runs, so a second invocation while the first series is still queued
+    is a no-op rather than a duplicate of all 84 runs.
+    """
+    with urllib.request.urlopen(f"{api}/api/backtest/history", timeout=60) as resp:
+        completed = {row.get("name") for row in json.loads(resp.read()).get("rows", [])}
+    with urllib.request.urlopen(f"{api}/api/backtest/runs", timeout=60) as resp:
+        pending = {
+            run.get("name")
+            for run in json.loads(resp.read()).get("runs", [])
+            if run.get("status") in ("queued", "running", "paused")
+        }
+    return {n for n in completed if n}, {n for n in pending if n}
+
+
 def submit(api: str, body: dict[str, Any]) -> dict[str, Any]:
     req = urllib.request.Request(
         f"{api}/api/backtest/runs",
@@ -324,6 +350,11 @@ def main(argv=None) -> int:
         "--dry-run",
         action="store_true",
         help="Print the plan and the time estimate. Submits nothing.",
+    )
+    ap.add_argument(
+        "--resubmit",
+        action="store_true",
+        help="Queue every run, including ones already completed or pending on the server.",
     )
     args = ap.parse_args(argv)
 
@@ -372,6 +403,26 @@ def main(argv=None) -> int:
         return 0
 
     print()
+    if not args.resubmit:
+        try:
+            completed, pending = already_handled(args.api)
+        except urllib.error.URLError as exc:
+            print(f"  UNREACHABLE {args.api}: {getattr(exc, 'reason', exc)}")
+            print("  Start it with: uvicorn server.app:app --host 127.0.0.1 --port 8000")
+            return 1
+        before = len(batches)
+        skipped_done = [b for b in batches if b[1] in completed]
+        skipped_pending = [b for b in batches if b[1] in pending]
+        batches = [b for b in batches if b[1] not in completed and b[1] not in pending]
+        for _, label, *_ in skipped_done:
+            print(f"  skip (completed) {label}")
+        for _, label, *_ in skipped_pending:
+            print(f"  skip (already queued) {label}")
+        if before != len(batches):
+            print()
+            print(f"{before - len(batches)} of {before} already handled; {len(batches)} to queue.")
+            print()
+
     ok = 0
     for strategy, label, chunk, targets, n in batches:
         try:

@@ -1,16 +1,34 @@
-import { AlertCircle, CheckCircle2, Loader2, Timer } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  AlertCircle,
+  Ban,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUp,
+  Loader2,
+  Pause,
+  Play,
+  Timer,
+  X,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import { describeRequestAxes } from "@/lib/requestSummary";
-import { queuePositions } from "@/lib/runQueue";
+import {
+  availableActions,
+  isActive,
+  moveTarget,
+  orderActiveRuns,
+  queuePositions,
+  type QueuePosition,
+} from "@/lib/runQueue";
 import { cn, runUrl } from "@/lib/utils";
 import type { BacktestRunState } from "@/types/backtest";
 
 /**
- * Backtests in flight, found on load rather than only when you started
- * them.
+ * Backtests in flight, and the controls to steer them.
  *
  * WHY THIS EXISTS. useBacktestRun tracks the run THIS tab submitted. A
  * fresh page load knew about none of them -- so refreshing during a
@@ -18,14 +36,24 @@ import type { BacktestRunState } from "@/types/backtest";
  * page while the engine was busy. The runs were there the whole time;
  * nothing asked.
  *
+ * WHY IT NOW HAS CONTROLS. tools/sweep_rsp_all.py queues 84 runs that
+ * take days, and a queue that long needs steering: pause one to let
+ * something urgent through, move a slice of the sweep to the front,
+ * cancel a strategy whose early chunks already answered the question,
+ * pause everything before restarting the machine. Every control here
+ * maps to one server/jobs.py transition, and lib/runQueue.ts decides
+ * which are offered so the page never shows a button the server would
+ * refuse.
+ *
  * It polls rather than subscribing. A websocket per run would mean
  * opening and closing sockets as jobs come and go, to learn the same
- * thing one cheap request answers for all of them at once. The socket
- * is the right tool for watching ONE run closely, which is what
- * useBacktestRun does after a submission.
+ * thing one cheap request answers for all of them at once. After any
+ * control it re-polls at once, so the effect shows without a two-second
+ * lag.
  *
- * POLLING STOPS WHEN NOTHING IS RUNNING. An idle dashboard left open
- * overnight should not make a request every two seconds until morning.
+ * POLLING SLOWS WHEN NOTHING IS WORKING -- nothing running, nothing
+ * queued behind an unpaused queue. An idle dashboard left open overnight
+ * should not make a request every two seconds until morning.
  */
 
 interface Props {
@@ -39,200 +67,374 @@ const ACTIVE_POLL_MS = 2000;
 // nothing.
 const IDLE_POLL_MS = 15000;
 
+type RunAction = "pause" | "resume" | "cancel" | "runNext" | "moveUp" | "moveDown";
+
 export function ActiveRuns({ onSettled }: Props) {
   const [runs, setRuns] = useState<BacktestRunState[]>([]);
+  const [queuePaused, setQueuePaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  // One control at a time: "<run_id>:<action>" or "queue".
+  const [busy, setBusy] = useState<string | null>(null);
+  const refresh = useRef<() => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
     let timer: number | undefined;
+    // Each poll takes a generation; a response to anything but the latest
+    // is dropped. Without it, a control's immediate re-poll racing a
+    // scheduled one would start two polling loops that never merge.
+    let generation = 0;
     // Tracked so a run that finishes between polls still notifies once,
     // rather than the caller having to diff the list itself.
     let previouslyActive = new Set<string>();
 
-    const tick = () => {
+    const schedule = (ms: number) => {
+      timer = window.setTimeout(tick, ms);
+    };
+
+    function tick() {
+      const mine = ++generation;
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        timer = undefined;
+      }
       api
         .runs()
         .then((body) => {
-          if (cancelled) return;
+          if (cancelled || mine !== generation) return;
+          const paused = body.queue?.paused ?? false;
           setRuns(body.runs);
+          setQueuePaused(paused);
           setError(null);
 
           const active = new Set(
-            body.runs
-              .filter((run) => run.status === "queued" || run.status === "running")
-              .map((run) => run.run_id),
+            body.runs.filter((run) => isActive(run.status)).map((run) => run.run_id),
           );
           const justFinished = [...previouslyActive].some((id) => !active.has(id));
           previouslyActive = active;
           if (justFinished) onSettled?.();
 
-          timer = window.setTimeout(tick, active.size > 0 ? ACTIVE_POLL_MS : IDLE_POLL_MS);
+          const working = body.runs.some(
+            (run) => run.status === "running" || (run.status === "queued" && !paused),
+          );
+          schedule(working ? ACTIVE_POLL_MS : IDLE_POLL_MS);
         })
         .catch((cause: unknown) => {
-          if (cancelled) return;
+          if (cancelled || mine !== generation) return;
           setError(cause instanceof Error ? cause.message : String(cause));
           // Keep trying, slowly. The engine host being down is a state
           // to recover from, not a reason to stop looking.
-          timer = window.setTimeout(tick, IDLE_POLL_MS);
+          schedule(IDLE_POLL_MS);
         });
-    };
+    }
 
+    refresh.current = tick;
     tick();
     return () => {
       cancelled = true;
+      refresh.current = () => {};
       if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [onSettled]);
 
-  const active = runs.filter((run) => run.status === "queued" || run.status === "running");
-  const recent = runs.filter((run) => run.status !== "queued" && run.status !== "running").slice(0, 3);
-  // `runs` is exactly GET /runs's own newest-first order -- the shape
-  // queuePositions expects to recover true submission order from.
-  const positions = queuePositions(runs);
+  const perform = useCallback(async (key: string, call: () => Promise<unknown>) => {
+    setBusy(key);
+    setActionError(null);
+    try {
+      await call();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(null);
+      refresh.current();
+    }
+  }, []);
 
-  // Nothing running and nothing recent is the ordinary state, and an
-  // empty card saying "no runs" every time is noise.
-  if (active.length === 0 && recent.length === 0 && !error) return null;
+  const positions = queuePositions(runs);
+  const active = orderActiveRuns(runs);
+  const recent = runs.filter((run) => !isActive(run.status)).slice(0, 3);
+
+  const onAction = (run: BacktestRunState, action: RunAction) => {
+    const label = runLabel(run) ?? run.run_id;
+    const position = positions.get(run.run_id);
+    const calls: Record<RunAction, () => Promise<unknown>> = {
+      pause: () => api.pauseRun(run.run_id),
+      resume: () => api.resumeRun(run.run_id),
+      cancel: () => api.cancelRun(run.run_id),
+      runNext: () => api.runNext(run.run_id),
+      moveUp: () => api.moveRun(run.run_id, position ? moveTarget(position, "up") : 0),
+      moveDown: () => api.moveRun(run.run_id, position ? moveTarget(position, "down") : 0),
+    };
+    if (action === "cancel") {
+      const losesProgress = run.status === "running" || run.status === "paused";
+      const confirmed = window.confirm(
+        losesProgress
+          ? `Cancel "${label}"? The configurations it has finished will be discarded. This can't be undone.`
+          : `Cancel "${label}"? It will be removed from the queue.`,
+      );
+      if (!confirmed) return;
+    }
+    void perform(`${run.run_id}:${action}`, calls[action]);
+  };
+
+  const running = active.filter((run) => run.status === "running").length;
+  const queued = active.filter((run) => run.status === "queued").length;
+  const paused = active.filter((run) => run.status === "paused").length;
+
+  // Nothing active and nothing recent is the ordinary state, and an
+  // empty card saying "no runs" every time is noise. A paused queue is
+  // not ordinary: it will silently start nothing, so it always shows.
+  if (active.length === 0 && recent.length === 0 && !error && !queuePaused) return null;
+
+  const counts = [
+    running ? `${running} running` : null,
+    queued ? `${queued} queued` : null,
+    paused ? `${paused} paused` : null,
+  ].filter(Boolean);
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle className="flex items-center gap-2">
-          {active.length > 0 ? (
+          {running > 0 && !queuePaused ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <Timer className="size-4" />
           )}
-          {active.length > 0
-            ? `${active.length} backtest${active.length === 1 ? "" : "s"} running`
-            : "Recent runs"}
+          {counts.length > 0 ? `Backtests · ${counts.join(" · ")}` : "Recent runs"}
         </CardTitle>
-        {error ? <Badge tone="loss">engine host unreachable</Badge> : null}
+        <div className="flex items-center gap-2">
+          {error ? <Badge tone="loss">engine host unreachable</Badge> : null}
+          {queuePaused ? <Badge tone="stuck">queue paused</Badge> : null}
+          {active.length > 0 || queuePaused ? (
+            <Button
+              variant="outline"
+              className="h-7 px-2 text-xs"
+              disabled={busy !== null}
+              onClick={() =>
+                void perform("queue", () => (queuePaused ? api.resumeQueue() : api.pauseQueue()))
+              }
+              title={
+                queuePaused
+                  ? "Start runs again, resuming whatever pausing the queue paused"
+                  : "Start no new runs; the running one pauses after its in-flight configurations"
+              }
+            >
+              {queuePaused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+              {queuePaused ? "Resume queue" : "Pause queue"}
+            </Button>
+          ) : null}
+        </div>
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {[...active, ...recent].map((run) => (
-          <RunRow key={run.run_id} run={run} queuePosition={positions.get(run.run_id)} />
-        ))}
-        {error ? (
-          <p className="text-xs text-muted-foreground">{error}</p>
+        {actionError ? (
+          <p className="rounded-md bg-loss/10 px-2 py-1 text-xs text-loss" role="alert">
+            {actionError}
+          </p>
         ) : null}
+        {/* Scrolls inside itself: a sweep series is dozens of runs, and the
+            parameter form below should not be pushed off the page by it. */}
+        <div className="max-h-[36rem] space-y-3 overflow-y-auto pr-1">
+          {[...active, ...recent].map((run) => (
+            <RunRow
+              key={run.run_id}
+              run={run}
+              position={positions.get(run.run_id)}
+              queuePaused={queuePaused}
+              busy={busy}
+              onAction={(action) => onAction(run, action)}
+            />
+          ))}
+        </div>
+        {error ? <p className="text-xs text-muted-foreground">{error}</p> : null}
       </CardContent>
     </Card>
   );
 }
 
+function runLabel(run: BacktestRunState): string | null {
+  return (
+    run.name ??
+    (run.request ? `${run.request.sizing_model} · ${run.request.tickers.join(", ")}` : null)
+  );
+}
+
+function statusText(
+  run: BacktestRunState,
+  position: QueuePosition | undefined,
+  queuePaused: boolean,
+): string {
+  const place = position
+    ? position.position === 1
+      ? "next up"
+      : `position ${position.position} of ${position.of}`
+    : null;
+  switch (run.status) {
+    case "queued": {
+      const parts = ["queued", place, queuePaused ? "waiting for the queue to resume" : null];
+      // A run interrupted by a restart or resumed after a pause picks up
+      // from its checkpoint, which is worth saying -- it will not start over.
+      if (run.message && /resum/i.test(run.message)) parts.push("resumes where it stopped");
+      return parts.filter(Boolean).join(" — ");
+    }
+    case "paused":
+      return ["paused", place].filter(Boolean).join(" — ");
+    case "cancelled":
+      return "cancelled";
+    default:
+      return run.message ?? run.status;
+  }
+}
+
 function RunRow({
   run,
-  queuePosition,
+  position,
+  queuePaused,
+  busy,
+  onAction,
 }: {
   run: BacktestRunState;
-  /** This run's place among currently-queued jobs, or undefined when it
-   * isn't queued (running/complete/failed) or the caller has none to
-   * offer. */
-  queuePosition?: { position: number; of: number } | undefined;
+  /** This run's place among pending jobs, or undefined when it isn't pending. */
+  position: QueuePosition | undefined;
+  queuePaused: boolean;
+  busy: string | null;
+  onAction: (action: RunAction) => void;
 }) {
-  const running = run.status === "running" || run.status === "queued";
+  const active = isActive(run.status);
   const percent = Math.round(run.progress * 100);
+  const actions = availableActions(run, position);
+  const label = runLabel(run);
 
   // One JOB already IS one sweep -- grouping means describing what THIS
   // job covers, not merging several jobs together. Only computable when
-  // the snapshot carries the submitted request (added this session;
-  // absent only for a server predating it, in which case this row just
-  // falls back to today's plainer rendering).
+  // the snapshot carries the submitted request.
   const summary = run.request ? describeRequestAxes(run.request) : null;
-  const label =
-    run.name ??
-    (run.request ? `${run.request.sizing_model} · ${run.request.tickers.join(", ")}` : null);
 
-  const statusText =
-    run.status === "queued"
-      ? queuePosition
-        ? queuePosition.position === 1
-          ? "queued — next up"
-          : `queued — position ${queuePosition.position} of ${queuePosition.of}`
-        : "queued"
-      : (run.message ?? run.status);
+  const control = (action: RunAction, title: string, icon: ReactNode) => (
+    <Button
+      variant="ghost"
+      className={cn("size-7 p-0", action === "cancel" && "hover:text-loss")}
+      title={title}
+      aria-label={title}
+      disabled={busy !== null}
+      onClick={() => onAction(action)}
+    >
+      {busy === `${run.run_id}:${action}` ? <Loader2 className="size-3.5 animate-spin" /> : icon}
+    </Button>
+  );
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-4">
-        {/* The submitted label when there is one, a sizing-model/ticker
-            fallback derived from the request when there isn't, the id
-            as a last resort -- a list of "which of my sweeps is this"
-            is exactly what the name was added for. The id stays
-            reachable via the Open/Watch link either way. */}
+      <div className="flex items-center gap-2">
+        {/* Where it sits, at a glance -- the thing reordering changes. */}
         <span
-          className="w-24 shrink-0 truncate text-xs text-muted-foreground"
+          className={cn(
+            "tnum w-8 shrink-0 text-center text-[11px] font-medium",
+            run.status === "running" ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          {run.status === "running" ? "now" : position ? `#${position.position}` : ""}
+        </span>
+
+        {/* Full width for the name: a sweep series differs only in its
+            "[3/16]" suffix, and a truncated label cannot be reordered by. */}
+        <span
+          className="min-w-0 flex-1 truncate text-xs"
           title={label ? `${label} · ${run.run_id}` : run.run_id}
         >
           {label ? (
             <span className="text-foreground">{label}</span>
           ) : (
-            <span className="font-mono">{run.run_id.slice(0, 10)}</span>
+            <span className="font-mono text-muted-foreground">{run.run_id.slice(0, 10)}</span>
           )}
         </span>
 
-        <div className="flex-1">
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <span className={cn(run.status === "failed" && "text-loss")}>{statusText}</span>
-            {running ? <span className="tnum text-muted-foreground">{percent}%</span> : null}
-          </div>
-          {running ? (
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-secondary">
-              <div
-                className={cn(
-                  "h-full bg-primary transition-all duration-500",
-                  // A queued run has made no progress and should not show
-                  // a bar creeping forward -- it is waiting, not working.
-                  run.status === "queued" && "animate-pulse",
-                )}
-                style={{ width: `${Math.max(percent, run.status === "queued" ? 100 : 2)}%` }}
-              />
-            </div>
-          ) : null}
-        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {actions.runNext ? control("runNext", "Run next", <ChevronsUp className="size-3.5" />) : null}
+          {actions.moveUp ? control("moveUp", "Move up", <ChevronUp className="size-3.5" />) : null}
+          {actions.moveDown ? control("moveDown", "Move down", <ChevronDown className="size-3.5" />) : null}
+          {actions.pause
+            ? control(
+                "pause",
+                run.status === "running" ? "Pause after the in-flight configurations" : "Pause",
+                <Pause className="size-3.5" />,
+              )
+            : null}
+          {actions.resume ? control("resume", "Resume", <Play className="size-3.5" />) : null}
+          {actions.cancel ? control("cancel", "Cancel", <X className="size-3.5" />) : null}
 
-        <div className="flex w-32 shrink-0 items-center justify-end gap-2">
           {run.status === "complete" ? (
-            <CheckCircle2 className="size-4 text-profit" />
+            <CheckCircle2 className="mx-1 size-4 text-profit" />
           ) : run.status === "failed" ? (
-            <AlertCircle className="size-4 text-loss" />
+            <AlertCircle className="mx-1 size-4 text-loss" />
+          ) : run.status === "cancelled" ? (
+            <Ban className="mx-1 size-4 text-muted-foreground" />
           ) : null}
           {/* A real anchor, not a button + callback: this opens in its
               own tab (target="_blank"), matching every other "view an
               existing run" action, so the running list here is never
-              replaced by the report it opens. Styled to match Button's
-              outline variant directly rather than making that shared
-              primitive polymorphic for one caller. */}
+              replaced by the report it opens. */}
           <a
             href={runUrl(run.run_id)}
             target="_blank"
             rel="noopener noreferrer"
             className={cn(
-              "inline-flex h-7 items-center justify-center gap-2 rounded-md px-2 text-xs font-medium",
+              "ml-1 inline-flex h-7 items-center justify-center gap-2 rounded-md px-2 text-xs font-medium",
               "border border-border bg-transparent transition-colors hover:bg-accent",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
             )}
           >
-            {running ? "Watch" : "Open"}
+            {active ? "Watch" : "Open"}
           </a>
         </div>
       </div>
 
-      {summary ? (
-        <div className="flex flex-wrap items-center gap-1.5 pl-[calc(6rem+1rem)] text-[11px] text-muted-foreground">
-          <span>
-            {summary.simulationCount} simulation{summary.simulationCount === 1 ? "" : "s"}
+      <div className="pl-10">
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span
+            className={cn(
+              run.status === "failed" && "text-loss",
+              run.stop_requested && "text-stuck",
+              run.status === "paused" && "text-muted-foreground",
+            )}
+          >
+            {statusText(run, position, queuePaused)}
           </span>
-          {summary.axes.map((axis) => (
-            <Badge key={axis.key} className="text-[11px] font-normal">
-              {axis.label}: {axis.values.length}
-            </Badge>
-          ))}
+          {active && percent > 0 ? <span className="tnum text-muted-foreground">{percent}%</span> : null}
         </div>
-      ) : null}
+        {active ? (
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-secondary">
+            <div
+              className={cn(
+                "h-full transition-all duration-500",
+                run.status === "paused" ? "bg-muted-foreground/40" : "bg-primary",
+                // A queued run with no progress is waiting, not working, and
+                // should not show a bar creeping forward. One resuming from
+                // a checkpoint shows where it will pick up instead.
+                run.status === "queued" && percent === 0 && !queuePaused && "animate-pulse",
+              )}
+              style={{
+                width: `${run.status === "queued" && percent === 0 ? 100 : Math.max(percent, 2)}%`,
+              }}
+            />
+          </div>
+        ) : null}
+
+        {summary ? (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span>
+              {summary.simulationCount} simulation{summary.simulationCount === 1 ? "" : "s"}
+            </span>
+            {summary.axes.map((axis) => (
+              <Badge key={axis.key} className="text-[11px] font-normal">
+                {axis.label}: {axis.values.length}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

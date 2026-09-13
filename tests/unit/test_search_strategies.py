@@ -26,7 +26,12 @@ import pytest
 
 from src.optimization.optimization_controller import OptimizationController
 from src.core.exceptions import ConfigurationError
-from src.optimization.search_strategies import BayesianSearch, GridSearch, RandomSearch, SearchStrategy
+from src.optimization.search_strategies import (
+    BayesianSearch,
+    GridSearch,
+    RandomSearch,
+    SearchStrategy,
+)
 from src.strategies.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 
@@ -358,3 +363,78 @@ def test_random_search_report_is_a_no_op():
     r2 = RandomSearch(steps, targets, params, n_trials=5, seed=1)
     r2.suggest()
     assert r.suggest() == r2.suggest()
+
+
+# ---------------------------------------------------------------------------
+# BayesianSearch.seed_completed -- resuming a paused or restart-interrupted
+# Bayesian sweep (server/backtest.py) replays its finished trials instead of
+# restarting the study cold with a fresh budget.
+# ---------------------------------------------------------------------------
+
+
+def _seedable():
+    return BayesianSearch(
+        grid_steps=[0.01, 0.02],
+        profit_targets=[0.005, 0.01],
+        strategy_params_grid=[
+            {"lookback": lb, "trail": tr} for lb in (5, 10) for tr in (None, 0.15)
+        ],
+        rank_by="Final Equity",
+        n_trials=6,
+        seed=3,
+    )
+
+
+def _evaluation(step, target, lookback, trail, value):
+    return (
+        {
+            "grid_step": step,
+            "profit_target": target,
+            "strategy_params": {"lookback": lookback, "trail": trail},
+        },
+        value,
+    )
+
+
+def test_seeded_trials_consume_the_budget_so_a_resume_never_overruns():
+    search = _seedable()
+    replayed = search.seed_completed(
+        [
+            _evaluation(0.01, 0.005, 5, None, 101.0),
+            _evaluation(0.02, 0.01, 10, 0.15, 99.0),
+            _evaluation(0.01, 0.01, 5, 0.15, None),  # failed: replayed as FAIL
+        ]
+    )
+    assert replayed == 3
+    suggestions = []
+    while (s := search.suggest()) is not None:
+        suggestions.append(s)
+        search.report(s, None)
+    assert len(suggestions) == 3  # 6-trial budget, 3 already spent
+
+
+def test_seeded_history_is_visible_to_the_sampler_with_its_states():
+    import optuna
+
+    search = _seedable()
+    search.seed_completed(
+        [
+            _evaluation(0.01, 0.005, 5, None, 101.0),
+            _evaluation(0.01, 0.01, 5, 0.15, float("nan")),
+        ]
+    )
+    states = [t.state for t in search._study.trials]
+    assert states == [optuna.trial.TrialState.COMPLETE, optuna.trial.TrialState.FAIL]
+    assert search._study.best_value == 101.0
+
+
+def test_an_evaluation_outside_the_space_spends_budget_but_is_not_invented():
+    search = _seedable()
+    replayed = search.seed_completed([_evaluation(0.05, 0.005, 5, None, 1.0)])
+    assert replayed == 0
+    assert len(search._study.trials) == 0
+    count = 0
+    while (s := search.suggest()) is not None:
+        search.report(s, None)
+        count += 1
+    assert count == 5

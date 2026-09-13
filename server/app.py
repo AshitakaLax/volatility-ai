@@ -32,6 +32,9 @@ discovered later by someone who bound it to a LAN.
 
 from __future__ import annotations
 
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -41,10 +44,29 @@ from fastapi.staticfiles import StaticFiles
 
 from server import backtest, control, deployment, live, ml_insights, ml_upstream, upstream
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Resume the backtest queue a previous process left behind.
+
+    At startup rather than import, because importing server.backtest must
+    not start a worker thread or read a directory -- every test imports
+    it. Skipped when this host forwards backtests upstream: on the Pi the
+    queue belongs to the workstation, and restoring one here would run
+    sweeps on the trading loop's cores.
+    """
+    if not upstream.is_enabled():
+        restored = backtest.queue.restore()
+        if restored:
+            logging.getLogger("Optimizer").info(f"Restored {restored} queued backtest run(s).")
+    yield
+
+
 app = FastAPI(
     title="volatility-ai",
     version="0.1.0",
     description="Read-only live telemetry, and a backtest runner.",
+    lifespan=lifespan,
 )
 
 # Explicit origins, never ["*"]. A wildcard plus no authentication means

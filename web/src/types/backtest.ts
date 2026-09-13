@@ -345,7 +345,18 @@ export const EMPTY_RUN_HISTORY_FILTERS: RunHistoryFilters = {
  * so a run is a JOB: the POST returns an id and progress arrives over a
  * WebSocket. A synchronous request would time out.
  */
-export type RunStatus = "queued" | "running" | "complete" | "failed";
+/**
+ * "paused" holds a place in the queue and resumes from its checkpoint;
+ * "cancelled" is terminal. Both arrived with queue controls
+ * (server/jobs.py) -- an older server never sends them.
+ */
+export type RunStatus = "queued" | "running" | "paused" | "cancelled" | "complete" | "failed";
+
+/** Queue-wide state, carried alongside GET /api/backtest/runs. */
+export interface QueueState {
+  /** No run starts while true; the running one pauses after its batch. */
+  paused: boolean;
+}
 
 export interface BacktestRunRequest {
   /**
@@ -425,6 +436,19 @@ export interface BacktestRunState {
   status: RunStatus;
   /** 0-1. Coarse: the server reports per-configuration completion. */
   progress: number;
+  /**
+   * 1-indexed place among PENDING (queued or paused) runs, in the order
+   * the server will actually run them -- which is not submission order
+   * once anything has been moved. null while running or finished; absent
+   * from a server that predates queue controls.
+   */
+  queue_position?: number | null;
+  /**
+   * A pause or cancel asked of a RUNNING run that has not landed yet. It
+   * lands once the configurations already handed to the process pool
+   * finish, so for up to about a minute the run is still "running".
+   */
+  stop_requested?: "pause" | "cancel" | null;
   message: string | null;
   report: MultiFundBacktestReport | null;
   error: string | null;

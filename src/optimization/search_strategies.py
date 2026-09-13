@@ -372,6 +372,76 @@ class BayesianSearch(SearchStrategy):
             "_trial_number": trial.number,  # internal bookkeeping, ignored by run_sweep when running the combination
         }
 
+    def seed_completed(self, evaluations: list[tuple[dict, float | None]]) -> int:
+        """Replay evaluations finished in an EARLIER process into this study.
+
+        Each entry is ({"grid_step", "profit_target", "strategy_params"},
+        objective) with objective None for a failed or unscored
+        combination. Returns how many were replayed as real trials.
+
+        WHY THIS EXISTS. A paused or restart-interrupted sweep resumes in a
+        new BayesianSearch, and a fresh study knows nothing. Without a
+        replay the resumed half would spend its whole remaining budget
+        re-exploring at random, and the budget itself would reset to the
+        full n_trials -- a 200-trial search paused at 150 would run 200
+        more. Replaying through study.add_trial gives TPE the same history
+        it would have had, and every entry consumes budget whether or not
+        it could be replayed, so the total never exceeds n_trials.
+
+        An entry whose values are not among this study's categorical
+        choices (a checkpoint from a differently-configured search) is
+        counted against the budget but not replayed: Optuna rejects a
+        parameter outside its distribution, and inventing a nearest match
+        would teach the sampler about a point it never measured.
+        """
+        import math
+
+        import optuna
+        from optuna.distributions import CategoricalDistribution
+        from optuna.trial import TrialState, create_trial
+
+        replayed = 0
+        for suggestion, objective in evaluations:
+            self._trial_count += 1
+            params = {
+                "grid_step": suggestion["grid_step"],
+                "profit_target": suggestion["profit_target"],
+            }
+            distributions = {
+                "grid_step": CategoricalDistribution(self._grid_steps),
+                "profit_target": CategoricalDistribution(self._profit_targets),
+            }
+            strategy_params = suggestion["strategy_params"]
+            if self._param_axes is not None:
+                for key, values in self._param_axes.items():
+                    params[f"param_{key}"] = strategy_params.get(key)
+                    distributions[f"param_{key}"] = CategoricalDistribution(values)
+            else:
+                try:
+                    index = self._strategy_params_grid.index(strategy_params)
+                except ValueError:
+                    continue
+                params["strategy_params_index"] = index
+                distributions["strategy_params_index"] = CategoricalDistribution(
+                    list(range(len(self._strategy_params_grid)))
+                )
+            if any(params[name] not in dist.choices for name, dist in distributions.items()):
+                continue
+
+            usable = objective is not None and math.isfinite(objective)
+            trial = create_trial(
+                params=params,
+                distributions=distributions,
+                value=float(objective) if usable else None,
+                state=TrialState.COMPLETE if usable else TrialState.FAIL,
+            )
+            try:
+                self._study.add_trial(trial)
+            except (ValueError, optuna.exceptions.OptunaError):
+                continue
+            replayed += 1
+        return replayed
+
     def report(self, params: dict, result) -> None:
         """Feed one evaluation back to Optuna.
 
