@@ -294,14 +294,13 @@ def request_for(
         "name": label,
         "tickers": [TICKER],
         "grid_steps": GRID_STEPS,
-        "profit_targets": targets if targets is not None else targets_for(strategy),
-        "sizing_model": strategy,
-        "strategy_params": space,
-        "fill_model": FILL_MODEL,
+        "targets": targets if targets is not None else targets_for(strategy),
+        "model": strategy,
+        "params": space,
+        "fill": FILL_MODEL,
         "limit": LIMIT,
-        # No start/end: the whole file.
+        # No start/end: the whole file. No `bayes`: an exhaustive grid.
         "rank_by": "Capital Velocity Index",
-        "search_direction": "maximize",
     }
 
 
@@ -321,12 +320,13 @@ def already_handled(api: str) -> tuple[set[str], set[str]]:
     is a no-op rather than a duplicate of all 84 runs.
     """
     with urllib.request.urlopen(f"{api}/api/backtest/history", timeout=60) as resp:
-        completed = {row.get("name") for row in json.loads(resp.read()).get("rows", [])}
+        # Run-level fields are stated once per run, under `runs`.
+        completed = {run.get("name") for run in json.loads(resp.read()).get("runs", {}).values()}
     with urllib.request.urlopen(f"{api}/api/backtest/runs", timeout=60) as resp:
         pending = {
-            run.get("name")
+            (run.get("req") or {}).get("name")
             for run in json.loads(resp.read()).get("runs", [])
-            if run.get("status") in ("queued", "running", "paused")
+            if run.get("status") in ("queued", "running", "pausing", "paused")
         }
     return {n for n in completed if n}, {n for n in pending if n}
 
@@ -427,7 +427,7 @@ def main(argv=None) -> int:
     for strategy, label, chunk, targets, n in batches:
         try:
             job = submit(args.api, request_for(strategy, chunk, label, targets))
-            print(f"  queued {job['run_id']}  {n:>5,} cfg  {label}", flush=True)
+            print(f"  queued {job['id']}  {n:>5,} cfg  {label}", flush=True)
             ok += 1
         except urllib.error.HTTPError as exc:
             print(f"  REJECTED {label}\n    {exc.code}: {exc.read().decode()[:300]}")

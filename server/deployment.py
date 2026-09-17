@@ -35,10 +35,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
-
-router = APIRouter(prefix="/api", tags=["deployment"])
-
 # When this process started. Module import time is close enough to
 # "deployed at" for a status card, and it needs no state.
 STARTED_AT = time.time()
@@ -77,8 +73,8 @@ def _read_int(path: str) -> int | None:
     return None if text == "max" else int(text) if text.isdigit() else None
 
 
-def container_stats() -> dict[str, Any]:
-    """Memory from cgroup v2, or nulls outside a container.
+def container_stats() -> dict[str, Any] | None:
+    """Memory from cgroup v2, or None outside a container.
 
     CPU is deliberately absent rather than approximated. cgroup exposes
     cumulative usage in microseconds, and turning that into a percentage
@@ -87,31 +83,36 @@ def container_stats() -> dict[str, Any]:
     """
     used = _read_int("/sys/fs/cgroup/memory.current")
     limit = _read_int("/sys/fs/cgroup/memory.max")
+    if used is None:
+        return None
     return {
-        "memory_mb": round(used / 1_048_576, 1) if used is not None else None,
-        "memory_limit_mb": round(limit / 1_048_576, 1) if limit is not None else None,
+        "mem_mb": round(used / 1_048_576, 1),
+        "mem_limit_mb": round(limit / 1_048_576, 1) if limit is not None else None,
         "cpu_pct": None,
-        "containerised": used is not None,
     }
 
 
-@router.get("/deployment")
-def deployment() -> dict[str, Any]:
-    """Build identity and process health."""
+def describe() -> dict[str, Any]:
+    """Build identity and process health, for /api/health.
+
+    `container` is None outside a container -- the honest answer, since
+    cgroup is the only place those numbers are true.
+    """
     status = _git("status", "--porcelain")
     return {
-        "git_commit": _git("rev-parse", "--short", "HEAD"),
-        "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
-        # None means "could not tell", which is different from False.
-        # A card that showed a clean checkmark because git was missing
-        # would be asserting something it does not know.
-        "git_dirty": None if status is None else bool(status),
-        "started_at": STARTED_AT,
-        "uptime_seconds": round(time.time() - STARTED_AT, 1),
-        "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "pid": os.getpid(),
-        **container_stats(),
+        "build": {
+            "commit": _git("rev-parse", "--short", "HEAD"),
+            "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
+            # None means "could not tell", which is different from False.
+            # A card that showed a clean checkmark because git was missing
+            # would be asserting something it does not know.
+            "dirty": None if status is None else bool(status),
+            "uptime_s": round(time.time() - STARTED_AT, 1),
+            "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            "pid": os.getpid(),
+        },
+        "container": container_stats(),
     }
 
 
-__all__ = ["container_stats", "deployment", "router"]
+__all__ = ["container_stats", "describe"]

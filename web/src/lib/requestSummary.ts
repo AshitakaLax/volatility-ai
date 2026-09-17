@@ -13,7 +13,7 @@
  * requestSummary.test.ts.
  */
 import { distinct, sortValues } from "@/lib/sweepSummary";
-import type { ParamValue } from "@/types/backtest";
+import type { ParamValue, RunReq } from "@/types/backtest";
 
 /**
  * A TS port of src/core/config.py's expand_strategy_params: a list
@@ -61,8 +61,8 @@ export interface RequestAxis {
 }
 
 export interface RequestSummary {
-  /** grid_steps.length * profit_targets.length *
-   * expandStrategyParams(strategy_params).length * tickers.length. */
+  /** grid_steps.length * targets.length *
+   * expandStrategyParams(params).length * tickers.length. */
   simulationCount: number;
   /** Only the axes that actually vary across this submission -- an
    * axis with one value isn't part of "the sweep." */
@@ -85,16 +85,13 @@ export interface RequestSummary {
  * resolved scope (aggregate, request-derived progress, not a live
  * mirror of exactly what the engine iterates).
  */
-export function describeRequestAxes(request: {
-  grid_steps: number[];
-  profit_targets: number[];
-  strategy_params?: Record<string, ParamValue | ParamValue[]>;
-  tickers: string[];
-}): RequestSummary {
-  const strategyParamsGrid = expandStrategyParams(request.strategy_params);
+export function describeRequestAxes(
+  request: Pick<RunReq, "grid_steps" | "targets" | "params" | "tickers">,
+): RequestSummary {
+  const strategyParamsGrid = expandStrategyParams(request.params);
   const simulationCount =
     request.grid_steps.length *
-    request.profit_targets.length *
+    request.targets.length *
     strategyParamsGrid.length *
     request.tickers.length;
 
@@ -102,14 +99,10 @@ export function describeRequestAxes(request: {
   if (request.grid_steps.length > 1) {
     axes.push({ key: "grid_step", label: "Grid step", values: sortValues(request.grid_steps) });
   }
-  if (request.profit_targets.length > 1) {
-    axes.push({
-      key: "profit_target",
-      label: "Profit target",
-      values: sortValues(request.profit_targets),
-    });
+  if (request.targets.length > 1) {
+    axes.push({ key: "profit_target", label: "Profit target", values: sortValues(request.targets) });
   }
-  for (const [name, value] of Object.entries(request.strategy_params ?? {})) {
+  for (const [name, value] of Object.entries(request.params ?? {})) {
     if (Array.isArray(value) && distinct(value).length > 1) {
       axes.push({ key: name, label: name, values: sortValues(value) });
     }

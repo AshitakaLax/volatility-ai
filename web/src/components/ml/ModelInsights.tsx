@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Badge, Card, CardContent, CardHeader, CardTitle, Select } from "@/components/ui/primitives";
 import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { AblationResponse, DatasetsResponse, EvaluationResponse, SourcesSummary } from "@/types/ml";
+import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
 
 /**
  * What the ML research has found so far -- and how little of it, still.
@@ -25,19 +25,19 @@ import type { AblationResponse, DatasetsResponse, EvaluationResponse, SourcesSum
  * page that exists specifically to avoid that.
  */
 export function ModelInsights() {
-  const [sources, setSources] = useState<SourcesSummary | null>(null);
+  const [sources, setSources] = useState<MlSeries[] | null>(null);
   const [sourcesError, setSourcesError] = useState<string | null>(null);
 
-  const [datasets, setDatasets] = useState<DatasetsResponse | null>(null);
+  const [datasets, setDatasets] = useState<ByTicker<Dataset> | null>(null);
   const [datasetsError, setDatasetsError] = useState<string | null>(null);
 
   const [labels, setLabels] = useState<string[]>([]);
   const [label, setLabel] = useState<string | null>(null);
 
-  const [evaluation, setEvaluation] = useState<EvaluationResponse | null>(null);
+  const [evaluation, setEvaluation] = useState<ByTicker<Eval> | null>(null);
   const [evaluationHint, setEvaluationHint] = useState<string | null>(null);
 
-  const [ablation, setAblation] = useState<AblationResponse | null>(null);
+  const [ablation, setAblation] = useState<ByTicker<Ablation> | null>(null);
   const [ablationHint, setAblationHint] = useState<string | null>(null);
 
   useEffect(() => {
@@ -47,9 +47,9 @@ export function ModelInsights() {
     void api.mlDatasets().then(setDatasets).catch((error: unknown) => {
       setDatasetsError(error instanceof ApiError ? error.message : "Could not reach the API.");
     });
-    void api.mlEvaluationLabels().then((body) => {
-      setLabels(body.labels);
-      setLabel((current) => current ?? body.labels[0] ?? null);
+    void api.mlLabels().then((body) => {
+      setLabels(body);
+      setLabel((current) => current ?? body[0] ?? null);
     });
   }, []);
 
@@ -157,6 +157,12 @@ export function ModelInsights() {
   );
 }
 
+function countBy<T>(items: T[], key: (item: T) => string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const item of items) out[key(item)] = (out[key(item)] ?? 0) + 1;
+  return out;
+}
+
 function NotBuiltYet({ detail }: { detail: string }) {
   return (
     <p className="flex items-start gap-2 text-xs text-muted-foreground">
@@ -166,7 +172,7 @@ function NotBuiltYet({ detail }: { detail: string }) {
   );
 }
 
-function SourcesCard({ summary, error }: { summary: SourcesSummary | null; error: string | null }) {
+function SourcesCard({ summary, error }: { summary: MlSeries[] | null; error: string | null }) {
   return (
     <Card>
       <CardHeader>
@@ -180,13 +186,13 @@ function SourcesCard({ summary, error }: { summary: SourcesSummary | null; error
         ) : (
           <div className="space-y-3">
             <p className="tnum text-lg font-semibold">
-              {summary.total_series}{" "}
+              {summary.length}{" "}
               <span className="text-sm font-normal text-muted-foreground">
                 series, no API key, 0 fetch failures
               </span>
             </p>
             <div className="flex flex-wrap gap-1.5">
-              {Object.entries(summary.by_category)
+              {Object.entries(countBy(summary, (series) => series.category))
                 .sort(([, a], [, b]) => b - a)
                 .map(([category, count]) => (
                   <Badge key={category}>
@@ -201,7 +207,7 @@ function SourcesCard({ summary, error }: { summary: SourcesSummary | null; error
   );
 }
 
-function DatasetsCard({ summary, error }: { summary: DatasetsResponse | null; error: string | null }) {
+function DatasetsCard({ summary, error }: { summary: ByTicker<Dataset> | null; error: string | null }) {
   return (
     <Card>
       <CardHeader>
@@ -225,7 +231,7 @@ function DatasetsCard({ summary, error }: { summary: DatasetsResponse | null; er
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(summary.tickers).map(([ticker, row]) => (
+                {Object.entries(summary).map(([ticker, row]) => (
                   <tr key={ticker} className="border-b border-border/50 last:border-0">
                     <td className="tnum py-1.5 pr-4 font-medium">{ticker}</td>
                     <td className="tnum py-1.5 pr-4">{row.rows.toLocaleString()}</td>
@@ -257,8 +263,8 @@ function verdictTone(verdict: string): "profit" | "loss" | "neutral" {
   return "neutral";
 }
 
-function EvaluationTable({ response }: { response: EvaluationResponse }) {
-  const rows = Object.entries(response.tickers);
+function EvaluationTable({ response }: { response: ByTicker<Eval> }) {
+  const rows = Object.entries(response);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -309,16 +315,17 @@ function EvaluationTable({ response }: { response: EvaluationResponse }) {
   );
 }
 
-function AblationTable({ response }: { response: AblationResponse }) {
+function AblationTable({ response }: { response: ByTicker<Ablation> }) {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {Object.entries(response.tickers).map(([ticker, ticketData]) => (
+      {Object.entries(response).map(([ticker, ticketData]) => (
         <div key={ticker} className="rounded-md border border-border p-3">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm font-semibold">{ticker}</span>
             <span className="text-xs text-muted-foreground">
-              baseline {ticketData.baseline_auc.toFixed(3)} · {ticketData.consistent_count}/
-              {ticketData.total_blocks} consistent
+              baseline {ticketData.baseline_auc.toFixed(3)} ·{" "}
+              {ticketData.blocks.filter((block) => block.consistent).length}/
+              {ticketData.blocks.length} consistent
             </span>
           </div>
           <ul className="space-y-1">

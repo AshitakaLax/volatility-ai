@@ -48,4 +48,7 @@ src/
   looks like a dead server, not a routing miss.
 - Types in `types/*.ts` mirror `server/`'s response shapes by hand — there
   is no shared schema generation, so a backend field rename needs a
-  matching edit here.
+  matching edit here. The wire omits what can be derived: a `Param` is
+  expanded to a `ParamSpec` by `lib/strategyParams.ts` `paramSpec`, history
+  rows are joined with their run's fields in `lib/api.ts` `history`, and a
+  fill's unique key is `lib/filters.ts` `fillKey`.

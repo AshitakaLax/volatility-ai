@@ -20,12 +20,13 @@ import {
   availableActions,
   isActive,
   moveTarget,
+  isRunning,
   orderActiveRuns,
   queuePositions,
   type QueuePosition,
 } from "@/lib/runQueue";
 import { cn, runUrl } from "@/lib/utils";
-import type { BacktestRunState } from "@/types/backtest";
+import type { Run } from "@/types/backtest";
 
 /**
  * Backtests in flight, and the controls to steer them.
@@ -70,7 +71,7 @@ const IDLE_POLL_MS = 15000;
 type RunAction = "pause" | "resume" | "cancel" | "runNext" | "moveUp" | "moveDown";
 
 export function ActiveRuns({ onSettled }: Props) {
-  const [runs, setRuns] = useState<BacktestRunState[]>([]);
+  const [runs, setRuns] = useState<Run[]>([]);
   const [queuePaused, setQueuePaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -103,20 +104,20 @@ export function ActiveRuns({ onSettled }: Props) {
         .runs()
         .then((body) => {
           if (cancelled || mine !== generation) return;
-          const paused = body.queue?.paused ?? false;
+          const paused = body.paused;
           setRuns(body.runs);
           setQueuePaused(paused);
           setError(null);
 
           const active = new Set(
-            body.runs.filter((run) => isActive(run.status)).map((run) => run.run_id),
+            body.runs.filter((run) => isActive(run.status)).map((run) => run.id),
           );
           const justFinished = [...previouslyActive].some((id) => !active.has(id));
           previouslyActive = active;
           if (justFinished) onSettled?.();
 
           const working = body.runs.some(
-            (run) => run.status === "running" || (run.status === "queued" && !paused),
+            (run) => isRunning(run.status) || (run.status === "queued" && !paused),
           );
           schedule(working ? ACTIVE_POLL_MS : IDLE_POLL_MS);
         })
@@ -155,16 +156,18 @@ export function ActiveRuns({ onSettled }: Props) {
   const active = orderActiveRuns(runs);
   const recent = runs.filter((run) => !isActive(run.status)).slice(0, 3);
 
-  const onAction = (run: BacktestRunState, action: RunAction) => {
-    const label = runLabel(run) ?? run.run_id;
-    const position = positions.get(run.run_id);
+  const onAction = (run: Run, action: RunAction) => {
+    const label = runLabel(run) ?? run.id;
+    const position = positions.get(run.id);
     const calls: Record<RunAction, () => Promise<unknown>> = {
-      pause: () => api.pauseRun(run.run_id),
-      resume: () => api.resumeRun(run.run_id),
-      cancel: () => api.cancelRun(run.run_id),
-      runNext: () => api.runNext(run.run_id),
-      moveUp: () => api.moveRun(run.run_id, position ? moveTarget(position, "up") : 0),
-      moveDown: () => api.moveRun(run.run_id, position ? moveTarget(position, "down") : 0),
+      pause: () => api.controlRun(run.id, { op: "pause" }),
+      resume: () => api.controlRun(run.id, { op: "resume" }),
+      cancel: () => api.controlRun(run.id, { op: "cancel" }),
+      runNext: () => api.controlRun(run.id, { op: "next" }),
+      moveUp: () =>
+        api.controlRun(run.id, { op: "move", pos: position ? moveTarget(position, "up") : 0 }),
+      moveDown: () =>
+        api.controlRun(run.id, { op: "move", pos: position ? moveTarget(position, "down") : 0 }),
     };
     if (action === "cancel") {
       const losesProgress = run.status === "running" || run.status === "paused";
@@ -175,7 +178,7 @@ export function ActiveRuns({ onSettled }: Props) {
       );
       if (!confirmed) return;
     }
-    void perform(`${run.run_id}:${action}`, calls[action]);
+    void perform(`${run.id}:${action}`, calls[action]);
   };
 
   const running = active.filter((run) => run.status === "running").length;
@@ -213,7 +216,7 @@ export function ActiveRuns({ onSettled }: Props) {
               className="h-7 px-2 text-xs"
               disabled={busy !== null}
               onClick={() =>
-                void perform("queue", () => (queuePaused ? api.resumeQueue() : api.pauseQueue()))
+                void perform("queue", () => api.setQueuePaused(!queuePaused))
               }
               title={
                 queuePaused
@@ -239,9 +242,9 @@ export function ActiveRuns({ onSettled }: Props) {
         <div className="max-h-[36rem] space-y-3 overflow-y-auto pr-1">
           {[...active, ...recent].map((run) => (
             <RunRow
-              key={run.run_id}
+              key={run.id}
               run={run}
-              position={positions.get(run.run_id)}
+              position={positions.get(run.id)}
               queuePaused={queuePaused}
               busy={busy}
               onAction={(action) => onAction(run, action)}
@@ -254,15 +257,14 @@ export function ActiveRuns({ onSettled }: Props) {
   );
 }
 
-function runLabel(run: BacktestRunState): string | null {
+function runLabel(run: Run): string | null {
   return (
-    run.name ??
-    (run.request ? `${run.request.sizing_model} · ${run.request.tickers.join(", ")}` : null)
+    run.req.name?.trim() || `${run.req.model ?? "fixed"} · ${run.req.tickers.join(", ")}`
   );
 }
 
 function statusText(
-  run: BacktestRunState,
+  run: Run,
   position: QueuePosition | undefined,
   queuePaused: boolean,
 ): string {
@@ -276,7 +278,7 @@ function statusText(
       const parts = ["queued", place, queuePaused ? "waiting for the queue to resume" : null];
       // A run interrupted by a restart or resumed after a pause picks up
       // from its checkpoint, which is worth saying -- it will not start over.
-      if (run.message && /resum/i.test(run.message)) parts.push("resumes where it stopped");
+      if (run.msg && /resum/i.test(run.msg)) parts.push("resumes where it stopped");
       return parts.filter(Boolean).join(" — ");
     }
     case "paused":
@@ -284,7 +286,7 @@ function statusText(
     case "cancelled":
       return "cancelled";
     default:
-      return run.message ?? run.status;
+      return run.msg ?? run.status;
   }
 }
 
@@ -295,7 +297,7 @@ function RunRow({
   busy,
   onAction,
 }: {
-  run: BacktestRunState;
+  run: Run;
   /** This run's place among pending jobs, or undefined when it isn't pending. */
   position: QueuePosition | undefined;
   queuePaused: boolean;
@@ -310,7 +312,7 @@ function RunRow({
   // One JOB already IS one sweep -- grouping means describing what THIS
   // job covers, not merging several jobs together. Only computable when
   // the snapshot carries the submitted request.
-  const summary = run.request ? describeRequestAxes(run.request) : null;
+  const summary = describeRequestAxes(run.req);
 
   const control = (action: RunAction, title: string, icon: ReactNode) => (
     <Button
@@ -321,7 +323,7 @@ function RunRow({
       disabled={busy !== null}
       onClick={() => onAction(action)}
     >
-      {busy === `${run.run_id}:${action}` ? <Loader2 className="size-3.5 animate-spin" /> : icon}
+      {busy === `${run.id}:${action}` ? <Loader2 className="size-3.5 animate-spin" /> : icon}
     </Button>
   );
 
@@ -342,12 +344,12 @@ function RunRow({
             "[3/16]" suffix, and a truncated label cannot be reordered by. */}
         <span
           className="min-w-0 flex-1 truncate text-xs"
-          title={label ? `${label} · ${run.run_id}` : run.run_id}
+          title={label ? `${label} · ${run.id}` : run.id}
         >
           {label ? (
             <span className="text-foreground">{label}</span>
           ) : (
-            <span className="font-mono text-muted-foreground">{run.run_id.slice(0, 10)}</span>
+            <span className="font-mono text-muted-foreground">{run.id.slice(0, 10)}</span>
           )}
         </span>
 
@@ -377,7 +379,7 @@ function RunRow({
               existing run" action, so the running list here is never
               replaced by the report it opens. */}
           <a
-            href={runUrl(run.run_id)}
+            href={runUrl(run.id)}
             target="_blank"
             rel="noopener noreferrer"
             className={cn(
@@ -396,7 +398,7 @@ function RunRow({
           <span
             className={cn(
               run.status === "failed" && "text-loss",
-              run.stop_requested && "text-stuck",
+              (run.status === "pausing" || run.status === "cancelling") && "text-stuck",
               run.status === "paused" && "text-muted-foreground",
             )}
           >

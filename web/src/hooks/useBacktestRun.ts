@@ -1,15 +1,10 @@
 import { useCallback, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
-import type { BacktestRunRequest, BacktestRunState } from "@/types/backtest";
+import { isActive } from "@/lib/runQueue";
+import type { Frame, Run, RunReq } from "@/types/backtest";
 
 import { useWebSocket } from "./useWebSocket";
-
-interface RunFrame {
-  type: "run" | "heartbeat" | "error";
-  run?: BacktestRunState;
-  detail?: string;
-}
 
 /**
  * Submit a backtest and follow it to completion.
@@ -21,16 +16,16 @@ interface RunFrame {
  * running with progress, complete) from one submission.
  */
 export function useBacktestRun() {
-  const [run, setRun] = useState<BacktestRunState | null>(null);
+  const [run, setRun] = useState<Run | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const watching = run && (run.status === "queued" || run.status === "running");
-  const health = useWebSocket<RunFrame>(
-    watching ? `ws://${window.location.host}/api/backtest/ws/${run.run_id}` : null,
+  const watching = run && isActive(run.status);
+  const health = useWebSocket<Frame<Run>>(
+    watching ? `ws://${window.location.host}/api/backtest/ws/${run.id}` : null,
     (frame) => {
-      if (frame.type === "run" && frame.run) setRun(frame.run);
-      else if (frame.type === "error" && frame.detail) setError(frame.detail);
+      if (frame.t === "data") setRun(frame.d);
+      else if (frame.t === "err") setError(frame.msg);
     },
   );
 
@@ -52,7 +47,7 @@ export function useBacktestRun() {
     }
   }, []);
 
-  const submit = useCallback(async (request: BacktestRunRequest) => {
+  const submit = useCallback(async (request: RunReq) => {
     setSubmitting(true);
     setError(null);
     try {

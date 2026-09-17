@@ -373,6 +373,56 @@ class TestDurability:
         fresh.resume_all()
         wait_until(fresh, lambda: status(fresh, "a") == "complete")
 
+    def test_restore_translates_a_legacy_request_and_persists_the_new_shape(
+        self, harness, store, tmp_path
+    ):
+        """A state.json written before the contract was condensed -- a
+        multi-day sweep can be sitting in one -- comes back with the new
+        field names, on the job, on its snapshot, and on disk."""
+        legacy = {
+            "name": "sweep",
+            "tickers": ["RSP"],
+            "profit_targets": [0.005],
+            "sizing_model": "fixed",
+            "strategy_params": {"allocation_pct": 0.05},
+            "fill_model": "intrabar",
+            "n_jobs": 11,
+            "search_strategy": "grid",
+            "search_direction": "maximize",
+        }
+        store.save_state(
+            {
+                "version": 1,
+                "paused": True,
+                "jobs": [{"run_id": "old", "request": legacy, "status": "queued"}],
+            }
+        )
+        fresh = JobQueue(runner=harness.runner, store=store)
+        assert fresh.restore() == 1
+        expected = {
+            "name": "sweep",
+            "tickers": ["RSP"],
+            "targets": [0.005],
+            "model": "fixed",
+            "params": {"allocation_pct": 0.05},
+            "fill": "intrabar",
+            "jobs": 11,
+        }
+        assert fresh.get("old").request == expected
+        assert fresh.get("old").snapshot()["req"] == expected
+        on_disk = json.loads((tmp_path / "queue" / "state.json").read_text(encoding="utf-8"))
+        assert on_disk["jobs"][0]["request"] == expected
+
+    def test_a_running_job_with_a_pending_stop_reports_it_as_its_status(self, queue, harness):
+        run_id = block_worker(queue, harness, "busy")
+        queue.pause(run_id)
+        assert queue.get(run_id).snapshot()["status"] == "pausing"
+        queue.resume(run_id)
+        queue.cancel(run_id)
+        assert queue.get(run_id).snapshot()["status"] == "cancelling"
+        harness.gate("busy").set()
+        wait_until(queue, lambda: status(queue, run_id) == "cancelled")
+
     def test_a_line_cut_short_by_a_crash_is_skipped(self, store, tmp_path):
         store.append_row("r", "T", {"step": 0})
         path = tmp_path / "queue" / "r.rows.jsonl"

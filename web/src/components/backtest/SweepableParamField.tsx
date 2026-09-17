@@ -66,7 +66,7 @@ export function SweepableParamField({
           />
           {errors.map((error, index) => (
             <span key={index} className="max-w-52 text-[11px] leading-tight text-loss">
-              {error.message}
+              {error.msg}
             </span>
           ))}
         </div>

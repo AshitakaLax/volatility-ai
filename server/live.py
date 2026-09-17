@@ -22,15 +22,15 @@ WHAT THIS DATA IS, AND WHAT IT IS NOT
 
 The live loop holds its working state in memory and writes through to
 the store once per tick, so everything served here is up to one poll
-interval behind -- 60 seconds by default. `last_write_age` and
-`last_tick_at` are both returned so a client can SAY so rather than
+interval behind -- 60 seconds by default. `write_age_s` and
+`last_tick` are both returned so a client can SAY so rather than
 imply currency. A dashboard that looks real-time and is not will
 eventually be trusted at the wrong moment.
 
 --------------------------------------------------------------------
 WHY THE WEBSOCKET POLLS
 
-`revision` is a monotonic counter the store bumps on every mutation, so
+`rev` is a monotonic counter the store bumps on every mutation, so
 a change is detectable by comparing one integer. Polling it here, in a
 reader process, is what lets the trading process stay untouched --
 pushing from the loop itself would mean a socket inside the process that
@@ -66,78 +66,71 @@ POLL_SECONDS = 1.0
 
 
 def state_payload(path: str) -> dict[str, Any]:
-    """One deployment's state, shaped for the wire.
+    """One deployment's state as the wire's LiveState.
 
     Lots are flattened with their derived figures already computed, so
-    the client is not re-deriving `distance_to_target` from
-    `target_sell_price` and getting a different answer than the Python
-    side would. There is one definition of that number and it is
-    src/dashboard_data.Lot.distance_to_target.
+    the client is not re-deriving `to_target` from `target_px` and
+    getting a different answer than the Python side would. There is one
+    definition of that number and it is
+    src/dashboard_data.Lot.distance_to_target. (A lot's market value is
+    NOT sent: qty x last_px is a multiplication, not a definition.)
+
+    No `path`: the caller named the store it asked for.
     """
     state = load_state(path)
     price = state.last_price
 
     def lot_payload(lot) -> dict[str, Any]:
         return {
-            "order_id": lot.order_id,
+            "id": lot.order_id,
             "symbol": lot.symbol,
-            "buy_price": lot.buy_price,
-            "shares": lot.shares,
-            "profit_target": lot.profit_target,
-            "target_sell_price": lot.target_sell_price,
-            "distance_to_target": lot.distance_to_target(price),
+            "px": lot.buy_price,
+            "qty": lot.shares,
+            "target": lot.profit_target,
+            "target_px": lot.target_sell_price,
+            "to_target": lot.distance_to_target(price),
             # How far BELOW the last mark this lot was bought. Not a
             # grid-step distance -- the step is a strategy parameter this
             # module deliberately knows nothing about -- but it is the
             # figure an operator reads to see how deep the book is.
-            "distance_to_next_step": (
-                (lot.buy_price / price - 1.0) if price and price > 0 else None
-            ),
-            "current_value": (lot.shares * price) if price else None,
+            "vs_mark": (lot.buy_price / price - 1.0) if price and price > 0 else None,
         }
 
     return {
-        "path": state.path,
         "exists": state.exists,
+        "rev": state.revision,
         "cash": state.cash,
         "unsettled": state.unsettled,
         "buying_power": state.buying_power,
         "peak_equity": state.peak_equity,
-        "halted": state.halted,
-        "halt_reason": state.halt_reason,
+        # Non-null exactly when halted -- the reason IS the flag. Blocks
+        # new buys only; nothing here force-liquidates.
+        "halt": state.halt_reason if state.halted else None,
         "lots": [lot_payload(lot) for lot in state.lots],
-        "closed_lots": [lot_payload(lot) for lot in state.closed_lots],
-        "pending_settlement": [list(entry) for entry in state.pending_settlement],
-        "revision": state.revision,
-        "last_write_age": state.last_write_age,
-        "last_price": state.last_price,
-        "last_tick_at": state.last_tick_at,
-        # WHAT THIS LOOP IS ACTUALLY TRADING. Absent on a store written
+        "closed": [lot_payload(lot) for lot in state.closed_lots],
+        "settling": [list(entry) for entry in state.pending_settlement],
+        "write_age_s": state.last_write_age,
+        "last_px": state.last_price,
+        "last_tick": state.last_tick_at,
+        # WHAT THIS LOOP IS ACTUALLY TRADING. Empty on a store written
         # before the loop recorded it, which the UI renders as unknown
         # rather than as zeros. The 30%-instead-of-0.3% profit target
         # that stranded 94 lots was invisible here until this existed.
-        "parameters": state.parameters,
+        "params": state.parameters,
     }
 
 
 @router.get("/stores")
-def stores(root: str = ".") -> dict[str, Any]:
-    """Ledger stores available to switch between."""
-    found = find_stores(root)
-    return {
-        "stores": [
-            {
-                "path": path,
-                "label": path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1],
-                # A NAMING CONVENTION, NOT A FACT ABOUT THE ACCOUNT. The
-                # store does not record whether it was paper or live, so
-                # this is a hint for the picker and nothing may gate a
-                # decision on it.
-                "paper": "paper" in path.lower(),
-            }
-            for path in found
-        ]
-    }
+def stores(root: str = ".") -> list[str]:
+    """Paths of the ledger stores available to switch between.
+
+    Paths only. The picker's label is the basename and its paper/live
+    badge is whether the path says "paper" -- a NAMING CONVENTION, NOT A
+    FACT ABOUT THE ACCOUNT (the store does not record it), so both are
+    derived where they are displayed and nothing may gate a decision on
+    either.
+    """
+    return list(find_stores(root))
 
 
 @router.get("/state")
@@ -152,10 +145,10 @@ def state(path: str = Query(..., description="Path to a ledger store")) -> dict[
 def activity(
     path: str = Query(...),
     limit: int = Query(200, ge=1, le=2000),
-) -> dict[str, Any]:
+) -> list[dict[str, Any]]:
     """The revision log, newest first -- every mutation the loop made."""
     try:
-        return {"entries": load_activity(path, limit=limit)}
+        return load_activity(path, limit=limit)
     except DashboardError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -166,7 +159,10 @@ def bars(
     limit: int = Query(780, ge=1, le=20_000),
     root: str = Query("data"),
 ) -> dict[str, Any]:
-    """Recent minute bars for charting.
+    """Recent minute bars for charting, as the same Bars shape
+    /api/backtest/bars serves: [t, o, h, l, c, v] tuples, t in epoch
+    seconds. A file with only a close column fills o/h/l from it and v
+    with 0.
 
     Capped at 20,000 rows. These files are 60 MB and a million rows;
     serving one whole would stall the event loop for seconds and the
@@ -181,17 +177,19 @@ def bars(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return {
-        "symbol": symbol,
+        "bucket_s": 60,
+        "rows": len(frame),
+        # The bars are a FILE, which can lag a running deployment.
         "source": files[0],
         "bars": [
-            {
-                "time": row.timestamp.isoformat(),
-                "open": float(getattr(row, "open", row.close)),
-                "high": float(getattr(row, "high", row.close)),
-                "low": float(getattr(row, "low", row.close)),
-                "close": float(row.close),
-                "volume": float(getattr(row, "volume", 0.0)),
-            }
+            [
+                int(row.timestamp.timestamp()),
+                float(getattr(row, "open", row.close)),
+                float(getattr(row, "high", row.close)),
+                float(getattr(row, "low", row.close)),
+                float(row.close),
+                float(getattr(row, "volume", 0.0)),
+            ]
             for row in frame.itertuples()
         ],
     }
@@ -216,9 +214,10 @@ def indicators(
     the trading path for a number a reader can derive would be the wrong
     trade.
 
-    `value` is null until the period seeds. That is honest: an unseeded
+    `rsi` is null until the period seeds. That is honest: an unseeded
     Wilder average is a partial mean, and this project has already been
-    caught once trading a moving average that had not warmed up.
+    caught once trading a moving average that had not warmed up. The
+    symbol and period are the caller's own query, not echoed back.
     """
     files = find_bar_files(symbol, root)
     if not files:
@@ -234,10 +233,8 @@ def indicators(
         value = tracker.update(float(close))
 
     return {
-        "symbol": symbol,
-        "rsi_period": period,
         "rsi": None if value is None else round(value, 2),
-        "bars_used": len(frame),
+        "n": len(frame),
         "as_of": frame["timestamp"].iloc[-1].isoformat() if len(frame) else None,
         # The bars are a FILE, not the loop's own feed. They can lag a
         # running deployment, and saying so is cheaper than someone
@@ -248,7 +245,7 @@ def indicators(
 
 @router.websocket("/ws")
 async def live_socket(socket: WebSocket, path: str) -> None:
-    """Push state whenever the store's revision changes.
+    """Push Frame<LiveState> whenever the store's revision changes.
 
     Sends once on connect so a client is never staring at an empty page
     waiting for the deployment to do something -- which, outside market
@@ -266,18 +263,18 @@ async def live_socket(socket: WebSocket, path: str) -> None:
             try:
                 payload = state_payload(path)
             except DashboardError as exc:
-                await socket.send_json({"type": "error", "detail": str(exc)})
+                await socket.send_json({"t": "err", "msg": str(exc)})
                 await asyncio.sleep(POLL_SECONDS)
                 continue
 
-            if payload["revision"] != last_revision:
-                last_revision = payload["revision"]
-                await socket.send_json({"type": "state", "state": payload})
+            if payload["rev"] != last_revision:
+                last_revision = payload["rev"]
+                await socket.send_json({"t": "data", "d": payload})
             else:
                 # A heartbeat, so a client can distinguish "nothing has
                 # changed" from "this connection is dead". Without it the
                 # two look identical for as long as the market is shut.
-                await socket.send_json({"type": "heartbeat", "revision": last_revision})
+                await socket.send_json({"t": "hb"})
             await asyncio.sleep(POLL_SECONDS)
     except WebSocketDisconnect:
         return

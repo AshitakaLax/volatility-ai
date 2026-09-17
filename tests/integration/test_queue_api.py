@@ -21,9 +21,9 @@ TIMEOUT = 10.0
 RUN = {
     "tickers": ["TQQQ"],
     "grid_steps": [0.01],
-    "profit_targets": [0.005],
-    "sizing_model": "fixed",
-    "strategy_params": {"allocation_pct": 0.05},
+    "targets": [0.005],
+    "model": "fixed",
+    "params": {"allocation_pct": 0.05},
 }
 
 
@@ -39,7 +39,7 @@ class GatedRunner:
         assert self.release.wait(TIMEOUT)
         if control.should_stop():
             raise RunStopped()
-        return {"run_id": "", "funds": {}}
+        return {"id": "", "funds": {}}
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ def client(monkeypatch, tmp_path, runner):
 def submit(client, name: str) -> str:
     response = client.post("/api/backtest/runs", json={**RUN, "name": name})
     assert response.status_code == 202, response.text
-    return response.json()["run_id"]
+    return response.json()["id"]
 
 
 def wait_for(status: str, run_id: str) -> None:
@@ -76,10 +76,10 @@ def test_runs_listing_reports_positions_and_queue_state(client, runner):
     a, b = submit(client, "a"), submit(client, "b")
 
     body = client.get("/api/backtest/runs").json()
-    by_id = {run["run_id"]: run for run in body["runs"]}
-    assert body["queue"] == {"paused": False}
-    assert by_id[running]["queue_position"] is None
-    assert (by_id[a]["queue_position"], by_id[b]["queue_position"]) == (1, 2)
+    by_id = {run["id"]: run for run in body["runs"]}
+    assert body["paused"] is False
+    assert by_id[running]["pos"] is None
+    assert (by_id[a]["pos"], by_id[b]["pos"]) == (1, 2)
 
 
 def test_run_next_and_move_reorder_and_answer_with_the_new_snapshot(client, runner):
@@ -87,14 +87,11 @@ def test_run_next_and_move_reorder_and_answer_with_the_new_snapshot(client, runn
     assert runner.arrived.wait(TIMEOUT)
     a, b, c = submit(client, "a"), submit(client, "b"), submit(client, "c")
 
-    moved = client.post(f"/api/backtest/runs/{c}/run-next").json()
-    assert moved["run_id"] == c and moved["queue_position"] == 1
+    moved = client.post(f"/api/backtest/runs/{c}", json={"op": "next"}).json()
+    assert moved["id"] == c and moved["pos"] == 1
 
-    client.post(f"/api/backtest/runs/{a}/move", json={"position": 2})
-    positions = {
-        run["run_id"]: run["queue_position"]
-        for run in client.get("/api/backtest/runs").json()["runs"]
-    }
+    client.post(f"/api/backtest/runs/{a}", json={"op": "move", "pos": 2})
+    positions = {run["id"]: run["pos"] for run in client.get("/api/backtest/runs").json()["runs"]}
     assert (positions[c], positions[b], positions[a]) == (1, 2, 3)
 
 
@@ -102,15 +99,17 @@ def test_pausing_a_running_run_is_a_request_until_it_lands(client, runner):
     run_id = submit(client, "first")
     assert runner.arrived.wait(TIMEOUT)
 
-    snapshot = client.post(f"/api/backtest/runs/{run_id}/pause").json()
-    assert snapshot["status"] == "running" and snapshot["stop_requested"] == "pause"
+    # Still running underneath; the status says what it is about to become.
+    snapshot = client.post(f"/api/backtest/runs/{run_id}", json={"op": "pause"}).json()
+    assert snapshot["status"] == "pausing"
 
     runner.release.set()
     wait_for("paused", run_id)
     assert client.get(f"/api/backtest/runs/{run_id}").json()["status"] == "paused"
 
     runner.arrived.clear()
-    assert client.post(f"/api/backtest/runs/{run_id}/resume").json()["status"] == "queued"
+    resumed = client.post(f"/api/backtest/runs/{run_id}", json={"op": "resume"}).json()
+    assert resumed["status"] == "queued"
     wait_for("complete", run_id)
 
 
@@ -119,25 +118,27 @@ def test_cancel_then_invalid_actions_are_409_and_unknown_ids_404(client, runner)
     assert runner.arrived.wait(TIMEOUT)
     queued = submit(client, "a")
 
-    assert client.post(f"/api/backtest/runs/{queued}/cancel").json()["status"] == "cancelled"
-    for action in ("pause", "resume", "cancel", "run-next"):
-        assert client.post(f"/api/backtest/runs/{queued}/{action}").status_code == 409
-    assert client.post(f"/api/backtest/runs/{queued}/move", json={"position": 0}).status_code == 409
-    assert client.post("/api/backtest/runs/doesnotexist/pause").status_code == 404
-    assert (
-        client.post(f"/api/backtest/runs/{queued}/move", json={"position": -1}).status_code == 422
-    )
+    url = f"/api/backtest/runs/{queued}"
+    assert client.post(url, json={"op": "cancel"}).json()["status"] == "cancelled"
+    for op in ("pause", "resume", "cancel", "next"):
+        assert client.post(url, json={"op": op}).status_code == 409
+    assert client.post(url, json={"op": "move", "pos": 0}).status_code == 409
+    assert client.post("/api/backtest/runs/doesnotexist", json={"op": "pause"}).status_code == 404
+    # Shape errors are 422: a negative position, a move with none, an unknown op.
+    assert client.post(url, json={"op": "move", "pos": -1}).status_code == 422
+    assert client.post(url, json={"op": "move"}).status_code == 422
+    assert client.post(url, json={"op": "explode"}).status_code == 422
 
 
 def test_pausing_the_queue_holds_everything_and_resuming_releases_it(client, runner):
-    assert client.post("/api/backtest/queue/pause").json() == {"queue": {"paused": True}}
+    assert client.post("/api/backtest/queue", json={"paused": True}).json() == {"paused": True}
     run_id = submit(client, "held")
     # Paused BEFORE the submit, so the worker can never have been handed it:
     # asserted from the queue's own state, not by waiting to see nothing happen.
     assert backtest.queue.get(run_id).status == "queued"
     assert runner.started == []
-    assert client.get("/api/backtest/runs").json()["queue"] == {"paused": True}
+    assert client.get("/api/backtest/runs").json()["paused"] is True
 
     runner.release.set()
-    assert client.post("/api/backtest/queue/resume").json() == {"queue": {"paused": False}}
+    assert client.post("/api/backtest/queue", json={"paused": False}).json() == {"paused": False}
     wait_for("complete", run_id)

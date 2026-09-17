@@ -1,29 +1,24 @@
 /**
  * Typed access to the Python API.
  *
- * Everything goes through the Vite dev proxy (`/api`, `/ws`), so the
- * browser only ever talks to one origin. That is why there is no base
- * URL here: introducing one would make development and production
- * differ in exactly the way CORS bugs hide in.
+ * Everything goes through the Vite dev proxy (`/api`), so the browser only
+ * ever talks to one origin. That is why there is no base URL here:
+ * introducing one would make development and production differ in exactly
+ * the way CORS bugs hide in.
  */
 import type {
-  BacktestRunRequest,
-  BarSeries,
-  BacktestRunState,
-  GridTrigger,
+  Bars,
+  Catalog,
+  History,
   HistoryRow,
-  MultiFundBacktestReport,
-  QueueState,
-  SizingParamsEntry,
-  ValidateResponse,
+  Report,
+  Run,
+  RunOp,
+  RunReq,
+  Validation,
 } from "@/types/backtest";
-import type {
-  AblationResponse,
-  DatasetsResponse,
-  EvaluationResponse,
-  SourcesSummary,
-} from "@/types/ml";
-import type { DeploymentState, HaltResponse, IndicatorReading } from "@/types/telemetry";
+import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
+import type { Activity, LiveState, Rsi } from "@/types/telemetry";
 
 export class ApiError extends Error {
   constructor(
@@ -58,193 +53,158 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export interface Capabilities {
-  live_read: boolean;
-  halt: boolean;
-  liquidate: boolean;
-  parameter_override: boolean;
-  backtest_submit: boolean;
-}
+const post = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: "POST", body: JSON.stringify(body) });
 
-export interface DeploymentInfo {
-  git_commit: string | null;
-  git_branch: string | null;
-  /** null means "could not tell", which is different from false. */
-  git_dirty: boolean | null;
-  started_at: number;
-  uptime_seconds: number;
-  python: string;
-  pid: number;
+const query = (params: Record<string, string | number | null | undefined>) =>
+  new URLSearchParams(
+    Object.entries(params).flatMap(([key, value]) =>
+      value === null || value === undefined || value === "" ? [] : [[key, String(value)]],
+    ),
+  ).toString();
+
+/**
+ * What the server may do, and which build it is. `caps` is read from the
+ * server rather than compiled in, so the Command Center renders what THIS
+ * deployment says. Liquidation and live parameter overrides are never
+ * listed, by design (server/control.py).
+ */
+export interface Health {
+  caps: ("live" | "halt" | "backtest" | "ml")[];
+  /** Where sweeps run; null when this server runs them itself. */
+  upstream: string | null;
+  build: {
+    commit: string | null;
+    branch: string | null;
+    /** null means "could not tell", which is different from false. */
+    dirty: boolean | null;
+    uptime_s: number;
+    python: string;
+    pid: number;
+  };
   /** null outside a container -- cgroup is the only place these are true. */
-  memory_mb: number | null;
-  memory_limit_mb: number | null;
-  cpu_pct: number | null;
-  containerised: boolean;
-}
-
-/** What a sizing model needs, and a working starting point. */
-export interface SizingDetail {
-  /** Constructor arguments with no default. Sending none of these is
-   * what made every non-`fixed` model fail. */
-  required: string[];
-  defaults: Record<string, number | string | boolean>;
-}
-
-export interface FundAvailability {
-  ticker: string;
-  path: string;
-  available: boolean;
+  container: { mem_mb: number; mem_limit_mb: number | null; cpu_pct: number | null } | null;
 }
 
 export const api = {
-  health: () => request<{ status: string; capabilities: Capabilities }>("/api/health"),
+  health: () => request<Health>("/api/health"),
 
-  deployment: () => request<DeploymentInfo>("/api/deployment"),
+  // -- Backtest ----------------------------------------------------------
 
-  funds: () =>
-    request<{
-      funds: FundAvailability[];
-      sizing_models: string[];
-      sizing_details: Record<string, SizingDetail>;
-      /** Per-model constructor schema for the dynamic parameter form.
-       * Absent from an older server -- callers must treat it as `{}`. */
-      sizing_params?: Record<string, SizingParamsEntry>;
-      /** Per-model grid-step trigger methods. Absent from an older
-       * server -- callers fall back to GENERIC_GRID_TRIGGER. */
-      grid_trigger?: Record<string, GridTrigger>;
-    }>("/api/backtest/funds"),
+  funds: () => request<Catalog>("/api/backtest/funds"),
 
-  bars: (ticker: string, start?: string | null, end?: string | null, maxPoints = 3000) => {
-    const query = new URLSearchParams({ ticker, max_points: String(maxPoints) });
-    if (start) query.set("start", start);
-    if (end) query.set("end", end);
-    return request<BarSeries>(`/api/backtest/bars?${query.toString()}`);
+  bars: (ticker: string, start?: string | null, end?: string | null, maxPoints = 3000) =>
+    request<Bars>(`/api/backtest/bars?${query({ ticker, start, end, max_points: maxPoints })}`),
+
+  /**
+   * Run history as table rows: each cell joined with the run-level fields
+   * it is filtered and sorted on. The wire states those once per run
+   * (`runs`) rather than once per cell.
+   */
+  history: async (): Promise<{ rows: HistoryRow[]; runs: number }> => {
+    const body = await request<History>("/api/backtest/history");
+    const rows = body.rows.map((row): HistoryRow => {
+      const run = body.runs[row.run];
+      return {
+        ...row,
+        name: run?.name ?? null,
+        model: run?.model ?? null,
+        fill: run?.fill ?? null,
+        start: run?.start ?? null,
+        end: run?.end ?? null,
+        saved_at: run?.saved_at ?? null,
+      };
+    });
+    return { rows, runs: new Set(body.rows.map((row) => row.run)).size };
   },
 
-  history: () => request<{ rows: HistoryRow[]; runs: number }>("/api/backtest/history"),
+  runs: () => request<{ runs: Run[]; paused: boolean }>("/api/backtest/runs"),
 
-  historyRun: (runId: string) =>
-    request<BacktestRunState>(`/api/backtest/history/${runId}`),
+  /** A queued, running or archived run -- the server falls back to history. */
+  run: (runId: string) => request<Run>(`/api/backtest/runs/${runId}`),
 
-  /** `queue` is absent from a server that predates queue controls. */
-  runs: () => request<{ runs: BacktestRunState[]; queue?: QueueState }>("/api/backtest/runs"),
+  submitRun: (body: RunReq) => post<Run>("/api/backtest/runs", body),
 
-  // -- Queue controls (server/jobs.py). Each answers with the run's new
-  // snapshot. Pause/cancel on a RUNNING run are requests: the snapshot
-  // comes back still "running" with stop_requested set, and the status
-  // changes once its in-flight configurations finish. 409 means the
-  // action does not apply to the run's current state.
+  /**
+   * A queue control; answers with the run's new snapshot. Pause/cancel on
+   * a RUNNING run are requests -- the snapshot comes back "pausing" /
+   * "cancelling" until its in-flight configurations finish. 409 means the
+   * op does not apply to the run's current state. Cancel discards the
+   * checkpoint; there is no undo.
+   */
+  controlRun: (runId: string, op: RunOp) => post<Run>(`/api/backtest/runs/${runId}`, op),
 
-  pauseRun: (runId: string) =>
-    request<BacktestRunState>(`/api/backtest/runs/${runId}/pause`, { method: "POST" }),
-
-  resumeRun: (runId: string) =>
-    request<BacktestRunState>(`/api/backtest/runs/${runId}/resume`, { method: "POST" }),
-
-  /** Discards a paused or running run's checkpoint; there is no undo. */
-  cancelRun: (runId: string) =>
-    request<BacktestRunState>(`/api/backtest/runs/${runId}/cancel`, { method: "POST" }),
-
-  /** To the front of the queue, resuming it if it was paused. */
-  runNext: (runId: string) =>
-    request<BacktestRunState>(`/api/backtest/runs/${runId}/run-next`, { method: "POST" }),
-
-  /** `position` is 0-based among pending runs with this one taken out;
-   * see lib/runQueue.ts's moveTarget. */
-  moveRun: (runId: string, position: number) =>
-    request<BacktestRunState>(`/api/backtest/runs/${runId}/move`, {
-      method: "POST",
-      body: JSON.stringify({ position }),
-    }),
-
-  pauseQueue: () => request<{ queue: QueueState }>("/api/backtest/queue/pause", { method: "POST" }),
-
-  resumeQueue: () =>
-    request<{ queue: QueueState }>("/api/backtest/queue/resume", { method: "POST" }),
-
-  run: (runId: string) => request<BacktestRunState>(`/api/backtest/runs/${runId}`),
-
-  submitRun: (body: BacktestRunRequest) =>
-    request<BacktestRunState>("/api/backtest/runs", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+  /** Pausing holds everything; the running run pauses after its batch. */
+  setQueuePaused: (paused: boolean) => post<{ paused: boolean }>("/api/backtest/queue", { paused }),
 
   /**
    * Dry-run the same validation `submitRun` performs, without queuing a
-   * job. Used by the parameter form to show a bad argument as a red line
-   * under its field before the run is ever submitted.
-   *
-   * Returns `{ ok: true, degraded: true }` on a 404 -- a deployment
-   * whose backtest half predates this route -- so the form quietly falls
-   * back to submit-time validation rather than blocking on a missing
-   * endpoint.
+   * job, so a bad argument shows under its field before Run is pressed.
+   * Its own route rather than a submit flag: a server predating the flag
+   * would ignore it and queue the run.
    */
-  validateRun: async (body: BacktestRunRequest): Promise<ValidateResponse> => {
+  validateRun: async (body: RunReq): Promise<Validation> => {
     try {
-      return await request<ValidateResponse>("/api/backtest/validate", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      return await post<Validation>("/api/backtest/validate", body);
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 404) {
         // A deployment whose backtest half predates this route -- fall
         // back to submit-time validation, do not block the form.
-        return { ok: true, degraded: true, errors: [] };
+        return { errors: [], degraded: true };
       }
       if (cause instanceof ApiError && cause.status === 422) {
         // The body failed FastAPI's own shape checks before the handler
         // ran (e.g. more funds than the list allows). It is genuinely
         // invalid -- surface it and block Run, same as any other error.
-        return { ok: false, errors: [{ field: null, message: cause.message }] };
+        return { errors: [{ msg: cause.message }] };
       }
       throw cause;
     }
   },
 
-  liveState: (path: string) =>
-    request<DeploymentState>(`/api/live/state?path=${encodeURIComponent(path)}`),
+  // -- Live (read-only, plus the one halt) ---------------------------------
+
+  /** Ledger store paths; see types/telemetry.ts describeStore. */
+  stores: () => request<string[]>("/api/live/stores"),
+
+  liveState: (path: string) => request<LiveState>(`/api/live/state?${query({ path })}`),
+
+  activity: (path: string, limit = 200) =>
+    request<Activity[]>(`/api/live/activity?${query({ path, limit })}`),
+
+  liveBars: (symbol: string, limit = 780) =>
+    request<Bars>(`/api/live/bars?${query({ symbol, limit })}`),
 
   indicators: (symbol: string, period = 14) =>
-    request<IndicatorReading>(
-      `/api/live/indicators?symbol=${encodeURIComponent(symbol)}&period=${period}`,
-    ),
+    request<Rsi>(`/api/live/indicators?${query({ symbol, period })}`),
 
-  stores: () =>
-    request<{ stores: { path: string; label: string; paper: boolean }[] }>("/api/live/stores"),
+  /** Blocks new buys; answers with the store's state read back. */
+  halt: (path: string, reason: string) => post<LiveState>("/api/live/halt", { path, reason }),
 
-  halt: (path: string, reason: string) =>
-    request<HaltResponse>("/api/live/halt", {
-      method: "POST",
-      body: JSON.stringify({ path, reason }),
-    }),
+  // -- ML research (read-only; see server/ml_insights.py) ------------------
 
-  // -- ML research (read-only; see server/ml_insights.py) --------------
+  mlSources: () => request<MlSeries[]>("/api/ml/sources"),
 
-  mlSources: () => request<SourcesSummary>("/api/ml/sources"),
+  mlDatasets: () => request<ByTicker<Dataset>>("/api/ml/datasets"),
 
-  mlDatasets: () => request<DatasetsResponse>("/api/ml/datasets"),
+  mlLabels: () => request<string[]>("/api/ml/labels"),
 
-  mlEvaluationLabels: () => request<{ labels: string[] }>("/api/ml/evaluation/available"),
+  /** Throws ApiError 404 when nobody has run the tool for this label yet --
+   * the message names the command to run. */
+  mlEvaluation: (label: string) => request<ByTicker<Eval>>(`/api/ml/evaluation?${query({ label })}`),
 
-  /** Throws ApiError with status 404 when nobody has run the tool for
-   * this label yet -- the message names the command to run. */
-  mlEvaluation: (label: string) =>
-    request<EvaluationResponse>(`/api/ml/evaluation?label=${encodeURIComponent(label)}`),
-
-  mlAblation: (label: string) =>
-    request<AblationResponse>(`/api/ml/ablation?label=${encodeURIComponent(label)}`),
+  mlAblation: (label: string) => request<ByTicker<Ablation>>(`/api/ml/ablation?${query({ label })}`),
 
   /**
    * The static export, for looking at a run without the server running.
-   * Returns null rather than throwing when absent: no export is a
-   * normal state on a fresh checkout, not a failure.
+   * Returns null rather than throwing when absent: no export is a normal
+   * state on a fresh checkout, not a failure.
    */
-  staticReport: async (): Promise<MultiFundBacktestReport | null> => {
+  staticReport: async (): Promise<Report | null> => {
     try {
       const response = await fetch("/data/backtest_report.json");
       if (!response.ok) return null;
-      return (await response.json()) as MultiFundBacktestReport;
+      return (await response.json()) as Report;
     } catch {
       return null;
     }

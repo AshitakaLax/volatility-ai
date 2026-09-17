@@ -5,6 +5,13 @@ constructor into a typed, seeded field list. These tests pin the parts a
 form gets quietly wrong: a `float | None` read as non-nullable, a `bool`
 mistaken for an `int`, a server-managed argument offered as an input, or
 the `target_return` / ml-`ticker` overrides not surfaced as locked.
+
+The wire Param is compact: false/None flags are omitted, `suggested` is
+present only when there is a committed value, and group / step /
+editable / sweepable are NOT sent -- the form derives them.
+`_view` below ports that derivation (web/src/lib/strategyParams.ts's
+`paramView`), so the rules those fields encode are still pinned here,
+against the real schema, rather than only in a TypeScript fixture.
 """
 
 from __future__ import annotations
@@ -22,6 +29,35 @@ from server.backtest import (
     required_parameters,
 )
 from src.trading.strategy_registry import STRATEGIES
+
+
+def _view(spec: dict) -> dict:
+    """A wire Param with the fields the form derives filled back in."""
+    required = spec.get("required", False)
+    has_suggested = "suggested" in spec
+    editable = "locked" not in spec
+    mirrors = spec.get("mirrors")
+    enum = spec.get("enum")
+    return {
+        **spec,
+        "required": required,
+        "nullable": spec.get("nullable", False),
+        "enum": enum,
+        "mirrors": mirrors,
+        "editable": editable,
+        "locked_reason": spec.get("locked"),
+        "has_suggested": has_suggested,
+        "suggested": spec["suggested"] if has_suggested else spec["default"],
+        "group": "primary" if (required or has_suggested) else "advanced",
+        "step": None if enum is not None else {"int": "1", "float": "any"}.get(spec["type"]),
+        "sweepable": editable
+        and mirrors is None
+        and (spec["type"] in ("int", "float") or enum is not None),
+    }
+
+
+def describe(strategy_id: str, cls: type) -> list[dict]:
+    return [_view(spec) for spec in describe_params(strategy_id, cls)]
 
 
 class TestWireType:
@@ -67,14 +103,28 @@ class TestCuratedMaps:
 
 
 class TestDescribeParams:
+    def test_the_wire_omits_false_and_null_flags(self):
+        """Absent means false/none -- a key is only sent when it says
+        something, and the derived fields are never sent at all."""
+        allowed = {"name", "type", "default", "suggested", "required", "nullable", "enum"}
+        allowed |= {"locked", "mirrors"}
+        for strategy_id, cls in STRATEGIES.items():
+            for spec in describe_params(strategy_id, cls):
+                assert set(spec) <= allowed, (strategy_id, set(spec) - allowed)
+                for flag in ("required", "nullable"):
+                    assert spec.get(flag, True) is True, (strategy_id, spec["name"], flag)
+                assert spec.get("enum", [1]) and spec.get("locked", "x")
+                committed = STRATEGY_DEFAULTS.get(strategy_id, {})
+                assert ("suggested" in spec) == (spec["name"] in committed)
+
     def test_every_registered_strategy_describes_without_raising(self):
         for strategy_id, cls in STRATEGIES.items():
-            specs = describe_params(strategy_id, cls)
+            specs = describe(strategy_id, cls)
             assert specs, f"{strategy_id} produced no parameter specs"
 
     def test_required_constructor_args_are_marked_required(self):
         for strategy_id, cls in STRATEGIES.items():
-            by_name = {s["name"]: s for s in describe_params(strategy_id, cls)}
+            by_name = {s["name"]: s for s in describe(strategy_id, cls)}
             for name in required_parameters(cls):
                 assert by_name[name]["required"] is True
                 assert by_name[name]["nullable"] is False
@@ -83,7 +133,7 @@ class TestDescribeParams:
         for strategy_id, cls in STRATEGIES.items():
             committed = STRATEGY_DEFAULTS.get(strategy_id, {})
             required = set(required_parameters(cls))
-            for spec in describe_params(strategy_id, cls):
+            for spec in describe(strategy_id, cls):
                 expected = (
                     "primary"
                     if (spec["name"] in required or spec["name"] in committed)
@@ -93,11 +143,11 @@ class TestDescribeParams:
 
     def test_hidden_filesystem_params_are_never_offered(self):
         for strategy_id, cls in STRATEGIES.items():
-            names = {s["name"] for s in describe_params(strategy_id, cls)}
+            names = {s["name"] for s in describe(strategy_id, cls)}
             assert names.isdisjoint(_HIDDEN_PARAMS)
 
     def test_fixed_seeds_allocation_pct_and_locks_the_percentage_alias(self):
-        by_name = {s["name"]: s for s in describe_params("fixed", STRATEGIES["fixed"])}
+        by_name = {s["name"]: s for s in describe("fixed", STRATEGIES["fixed"])}
         assert by_name["allocation_pct"]["suggested"] == 0.05
         assert by_name["allocation_pct"]["group"] == "primary"
         assert by_name["allocation_pct"]["editable"] is True
@@ -111,8 +161,7 @@ class TestDescribeParams:
 
     def test_bayesian_target_return_is_locked_and_mirrors_the_profit_target(self):
         by_name = {
-            s["name"]: s
-            for s in describe_params("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
+            s["name"]: s for s in describe("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
         }
         target = by_name["target_return"]
         assert target["editable"] is False
@@ -129,7 +178,7 @@ class TestDescribeParams:
             ("ml_reachability_rsp", "RSP"),
             ("ml_reachability_spyd", "SPYD"),
         ):
-            by_name = {s["name"]: s for s in describe_params(strategy_id, STRATEGIES[strategy_id])}
+            by_name = {s["name"]: s for s in describe(strategy_id, STRATEGIES[strategy_id])}
             assert by_name["ticker"]["editable"] is False
             assert by_name["ticker"]["suggested"] == expected
             assert by_name["baseline_price"]["editable"] is False
@@ -137,7 +186,7 @@ class TestDescribeParams:
     def test_suggested_is_the_committed_value_or_the_constructor_default(self):
         for strategy_id, cls in STRATEGIES.items():
             committed = STRATEGY_DEFAULTS.get(strategy_id, {})
-            for spec in describe_params(strategy_id, cls):
+            for spec in describe(strategy_id, cls):
                 if spec["name"] in committed:
                     assert spec["suggested"] == committed[spec["name"]]
                 else:
@@ -164,7 +213,7 @@ class TestDescribeParams:
             pass
 
         Fake = type("Fake", (), {"__init__": ctor})
-        by_name = {s["name"]: s for s in describe_params("fake", Fake)}
+        by_name = {s["name"]: s for s in describe("fake", Fake)}
         assert by_name["good"]["type"] == "int"  # survived
         assert by_name["flag"]["type"] == "bool"  # survived
         assert by_name["broken"]["type"] == "float"  # only this one degraded
@@ -178,9 +227,11 @@ class TestSweepable:
 
     def test_the_rule_holds_for_every_param_of_every_strategy(self):
         for strategy_id, cls in STRATEGIES.items():
-            for spec in describe_params(strategy_id, cls):
-                expected = spec["editable"] and spec["mirrors"] is None and (
-                    spec["type"] in ("int", "float") or spec["enum"] is not None
+            for spec in describe(strategy_id, cls):
+                expected = (
+                    spec["editable"]
+                    and spec["mirrors"] is None
+                    and (spec["type"] in ("int", "float") or spec["enum"] is not None)
                 )
                 assert spec["sweepable"] is expected, (strategy_id, spec["name"])
 
@@ -188,8 +239,7 @@ class TestSweepable:
         """It mirrors the grid's profit target -- sweeping it
         independently would silently fight that alignment."""
         by_name = {
-            s["name"]: s
-            for s in describe_params("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
+            s["name"]: s for s in describe("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
         }
         assert by_name["target_return"]["sweepable"] is False
 
@@ -197,21 +247,21 @@ class TestSweepable:
         """Locked to the model id -- the engine owns it, not the operator."""
         by_name = {
             s["name"]: s
-            for s in describe_params("ml_reachability_cowz", STRATEGIES["ml_reachability_cowz"])
+            for s in describe("ml_reachability_cowz", STRATEGIES["ml_reachability_cowz"])
         }
         assert by_name["ticker"]["sweepable"] is False
 
     def test_baseline_price_and_the_fixed_percentage_alias_are_not_sweepable(self):
         ml_by_name = {
             s["name"]: s
-            for s in describe_params("ml_reachability_cowz", STRATEGIES["ml_reachability_cowz"])
+            for s in describe("ml_reachability_cowz", STRATEGIES["ml_reachability_cowz"])
         }
         assert ml_by_name["baseline_price"]["sweepable"] is False
-        fixed_by_name = {s["name"]: s for s in describe_params("fixed", STRATEGIES["fixed"])}
+        fixed_by_name = {s["name"]: s for s in describe("fixed", STRATEGIES["fixed"])}
         assert fixed_by_name["percentage"]["sweepable"] is False
 
     def test_allocation_pct_is_sweepable(self):
-        by_name = {s["name"]: s for s in describe_params("fixed", STRATEGIES["fixed"])}
+        by_name = {s["name"]: s for s in describe("fixed", STRATEGIES["fixed"])}
         assert by_name["allocation_pct"]["sweepable"] is True
 
     def test_a_str_enum_param_is_sweepable_as_options(self):
@@ -222,8 +272,7 @@ class TestSweepable:
         for) or `bool` (not offered a checklist here; see the module
         docstring on the two sweepable shapes)."""
         by_name = {
-            s["name"]: s
-            for s in describe_params("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
+            s["name"]: s for s in describe("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
         }
         assert by_name["vol_measure"]["sweepable"] is True
         assert by_name["vol_measure"]["enum"] == ["stdev", "range"]
@@ -238,13 +287,12 @@ class TestSweepable:
             pass
 
         Fake = type("Fake", (), {"__init__": ctor})
-        by_name = {s["name"]: s for s in describe_params("fake", Fake)}
+        by_name = {s["name"]: s for s in describe("fake", Fake)}
         assert by_name["ticker_note"]["sweepable"] is False
 
     def test_an_editable_int_param_is_sweepable(self):
         by_name = {
-            s["name"]: s
-            for s in describe_params("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
+            s["name"]: s for s in describe("bayesian_dual_scale", STRATEGIES["bayesian_dual_scale"])
         }
         assert by_name["bars_per_day"]["type"] == "int"
         assert by_name["bars_per_day"]["sweepable"] is True
@@ -283,7 +331,7 @@ class TestNoEditSubmitParity:
 
     @pytest.mark.parametrize("strategy_id", sorted(STRATEGIES))
     def test_a_plain_run_reproduces_the_committed_defaults(self, strategy_id):
-        specs = describe_params(strategy_id, STRATEGIES[strategy_id])
+        specs = describe(strategy_id, STRATEGIES[strategy_id])
         got = _simulate_build_strategy_params(specs)
         want = dict(STRATEGY_DEFAULTS.get(strategy_id, {}))
         # `target_return` is the one committed key the form never sends --
@@ -300,7 +348,7 @@ class TestRoundTrip:
     def test_seeded_params_construct_the_strategy(self, strategy_id):
         cls = STRATEGIES[strategy_id]
         params: dict = {}
-        for spec in describe_params(strategy_id, cls):
+        for spec in describe(strategy_id, cls):
             if spec["mirrors"] is not None:
                 continue  # target_return: the server aligns it
             if not spec["editable"] and spec["name"] != "ticker":

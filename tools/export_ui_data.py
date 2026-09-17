@@ -16,17 +16,14 @@ same structure from the same helpers, so the two cannot drift into
 disagreeing about what a BacktestExecution looks like.
 
 --------------------------------------------------------------------
-WHERE matched_buy_id COMES FROM
+WHERE A FILL'S `lot` COMES FROM
 
 The engine's blotter carries `lot_id` on BOTH sides -- the buy row gets
 the id register_buy is about to assign, the sell row gets the id of the
 lot it closed. They are the same value, and that is the entire mechanism
 behind cycle connectors, the open-vs-closed filter, and per-trade
-metrics.
-
-The published contract names it `matched_buy_id` on sells, so the
-mapping happens HERE rather than by storing a redundant column in the
-engine: one join key in the data, one contract name on the wire.
+metrics. So a Fill carries it once, as `lot`, on both sides: a sell joins
+its buy on `lot`, and (`lot`, `side`, `i`) is a fill's unique key.
 """
 
 from __future__ import annotations
@@ -84,12 +81,13 @@ KNOWN_DATA = {
 }
 
 
-def executions(blotter: pd.DataFrame, ticker: str) -> list[dict]:
-    """Blotter rows as BacktestExecution objects.
+def executions(blotter: pd.DataFrame) -> list[dict]:
+    """Blotter rows as Fill objects.
 
     Returns [] for an empty blotter rather than raising: a run that
     never traded is a real result, and the UI should render "no
-    executions" rather than an error.
+    executions" rather than an error. No ticker per fill: a fund's fills
+    live under that fund's key.
     """
     if blotter is None or blotter.empty:
         return []
@@ -97,45 +95,45 @@ def executions(blotter: pd.DataFrame, ticker: str) -> list[dict]:
     out: list[dict] = []
     for row in blotter.itertuples():
         side = str(row.side).upper()
-        lot_id = getattr(row, "lot_id", None)
         record = {
             # The lot id is not unique across a lot's rows -- one buy and
-            # possibly several partial sells share it -- so the order id
-            # is qualified by side and bar to stay a real key.
-            "order_id": f"{lot_id}-{side.lower()}-{getattr(row, 'bar_index', 0)}",
-            "ticker": getattr(row, "ticker", ticker),
-            "type": side,
-            "price": round(float(row.price), 6),
-            "shares": round(float(row.qty), 6),
-            "timestamp": pd.Timestamp(row.timestamp).isoformat(),
+            # possibly several partial sells share it -- so a fill's key
+            # is (lot, side, i), derived client-side rather than sent.
+            "lot": str(getattr(row, "lot_id", None)),
+            "side": side,
+            "i": int(getattr(row, "bar_index", 0)),
+            "px": round(float(row.price), 6),
+            "qty": round(float(row.qty), 6),
+            "ts": pd.Timestamp(row.timestamp).isoformat(),
         }
         # OMITTED, not zeroed, while the 14-period window is seeding. A
         # zero would filter as "extremely oversold" and put the run's
         # first trades in every RSI<30 query -- exactly backwards.
         rsi = getattr(row, "rsi", None)
         if rsi is not None and not pd.isna(rsi):
-            record["rsi_at_entry"] = round(float(rsi), 2)
+            record["rsi"] = round(float(rsi), 2)
         if side == "SELL":
-            record["matched_buy_id"] = lot_id
+            # economics.realized_pnl -- the no-loss guard's own figure,
+            # negative on a signal exit. Not (target - basis) * qty, which
+            # would report every trade as a winner.
             profit = getattr(row, "profit_realized", None)
             if profit is not None and not pd.isna(profit):
-                record["profit_realized"] = round(float(profit), 6)
+                record["pnl"] = round(float(profit), 6)
             reason = getattr(row, "sell_reason", None)
             if reason is not None and not pd.isna(reason):
-                record["sell_reason"] = str(reason)
+                record["why"] = str(reason)
         out.append(record)
     return out
 
 
-def fund_metrics(metrics: dict, ticker: str) -> dict:
-    """The engine's metrics dict as a FundPerformanceMetrics object.
+def fund_metrics(metrics: dict) -> dict:
+    """The engine's metrics dict as a Metrics object.
 
     Read by .get with defaults so an older result file -- one produced
     before the UI metrics were added -- still renders, with the missing
     figures as zero rather than crashing the page.
     """
     return {
-        "ticker": ticker,
         "net_yield_pct": round(float(metrics.get("Total Return %", 0.0)), 4),
         "cagr_pct": round(float(metrics.get("CAGR %", 0.0)), 4),
         "max_drawdown_pct": round(float(metrics.get("Max Drawdown %", 0.0)), 4),
@@ -169,23 +167,20 @@ def fund_metrics(metrics: dict, ticker: str) -> dict:
 
 
 def equity_series(curve: pd.Series) -> dict:
-    """Daily equity, plus its normalised form for the overlay chart.
+    """Daily equity as two parallel arrays.
 
-    Normalised to 100 at the first bar, which is what makes two funds
-    with different starting prices comparable on one axis -- the
-    multi-fund view's whole purpose.
+    The overlay chart's rebased-to-100 form is derived client-side
+    (equity / equity[0] * 100) rather than sent as a third array.
     """
     if curve is None or len(curve) == 0:
-        return {"dates": [], "equity": [], "normalized": []}
+        return {"dates": [], "equity": []}
     try:
         daily = curve.resample("1D").last().dropna()
     except (TypeError, ValueError):
         daily = curve.dropna()
-    first = float(daily.iloc[0]) or 1.0
     return {
         "dates": [pd.Timestamp(ts).strftime("%Y-%m-%d") for ts in daily.index],
         "equity": [round(float(v), 2) for v in daily.to_numpy()],
-        "normalized": [round(float(v) / first * 100.0, 4) for v in daily.to_numpy()],
     }
 
 
@@ -199,9 +194,16 @@ def run_one(ticker: str, path: str, config: BacktestConfig, limit: int | None) -
     _, full = OptimizationController(historical_data=frame).run_sweep(**kwargs)
     result = full[0]
     return {
-        "metrics": fund_metrics(result.metrics, ticker),
-        "executions": executions(result.trade_blotter, ticker),
-        "equity_curve": equity_series(result.equity_curve),
+        "cells": [
+            {
+                "grid": float(config.grid.steps[0]),
+                "target": float(config.grid.profit_targets[0]),
+                "params": dict(config.strategy.strategy_params),
+                "m": fund_metrics(result.metrics),
+            }
+        ],
+        "fills": executions(result.trade_blotter),
+        "equity": equity_series(result.equity_curve),
         "bars": {
             "start": pd.Timestamp(frame.index[0]).isoformat(),
             "end": pd.Timestamp(frame.index[-1]).isoformat(),
@@ -235,24 +237,22 @@ def main(argv=None) -> int:
             continue
         print(f"[export] {ticker} ...", flush=True)
         funds[ticker] = run_one(ticker, path, config, args.limit)
-        print(f"[export]   {len(funds[ticker]['executions'])} executions", flush=True)
+        print(f"[export]   {len(funds[ticker]['fills'])} executions", flush=True)
 
+    # A Report (web/src/types/backtest.ts) -- the shape server/backtest.py
+    # serves, run-level fields flat and stated once.
     report = {
-        "run_id": args.run_id or f"local-{pd.Timestamp.now('UTC'):%Y%m%d-%H%M%S}",
-        "parameters": {
-            "grid_step_pct": config.grid.steps[0] if config.grid.steps else None,
-            "profit_target_pct": (
-                config.grid.profit_targets[0] if config.grid.profit_targets else None
-            ),
-            "sizing_model": config.strategy.strategy_id,
-            "fill_model": config.execution.fill_model,
-            "enforce_no_loss": config.execution.enforce_no_loss,
-        },
-        "timeframe": {
-            "start": min((f["bars"]["start"] for f in funds.values()), default=None),
-            "end": max((f["bars"]["end"] for f in funds.values()), default=None),
-            "interval": "1Min",
-        },
+        "id": args.run_id or f"local-{pd.Timestamp.now('UTC'):%Y%m%d-%H%M%S}",
+        "name": None,
+        "model": config.strategy.strategy_id,
+        "fill": config.execution.fill_model,
+        "no_loss": config.execution.enforce_no_loss,
+        "params": dict(config.strategy.strategy_params),
+        "grid": config.grid.steps[0] if config.grid.steps else None,
+        "target": config.grid.profit_targets[0] if config.grid.profit_targets else None,
+        "start": min((f["bars"]["start"] for f in funds.values()), default=None),
+        "end": max((f["bars"]["end"] for f in funds.values()), default=None),
+        "interval": "1Min",
         "funds": funds,
     }
 

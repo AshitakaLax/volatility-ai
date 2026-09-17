@@ -7,10 +7,11 @@ import { ParamField } from "@/components/backtest/ParamField";
 import { SearchMethodPanel } from "@/components/backtest/SearchMethodPanel";
 import { SweepableParamField } from "@/components/backtest/SweepableParamField";
 import { SweepControls } from "@/components/backtest/SweepControls";
-import { api, type FundAvailability } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Field, Input, Select } from "@/components/ui/primitives";
 import { buildGridSteps } from "@/lib/gridSteps";
-import { GENERIC_GRID_TRIGGER, initialTriggerMethod } from "@/lib/gridTrigger";
+import { isRunning } from "@/lib/runQueue";
+import { GENERIC_TRIGGER, initialTriggerMethod } from "@/lib/gridTrigger";
 import { DEFAULT_SEARCH_METHOD_STATE, searchMethodErrors, type SearchMethodState } from "@/lib/searchMethod";
 import { DEFAULT_SWEEP_FIELD_STATE, type SweepFieldState } from "@/lib/sweepStrategies";
 import {
@@ -21,18 +22,19 @@ import {
   DEFAULT_OPTIONS_SWEEP_FIELD_STATE,
   diffFromDefaults,
   paramErrorsFor,
+  paramSpec,
   seedValues,
   type OptionsSweepFieldState,
 } from "@/lib/strategyParams";
 import type {
-  BacktestRunRequest,
-  BacktestRunState,
+  Catalog,
   DateRange,
-  GridTrigger,
-  GridTriggerMethod,
   ParamSpec,
-  SizingParamsEntry,
-  ValidateResponse,
+  Run,
+  RunReq,
+  Trigger,
+  TriggerMethod,
+  Validation,
 } from "@/types/backtest";
 
 // Mirrors server/backtest.py's MAX_SWEEP_COMBINATIONS default -- catches
@@ -64,8 +66,8 @@ const MAX_SWEEP_COMBINATIONS_BAYESIAN = MAX_SWEEP_COMBINATIONS * 100;
  */
 
 interface Props {
-  onSubmit: (request: BacktestRunRequest) => void;
-  run: BacktestRunState | null;
+  onSubmit: (request: RunReq) => void;
+  run: Run | null;
   submitting: boolean;
   error: string | null;
   /**
@@ -87,10 +89,10 @@ interface Props {
 }
 
 export function ParameterForm({ onSubmit, run, submitting, error, range, staged }: Props) {
-  const [funds, setFunds] = useState<FundAvailability[]>([]);
+  const [funds, setFunds] = useState<Catalog["funds"]>([]);
   const [models, setModels] = useState<string[]>([]);
-  const [paramSpecs, setParamSpecs] = useState<Record<string, SizingParamsEntry>>({});
-  const [gridTriggerMap, setGridTriggerMap] = useState<Record<string, GridTrigger>>({});
+  const [paramSpecs, setParamSpecs] = useState<Record<string, ParamSpec[]>>({});
+  const [gridTriggerMap, setGridTriggerMap] = useState<Record<string, Trigger>>({});
   const [tickers, setTickers] = useState<string[]>(["TQQQ"]);
   const [name, setName] = useState("");
   const [gridStep, setGridStep] = useState(1.0);
@@ -116,7 +118,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   // NOT reset on a model change.
   const [searchMethod, setSearchMethod] = useState<SearchMethodState>(DEFAULT_SEARCH_METHOD_STATE);
   // The grid-step trigger method, used only when the model offers a choice.
-  const [triggerMethod, setTriggerMethod] = useState<GridTriggerMethod>("last_buy");
+  const [triggerMethod, setTriggerMethod] = useState<TriggerMethod>("last_buy");
   const [profitTarget, setProfitTarget] = useState(0.5);
   const [model, setModel] = useState("fixed");
   const [fillModel, setFillModel] = useState<"close" | "intrabar">("close");
@@ -128,20 +130,20 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   // to the declared type happens once, in buildStrategyParams.
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [validation, setValidation] = useState<ValidateResponse | null>(null);
+  const [validation, setValidation] = useState<Validation | null>(null);
   const validateSeq = useRef(0);
 
-  const specs = useMemo(() => paramSpecs[model]?.params ?? [], [paramSpecs, model]);
+  const specs = useMemo(() => paramSpecs[model] ?? [], [paramSpecs, model]);
 
   // Grid-step trigger method for the current model. `method` is the
   // EFFECTIVE choice -- forced to the only option when the model has no
   // choice, so a stale selection cannot leak onto a model after a fast
   // switch. `hidden` is the strategy_param that IS the rolling-high
   // window: it moves out of the param grid and into the grid-step panel.
-  const trigger = gridTriggerMap[model] ?? GENERIC_GRID_TRIGGER;
+  const trigger = gridTriggerMap[model] ?? GENERIC_TRIGGER;
   const methodLocked = trigger.methods.length === 1;
-  const method: GridTriggerMethod = methodLocked ? trigger.methods[0]! : triggerMethod;
-  const windowParam = trigger.window_param;
+  const method: TriggerMethod = methodLocked ? trigger.methods[0]! : triggerMethod;
+  const windowParam = trigger.window?.param ?? null;
 
   const gridStepSweep = sweepFields.grid_step ?? DEFAULT_SWEEP_FIELD_STATE;
   const profitTargetSweep = sweepFields.profit_target ?? DEFAULT_SWEEP_FIELD_STATE;
@@ -223,10 +225,17 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     api
       .funds()
       .then((body) => {
+        const ids = Object.keys(body.models).sort();
         setFunds(body.funds);
-        setModels(body.sizing_models);
-        setParamSpecs(body.sizing_params ?? {});
-        setGridTriggerMap(body.grid_trigger ?? {});
+        setModels(ids);
+        // The wire omits what the form derives (group, step, sweepable,
+        // ...); paramSpec fills it in once, here.
+        setParamSpecs(
+          Object.fromEntries(ids.map((id) => [id, body.models[id]!.params.map(paramSpec)])),
+        );
+        setGridTriggerMap(
+          Object.fromEntries(ids.map((id) => [id, body.models[id]!.trigger])),
+        );
       })
       .catch((cause: unknown) => {
         setLoadError(
@@ -258,7 +267,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     // their only option; a model whose window param was seeded (a saved
     // report reloaded, or hf's committed lookback_days) preselects
     // local_reference.
-    setTriggerMethod(initialTriggerMethod(gridTriggerMap[model] ?? GENERIC_GRID_TRIGGER, seeded));
+    setTriggerMethod(initialTriggerMethod(gridTriggerMap[model] ?? GENERIC_TRIGGER, seeded));
     // REPLACE the strategy-param slice of sweepFields the same way --
     // grid_step/profit_target are untouched, they are not tied to the
     // model. Enum specs go to optionSweepFields instead; sweepFields
@@ -319,22 +328,22 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   // what actually lets a reader submit one instead of being blocked
   // until the first sweep finishes.
   const busy = submitting;
-  const priorRunActive = run?.status === "queued" || run?.status === "running";
+  const priorRunActive = run !== null && (run.status === "queued" || isRunning(run.status));
 
-  const buildRequest = (): BacktestRunRequest => ({
+  const buildRequest = (): RunReq => ({
     ...(name.trim() ? { name: name.trim() } : {}),
     tickers,
     // Percentages in the UI, fractions on the wire. A well-formed list
     // even mid-edit (Run is disabled while gridSteps has errors).
     grid_steps: gridSteps.steps.length > 0 ? gridSteps.steps : [gridStep / 100],
-    profit_targets: profitSteps.steps.length > 0 ? profitSteps.steps : [profitTarget / 100],
-    sizing_model: model,
-    fill_model: fillModel,
+    targets: profitSteps.steps.length > 0 ? profitSteps.steps : [profitTarget / 100],
+    model,
+    fill: fillModel,
     // Built explicitly from the rendered fields -- see buildStrategyParams
     // for exactly which are included. A sweepable field with its
     // checkbox on is sent as a list; a no-edit, no-sweep submit
     // reproduces the model's committed defaults byte-for-byte.
-    strategy_params: buildStrategyParams(specs, paramValues, sweepFields, optionSweepFields),
+    params: buildStrategyParams(specs, paramValues, sweepFields, optionSweepFields),
     limit,
     ...(range.start ? { start: range.start } : {}),
     ...(range.end ? { end: range.end } : {}),
@@ -343,11 +352,12 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
     // same discipline as every other optional field above.
     ...(searchMethod.strategy === "bayesian"
       ? {
-          search_strategy: "bayesian" as const,
-          n_trials: Number(searchMethod.nTrials),
+          bayes: {
+            trials: Number(searchMethod.nTrials),
+            ...(searchMethod.seed.trim() !== "" ? { seed: Number(searchMethod.seed) } : {}),
+          },
           rank_by: searchMethod.rankBy,
-          search_direction: searchMethod.direction,
-          ...(searchMethod.seed.trim() !== "" ? { search_seed: Number(searchMethod.seed) } : {}),
+          ...(searchMethod.direction === "minimize" ? { minimize: true } : {}),
         }
       : {}),
   });
@@ -428,12 +438,12 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   // Writing the trigger method's window param is the ONLY place the
   // method touches strategy_params -- always via setParam so paramsKey
   // changes and the debounced /validate refires.
-  const changeMethod = (next: GridTriggerMethod) => {
+  const changeMethod = (next: TriggerMethod) => {
     if (windowParam) {
       setParam(
         windowParam,
         next === "local_reference"
-          ? (paramValues[windowParam] ?? "").trim() || String(trigger.window_default ?? "")
+          ? (paramValues[windowParam] ?? "").trim() || String(trigger.window?.seed ?? "")
           : "",
       );
     }
@@ -456,7 +466,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   );
   if (method === "local_reference" && windowParam) renderedFields.add(windowParam);
   const bannerErrors = (validation?.errors ?? []).filter(
-    (entry) => entry.field === null || !renderedFields.has(entry.field),
+    (entry) => entry.field === undefined || !renderedFields.has(entry.field),
   );
   // `0.7 / 100` is `0.006999999999999999`; show a clean number, keep the
   // exact float on the wire.
@@ -553,9 +563,9 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
               <button
                 key={fund.ticker}
                 type="button"
-                disabled={!fund.available || busy}
+                disabled={!fund.ok || busy}
                 onClick={() => toggle(fund.ticker)}
-                title={fund.available ? fund.path : "not downloaded — see cli.py fetch-data"}
+                title={fund.ok ? fund.path : "not downloaded — see cli.py fetch-data"}
                 className={
                   "rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-40 " +
                   (tickers.includes(fund.ticker)
@@ -682,7 +692,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
             busy ||
             tickers.length === 0 ||
             blanks.length > 0 ||
-            validation?.ok === false ||
+            (validation?.errors.length ?? 0) > 0 ||
             sweepErrors.length > 0 ||
             totalCombinations > combinationCeiling ||
             (method === "local_reference" &&
@@ -815,7 +825,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
           {bannerErrors.map((entry, index) => (
             <p key={index} className="flex items-start gap-2 text-xs text-loss">
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-              {entry.message}
+              {entry.msg}
             </p>
           ))}
         </CardContent>
@@ -824,12 +834,12 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
   );
 }
 
-function RunStatus({ run }: { run: BacktestRunState }) {
+function RunStatus({ run }: { run: Run }) {
   const tone =
     run.status === "failed" ? "loss" : run.status === "complete" ? "profit" : "stuck";
   return (
     <div className="flex items-center gap-3">
-      {run.status === "running" ? (
+      {isRunning(run.status) ? (
         <div className="h-1 w-28 overflow-hidden rounded-full bg-secondary">
           <div
             className="h-full bg-primary transition-all"
@@ -837,7 +847,7 @@ function RunStatus({ run }: { run: BacktestRunState }) {
           />
         </div>
       ) : null}
-      <Badge tone={tone}>{run.message ?? run.status}</Badge>
+      <Badge tone={tone}>{run.msg ?? run.status}</Badge>
     </div>
   );
 }

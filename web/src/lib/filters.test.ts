@@ -10,10 +10,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   EMPTY_RUN_HISTORY_FILTERS,
-  type BacktestExecution,
   type ExecutionFilters,
-  type FundPerformanceMetrics,
+  type Fill,
   type HistoryRow,
+  type Metrics,
   type RunHistoryFilters,
 } from "@/types/backtest";
 
@@ -22,39 +22,30 @@ import {
   aggregate,
   buildCycles,
   chartWindow,
+  fillKey,
   filterExecutions,
   filterHistoryRows,
   historyFieldValue,
   historyInputFields,
-  lotIdOf,
   nextRunHistorySort,
   openLotIds,
   runHistoryFilterActive,
   sortHistoryRows,
 } from "./filters";
 
-function buy(lot: string, bar: number, extra: Partial<BacktestExecution> = {}): BacktestExecution {
-  return {
-    order_id: `${lot}-buy-${bar}`,
-    ticker: "TQQQ",
-    type: "BUY",
-    price: 100,
-    shares: 1,
-    timestamp: "2026-03-01T14:30:00+00:00",
-    ...extra,
-  };
+function buy(lot: string, bar: number, extra: Partial<Fill> = {}): Fill {
+  return { lot, side: "BUY", i: bar, px: 100, qty: 1, ts: "2026-03-01T14:30:00+00:00", ...extra };
 }
 
-function sell(lot: string, bar: number, extra: Partial<BacktestExecution> = {}): BacktestExecution {
+function sell(lot: string, bar: number, extra: Partial<Fill> = {}): Fill {
   return {
-    order_id: `${lot}-sell-${bar}`,
-    ticker: "TQQQ",
-    type: "SELL",
-    price: 101,
-    shares: 1,
-    timestamp: "2026-03-02T14:30:00+00:00",
-    matched_buy_id: lot,
-    profit_realized: 1,
+    lot,
+    side: "SELL",
+    i: bar,
+    px: 101,
+    qty: 1,
+    ts: "2026-03-02T14:30:00+00:00",
+    pnl: 1,
     ...extra,
   };
 }
@@ -68,20 +59,15 @@ const BASE: ExecutionFilters = {
   tickers: [],
 };
 
-describe("lotIdOf", () => {
-  it("reads the lot out of a buy's qualified order id", () => {
-    expect(lotIdOf(buy("SIM-000008", 235))).toBe("SIM-000008");
+describe("fillKey", () => {
+  it("qualifies the lot by side and bar, since the lot alone repeats", () => {
+    expect(fillKey(buy("SIM-000008", 235))).toBe("SIM-000008-buy-235");
+    expect(fillKey(sell("SIM-000008", 400))).toBe("SIM-000008-sell-400");
   });
 
-  it("prefers matched_buy_id on a sell", () => {
-    expect(lotIdOf(sell("SIM-000008", 400))).toBe("SIM-000008");
-  });
-
-  it("splits on the LAST marker, so a lot id containing one survives", () => {
-    // Contrived, but the alternative (indexOf) would silently truncate
-    // and merge two different lots into one cycle.
-    const odd = buy("weird-buy-lot", 12);
-    expect(lotIdOf(odd)).toBe("weird-buy-lot");
+  it("keeps a buy and its partial sells distinct", () => {
+    const keys = [buy("A", 1), sell("A", 5), sell("A", 9)].map(fillKey);
+    expect(new Set(keys).size).toBe(3);
   });
 });
 
@@ -96,8 +82,8 @@ describe("buildCycles", () => {
   it("sums partial sells against one lot", () => {
     const cycles = buildCycles([
       buy("A", 1),
-      sell("A", 5, { profit_realized: 0.4 }),
-      sell("A", 9, { profit_realized: 0.6 }),
+      sell("A", 5, { pnl: 0.4 }),
+      sell("A", 9, { pnl: 0.6 }),
     ]);
     expect(cycles[0]!.sells).toHaveLength(2);
     expect(cycles[0]!.realized).toBeCloseTo(1.0);
@@ -114,7 +100,7 @@ describe("buildCycles", () => {
   it("keeps the FIRST buy when a lot id somehow appears twice", () => {
     const cycles = buildCycles([buy("A", 1), buy("A", 50), sell("A", 60)]);
     expect(cycles).toHaveLength(1);
-    expect(cycles[0]!.buy.order_id).toBe("A-buy-1");
+    expect(fillKey(cycles[0]!.buy)).toBe("A-buy-1");
   });
 
   it("ignores a sell whose lot has no buy rather than inventing one", () => {
@@ -136,9 +122,9 @@ describe("filterExecutions", () => {
     // RSI. Including it in "RSI < 30" would claim the strategy entered
     // on a reading that did not exist.
     const warmup = buy("A", 1);
-    const known = buy("B", 2, { rsi_at_entry: 25 });
+    const known = buy("B", 2, { rsi: 25 });
     const out = filterExecutions([warmup, known], { ...BASE, rsiMax: 30 });
-    expect(out.map((e) => e.order_id)).toEqual(["B-buy-2"]);
+    expect(out.map(fillKey)).toEqual(["B-buy-2"]);
   });
 
   it("keeps unknown-rsi executions when no bound is set", () => {
@@ -147,7 +133,7 @@ describe("filterExecutions", () => {
   });
 
   it("treats rsi bounds as inclusive", () => {
-    const at30 = buy("A", 1, { rsi_at_entry: 30 });
+    const at30 = buy("A", 1, { rsi: 30 });
     expect(filterExecutions([at30], { ...BASE, rsiMax: 30 })).toHaveLength(1);
     expect(filterExecutions([at30], { ...BASE, rsiMin: 30 })).toHaveLength(1);
   });
@@ -166,18 +152,18 @@ describe("filterExecutions", () => {
 
   it("splits open from closed lots by status", () => {
     const rows = [buy("A", 1), sell("A", 2), buy("B", 3)];
-    expect(filterExecutions(rows, { ...BASE, status: "stuck" }).map((e) => e.order_id)).toEqual([
+    expect(filterExecutions(rows, { ...BASE, status: "stuck" }).map(fillKey)).toEqual([
       "B-buy-3",
     ]);
-    expect(filterExecutions(rows, { ...BASE, status: "closed" }).map((e) => e.order_id)).toEqual([
+    expect(filterExecutions(rows, { ...BASE, status: "closed" }).map(fillKey)).toEqual([
       "A-buy-1",
       "A-sell-2",
     ]);
   });
 
-  it("treats an empty ticker list as no restriction", () => {
+  it("does not filter on tickers -- they pick the fund, and fills are one fund's", () => {
     expect(filterExecutions([buy("A", 1)], { ...BASE, tickers: [] })).toHaveLength(1);
-    expect(filterExecutions([buy("A", 1)], { ...BASE, tickers: ["RSP"] })).toHaveLength(0);
+    expect(filterExecutions([buy("A", 1)], { ...BASE, tickers: ["RSP"] })).toHaveLength(1);
   });
 });
 
@@ -263,9 +249,8 @@ describe("chartWindow", () => {
 
 /* ---------------- run-history filtering ---------------------------- */
 
-function metrics(over: Partial<FundPerformanceMetrics> = {}): FundPerformanceMetrics {
+function metrics(over: Partial<Metrics> = {}): Metrics {
   return {
-    ticker: "TQQQ",
     net_yield_pct: 0,
     cagr_pct: 0,
     max_drawdown_pct: 0,
@@ -287,27 +272,27 @@ function metrics(over: Partial<FundPerformanceMetrics> = {}): FundPerformanceMet
   };
 }
 
-type HistRowOverride = Partial<Omit<HistoryRow, "metrics">> & {
-  metrics?: Partial<FundPerformanceMetrics>;
+type HistRowOverride = Partial<Omit<HistoryRow, "m">> & {
+  m?: Partial<Metrics>;
 };
 
 function histRow(over: HistRowOverride = {}): HistoryRow {
   return {
-    run_id: "r1",
+    run: "r1",
     name: null,
     saved_at: 0,
     ticker: "TQQQ",
-    grid_step: 0.01,
-    profit_target: 0.005,
-    sizing_model: "fixed",
-    strategy_params: {},
-    fill_model: "close",
-    engine_rank: 0,
+    grid: 0.01,
+    target: 0.005,
+    model: "fixed",
+    params: {},
+    fill: "close",
+    rank: 0,
     start: "2026-01-01",
     end: "2026-02-01",
     bars: 1000,
     ...over,
-    metrics: metrics(over.metrics),
+    m: metrics(over.m),
   };
 }
 
@@ -318,19 +303,19 @@ describe("historyFieldValue", () => {
     // The table shows grid_step * 100, so the filter inputs are percents
     // too -- comparing a typed "1" against a stored 0.01 would match
     // nothing.
-    expect(historyFieldValue(histRow({ grid_step: 0.015 }), "grid_step")).toBeCloseTo(1.5);
-    expect(historyFieldValue(histRow({ profit_target: 0.005 }), "profit_target")).toBeCloseTo(0.5);
+    expect(historyFieldValue(histRow({ grid: 0.015 }), "grid_step")).toBeCloseTo(1.5);
+    expect(historyFieldValue(histRow({ target: 0.005 }), "profit_target")).toBeCloseTo(0.5);
   });
 
   it("reads a numeric sizing-model argument by its param: key", () => {
-    const row = histRow({ strategy_params: { allocation_pct: 0.05, ticker: "COWZ" } });
+    const row = histRow({ params: { allocation_pct: 0.05, ticker: "COWZ" } });
     expect(historyFieldValue(row, "param:allocation_pct")).toBe(0.05);
     // A non-numeric argument is not a numeric field -- Fund handles it.
     expect(historyFieldValue(row, "param:ticker")).toBeNull();
   });
 
   it("reads a result metric by its metric: key, and null when absent", () => {
-    expect(historyFieldValue(histRow({ metrics: { cagr_pct: 12.5 } }), "metric:cagr_pct")).toBe(
+    expect(historyFieldValue(histRow({ m: { cagr_pct: 12.5 } }), "metric:cagr_pct")).toBe(
       12.5,
     );
     // worst_year_pct is optional; a row without it must read as unknown,
@@ -359,7 +344,7 @@ describe("nextRunHistorySort", () => {
 
 describe("sortHistoryRows", () => {
   it("a null sort returns the rows completely unchanged (caller applies its own default)", () => {
-    const rows = [histRow({ run_id: "b" }), histRow({ run_id: "a" })];
+    const rows = [histRow({ run: "b" }), histRow({ run: "a" })];
     expect(sortHistoryRows(rows, null, "cagr_pct")).toBe(rows);
   });
 
@@ -378,9 +363,9 @@ describe("sortHistoryRows", () => {
   });
 
   it("sorts a numeric column", () => {
-    const rows = [histRow({ grid_step: 0.02 }), histRow({ grid_step: 0.01 }), histRow({ grid_step: 0.03 })];
+    const rows = [histRow({ grid: 0.02 }), histRow({ grid: 0.01 }), histRow({ grid: 0.03 })];
     expect(
-      sortHistoryRows(rows, { column: "grid_step", direction: "asc" }, "cagr_pct").map((r) => r.grid_step),
+      sortHistoryRows(rows, { column: "grid_step", direction: "asc" }, "cagr_pct").map((r) => r.grid),
     ).toEqual([0.01, 0.02, 0.03]);
   });
 
@@ -392,16 +377,16 @@ describe("sortHistoryRows", () => {
 
   it("the 'metric' column reads whichever FundPerformanceMetrics key is passed", () => {
     const rows = [
-      histRow({ run_id: "hi", metrics: { sharpe_ratio: 2 } }),
-      histRow({ run_id: "lo", metrics: { sharpe_ratio: 1 } }),
+      histRow({ run: "hi", m: { sharpe_ratio: 2 } }),
+      histRow({ run: "lo", m: { sharpe_ratio: 1 } }),
     ];
     expect(
-      sortHistoryRows(rows, { column: "metric", direction: "desc" }, "sharpe_ratio").map((r) => r.run_id),
+      sortHistoryRows(rows, { column: "metric", direction: "desc" }, "sharpe_ratio").map((r) => r.run),
     ).toEqual(["hi", "lo"]);
   });
 
   it("does not mutate the input array", () => {
-    const rows = [histRow({ run_id: "b" }), histRow({ run_id: "a" })];
+    const rows = [histRow({ run: "b" }), histRow({ run: "a" })];
     const copy = [...rows];
     sortHistoryRows(rows, { column: "run_id", direction: "asc" }, "cagr_pct");
     expect(rows).toEqual(copy);
@@ -410,27 +395,27 @@ describe("sortHistoryRows", () => {
   describe("saved_at", () => {
     it("sorts by recorded save time", () => {
       const rows = [
-        histRow({ run_id: "old", saved_at: 100 }),
-        histRow({ run_id: "new", saved_at: 300 }),
-        histRow({ run_id: "mid", saved_at: 200 }),
+        histRow({ run: "old", saved_at: 100 }),
+        histRow({ run: "new", saved_at: 300 }),
+        histRow({ run: "mid", saved_at: 200 }),
       ];
       expect(
         sortHistoryRows(rows, { column: "saved_at", direction: "asc" }, "cagr_pct").map(
-          (r) => r.run_id,
+          (r) => r.run,
         ),
       ).toEqual(["old", "mid", "new"]);
     });
 
     it("a row with no saved_at is treated as NOW, not as missing -- it sorts among the most recent, not last", () => {
       const rows = [
-        histRow({ run_id: "old", saved_at: 100 }),
-        histRow({ run_id: "unknown", saved_at: null }),
+        histRow({ run: "old", saved_at: 100 }),
+        histRow({ run: "unknown", saved_at: null }),
       ];
       // Descending (newest first): the unknown row -- "now" -- outranks
       // a row genuinely saved in 1970.
       expect(
         sortHistoryRows(rows, { column: "saved_at", direction: "desc" }, "cagr_pct").map(
-          (r) => r.run_id,
+          (r) => r.run,
         ),
       ).toEqual(["unknown", "old"]);
     });
@@ -450,40 +435,40 @@ describe("filterHistoryRows", () => {
 
   it("treats a categorical list as OR-within, AND-between", () => {
     const rows = [
-      histRow({ ticker: "TQQQ", sizing_model: "fixed" }),
-      histRow({ ticker: "RSP", sizing_model: "fixed" }),
-      histRow({ ticker: "TQQQ", sizing_model: "rsi" }),
+      histRow({ ticker: "TQQQ", model: "fixed" }),
+      histRow({ ticker: "RSP", model: "fixed" }),
+      histRow({ ticker: "TQQQ", model: "rsi" }),
     ];
     const out = filterHistoryRows(rows, { ...NONE, tickers: ["TQQQ", "RSP"], models: ["fixed"] });
     expect(out).toHaveLength(2);
-    expect(out.every((r) => r.sizing_model === "fixed")).toBe(true);
+    expect(out.every((r) => r.model === "fixed")).toBe(true);
   });
 
   it("filters a swept dimension by a percent RANGE", () => {
     const rows = [
-      histRow({ grid_step: 0.005 }),
-      histRow({ grid_step: 0.01 }),
-      histRow({ grid_step: 0.02 }),
+      histRow({ grid: 0.005 }),
+      histRow({ grid: 0.01 }),
+      histRow({ grid: 0.02 }),
     ];
     const out = filterHistoryRows(rows, {
       ...NONE,
       ranges: { grid_step: { min: 0.75, max: 1.5 } },
     });
-    expect(out.map((r) => r.grid_step)).toEqual([0.01]);
+    expect(out.map((r) => r.grid)).toEqual([0.01]);
   });
 
   it("filters a swept dimension by a set of exact values", () => {
     const rows = [
-      histRow({ grid_step: 0.005 }),
-      histRow({ grid_step: 0.01 }),
-      histRow({ grid_step: 0.02 }),
+      histRow({ grid: 0.005 }),
+      histRow({ grid: 0.01 }),
+      histRow({ grid: 0.02 }),
     ];
     const out = filterHistoryRows(rows, { ...NONE, values: { grid_step: [0.5, 2] } });
-    expect(out.map((r) => r.grid_step).sort()).toEqual([0.005, 0.02]);
+    expect(out.map((r) => r.grid).sort()).toEqual([0.005, 0.02]);
   });
 
   it("passes a row that satisfies EITHER the value set or the range", () => {
-    const rows = [histRow({ grid_step: 0.005 }), histRow({ grid_step: 0.03 })];
+    const rows = [histRow({ grid: 0.005 }), histRow({ grid: 0.03 })];
     const out = filterHistoryRows(rows, {
       ...NONE,
       values: { grid_step: [3] },
@@ -494,12 +479,12 @@ describe("filterHistoryRows", () => {
 
   it("filters on a result metric range", () => {
     const rows = [
-      histRow({ metrics: { cagr_pct: 5 } }),
-      histRow({ metrics: { cagr_pct: 20 } }),
-      histRow({ metrics: { cagr_pct: 40 } }),
+      histRow({ m: { cagr_pct: 5 } }),
+      histRow({ m: { cagr_pct: 20 } }),
+      histRow({ m: { cagr_pct: 40 } }),
     ];
     const out = filterHistoryRows(rows, { ...NONE, ranges: { "metric:cagr_pct": { min: 10, max: 30 } } });
-    expect(out.map((r) => r.metrics.cagr_pct)).toEqual([20]);
+    expect(out.map((r) => r.m.cagr_pct)).toEqual([20]);
   });
 
   it("EXCLUDES a row missing the gated field rather than letting it through", () => {
@@ -507,8 +492,8 @@ describe("filterHistoryRows", () => {
     // RSI: a run that never recorded worst_year_pct, or a model that
     // never took `period`, must not slip past a bound the reader set.
     const rows = [
-      histRow({ metrics: { cagr_pct: 10, worst_year_pct: -5 } }),
-      histRow({ metrics: { cagr_pct: 10 } }), // no worst_year_pct
+      histRow({ m: { cagr_pct: 10, worst_year_pct: -5 } }),
+      histRow({ m: { cagr_pct: 10 } }), // no worst_year_pct
     ];
     const out = filterHistoryRows(rows, {
       ...NONE,
@@ -517,8 +502,8 @@ describe("filterHistoryRows", () => {
     expect(out).toHaveLength(1);
 
     const paramRows = [
-      histRow({ strategy_params: { period: 14 } }),
-      histRow({ strategy_params: {} }),
+      histRow({ params: { period: 14 } }),
+      histRow({ params: {} }),
     ];
     expect(
       filterHistoryRows(paramRows, { ...NONE, ranges: { "param:period": { min: 10, max: 20 } } }),
@@ -527,11 +512,11 @@ describe("filterHistoryRows", () => {
 
   it("is conjunctive across every clause", () => {
     const rows = [
-      histRow({ name: "keep", ticker: "TQQQ", grid_step: 0.01, metrics: { cagr_pct: 25 } }),
-      histRow({ name: "keep", ticker: "RSP", grid_step: 0.01, metrics: { cagr_pct: 25 } }),
-      histRow({ name: "drop", ticker: "TQQQ", grid_step: 0.01, metrics: { cagr_pct: 25 } }),
-      histRow({ name: "keep", ticker: "TQQQ", grid_step: 0.05, metrics: { cagr_pct: 25 } }),
-      histRow({ name: "keep", ticker: "TQQQ", grid_step: 0.01, metrics: { cagr_pct: 1 } }),
+      histRow({ name: "keep", ticker: "TQQQ", grid: 0.01, m: { cagr_pct: 25 } }),
+      histRow({ name: "keep", ticker: "RSP", grid: 0.01, m: { cagr_pct: 25 } }),
+      histRow({ name: "drop", ticker: "TQQQ", grid: 0.01, m: { cagr_pct: 25 } }),
+      histRow({ name: "keep", ticker: "TQQQ", grid: 0.05, m: { cagr_pct: 25 } }),
+      histRow({ name: "keep", ticker: "TQQQ", grid: 0.01, m: { cagr_pct: 1 } }),
     ];
     const out = filterHistoryRows(rows, {
       ...NONE,
@@ -568,9 +553,9 @@ describe("runHistoryFilterActive", () => {
 describe("historyInputFields", () => {
   it("always offers the two swept dimensions, with their distinct values sorted", () => {
     const rows = [
-      histRow({ grid_step: 0.02 }),
-      histRow({ grid_step: 0.005 }),
-      histRow({ grid_step: 0.02 }),
+      histRow({ grid: 0.02 }),
+      histRow({ grid: 0.005 }),
+      histRow({ grid: 0.02 }),
     ];
     const fields = historyInputFields(rows);
     const gridStep = fields.find((f) => f.key === "grid_step")!;
@@ -580,8 +565,8 @@ describe("historyInputFields", () => {
 
   it("offers every numeric sizing-model argument and skips non-numeric ones", () => {
     const rows = [
-      histRow({ strategy_params: { allocation_pct: 0.05 } }),
-      histRow({ strategy_params: { max_trade_pct: 0.08, ticker: "COWZ" } }),
+      histRow({ params: { allocation_pct: 0.05 } }),
+      histRow({ params: { max_trade_pct: 0.08, ticker: "COWZ" } }),
     ];
     const keys = historyInputFields(rows).map((f) => f.key);
     expect(keys).toContain("param:allocation_pct");

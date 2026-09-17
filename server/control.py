@@ -55,7 +55,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from src.data.dashboard_data import load_state
+from server.live import state_payload
 from src.core.persistence import LedgerStore
 from src.trading.risk_manager import CircuitBreaker
 
@@ -86,12 +86,13 @@ def halt(request: HaltRequest) -> dict[str, Any]:
     settles on the same state either way. An operator hitting the button
     twice under stress should not get an exception for it.
 
-    Returns the halt state READ BACK through the read-only path rather
-    than echoing the request. Two reasons: the caller sees what the
-    store actually holds -- including a reason already there from an
-    earlier halt -- and the write is verified rather than assumed. An
-    endpoint that reports success from its own inputs cannot tell you it
-    silently did nothing.
+    Returns the store's whole LiveState READ BACK through the read-only
+    path rather than echoing the request. Two reasons: the caller sees
+    what the store actually holds -- including a reason already there
+    from an earlier halt -- and the write is verified rather than
+    assumed. An endpoint that reports success from its own inputs cannot
+    tell you it silently did nothing. The full state rather than a halt
+    subset, so the client renders it without a second read.
     """
     store = None
     try:
@@ -108,12 +109,7 @@ def halt(request: HaltRequest) -> dict[str, Any]:
         if store is not None:
             store.close()
 
-    state = load_state(request.path)
-    return {
-        "halted": state.halted,
-        "halt_reason": state.halt_reason,
-        "revision": state.revision,
-    }
+    return state_payload(request.path)
 
 
 __all__ = ["HaltRequest", "router"]

@@ -28,44 +28,36 @@ _LAST_BUY_ONLY = {
 
 
 class TestDescriptorShape:
+    """The wire Trigger: `methods` always, `control` / `window` only when
+    they say something. methods[0] is the default."""
+
     def test_every_registered_strategy_has_a_descriptor(self):
         for strategy_id in STRATEGIES:
             spec = describe_grid_trigger(strategy_id)
-            assert set(spec) == {
-                "methods",
-                "default",
-                "controlled_by",
-                "window_param",
-                "window_default",
-            }
+            assert set(spec) <= {"methods", "control", "window"}
             assert spec["methods"], strategy_id
-            assert spec["default"] == spec["methods"][0]
+            if "window" in spec:
+                assert set(spec["window"]) <= {"param", "seed"}
 
     def test_the_values_per_strategy(self):
         for strategy_id in _LAST_BUY_ONLY:
-            spec = describe_grid_trigger(strategy_id)
-            assert spec["methods"] == ["last_buy"]
-            assert spec["controlled_by"] is None
-            assert spec["window_param"] is None
-            assert spec["window_default"] is None
+            assert describe_grid_trigger(strategy_id) == {"methods": ["last_buy"]}
 
         hf = describe_grid_trigger("hf_local_reference")
         assert hf["methods"] == ["local_reference"]
-        assert hf["window_param"] == "lookback_days"
-        assert hf["controlled_by"] is None  # locked -- no toggle
-        assert hf["window_default"] is None  # seeds itself from the required committed value
+        assert "control" not in hf  # locked -- no toggle
+        # Seeds itself from the required committed value: no seed sent.
+        assert hf["window"] == {"param": "lookback_days"}
 
         bayes = describe_grid_trigger("bayesian_dual_scale")
-        assert bayes["methods"] == ["last_buy", "local_reference"]
-        assert bayes["default"] == "last_buy"
-        assert bayes["controlled_by"] == "lookback_days"
-        assert bayes["window_param"] == "lookback_days"
-        assert isinstance(bayes["window_default"], float) and bayes["window_default"] > 0
+        assert bayes["methods"] == ["last_buy", "local_reference"]  # [0] = default
+        assert bayes["control"] == "lookback_days"
+        assert bayes["window"]["param"] == "lookback_days"
+        seed = bayes["window"]["seed"]
+        assert isinstance(seed, float) and seed > 0
 
     def test_an_unknown_strategy_falls_back_to_last_buy(self):
-        spec = describe_grid_trigger("not_a_strategy")
-        assert spec["methods"] == ["last_buy"]
-        assert spec["window_param"] is None
+        assert describe_grid_trigger("not_a_strategy") == {"methods": ["last_buy"]}
 
     def test_the_returned_dict_is_a_copy(self):
         """A caller mutating it must not corrupt the module table."""

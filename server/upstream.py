@@ -43,7 +43,6 @@ says the engine host is unreachable.
 from __future__ import annotations
 
 import os
-from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
@@ -134,17 +133,9 @@ async def forward_socket(socket: WebSocket, run_id: str) -> None:
         # The client is already accepted, so an error has to be
         # delivered as a frame rather than a status code.
         try:
-            await socket.send_json(
-                {"type": "error", "detail": f"upstream {ws_base} unreachable: {exc}"}
-            )
+            await socket.send_json({"t": "err", "msg": f"upstream {ws_base} unreachable: {exc}"})
         finally:
             await socket.close()
 
 
-def describe() -> dict[str, Any]:
-    """For /api/health, so a reader can see where sweeps actually run."""
-    base = upstream_base()
-    return {"backtest_upstream": base, "backtest_local": base is None}
-
-
-__all__ = ["describe", "forward", "is_enabled", "router", "upstream_base"]
+__all__ = ["forward", "is_enabled", "router", "upstream_base"]

@@ -2,8 +2,8 @@ import { AlertTriangle, Ban, OctagonX, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from "@/components/ui/primitives";
-import { api, type Capabilities } from "@/lib/api";
-import type { DeploymentState } from "@/types/telemetry";
+import { api, type Health } from "@/lib/api";
+import type { LiveState } from "@/types/telemetry";
 
 /**
  * The only controls in this application that change anything.
@@ -31,7 +31,7 @@ import type { DeploymentState } from "@/types/telemetry";
 
 interface Props {
   path: string | null;
-  state: DeploymentState | null;
+  state: LiveState | null;
   onHalted: () => void;
 }
 
@@ -53,7 +53,7 @@ const REFUSED: Record<string, { label: string; reason: string }> = {
 };
 
 export function CommandCenter({ path, state, onHalted }: Props) {
-  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [capabilities, setCapabilities] = useState<Health["caps"] | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -62,11 +62,11 @@ export function CommandCenter({ path, state, onHalted }: Props) {
   useEffect(() => {
     api
       .health()
-      .then((body) => setCapabilities(body.capabilities))
+      .then((body) => setCapabilities(body.caps))
       .catch(() => setCapabilities(null));
   }, []);
 
-  const halted = state?.halted ?? false;
+  const halted = Boolean(state?.halt);
 
   const halt = async () => {
     if (!path) return;
@@ -105,7 +105,7 @@ export function CommandCenter({ path, state, onHalted }: Props) {
         {halted ? (
           <div className="rounded-md border border-border bg-secondary/40 p-3">
             <p className="text-sm font-medium">New buys are blocked.</p>
-            <p className="mt-1 text-sm text-muted-foreground">{state?.halt_reason}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{state?.halt}</p>
             {/* Both halves, because the asymmetry is the point: a halt
                 is not a stop. */}
             <p className="mt-2 text-xs text-muted-foreground">
@@ -117,7 +117,7 @@ export function CommandCenter({ path, state, onHalted }: Props) {
           <div className="flex flex-wrap items-center gap-3">
             <Button
               variant="destructive"
-              disabled={!path || capabilities?.halt === false}
+              disabled={!path || (capabilities !== null && !capabilities.includes("halt"))}
               onClick={() => setConfirming(true)}
             >
               <AlertTriangle className="size-3.5" />

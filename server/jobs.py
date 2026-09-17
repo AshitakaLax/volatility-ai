@@ -100,6 +100,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from server import contract
+
 logger = logging.getLogger("Optimizer")
 
 RunStatus = Literal["queued", "running", "paused", "cancelled", "complete", "failed"]
@@ -251,24 +253,24 @@ class Job:
     paused_by_queue: bool = False
 
     def snapshot(self) -> dict[str, Any]:
+        """The job as a wire `Run` (web/src/types/backtest.ts)."""
         return {
-            "run_id": self.run_id,
-            "name": self.name,
-            "status": self.status,
+            "id": self.run_id,
+            # A pending stop on a running job is reported AS its status
+            # (pausing / cancelling) rather than as a second field.
+            "status": contract.status(self.status, self.stop_requested),
             "progress": round(self.progress, 4),
-            "message": self.message,
-            "report": self.result,
+            "pos": self.queue_position,
+            "msg": self.message,
             "error": self.error,
-            "revision": self.revision,
-            "queue_position": self.queue_position,
-            "stop_requested": self.stop_requested,
+            "rev": self.revision,
             "submitted_at": self.submitted_at,
             # The submitted request, echoed back verbatim -- exactly what
-            # the browser itself just POSTed, nothing new exposed. Lets a
-            # client describe a QUEUED or RUNNING job's shape (tickers,
-            # grid, strategy params) before it has a report to read that
-            # from.
-            "request": self.request,
+            # was POSTed, nothing new exposed. Lets a client describe a
+            # QUEUED or RUNNING job (tickers, grid, strategy params, name)
+            # before it has a report to read that from.
+            "req": self.request,
+            "report": self.result,
         }
 
 
@@ -406,7 +408,10 @@ class JobQueue:
                 stop = entry.get("stop_requested")
                 job = Job(
                     run_id=run_id,
-                    request=entry.get("request") or {},
+                    # A state.json written before the contract was condensed
+                    # holds the old field names; translated once, here, and
+                    # persisted in the new shape by the _changed() below.
+                    request=contract.request(entry.get("request") or {}),
                     name=entry.get("name"),
                     submitted_at=float(entry.get("submitted_at") or time.time()),
                     paused_by_queue=bool(entry.get("paused_by_queue", False)),

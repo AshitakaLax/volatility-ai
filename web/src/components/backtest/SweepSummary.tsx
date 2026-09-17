@@ -2,7 +2,7 @@ import { ListTree } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { describeSweepAxes, type SweepAxis } from "@/lib/sweepSummary";
-import type { SweepConfiguration } from "@/types/backtest";
+import type { Cell } from "@/types/backtest";
 
 /**
  * A broad overview of one fund's sweep: how many configurations, and
@@ -16,7 +16,7 @@ import type { SweepConfiguration } from "@/types/backtest";
  */
 
 interface Props {
-  configurations: SweepConfiguration[];
+  configurations: Cell[];
 }
 
 function formatAxisValues(axis: SweepAxis): string {

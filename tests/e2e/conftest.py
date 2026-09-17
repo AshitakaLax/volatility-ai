@@ -52,7 +52,7 @@ def _probe() -> str | None:
         return f"{BASE_URL}/api/health returned {health.status_code}"
 
     body = health.json()
-    if not body.get("capabilities", {}).get("backtest_submit"):
+    if "backtest" not in body.get("caps", []):
         return "the deployment reports it cannot accept backtests"
 
     # The Pi FORWARDS backtests. If the engine host is down the UI still
@@ -67,7 +67,7 @@ def _probe() -> str | None:
         return f"the backtest engine host is down: {funds.json().get('detail', '')[:120]}"
     if funds.status_code != 200:
         return f"/api/backtest/funds returned {funds.status_code}"
-    if not any(fund["available"] for fund in funds.json()["funds"]):
+    if not any(fund["ok"] for fund in funds.json()["funds"]):
         return "the engine host has no downloaded data to backtest"
     return None
 

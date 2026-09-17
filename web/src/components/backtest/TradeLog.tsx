@@ -2,9 +2,9 @@ import { ChevronDown, ChevronRight, Download, ListOrdered } from "lucide-react";
 import { useState } from "react";
 
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
-import { buildCycles } from "@/lib/filters";
+import { buildCycles, fillKey } from "@/lib/filters";
 import { cn, usd } from "@/lib/utils";
-import type { BacktestExecution } from "@/types/backtest";
+import type { Fill } from "@/types/backtest";
 
 /**
  * Every trade the simulation would make, in the window in view.
@@ -28,7 +28,9 @@ import type { BacktestExecution } from "@/types/backtest";
  */
 
 interface Props {
-  executions: BacktestExecution[];
+  executions: Fill[];
+  /** The fund these fills belong to, for the CSV export. */
+  ticker: string | null;
   /** For the header, so a reader knows the log respects the filters. */
   totalBeforeFilters: number;
   /**
@@ -47,7 +49,7 @@ const MAX_ROWS = 500;
 
 type View = "fills" | "cycles";
 
-export function TradeLog({ executions, totalBeforeFilters, profitTarget }: Props) {
+export function TradeLog({ executions, ticker, totalBeforeFilters, profitTarget }: Props) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("cycles");
 
@@ -105,7 +107,7 @@ export function TradeLog({ executions, totalBeforeFilters, profitTarget }: Props
             <Button
               variant="ghost"
               className="ml-auto h-7 px-2 text-xs"
-              onClick={() => download(executions)}
+              onClick={() => download(executions, ticker)}
               title="Download the filtered fills as CSV"
             >
               <Download className="size-3.5" />
@@ -141,23 +143,23 @@ export function TradeLog({ executions, totalBeforeFilters, profitTarget }: Props
                     return (
                       <tr key={cycle.lotId} className="border-b border-border/50 last:border-0">
                         <td className="py-1.5 font-mono text-xs">{cycle.lotId}</td>
-                        <td className="py-1.5 text-xs">{stamp(cycle.buy.timestamp)}</td>
-                        <td className="py-1.5 text-right">{usd(cycle.buy.price, 4)}</td>
-                        <td className="py-1.5 text-right">{cycle.buy.shares.toFixed(4)}</td>
+                        <td className="py-1.5 text-xs">{stamp(cycle.buy.ts)}</td>
+                        <td className="py-1.5 text-right">{usd(cycle.buy.px, 4)}</td>
+                        <td className="py-1.5 text-right">{cycle.buy.qty.toFixed(4)}</td>
                         <td className="py-1.5 text-right text-muted-foreground">
                           {/* Absent inside the indicator's warmup. Not
                               zero, which would read as extremely
                               oversold. */}
-                          {cycle.buy.rsi_at_entry?.toFixed(1) ?? "--"}
+                          {cycle.buy.rsi?.toFixed(1) ?? "--"}
                         </td>
                         <td className="py-1.5 text-xs">
                           {exit ? (
-                            stamp(exit.timestamp)
+                            stamp(exit.ts)
                           ) : (
                             <span className="text-stuck">still open</span>
                           )}
                         </td>
-                        <td className="py-1.5 text-right">{exit ? usd(exit.price, 4) : "--"}</td>
+                        <td className="py-1.5 text-right">{exit ? usd(exit.px, 4) : "--"}</td>
                         <td
                           className={cn(
                             "py-1.5 text-right font-medium",
@@ -168,13 +170,13 @@ export function TradeLog({ executions, totalBeforeFilters, profitTarget }: Props
                           {cycle.realized === null ? "--" : usd(cycle.realized)}
                         </td>
                         <td className="py-1.5 text-xs">
-                          {exit?.sell_reason === "signal_exit" ? (
+                          {exit?.why === "signal_exit" ? (
                             <Badge tone="loss">signal exit</Badge>
                           ) : exit ? (
                             <span className="text-muted-foreground">target</span>
                           ) : (
                             <span className="text-muted-foreground">
-                              waiting for {usd(cycle.buy.price * (1 + profitTarget), 4)}
+                              waiting for {usd(cycle.buy.px * (1 + profitTarget), 4)}
                             </span>
                           )}
                         </td>
@@ -200,36 +202,36 @@ export function TradeLog({ executions, totalBeforeFilters, profitTarget }: Props
                 <tbody className="tnum">
                   {executions.slice(0, MAX_ROWS).map((execution) => (
                     <tr
-                      key={execution.order_id}
+                      key={fillKey(execution)}
                       className="border-b border-border/50 last:border-0"
                     >
-                      <td className="py-1.5 text-xs">{stamp(execution.timestamp)}</td>
+                      <td className="py-1.5 text-xs">{stamp(execution.ts)}</td>
                       <td className="py-1.5">
-                        <Badge tone={execution.type === "BUY" ? "neutral" : "profit"}>
-                          {execution.type}
+                        <Badge tone={execution.side === "BUY" ? "neutral" : "profit"}>
+                          {execution.side}
                         </Badge>
                       </td>
                       <td className="py-1.5 font-mono text-xs text-muted-foreground">
-                        {execution.matched_buy_id ?? execution.order_id.split("-buy-")[0]}
+                        {execution.lot}
                       </td>
-                      <td className="py-1.5 text-right">{usd(execution.price, 4)}</td>
-                      <td className="py-1.5 text-right">{execution.shares.toFixed(4)}</td>
+                      <td className="py-1.5 text-right">{usd(execution.px, 4)}</td>
+                      <td className="py-1.5 text-right">{execution.qty.toFixed(4)}</td>
                       <td className="py-1.5 text-right text-muted-foreground">
-                        {usd(execution.price * execution.shares)}
+                        {usd(execution.px * execution.qty)}
                       </td>
                       <td className="py-1.5 text-right text-muted-foreground">
-                        {execution.rsi_at_entry?.toFixed(1) ?? "--"}
+                        {execution.rsi?.toFixed(1) ?? "--"}
                       </td>
                       <td
                         className={cn(
                           "py-1.5 text-right",
-                          (execution.profit_realized ?? 0) > 0 && "text-profit",
-                          (execution.profit_realized ?? 0) < 0 && "text-loss",
+                          (execution.pnl ?? 0) > 0 && "text-profit",
+                          (execution.pnl ?? 0) < 0 && "text-loss",
                         )}
                       >
-                        {execution.profit_realized === undefined
+                        {execution.pnl === undefined
                           ? "--"
-                          : usd(execution.profit_realized)}
+                          : usd(execution.pnl)}
                       </td>
                     </tr>
                   ))}
@@ -256,7 +258,7 @@ function stamp(iso: string): string {
   return iso.replace("T", " ").slice(0, 16);
 }
 
-function download(executions: BacktestExecution[]): void {
+function download(executions: Fill[], ticker: string | null): void {
   const header = [
     "timestamp",
     "type",
@@ -270,17 +272,17 @@ function download(executions: BacktestExecution[]): void {
   ];
   const lines = executions.map((execution) =>
     [
-      execution.timestamp,
-      execution.type,
-      execution.matched_buy_id ?? execution.order_id.split("-buy-")[0] ?? "",
-      execution.ticker,
-      execution.price,
-      execution.shares,
+      execution.ts,
+      execution.side,
+      execution.lot,
+      ticker ?? "",
+      execution.px,
+      execution.qty,
       // Empty, not 0. A spreadsheet that read a warmup bar as RSI 0
       // would filter it as extremely oversold.
-      execution.rsi_at_entry ?? "",
-      execution.profit_realized ?? "",
-      execution.sell_reason ?? "",
+      execution.rsi ?? "",
+      execution.pnl ?? "",
+      execution.why ?? "",
     ].join(","),
   );
   const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv" });

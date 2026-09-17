@@ -12,7 +12,47 @@
  * out as `387`, not `387.0`, and a `bool` as `true`, not `"true"`.
  */
 import { buildSweepValues, type SweepFieldState, type SweepGenerationResult } from "@/lib/sweepStrategies";
-import type { ParamSpec, ParamValue, ValidateError } from "@/types/backtest";
+import type { Param, ParamSpec, ParamValue, ValidateError } from "@/types/backtest";
+
+/**
+ * A wire Param with the fields the form needs derived. The server omits
+ * these because each is a fixed function of what it does send -- this is
+ * the one place that function lives (tests/unit/test_backtest_param_schema.py
+ * ports it to pin the same rules against the real schema):
+ *
+ *   group      "primary" exactly when required or committed (suggested)
+ *   step       "1" for int, "any" for float, null for enum/bool/str
+ *   editable   not locked
+ *   sweepable  editable, not mirrored, and int/float (a RANGE sweep) or
+ *              enum (an OPTIONS sweep)
+ */
+export function paramSpec(param: Param): ParamSpec {
+  const required = param.required === true;
+  const hasSuggested = param.suggested !== undefined;
+  const editable = param.locked === undefined;
+  const mirrors = param.mirrors ?? null;
+  const enumValues = param.enum ?? null;
+  return {
+    name: param.name,
+    type: param.type,
+    nullable: param.nullable === true,
+    required,
+    default: param.default,
+    suggested: hasSuggested ? param.suggested! : param.default,
+    has_suggested: hasSuggested,
+    enum: enumValues,
+    group: required || hasSuggested ? "primary" : "advanced",
+    editable,
+    locked_reason: param.locked ?? null,
+    mirrors,
+    step:
+      enumValues !== null ? null : param.type === "int" ? "1" : param.type === "float" ? "any" : null,
+    sweepable:
+      editable &&
+      mirrors === null &&
+      (param.type === "int" || param.type === "float" || enumValues !== null),
+  };
+}
 
 /**
  * The value a field is seeded to and that "reset" restores, held as a
@@ -139,8 +179,7 @@ export function buildOptionsSweep(spec: ParamSpec, state: OptionsSweepFieldState
  * is disabled in that state -- this is defense in depth, not load-bearing).
  *
  * A no-edit submit therefore sends exactly the model's committed
- * defaults -- byte-identical to the old blind `sizing_details.defaults`
- * splat and to what the server's empty-`strategy_params` fallback
+ * defaults -- exactly what the server's empty-`params` fallback
  * produces.
  *
  * `optionSweepFields` is the enum counterpart of `sweepFields`, keyed
@@ -263,5 +302,5 @@ export function paramErrorsFor(
   errors: ValidateError[] | undefined,
 ): ValidateError[] {
   if (!errors) return [];
-  return errors.filter((error) => error.field === name);
+  return errors.filter((error) => (error.field ?? null) === name);
 }

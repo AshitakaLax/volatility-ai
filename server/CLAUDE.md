@@ -14,8 +14,9 @@ uvicorn server.app:app --host 127.0.0.1 --port 8000
 | `live.py` | **Read-only.** Opens the ledger store `mode=ro` — SQLite itself refuses a write. Imports no broker. | |
 | `control.py` | **The only write.** One endpoint, reaching the existing `CircuitBreaker` and nothing else. | |
 | `backtest.py` | **Bidirectional** — a simulation over a CSV can't touch a real position. Validated through `BacktestConfig`. | |
-| `deployment.py` | Read-only: which build is running. | |
+| `deployment.py` | Read-only: which build is running (served inside `/api/health`; no route of its own). | |
 | `history.py` | Completed runs persisted to disk (`output/runs/`, capped at `MAX_RUNS`). | |
+| `contract.py` | Pure translators from the **pre-condensed** wire shape (old `RunRequest` names, `parameters`/`timeframe`/`configurations`/`executions` reports) to the current one. Applied at the read boundary: `RunRequest`'s pre-validator, `JobQueue.restore`, `history.load*`. | |
 | `jobs.py` | **Durable** single-worker queue: pending runs, their order and per-configuration checkpoints survive a restart (`output/queue/`, `VAI_QUEUE_DIR`). Pause / resume / cancel / reorder / run-next; restored by `app.py`'s lifespan hook, never at import. | |
 | `ml_insights.py` | Read-only, precomputed ML research artifacts. **Not on the path from a bar to an order** — no sizing strategy or live loop imports it. | |
 | `ml_upstream.py`, `upstream.py` | Forward requests to the workstation that actually has `data/external/`, `data/ml/` and `requirements-ml.txt` (the Pi deployment doesn't). | |
@@ -65,3 +66,21 @@ Two things that follow from it:
 Tests never touch the real `output/queue/` or `output/runs/`:
 `tests/conftest.py` points `VAI_QUEUE_DIR` and `VAI_RUN_HISTORY_DIR` at a
 temp directory before anything imports `server`.
+
+## The wire contract is condensed — and old data still loads
+
+`web/src/types/*.ts` is the contract; its header explains the shape.
+Run-level fields are stated once, a fund's headline metrics are
+`cells[0].m`, false/null flags are omitted, and fields that are a fixed
+function of others (`Param` group/step/sweepable, rebased equity, a
+lot's market value) are computed client-side. Figures with a single
+Python definition -- `to_target`, `buying_power` -- stay server-side. Queue controls are one
+`POST /runs/{id} {op}` and one `POST /queue {paused}`.
+
+Archives in `output/runs/` and requests in `output/queue/state.json`
+written before that change are translated by `contract.py` on read —
+the files themselves are never rewritten (a restored queue is persisted
+in the new shape on its next change). `RunRequest` still **accepts** the
+old field names, so scripts and a queued multi-day sweep keep working.
+The Pi and the workstation must deploy together: `upstream.py` relays
+bytes unchanged.

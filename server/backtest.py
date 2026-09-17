@@ -52,9 +52,9 @@ from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from server import history
+from server import contract, history
 from server.jobs import (
     TERMINAL,
     JobQueue,
@@ -165,7 +165,7 @@ MAX_SWEEP_COMBINATIONS = (
 
 # THE BAYESIAN CEILING IS MUCH HIGHER, DELIBERATELY -- the entire reason
 # to submit search_strategy="bayesian" instead of "grid" is to search a
-# space larger than anyone wants to run in full; RunRequest.n_trials
+# space larger than anyone wants to run in full; RunRequest.bayes.trials
 # (<= 500) is what actually bounds the ENGINE's work in that mode, the
 # same way config/search_cowz1_bayesian_dual_scale.yaml's own combination
 # count (well past a million) was never the CLI search path's limiting
@@ -179,8 +179,33 @@ MAX_SWEEP_COMBINATIONS = (
 MAX_SWEEP_COMBINATIONS_BAYESIAN = MAX_SWEEP_COMBINATIONS * 100
 
 
+class BayesSearch(BaseModel):
+    """Sample the combination space with Optuna's TPE instead of enumerating it."""
+
+    # REQUIRED in spirit, Optional in the schema: a legacy request with
+    # search_strategy="bayesian" and no n_trials arrives as trials=None,
+    # and build_config refuses it with a message naming the choice rather
+    # than a bare 422. No default budget is offered on purpose --
+    # to_run_sweep_kwargs's plain-string dispatch would default an unset
+    # budget to the FULL combination count, which defeats the reason to
+    # choose Optuna over grid (cli.py search makes the identical choice).
+    # Bounded well under MAX_SWEEP_COMBINATIONS's spirit: this queue is a
+    # single-worker FIFO and one submission should not monopolize it.
+    trials: int | None = Field(default=None, ge=2, le=500)
+    # None -> a fresh exploration order each submission.
+    seed: int | None = None
+
+
 class RunRequest(BaseModel):
-    """The shape of a submitted run. Semantics are BacktestConfig's."""
+    """The shape of a submitted run. Semantics are BacktestConfig's.
+
+    Field names are the condensed contract's (web/src/types/backtest.ts
+    RunReq). The OLD names (sizing_model, strategy_params, fill_model,
+    enforce_no_loss, profit_targets, n_jobs, search_strategy, n_trials,
+    search_seed, search_direction) are still accepted and translated by
+    server/contract.request -- a queued sweep in output/queue/state.json
+    and any script written against them keep working.
+    """
 
     # A DESCRIPTIVE LABEL, never read by the engine. It is carried onto
     # the job snapshot and the archived report so a sweep can be found
@@ -192,11 +217,11 @@ class RunRequest(BaseModel):
     )
     tickers: list[str] = Field(..., min_length=1, max_length=8)
     grid_steps: list[float] = Field(..., min_length=1, max_length=12)
-    profit_targets: list[float] = Field(..., min_length=1, max_length=12)
-    sizing_model: str = "fixed"
-    strategy_params: dict[str, Any] = Field(default_factory=dict)
-    fill_model: str = "close"
-    enforce_no_loss: bool = True
+    targets: list[float] = Field(..., min_length=1, max_length=12)
+    model: str = "fixed"
+    params: dict[str, Any] = Field(default_factory=dict)
+    fill: str = "close"
+    no_loss: bool = True
     # A DATE WINDOW, applied before the engine sees anything. `limit` is
     # the backstop that remains: these files are a million rows and a
     # sweep over all of them is minutes per configuration.
@@ -210,41 +235,38 @@ class RunRequest(BaseModel):
     # sequential path, which is worth keeping reachable: a single
     # configuration gains nothing from a process pool and pays the cost
     # of pickling the frame to a worker.
-    n_jobs: int | None = Field(default=None, ge=1, le=64)
+    jobs: int | None = Field(default=None, ge=1, le=64)
 
     # HOW THE COMBINATION SPACE IS EXPLORED, not how big it is -- that is
     # still every enabled per-field "Sweep" checkbox (lib/sweepStrategies.ts
-    # on the frontend, expand_strategy_params on the engine). "grid"
-    # (default) enumerates every combination exhaustively, exactly
-    # today's behavior for every existing caller. "bayesian" samples
-    # n_trials of them via Optuna's TPE sampler
+    # on the frontend, expand_strategy_params on the engine). Absent
+    # (default) enumerates every combination exhaustively. Present samples
+    # `trials` of them via Optuna's TPE sampler
     # (src/optimization/search_strategies.BayesianSearch) -- the same
-    # engine `cli.py search` already drives, now reachable from a
-    # submitted run instead of only a YAML config file.
-    search_strategy: Literal["grid", "bayesian"] = "grid"
-    # REQUIRED for "bayesian" (see build_config), meaningless for "grid".
-    # No default budget is offered on purpose: to_run_sweep_kwargs's
-    # plain-string dispatch would default an unset budget to the FULL
-    # combination count, which defeats the reason to choose Optuna over
-    # grid in the first place (cli.py search's own cmd_search makes the
-    # identical choice, for the identical reason). Bounded well under
-    # MAX_SWEEP_COMBINATIONS's spirit: this queue is a single-worker
-    # FIFO, and one submission should not be able to monopolize it for
-    # hours.
-    n_trials: int | None = Field(default=None, ge=2, le=500)
+    # engine `cli.py search` drives from a YAML config.
+    bayes: BayesSearch | None = None
     # The objective Optuna optimizes toward AND the column the final
     # summary is sorted by -- one value serves both, so the ranked
     # output always agrees with what was actually searched for. Also
-    # used to sort a plain "grid" sweep's summary, unchanged from
-    # before. Restricted to columns _simulate_single's own metrics dict
-    # actually carries (see optimization_controller.py) -- "Sharpe
-    # Ratio" is NOT one of these; it is computed later, only for display,
-    # and is not a valid target here.
+    # used to sort a plain grid sweep's summary. Restricted to columns
+    # _simulate_single's own metrics dict actually carries (see
+    # optimization_controller.py) -- "Sharpe Ratio" is NOT one of these;
+    # it is computed later, only for display, and is not a valid target.
     rank_by: str = "Capital Velocity Index"
-    search_direction: Literal["maximize", "minimize"] = "maximize"
-    # Ignored for "grid" (nothing stochastic to seed). None -> a fresh
-    # exploration order each submission.
-    search_seed: int | None = None
+    minimize: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_names(cls, data: Any) -> Any:
+        return contract.request(data) if isinstance(data, dict) else data
+
+    @property
+    def is_bayesian(self) -> bool:
+        return self.bayes is not None
+
+    def wire(self) -> dict[str, Any]:
+        """The request as persisted and echoed on a job's `req`."""
+        return self.model_dump(exclude_none=True)
 
 
 def window(
@@ -664,18 +686,26 @@ for _regime_id in (_i for _i in STRATEGIES if _i.startswith("ml_regime_")):
 
 
 def describe_grid_trigger(strategy_id: str) -> dict[str, Any]:
-    """The grid-step trigger methods a strategy supports, for the form.
+    """The grid-step trigger methods a strategy supports, as the wire's Trigger.
 
-    ``methods`` (display order; entry 0 is the default) lists what
-    ``_grid_trigger_level`` actually does. ``controlled_by`` names the
-    strategy_param whose PRESENCE selects ``local_reference`` (None when
-    the method is locked). ``window_param`` is the strategy_param that
-    IS the rolling-high window; ``window_default`` seeds it the first
-    time ``local_reference`` is picked (None when it seeds itself, as
-    hf's committed ``lookback_days`` does).
+    ``methods`` (display order; entry 0 is the default, a single entry is
+    locked) lists what ``_grid_trigger_level`` actually does. ``control``
+    names the strategy_param whose PRESENCE selects ``local_reference``.
+    ``window.param`` is the strategy_param that IS the rolling-high window;
+    ``window.seed`` is written to it the first time ``local_reference`` is
+    picked (absent when it seeds itself, as hf's committed ``lookback_days``
+    does). Absent keys mean none.
     """
     spec = _GRID_TRIGGER.get(strategy_id, _GRID_TRIGGER_LAST_BUY)
-    return {**spec, "methods": list(spec["methods"])}
+    out: dict[str, Any] = {"methods": list(spec["methods"])}
+    if spec["controlled_by"] is not None:
+        out["control"] = spec["controlled_by"]
+    if spec["window_param"] is not None:
+        window: dict[str, Any] = {"param": spec["window_param"]}
+        if spec["window_default"] is not None:
+            window["seed"] = spec["window_default"]
+        out["window"] = window
+    return out
 
 
 def _wire_type(hint: object, has_default: bool, default: object) -> tuple[str, bool]:
@@ -815,57 +845,51 @@ def describe_params(strategy_id: str, strategy_class: type) -> list[dict[str, An
             "nullable": nullable,
             "required": parameter.name in required,
             "default": default,
-            # What the field is seeded to and what "reset" restores: the
-            # project's committed value when there is one, else the bare
-            # constructor default.
-            "suggested": committed[parameter.name] if has_suggested else default,
-            "has_suggested": has_suggested,
             "enum": _PARAM_ENUMS.get(parameter.name),
-            # "primary" is exactly "required or in a committed config" --
-            # the same line every tuned parameter in this project's sweeps
-            # falls on. Everything else is "advanced".
-            "group": "primary" if (parameter.name in required or has_suggested) else "advanced",
             "editable": True,
             "locked_reason": None,
             "mirrors": None,
-            "step": None
-            if parameter.name in _PARAM_ENUMS
-            else {"int": "1", "float": "any"}.get(wire_type),
         }
+        # What the field is seeded to and what "reset" restores: the
+        # project's committed value. PRESENT ONLY WHEN THERE IS ONE -- its
+        # presence is what used to be a separate has_suggested flag, and
+        # an absent one means "seed with default".
+        if has_suggested:
+            spec["suggested"] = committed[parameter.name]
         _apply_locks(spec, strategy_id, required, committed)
-        # SWEEPABLE, for the "enable sweep" checkbox: an argument the
-        # operator actually owns, whose values expand_strategy_params
-        # (src/core/config.py) can turn into a real sweep axis. Computed
-        # AFTER _apply_locks so a param it locked (editable=False) or
-        # mirrored (target_return -> profit_target) is correctly
-        # excluded -- an engine-owned or grid-mirrored value cannot also
-        # be independently swept.
-        #
-        # TWO SWEEPABLE SHAPES, DISTINGUISHED BY `enum`, NOT BY A THIRD
-        # FIELD. A numeric (int/float) param sweeps as a RANGE -- the
-        # frontend's min/max/count/strategy generator
-        # (web/src/lib/sweepStrategies.ts). A `str` param with `enum` set
-        # sweeps as OPTIONS -- a checklist of which of its own named
-        # values to include, submitted as that literal subset (e.g.
-        # `vol_measure: ["stdev", "range"]`). expand_strategy_params
-        # already treats any list-valued strategy_param as an axis
-        # regardless of element type, so this widens what the FORM
-        # offers, not what the engine accepts -- a config file could
-        # already do this by hand.
-        #
-        # The two are mutually exclusive rather than a lookup on a
-        # combined condition: `_wire_type` resolves an `_PARAM_ENUMS`
-        # entry to `"str"`, never `"int"`/`"float"` (see the `step`
-        # assignment above, which already special-cases enum names for
-        # the identical reason), so `spec["enum"]` and
-        # `spec["type"] in ("int", "float")` cannot both hold for one
-        # spec -- no ambiguity for a caller branching on `enum` alone.
-        spec["sweepable"] = (
-            spec["editable"]
-            and spec["mirrors"] is None
-            and (spec["type"] in ("int", "float") or spec["enum"] is not None)
-        )
-        out.append(spec)
+        out.append(_wire_param(spec))
+    return out
+
+
+def _wire_param(spec: dict[str, Any]) -> dict[str, Any]:
+    """An internal param spec as the wire's Param: false/None flags omitted.
+
+    Four fields the form needs are NOT sent, because each is a fixed
+    function of what is (web/src/lib/strategyParams.ts derives them):
+
+      group      "advanced" exactly when neither required nor suggested --
+                 the same line every tuned parameter in this project's
+                 sweeps falls on
+      step       "1" for int, "any" for float, else none
+      editable   `locked` absent
+      sweepable  not locked, not mirrored, and int/float (a RANGE sweep)
+                 or enum-valued (an OPTIONS sweep). `_wire_type` resolves
+                 an `_PARAM_ENUMS` entry to "str", never int/float, so the
+                 two shapes cannot both hold for one spec.
+    """
+    out: dict[str, Any] = {"name": spec["name"], "type": spec["type"], "default": spec["default"]}
+    if "suggested" in spec:
+        out["suggested"] = spec["suggested"]
+    if spec["required"]:
+        out["required"] = True
+    if spec["nullable"]:
+        out["nullable"] = True
+    if spec["enum"] is not None:
+        out["enum"] = spec["enum"]
+    if not spec["editable"]:
+        out["locked"] = spec["locked_reason"] or "set by the engine"
+    if spec["mirrors"] is not None:
+        out["mirrors"] = spec["mirrors"]
     return out
 
 
@@ -891,9 +915,9 @@ def resolve_params(request: RunRequest) -> dict[str, Any]:
     deliberate, and silently merging defaults underneath would run a
     configuration they did not ask for.
     """
-    if request.strategy_params:
-        return dict(request.strategy_params)
-    return dict(STRATEGY_DEFAULTS.get(request.sizing_model, {}))
+    if request.params:
+        return dict(request.params)
+    return dict(STRATEGY_DEFAULTS.get(request.model, {}))
 
 
 def build_config(request: RunRequest) -> BacktestConfig:
@@ -906,22 +930,22 @@ def build_config(request: RunRequest) -> BacktestConfig:
     config = BacktestConfig.from_dict(
         {
             "strategy": {
-                "strategy_id": request.sizing_model,
+                "strategy_id": request.model,
                 "strategy_params": resolve_params(request),
             },
             "grid": {
                 "steps": request.grid_steps,
-                "profit_targets": request.profit_targets,
+                "profit_targets": request.targets,
             },
             "execution": {
-                "fill_model": request.fill_model,
-                "enforce_no_loss": request.enforce_no_loss,
+                "fill_model": request.fill,
+                "enforce_no_loss": request.no_loss,
             },
             "search": {
-                "strategy": request.search_strategy,
+                "strategy": "bayesian" if request.bayes else "grid",
                 "rank_by": request.rank_by,
-                "direction": request.search_direction,
-                "seed": request.search_seed,
+                "direction": "minimize" if request.minimize else "maximize",
+                "seed": request.bayes.seed if request.bayes else None,
             },
             # NO `live` SECTION, EVER. This process has no credentials and
             # no broker; accepting live settings from a browser would be
@@ -932,9 +956,9 @@ def build_config(request: RunRequest) -> BacktestConfig:
     config.validate()
     strategy_class = resolve_strategy(config.strategy.strategy_id)  # fails loudly on a typo
 
-    if request.search_strategy == "bayesian" and request.n_trials is None:
+    if request.bayes is not None and request.bayes.trials is None:
         raise ConfigurationError(
-            "search_strategy='bayesian' requires n_trials -- the whole reason to choose "
+            "a bayesian search requires bayes.trials -- the whole reason to choose "
             "Optuna over an exhaustive grid is to search a space larger than you want to run "
             "in full. Pick a trial budget (2-500)."
         )
@@ -995,7 +1019,7 @@ def build_config(request: RunRequest) -> BacktestConfig:
     # the combination-space ceiling here exists for a different reason
     # (see MAX_SWEEP_COMBINATIONS_BAYESIAN's own comment) and is
     # correspondingly looser.
-    is_bayesian = request.search_strategy == "bayesian"
+    is_bayesian = request.is_bayesian
     combination_ceiling = MAX_SWEEP_COMBINATIONS_BAYESIAN if is_bayesian else MAX_SWEEP_COMBINATIONS
     if total_combinations > combination_ceiling:
         raise ConfigurationError(
@@ -1275,7 +1299,8 @@ def run_backtest(
     # the trial budget, not the size of the space -- measuring progress
     # against the space left a 200-trial search over 11,520 combinations
     # topping out at 1.7%.
-    per_ticker = parsed.n_trials if bayesian and parsed.n_trials else combinations
+    trials = parsed.bayes.trials if parsed.bayes else None
+    per_ticker = trials if bayesian and trials else combinations
     total_units = max(1, per_ticker * len(available))
     finished_units = 0
     should_stop = control.should_stop if control is not None else (lambda: False)
@@ -1311,7 +1336,7 @@ def run_backtest(
         # string, _resolve_search_strategy would default the budget to
         # the FULL combination count -- see BayesianSearch's own
         # docstring on exactly this trap. Replaced here, per ticker,
-        # with a real pre-configured instance carrying parsed.n_trials;
+        # with a real pre-configured instance carrying parsed.bayes.trials;
         # everything else it needs (grid_steps/profit_targets/
         # strategy_params_grid/rank_by/direction/seed) is already in
         # kwargs from to_run_sweep_kwargs, read back rather than
@@ -1328,7 +1353,7 @@ def run_backtest(
                 kwargs["strategy_params_grid"],
                 rank_by=rank_by,
                 direction=kwargs["search_direction"],
-                n_trials=parsed.n_trials,
+                n_trials=trials,
                 seed=kwargs["search_seed"],
             )
             expected = inner.n_trials
@@ -1377,7 +1402,7 @@ def run_backtest(
                 prior = kept
 
         remaining = max(0, expected - len(prior))
-        jobs = choose_jobs(len(frame), max(1, remaining), parsed.n_jobs)
+        jobs = choose_jobs(len(frame), max(1, remaining), parsed.jobs)
         kwargs["n_jobs"] = jobs
         controller = OptimizationController(historical_data=frame)
         search = _ResumableSearch(inner, skip, should_stop)
@@ -1471,29 +1496,29 @@ def run_backtest(
             result = full[0]
         sink.best_result = None
         funds[ticker] = {
-            "metrics": fund_metrics(result.metrics, ticker),
-            "executions": executions(result.trade_blotter, ticker),
-            "equity_curve": equity_series(result.equity_curve),
-            # EVERY configuration, for the sweep matrix -- metrics only.
-            # Carrying each one's executions as well would multiply the
-            # payload by the size of the grid to draw a heatmap that
-            # needs one number per cell.
-            "configurations": [
+            # EVERY configuration, ranked -- metrics only. cells[0] IS the
+            # configuration `fills` and `equity` below come from: its row
+            # carries every figure result.metrics does (result_row spreads
+            # them in), so it doubles as the fund's headline metrics
+            # rather than those being sent twice. Carrying each cell's
+            # fills as well would multiply the payload by the size of the
+            # grid to draw a heatmap that needs one number per cell.
+            "cells": [
                 {
-                    "grid_step": float(row["Grid Step"]),
-                    "profit_target": float(row["Profit Target"]),
+                    "grid": float(row["Grid Step"]),
+                    "target": float(row["Profit Target"]),
                     # The resolved strategy-param combo THIS cell ran
                     # with -- distinct per cell once a strategy param is
                     # swept, so the sweep matrix/history can tell one
                     # combo's row from another's rather than showing the
                     # same (wrong) run-level value on every row.
-                    "strategy_params": {
-                        key: _native(row[key]) for key in strategy_param_keys if key in row
-                    },
-                    "metrics": fund_metrics(dict(row), ticker),
+                    "params": {key: _native(row[key]) for key in strategy_param_keys if key in row},
+                    "m": fund_metrics(dict(row)),
                 }
                 for _, row in summary.iterrows()
             ],
+            "fills": executions(result.trade_blotter),
+            "equity": equity_series(result.equity_curve),
             "bars": {
                 "start": pd.Timestamp(frame.index[0]).isoformat(),
                 "end": pd.Timestamp(frame.index[-1]).isoformat(),
@@ -1505,36 +1530,29 @@ def run_backtest(
         finished_units += per_ticker
 
     report(1.0, "assembling report")
+    # A Report: RunMeta fields flat, then the funds.
     return {
-        "run_id": "",  # filled in by the route from the job's own id
-        "parameters": {
-            # Descriptive only; None when the run was submitted unnamed
-            # or with nothing but whitespace.
-            "name": (parsed.name or "").strip() or None,
-            "grid_step_pct": config.grid.steps[0] if config.grid.steps else None,
-            "profit_target_pct": (
-                config.grid.profit_targets[0] if config.grid.profit_targets else None
-            ),
-            "sizing_model": config.strategy.strategy_id,
-            # The RESOLVED strategy parameters -- what the engine was
-            # actually constructed with, after defaults were filled in
-            # and target_return was aligned to the grid. Carried so the
-            # history view can filter on an input argument rather than
-            # only on the swept grid step and profit target. All values
-            # are plain numbers/strings/bools; nothing here needs a
-            # custom encoder.
-            "strategy_params": dict(config.strategy.strategy_params),
-            "fill_model": config.execution.fill_model,
-            "enforce_no_loss": config.execution.enforce_no_loss,
-            # What the run ACTUALLY used, not what was asked for, so a
-            # reader can tell a slow sweep from a serial one.
-            "n_jobs": jobs,
-        },
-        "timeframe": {
-            "start": min((f["bars"]["start"] for f in funds.values()), default=None),
-            "end": max((f["bars"]["end"] for f in funds.values()), default=None),
-            "interval": "1Min",
-        },
+        "id": "",  # filled in by the route from the job's own id
+        # Descriptive only; None when the run was submitted unnamed or
+        # with nothing but whitespace.
+        "name": (parsed.name or "").strip() or None,
+        "model": config.strategy.strategy_id,
+        "fill": config.execution.fill_model,
+        "no_loss": config.execution.enforce_no_loss,
+        # The RESOLVED strategy parameters -- what the engine was actually
+        # constructed with, after defaults were filled in and target_return
+        # was aligned to the grid. A list where that argument was swept.
+        # All values are plain numbers/strings/bools; nothing here needs a
+        # custom encoder.
+        "params": dict(config.strategy.strategy_params),
+        "grid": config.grid.steps[0] if config.grid.steps else None,
+        "target": config.grid.profit_targets[0] if config.grid.profit_targets else None,
+        # What the run ACTUALLY used, not what was asked for, so a reader
+        # can tell a slow sweep from a serial one.
+        "jobs": jobs,
+        "start": min((f["bars"]["start"] for f in funds.values()), default=None),
+        "end": max((f["bars"]["end"] for f in funds.values()), default=None),
+        "interval": "1Min",
         "funds": funds,
     }
 
@@ -1544,7 +1562,7 @@ def _archive(job) -> None:
 
     Stamped with its own id first: run_backtest cannot know the id --
     the queue mints it after the request is built -- and a stored report
-    whose run_id was the empty string would be unloadable by the very
+    whose id was the empty string would be unloadable by the very
     endpoint that serves it back.
     """
     history.save(job.run_id, _with_id(job.snapshot(), job.run_id))
@@ -1558,42 +1576,49 @@ queue = JobQueue(runner=run_backtest, on_complete=_archive, store=QueueStore())
 
 @router.get("/funds")
 def funds() -> dict[str, Any]:
-    """What can actually be backtested on this machine.
+    """What can actually be backtested on this machine: a Catalog.
 
     Reports presence rather than filtering it out: a UI that silently
     omits SPY is indistinguishable from one that has never heard of it,
     and the fix (`cli.py fetch-data`) is worth naming.
+
+    `models` is keyed by strategy id and carries each model's constructor
+    schema and grid-trigger methods. Served rather than hard-coded in the
+    bundle so the two cannot drift -- the frontend carries no idea of its
+    own about what a strategy's constructor looks like. What used to be a
+    separate `sizing_details` (required names, committed defaults) is the
+    params' own `required` / `suggested`.
     """
     return {
         "funds": [
-            {"ticker": ticker, "path": path, "available": Path(path).exists()}
+            {"ticker": ticker, "path": path, "ok": Path(path).exists()}
             for ticker, path in sorted(KNOWN_DATA.items())
         ],
-        "sizing_models": sorted(STRATEGIES),
-        # What each model NEEDS and a working starting point for it.
-        # Served rather than hard-coded in the bundle so the two cannot
-        # drift -- the frontend should not carry its own idea of what a
-        # strategy's constructor looks like.
-        "sizing_details": {
+        "models": {
             name: {
-                "required": required_parameters(cls),
-                "defaults": STRATEGY_DEFAULTS.get(name, {}),
+                "params": _safe_describe(name, cls)["params"],
+                "trigger": describe_grid_trigger(name),
             }
             for name, cls in sorted(STRATEGIES.items())
         },
-        # The dynamic-form schema: every constructor argument of every
-        # model, typed and seeded, so the form can swap its fields when
-        # the model changes. `sizing_details` above is left exactly as it
-        # was for its existing consumers; this is a strict addition.
-        "sizing_params": {
-            name: _safe_describe(name, cls) for name, cls in sorted(STRATEGIES.items())
-        },
-        # Which grid-step trigger method(s) each model supports, so the
-        # form can offer the choice only where the engine has one. A
-        # sibling key -- `sizing_params` and its broken-strategy guard
-        # are untouched -- and a plain dict lookup, no try/except.
-        "grid_trigger": {name: describe_grid_trigger(name) for name in sorted(STRATEGIES)},
     }
+
+
+def bar_rows(frame: pd.DataFrame, times: Any) -> list[list[float]]:
+    """OHLCV rows as [t, o, h, l, c, v] tuples -- about a third of the bytes
+    of one keyed object per bar, on a payload of thousands of bars."""
+    return [
+        [t, float(o), float(h), float(lo), float(c), float(v)]
+        for t, o, h, lo, c, v in zip(
+            times,
+            frame["open"],
+            frame["high"],
+            frame["low"],
+            frame["close"],
+            frame["volume"],
+            strict=True,
+        )
+    ]
 
 
 @router.get("/bars")
@@ -1608,7 +1633,7 @@ def bars(
     Distinct from /api/live/bars, which serves the tail of a file for a
     running deployment. This one takes a date range, which is what a
     historical chart needs and what the live endpoint deliberately does
-    not offer.
+    not offer. Both answer with the same Bars shape.
 
     THE DOWNSAMPLE IS OHLC, NOT SAMPLING. Buckets are sized so the
     result lands near max_points, and each keeps first open, max high,
@@ -1632,7 +1657,7 @@ def bars(
     frame = pd.read_csv(path, parse_dates=["timestamp"]).set_index("timestamp")
     frame = window(frame, start, end, None)
     if frame.empty:
-        return {"ticker": ticker, "bars": [], "bucket_seconds": 60, "source_rows": 0}
+        return {"bucket_s": 60, "rows": 0, "bars": []}
 
     source_rows = len(frame)
     # Round the bucket up to a whole number of minutes so the result is
@@ -1648,121 +1673,72 @@ def bars(
     rolled = rolled.dropna(subset=["close"])
 
     return {
-        "ticker": ticker,
-        "bucket_seconds": minutes * 60,
-        "source_rows": source_rows,
-        "bars": [
-            {
-                "time": int(timestamp.timestamp()),
-                "open": float(row.open),
-                "high": float(row.high),
-                "low": float(row.low),
-                "close": float(row.close),
-                "volume": float(row.volume),
-            }
-            for timestamp, row in rolled.iterrows()
-        ],
+        "bucket_s": minutes * 60,
+        "rows": source_rows,
+        "bars": bar_rows(rolled, (int(ts.timestamp()) for ts in rolled.index)),
     }
 
 
 @router.get("/history")
 def history_rows() -> dict[str, Any]:
-    """Every completed run, flattened to one row PER CONFIGURATION.
+    """Every completed run: run-level fields once, then one row PER CELL.
 
     A run can hold several funds and each fund several configurations,
     so "rank the runs" is the wrong shape -- the thing worth comparing
-    is a (run, fund, grid step, profit target) tuple and its metrics.
-    Flattening here means the client sorts an array rather than walking
-    a tree to find comparable numbers.
+    is a (run, fund, grid step, profit target, params) cell and its
+    metrics. Flattening here means the client sorts an array rather than
+    walking a tree to find comparable numbers.
+
+    The run-level fields (name, model, fill, window, ...) are NOT
+    repeated on every row: a 1,536-cell sweep would otherwise carry them
+    1,536 times. `runs[row.run]` joins them back.
 
     Ranking itself is deliberately NOT done here. The metric is the
     reader's choice and changing it should be instant, not a round trip.
     """
+    runs: dict[str, Any] = {}
     rows: list[dict[str, Any]] = []
     for run in history.load_all():
-        report = run.get("report") or {}
-        parameters = report.get("parameters") or {}
-        timeframe = report.get("timeframe") or {}
+        report = run.get("report")
+        if not isinstance(report, dict):
+            continue
+        run_id = run["id"]
+        runs[run_id] = {
+            **{key: value for key, value in report.items() if key not in ("id", "funds")},
+            "saved_at": run.get("saved_at"),
+        }
         for ticker, fund in (report.get("funds") or {}).items():
-            configurations = fund.get("configurations") or []
-            if not configurations:
-                # A report from before configurations were carried still
-                # has its headline metrics. Synthesised as a single cell
-                # so old runs stay comparable rather than disappearing.
-                configurations = [
-                    {
-                        "grid_step": parameters.get("grid_step_pct"),
-                        "profit_target": parameters.get("profit_target_pct"),
-                        "metrics": fund.get("metrics") or {},
-                    }
-                ]
-            for index, cell in enumerate(configurations):
-                rows.append(
-                    {
-                        "run_id": run.get("run_id"),
-                        # Repeated on every configuration row of a run --
-                        # the table is flattened one row per cell, and a
-                        # reader scanning it should see the label on each.
-                        "name": parameters.get("name"),
-                        "saved_at": run.get("saved_at"),
-                        "ticker": ticker,
-                        "grid_step": cell.get("grid_step"),
-                        "profit_target": cell.get("profit_target"),
-                        "sizing_model": parameters.get("sizing_model"),
-                        # The resolved input arguments, so the client can
-                        # filter on one. Prefer the CELL's own combo --
-                        # once a strategy param is swept, cells of the
-                        # same run can differ; falling back to the run-
-                        # level value keeps a pre-sweep report (which
-                        # never carried a per-cell value) unchanged, and
-                        # {} covers a run archived before either existed.
-                        "strategy_params": cell.get("strategy_params")
-                        or parameters.get("strategy_params")
-                        or {},
-                        "fill_model": parameters.get("fill_model"),
-                        # The engine ranked these; index 0 is its own
-                        # pick, and saying so lets a reader see when
-                        # their chosen metric disagrees with it.
-                        "engine_rank": index,
-                        "start": timeframe.get("start"),
-                        "end": timeframe.get("end"),
-                        "bars": (fund.get("bars") or {}).get("count"),
-                        "metrics": cell.get("metrics") or {},
-                    }
-                )
-    return {"rows": rows, "runs": len({row["run_id"] for row in rows})}
-
-
-@router.get("/history/{run_id}")
-def history_run(run_id: str) -> dict[str, Any]:
-    """One persisted run in full, for loading back into the view."""
-    run = history.load(run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail=f"No stored run {run_id!r}.")
-    return run
+            count = (fund.get("bars") or {}).get("count")
+            for index, cell in enumerate(fund.get("cells") or []):
+                # rank: where the ENGINE ranked this cell; 0 is its own
+                # pick, so a reader can see when their chosen metric
+                # disagrees with it.
+                rows.append({**cell, "run": run_id, "ticker": ticker, "rank": index, "bars": count})
+    return {"runs": runs, "rows": rows}
 
 
 @router.get("/runs")
 def runs() -> dict[str, Any]:
-    """Every run this server has seen, newest first, plus the queue's state.
+    """Every run this server has seen, newest first, plus whether the queue
+    is paused.
 
-    Each snapshot carries its own queue_position; the order a client
-    should show pending runs in is that, not submission order -- the two
-    differ the moment anything has been moved.
+    Each snapshot carries its own `pos`; the order a client should show
+    pending runs in is that, not submission order -- the two differ the
+    moment anything has been moved.
     """
-    return {
-        "runs": [job.snapshot() for job in queue.all()],
-        "queue": {"paused": queue.paused},
-    }
+    return {"runs": [job.snapshot() for job in queue.all()], "paused": queue.paused}
 
 
 @router.get("/runs/{run_id}")
 def run(run_id: str) -> dict[str, Any]:
+    """One run: the live queue's snapshot, else the archived copy.
+
+    A completed run outlives the process that made it, so a restart must
+    not turn a link someone saved into a 404.
+    """
     job = queue.get(run_id)
     if job is not None:
         return _with_id(job.snapshot(), run_id)
-    # Not in memory. A completed run outlives the process that made it,
-    # so a restart must not turn a link someone saved into a 404.
     stored = history.load(run_id)
     if stored is None:
         raise HTTPException(status_code=404, detail=f"No run {run_id!r}.")
@@ -1771,7 +1747,7 @@ def run(run_id: str) -> dict[str, Any]:
 
 @router.post("/runs", status_code=202)
 def submit(request: RunRequest) -> dict[str, Any]:
-    """Queue a run. Returns immediately with an id.
+    """Queue a run. Returns immediately with its snapshot.
 
     202, not 200: nothing has been computed yet. Validation happens HERE
     rather than on the worker so a malformed request fails as a 400 the
@@ -1784,22 +1760,23 @@ def submit(request: RunRequest) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Invalid run request: {exc}") from exc
 
-    job = queue.submit(request.model_dump())
+    job = queue.submit(request.wire())
     return _with_id(job.snapshot(), job.run_id)
 
 
 # ---------------------------------------------------------------------
 # QUEUE CONTROLS
 #
-# Every action answers with the job's new snapshot, so a client can
+# One route per target: POST /runs/{id} with an `op`, and POST /queue.
+# Every run action answers with the job's new snapshot, so a client can
 # render the result of what it asked for without a second request.
 #
 # Pause and cancel on a RUNNING job are requests: the job keeps running
 # until the configurations already handed to the process pool finish
-# (up to about a minute on a full-history run), and its snapshot carries
-# stop_requested meanwhile. That is the engine's clean exit rather than a
-# killed worker, and it is why a paused run loses nothing -- see
-# server/jobs.py's module docstring.
+# (up to about a minute on a full-history run), and its status reads
+# "pausing" / "cancelling" meanwhile. That is the engine's clean exit
+# rather than a killed worker, and it is why a paused run loses nothing
+# -- see server/jobs.py's module docstring.
 #
 # 404 for an id this server has never queued; 409 for an action that does
 # not apply to the job's current state (cancelling a completed run,
@@ -1808,15 +1785,38 @@ def submit(request: RunRequest) -> dict[str, Any]:
 # ---------------------------------------------------------------------
 
 
-class MoveRequest(BaseModel):
-    """Where to put a pending run: 0 is next, larger is later. Clamped."""
+class RunOp(BaseModel):
+    """What to do to one run.
 
-    position: int = Field(..., ge=0)
+    pause   queued: paused at once. running: after its in-flight batch.
+    resume  paused: back in the queue at its place, from its checkpoint.
+    cancel  queued/paused: at once. running: after its in-flight batch.
+            Discards the checkpoint -- there is nothing to come back to.
+    next    to the front of the pending order, resuming it if paused.
+    move    to `pos` among pending runs (0 = next, larger = later, clamped).
+    """
+
+    op: Literal["pause", "resume", "cancel", "next", "move"]
+    pos: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _move_needs_a_position(self) -> RunOp:
+        if self.op == "move" and self.pos is None:
+            raise ValueError("op 'move' requires pos")
+        return self
 
 
-def _control(action: Callable[[], Any], run_id: str) -> dict[str, Any]:
+@router.post("/runs/{run_id}")
+def control_run(run_id: str, body: RunOp) -> dict[str, Any]:
+    actions: dict[str, Callable[[], Any]] = {
+        "pause": lambda: queue.pause(run_id),
+        "resume": lambda: queue.resume(run_id),
+        "cancel": lambda: queue.cancel(run_id),
+        "next": lambda: queue.run_next(run_id),
+        "move": lambda: queue.move(run_id, body.pos or 0),
+    }
     try:
-        job = action()
+        job = actions[body.op]()
     except UnknownRun as exc:
         raise HTTPException(
             status_code=404, detail=f"No queued or running run {run_id!r}."
@@ -1826,52 +1826,20 @@ def _control(action: Callable[[], Any], run_id: str) -> dict[str, Any]:
     return _with_id(job.snapshot(), run_id)
 
 
-@router.post("/runs/{run_id}/pause")
-def pause_run(run_id: str) -> dict[str, Any]:
-    """Queued: paused at once. Running: pauses after its in-flight batch."""
-    return _control(lambda: queue.pause(run_id), run_id)
+class QueueState(BaseModel):
+    paused: bool
 
 
-@router.post("/runs/{run_id}/resume")
-def resume_run(run_id: str) -> dict[str, Any]:
-    """Paused: back in the queue, at its place, resuming from its checkpoint."""
-    return _control(lambda: queue.resume(run_id), run_id)
-
-
-@router.post("/runs/{run_id}/cancel")
-def cancel_run(run_id: str) -> dict[str, Any]:
-    """Queued/paused: cancelled at once. Running: after its in-flight batch.
-
-    Cancelling discards the run's checkpoint -- unlike pausing, there is
-    nothing left to come back to.
-    """
-    return _control(lambda: queue.cancel(run_id), run_id)
-
-
-@router.post("/runs/{run_id}/move")
-def move_run(run_id: str, body: MoveRequest) -> dict[str, Any]:
-    """Reorder a pending run among the other pending runs."""
-    return _control(lambda: queue.move(run_id, body.position), run_id)
-
-
-@router.post("/runs/{run_id}/run-next")
-def run_next(run_id: str) -> dict[str, Any]:
-    """Make a pending run the next to start, resuming it if it was paused."""
-    return _control(lambda: queue.run_next(run_id), run_id)
-
-
-@router.post("/queue/pause")
-def pause_queue() -> dict[str, Any]:
-    """Stop starting runs; the running one pauses after its in-flight batch."""
-    queue.pause_all()
-    return {"queue": {"paused": queue.paused}}
-
-
-@router.post("/queue/resume")
-def resume_queue() -> dict[str, Any]:
-    """Start runs again, resuming whatever the queue pause paused."""
-    queue.resume_all()
-    return {"queue": {"paused": queue.paused}}
+@router.post("/queue")
+def set_queue(body: QueueState) -> dict[str, Any]:
+    """paused=true: stop starting runs; the running one pauses after its
+    in-flight batch. paused=false: start again, resuming whatever the
+    queue pause paused."""
+    if body.paused:
+        queue.pause_all()
+    else:
+        queue.resume_all()
+    return {"paused": queue.paused}
 
 
 class ValidateError(BaseModel):
@@ -1879,18 +1847,30 @@ class ValidateError(BaseModel):
     can be, so the form can render it under the offending input."""
 
     field: str | None = None
-    message: str
+    msg: str
+
+    def wire(self) -> dict[str, Any]:
+        return {"msg": self.msg} if self.field is None else {"field": self.field, "msg": self.msg}
 
 
-class ValidateResponse(BaseModel):
-    ok: bool
-    # The parameters the engine would actually build with -- defaults
-    # filled in, target_return aligned. None when the request is invalid.
-    resolved_strategy_params: dict[str, Any] | None = None
-    # The subset of resolved_strategy_params the server set or changed
-    # relative to what was submitted (today: target_return).
-    aligned: dict[str, Any] = Field(default_factory=dict)
-    errors: list[ValidateError] = Field(default_factory=list)
+def _validation(
+    errors: list[ValidateError],
+    resolved: dict[str, Any] | None = None,
+    aligned: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """A Validation. Valid exactly when `errors` is empty.
+
+    resolved  the parameters the engine would actually build with --
+              defaults filled in, target_return aligned
+    aligned   the subset of `resolved` the server set or changed relative
+              to what was submitted (today: target_return)
+    """
+    out: dict[str, Any] = {"errors": [error.wire() for error in errors]}
+    if resolved is not None:
+        out["resolved"] = resolved
+    if aligned:
+        out["aligned"] = aligned
+    return out
 
 
 # `build_config`'s missing-argument message names them as `Missing: [...]`.
@@ -1918,7 +1898,7 @@ def _explode_error(message: str, names: list[str]) -> list[ValidateError]:
         ]
         if missing:
             return [
-                ValidateError(field=name if name in names else None, message=message)
+                ValidateError(field=name if name in names else None, msg=message)
                 for name in missing
             ]
     # The multi-target refusal names `target_return` in passing ("reaching
@@ -1927,12 +1907,12 @@ def _explode_error(message: str, names: list[str]) -> list[ValidateError]:
     # unattached so the form shows it as a banner, not under a locked
     # field the user cannot change to fix it.
     if "cannot sweep" in message and "profit target" in message:
-        return [ValidateError(field=None, message=message)]
-    return [ValidateError(field=_error_field(message, names), message=message)]
+        return [ValidateError(field=None, msg=message)]
+    return [ValidateError(field=_error_field(message, names), msg=message)]
 
 
 @router.post("/validate")
-def validate(request: RunRequest) -> ValidateResponse:
+def validate(request: RunRequest) -> dict[str, Any]:
     """Dry-run the exact validation `submit` runs, without queuing.
 
     The form calls this while the operator types so a bad parameter is a
@@ -1943,20 +1923,23 @@ def validate(request: RunRequest) -> ValidateResponse:
     touches neither the queue nor history (the capability test holds
     this module to that). Always HTTP 200: the errors are the payload,
     which is easier to consume from a debounced keystroke than a 400.
+
+    DELIBERATELY ITS OWN ROUTE, not `POST /runs?dry_run=1`: a server that
+    predated the flag would ignore it and QUEUE the run being validated.
     """
-    submitted = dict(request.strategy_params)
-    strategy_class = STRATEGIES.get(request.sizing_model)
+    submitted = dict(request.params)
+    strategy_class = STRATEGIES.get(request.model)
     names = (
-        [spec["name"] for spec in _safe_describe(request.sizing_model, strategy_class)["params"]]
+        [spec["name"] for spec in _safe_describe(request.model, strategy_class)["params"]]
         if strategy_class is not None
         else []
     )
     try:
         config = build_config(request)
     except ConfigurationError as exc:
-        return ValidateResponse(ok=False, errors=_explode_error(str(exc), names))
+        return _validation(_explode_error(str(exc), names))
     except Exception as exc:
-        return ValidateResponse(ok=False, errors=[ValidateError(field=None, message=str(exc))])
+        return _validation([ValidateError(field=None, msg=str(exc))])
 
     resolved = dict(config.strategy.strategy_params)
     aligned = {
@@ -1964,12 +1947,12 @@ def validate(request: RunRequest) -> ValidateResponse:
         for key, value in resolved.items()
         if key not in submitted or submitted[key] != value
     }
-    return ValidateResponse(ok=True, resolved_strategy_params=resolved, aligned=aligned)
+    return _validation([], resolved=resolved, aligned=aligned)
 
 
 @router.websocket("/ws/{run_id}")
 async def run_socket(socket: WebSocket, run_id: str) -> None:
-    """Stream one run's progress, then its result.
+    """Stream one run as Frame<Run>: its state on every change, then close.
 
     Blocks on the job queue's Condition rather than polling, so an
     update is delivered when it happens. Sends the current state first,
@@ -1979,7 +1962,7 @@ async def run_socket(socket: WebSocket, run_id: str) -> None:
     await socket.accept()
     job = queue.get(run_id)
     if job is None:
-        await socket.send_json({"type": "error", "detail": f"No run {run_id!r}."})
+        await socket.send_json({"t": "err", "msg": f"No run {run_id!r}."})
         await socket.close()
         return
 
@@ -1997,13 +1980,13 @@ async def run_socket(socket: WebSocket, run_id: str) -> None:
                 queue.wait_for_change, run_id, seen, HEARTBEAT_SECONDS
             )
             if current is None:
-                await socket.send_json({"type": "error", "detail": f"No run {run_id!r}."})
+                await socket.send_json({"t": "err", "msg": f"No run {run_id!r}."})
                 return
             if current.revision == seen:
-                await socket.send_json({"type": "heartbeat", "run_id": run_id})
+                await socket.send_json({"t": "hb"})
                 continue
             seen = current.revision
-            await socket.send_json({"type": "run", "run": _with_id(current.snapshot(), run_id)})
+            await socket.send_json({"t": "data", "d": _with_id(current.snapshot(), run_id)})
             if current.status in TERMINAL:
                 return
     except WebSocketDisconnect:
@@ -2019,13 +2002,14 @@ def _with_id(snapshot: dict[str, Any], run_id: str) -> dict[str, Any]:
     """
     report = snapshot.get("report")
     if isinstance(report, dict):
-        report["run_id"] = run_id
+        report["id"] = run_id
     return snapshot
 
 
 __all__ = [
+    "RunOp",
     "RunRequest",
-    "ValidateResponse",
+    "bar_rows",
     "build_config",
     "describe_grid_trigger",
     "describe_params",

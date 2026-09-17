@@ -14,7 +14,7 @@ import {
 import { cn, pct, runUrl, timestamp, usd } from "@/lib/utils";
 import {
   EMPTY_RUN_HISTORY_FILTERS,
-  type FundPerformanceMetrics,
+  type Metrics,
   type HistoryRow,
   type RunHistoryFilters,
 } from "@/types/backtest";
@@ -42,7 +42,7 @@ interface Props {
   refreshToken?: number;
 }
 
-type MetricKey = keyof FundPerformanceMetrics;
+type MetricKey = keyof Metrics;
 
 interface RankSpec {
   key: MetricKey;
@@ -116,7 +116,7 @@ const RANKINGS: RankSpec[] = [
 ];
 
 function valueOf(row: HistoryRow, key: MetricKey): number | null {
-  const value = row.metrics[key];
+  const value = row.m[key];
   // A report exported before a metric existed has no value for it.
   // null sorts LAST in either direction -- missing is not "worst", and
   // treating it as zero would rank an old run as the best drawdown ever.
@@ -202,7 +202,7 @@ export function RunHistory({ refreshToken }: Props) {
   // does not re-sort a thousand rows on every keystroke.
   const visible = useMemo(() => filterHistoryRows(rows, filters), [rows, filters]);
   const visibleRuns = useMemo(
-    () => new Set(visible.map((row) => row.run_id)).size,
+    () => new Set(visible.map((row) => row.run)).size,
     [visible],
   );
 
@@ -384,7 +384,7 @@ export function RunHistory({ refreshToken }: Props) {
                 const worst = valueOf(row, "worst_year_pct");
                 return (
                   <tr
-                    key={`${row.run_id}-${row.ticker}-${row.grid_step}-${row.profit_target}`}
+                    key={`${row.run}-${row.ticker}-${row.grid}-${row.target}`}
                     data-testid="history-row"
                     className="cursor-pointer border-b border-border/50 last:border-0 hover:bg-accent"
                     // A real <a> (below, in the Run column) is what gives
@@ -394,7 +394,7 @@ export function RunHistory({ refreshToken }: Props) {
                     // SAME url the same way -- a new, independent tab, so
                     // this history table is never replaced by the report
                     // it opens.
-                    onClick={() => window.open(runUrl(row.run_id), "_blank", "noopener,noreferrer")}
+                    onClick={() => window.open(runUrl(row.run), "_blank", "noopener,noreferrer")}
                     title="Open this run in a new tab"
                   >
                     <td className="py-2 text-muted-foreground">{index + 1}</td>
@@ -406,14 +406,14 @@ export function RunHistory({ refreshToken }: Props) {
                     </td>
                     <td className="py-2 font-medium">{row.ticker}</td>
                     <td className="py-2 text-right">
-                      {row.grid_step === null ? "--" : pct(row.grid_step * 100, 3)}
+                      {row.grid === null ? "--" : pct(row.grid * 100, 3)}
                     </td>
                     <td className="py-2 text-right">
-                      {row.profit_target === null ? "--" : pct(row.profit_target * 100, 3)}
+                      {row.target === null ? "--" : pct(row.target * 100, 3)}
                     </td>
                     <td className="py-2 text-xs text-muted-foreground">
-                      {row.sizing_model ?? "--"}
-                      {row.engine_rank === 0 ? (
+                      {row.model ?? "--"}
+                      {row.rank === 0 ? (
                         <Badge className="ml-1.5">engine pick</Badge>
                       ) : null}
                     </td>
@@ -426,9 +426,9 @@ export function RunHistory({ refreshToken }: Props) {
                         spec.format(value)
                       )}
                     </td>
-                    <td className="py-2 text-right">{pct(row.metrics.cagr_pct, 1)}</td>
+                    <td className="py-2 text-right">{pct(row.m.cagr_pct, 1)}</td>
                     <td className="py-2 text-right text-loss">
-                      {pct(row.metrics.max_drawdown_pct, 1)}
+                      {pct(row.m.max_drawdown_pct, 1)}
                     </td>
                     <td
                       className={cn(
@@ -442,15 +442,15 @@ export function RunHistory({ refreshToken }: Props) {
                     <td
                       className={cn(
                         "py-2 text-right",
-                        row.metrics.total_trades === 0 && "text-stuck",
+                        row.m.total_trades === 0 && "text-stuck",
                       )}
                       title={
-                        row.metrics.total_trades === 0
+                        row.m.total_trades === 0
                           ? "This configuration never traded. A book that sits in cash has no drawdown and no losing year, so it ranks first on those metrics without doing anything."
                           : undefined
                       }
                     >
-                      {row.metrics.total_trades}
+                      {row.m.total_trades}
                     </td>
                     <td className="py-2 text-xs text-muted-foreground">
                       {row.start?.slice(0, 10) ?? "--"} → {row.end?.slice(0, 10) ?? "--"}
@@ -467,7 +467,7 @@ export function RunHistory({ refreshToken }: Props) {
                     </td>
                     <td className="py-2 font-mono text-xs text-muted-foreground">
                       <a
-                        href={runUrl(row.run_id)}
+                        href={runUrl(row.run)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="hover:text-foreground hover:underline"
@@ -476,7 +476,7 @@ export function RunHistory({ refreshToken }: Props) {
                         // link itself would fire BOTH, opening two tabs.
                         onClick={(event) => event.stopPropagation()}
                       >
-                        {row.run_id.slice(0, 8)}
+                        {row.run.slice(0, 8)}
                       </a>
                     </td>
                   </tr>
@@ -485,7 +485,7 @@ export function RunHistory({ refreshToken }: Props) {
             </tbody>
           </table>
         )}
-        {visible.some((row) => row.metrics.total_trades === 0) &&
+        {visible.some((row) => row.m.total_trades === 0) &&
         !spec.higherIsBetter ? (
           <p className="mt-3 text-xs text-stuck">
             Some configurations never traded. A book that sits in cash has no drawdown and

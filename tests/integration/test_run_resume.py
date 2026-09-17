@@ -41,11 +41,11 @@ pytestmark = pytest.mark.skipif(
 REQUEST = {
     "tickers": [TICKER],
     "grid_steps": [0.005, 0.01],
-    "profit_targets": [0.005, 0.01],
-    "sizing_model": "fixed",
-    "strategy_params": {"allocation_pct": [0.05, 0.1]},
+    "targets": [0.005, 0.01],
+    "model": "fixed",
+    "params": {"allocation_pct": [0.05, 0.1]},
     "limit": 4000,
-    "n_jobs": 1,
+    "jobs": 1,
     "rank_by": "Final Equity",
 }
 
@@ -85,13 +85,13 @@ def _normalise(value):
 
 def configurations(report) -> list:
     """Every configuration's metrics, keyed by what it ran -- order-free."""
-    cells = report["funds"][TICKER]["configurations"]
+    cells = report["funds"][TICKER]["cells"]
     return sorted(
         (_normalise(cell) for cell in cells),
         key=lambda c: (
-            c["grid_step"],
-            c["profit_target"],
-            json.dumps(c["strategy_params"], sort_keys=True),
+            c["grid"],
+            c["target"],
+            json.dumps(c["params"], sort_keys=True),
         ),
     )
 
@@ -100,9 +100,9 @@ def best(report) -> dict:
     fund = report["funds"][TICKER]
     return _normalise(
         {
-            "metrics": fund["metrics"],
-            "executions": fund["executions"],
-            "equity": fund["equity_curve"],
+            "metrics": fund["cells"][0]["m"],
+            "fills": fund["fills"],
+            "equity": fund["equity"],
         }
     )
 
@@ -153,14 +153,14 @@ def test_a_stop_before_any_configuration_is_a_pause_not_a_failure():
 
 
 def test_a_resumed_bayesian_run_spends_only_the_remaining_budget():
-    request = dict(REQUEST, search_strategy="bayesian", n_trials=6, search_seed=11)
+    request = dict(REQUEST, bayes={"trials": 6, "seed": 11})
     first = FakeControl(stop_after=2)
     with pytest.raises(RunStopped):
         run_backtest(request, noop, first)
     second = FakeControl(completed=first.recorded)
     report = run_backtest(request, noop, second)
     assert len(second.recorded) == 4
-    assert len(report["funds"][TICKER]["configurations"]) == 6
+    assert len(report["funds"][TICKER]["cells"]) == 6
 
 
 def test_the_sweep_never_retains_every_full_result(monkeypatch):
@@ -192,10 +192,9 @@ def test_the_ranking_is_the_engines_not_a_new_one(uninterrupted):
     from server.backtest import RunRequest, build_config
     from src.trading.strategy_registry import resolve_strategy
 
-    cells = uninterrupted["funds"][TICKER]["configurations"]
-    equities = [cell["metrics"]["final_equity"] for cell in cells]
+    cells = uninterrupted["funds"][TICKER]["cells"]
+    equities = [cell["m"]["final_equity"] for cell in cells]
     assert equities == sorted(equities, reverse=True)
-    assert uninterrupted["funds"][TICKER]["metrics"] == cells[0]["metrics"]
 
     import pandas as pd
 

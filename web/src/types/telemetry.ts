@@ -1,90 +1,40 @@
 /**
- * The live-deployment wire contract.
+ * The live-deployment wire contract, mirrored from server/live.py.
  *
- * Mirrors `src/dashboard_data.py`'s `DeploymentState` and `Lot`, which
- * the Python server reuses verbatim. That module opens the SQLite store
- * with `file:...?mode=ro`, so the DATABASE DRIVER refuses writes -- the
- * read-only guarantee is enforced below the application, not by
- * convention in it.
+ * That module reads through src/data/dashboard_data.py, which opens the
+ * SQLite store `mode=ro` -- the DRIVER refuses writes, so read-only is
+ * enforced below the application, not by convention in it.
  *
- * WHAT THIS DATA IS NOT. The live loop holds its working state in
- * memory and writes through to the store once per tick, so everything
- * here is up to one poll interval behind (60s by default). The UI must
- * SAY so rather than imply currency: a dashboard that looks real-time
- * and is not will eventually be trusted at the wrong moment.
+ * WHAT THIS DATA IS NOT. The loop writes through to the store once per
+ * tick, so everything here is up to one poll interval behind (60s by
+ * default). The UI must SAY so: a dashboard that looks real-time and is
+ * not will eventually be trusted at the wrong moment.
  */
 
-/** One open position. The grid's unit of inventory. */
-export interface InventoryLot {
-  order_id: string;
+/** One open position -- the grid's unit of inventory. */
+export interface Lot {
+  id: string;
   symbol: string;
-  buy_price: number;
-  shares: number;
+  /** Buy price. */
+  px: number;
+  qty: number;
   /** Fractional, e.g. 0.003 for 30bps. */
-  profit_target: number;
-  /** `buy_price * (1 + profit_target)`, fixed at registration. */
-  target_sell_price: number;
-  /**
-   * How far price must rise, as a fraction, for this lot to sell.
-   *
-   * `null` when there is no current mark to compare against -- which is
-   * deliberately DISTINCT from 0, meaning "already there".
-   */
-  distance_to_target: number | null;
-  /** Fraction below the last buy at which the next rung triggers. */
-  distance_to_next_step: number | null;
-  /** Mark-to-market at the last observed price. */
-  current_value: number | null;
+  target: number;
+  /** px x (1 + target), fixed at registration. */
+  target_px: number;
+  /** How far price must rise, as a fraction, for this lot to sell --
+   * computed server-side so there is one definition. null when there is
+   * no mark, which is DISTINCT from 0 ("already there"). A lot's market
+   * value is qty x LiveState.last_px. */
+  to_target: number | null;
+  /** How far below the last mark this lot was bought (px / mark - 1). */
+  vs_mark: number | null;
 }
 
-/** Proceeds not yet settled, as `[settles_on_session, amount]`. */
-export type PendingSettlement = [number, number];
-
-/**
- * Everything one deployment's store holds.
- *
- * Every field is nullable or defaulted because a store that has never
- * run is a NORMAL state, not an error: a fresh deployment has no cash
- * meta, no lots and no halt, and the UI should say so rather than fail.
- */
-export interface DeploymentState {
-  /** Path to the SQLite store. Also the account-switcher key. */
-  path: string;
-  exists: boolean;
-  cash: number | null;
-  /** Sale proceeds inside their T+N settlement window. */
-  unsettled: number;
-  /** `cash - unsettled`, floored at zero. What can actually be spent. */
-  buying_power: number | null;
-  peak_equity: number | null;
-  /** Circuit breaker. Blocks NEW BUYS only -- exits keep running, and
-   * nothing in this system force-liquidates. */
-  halted: boolean;
-  halt_reason: string;
-  lots: InventoryLot[];
-  closed_lots: InventoryLot[];
-  pending_settlement: PendingSettlement[];
-  /** Monotonic store revision. The WebSocket pushes when this changes. */
-  revision: number;
-  /** Seconds since the store file was last written -- a file-mtime
-   * proxy, which cannot distinguish "stopped" from "market closed". */
-  last_write_age: number | null;
-  /** The loop's OWN last observed price and tick time: a real mark and a
-   * real heartbeat, where `last_write_age` is only a proxy. */
-  last_price: number | null;
-  last_tick_at: string | null;
-  /**
-   * The configuration the loop is TRADING, written through every tick.
-   *
-   * Empty for a store written before the loop recorded it, which the UI
-   * renders as unknown rather than as zeros. This is the field that
-   * would have made a 30% profit target where 0.3% was meant visible
-   * without diffing a config file against a ledger.
-   */
-  parameters: LiveParameters;
-}
-
-export interface LiveParameters {
+/** What the loop is TRADING, written through every tick. Empty for a
+ * store written before the loop recorded it -- render unknown, not zeros.
+ * This is what would have made a 30% target meant as 0.3% visible. */
+export interface LiveParams {
   symbol?: string;
   /** Fractional, e.g. 0.00075 for 7.5bps. */
   step?: number;
@@ -95,36 +45,59 @@ export interface LiveParameters {
   extended_hours?: boolean;
 }
 
-/** A live indicator reading, from the same class the strategy trades on. */
-export interface IndicatorReading {
-  symbol: string;
-  rsi_period: number;
-  /** null until the period seeds -- an unseeded Wilder average is a
-   * partial mean, not a low reading. */
+/**
+ * Everything one store holds. A store that has never run is a NORMAL
+ * state, not an error: no cash, no lots, no halt -- say so, don't fail.
+ */
+export interface LiveState {
+  exists: boolean;
+  /** Monotonic store revision; the WebSocket pushes when it changes. */
+  rev: number;
+  cash: number | null;
+  /** Sale proceeds inside their T+N settlement window. */
+  unsettled: number;
+  /** cash - unsettled, floored at zero: what can actually be spent. */
+  buying_power: number | null;
+  peak_equity: number | null;
+  /** The circuit breaker: non-null exactly when halted, and the value is
+   * the reason. Blocks NEW BUYS only -- nothing force-liquidates. */
+  halt: string | null;
+  lots: Lot[];
+  closed: Lot[];
+  /** Proceeds not yet settled, as [settles_on_session, amount]. */
+  settling: [session: number, amount: number][];
+  /** Seconds since the store file was written -- an mtime proxy that
+   * cannot tell "stopped" from "market closed". */
+  write_age_s: number | null;
+  /** The loop's OWN last mark and tick time: a real heartbeat. */
+  last_px: number | null;
+  last_tick: string | null;
+  params: LiveParams;
+}
+
+/** A live RSI reading, from the same WilderRSI the strategy trades on. */
+export interface Rsi {
+  /** null until the period seeds -- an unseeded average is a partial mean. */
   rsi: number | null;
-  bars_used: number;
+  /** Bars used. */
+  n: number;
   as_of: string | null;
   /** The bar FILE, which can lag a running deployment. */
   source: string;
 }
 
-/** A row from the loop's activity journal. */
-export interface ActivityEntry {
+/** A row from the loop's activity journal, newest first. */
+export interface Activity {
   timestamp: string;
   kind: string;
   detail: string;
 }
 
 /* ------------------------------------------------------------------ */
-/* Connection                                                          */
+/* Client-side                                                         */
 /* ------------------------------------------------------------------ */
 
-export type ConnectionStatus =
-  | "connecting"
-  | "open"
-  | "reconnecting"
-  | "closed"
-  | "error";
+export type ConnectionStatus = "connecting" | "open" | "reconnecting" | "closed" | "error";
 
 export interface ConnectionHealth {
   status: ConnectionStatus;
@@ -136,104 +109,13 @@ export interface ConnectionHealth {
   latencyMs: number | null;
 }
 
-/* ------------------------------------------------------------------ */
-/* Deployment health                                                   */
-/* ------------------------------------------------------------------ */
-
-export interface DeploymentTelemetry {
-  git_commit: string | null;
-  git_branch: string | null;
-  git_dirty: boolean;
-  deployed_at: string | null;
-  /** Absent outside a container -- most deployments here run bare. */
-  cpu_pct: number | null;
-  memory_mb: number | null;
-  memory_limit_mb: number | null;
-}
-
-/** One selectable account, backed by one store file. */
-export interface AccountRef {
-  path: string;
-  label: string;
-  paper: boolean;
-}
-
-/* ------------------------------------------------------------------ */
-/* Commands                                                            */
-/* ------------------------------------------------------------------ */
-
-/**
- * What the UI may ask the system to do.
- *
- * `emergency_halt` is THE ONLY ONE IMPLEMENTED, and that is a decision
- * rather than an omission. It maps onto the existing `CircuitBreaker`,
- * which already persists, survives restart and is operator-reversible.
- *
- * The other two are typed here so the UI can render them greyed out
- * WITH THEIR REASON, which is more honest than hiding controls a reader
- * might expect:
- *
- *   liquidate_all       `src/live_trading_loop.py`: "NO FORCED
- *                       LIQUIDATION, EVER. There is no code path in
- *                       this module that sells a lot for any reason
- *                       other than its profit target being met and the
- *                       no-loss guard permitting it." There is nothing
- *                       to call, and adding it would mean a forced-sell
- *                       path that realises losses.
- *   parameter_override  Live parameters come from a committed config,
- *                       not from a browser: routing real capital should
- *                       be a reviewable decision.
- */
-export type CommandKind =
-  | "emergency_halt"
-  | "liquidate_all"
-  | "parameter_override";
-
-export interface CommandDescriptor {
-  kind: CommandKind;
-  label: string;
-  available: boolean;
-  /** Why not, shown in the UI when `available` is false. */
-  unavailableReason?: string;
-  /** Whether it needs a confirmation modal before firing. */
-  destructive: boolean;
-}
-
-export const COMMANDS: readonly CommandDescriptor[] = [
-  {
-    kind: "emergency_halt",
-    label: "Emergency halt",
-    available: true,
-    destructive: true,
-  },
-  {
-    kind: "liquidate_all",
-    label: "Liquidate all positions",
-    available: false,
-    unavailableReason:
-      "Not implemented, by design. The trading loop has no code path that sells a lot " +
-      "for any reason other than its profit target being met and the no-loss guard " +
-      "permitting it. Adding one would mean forced selling at a loss.",
-    destructive: true,
-  },
-  {
-    kind: "parameter_override",
-    label: "Override live parameters",
-    available: false,
-    unavailableReason:
-      "Live parameters come from a committed config file, not from a browser, so that " +
-      "routing real capital stays a reviewable decision.",
-    destructive: true,
-  },
-] as const;
-
-export interface HaltRequest {
-  path: string;
-  reason: string;
-}
-
-export interface HaltResponse {
-  halted: boolean;
-  halt_reason: string;
-  revision: number;
+/** A store path's picker label and paper badge. A NAMING CONVENTION, not
+ * a fact about the account -- the store does not record it -- so nothing
+ * may gate a decision on `paper`. */
+export function describeStore(path: string): { path: string; label: string; paper: boolean } {
+  return {
+    path,
+    label: path.split(/[\\/]/).pop() ?? path,
+    paper: path.toLowerCase().includes("paper"),
+  };
 }

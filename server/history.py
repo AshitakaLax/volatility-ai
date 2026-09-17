@@ -38,6 +38,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from server import contract
+
 logger = logging.getLogger("Optimizer")
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -91,7 +93,12 @@ def _prune(target: Path) -> None:
 
 
 def load_all() -> list[dict[str, Any]]:
-    """Every persisted run, newest first.
+    """Every persisted run, newest first -- a LISTING, for run history.
+
+    A run archived before the contract was condensed comes back without
+    its fills or equity curve: nothing that lists runs reads them, and
+    translating them for 200 runs is most of the cost. load() returns a
+    single run in full.
 
     An unreadable file is SKIPPED with a warning rather than failing the
     listing. One corrupt run must not hide the other hundred -- and the
@@ -109,9 +116,11 @@ def load_all() -> list[dict[str, Any]]:
         except (OSError, ValueError) as exc:
             logger.warning(f"Skipping unreadable run file {path.name}: {exc}")
             continue
-        if isinstance(loaded, dict) and loaded.get("run_id"):
+        if isinstance(loaded, dict) and (loaded.get("id") or loaded.get("run_id")):
             loaded.setdefault("saved_at", path.stat().st_mtime)
-            out.append(loaded)
+            # A run archived before the contract was condensed is read in
+            # the new shape; the file itself is left as it was written.
+            out.append(contract.run(loaded, detail=False))
     return out
 
 
@@ -121,7 +130,10 @@ def load(run_id: str) -> dict[str, Any] | None:
         loaded = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    return loaded if isinstance(loaded, dict) else None
+    if not isinstance(loaded, dict):
+        return None
+    loaded.setdefault("saved_at", path.stat().st_mtime)
+    return contract.run(loaded)
 
 
 __all__ = ["MAX_RUNS", "directory", "load", "load_all", "save"]

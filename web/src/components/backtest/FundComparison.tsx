@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { cn, pct, usd } from "@/lib/utils";
-import type { FundResult } from "@/types/backtest";
+import type { Fund } from "@/types/backtest";
 
 /**
  * Several funds, one run, side by side.
@@ -21,7 +21,7 @@ import type { FundResult } from "@/types/backtest";
  */
 
 interface Props {
-  funds: Record<string, FundResult>;
+  funds: Record<string, Fund>;
 }
 
 // Distinguishable in both themes and at 1px. Not the semantic
@@ -91,11 +91,14 @@ export function FundComparison({ funds }: Props) {
         priceLineVisible: false,
         lastValueVisible: true,
       });
-      const { dates, normalized } = fund.equity_curve;
+      const { dates, equity } = fund.equity;
+      // Rebased to 100 at the first point: what makes funds with
+      // different starting prices comparable on one axis.
+      const base = equity[0] || 1;
       series.setData(
         dates.map((date, position) => ({
           time: date as Time,
-          value: normalized[position] ?? 100,
+          value: ((equity[position] ?? base) / base) * 100,
         })),
       );
     });
@@ -163,7 +166,8 @@ export function FundComparison({ funds }: Props) {
             </thead>
             <tbody className="tnum">
               {entries.map(([ticker, fund]) => {
-                const m = fund.metrics;
+                const m = fund.cells[0]?.m;
+                if (!m) return null;
                 return (
                   <tr key={ticker} className="border-b border-border/50 last:border-0">
                     <td className="py-2 font-medium">{ticker}</td>
@@ -196,7 +200,7 @@ export function FundComparison({ funds }: Props) {
               })}
             </tbody>
           </table>
-          {entries.some(([, fund]) => fund.executions.length === 0) ? (
+          {entries.some(([, fund]) => fund.fills.length === 0) ? (
             <p className="mt-3 text-xs text-muted-foreground">
               A fund with no executions is not an error: a low-volatility instrument on a
               grid tuned for a leveraged one legitimately never triggers.

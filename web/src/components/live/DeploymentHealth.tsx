@@ -2,9 +2,9 @@ import { GitBranch, Server, Wifi, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Badge, Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
-import { api, type DeploymentInfo } from "@/lib/api";
+import { api, type Health } from "@/lib/api";
 import { cn, usd } from "@/lib/utils";
-import type { ConnectionHealth, DeploymentState } from "@/types/telemetry";
+import { describeStore, type ConnectionHealth, type LiveState } from "@/types/telemetry";
 
 /**
  * Which build is running, against which account, and is it alive.
@@ -23,9 +23,10 @@ import type { ConnectionHealth, DeploymentState } from "@/types/telemetry";
  */
 
 interface Props {
-  state: DeploymentState | null;
+  state: LiveState | null;
   health: ConnectionHealth;
-  stores: { path: string; label: string; paper: boolean }[];
+  /** Store paths, from /api/live/stores. */
+  stores: string[];
   selected: string | null;
   onSelect: (path: string) => void;
 }
@@ -39,11 +40,11 @@ function since(iso: string | null): string {
 }
 
 export function DeploymentHealth({ state, health, stores, selected, onSelect }: Props) {
-  const [info, setInfo] = useState<DeploymentInfo | null>(null);
+  const [info, setInfo] = useState<Health | null>(null);
 
   useEffect(() => {
     api
-      .deployment()
+      .health()
       .then(setInfo)
       .catch(() => setInfo(null));
   }, []);
@@ -77,7 +78,7 @@ export function DeploymentHealth({ state, health, stores, selected, onSelect }: 
             onChange={(event) => onSelect(event.currentTarget.value)}
           >
             {stores.length === 0 ? <option value="">no stores found</option> : null}
-            {stores.map((store) => (
+            {stores.map(describeStore).map((store) => (
               <option key={store.path} value={store.path}>
                 {store.label}
               </option>
@@ -87,7 +88,7 @@ export function DeploymentHealth({ state, health, stores, selected, onSelect }: 
               whether it was paper or live, so this is a hint and nothing
               may gate a decision on it. */}
           <span className="text-xs text-muted-foreground">
-            {stores.find((store) => store.path === selected)?.paper
+            {selected && describeStore(selected).paper
               ? "filename suggests paper"
               : "mode not recorded in the store"}
           </span>
@@ -97,13 +98,13 @@ export function DeploymentHealth({ state, health, stores, selected, onSelect }: 
           <span className="text-xs font-medium text-muted-foreground">Build</span>
           <span className="flex items-center gap-1.5 font-mono text-sm">
             <GitBranch className="size-3.5" />
-            {info?.git_branch ?? "--"}
+            {info?.build.branch ?? "--"}
             <span className="text-muted-foreground">@</span>
-            {info?.git_commit ?? "--"}
+            {info?.build.commit ?? "--"}
           </span>
-          {info?.git_dirty === null ? (
+          {info?.build.dirty === null ? (
             <span className="text-xs text-muted-foreground">working tree unknown</span>
-          ) : info?.git_dirty ? (
+          ) : info?.build.dirty ? (
             <Badge tone="stuck">uncommitted changes</Badge>
           ) : (
             <span className="text-xs text-muted-foreground">clean</span>
@@ -112,32 +113,32 @@ export function DeploymentHealth({ state, health, stores, selected, onSelect }: 
 
         <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">Last tick</span>
-          <span className="tnum text-sm">{since(state?.last_tick_at ?? null)}</span>
+          <span className="tnum text-sm">{since(state?.last_tick ?? null)}</span>
           <span className="text-xs text-muted-foreground">
-            {state?.last_price ? `at ${usd(state.last_price)}` : "no mark recorded"}
+            {state?.last_px ? `at ${usd(state.last_px)}` : "no mark recorded"}
           </span>
           {/* Said explicitly. This is persisted state, not a live feed. */}
           <span className="text-xs text-muted-foreground">
             store written{" "}
-            {state?.last_write_age === null || state?.last_write_age === undefined
+            {state?.write_age_s === null || state?.write_age_s === undefined
               ? "--"
-              : `${Math.round(state.last_write_age)}s ago`}
+              : `${Math.round(state.write_age_s)}s ago`}
           </span>
         </div>
 
         <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">Process</span>
           <span className="tnum text-sm">
-            {info ? `up ${Math.round(info.uptime_seconds / 60)}m` : "--"}
+            {info ? `up ${Math.round(info.build.uptime_s / 60)}m` : "--"}
           </span>
           <span className="text-xs text-muted-foreground">
-            {info ? `python ${info.python} · pid ${info.pid}` : ""}
+            {info ? `python ${info.build.python} · pid ${info.build.pid}` : ""}
           </span>
           {/* Nulls rather than zeros outside a container. A "CPU 0%" that
               means "could not measure" is a number someone would act on. */}
           <span className="text-xs text-muted-foreground">
-            {info?.containerised
-              ? `${info.memory_mb} / ${info.memory_limit_mb ?? "∞"} MB`
+            {info?.container
+              ? `${info.container.mem_mb} / ${info.container.mem_limit_mb ?? "∞"} MB`
               : "container stats unavailable (not containerised)"}
           </span>
         </div>
