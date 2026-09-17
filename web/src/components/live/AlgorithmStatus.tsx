@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import { cn, pct, usd } from "@/lib/utils";
-import type { DeploymentState, IndicatorReading } from "@/types/telemetry";
+import type { LiveState, Rsi } from "@/types/telemetry";
 
 /**
  * What the loop is doing, and what it was told to do.
@@ -24,7 +24,7 @@ import type { DeploymentState, IndicatorReading } from "@/types/telemetry";
  */
 
 interface Props {
-  state: DeploymentState | null;
+  state: LiveState | null;
 }
 
 // The paper config's own target is 0.3%. An order of magnitude either
@@ -33,8 +33,8 @@ interface Props {
 const IMPLAUSIBLE_TARGET = 0.05;
 
 export function AlgorithmStatus({ state }: Props) {
-  const [reading, setReading] = useState<IndicatorReading | null>(null);
-  const symbol = state?.parameters.symbol ?? null;
+  const [reading, setReading] = useState<Rsi | null>(null);
+  const symbol = state?.params.symbol ?? null;
 
   useEffect(() => {
     if (!symbol) {
@@ -53,9 +53,9 @@ export function AlgorithmStatus({ state }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [symbol, state?.revision]);
+  }, [symbol, state?.rev]);
 
-  const parameters = state?.parameters ?? {};
+  const parameters = state?.params ?? {};
   const known = Object.keys(parameters).length > 0;
   const target = parameters.profit_target;
   const suspicious = target !== undefined && target > IMPLAUSIBLE_TARGET;
@@ -63,8 +63,9 @@ export function AlgorithmStatus({ state }: Props) {
   // Exposure as a share of equity. Equity is cash plus the marked book,
   // which is what the loop itself uses -- not cash alone, which would
   // read as over-invested the moment anything is held.
+  const mark = state?.last_px ?? null;
   const committed = (state?.lots ?? []).reduce(
-    (total, lot) => total + (lot.current_value ?? 0),
+    (total, lot) => total + (mark ? lot.qty * mark : 0),
     0,
   );
   const equity = (state?.cash ?? 0) + committed;
@@ -89,9 +90,9 @@ export function AlgorithmStatus({ state }: Props) {
 
       <CardContent className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-6">
         <Stat label="Symbol" value={parameters.symbol ?? "--"} />
-        <Stat label="Price" value={usd(state?.last_price)} />
+        <Stat label="Price" value={usd(state?.last_px)} />
         <Stat
-          label={`RSI(${reading?.rsi_period ?? 14})`}
+          label="RSI(14)"
           value={reading?.rsi === null || reading?.rsi === undefined ? "--" : reading.rsi.toFixed(1)}
           hint={
             reading?.rsi === null
@@ -156,7 +157,7 @@ export function AlgorithmStatus({ state }: Props) {
           {/* The bars are a FILE, not the loop's own feed. Saying so is
               cheaper than someone discovering it during a fast market. */}
           <p className="text-xs text-muted-foreground">
-            RSI from {reading.bars_used} bars of {reading.source.split(/[\\/]/).pop()} — a
+            RSI from {reading.n} bars of {reading.source.split(/[\\/]/).pop()} — a
             data file, which can lag the loop's own feed.
           </p>
         </CardContent>

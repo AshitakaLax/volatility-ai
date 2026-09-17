@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from "@/components/ui/primitives";
 import { cn, pct, usd } from "@/lib/utils";
-import type { InventoryLot } from "@/types/telemetry";
+import type { Lot } from "@/types/telemetry";
 
 /**
  * The open book, lot by lot.
@@ -21,7 +21,7 @@ import type { InventoryLot } from "@/types/telemetry";
  */
 
 interface Props {
-  lots: InventoryLot[];
+  lots: Lot[];
   /** The loop's own last observed price. null outside market hours. */
   lastPrice: number | null;
 }
@@ -39,11 +39,11 @@ export function LiveOrderLedger({ lots, lastPrice }: Props) {
 
   const filteredLots = useMemo(() => {
     return lots.filter((lot) => {
-      if (filterText && !lot.order_id.toLowerCase().includes(filterText.toLowerCase())) {
+      if (filterText && !lot.id.toLowerCase().includes(filterText.toLowerCase())) {
         return false;
       }
       if (filterStatus !== "all") {
-        const distance = lot.distance_to_target;
+        const distance = lot.to_target;
         const reached = distance !== null && distance <= 0;
         const stuck = distance !== null && distance > 0.02;
         
@@ -58,9 +58,9 @@ export function LiveOrderLedger({ lots, lastPrice }: Props) {
     return [...filteredLots].sort((a, b) => {
       // null (no mark to compare against) sorts last -- it is not "far",
       // it is unknown, and putting it first would push real rows down.
-      if (a.distance_to_target === null) return 1;
-      if (b.distance_to_target === null) return -1;
-      return a.distance_to_target - b.distance_to_target;
+      if (a.to_target === null) return 1;
+      if (b.to_target === null) return -1;
+      return a.to_target - b.to_target;
     });
   }, [filteredLots]);
 
@@ -70,7 +70,8 @@ export function LiveOrderLedger({ lots, lastPrice }: Props) {
     return sortedLots.slice(start, start + pageSize);
   }, [sortedLots, currentPage, pageSize]);
 
-  const stuckValue = lots.reduce((total, lot) => total + (lot.current_value ?? 0), 0);
+  const valueOf = (lot: Lot) => (lastPrice ? lot.qty * lastPrice : null);
+  const stuckValue = lots.reduce((total, lot) => total + (valueOf(lot) ?? 0), 0);
 
   return (
     <Card>
@@ -134,17 +135,17 @@ export function LiveOrderLedger({ lots, lastPrice }: Props) {
             </thead>
             <tbody className="tnum">
               {paginatedLots.map((lot) => {
-                const distance = lot.distance_to_target;
+                const distance = lot.to_target;
                 // Zero is "already there", which is a real and different
                 // state from null ("no price to compare against").
                 const reached = distance !== null && distance <= 0;
                 return (
-                  <tr key={lot.order_id} className="border-b border-border/50 last:border-0">
-                    <td className="py-2 font-mono text-xs">{lot.order_id}</td>
-                    <td className="py-2 text-right">{lot.shares.toFixed(4)}</td>
-                    <td className="py-2 text-right">{usd(lot.buy_price)}</td>
-                    <td className="py-2 text-right">{usd(lot.current_value)}</td>
-                    <td className="py-2 text-right">{usd(lot.target_sell_price)}</td>
+                  <tr key={lot.id} className="border-b border-border/50 last:border-0">
+                    <td className="py-2 font-mono text-xs">{lot.id}</td>
+                    <td className="py-2 text-right">{lot.qty.toFixed(4)}</td>
+                    <td className="py-2 text-right">{usd(lot.px)}</td>
+                    <td className="py-2 text-right">{usd(valueOf(lot))}</td>
+                    <td className="py-2 text-right">{usd(lot.target_px)}</td>
                     <td
                       className={cn(
                         "py-2 text-right font-medium",
@@ -155,9 +156,9 @@ export function LiveOrderLedger({ lots, lastPrice }: Props) {
                       {distance === null ? "--" : reached ? "at target" : pct(distance * 100)}
                     </td>
                     <td className="py-2 text-right text-muted-foreground">
-                      {lot.distance_to_next_step === null
+                      {lot.vs_mark === null
                         ? "--"
-                        : pct(lot.distance_to_next_step * 100, 2, true)}
+                        : pct(lot.vs_mark * 100, 2, true)}
                     </td>
                   </tr>
                 );

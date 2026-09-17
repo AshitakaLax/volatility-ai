@@ -97,7 +97,6 @@ if upstream.is_enabled():
     app.include_router(upstream.router)
 else:
     app.include_router(backtest.router)
-app.include_router(deployment.router)
 
 # THE ML RESEARCH ROUTES FOLLOW THE SAME SPLIT, FOR THE SAME REASON.
 #
@@ -112,27 +111,23 @@ else:
 
 @app.get("/api/health")
 def health() -> dict[str, object]:
-    """Liveness, plus what this server is allowed to do.
+    """Liveness, what this server is allowed to do, and which build it is.
 
-    The capability flags are reported rather than assumed so a client
-    renders the Command Center from what the SERVER says it can do,
+    `caps` lists what the server CAN do, reported rather than assumed so
+    a client renders the Command Center from what the SERVER says,
     instead of from a constant compiled into the bundle that could
-    disagree with the deployment it is talking to.
+    disagree with the deployment it is talking to. Liquidation and live
+    parameter overrides are never listed -- by design, see control.py.
+    `ml` is read-only research artifacts (server/ml_insights.py), not a
+    trading capability.
+
+    `upstream` is where sweeps actually run: the forwarding host, or
+    None when this process runs them itself.
     """
     return {
-        "status": "ok",
-        **upstream.describe(),
-        "capabilities": {
-            "live_read": True,
-            "halt": True,
-            "liquidate": False,
-            "parameter_override": False,
-            "backtest_submit": True,
-            # Read-only research artifacts (server/ml_insights.py). Not
-            # a trading capability: nothing behind this flag can reach
-            # a sizing decision. See that module's docstring.
-            "ml_research": True,
-        },
+        "caps": ["live", "halt", "backtest", "ml"],
+        "upstream": upstream.upstream_base(),
+        **deployment.describe(),
     }
 
 

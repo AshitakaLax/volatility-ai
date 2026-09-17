@@ -256,7 +256,7 @@ class TestBlotterLinkage:
         assert not (book["rsi"] == 0.0).any()
 
     def test_the_exporter_omits_rsi_rather_than_emitting_a_null(self):
-        """The published contract has rsi_at_entry as OPTIONAL."""
+        """The published contract has a fill's `rsi` as OPTIONAL."""
         import pandas as pd_
 
         from tools.export_ui_data import executions
@@ -285,6 +285,7 @@ class TestBlotterLinkage:
                 },
             ]
         )
-        unseeded, seeded = executions(book, "TQQQ")
-        assert "rsi_at_entry" not in unseeded
-        assert seeded["rsi_at_entry"] == 28.4
+        unseeded, seeded = executions(book)
+        assert "rsi" not in unseeded
+        assert seeded["rsi"] == 28.4
+        assert (seeded["lot"], seeded["side"], seeded["i"]) == ("L2", "BUY", 20)

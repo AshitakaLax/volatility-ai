@@ -16,11 +16,7 @@ import { useBacktestRun } from "@/hooks/useBacktestRun";
 import { useLiveState } from "@/hooks/useLiveState";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import {
-  DEFAULT_FILTERS,
-  type ExecutionFilters,
-  type MultiFundBacktestReport,
-} from "@/types/backtest";
+import { DEFAULT_FILTERS, type ExecutionFilters, type Report } from "@/types/backtest";
 
 /**
  * Section 1 (Backtesting) is the default view, and that ordering is the
@@ -40,7 +36,7 @@ type Tab = "backtest" | "result" | "live" | "ml";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("backtest");
-  const [staticReport, setStaticReport] = useState<MultiFundBacktestReport | null>(null);
+  const [staticReport, setStaticReport] = useState<Report | null>(null);
   const [filters, setFilters] = useState<ExecutionFilters>(DEFAULT_FILTERS);
   const { run, submit, attach, submitting, error } = useBacktestRun();
   // Bumped whenever a run settles, so history reloads without the
@@ -51,7 +47,7 @@ export default function App() {
   );
 
   // --- live ------------------------------------------------------------
-  const [stores, setStores] = useState<{ path: string; label: string; paper: boolean }[]>([]);
+  const [stores, setStores] = useState<string[]>([]);
   const [store, setStore] = useState<string | null>(null);
   const live = useLiveState(tab === "live" ? store : null);
 
@@ -60,11 +56,11 @@ export default function App() {
     void api
       .stores()
       .then((body) => {
-        setStores(body.stores);
+        setStores(body);
         // Select the first store automatically. A picker that starts
         // empty makes an operator choose before seeing anything, and
         // there is usually exactly one.
-        setStore((current) => current ?? body.stores[0]?.path ?? null);
+        setStore((current) => current ?? body[0] ?? null);
       })
       .catch(() => setStores([]));
   }, [tab, stores.length]);
@@ -136,16 +132,12 @@ export default function App() {
           </nav>
           {report ? (
             <span className="ml-auto text-xs text-muted-foreground">
-              {report.parameters.name ? (
-                <span className="font-medium text-foreground">{report.parameters.name} · </span>
+              {report.name ? (
+                <span className="font-medium text-foreground">{report.name} · </span>
               ) : null}
-              {report.run_id} · {report.parameters.sizing_model} · step{" "}
-              {((report.parameters.grid_step_pct ?? 0) * 100).toFixed(2)}% · target{" "}
-              {((report.parameters.profit_target_pct ?? 0) * 100).toFixed(2)}% ·{" "}
-              {report.parameters.fill_model} fills
-              {report.parameters.n_jobs && report.parameters.n_jobs > 1
-                ? ` · ${report.parameters.n_jobs} workers`
-                : ""}
+              {report.id} · {report.model} · step {((report.grid ?? 0) * 100).toFixed(2)}% ·
+              target {((report.target ?? 0) * 100).toFixed(2)}% · {report.fill} fills
+              {report.jobs && report.jobs > 1 ? ` · ${report.jobs} workers` : ""}
             </span>
           ) : null}
         </div>
@@ -172,13 +164,13 @@ export default function App() {
             ) : null}
             <CommandCenter path={store} state={live.state} onHalted={live.refresh} />
             <LivePriceChart
-              symbol={live.state?.parameters?.symbol ?? null}
-              lastPrice={live.state?.last_price ?? null}
-              lastPriceAt={live.state?.last_tick_at ?? null}
+              symbol={live.state?.params.symbol ?? null}
+              lastPrice={live.state?.last_px ?? null}
+              lastPriceAt={live.state?.last_tick ?? null}
             />
             <LiveOrderLedger
               lots={live.state?.lots ?? []}
-              lastPrice={live.state?.last_price ?? null}
+              lastPrice={live.state?.last_px ?? null}
             />
           </>
         ) : tab === "ml" ? (
@@ -207,8 +199,8 @@ export default function App() {
                 <CardContent className="flex items-center justify-between gap-4 pt-5">
                   <p className="text-sm text-muted-foreground">
                     Run complete
-                    {run?.report?.parameters.name
-                      ? ` — ${run.report.parameters.name}`
+                    {run?.report?.name
+                      ? ` — ${run.report.name}`
                       : ""}
                     . The chart, trade log and sweep surface are on the Backtest result tab.
                   </p>

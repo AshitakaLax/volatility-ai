@@ -20,6 +20,7 @@ import {
   seedOf,
   seedValues,
   type OptionsSweepFieldState,
+  paramSpec,
 } from "./strategyParams";
 
 function spec(over: Partial<ParamSpec> = {}): ParamSpec {
@@ -360,13 +361,55 @@ describe("diffFromDefaults -- sweep-aware", () => {
 
 describe("paramErrorsFor", () => {
   const errors = [
-    { field: "max_trade_pct", message: "must be in (0, 1]" },
-    { field: null, message: "cannot sweep 2 profit targets" },
+    { field: "max_trade_pct", msg: "must be in (0, 1]" },
+    { msg: "cannot sweep 2 profit targets" },
   ];
   it("filters to one field, and to the unattached errors for null", () => {
     expect(paramErrorsFor("max_trade_pct", errors)).toHaveLength(1);
-    expect(paramErrorsFor(null, errors)[0]!.message).toContain("cannot sweep");
+    expect(paramErrorsFor(null, errors)[0]!.msg).toContain("cannot sweep");
     expect(paramErrorsFor("mu", errors)).toEqual([]);
     expect(paramErrorsFor("x", undefined)).toEqual([]);
+  });
+});
+
+describe("paramSpec", () => {
+  it("derives the omitted flags from a bare wire param", () => {
+    const spec = paramSpec({ name: "mu", type: "float", default: 0.1 });
+    expect(spec).toMatchObject({
+      required: false,
+      nullable: false,
+      suggested: 0.1,
+      has_suggested: false,
+      group: "advanced",
+      editable: true,
+      locked_reason: null,
+      mirrors: null,
+      enum: null,
+      step: "any",
+      sweepable: true,
+    });
+  });
+
+  it("a committed value is the seed and makes the field primary", () => {
+    const spec = paramSpec({ name: "bars_per_day", type: "int", default: null, suggested: 387, required: true });
+    expect(spec).toMatchObject({ suggested: 387, has_suggested: true, group: "primary", step: "1" });
+  });
+
+  it("an enum sweeps as options and takes no numeric step", () => {
+    const spec = paramSpec({ name: "vol_measure", type: "str", default: "stdev", enum: ["stdev", "range"] });
+    expect(spec).toMatchObject({ step: null, sweepable: true, enum: ["stdev", "range"] });
+  });
+
+  it("locked or mirrored fields are never sweepable; plain str and bool neither", () => {
+    expect(paramSpec({ name: "p", type: "float", default: null, locked: "alias" })).toMatchObject({
+      editable: false,
+      locked_reason: "alias",
+      sweepable: false,
+    });
+    expect(
+      paramSpec({ name: "target_return", type: "float", default: null, locked: "x", mirrors: "profit_target" }).sweepable,
+    ).toBe(false);
+    expect(paramSpec({ name: "t", type: "str", default: "RSP" }).sweepable).toBe(false);
+    expect(paramSpec({ name: "b", type: "bool", default: false }).sweepable).toBe(false);
   });
 });

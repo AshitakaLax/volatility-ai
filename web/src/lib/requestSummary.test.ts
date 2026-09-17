@@ -52,7 +52,7 @@ describe("describeRequestAxes", () => {
   it("a single-value, single-ticker request is exactly one simulation", () => {
     const summary = describeRequestAxes({
       grid_steps: [0.01],
-      profit_targets: [0.005],
+      targets: [0.005],
       tickers: ["TQQQ"],
     });
     expect(summary.simulationCount).toBe(1);
@@ -62,8 +62,8 @@ describe("describeRequestAxes", () => {
   it("multiplies every axis together, including a strategy-param sweep and multiple tickers", () => {
     const summary = describeRequestAxes({
       grid_steps: [0.01, 0.02, 0.03],
-      profit_targets: [0.005, 0.01],
-      strategy_params: { max_trade_pct: [0.05, 0.08] },
+      targets: [0.005, 0.01],
+      params: { max_trade_pct: [0.05, 0.08] },
       tickers: ["TQQQ", "SOXL"],
     });
     // 3 steps x 2 targets x 2 strategy-param combos x 2 tickers
@@ -73,14 +73,14 @@ describe("describeRequestAxes", () => {
   it("reports grid_step/profit_target axes only when they actually vary", () => {
     const swept = describeRequestAxes({
       grid_steps: [0.01, 0.02],
-      profit_targets: [0.005],
+      targets: [0.005],
       tickers: ["TQQQ"],
     });
     expect(swept.axes.map((a) => a.key)).toEqual(["grid_step"]);
 
     const fixed = describeRequestAxes({
       grid_steps: [0.01],
-      profit_targets: [0.005],
+      targets: [0.005],
       tickers: ["TQQQ"],
     });
     expect(fixed.axes).toEqual([]);
@@ -89,8 +89,8 @@ describe("describeRequestAxes", () => {
   it("reports a swept strategy param as its own axis", () => {
     const summary = describeRequestAxes({
       grid_steps: [0.01],
-      profit_targets: [0.005],
-      strategy_params: { lookback_days: [10, 20, 30] },
+      targets: [0.005],
+      params: { lookback_days: [10, 20, 30] },
       tickers: ["TQQQ"],
     });
     const axis = summary.axes.find((a) => a.key === "lookback_days");
@@ -100,8 +100,8 @@ describe("describeRequestAxes", () => {
   it("does not report a strategy param with only one distinct value", () => {
     const summary = describeRequestAxes({
       grid_steps: [0.01],
-      profit_targets: [0.005],
-      strategy_params: { lookback_days: [10, 10], max_trade_pct: 0.05 },
+      targets: [0.005],
+      params: { lookback_days: [10, 10], max_trade_pct: 0.05 },
       tickers: ["TQQQ"],
     });
     expect(summary.axes).toEqual([]);
@@ -110,7 +110,7 @@ describe("describeRequestAxes", () => {
   it("reports multiple tickers as an axis", () => {
     const summary = describeRequestAxes({
       grid_steps: [0.01],
-      profit_targets: [0.005],
+      targets: [0.005],
       tickers: ["TQQQ", "SOXL"],
     });
     expect(summary.axes).toEqual([{ key: "tickers", label: "Funds", values: ["SOXL", "TQQQ"] }]);

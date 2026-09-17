@@ -3,8 +3,7 @@
  * that remains every enabled per-field "Sweep" checkbox (sweepStrategies.ts
  * generates each field's own value list; this only picks the algorithm
  * that walks the resulting grid). Mirrors server/backtest.py's
- * RunRequest.search_strategy/n_trials/rank_by/search_direction/search_seed
- * exactly -- see that file's own field comments for the server-side half
+ * RunRequest.bayes/rank_by/minimize exactly -- see that file's own field comments for the server-side half
  * of this contract.
  *
  * A DIFFERENT "strategy" THAN sweepStrategies.ts's SweepStrategyKind,
@@ -37,7 +36,7 @@ export const RANK_BY_OPTIONS: readonly string[] = [
 
 export const DEFAULT_RANK_BY = "Capital Velocity Index";
 
-/** Matches RunRequest.n_trials' own Field(ge=2, le=500). */
+/** Matches BayesSearch.trials' own Field(ge=2, le=500). */
 export const MIN_TRIALS = 2;
 export const MAX_TRIALS = 500;
 
@@ -66,7 +65,7 @@ export const DEFAULT_SEARCH_METHOD_STATE: SearchMethodState = {
 /**
  * Client-side errors for the current state, or [] when it is valid
  * enough to submit. Mirrors the one thing the server actually enforces
- * (n_trials required and in range for bayesian) -- everything else
+ * (bayes.trials required and in range) -- everything else
  * (rank_by, direction) has no wrong answer at this layer since the
  * dropdown only ever offers valid values.
  */

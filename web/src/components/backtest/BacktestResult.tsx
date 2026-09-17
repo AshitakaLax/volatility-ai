@@ -12,14 +12,15 @@ import { Button, Card, CardContent } from "@/components/ui/primitives";
 import { useBacktestRun } from "@/hooks/useBacktestRun";
 import { filterExecutions, openLotIds } from "@/lib/filters";
 import { configurationKey, configurationLabel } from "@/lib/sweepSummary";
+import { isRunning } from "@/lib/runQueue";
 import type {
-  BacktestRunRequest,
-  BacktestRunState,
+  Cell,
   ChartResolution,
   DateRange,
   ExecutionFilters,
-  MultiFundBacktestReport,
-  SweepConfiguration,
+  Report,
+  Run,
+  RunReq,
 } from "@/types/backtest";
 
 /**
@@ -52,10 +53,10 @@ import type {
 
 interface Props {
   /** A completed run's report, the static export, or null. */
-  report: MultiFundBacktestReport | null;
+  report: Report | null;
   /** The run this tab is following. Drives the queued / running /
    *  failed states shown before `report` exists. */
-  run: BacktestRunState | null;
+  run: Run | null;
   filters: ExecutionFilters;
   onFiltersChange: (filters: ExecutionFilters) => void;
   /** A sweep-matrix cell's "load into form" affordance was used -- the
@@ -75,7 +76,7 @@ export function BacktestResult({
   const tickers = report ? Object.keys(report.funds) : [];
   const selected = filters.tickers[0] ?? tickers[0] ?? null;
   const fund = report && selected ? report.funds[selected] : undefined;
-  const configurations = useMemo(() => fund?.configurations ?? [], [fund]);
+  const configurations = useMemo(() => fund?.cells ?? [], [fund]);
   const topPick = configurations[0];
 
   // Which configuration this page shows -- null means "the engine's top
@@ -84,7 +85,7 @@ export function BacktestResult({
   // One on-demand "View full detail" re-run per configuration a reader
   // has actually asked to see, cached by the same key so re-selecting a
   // previously-viewed configuration doesn't refire the job.
-  const [detailRuns, setDetailRuns] = useState<Record<string, BacktestRunState>>({});
+  const [detailRuns, setDetailRuns] = useState<Record<string, Run>>({});
   // Which configuration the CURRENTLY IN-FLIGHT detail run belongs to --
   // tracked separately from `selectedConfigKey` because a reader can
   // select a different configuration while one is still running; the
@@ -100,16 +101,15 @@ export function BacktestResult({
     setSelectedConfigKey(null);
     setDetailRuns({});
     setPendingDetailKey(null);
-  }, [report?.run_id, selected]);
+  }, [report?.id, selected]);
 
-  const selectedConfig: SweepConfiguration | undefined =
+  const selectedConfig: Cell | undefined =
     (selectedConfigKey &&
       configurations.find((entry) => configurationKey(entry) === selectedConfigKey)) ||
     topPick;
-  // True when there is nothing to distinguish (an old report with no
-  // `configurations`, or nothing explicitly selected) or the selection
-  // IS the engine's own pick -- in both cases `fund`'s baked-in
-  // executions/equity_curve are already the right ones to show.
+  // True when there is nothing to distinguish (nothing explicitly
+  // selected) or the selection IS the engine's own pick -- in both cases
+  // `fund`'s baked-in fills/equity are already the right ones to show.
   const isTopPick =
     !topPick || !selectedConfig || configurationKey(selectedConfig) === configurationKey(topPick);
   const detailKey = selectedConfig ? configurationKey(selectedConfig) : null;
@@ -133,7 +133,7 @@ export function BacktestResult({
     !detailRun &&
     (detailBacktest.submitting ||
       detailBacktest.run?.status === "queued" ||
-      detailBacktest.run?.status === "running");
+      (detailBacktest.run !== null && isRunning(detailBacktest.run.status)));
   const detailError =
     pendingDetailKey !== null && pendingDetailKey === detailKey && !detailRun && !isDetailPending
       ? (detailBacktest.run?.error ??
@@ -145,18 +145,19 @@ export function BacktestResult({
     if (!report || !selected || !selectedConfig || !fund) return;
     const key = configurationKey(selectedConfig);
     setPendingDetailKey(key);
-    const request: BacktestRunRequest = {
+    if (selectedConfig.grid === null || selectedConfig.target === null) return;
+    const request: RunReq = {
       name: `detail: ${configurationLabel(selectedConfig)}`,
       tickers: [selected],
-      grid_steps: [selectedConfig.grid_step],
-      profit_targets: [selectedConfig.profit_target],
-      sizing_model: report.parameters.sizing_model,
+      grid_steps: [selectedConfig.grid],
+      targets: [selectedConfig.target],
+      ...(report.model ? { model: report.model } : {}),
       // Already the full resolved combo for this cell -- confirmed by
       // reading server/backtest.py's strategy_param_keys, which covers
       // the whole run, not just the swept subset.
-      strategy_params: selectedConfig.strategy_params,
-      fill_model: report.parameters.fill_model === "intrabar" ? "intrabar" : "close",
-      enforce_no_loss: report.parameters.enforce_no_loss,
+      params: selectedConfig.params,
+      fill: report.fill === "intrabar" ? "intrabar" : "close",
+      no_loss: report.no_loss,
       // window() applies start/end FIRST, then .tail(limit) -- pinning
       // the exact original bounds plus a limit at least as large as what
       // they already produced reproduces the identical frame, without
@@ -170,9 +171,9 @@ export function BacktestResult({
   };
 
   // Stabilise `executions` so the two downstream useMemos don't see a new
-  // array reference on every render (activeFund?.executions ?? []
+  // array reference on every render (activeFund?.fills ?? []
   // creates a new [] literal each time activeFund is undefined).
-  const executions = useMemo(() => activeFund?.executions ?? [], [activeFund]);
+  const executions = useMemo(() => activeFund?.fills ?? [], [activeFund]);
   const visible = useMemo(
     () => filterExecutions(executions, filters),
     [executions, filters],
@@ -181,21 +182,21 @@ export function BacktestResult({
 
   // The run's actual data bounds -- the anchor the chart's zoom levels
   // measure back from when the filter range is open. Per-fund `bars` is
-  // more precise than the report-wide `timeframe`.
+  // more precise than the report-wide window.
   const dataRange: DateRange = {
-    start: fund?.bars.start ?? report?.timeframe.start ?? null,
-    end: fund?.bars.end ?? report?.timeframe.end ?? null,
+    start: fund?.bars.start ?? report?.start ?? null,
+    end: fund?.bars.end ?? report?.end ?? null,
   };
-  const profitTarget = selectedConfig?.profit_target ?? report?.parameters.profit_target_pct ?? 0.005;
+  const profitTarget = selectedConfig?.target ?? report?.target ?? 0.005;
 
   if (!report) {
-    if (run && (run.status === "queued" || run.status === "running")) {
+    if (run && (run.status === "queued" || isRunning(run.status))) {
       const percent = Math.round(run.progress * 100);
       return (
         <Card>
           <CardContent className="space-y-3 pt-5">
             <p className="text-sm">
-              {run.message ?? (run.status === "queued" ? "Queued…" : "Running…")}
+              {run.msg ?? (run.status === "queued" ? "Queued…" : "Running…")}
             </p>
             <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
               <div
@@ -217,7 +218,7 @@ export function BacktestResult({
       return (
         <Card>
           <CardContent className="pt-5 text-sm text-loss">
-            {run.error ?? run.message ?? "The run failed."}
+            {run.error ?? run.msg ?? "The run failed."}
           </CardContent>
         </Card>
       );
@@ -237,7 +238,7 @@ export function BacktestResult({
 
   return (
     <>
-      {fund ? <RiskRewardMetrics metrics={selectedConfig?.metrics ?? fund.metrics} /> : null}
+      {selectedConfig ? <RiskRewardMetrics metrics={selectedConfig.m} /> : null}
 
       {showSweepDetails ? <SweepSummary configurations={configurations} /> : null}
 
@@ -280,6 +281,7 @@ export function BacktestResult({
 
           <TradeLog
             executions={visible}
+            ticker={selected}
             totalBeforeFilters={executions.length}
             profitTarget={profitTarget}
           />
@@ -290,7 +292,7 @@ export function BacktestResult({
             {isDetailPending ? (
               <>
                 <p className="text-sm">
-                  {detailBacktest.run?.message ??
+                  {detailBacktest.run?.msg ??
                     (detailBacktest.run?.status === "running" ? "Running…" : "Queued…")}
                 </p>
                 <div className="h-1.5 overflow-hidden rounded-full bg-secondary">

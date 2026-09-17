@@ -7,53 +7,50 @@
  * the cases below that are easy to get quietly wrong.
  */
 import type {
-  BacktestExecution,
   ChartResolution,
   DateRange,
   ExecutionFilters,
-  FundPerformanceMetrics,
+  Fill,
   HistoryRow,
+  Metrics,
   OrderStatusFilter,
   RunHistoryFilters,
   Timeframe,
 } from "@/types/backtest";
 
+/** A fill's unique key. The lot alone is NOT unique -- one buy and
+ * possibly several partial sells share it -- so it is qualified by side
+ * and bar, in exactly one place rather than at each call site. */
+export function fillKey(fill: Fill): string {
+  return `${fill.lot}-${fill.side.toLowerCase()}-${fill.i}`;
+}
+
 /** A buy and the sells that closed it. */
 export interface TradeCycle {
   lotId: string;
-  buy: BacktestExecution;
+  buy: Fill;
   /** Empty for a lot still open -- what this project calls "stuck". */
-  sells: BacktestExecution[];
+  sells: Fill[];
   /** Summed across partial sells. null while nothing has closed. */
   realized: number | null;
   open: boolean;
 }
 
-/**
- * Group executions into cycles by lot.
- *
- * A sell names its lot through `matched_buy_id`; a buy is identified by
- * the `lot_id` embedded in its `order_id` as `${lot}-buy-${bar}`. The
- * order_id is qualified that way because a lot id alone is NOT unique
- * across a lot's rows -- one buy and possibly several partial sells
- * share it -- so parsing it back out is how a buy is matched, and it is
- * done in exactly one place rather than at each call site.
- */
-export function buildCycles(executions: BacktestExecution[]): TradeCycle[] {
-  const buys = new Map<string, BacktestExecution>();
-  const sells = new Map<string, BacktestExecution[]>();
+/** Group fills into cycles by lot -- a sell and its buy share `lot`. */
+export function buildCycles(fills: Fill[]): TradeCycle[] {
+  const buys = new Map<string, Fill>();
+  const sells = new Map<string, Fill[]>();
 
-  for (const execution of executions) {
-    if (execution.type === "BUY") {
-      const lotId = lotIdOf(execution);
+  for (const fill of fills) {
+    if (fill.side === "BUY") {
       // FIRST buy wins. A lot has exactly one opening fill; if two rows
       // ever claimed the same lot, silently overwriting would move the
       // cycle's start and change every hold duration drawn from it.
-      if (!buys.has(lotId)) buys.set(lotId, execution);
-    } else if (execution.matched_buy_id) {
-      const existing = sells.get(execution.matched_buy_id);
-      if (existing) existing.push(execution);
-      else sells.set(execution.matched_buy_id, [execution]);
+      if (!buys.has(fill.lot)) buys.set(fill.lot, fill);
+    } else {
+      const existing = sells.get(fill.lot);
+      if (existing) existing.push(fill);
+      else sells.set(fill.lot, [fill]);
     }
   }
 
@@ -61,8 +58,7 @@ export function buildCycles(executions: BacktestExecution[]): TradeCycle[] {
   for (const [lotId, buy] of buys) {
     const closes = sells.get(lotId) ?? [];
     const realized = closes.reduce<number | null>(
-      (total, sell) =>
-        sell.profit_realized === undefined ? total : (total ?? 0) + sell.profit_realized,
+      (total, sell) => (sell.pnl === undefined ? total : (total ?? 0) + sell.pnl),
       null,
     );
     cycles.push({ lotId, buy, sells: closes, realized, open: closes.length === 0 });
@@ -70,38 +66,15 @@ export function buildCycles(executions: BacktestExecution[]): TradeCycle[] {
   return cycles;
 }
 
-/** The lot id an execution belongs to. */
-export function lotIdOf(execution: BacktestExecution): string {
-  if (execution.type === "SELL" && execution.matched_buy_id) return execution.matched_buy_id;
-  // "SIM-000008-buy-235" -> "SIM-000008". Split on the LAST occurrence,
-  // since a lot id could itself contain the separator.
-  const marker = execution.type === "BUY" ? "-buy-" : "-sell-";
-  const index = execution.order_id.lastIndexOf(marker);
-  return index === -1 ? execution.order_id : execution.order_id.slice(0, index);
-}
-
 /**
- * Which lots are still open, from the executions alone.
- *
- * Derived rather than read from a field, because the engine does not
- * mark an execution as belonging to an open lot -- open is simply the
- * absence of a matching sell.
+ * Which lots are still open, from the fills alone -- open is simply the
+ * absence of a matching sell; the engine does not mark it.
  */
-export function openLotIds(executions: BacktestExecution[]): Set<string> {
-  const closed = new Set<string>();
-  for (const execution of executions) {
-    if (execution.type === "SELL" && execution.matched_buy_id) {
-      closed.add(execution.matched_buy_id);
-    }
-  }
-  const open = new Set<string>();
-  for (const execution of executions) {
-    if (execution.type === "BUY") {
-      const lotId = lotIdOf(execution);
-      if (!closed.has(lotId)) open.add(lotId);
-    }
-  }
-  return open;
+export function openLotIds(fills: Fill[]): Set<string> {
+  const closed = new Set(fills.filter((fill) => fill.side === "SELL").map((fill) => fill.lot));
+  return new Set(
+    fills.filter((fill) => fill.side === "BUY" && !closed.has(fill.lot)).map((fill) => fill.lot),
+  );
 }
 
 function withinRange(timestamp: string, range: DateRange): boolean {
@@ -113,39 +86,34 @@ function withinRange(timestamp: string, range: DateRange): boolean {
   return true;
 }
 
-function matchesStatus(
-  execution: BacktestExecution,
-  status: OrderStatusFilter,
-  open: Set<string>,
-): boolean {
+function matchesStatus(fill: Fill, status: OrderStatusFilter, open: Set<string>): boolean {
   if (status === "all") return true;
-  const isOpen = open.has(lotIdOf(execution));
+  const isOpen = open.has(fill.lot);
   return status === "stuck" ? isOpen : !isOpen;
 }
 
-function matchesRsi(execution: BacktestExecution, min: number | null, max: number | null): boolean {
+function matchesRsi(fill: Fill, min: number | null, max: number | null): boolean {
   if (min === null && max === null) return true;
-  // UNKNOWN IS NOT IN RANGE. An execution inside the indicator's warmup
-  // has no RSI, and including it in an "RSI < 30" query would claim the
+  // UNKNOWN IS NOT IN RANGE. A fill inside the indicator's warmup has no
+  // RSI, and including it in an "RSI < 30" query would claim the
   // strategy entered on a reading that did not exist.
-  if (execution.rsi_at_entry === undefined) return false;
-  if (min !== null && execution.rsi_at_entry < min) return false;
-  if (max !== null && execution.rsi_at_entry > max) return false;
+  if (fill.rsi === undefined) return false;
+  if (min !== null && fill.rsi < min) return false;
+  if (max !== null && fill.rsi > max) return false;
   return true;
 }
 
-/** Apply every filter. Order is irrelevant; all are conjunctive. */
-export function filterExecutions(
-  executions: BacktestExecution[],
-  filters: ExecutionFilters,
-): BacktestExecution[] {
-  const open = openLotIds(executions);
-  return executions.filter(
-    (execution) =>
-      withinRange(execution.timestamp, filters.range) &&
-      matchesStatus(execution, filters.status, open) &&
-      matchesRsi(execution, filters.rsiMin, filters.rsiMax) &&
-      (filters.tickers.length === 0 || filters.tickers.includes(execution.ticker)),
+/**
+ * Apply every filter. Order is irrelevant; all are conjunctive. The fills
+ * are one fund's already -- `filters.tickers` picks the fund, not rows.
+ */
+export function filterExecutions(fills: Fill[], filters: ExecutionFilters): Fill[] {
+  const open = openLotIds(fills);
+  return fills.filter(
+    (fill) =>
+      withinRange(fill.ts, filters.range) &&
+      matchesStatus(fill, filters.status, open) &&
+      matchesRsi(fill, filters.rsiMin, filters.rsiMax),
   );
 }
 
@@ -288,16 +256,14 @@ export function sameNumber(a: number, b: number): boolean {
  * argument such as `ticker`.
  */
 export function historyFieldValue(row: HistoryRow, key: string): number | null {
-  if (key === "grid_step") return row.grid_step === null ? null : row.grid_step * 100;
-  if (key === "profit_target") {
-    return row.profit_target === null ? null : row.profit_target * 100;
-  }
+  if (key === "grid_step") return row.grid === null ? null : row.grid * 100;
+  if (key === "profit_target") return row.target === null ? null : row.target * 100;
   if (key.startsWith("param:")) {
-    const raw = row.strategy_params?.[key.slice("param:".length)];
+    const raw = row.params[key.slice("param:".length)];
     return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
   }
   if (key.startsWith("metric:")) {
-    const raw = row.metrics[key.slice("metric:".length) as keyof FundPerformanceMetrics];
+    const raw = row.m[key.slice("metric:".length) as keyof Metrics];
     return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
   }
   return null;
@@ -364,13 +330,13 @@ export function filterHistoryRows(
     if (filters.tickers.length > 0 && !filters.tickers.includes(row.ticker)) return false;
     if (
       filters.models.length > 0 &&
-      !(row.sizing_model !== null && filters.models.includes(row.sizing_model))
+      !(row.model !== null && filters.models.includes(row.model))
     ) {
       return false;
     }
     if (
       filters.fillModels.length > 0 &&
-      !(row.fill_model !== null && filters.fillModels.includes(row.fill_model))
+      !(row.fill !== null && filters.fillModels.includes(row.fill))
     ) {
       return false;
     }
@@ -393,7 +359,7 @@ export interface HistoryFieldOption {
 
 /** The curated result metrics offered as range filters, in the order
  * the table shows them. */
-export const HISTORY_METRIC_FIELDS: { key: keyof FundPerformanceMetrics; label: string }[] = [
+export const HISTORY_METRIC_FIELDS: { key: keyof Metrics; label: string }[] = [
   { key: "net_yield_pct", label: "Net yield %" },
   { key: "cagr_pct", label: "CAGR %" },
   { key: "worst_year_pct", label: "Worst year %" },
@@ -466,7 +432,7 @@ export function nextRunHistorySort(
 /** One column's raw sortable value off a row. Distinct from
  * `historyFieldValue` above (which percent-scales and namespaces a
  * field for the FILTER inputs) -- this is the bare value the column
- * itself displays. `metric` reads whichever `FundPerformanceMetrics`
+ * itself displays. `metric` reads whichever `Metrics`
  * key the "Rank by" dropdown currently has selected, so the dynamic
  * metric column sorts by whatever it is showing. `now` (epoch seconds)
  * is what `saved_at` falls back to when a row doesn't have one -- see
@@ -474,11 +440,11 @@ export function nextRunHistorySort(
 function runHistoryColumnValue(
   row: HistoryRow,
   column: RunHistoryColumn,
-  metric: keyof FundPerformanceMetrics,
+  metric: keyof Metrics,
   now: number,
 ): string | number | null {
-  const metricValue = (key: keyof FundPerformanceMetrics): number | null => {
-    const value = row.metrics[key];
+  const metricValue = (key: keyof Metrics): number | null => {
+    const value = row.m[key];
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   };
   switch (column) {
@@ -487,11 +453,11 @@ function runHistoryColumnValue(
     case "ticker":
       return row.ticker;
     case "grid_step":
-      return row.grid_step;
+      return row.grid;
     case "profit_target":
-      return row.profit_target;
+      return row.target;
     case "sizing_model":
-      return row.sizing_model;
+      return row.model;
     case "metric":
       return metricValue(metric);
     case "cagr_pct":
@@ -505,7 +471,7 @@ function runHistoryColumnValue(
     case "window":
       return row.start;
     case "run_id":
-      return row.run_id;
+      return row.run;
     case "saved_at":
       // A row with no recorded save time is treated as having happened
       // NOW -- the caller's own stated rule, not "unknown" -- so it
@@ -541,7 +507,7 @@ function compareRunHistoryValues(
 export function sortHistoryRows(
   rows: HistoryRow[],
   sort: RunHistorySort | null,
-  metric: keyof FundPerformanceMetrics,
+  metric: keyof Metrics,
 ): HistoryRow[] {
   if (!sort) return rows;
   // Computed once per sort, not once per row/comparison, so every row
@@ -578,7 +544,7 @@ export function historyInputFields(rows: HistoryRow[]): HistoryFieldOption[] {
 
   const paramKeys = new Set<string>();
   for (const row of rows) {
-    for (const [name, value] of Object.entries(row.strategy_params ?? {})) {
+    for (const [name, value] of Object.entries(row.params)) {
       if (typeof value === "number" && Number.isFinite(value)) paramKeys.add(name);
     }
   }

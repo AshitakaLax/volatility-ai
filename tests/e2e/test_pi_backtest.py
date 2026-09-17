@@ -41,8 +41,8 @@ import pytest
 SMALL_RUN = {
     "tickers": ["TQQQ"],
     "grid_steps": [0.005, 0.01],
-    "profit_targets": [0.003, 0.005],
-    "sizing_model": "fixed",
+    "targets": [0.003, 0.005],
+    "model": "fixed",
     "limit": 20_000,
 }
 
@@ -83,14 +83,13 @@ class TestTheDeploymentIsWhatWeThinkItIs:
     def test_backtests_are_forwarded_not_run_on_the_pi(self, client):
         """The Pi has four cores and one of them is placing orders."""
         health = client.get("/api/health").json()
-        assert health["backtest_local"] is False
-        assert health["backtest_upstream"], "no engine host configured"
+        assert health["upstream"], "no engine host configured"
 
     def test_the_engine_host_has_data_the_pi_does_not(self, client):
         """Proof the forwarding reaches the other machine: the Pi's own
         data directory holds TQQQ alone."""
         funds = client.get("/api/backtest/funds").json()["funds"]
-        available = {fund["ticker"] for fund in funds if fund["available"]}
+        available = {fund["ticker"] for fund in funds if fund["ok"]}
         assert "TQQQ" in available
         assert len(available) > 1, f"only {available} — is this the Pi's own data?"
 
@@ -99,13 +98,13 @@ class TestARunCompletesThroughTheWholeChain:
     def test_a_submitted_run_finishes_and_carries_the_contract(self, client):
         submitted = client.post("/api/backtest/runs", json=SMALL_RUN)
         assert submitted.status_code == 202, submitted.text
-        run_id = submitted.json()["run_id"]
+        run_id = submitted.json()["id"]
 
         finished = wait_for(client, run_id)
         assert finished["status"] == "complete", finished.get("error")
 
         report = finished["report"]
-        assert report["run_id"] == run_id, "the report was not stamped with its own id"
+        assert report["id"] == run_id, "the report was not stamped with its own id"
         fund = report["funds"]["TQQQ"]
 
         # Every metric the UI panel reads, including the ones added for
@@ -122,26 +121,23 @@ class TestARunCompletesThroughTheWholeChain:
             "capital_velocity_index",
             "total_trades",
         ):
-            assert key in fund["metrics"], f"metrics is missing {key}"
+            assert key in fund["cells"][0]["m"], f"metrics is missing {key}"
 
         # 2 steps x 2 targets. The sweep matrix needs all of them.
-        assert len(fund["configurations"]) == 4
+        assert len(fund["cells"]) == 4
 
-        # And the executions carry what the chart's cycle connectors
-        # join on -- the reason the blotter was given lot identity.
-        sells = [e for e in fund["executions"] if e["type"] == "SELL"]
-        buys = {
-            e["order_id"].rsplit("-buy-", 1)[0] for e in fund["executions"] if e["type"] == "BUY"
-        }
+        # And the fills carry what the chart's cycle connectors join on --
+        # the reason the blotter was given lot identity.
+        sells = [e for e in fund["fills"] if e["side"] == "SELL"]
+        buys = {e["lot"] for e in fund["fills"] if e["side"] == "BUY"}
         if sells:
-            assert all("matched_buy_id" in sell for sell in sells)
-            assert {sell["matched_buy_id"] for sell in sells} <= buys
+            assert {sell["lot"] for sell in sells} <= buys
 
     def test_progress_is_reported_between_start_and_finish(self, client):
         """A bar that only ever shows 0% then 100% is not a progress
         bar. This is the case that was broken until progress became
         per-combination rather than per-ticker."""
-        run_id = client.post("/api/backtest/runs", json=SMALL_RUN).json()["run_id"]
+        run_id = client.post("/api/backtest/runs", json=SMALL_RUN).json()["id"]
 
         fractions: set[float] = set()
         deadline = time.time() + 180
@@ -164,24 +160,23 @@ class TestARunCompletesThroughTheWholeChain:
     def test_a_completed_run_reaches_history(self, client):
         """History is written on the workstation and read back through
         the Pi, so this covers persistence AND the forwarding of it."""
-        before = client.get("/api/backtest/history").json()
-        run_id = client.post("/api/backtest/runs", json=SMALL_RUN).json()["run_id"]
+        run_id = client.post("/api/backtest/runs", json=SMALL_RUN).json()["id"]
         wait_for(client, run_id)
 
         after = client.get("/api/backtest/history").json()
-        assert after["runs"] > before["runs"]
-        rows = [row for row in after["rows"] if row["run_id"] == run_id]
+        assert run_id in after["runs"]
+        rows = [row for row in after["rows"] if row["run"] == run_id]
         assert len(rows) == 4, "the sweep's four cells are not all in history"
         assert all(row["ticker"] == "TQQQ" for row in rows)
         # Rankable: the fields the history table sorts on are present.
-        assert all("cagr_pct" in row["metrics"] for row in rows)
+        assert all("cagr_pct" in row["m"] for row in rows)
 
     def test_a_stored_run_can_be_reopened(self, client):
-        run_id = client.post("/api/backtest/runs", json=SMALL_RUN).json()["run_id"]
+        run_id = client.post("/api/backtest/runs", json=SMALL_RUN).json()["id"]
         wait_for(client, run_id)
-        reopened = client.get(f"/api/backtest/history/{run_id}")
+        reopened = client.get(f"/api/backtest/runs/{run_id}")
         assert reopened.status_code == 200
-        assert reopened.json()["report"]["funds"]["TQQQ"]["metrics"]["total_trades"] >= 0
+        assert reopened.json()["report"]["funds"]["TQQQ"]["cells"][0]["m"]["total_trades"] >= 0
 
 
 class TestFailuresSurfaceRatherThanHang:
@@ -190,7 +185,7 @@ class TestFailuresSurfaceRatherThanHang:
         then die in the worker complaining about a results column."""
         response = client.post(
             "/api/backtest/runs",
-            json={**SMALL_RUN, "sizing_model": "not_a_strategy"},
+            json={**SMALL_RUN, "model": "not_a_strategy"},
         )
         assert response.status_code == 400
         assert "Known strategies" in response.json()["detail"]
@@ -200,8 +195,8 @@ class TestFailuresSurfaceRatherThanHang:
             "/api/backtest/runs",
             json={
                 **SMALL_RUN,
-                "sizing_model": "bell_curve",
-                "strategy_params": {"lookback_days": 20},
+                "model": "bell_curve",
+                "params": {"lookback_days": 20},
             },
         )
         assert response.status_code == 400
@@ -210,14 +205,14 @@ class TestFailuresSurfaceRatherThanHang:
     def test_every_offered_sizing_model_can_actually_run(self, client):
         """The dropdown offers these, so every one must be submittable.
         Four of the five were not, which is the bug that started this."""
-        details = client.get("/api/backtest/funds").json()["sizing_details"]
-        for model in details:
+        models = client.get("/api/backtest/funds").json()["models"]
+        for model in models:
             # This model estimates P(reaching ONE target), so the engine
             # refuses to sweep several against it.
-            targets = [0.005] if model == "bayesian_dual_scale" else SMALL_RUN["profit_targets"]
+            targets = [0.005] if model == "bayesian_dual_scale" else SMALL_RUN["targets"]
             response = client.post(
                 "/api/backtest/runs",
-                json={**SMALL_RUN, "sizing_model": model, "profit_targets": targets},
+                json={**SMALL_RUN, "model": model, "targets": targets},
             )
             assert response.status_code == 202, (
                 f"{model}: {response.status_code} {response.text[:160]}"
@@ -255,9 +250,9 @@ class TestItCannotTouchTheTradingLoop:
     def test_live_state_is_readable_without_being_written(self, client):
         """Read-only by construction on the server; asserted here as the
         behaviour a reader depends on."""
-        stores = client.get("/api/live/stores").json()["stores"]
+        stores = client.get("/api/live/stores").json()
         assert stores, "the Pi reports no ledger stores"
-        state = client.get("/api/live/state", params={"path": stores[0]["path"]})
+        state = client.get("/api/live/state", params={"path": stores[0]})
         assert state.status_code == 200
         assert "lots" in state.json()
 
@@ -377,28 +372,30 @@ class TestTheBrowserActuallyRendersIt:
 def test_the_run_payload_matches_the_documented_contract(client):
     """One last check on shape, so a field renamed on the server is
     caught here rather than as a blank column in the UI."""
-    run_id = client.post("/api/backtest/runs", json=SMALL_RUN).json()["run_id"]
+    run_id = client.post("/api/backtest/runs", json=SMALL_RUN).json()["id"]
     report = wait_for(client, run_id)["report"]
 
-    assert set(report) >= {"run_id", "parameters", "timeframe", "funds"}
-    assert set(report["parameters"]) >= {
-        "grid_step_pct",
-        "profit_target_pct",
-        "sizing_model",
-        "fill_model",
-        "enforce_no_loss",
-        "n_jobs",
+    assert set(report) >= {
+        "id",
+        "name",
+        "model",
+        "fill",
+        "no_loss",
+        "params",
+        "grid",
+        "target",
+        "jobs",
+        "start",
+        "end",
+        "interval",
+        "funds",
     }
     fund = report["funds"]["TQQQ"]
-    assert set(fund) >= {"metrics", "executions", "equity_curve", "configurations", "bars"}
-    assert set(fund["equity_curve"]) == {"dates", "equity", "normalized"}
-    # Parallel arrays, which the overlay chart indexes together.
-    curve = fund["equity_curve"]
-    assert len(curve["dates"]) == len(curve["equity"]) == len(curve["normalized"])
-    # Rebased to 100 at the first point -- the whole basis of comparing
-    # two funds on one axis.
-    if curve["normalized"]:
-        assert curve["normalized"][0] == pytest.approx(100.0)
+    assert set(fund) == {"cells", "fills", "equity", "bars"}
+    # Parallel arrays, which the overlay chart indexes together (and
+    # rebases to 100 client-side).
+    assert set(fund["equity"]) == {"dates", "equity"}
+    assert len(fund["equity"]["dates"]) == len(fund["equity"]["equity"])
 
 
 def test_the_suite_points_somewhere_explicit(base_url):

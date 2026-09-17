@@ -7,13 +7,12 @@
  */
 import { describe, expect, it } from "vitest";
 
-import type { SweepConfiguration } from "@/types/backtest";
+import type { Cell } from "@/types/backtest";
 
 import { configurationKey, configurationLabel, describeSweepAxes } from "./sweepSummary";
 
 function metrics(cagr = 0) {
   return {
-    ticker: "TQQQ",
     net_yield_pct: 0,
     cagr_pct: cagr,
     max_drawdown_pct: 0,
@@ -34,53 +33,53 @@ function metrics(cagr = 0) {
   };
 }
 
-function config(over: Partial<SweepConfiguration> = {}): SweepConfiguration {
+function config(over: Partial<Cell> = {}): Cell {
   return {
-    grid_step: 0.01,
-    profit_target: 0.005,
-    strategy_params: {},
-    metrics: metrics(),
+    grid: 0.01,
+    target: 0.005,
+    params: {},
+    m: metrics(),
     ...over,
   };
 }
 
 describe("configurationKey", () => {
   it("two cells sharing a strategy_params combo but differing grid_step/profit_target do NOT collide", () => {
-    const a = config({ grid_step: 0.01, strategy_params: { lookback_days: 10 } });
-    const b = config({ grid_step: 0.02, strategy_params: { lookback_days: 10 } });
+    const a = config({ grid: 0.01, params: { lookback_days: 10 } });
+    const b = config({ grid: 0.02, params: { lookback_days: 10 } });
     expect(configurationKey(a)).not.toBe(configurationKey(b));
   });
 
   it("is stable regardless of strategy_params key insertion order", () => {
-    const a = config({ strategy_params: { a: 1, b: 2 } });
-    const b = config({ strategy_params: { b: 2, a: 1 } });
+    const a = config({ params: { a: 1, b: 2 } });
+    const b = config({ params: { b: 2, a: 1 } });
     expect(configurationKey(a)).toBe(configurationKey(b));
   });
 
   it("handles an empty strategy_params", () => {
-    expect(() => configurationKey(config({ strategy_params: {} }))).not.toThrow();
+    expect(() => configurationKey(config({ params: {} }))).not.toThrow();
   });
 
   it("identical cells produce the same key", () => {
-    const a = config({ grid_step: 0.02, profit_target: 0.01, strategy_params: { x: 5 } });
-    const b = config({ grid_step: 0.02, profit_target: 0.01, strategy_params: { x: 5 } });
+    const a = config({ grid: 0.02, target: 0.01, params: { x: 5 } });
+    const b = config({ grid: 0.02, target: 0.01, params: { x: 5 } });
     expect(configurationKey(a)).toBe(configurationKey(b));
   });
 });
 
 describe("configurationLabel", () => {
   it("includes step and target as percents", () => {
-    expect(configurationLabel(config({ grid_step: 0.01, profit_target: 0.005 }))).toContain(
+    expect(configurationLabel(config({ grid: 0.01, target: 0.005 }))).toContain(
       "step 1.00%",
     );
-    expect(configurationLabel(config({ grid_step: 0.01, profit_target: 0.005 }))).toContain(
+    expect(configurationLabel(config({ grid: 0.01, target: 0.005 }))).toContain(
       "target 0.50%",
     );
   });
 
   it("appends the strategy_params combo when present, omits it when empty", () => {
-    expect(configurationLabel(config({ strategy_params: {} }))).not.toContain("=");
-    expect(configurationLabel(config({ strategy_params: { lookback_days: 10 } }))).toContain(
+    expect(configurationLabel(config({ params: {} }))).not.toContain("=");
+    expect(configurationLabel(config({ params: { lookback_days: 10 } }))).toContain(
       "lookback_days=10",
     );
   });
@@ -89,9 +88,9 @@ describe("configurationLabel", () => {
 describe("describeSweepAxes", () => {
   it("a grid-step-only sweep reports one axis and omits profit_target", () => {
     const configs = [
-      config({ grid_step: 0.01 }),
-      config({ grid_step: 0.02 }),
-      config({ grid_step: 0.03 }),
+      config({ grid: 0.01 }),
+      config({ grid: 0.02 }),
+      config({ grid: 0.03 }),
     ];
     const summary = describeSweepAxes(configs);
     expect(summary.configurationCount).toBe(3);
@@ -101,8 +100,8 @@ describe("describeSweepAxes", () => {
 
   it("adding a swept strategy param adds a second axis", () => {
     const configs = [
-      config({ grid_step: 0.01, strategy_params: { lookback_days: 10 } }),
-      config({ grid_step: 0.02, strategy_params: { lookback_days: 20 } }),
+      config({ grid: 0.01, params: { lookback_days: 10 } }),
+      config({ grid: 0.02, params: { lookback_days: 20 } }),
     ];
     const summary = describeSweepAxes(configs);
     expect(summary.axes.map((axis) => axis.key).sort()).toEqual(["grid_step", "lookback_days"]);
@@ -122,15 +121,15 @@ describe("describeSweepAxes", () => {
 
   it("sorts a non-numeric strategy-param axis lexicographically", () => {
     const configs = [
-      config({ strategy_params: { vol_measure: "range" } }),
-      config({ strategy_params: { vol_measure: "stdev" } }),
+      config({ params: { vol_measure: "range" } }),
+      config({ params: { vol_measure: "stdev" } }),
     ];
     const axis = describeSweepAxes(configs).axes.find((entry) => entry.key === "vol_measure")!;
     expect(axis.values).toEqual(["range", "stdev"]);
   });
 
   it("a strategy param present on only some cells is still detected", () => {
-    const configs = [config({ strategy_params: {} }), config({ strategy_params: { extra: 5 } })];
+    const configs = [config({ params: {} }), config({ params: { extra: 5 } })];
     // extra has only one DISTINCT value across the cells that carry it
     // (5), so it is not reported as a swept axis -- only one value ever
     // appears, regardless of how many cells omit the key entirely.

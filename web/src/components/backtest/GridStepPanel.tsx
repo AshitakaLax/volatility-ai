@@ -3,7 +3,7 @@ import { Checkbox, Input, Select } from "@/components/ui/primitives";
 import type { GridStepResult } from "@/lib/gridSteps";
 import type { SweepFieldState } from "@/lib/sweepStrategies";
 import { cn } from "@/lib/utils";
-import type { GridTrigger, GridTriggerMethod, ValidateError } from "@/types/backtest";
+import type { Trigger, TriggerMethod, ValidateError } from "@/types/backtest";
 
 /**
  * The "Grid step" cluster: an "enable sweep" checkbox (Fixed value, or a
@@ -15,12 +15,12 @@ import type { GridTrigger, GridTriggerMethod, ValidateError } from "@/types/back
  * Fully controlled -- it owns no state.
  */
 
-const METHOD_LABEL: Record<GridTriggerMethod, string> = {
+const METHOD_LABEL: Record<TriggerMethod, string> = {
   last_buy: "Last buy price",
   local_reference: "Local reference (rolling high)",
   regime_widened: "Last buy price, regime-widened",
 };
-const METHOD_HELP: Record<GridTriggerMethod, string> = {
+const METHOD_HELP: Record<TriggerMethod, string> = {
   last_buy: "Buy when price falls one step below the last fill.",
   local_reference:
     "Buy on a step-sized pullback from max(last fill, N-day high) — re-fires on local dips, not only on a fresh low.",
@@ -38,10 +38,10 @@ interface Props {
   /** Resolved list + client errors for the CURRENT mode (Fixed or Sweep). */
   gridSteps: GridStepResult;
 
-  trigger: GridTrigger;
+  trigger: Trigger;
   /** The effective method (already resolved to methods[0] when locked). */
-  method: GridTriggerMethod;
-  onMethodChange: (method: GridTriggerMethod) => void;
+  method: TriggerMethod;
+  onMethodChange: (method: TriggerMethod) => void;
   /** The rolling-high window value + its errors (only when the model
    * has a window_param and local_reference is active). */
   windowValue: string;
@@ -66,7 +66,7 @@ export function GridStepPanel({
   disabled,
 }: Props) {
   const locked = trigger.methods.length === 1;
-  const showWindow = method === "local_reference" && trigger.window_param !== null;
+  const showWindow = method === "local_reference" && trigger.window !== undefined;
   const pct = (fraction: number) => `${Number((fraction * 100).toFixed(4))}%`;
 
   return (
@@ -120,7 +120,7 @@ export function GridStepPanel({
         className="w-44"
         value={method}
         disabled={disabled || locked}
-        onChange={(event) => onMethodChange(event.currentTarget.value as GridTriggerMethod)}
+        onChange={(event) => onMethodChange(event.currentTarget.value as TriggerMethod)}
       >
         {trigger.methods.map((option) => (
           <option key={option} value={option}>
@@ -153,7 +153,7 @@ export function GridStepPanel({
           ) : null}
           {windowErrors.map((error, index) => (
             <span key={index} className="max-w-64 text-[11px] leading-tight text-loss">
-              {error.message}
+              {error.msg}
             </span>
           ))}
         </div>

@@ -78,12 +78,12 @@ export function RunHistoryFilterBar({ rows, filters, onChange, showing, total }:
   );
   const models = useMemo(
     () =>
-      [...new Set(rows.map((row) => row.sizing_model).filter((v): v is string => Boolean(v)))].sort(),
+      [...new Set(rows.map((row) => row.model).filter((v): v is string => Boolean(v)))].sort(),
     [rows],
   );
   const fills = useMemo(
     () =>
-      [...new Set(rows.map((row) => row.fill_model).filter((v): v is string => Boolean(v)))].sort(),
+      [...new Set(rows.map((row) => row.fill).filter((v): v is string => Boolean(v)))].sort(),
     [rows],
   );
   const inputFields = useMemo(() => historyInputFields(rows), [rows]);

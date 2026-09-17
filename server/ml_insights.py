@@ -66,18 +66,18 @@ def _read_json(path: Path, *, missing_hint: str) -> dict[str, Any]:
 
 
 @router.get("/sources")
-def sources() -> dict[str, Any]:
-    """The public data inventory: what was fetched, and how much of it."""
+def sources() -> list[dict[str, Any]]:
+    """The public data inventory: what was fetched, and how much of it.
+
+    Sorted by (category, provider, remote_id). The series count and the
+    per-category tally are the client's to count, not a second payload.
+    """
     manifest = _read_json(
         EXTERNAL_DIR / "manifest.json",
         missing_hint="python tools/fetch_market_inputs.py",
     )
 
-    by_category: dict[str, int] = {}
-    for entry in manifest.values():
-        by_category[entry["category"]] = by_category.get(entry["category"], 0) + 1
-
-    series = sorted(
+    return sorted(
         (
             {
                 "key": key,
@@ -95,16 +95,11 @@ def sources() -> dict[str, Any]:
         key=lambda row: (row["category"], row["provider"], row["remote_id"]),
     )
 
-    return {
-        "total_series": len(manifest),
-        "by_category": dict(sorted(by_category.items())),
-        "series": series,
-    }
-
 
 @router.get("/datasets")
 def datasets() -> dict[str, Any]:
-    """Per-ticker training sets: size, coverage, and label base rates."""
+    """Per-ticker training sets, keyed by ticker: size, coverage, and label
+    base rates."""
     schema = _read_json(
         ML_DIR / "schema.json",
         missing_hint="python tools/build_ml_dataset.py --tickers RSP COWZ SPYD",
@@ -123,7 +118,7 @@ def datasets() -> dict[str, Any]:
             "features_below_half": entry["features_below_half"],
             "base_rate": entry["base_rate"],
         }
-    return {"tickers": tickers}
+    return tickers
 
 
 @router.get("/evaluation")
@@ -135,22 +130,20 @@ def evaluation(label: str = "reached_t0.5_h390") -> dict[str, Any]:
     someone has actually run tools/evaluate_ml_features.py for exist;
     others 404 naming the command.
     """
-    payload = _read_json(
+    return _read_json(
         ML_DIR / f"evaluation_{label}.json",
         missing_hint=f"python tools/evaluate_ml_features.py --label {label}",
     )
-    return {"label": label, "tickers": payload}
 
 
-@router.get("/evaluation/available")
-def evaluation_available() -> dict[str, Any]:
+@router.get("/labels")
+def labels() -> list[str]:
     """Which labels have a saved evaluation, so the UI can offer only those."""
     if not ML_DIR.exists():
-        return {"labels": []}
-    labels = sorted(
+        return []
+    return sorted(
         path.stem.removeprefix("evaluation_") for path in ML_DIR.glob("evaluation_*.json")
     )
-    return {"labels": labels}
 
 
 @router.get("/ablation")
@@ -165,7 +158,12 @@ def ablation(label: str = "reached_t0.5_h390") -> dict[str, Any]:
         ML_DIR / f"ablation_{label}.json",
         missing_hint=f"python tools/ablate_ml_features.py --label {label}",
     )
-    return {"label": label, "tickers": payload}
+    # consistent_count / total_blocks are counts over `blocks` -- the
+    # client's to count, not fields to keep in step with the list.
+    return {
+        ticker: {k: v for k, v in entry.items() if k not in ("consistent_count", "total_blocks")}
+        for ticker, entry in payload.items()
+    }
 
 
-__all__ = ["ablation", "datasets", "evaluation", "evaluation_available", "router", "sources"]
+__all__ = ["ablation", "datasets", "evaluation", "labels", "router", "sources"]

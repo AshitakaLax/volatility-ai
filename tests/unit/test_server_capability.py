@@ -308,7 +308,7 @@ class TestAppDefaults:
         # A real API route answers as itself, not with the app shell.
         health = client.get("/api/health")
         assert health.status_code == 200
-        assert health.json()["status"] == "ok"
+        assert "caps" in health.json()
 
         # An API route that needs arguments still reaches its own
         # validation rather than being handed HTML.
@@ -335,7 +335,7 @@ class TestAppDefaults:
         with the deployment it is talking to."""
         from server.app import health
 
-        capabilities = health()["capabilities"]
-        assert capabilities["halt"] is True
-        assert capabilities["liquidate"] is False
-        assert capabilities["parameter_override"] is False
+        caps = health()["caps"]
+        assert "halt" in caps
+        assert "liquidate" not in caps
+        assert "parameter_override" not in caps

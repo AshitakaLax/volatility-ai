@@ -6,11 +6,9 @@
  * logic behind BacktestResult's sweep-summary section and configuration
  * list, covered in sweepSummary.test.ts.
  */
-import type { ParamValue, SweepConfiguration } from "@/types/backtest";
+import type { Cell, ParamValue } from "@/types/backtest";
 
-function sortedParamEntries(
-  params: SweepConfiguration["strategy_params"],
-): [string, ParamValue][] {
+function sortedParamEntries(params: Cell["params"]): [string, ParamValue][] {
   return Object.entries(params ?? {}).sort(([a], [b]) => a.localeCompare(b));
 }
 
@@ -27,18 +25,18 @@ function sortedParamEntries(
  * combo's HEATMAP SLICE to show) does not need to avoid, but this one
  * does: it identifies one exact cell, not a slice of many.
  */
-export function configurationKey(config: SweepConfiguration): string {
+export function configurationKey(config: Cell): string {
   return JSON.stringify([
-    config.grid_step,
-    config.profit_target,
-    sortedParamEntries(config.strategy_params),
+    config.grid,
+    config.target,
+    sortedParamEntries(config.params),
   ]);
 }
 
 /** A human-readable label for one configuration. */
-export function configurationLabel(config: SweepConfiguration): string {
-  const base = `step ${(config.grid_step * 100).toFixed(2)}% · target ${(config.profit_target * 100).toFixed(2)}%`;
-  const entries = sortedParamEntries(config.strategy_params);
+export function configurationLabel(config: Cell): string {
+  const base = `step ${((config.grid ?? 0) * 100).toFixed(2)}% · target ${((config.target ?? 0) * 100).toFixed(2)}%`;
+  const entries = sortedParamEntries(config.params);
   if (entries.length === 0) return base;
   return `${base} · ${entries.map(([key, value]) => `${key}=${value}`).join(", ")}`;
 }
@@ -83,27 +81,31 @@ export function sortValues(values: ParamValue[]): ParamValue[] {
  * Every axis actually varied across `configurations` -- the top of the
  * "sweep summary" section reads straight off this.
  */
-export function describeSweepAxes(configurations: SweepConfiguration[]): SweepSummary {
+export function describeSweepAxes(configurations: Cell[]): SweepSummary {
   const axes: SweepAxis[] = [];
 
-  const gridSteps = distinct(configurations.map((config) => config.grid_step));
+  const gridSteps = distinct(
+    configurations.map((config) => config.grid).filter((value) => value !== null),
+  );
   if (gridSteps.length > 1) {
     axes.push({ key: "grid_step", label: "Grid step", values: sortValues(gridSteps) });
   }
 
-  const profitTargets = distinct(configurations.map((config) => config.profit_target));
+  const profitTargets = distinct(
+    configurations.map((config) => config.target).filter((value) => value !== null),
+  );
   if (profitTargets.length > 1) {
     axes.push({ key: "profit_target", label: "Profit target", values: sortValues(profitTargets) });
   }
 
   const paramNames = new Set<string>();
   for (const config of configurations) {
-    for (const name of Object.keys(config.strategy_params ?? {})) paramNames.add(name);
+    for (const name of Object.keys(config.params)) paramNames.add(name);
   }
   for (const name of [...paramNames].sort()) {
     const values = distinct(
       configurations
-        .map((config) => config.strategy_params?.[name])
+        .map((config) => config.params[name])
         .filter((value): value is ParamValue => value !== undefined),
     );
     if (values.length > 1) {

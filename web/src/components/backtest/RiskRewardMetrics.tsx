@@ -2,7 +2,7 @@ import { AlertTriangle, Gauge, TrendingUp } from "lucide-react";
 
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { cn, pct, usd } from "@/lib/utils";
-import type { FundPerformanceMetrics } from "@/types/backtest";
+import type { Metrics } from "@/types/backtest";
 
 /**
  * The performance panel: traditional risk/reward, then the grid-specific
@@ -16,7 +16,7 @@ import type { FundPerformanceMetrics } from "@/types/backtest";
  */
 
 interface Props {
-  metrics: FundPerformanceMetrics;
+  metrics: Metrics;
   /** Buy-and-hold for the same window, when known. The bar that matters. */
   benchmarkCagr?: number | null;
 }

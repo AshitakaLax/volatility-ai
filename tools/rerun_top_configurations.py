@@ -98,29 +98,28 @@ def collect(runs: list[dict]) -> tuple[list[str], dict[str, list[dict]]]:
 
     for run in runs:
         report = run.get("report") or {}
-        parameters = report.get("parameters") or {}
-        model = parameters.get("sizing_model")
+        model = report.get("model")
         funds = report.get("funds") or {}
         if not funds:
-            partial.append(run["run_id"])
+            partial.append(run["id"])
             continue
 
         run_is_full = all(
             is_full(ticker, (fund.get("bars") or {}).get("count")) for ticker, fund in funds.items()
         )
         if not run_is_full:
-            partial.append(run["run_id"])
+            partial.append(run["id"])
 
         if not model:
             continue
         for ticker, fund in funds.items():
-            for cell in fund.get("configurations") or []:
-                metrics = cell.get("metrics") or {}
+            for cell in fund.get("cells") or []:
+                metrics = cell.get("m") or {}
                 if not metrics.get("total_trades"):
                     # Never traded. It would occupy a ranking slot
                     # without having done anything.
                     continue
-                step, target = cell.get("grid_step"), cell.get("profit_target")
+                step, target = cell.get("grid"), cell.get("target")
                 if step is None or target is None:
                     continue
                 key = (ticker, round(step, 8), round(target, 8))
@@ -180,9 +179,9 @@ def screen(model: str, bars: int, have: list[dict]) -> list[dict]:
                 {
                     "tickers": [SCREEN_TICKER],
                     "grid_steps": steps,
-                    "profit_targets": targets,
-                    "sizing_model": model,
-                    "strategy_params": STRATEGY_DEFAULTS.get(model, {}),
+                    "targets": targets,
+                    "model": model,
+                    "params": STRATEGY_DEFAULTS.get(model, {}),
                     "limit": bars,
                 },
                 lambda fraction, note: None,
@@ -192,19 +191,19 @@ def screen(model: str, bars: int, have: list[dict]) -> list[dict]:
             continue
 
         fund = report["funds"][SCREEN_TICKER]
-        for cell in fund.get("configurations") or []:
-            metrics = cell.get("metrics") or {}
+        for cell in fund["cells"]:
+            metrics = cell["m"]
             if not metrics.get("total_trades"):
                 continue
-            key = (SCREEN_TICKER, round(cell["grid_step"], 8), round(cell["profit_target"], 8))
+            key = (SCREEN_TICKER, round(cell["grid"], 8), round(cell["target"], 8))
             if key in known:
                 continue
             known.add(key)
             found.append(
                 {
                     "ticker": SCREEN_TICKER,
-                    "grid_step": cell["grid_step"],
-                    "profit_target": cell["profit_target"],
+                    "grid_step": cell["grid"],
+                    "profit_target": cell["target"],
                     "cagr": float(metrics.get("cagr_pct", 0.0)),
                     "trades": int(metrics.get("total_trades", 0)),
                 }
@@ -285,9 +284,9 @@ def main(argv=None) -> int:
         request: dict[str, Any] = {
             "tickers": [cell["ticker"]],
             "grid_steps": [cell["grid_step"]],
-            "profit_targets": [cell["profit_target"]],
-            "sizing_model": model,
-            "strategy_params": STRATEGY_DEFAULTS.get(model, {}),
+            "targets": [cell["profit_target"]],
+            "model": model,
+            "params": STRATEGY_DEFAULTS.get(model, {}),
             # No limit: the whole file, which is the point.
             "limit": None,
         }
@@ -309,21 +308,23 @@ def main(argv=None) -> int:
             f"full-{model}-{cell['ticker']}-"
             f"{cell['grid_step'] * 100:.4f}-{cell['profit_target'] * 100:.4f}".replace(".", "p")
         )
-        report["run_id"] = run_id
+        report["id"] = run_id
         history.save(
             run_id,
             {
-                "run_id": run_id,
+                "id": run_id,
                 "status": "complete",
                 "progress": 1.0,
-                "message": f"full-length rerun: {model}",
-                "report": report,
+                "pos": None,
+                "msg": f"full-length rerun: {model}",
                 "error": None,
+                "req": request,
+                "report": report,
             },
         )
         done += 1
         fund = report["funds"][cell["ticker"]]
-        metrics = fund["metrics"]
+        metrics = fund["cells"][0]["m"]
         print(
             f"{time.time() - began:6.1f}s  {fund['bars']['count']:>9,} bars  "
             f"CAGR {metrics['cagr_pct']:7.2f}%  DD {metrics['max_drawdown_pct']:6.2f}%  "

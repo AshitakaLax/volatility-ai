@@ -3,7 +3,7 @@ import { ListChecks } from "lucide-react";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { configurationKey } from "@/lib/sweepSummary";
 import { cn, pct } from "@/lib/utils";
-import type { SweepConfiguration } from "@/types/backtest";
+import type { Cell } from "@/types/backtest";
 
 /**
  * Every simulation the sweep ran, one row each, selectable.
@@ -16,12 +16,12 @@ import type { SweepConfiguration } from "@/types/backtest";
  */
 
 interface Props {
-  configurations: SweepConfiguration[];
+  configurations: Cell[];
   selectedKey: string | null;
-  onSelect: (config: SweepConfiguration) => void;
+  onSelect: (config: Cell) => void;
 }
 
-function paramsLabel(params: SweepConfiguration["strategy_params"]): string {
+function paramsLabel(params: Cell["params"]): string {
   const entries = Object.entries(params ?? {}).sort(([a], [b]) => a.localeCompare(b));
   return entries.length === 0 ? "—" : entries.map(([key, value]) => `${key}=${value}`).join(", ");
 }
@@ -70,14 +70,14 @@ export function ConfigurationList({ configurations, selectedKey, onSelect }: Pro
                     {index + 1}
                     {index === 0 ? <Badge className="ml-1.5">engine pick</Badge> : null}
                   </td>
-                  <td className="py-2 text-right">{pct(config.grid_step * 100, 3)}</td>
-                  <td className="py-2 text-right">{pct(config.profit_target * 100, 3)}</td>
+                  <td className="py-2 text-right">{pct((config.grid ?? 0) * 100, 3)}</td>
+                  <td className="py-2 text-right">{pct((config.target ?? 0) * 100, 3)}</td>
                   <td className="max-w-[220px] truncate py-2 text-xs text-muted-foreground">
-                    {paramsLabel(config.strategy_params)}
+                    {paramsLabel(config.params)}
                   </td>
-                  <td className="py-2 text-right">{pct(config.metrics.cagr_pct, 1)}</td>
+                  <td className="py-2 text-right">{pct(config.m.cagr_pct, 1)}</td>
                   <td className="py-2 text-right text-loss">
-                    {pct(config.metrics.max_drawdown_pct, 1)}
+                    {pct(config.m.max_drawdown_pct, 1)}
                   </td>
                 </tr>
               );

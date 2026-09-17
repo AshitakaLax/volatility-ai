@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
-import type { DeploymentState } from "@/types/telemetry";
+import type { Frame } from "@/types/backtest";
+import type { LiveState } from "@/types/telemetry";
 
 import { useWebSocket } from "./useWebSocket";
-
-interface LiveFrame {
-  type: "state" | "heartbeat" | "error";
-  state?: DeploymentState;
-  detail?: string;
-}
 
 /**
  * One deployment's state, kept current over a socket.
@@ -24,7 +19,7 @@ interface LiveFrame {
  * halt lives in CommandCenter, on its own explicit call.
  */
 export function useLiveState(path: string | null) {
-  const [state, setState] = useState<DeploymentState | null>(null);
+  const [state, setState] = useState<LiveState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
@@ -40,14 +35,14 @@ export function useLiveState(path: string | null) {
 
   useEffect(refresh, [refresh]);
 
-  const health = useWebSocket<LiveFrame>(
+  const health = useWebSocket<Frame<LiveState>>(
     path ? `ws://${window.location.host}/api/live/ws?path=${encodeURIComponent(path)}` : null,
     (frame) => {
-      if (frame.type === "state" && frame.state) {
-        setState(frame.state);
+      if (frame.t === "data") {
+        setState(frame.d);
         setError(null);
-      } else if (frame.type === "error" && frame.detail) {
-        setError(frame.detail);
+      } else if (frame.t === "err") {
+        setError(frame.msg);
       }
       // A heartbeat carries no data by design -- it exists so a client
       // can tell "nothing changed" from "this connection is dead".

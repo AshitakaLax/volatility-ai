@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
 import { cn, pct, usd } from "@/lib/utils";
-import type { FundResult, SweepConfiguration } from "@/types/backtest";
+import type { Fund, Cell } from "@/types/backtest";
 
 /**
  * The parameter sweep as a heatmap: grid step against profit target.
@@ -24,7 +24,7 @@ import type { FundResult, SweepConfiguration } from "@/types/backtest";
  */
 
 interface Props {
-  funds: Record<string, FundResult>;
+  funds: Record<string, Fund>;
   /**
    * A cell was clicked -- selects it as BacktestResult's current
    * configuration, so RiskRewardMetrics (instant, metrics are already
@@ -34,7 +34,7 @@ interface Props {
    * also depends on its resolved strategy_params once one of those is
    * swept too.
    */
-  onSelectConfiguration?: (config: SweepConfiguration) => void;
+  onSelectConfiguration?: (config: Cell) => void;
   /**
    * Stage a cell's grid_step/profit_target onto the Run-a-Backtest form
    * and switch to the Backtesting tab -- for launching a broader NEW
@@ -85,17 +85,17 @@ function shade(value: number, min: number, max: number, higherIsBetter: boolean)
 /** A stable, human-readable label for one cell's resolved combo --
  * dictionary order isn't guaranteed on the wire, so entries are sorted
  * by key before joining. `{}` (no strategy param swept) reads as "—". */
-function comboKey(params: SweepConfiguration["strategy_params"]): string {
+function comboKey(params: Cell["params"]): string {
   return JSON.stringify(Object.entries(params ?? {}).sort(([a], [b]) => a.localeCompare(b)));
 }
-function comboLabel(params: SweepConfiguration["strategy_params"]): string {
+function comboLabel(params: Cell["params"]): string {
   const entries = Object.entries(params ?? {}).sort(([a], [b]) => a.localeCompare(b));
   return entries.length === 0 ? "—" : entries.map(([key, value]) => `${key}=${value}`).join(", ");
 }
 
 export function SweepMatrix({ funds, onSelectConfiguration, onLoadIntoForm }: Props) {
   const withGrid = Object.entries(funds).filter(
-    ([, fund]) => (fund.configurations?.length ?? 0) > 1,
+    ([, fund]) => fund.cells.length > 1,
   );
   const [metric, setMetric] = useState<MetricKey>("cagr_pct");
   const [ticker, setTicker] = useState<string>(withGrid[0]?.[0] ?? "");
@@ -106,7 +106,7 @@ export function SweepMatrix({ funds, onSelectConfiguration, onLoadIntoForm }: Pr
   if (withGrid.length === 0) return null;
 
   const fund = funds[ticker] ?? withGrid[0]?.[1];
-  const allCells: SweepConfiguration[] = fund?.configurations ?? [];
+  const allCells: Cell[] = fund?.cells ?? [];
   const spec = METRICS.find((entry) => entry.key === metric) ?? METRICS[0]!;
 
   // Once a strategy param is ALSO swept, several cells can share one
@@ -115,19 +115,19 @@ export function SweepMatrix({ funds, onSelectConfiguration, onLoadIntoForm }: Pr
   // present, a "Params" selector picks which slice to render; the
   // lookup below is built from that slice, never the whole cell set, so
   // no combo is silently dropped by the last-write-wins Map underneath.
-  const combos = [...new Map(allCells.map((cell) => [comboKey(cell.strategy_params), cell.strategy_params])).entries()];
+  const combos = [...new Map(allCells.map((cell) => [comboKey(cell.params), cell.params])).entries()];
   const activeCombo = combos.some(([key]) => key === combo) ? combo : (combos[0]?.[0] ?? "");
-  const cells = combos.length > 1 ? allCells.filter((cell) => comboKey(cell.strategy_params) === activeCombo) : allCells;
+  const cells = combos.length > 1 ? allCells.filter((cell) => comboKey(cell.params) === activeCombo) : allCells;
 
-  const steps = [...new Set(cells.map((cell) => cell.grid_step))].sort((a, b) => a - b);
-  const targets = [...new Set(cells.map((cell) => cell.profit_target))].sort((a, b) => a - b);
+  const steps = [...new Set(cells.map((cell) => (cell.grid ?? 0)))].sort((a, b) => a - b);
+  const targets = [...new Set(cells.map((cell) => (cell.target ?? 0)))].sort((a, b) => a - b);
 
-  const values = cells.map((cell) => cell.metrics[spec.key]);
+  const values = cells.map((cell) => cell.m[spec.key]);
   const min = Math.min(...values);
   const max = Math.max(...values);
 
   const lookup = new Map(
-    cells.map((cell) => [`${cell.grid_step}|${cell.profit_target}`, cell]),
+    cells.map((cell) => [`${(cell.grid ?? 0)}|${(cell.target ?? 0)}`, cell]),
   );
 
   return (
@@ -216,7 +216,7 @@ export function SweepMatrix({ funds, onSelectConfiguration, onLoadIntoForm }: Pr
                       </td>
                     );
                   }
-                  const value = cell.metrics[spec.key];
+                  const value = cell.m[spec.key];
                   return (
                     <td
                       key={target}
@@ -229,8 +229,8 @@ export function SweepMatrix({ funds, onSelectConfiguration, onLoadIntoForm }: Pr
                       style={{ background: shade(value, min, max, spec.higherIsBetter) }}
                       title={
                         `step ${(step * 100).toFixed(2)}% · target ${(target * 100).toFixed(2)}%\n` +
-                        `CAGR ${pct(cell.metrics.cagr_pct)} · DD ${pct(cell.metrics.max_drawdown_pct)}\n` +
-                        `${cell.metrics.closed_trades} closed of ${cell.metrics.total_trades}` +
+                        `CAGR ${pct(cell.m.cagr_pct)} · DD ${pct(cell.m.max_drawdown_pct)}\n` +
+                        `${cell.m.closed_trades} closed of ${cell.m.total_trades}` +
                         (onSelectConfiguration ? "\n\nclick to view this configuration below" : "")
                       }
                     >

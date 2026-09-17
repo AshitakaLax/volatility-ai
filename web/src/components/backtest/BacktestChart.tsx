@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primit
 import { usePriceBars } from "@/hooks/usePriceBars";
 import { CHART_RESOLUTIONS, aggregate, buildCycles, chartWindow, toEpochSeconds } from "@/lib/filters";
 import { cn } from "@/lib/utils";
-import type { BacktestExecution, ChartResolution, DateRange } from "@/types/backtest";
+import type { Fill, ChartResolution, DateRange } from "@/types/backtest";
 
 /**
  * Price with executions on it.
@@ -44,7 +44,7 @@ import type { BacktestExecution, ChartResolution, DateRange } from "@/types/back
 
 interface Props {
   ticker: string | null;
-  executions: BacktestExecution[];
+  executions: Fill[];
   /** The Execution-chart zoom level, and how to change it. Held in the
    * parent's filters so it survives a tab switch. */
   resolution: ChartResolution;
@@ -177,10 +177,10 @@ export function BacktestChart({
     );
 
     const markers: SeriesMarker<Time>[] = executions.map((execution) => {
-      const buy = execution.type === "BUY";
-      const loss = (execution.profit_realized ?? 0) < 0;
+      const buy = execution.side === "BUY";
+      const loss = (execution.pnl ?? 0) < 0;
       return {
-        time: toEpochSeconds(execution.timestamp) as Time,
+        time: toEpochSeconds(execution.ts) as Time,
         position: buy ? "belowBar" : "aboveBar",
         // A signal exit that realised a loss is drawn as a loss. It is
         // the only sell in this system permitted to be one, and a chart
@@ -189,8 +189,8 @@ export function BacktestChart({
         color: buy ? "#3b82f6" : loss ? "#ef4444" : "#22c55e",
         shape: buy ? "arrowUp" : "circle",
         text: buy
-          ? `B ${execution.shares.toFixed(2)}`
-          : `S ${(execution.profit_realized ?? 0).toFixed(2)}`,
+          ? `B ${execution.qty.toFixed(2)}`
+          : `S ${(execution.pnl ?? 0).toFixed(2)}`,
       };
     });
     // Markers must be time-ordered or the library drops them silently.
@@ -208,7 +208,7 @@ export function BacktestChart({
           // lot's target. The execution does not carry the target, so it
           // is recomputed with the run's OWN parameter rather than a
           // constant that would be wrong for every other configuration.
-          price: cycle.buy.price * (1 + profitTarget),
+          price: cycle.buy.px * (1 + profitTarget),
           color: "rgba(234,179,8,0.55)",
           lineWidth: 1,
           lineStyle: 2,
@@ -249,10 +249,10 @@ export function BacktestChart({
       const exit = cycle.sells[cycle.sells.length - 1];
       if (!exit) continue;
 
-      const x1 = timeScale.timeToCoordinate(toEpochSeconds(cycle.buy.timestamp) as Time);
-      const x2 = timeScale.timeToCoordinate(toEpochSeconds(exit.timestamp) as Time);
-      const y1 = priceScale.priceToCoordinate(cycle.buy.price);
-      const y2 = priceScale.priceToCoordinate(exit.price);
+      const x1 = timeScale.timeToCoordinate(toEpochSeconds(cycle.buy.ts) as Time);
+      const x2 = timeScale.timeToCoordinate(toEpochSeconds(exit.ts) as Time);
+      const y1 = priceScale.priceToCoordinate(cycle.buy.px);
+      const y2 = priceScale.priceToCoordinate(exit.px);
       // null means the point is outside the visible range -- skipped
       // rather than clamped, which would draw a line to the edge of the
       // viewport that no trade corresponds to.
