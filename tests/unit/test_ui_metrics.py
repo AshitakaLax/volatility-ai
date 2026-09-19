@@ -207,8 +207,8 @@ class TestBlotterLinkage:
     def test_a_real_run_produces_joinable_buy_and_sell_rows(self):
         import pandas as pd_
 
-        from src.optimization.optimization_controller import OptimizationController
         from src.core.config import BacktestConfig
+        from src.optimization.optimization_controller import OptimizationController
         from src.trading.strategy_registry import resolve_strategy
 
         frame = pd_.read_csv(
@@ -235,8 +235,8 @@ class TestBlotterLinkage:
         early trade into an RSI<30 query. NaN says "not yet known"."""
         import pandas as pd_
 
-        from src.optimization.optimization_controller import OptimizationController
         from src.core.config import BacktestConfig
+        from src.optimization.optimization_controller import OptimizationController
         from src.trading.strategy_registry import resolve_strategy
 
         frame = pd_.read_csv(

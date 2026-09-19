@@ -12,7 +12,6 @@ Acceptance criteria:
 
 import pytest
 
-from src.data.data_validation import DataValidationError, validate
 from src.core.exceptions import (
     ConfigurationError,
     ExecutionError,
@@ -25,6 +24,7 @@ from src.core.exceptions import (
 from src.core.exceptions import (
     DataValidationError as CanonicalDataValidationError,
 )
+from src.data.data_validation import DataValidationError, validate
 from src.execution.order_management_system import OrderManagementSystem
 from src.strategies.size_calculators import FixedPortfolioPercentage
 

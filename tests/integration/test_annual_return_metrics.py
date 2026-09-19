@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.optimization.optimization_controller import OptimizationController
 from src.analysis.performance_analyzer import annual_returns
+from src.optimization.optimization_controller import OptimizationController
 from src.strategies.size_calculators import FixedPortfolioPercentage
 
 

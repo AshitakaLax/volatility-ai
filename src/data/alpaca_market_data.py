@@ -36,8 +36,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from src.core.exceptions import ConfigurationError, DataValidationError
-from src.data.fomc_calendar import EASTERN_TZ
 from src.core.retry_policy import RetryConfig, retry_call
+from src.data.fomc_calendar import EASTERN_TZ
 
 
 @dataclass(frozen=True)

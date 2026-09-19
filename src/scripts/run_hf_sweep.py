@@ -43,8 +43,8 @@ import time
 
 import pandas as pd
 
-from src.optimization.optimization_controller import OptimizationController, _run_one_combination
 from src.core.config import BacktestConfig, expand_strategy_params
+from src.optimization.optimization_controller import OptimizationController, _run_one_combination
 from src.optimization.search_strategies import BayesianSearch, RandomSearch
 from src.trading.strategy_registry import resolve_strategy
 

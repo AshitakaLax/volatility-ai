@@ -67,7 +67,6 @@ import argparse
 import sys
 from pathlib import Path
 
-from src.core.exceptions import ConfigurationError
 from src.brokers.fidelity_broker import FidelityBroker
 from src.brokers.fidelity_placing_broker import (
     FidelityPlacingBroker,
@@ -75,6 +74,7 @@ from src.brokers.fidelity_placing_broker import (
     unresolved_orders,
 )
 from src.brokers.fidelity_session import FidelitySession, FidelitySessionError
+from src.core.exceptions import ConfigurationError
 
 CONFIRM_PHRASE = "PLACE THE ORDER"
 DEFAULT_JOURNAL = Path.home() / ".fidelity_recon" / "placed_orders.jsonl"

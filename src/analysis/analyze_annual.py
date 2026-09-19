@@ -28,9 +28,9 @@ import logging
 
 import pandas as pd
 
-from src.optimization.optimization_controller import OptimizationController, _run_one_combination
 from src.analysis.cost_models import DynamicSlippageModel
 from src.analysis.performance_analyzer import annual_returns
+from src.optimization.optimization_controller import OptimizationController, _run_one_combination
 from src.trading.risk_manager import RiskManager
 from src.trading.strategy_registry import resolve_strategy
 
@@ -110,7 +110,9 @@ def _top_configs(cap: float | None, limit: int):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ticker", default="TQQQ", help="warehouse ticker to benchmark/re-simulate")
+    parser.add_argument(
+        "--ticker", default="TQQQ", help="warehouse ticker to benchmark/re-simulate"
+    )
     parser.add_argument("--cap", type=float, default=None, help="only consider maxDD <= this")
     parser.add_argument("--top", type=int, default=3)
     args = parser.parse_args()

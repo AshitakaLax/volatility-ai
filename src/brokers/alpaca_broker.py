@@ -80,11 +80,11 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from typing import Any
 
 from src.core.exceptions import ConfigurationError, ExecutionError
+from src.core.retry_policy import RetryConfig, retry_call
+from src.core.secrets import LiveCredentials
 from src.execution.fill_accounting import extract_alpaca_fill
 from src.execution.order_lifecycle import map_broker_status
 from src.execution.reconciliation import BrokerSnapshot
-from src.core.retry_policy import RetryConfig, retry_call
-from src.core.secrets import LiveCredentials
 
 logger = logging.getLogger("Optimizer")
 

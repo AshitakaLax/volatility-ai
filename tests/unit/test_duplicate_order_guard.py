@@ -20,10 +20,10 @@ from pathlib import Path
 
 import pytest
 
-from src.trading.duplicate_order_guard import DecisionState, DuplicateOrderGuard
 from src.core.exceptions import ReconciliationError
 from src.core.idempotency import compute_decision_id
 from src.core.persistence import LedgerStore
+from src.trading.duplicate_order_guard import DecisionState, DuplicateOrderGuard
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

@@ -57,7 +57,9 @@ def test_the_readme_does_not_deny_the_strategy_registry(readme):
 def test_the_readme_does_not_claim_the_consumed_macro_fields_are_inert(readme):
     """Four MarketContext signal fields have a real consumer. If the
     README says nothing consumes them, one of the two is wrong."""
-    consumer = (REPO_ROOT / "src" / "strategies" / "high_frequency_sizing.py").read_text(encoding="utf-8")
+    consumer = (REPO_ROOT / "src" / "strategies" / "high_frequency_sizing.py").read_text(
+        encoding="utf-8"
+    )
     consumed = [
         field
         for field in (

@@ -21,9 +21,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.optimization.optimization_controller import OptimizationController
 from src.core.exceptions import ConfigurationError
 from src.optimization.monte_carlo import MonteCarloRunner, generate_synthetic_path
+from src.optimization.optimization_controller import OptimizationController
 from src.strategies.size_calculators import FixedPortfolioPercentage
 
 

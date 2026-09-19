@@ -8,8 +8,8 @@ import pytest
 
 from src.core.exceptions import ConfigurationError
 from src.execution.order_management_system import Mode, OrderManagementSystem
-from src.trading.risk_manager import RiskManager
 from src.strategies.size_calculators import FixedPortfolioPercentage
+from src.trading.risk_manager import RiskManager
 
 # --- FixedPortfolioPercentage: percentage / allocation_pct dual support ---
 

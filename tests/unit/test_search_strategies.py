@@ -24,8 +24,8 @@ true optimum, so finding it is a genuine test of convergence.
 import pandas as pd
 import pytest
 
-from src.optimization.optimization_controller import OptimizationController
 from src.core.exceptions import ConfigurationError
+from src.optimization.optimization_controller import OptimizationController
 from src.optimization.search_strategies import (
     BayesianSearch,
     GridSearch,

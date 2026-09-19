@@ -178,12 +178,12 @@ class TestUiRoutes:
             "schedule": {"enabled": True, "start": "07:00", "end": "19:00"},
         }
 
-        listed = next(s for s in client.get("/api/backtest/shards").json()["shards"] if s["name"] == "fast")
+        listed = next(
+            s for s in client.get("/api/backtest/shards").json()["shards"] if s["name"] == "fast"
+        )
         assert listed["schedule"] == {"enabled": True, "start": "07:00", "end": "19:00"}
 
-        cleared = client.post(
-            "/api/backtest/shards/fast/schedule", json={"enabled": False}
-        )
+        cleared = client.post("/api/backtest/shards/fast/schedule", json={"enabled": False})
         assert cleared.json()["schedule"] is None
 
     def test_a_bad_schedule_is_400_not_a_server_error(self, client):

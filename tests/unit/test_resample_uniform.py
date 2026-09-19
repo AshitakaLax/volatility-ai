@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from src.core.exceptions import ConfigurationError, DataValidationError
 from src.data.resample_uniform import (
     bars_per_session,
     default_output_path,
@@ -24,7 +25,6 @@ from src.data.resample_uniform import (
     parse_args,
     synthetic_fraction_by_year,
 )
-from src.core.exceptions import ConfigurationError, DataValidationError
 
 
 def _write_source(path: Path, *, tz: str | None = "UTC", drop_col: str | None = None) -> Path:

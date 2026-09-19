@@ -13,13 +13,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from src.core.exceptions import ConfigurationError, DataValidationError
 from src.data.event_calendar import (
     DEFAULT_EARNINGS_CSV,
     DEFAULT_LEAD_MINUTES,
     NO_EVENT_MINUTES,
     EarningsEventTable,
 )
-from src.core.exceptions import ConfigurationError, DataValidationError
 from src.data.index_weights import weight_pct
 
 

@@ -1417,7 +1417,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
                 print(f"  skip (already handled) {label}")
         requests = [r for r in requests if r[0] not in already]
         if before != len(requests):
-            print(f"\n{before - len(requests)} of {before} already handled; {len(requests)} to queue.\n")
+            print(
+                f"\n{before - len(requests)} of {before} already handled; {len(requests)} to queue.\n"
+            )
 
     ok = 0
     for label, body, *_ in requests:
@@ -1550,9 +1552,7 @@ def main() -> int:
         "submit", help="Submit a BacktestConfig sweep to the server's shard queue"
     )
     p_submit.add_argument("--config", required=True, help="Path to a BacktestConfig YAML file")
-    p_submit.add_argument(
-        "--api", default="http://127.0.0.1:8000", help="Backtest server base URL"
-    )
+    p_submit.add_argument("--api", default="http://127.0.0.1:8000", help="Backtest server base URL")
     p_submit.add_argument(
         "--name", default=None, help="Label prefix for queued runs (default: config filename)"
     )
@@ -1574,9 +1574,7 @@ def main() -> int:
         default=None,
         help="Bar cap per configuration (default: none -- the whole file)",
     )
-    p_submit.add_argument(
-        "--dry-run", action="store_true", help="Print the plan. Submits nothing."
-    )
+    p_submit.add_argument("--dry-run", action="store_true", help="Print the plan. Submits nothing.")
     p_submit.add_argument(
         "--resubmit",
         action="store_true",

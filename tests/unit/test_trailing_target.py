@@ -16,12 +16,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.trading import decision_cycle
 from src.core.exceptions import ConfigurationError
 from src.core.ledger import AssetLotLedger, Lot
+from src.optimization.trailing_target import TrailingTargetPolicy
 from src.strategies.market_context import MarketContext
 from src.strategies.size_calculators import FixedPortfolioPercentage
-from src.optimization.trailing_target import TrailingTargetPolicy
+from src.trading import decision_cycle
 
 EQUITY = 100_000.0
 

@@ -18,6 +18,7 @@ import pytest
 from alpaca.data.models import BarSet
 
 from src.core.exceptions import ConfigurationError, DataValidationError
+from src.core.retry_policy import RetryConfig
 from src.data.historical_data import (
     BACKTEST_COLUMNS,
     AlpacaHistoricalData,
@@ -29,7 +30,6 @@ from src.data.historical_data import (
     to_backtest_frame,
     write_csv,
 )
-from src.core.retry_policy import RetryConfig
 
 
 def bar(ts: str, o=100.0, h=101.0, low=99.0, c=100.5, v=1000):

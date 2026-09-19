@@ -1,8 +1,8 @@
 import pandas as pd
 import pytest
 
-from src.core.ledger import AssetLotLedger
 from src.analysis.performance_analyzer import PerformanceAnalyzer, annual_returns
+from src.core.ledger import AssetLotLedger
 
 
 def test_no_trades_returns_zeroed_metrics_without_dividing_by_zero():

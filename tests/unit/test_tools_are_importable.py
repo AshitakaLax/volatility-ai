@@ -185,9 +185,7 @@ def test_the_escalation_mechanism_is_written_exactly_once():
                 first = node.body[0]
                 doc_lines.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
         return "\n".join(
-            line.split("#")[0]
-            for i, line in enumerate(src.splitlines(), 1)
-            if i not in doc_lines
+            line.split("#")[0] for i, line in enumerate(src.splitlines(), 1) if i not in doc_lines
         )
 
     for label, needles in (

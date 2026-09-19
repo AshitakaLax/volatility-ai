@@ -16,11 +16,11 @@ the copy that grew to fill the gap would be free to disagree.
 
 from __future__ import annotations
 
-from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 from src.core.exceptions import ConfigurationError
-from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.ml.reachability_sizing import MLReachabilitySizing
 from src.ml.regime_scaled_sizing import MLRegimeScaledSizing
+from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
+from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.strategies.size_calculators import (
     BellCurveProbabilitySizing,
     FixedPortfolioPercentage,

@@ -15,7 +15,6 @@ import json
 
 import pytest
 
-from src.core.exceptions import ConfigurationError
 from src.brokers.fidelity_broker import FidelityBroker
 from src.brokers.fidelity_placing_broker import (
     CANCEL_PLACE_PATH,
@@ -26,8 +25,9 @@ from src.brokers.fidelity_placing_broker import (
     unresolved_orders,
 )
 from src.brokers.fidelity_session import PREVIEW_ENDPOINTS, FidelitySession
-from src.execution.order_lifecycle import OrderState
+from src.core.exceptions import ConfigurationError
 from src.core.retry_policy import AmbiguousSubmissionError
+from src.execution.order_lifecycle import OrderState
 from tests.unit.test_fidelity_broker import ACCOUNT, FakeSession
 
 SYMBOL = "CWH"

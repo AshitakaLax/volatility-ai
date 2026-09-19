@@ -15,8 +15,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.data.alpaca_market_data import AlpacaMarketData, LiveBar
 from src.core.exceptions import ConfigurationError, DataValidationError
+from src.data.alpaca_market_data import AlpacaMarketData, LiveBar
 
 
 def alpaca_bar(**kw):

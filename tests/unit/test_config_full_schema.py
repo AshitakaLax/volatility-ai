@@ -16,12 +16,12 @@ Acceptance criteria:
 import pandas as pd
 import pytest
 
-from src.optimization.optimization_controller import OptimizationController
-from src.core.config import BacktestConfig
 from src.analysis.cost_models import DynamicSlippageModel, SlippageCommissionModel, ZeroCostModel
+from src.core.config import BacktestConfig
 from src.core.exceptions import ConfigurationError
-from src.trading.risk_manager import RiskManager
+from src.optimization.optimization_controller import OptimizationController
 from src.strategies.size_calculators import FixedPortfolioPercentage
+from src.trading.risk_manager import RiskManager
 
 
 def _load_fixture() -> pd.DataFrame:

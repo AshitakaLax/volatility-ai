@@ -27,8 +27,8 @@ import time
 import pandas as pd
 import pytest
 
-from src.optimization.optimization_controller import OptimizationController
 from src.core.exceptions import ConfigurationError
+from src.optimization.optimization_controller import OptimizationController
 from src.strategies.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 

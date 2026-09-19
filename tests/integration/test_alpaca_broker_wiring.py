@@ -14,8 +14,8 @@ import pytest
 
 from src.brokers.alpaca_broker import AlpacaBroker, alpaca_broker_factory
 from src.core.config import BacktestConfig
-from src.execution.live_execution import LiveExecutionLoop
 from src.core.retry_policy import RetryConfig
+from src.execution.live_execution import LiveExecutionLoop
 from src.strategies.size_calculators import FixedPortfolioPercentage
 from tests.unit.test_alpaca_broker import FakeClient
 

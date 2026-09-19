@@ -29,8 +29,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.optimization.optimization_controller import OptimizationController
 from src.execution.order_management_system import OrderManagementSystem, OrderStatus
+from src.optimization.optimization_controller import OptimizationController
 from src.strategies.size_calculators import FixedPortfolioPercentage
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv"

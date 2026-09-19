@@ -75,7 +75,10 @@ def warehouse_env(tmp_path, monkeypatch):
     duckdb.connect(str(root / "sim_results.duckdb")).close()
     con = duckdb.connect(str(root / "market_data.duckdb"))
     con.register(
-        "rows", df.assign(ticker="CLITEST")[["ticker", "timestamp", "open", "high", "low", "close", "volume"]]
+        "rows",
+        df.assign(ticker="CLITEST")[
+            ["ticker", "timestamp", "open", "high", "low", "close", "volume"]
+        ],
     )
     con.execute(
         "CREATE TABLE ohlcv (ticker VARCHAR, timestamp TIMESTAMPTZ, open DOUBLE, "

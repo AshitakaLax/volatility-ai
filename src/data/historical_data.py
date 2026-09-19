@@ -82,9 +82,9 @@ from typing import Any
 
 import pandas as pd
 
-from src.data import data_validation
 from src.core.exceptions import ConfigurationError, DataValidationError
 from src.core.retry_policy import RetryConfig, retry_call
+from src.data import data_validation
 
 logger = logging.getLogger("Optimizer")
 

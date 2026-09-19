@@ -13,8 +13,8 @@ from datetime import UTC, datetime
 import pytest
 
 from src.core.exceptions import ReconciliationError
-from src.execution.fill_accounting import FillTracker, extract_alpaca_fill
 from src.core.ledger import AssetLotLedger
+from src.execution.fill_accounting import FillTracker, extract_alpaca_fill
 
 
 def test_required_cumulative_fill_arithmetic_fixture():

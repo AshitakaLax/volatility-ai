@@ -80,8 +80,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.core.exceptions import ConfigurationError
 from src.brokers.fidelity_capture import TrafficCapture
+from src.core.exceptions import ConfigurationError
 from src.core.secrets import FidelityCredentials, load_fidelity_credentials
 
 # Where the session profile and the traffic dump go by default: outside

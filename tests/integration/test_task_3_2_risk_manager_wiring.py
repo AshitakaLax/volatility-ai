@@ -3,8 +3,8 @@ from pathlib import Path
 import pandas as pd
 
 from src.optimization.optimization_controller import OptimizationController
-from src.trading.risk_manager import RiskManager
 from src.strategies.size_calculators import FixedPortfolioPercentage
+from src.trading.risk_manager import RiskManager
 from tests.fixtures.regression_baseline import BASELINE
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv"

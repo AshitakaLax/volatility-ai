@@ -24,9 +24,9 @@ from src.brokers.alpaca_broker import (
     alpaca_broker_factory,
 )
 from src.core.exceptions import ConfigurationError, ExecutionError
-from src.execution.order_lifecycle import OrderState
 from src.core.retry_policy import AmbiguousSubmissionError, RetryConfig
 from src.core.secrets import LiveCredentials
+from src.execution.order_lifecycle import OrderState
 
 CREDS = LiveCredentials(api_key_id="PKTEST", api_secret_key="secret")
 

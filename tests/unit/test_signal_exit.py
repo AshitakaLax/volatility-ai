@@ -325,12 +325,8 @@ def test_every_sell_site_routes_through_the_shared_helper():
         "_simulate_single": inspect.getsource(
             optimization_controller.OptimizationController._simulate_single
         ),
-        "simulate_single_intraday": inspect.getsource(
-            intraday_validation.simulate_single_intraday
-        ),
-        "LiveTradingLoop._harvest": inspect.getsource(
-            live_trading_loop.LiveTradingLoop._harvest
-        ),
+        "simulate_single_intraday": inspect.getsource(intraday_validation.simulate_single_intraday),
+        "LiveTradingLoop._harvest": inspect.getsource(live_trading_loop.LiveTradingLoop._harvest),
     }
     for name, source in sites.items():
         assert "decision_cycle.collect_liquidations(" in source, (

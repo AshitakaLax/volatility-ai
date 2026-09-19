@@ -12,15 +12,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from src.trading import decision_cycle
 from src.core.config import BacktestConfig
 from src.core.exceptions import ConfigurationError
-from src.strategies.market_context import MarketContext
-from src.execution.order_management_system import Mode, OrderManagementSystem
-from src.trading.risk_manager import CircuitBreaker, RiskManager
 from src.core.secrets import LiveCredentials, load_live_credentials
-from src.strategies.size_calculators import SizingStrategy
 from src.data.tick_validation import TickCheck, TickValidator
+from src.execution.order_management_system import Mode, OrderManagementSystem
+from src.strategies.market_context import MarketContext
+from src.strategies.size_calculators import SizingStrategy
+from src.trading import decision_cycle
+from src.trading.risk_manager import CircuitBreaker, RiskManager
 
 
 class LiveBroker(Protocol):

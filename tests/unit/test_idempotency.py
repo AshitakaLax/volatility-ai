@@ -12,8 +12,8 @@ Task 4.10 acceptance tests.
 
 import pandas as pd
 
-from src.optimization.optimization_controller import OptimizationController
 from src.core.idempotency import ProcessedEventStore
+from src.optimization.optimization_controller import OptimizationController
 from src.strategies.size_calculators import FixedPortfolioPercentage
 
 

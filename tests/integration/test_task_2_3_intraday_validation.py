@@ -32,9 +32,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.optimization.optimization_controller import OptimizationController
 from src.optimization import intraday_validation
 from src.optimization.intraday_validation import IntradayValidationError, simulate_single_intraday
+from src.optimization.optimization_controller import OptimizationController
 from src.strategies.size_calculators import FixedPortfolioPercentage
 
 GRID_STEP = 0.01

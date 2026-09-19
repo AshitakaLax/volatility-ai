@@ -12,8 +12,8 @@ Task 4.7 acceptance tests (A7).
 import pandas as pd
 import pytest
 
-from src.optimization.optimization_controller import OptimizationController
 from src.core.exceptions import ConfigurationError
+from src.optimization.optimization_controller import OptimizationController
 from src.strategies.market_context import MarketContext
 from src.strategies.size_calculators import FixedPortfolioPercentage, SizingStrategy
 from tests.fixtures.regression_baseline import BASELINE
