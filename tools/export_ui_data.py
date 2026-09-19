@@ -184,8 +184,10 @@ def equity_series(curve: pd.Series) -> dict:
     }
 
 
-def run_one(ticker: str, path: str, config: BacktestConfig, limit: int | None) -> dict:
-    frame = pd.read_csv(path, parse_dates=["timestamp"]).set_index("timestamp")
+def run_one(ticker: str, config: BacktestConfig, limit: int | None) -> dict:
+    from src.warehouse.bars import load_frame
+
+    frame = load_frame(ticker)
     if limit:
         frame = frame.tail(limit)
     kwargs = config.to_run_sweep_kwargs(resolve_strategy(config.strategy.strategy_id))
@@ -229,14 +231,16 @@ def main(argv=None) -> int:
     config = BacktestConfig.from_yaml(args.config)
     config.validate()
 
+    from src.warehouse.bars import available_tickers
+
+    have_bars = available_tickers()
     funds: dict[str, dict] = {}
     for ticker in args.tickers:
-        path = KNOWN_DATA.get(ticker)
-        if path is None or not Path(path).exists():
-            print(f"[export] SKIP {ticker}: no data file (see KNOWN_DATA)", flush=True)
+        if ticker not in have_bars:
+            print(f"[export] SKIP {ticker}: no bars in the warehouse", flush=True)
             continue
         print(f"[export] {ticker} ...", flush=True)
-        funds[ticker] = run_one(ticker, path, config, args.limit)
+        funds[ticker] = run_one(ticker, config, args.limit)
         print(f"[export]   {len(funds[ticker]['fills'])} executions", flush=True)
 
     # A Report (web/src/types/backtest.ts) -- the shape server/backtest.py

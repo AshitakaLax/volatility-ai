@@ -1,17 +1,23 @@
 #!/usr/bin/env python
-"""Snapshot every local database, archive it, and push it to the Raspberry Pi.
+"""Snapshot every local database, archive it, and push it to the Raspberry Pi
+-- and pull one of those archives back down to restore from.
 
     python tools/backup_databases.py                     # snapshot + archive + push
     python tools/backup_databases.py --local-only        # archive, no push
     python tools/backup_databases.py --include warehouse/executions
     python tools/backup_databases.py --install-daily --at 03:30
     python tools/backup_databases.py --remove-daily
+    python tools/backup_databases.py --restore                          # newest from remote
+    python tools/backup_databases.py --restore backups/volatility-ai-db_host_2026-01-01_000000Z.tar.gz
+    python tools/backup_databases.py --restore --restore-into warehouse --yes
 
-One file, three jobs: take a consistent copy of each database, bundle the
+One file, four jobs: take a consistent copy of each database, bundle the
 copies into one timestamped tar.gz under backups/, and scp that bundle to
 a remote host (the Pi) -- then trim old bundles at both ends. `--install
 -daily` registers this same script as a daily scheduled task so the push
-happens on its own.
+happens on its own. `--restore` reverses the trip: fetch (or read locally),
+verify each snapshot's sha256 against MANIFEST.json, and write it back to
+where it came from (or `--restore-into` a directory of your choosing).
 
 ---
 
@@ -65,6 +71,25 @@ The remote target is NOT hard-coded. Set VAI_BACKUP_REMOTE (e.g.
 pi@172.16.0.137) and VAI_BACKUP_REMOTE_DIR, or pass --remote-host /
 --remote-dir. `--install-daily` bakes whatever you resolved into the
 task definition so the schedule is explicit.
+
+---
+
+WHY RESTORE VERIFIES BEFORE IT WRITES, AND NEVER JUST DELETES
+
+`--restore` extracts the archive to a scratch directory and recomputes
+every database's sha256 against what MANIFEST.json recorded at backup
+time BEFORE touching anything live -- a truncated scp, a bit-rotted
+archive, or a hand-edited tarball is refused instead of silently
+installed. It then refuses (per file, not the whole batch) to overwrite
+a DuckDB database that is currently open read-write elsewhere, the same
+guard `snapshot_duckdb` applies on the way out, since restoring mid-sweep
+would tear the live file exactly the same way a backup would. Whatever a
+restore replaces is renamed to `<name>.pre-restore-<timestamp>` rather
+than deleted, so an accidental `--yes` is itself one file move away from
+undone. Interactive runs must type `restore` to confirm; a non-interactive
+caller (stdin has nothing to read, so the prompt hits EOF) must pass
+`--yes` explicitly -- there is no ambiguous default for an operation this
+hard to reverse.
 """
 
 from __future__ import annotations
@@ -329,6 +354,246 @@ def push_to_remote(
 
 
 # --------------------------------------------------------------------
+# restoring
+# --------------------------------------------------------------------
+
+
+def pull_from_remote(
+    host: str,
+    remote_dir: str,
+    dest_dir: Path,
+    *,
+    name: str | None,
+    dry_run: bool,
+) -> Path:
+    """scp one archive down from the remote into dest_dir.
+
+    `name` is a bare filename under remote_dir; None picks the newest
+    ARCHIVE_PREFIX*.tar.gz there (via `ls -1t`, the same freshness rule
+    prune_local/push_to_remote already trust for "keep the newest N").
+    """
+    remote_dir = remote_dir.rstrip("/") or "."
+    if name is None:
+        listing = subprocess.run(
+            ["ssh", *_SSH_OPTS, host, f"ls -1t {remote_dir}/{ARCHIVE_PREFIX}_*.tar.gz 2>/dev/null"],
+            capture_output=True,
+            text=True,
+        )
+        newest = next((ln for ln in listing.stdout.splitlines() if ln.strip()), None)
+        if listing.returncode != 0 or not newest:
+            raise RuntimeError(
+                f"no {ARCHIVE_PREFIX}_*.tar.gz archives found under {host}:{remote_dir}"
+            )
+        name = newest.strip().rsplit("/", 1)[-1]
+    dest = dest_dir / name
+    _run(["scp", *_SSH_OPTS, f"{host}:{remote_dir}/{name}", str(dest)], dry_run=dry_run)
+    if dry_run:
+        return dest
+    print(f"  fetched  {host}:{remote_dir}/{name} -> {dest}")
+    return dest
+
+
+def extract_archive(archive: Path, workdir: Path) -> dict:
+    """Extract a backup tar.gz into workdir and return its manifest.
+
+    `filter="data"` (stdlib, Python 3.12+) rejects absolute paths and
+    `..` traversal in archive members -- defense in depth for an archive
+    that arrived over the network or was handed in by a caller, on top
+    of the sha256 check `verify_archive` does next.
+    """
+    with tarfile.open(archive, "r:gz") as tar:
+        tar.extractall(workdir, filter="data")
+    manifest_path = workdir / "MANIFEST.json"
+    if not manifest_path.exists():
+        raise RuntimeError(f"{archive.name} has no MANIFEST.json -- not a valid backup archive")
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def verify_archive(manifest: dict, workdir: Path) -> list[str]:
+    """Recompute sha256 for every manifest entry already extracted into
+    workdir. Returns human-readable problems; empty means every entry
+    matches what build_archive recorded at backup time."""
+    problems: list[str] = []
+    for entry in manifest.get("databases", []):
+        path = workdir / entry["name"]
+        if not path.exists():
+            problems.append(f"{entry['name']}: missing from archive")
+            continue
+        actual = _sha256(path)
+        if actual != entry.get("sha256"):
+            problems.append(
+                f"{entry['name']}: sha256 mismatch (archive tampered or corrupt -- "
+                f"expected {entry['sha256'][:12]}, got {actual[:12]})"
+            )
+    return problems
+
+
+def restore_databases(
+    manifest: dict,
+    workdir: Path,
+    target_dir: Path,
+    *,
+    dry_run: bool,
+) -> list[dict]:
+    """Copy each manifest entry from workdir into target_dir/<name>.
+
+    Whatever it replaces is renamed to `<name>.pre-restore-<timestamp>`
+    rather than deleted -- see the module docstring's "WHY RESTORE
+    VERIFIES..." section. A DuckDB destination that is currently open
+    read-write elsewhere is skipped (not fatal to the batch) rather than
+    torn; duckdb is imported lazily here so restoring pure-SQLite
+    archives never needs the optional dependency.
+    """
+    stamp = dt.datetime.now(dt.UTC).strftime("%Y-%m-%d_%H%M%SZ")
+    results: list[dict] = []
+    for entry in manifest.get("databases", []):
+        name = entry["name"]
+        src = workdir / name
+        dest = target_dir / name
+
+        if dest.suffix.lower() in DUCKDB_SUFFIXES and dest.exists():
+            import duckdb
+
+            try:
+                guard = duckdb.connect(str(dest), read_only=True)
+                guard.close()
+            except Exception as e:
+                print(
+                    f"  SKIP   {name}: open read-write elsewhere, refusing to restore over it",
+                    file=sys.stderr,
+                )
+                results.append({"name": name, "status": "skipped", "reason": str(e)})
+                continue
+
+        if dry_run:
+            print(f"  would restore {name} -> {dest}")
+            results.append({"name": name, "status": "dry-run", "dest": str(dest)})
+            continue
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            backup_copy = dest.with_name(f"{dest.name}.pre-restore-{stamp}")
+            shutil.move(str(dest), str(backup_copy))
+            print(f"  saved existing {name} -> {backup_copy.name}")
+        shutil.copy2(src, dest)
+        wal_src = src.with_name(src.name + ".wal")
+        if wal_src.exists():
+            shutil.copy2(wal_src, dest.with_name(dest.name + ".wal"))
+        print(f"  ok     {name} -> {dest}")
+        results.append({"name": name, "status": "restored", "dest": str(dest)})
+    return results
+
+
+def restore_flow(args: argparse.Namespace) -> int:
+    """The --restore branch of main(): fetch/locate an archive, verify
+    it, confirm, and write it back into place."""
+    with tempfile.TemporaryDirectory(prefix="vai-dbrestore-") as tmp:
+        tmp_path = Path(tmp)
+        archive_arg = args.restore or None
+        local_candidate = Path(archive_arg).expanduser() if archive_arg else None
+
+        if local_candidate is not None and local_candidate.exists():
+            archive = local_candidate.resolve()
+        else:
+            if not args.remote_host:
+                print(
+                    "No local archive found"
+                    + (f" at {archive_arg}" if archive_arg else "")
+                    + " and no --remote-host / $VAI_BACKUP_REMOTE set to fetch one from.",
+                    file=sys.stderr,
+                )
+                return 2
+            name = Path(archive_arg).name if archive_arg else None
+            print(
+                f"Fetching {name or 'the latest archive'} from "
+                f"{args.remote_host}:{args.remote_dir}..."
+            )
+            try:
+                archive = pull_from_remote(
+                    args.remote_host, args.remote_dir, tmp_path, name=name, dry_run=args.dry_run
+                )
+            except RuntimeError as e:
+                print(f"Fetch failed: {e}", file=sys.stderr)
+                return 1
+            if args.dry_run:
+                print("  (--dry-run: nothing was fetched or restored)")
+                return 0
+
+        print(f"Extracting {archive.name}...")
+        extract_dir = tmp_path / "extracted"
+        extract_dir.mkdir(exist_ok=True)
+        try:
+            manifest = extract_archive(archive, extract_dir)
+        except RuntimeError as e:
+            print(f"Invalid archive: {e}", file=sys.stderr)
+            return 1
+
+        problems = verify_archive(manifest, extract_dir)
+        if problems:
+            print("Archive failed verification:", file=sys.stderr)
+            for problem in problems:
+                print(f"  - {problem}", file=sys.stderr)
+            return 1
+
+        entries = manifest.get("databases", [])
+        print(
+            f"Archive: {len(entries)} database(s), created {manifest.get('created_utc', '?')} "
+            f"on {manifest.get('host', '?')} (commit {(manifest.get('git_commit') or '?')[:12]})"
+        )
+        for entry in entries:
+            print(
+                f"  - {entry['name']}  ({entry['bytes']:,} bytes)  sha256={entry['sha256'][:12]}..."
+            )
+
+        if not args.yes:
+            # isatty() alone is not trusted here: it has been observed to
+            # misreport on a redirected-but-not-a-real-tty stdin (Git Bash
+            # on Windows), which would otherwise let a non-interactive
+            # caller crash on EOFError instead of failing cleanly.
+            try:
+                reply = input("\nThis OVERWRITES the file(s) above. Type 'restore' to continue: ")
+            except EOFError:
+                print(
+                    "\nRefusing to restore without --yes in a non-interactive session.",
+                    file=sys.stderr,
+                )
+                return 2
+            if reply.strip() != "restore":
+                print("Aborted -- nothing was changed.")
+                return 1
+
+        if args.restore_into:
+            target_dir = Path(args.restore_into)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            results = restore_databases(manifest, extract_dir, target_dir, dry_run=args.dry_run)
+        else:
+            # No target given: restore each db to the absolute path it was
+            # backed up FROM (manifest["databases"][i]["source"]) -- "put
+            # it back where it came from" is the only sane default when
+            # multiple databases in one archive live in different dirs.
+            results = []
+            for entry in entries:
+                dest_dir = Path(entry["source"]).parent
+                results.extend(
+                    restore_databases(
+                        {"databases": [entry]}, extract_dir, dest_dir, dry_run=args.dry_run
+                    )
+                )
+
+        skipped = [r for r in results if r["status"] == "skipped"]
+        restored = [r for r in results if r["status"] == "restored"]
+        if skipped:
+            print(
+                f"\n{len(skipped)} database(s) skipped (open elsewhere) -- stop whatever holds "
+                "them and re-run.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"\nRestore complete: {len(restored)} database(s) restored.")
+        return 0
+
+
+# --------------------------------------------------------------------
 # daily-schedule install / remove
 # --------------------------------------------------------------------
 
@@ -500,12 +765,36 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--at", default="03:30", metavar="HH:MM", help="daily run time for --install-daily"
     )
+    parser.add_argument(
+        "--restore",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="ARCHIVE",
+        help="restore instead of backing up: ARCHIVE is a local tar.gz path or a bare "
+        "filename to fetch from --remote-dir; omit the value to fetch the newest archive "
+        "from --remote-host",
+    )
+    parser.add_argument(
+        "--restore-into",
+        default=None,
+        metavar="DIR",
+        help="write restored databases here instead of the absolute path each was backed "
+        "up from (the manifest's recorded source, which may not exist on this machine)",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="skip the interactive confirmation prompt before --restore overwrites anything",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
+    if args.restore is not None:
+        return restore_flow(args)
     if args.remove_daily:
         return remove_daily()
     if args.install_daily:

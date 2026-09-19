@@ -22,7 +22,8 @@ and this parent process.
 WINDOWS NOTE: everything runs under `if __name__ == "__main__"`.
 ProcessPoolExecutor uses spawn (not fork) on Windows, so each worker
 re-imports this module; without the guard every worker would re-parse
-args, re-read the 59MB CSV, and recursively spawn its own pool.
+args, re-load the ticker's bars from the warehouse, and recursively
+spawn its own pool.
 
 Workers return metrics only, never the SimulationResult itself.
 BayesianSearch.report() reads result.metrics and nothing else, and
@@ -73,7 +74,6 @@ def _evaluate(payload):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config/search_hf_intrabar.yaml")
-    parser.add_argument("--data", default="data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv")
     parser.add_argument("--output", default="output/search_hf_intrabar_2026-08-22.csv")
     parser.add_argument("--limit", type=int, default=None, help="run only the first N combinations")
     parser.add_argument(
@@ -116,7 +116,17 @@ def main():
     strategy_class = resolve_strategy(config.strategy.strategy_id)
     mode = args.search or config.search.strategy
 
-    df = pd.read_csv(args.data, parse_dates=["timestamp"]).set_index("timestamp")
+    from src.warehouse.bars import available_tickers, load_frame
+
+    ticker = config.backtest.symbol
+    df = load_frame(ticker)
+    if df.empty:
+        known = ", ".join(sorted(available_tickers())) or "(none ingested yet)"
+        raise SystemExit(
+            f"No warehouse data for {ticker!r}. Available: {known}.\n"
+            f"Fetch it with `python cli.py fetch-data --symbol {ticker} --days N`, then "
+            f"ingest it with `python tools/build_warehouse.py --ingest {ticker}`."
+        )
     # Optional: an implied-vol series for MarketContext.implied_vol_change.
     # None (the default) yields an all-zero signal, which is an exact no-op
     # because implied_vol_exponent defaults to 0.0 -- so every config that
@@ -181,7 +191,7 @@ def main():
     print(
         f"search={mode} | space={space:,} combinations | budget={total} "
         f"({100 * total / space:.2f}%) | n_jobs={args.n_jobs}\n"
-        f"data={args.data} ({len(df):,} bars, {df.index.normalize().nunique():,} sessions)\n"
+        f"data=warehouse:{ticker} ({len(df):,} bars, {df.index.normalize().nunique():,} sessions)\n"
         f"fill_model={config.execution.fill_model} "
         f"| enforce_no_loss={config.execution.enforce_no_loss} "
         f"| max_concurrent_lots={config.risk.max_concurrent_lots} "

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Single entrypoint for running this project inside a container (or
-locally). Five subcommands cover everything the project can honestly
+locally). Ten subcommands cover everything the project can honestly
 do today:
 
   cli.py test [pytest args...]     Run the test suite. Extra arguments
@@ -13,16 +13,35 @@ do today:
                                     a separator to strip.
   cli.py fetch-data --symbol S --days N
                                     Download historical bars from Alpaca
-                                    into a backtest-ready CSV in data/.
-  cli.py backtest --config C --data D [--output O]
-                                    Run an exhaustive parameter sweep.
-  cli.py search --config C --data D --trials N
+                                    into data/, the intake format for
+                                    `tools/build_warehouse.py --ingest S`.
+  cli.py backtest --config C [--output O]
+                                    Run an exhaustive parameter sweep
+                                    against C's `backtest.symbol` bars,
+                                    read from the warehouse.
+  cli.py search --config C --trials N
                                     Adaptive (Optuna TPE) search over a
                                     space too large to enumerate, logging
                                     trials in execution order.
+  cli.py submit --config C          Hand C to the server's shard queue
+                                    instead of running it here -- for a
+                                    sweep too big for one process, or one
+                                    to watch drain across shards in the
+                                    browser. Needs `cli.py serve` running.
   cli.py live --config C            Connect, reconcile, then trade until
                                     signalled. --check-only runs startup
                                     and exits; --max-ticks bounds the run.
+  cli.py backup                    Snapshot the DuckDB warehouse and push
+                                    it to the Raspberry Pi as a tar.gz.
+  cli.py restore [ARCHIVE]         Fetch a warehouse backup (local path,
+                                    or from the Pi) and overwrite the
+                                    current warehouse databases with it.
+  cli.py serve                     Start the backend backtest engine
+                                    (server/app.py, FastAPI) that web/
+                                    talks to. --reload for local dev.
+  cli.py shard --name N --main H   Join the backtest engine at H as an
+                                    extra machine: claim queued sweeps,
+                                    run them here, report each result.
 
 Kept as one file rather than three, so the Dockerfile has exactly one
 ENTRYPOINT and "run everything" is genuinely one image.
@@ -48,12 +67,20 @@ before real capital is reachable at all.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
+
+# `backup`/`restore`'s default push/pull target -- the Raspberry Pi this
+# project deploys to (see docs/DEPLOY_RASPBERRY_PI.md). Overridable with
+# --remote-host or $VAI_BACKUP_REMOTE; tools/backup_databases.py (which
+# these two commands delegate to) deliberately has no default of its own,
+# but a CLI meant to be run without flags needs one.
+DEFAULT_PI_REMOTE = "ashitakalax@172.16.0.137"
 
 # strategy_id -> class. BacktestConfig only stores the id as a string
 # (Task 6.1); this is the same manual mapping Run_Instructions
@@ -75,7 +102,7 @@ def _load_strategy_registry() -> dict:
     return STRATEGY_REGISTRY
 
 
-def _open_result_sink(args: argparse.Namespace, config, data_path: Path):
+def _open_result_sink(args: argparse.Namespace, config, dataset_version: str):
     """Wire up the DuckDB warehouse for one sweep, or return None.
 
     Returns {"sink", "finalize"} rather than the sink alone because the
@@ -87,6 +114,11 @@ def _open_result_sink(args: argparse.Namespace, config, data_path: Path):
     precondition for one. A missing dependency or an unwritable
     directory prints a warning and the sweep runs exactly as it would
     have without the flag.
+
+    `dataset_version` identifies the BAR DATA this sweep ran against --
+    now `src.warehouse.bars.fingerprint(ticker)`, since the simulation
+    read path is the market-data warehouse itself, not a CSV with a
+    `.meta.json` sidecar to hash.
     """
     try:
         # Probed directly: src.warehouse imports duckdb/polars lazily, so
@@ -96,7 +128,7 @@ def _open_result_sink(args: argparse.Namespace, config, data_path: Path):
         import duckdb  # noqa: F401
         import polars  # noqa: F401
 
-        from src.warehouse import ingest, schema
+        from src.warehouse import schema
         from src.warehouse.connection import open_warehouse
         from src.warehouse.duckdb_sink import DuckDBResultSink, ensure_broker_environment
         from src.warehouse.hashing import broker_id_for
@@ -113,7 +145,7 @@ def _open_result_sink(args: argparse.Namespace, config, data_path: Path):
         con = open_warehouse(root)
         schema.initialize(con, root)
 
-        version = ingest.dataset_version(data_path)
+        version = dataset_version
         broker_id = broker_id_for(config.costs)
         ensure_broker_environment(con, broker_id, config.costs, f"{config.costs.model_type} costs")
 
@@ -213,20 +245,45 @@ def _to_utc_timestamp(value: str):
     return ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
 
 
+def _load_warehouse_bars(ticker: str) -> tuple[object | None, str | None]:
+    """A ticker's full bar history from the warehouse, or (None, None).
+
+    The ONLY way `backtest`/`search` read historical bars -- there is no
+    CSV fallback. A ticker gets into the warehouse via `cli.py fetch-data`
+    (downloads bars into `data/`) followed by `tools/build_warehouse.py
+    --ingest TICKER` (loads them into `warehouse/`); backtesting itself
+    never touches `data/`.
+
+    Returns the fingerprint alongside the frame because that is this
+    project's dataset-identity value now (see `_open_result_sink`) --
+    computing it here means every caller gets it for free instead of
+    reopening the warehouse a second time.
+    """
+    from src.warehouse.bars import available_tickers, fingerprint, load_frame
+
+    df = load_frame(ticker)
+    if df.empty:
+        known = ", ".join(sorted(available_tickers())) or "(none ingested yet)"
+        print(
+            f"No warehouse data for {ticker!r}. Available: {known}.\n"
+            f"Fetch it with `python cli.py fetch-data --symbol {ticker} --days N`, "
+            f"then ingest it with `python tools/build_warehouse.py --ingest {ticker}`.",
+            file=sys.stderr,
+        )
+        return None, None
+    return df, fingerprint(ticker)
+
+
 def cmd_backtest(args: argparse.Namespace) -> int:
-    """Run a parameter sweep from a YAML config against a CSV."""
+    """Run a parameter sweep from a YAML config against the warehouse."""
     import pandas as pd
 
     from src.core.config import BacktestConfig
     from src.core.exceptions import ConfigurationError
 
     config_path = Path(args.config)
-    data_path = Path(args.data)
     if not config_path.exists():
         print(f"Config file not found: {config_path}", file=sys.stderr)
-        return 2
-    if not data_path.exists():
-        print(f"Data file not found: {data_path}", file=sys.stderr)
         return 2
 
     config = BacktestConfig.from_yaml(str(config_path))
@@ -246,8 +303,9 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         return 2
     strategy_class = registry[config.strategy.strategy_id]
 
-    df = pd.read_csv(data_path, parse_dates=["timestamp"])
-    df.set_index("timestamp", inplace=True)
+    df, dataset_version = _load_warehouse_bars(config.backtest.symbol)
+    if df is None:
+        return 2
     df = _apply_backtest_window(df, config)
 
     from src.optimization.optimization_controller import OptimizationController
@@ -259,7 +317,9 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     # polars live in requirements-warehouse.txt, and `cli.py backtest`
     # must keep working on a machine that has never installed them.
     warehouse = (
-        _open_result_sink(args, config, data_path) if getattr(args, "warehouse", None) else None
+        _open_result_sink(args, config, dataset_version)
+        if getattr(args, "warehouse", None)
+        else None
     )
     if warehouse is not None:
         sweep_kwargs["result_sink"] = warehouse["sink"]
@@ -304,7 +364,12 @@ def cmd_backtest(args: argparse.Namespace) -> int:
 
 
 def cmd_fetch_data(args: argparse.Namespace) -> int:
-    """Download historical bars into a CSV the backtest can consume.
+    """Download historical bars into data/, the warehouse's intake format.
+
+    This is intake, not backtesting: `backtest`/`search` read bars from
+    the warehouse (`src/warehouse/bars.py`) and never touch `data/`
+    directly. A freshly fetched symbol becomes visible to them only
+    after `tools/build_warehouse.py --ingest SYMBOL` loads this file in.
 
     Kept a separate command from `backtest` on purpose. Auto-fetching
     inside a backtest would put implicit network I/O behind a command
@@ -410,8 +475,9 @@ def cmd_fetch_data(args: argparse.Namespace) -> int:
         print(f"  dropped (dupes) : {report.dropped_duplicates:,}")
     print(f"  sha256          : {report.sha256[:16]}...")
     print(
-        f"\nRun a sweep against it:\n"
-        f"  python cli.py backtest --config config/staging.yaml --data {report.path}"
+        f"\nLoad it into the warehouse, then run a sweep against it:\n"
+        f"  python tools/build_warehouse.py --ingest {spec.symbol}\n"
+        f"  python cli.py backtest --config config/staging.yaml"
     )
     return 0
 
@@ -446,11 +512,9 @@ def cmd_search(args: argparse.Namespace) -> int:
     from src.trading.strategy_registry import resolve_strategy
 
     config_path = Path(args.config)
-    data_path = Path(args.data)
-    for label, path in (("Config", config_path), ("Data", data_path)):
-        if not path.exists():
-            print(f"{label} file not found: {path}", file=sys.stderr)
-            return 2
+    if not config_path.exists():
+        print(f"Config file not found: {config_path}", file=sys.stderr)
+        return 2
 
     config = BacktestConfig.from_yaml(str(config_path))
     try:
@@ -490,7 +554,9 @@ def cmd_search(args: argparse.Namespace) -> int:
         print("               search is unavailable and strategy params cannot converge)")
     print()
 
-    df = pd.read_csv(data_path, parse_dates=["timestamp"]).set_index("timestamp")
+    df, dataset_version = _load_warehouse_bars(config.backtest.symbol)
+    if df is None:
+        return 2
     df = _apply_backtest_window(df, config)
     if config.backtest.start_date or config.backtest.end_date:
         # Printed explicitly, not left implicit -- a windowed search
@@ -508,7 +574,9 @@ def cmd_search(args: argparse.Namespace) -> int:
     # run_sweep, so it wires the sink here rather than inheriting
     # run_sweep's hook. Same contract, same parent-process guarantee.
     warehouse = (
-        _open_result_sink(args, config, data_path) if getattr(args, "warehouse", None) else None
+        _open_result_sink(args, config, dataset_version)
+        if getattr(args, "warehouse", None)
+        else None
     )
     sink = warehouse["sink"] if warehouse else None
 
@@ -823,6 +891,558 @@ def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -
     return exit_code
 
 
+def cmd_backup(args: argparse.Namespace) -> int:
+    """Snapshot the DuckDB warehouse and push it to the Raspberry Pi.
+
+    Scoped to the two warehouse catalogs (market_data.duckdb,
+    sim_results.duckdb) rather than tools/backup_databases.py's full
+    default set (which also covers the SQLite live ledger) -- this
+    command is `cli.py`'s entrypoint for the warehouse specifically, the
+    thing a workstation actually accumulates hours of sweep compute
+    into. Delegates every mechanic (online-safe snapshotting, archiving,
+    scp push, pruning) to that script rather than reimplementing it.
+    """
+    import tempfile
+
+    from src.warehouse.connection import MARKET_DATA_DB, SIM_RESULTS_DB
+    from tools.backup_databases import build_archive, prune_local, push_to_remote, snapshot_all
+
+    warehouse_dir = Path(args.warehouse)
+    databases = [
+        warehouse_dir / name
+        for name in (MARKET_DATA_DB, SIM_RESULTS_DB)
+        if (warehouse_dir / name).exists()
+    ]
+    if not databases:
+        print(
+            f"No warehouse databases found under {warehouse_dir} "
+            f"(looked for {MARKET_DATA_DB}, {SIM_RESULTS_DB}).",
+            file=sys.stderr,
+        )
+        return 1
+
+    extra_paths = []
+    if args.include_executions:
+        executions_dir = warehouse_dir / "executions"
+        if not executions_dir.exists():
+            print(f"--include-executions: no such directory ({executions_dir})", file=sys.stderr)
+            return 2
+        extra_paths.append(executions_dir)
+
+    print(f"Snapshotting {len(databases)} warehouse database(s) from {warehouse_dir}:")
+    with tempfile.TemporaryDirectory(prefix="vai-warehouse-backup-") as tmp:
+        workdir = Path(tmp)
+        entries, errors = snapshot_all(databases, workdir)
+        if not entries:
+            print("Nothing was snapshotted successfully.", file=sys.stderr)
+            return 1
+        archive = build_archive(workdir, entries, extra_paths, Path(args.out_dir))
+
+    prune_local(Path(args.out_dir), args.keep)
+
+    pushed = False
+    if args.local_only:
+        print("  (--local-only: not pushing)")
+    elif not args.remote_host:
+        print(
+            "  no --remote-host / $VAI_BACKUP_REMOTE set -- archive kept locally only",
+            file=sys.stderr,
+        )
+    else:
+        try:
+            push_to_remote(
+                archive, args.remote_host, args.remote_dir, args.keep, dry_run=args.dry_run
+            )
+            pushed = True
+        except RuntimeError as e:
+            print(f"  PUSH FAILED: {e}", file=sys.stderr)
+            errors.append(f"push: {e}")
+
+    if errors:
+        print(f"\nCompleted with {len(errors)} problem(s):", file=sys.stderr)
+        for err in errors:
+            print(f"  - {err}", file=sys.stderr)
+        return 1
+    where = f"{archive}" + (" (pushed)" if pushed else " (local only)")
+    print(f"\nWarehouse backup complete: {where}")
+    return 0
+
+
+def cmd_restore(args: argparse.Namespace) -> int:
+    """Fetch a warehouse backup tarball (local path, or from the Pi) and
+    overwrite the current warehouse databases with its contents.
+
+    Always restores INTO --warehouse (default warehouse/), never into
+    the manifest's recorded source path -- that path was captured on
+    whichever machine made the backup and has no reason to exist on this
+    one. A non-warehouse archive (e.g. one made by
+    `tools/backup_databases.py` directly, which also backs up the live
+    ledger) is filtered down to just its warehouse entries; anything else
+    in it is left alone.
+    """
+    import tempfile
+
+    from src.warehouse.connection import MARKET_DATA_DB, SIM_RESULTS_DB
+    from tools.backup_databases import (
+        extract_archive,
+        pull_from_remote,
+        restore_databases,
+        verify_archive,
+    )
+
+    warehouse_dir = Path(args.warehouse)
+    warehouse_dir.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="vai-warehouse-restore-") as tmp:
+        tmp_path = Path(tmp)
+        archive_arg = args.archive
+        local_candidate = Path(archive_arg).expanduser() if archive_arg else None
+
+        if local_candidate is not None and local_candidate.exists():
+            archive = local_candidate.resolve()
+        else:
+            if not args.remote_host:
+                print(
+                    "No local archive found"
+                    + (f" at {archive_arg}" if archive_arg else "")
+                    + " and no --remote-host / $VAI_BACKUP_REMOTE set to fetch one from.",
+                    file=sys.stderr,
+                )
+                return 2
+            name = Path(archive_arg).name if archive_arg else None
+            print(
+                f"Fetching {name or 'the latest archive'} from "
+                f"{args.remote_host}:{args.remote_dir}..."
+            )
+            try:
+                archive = pull_from_remote(
+                    args.remote_host, args.remote_dir, tmp_path, name=name, dry_run=args.dry_run
+                )
+            except RuntimeError as e:
+                print(f"Fetch failed: {e}", file=sys.stderr)
+                return 1
+            if args.dry_run:
+                print("  (--dry-run: nothing was fetched or restored)")
+                return 0
+
+        print(f"Extracting {archive.name}...")
+        extract_dir = tmp_path / "extracted"
+        extract_dir.mkdir(exist_ok=True)
+        try:
+            manifest = extract_archive(archive, extract_dir)
+        except RuntimeError as e:
+            print(f"Invalid archive: {e}", file=sys.stderr)
+            return 1
+
+        wanted = {MARKET_DATA_DB, SIM_RESULTS_DB}
+        entries = [e for e in manifest.get("databases", []) if e["name"] in wanted]
+        if not entries:
+            print(
+                f"{archive.name} contains no warehouse databases "
+                f"({MARKET_DATA_DB}, {SIM_RESULTS_DB}); nothing to restore.",
+                file=sys.stderr,
+            )
+            return 1
+        scoped_manifest = {**manifest, "databases": entries}
+
+        problems = verify_archive(scoped_manifest, extract_dir)
+        if problems:
+            print("Archive failed verification:", file=sys.stderr)
+            for problem in problems:
+                print(f"  - {problem}", file=sys.stderr)
+            return 1
+
+        print(
+            f"Archive: {len(entries)} warehouse database(s), created "
+            f"{manifest.get('created_utc', '?')} on {manifest.get('host', '?')} "
+            f"(commit {(manifest.get('git_commit') or '?')[:12]})"
+        )
+        for entry in entries:
+            print(
+                f"  - {entry['name']}  ({entry['bytes']:,} bytes)  sha256={entry['sha256'][:12]}..."
+            )
+
+        if not args.yes:
+            # isatty() alone is not trusted here: it has been observed to
+            # misreport on a redirected-but-not-a-real-tty stdin (Git Bash
+            # on Windows), which would otherwise let a non-interactive
+            # caller crash on EOFError instead of failing cleanly.
+            try:
+                reply = input(
+                    f"\nThis OVERWRITES {warehouse_dir} with the archive's contents. "
+                    "Type 'restore' to continue: "
+                )
+            except EOFError:
+                print(
+                    "\nRefusing to overwrite the warehouse without --yes in a non-interactive "
+                    "session.",
+                    file=sys.stderr,
+                )
+                return 2
+            if reply.strip() != "restore":
+                print("Aborted -- nothing was changed.")
+                return 1
+
+        results = restore_databases(
+            scoped_manifest, extract_dir, warehouse_dir, dry_run=args.dry_run
+        )
+
+        skipped = [r for r in results if r["status"] == "skipped"]
+        restored = [r for r in results if r["status"] == "restored"]
+        if skipped:
+            print(
+                f"\n{len(skipped)} database(s) skipped (open elsewhere) -- close whatever holds "
+                "them (a sweep, ingest, or the dashboard) and re-run.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"\nRestore complete: {len(restored)} database(s) restored into {warehouse_dir}.")
+        return 0
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Start the backend backtest engine: server/app.py under uvicorn.
+
+    This is the FastAPI process web/ talks to for /api/backtest/* (and,
+    unless VAI_BACKTEST_UPSTREAM forwards them elsewhere, /api/live/* and
+    /api/ml/*) -- see server/CLAUDE.md.
+
+    RUNS UVICORN IN THIS PROCESS, NOT AS A CHILD, AND THAT IS THE FIX FOR
+    A LEAK THIS COMMAND CAUSED. It first shelled out to `python -m
+    uvicorn`, mirroring how cmd_test shells out to pytest. But a server
+    is long-lived where pytest is not: stopping the wrapper left the
+    child holding the port. On Windows terminate() is TerminateProcess,
+    which runs no handler in the wrapper at all, so forwarding the signal
+    could not fix it either -- five orphaned servers were found running
+    after a test that did exactly this. With no child there is nothing to
+    orphan: a terminate kills the server itself, and Ctrl+C reaches
+    uvicorn's own handler, which drains connections and runs the lifespan
+    shutdown. (`--reload` still spawns uvicorn's reloader child; that is
+    uvicorn's own dev-only behavior and not something this wraps.)
+
+    No --workers: server/jobs.py's backtest queue is a single-worker
+    design whose durability (state.json, <run_id>.rows.jsonl under
+    output/queue/) assumes exactly one process owns it. Multiple uvicorn
+    workers would each restore and run the same queue independently --
+    the same "one loop per store" hazard live trading avoids by taking a
+    process lock, with no equivalent guard here.
+    """
+    try:
+        import fastapi  # noqa: F401
+        import uvicorn
+    except ImportError as e:
+        print(
+            f"`serve` needs the web backend's dependencies ({e}); "
+            "run `pip install -r requirements-web.txt`.",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(
+        f"+ uvicorn server.app:app --host {args.host} --port {args.port}"
+        + (" --reload" if args.reload else ""),
+        file=sys.stderr,
+    )
+    if args.host not in ("127.0.0.1", "localhost"):
+        print(
+            f"  binding {args.host}: this server has NO AUTHENTICATION and returns account "
+            "balances, positions and cost bases -- only do this on a trusted network.",
+            file=sys.stderr,
+        )
+
+    # The import string, not the app object: uvicorn needs one for
+    # --reload, and it keeps this command's startup free of the engine
+    # import until the server itself is ready to do it.
+    uvicorn.run("server.app:app", host=args.host, port=args.port, reload=args.reload)
+    return 0
+
+
+def cmd_shard(args: argparse.Namespace) -> int:
+    """Join a main backtest server as a remote shard (server/shard_client.py).
+
+    The main server must be reachable from this machine, which means it
+    was started with `cli.py serve --host 0.0.0.0` (or a LAN address),
+    and both machines should be on the same commit -- registration is
+    refused otherwise unless --allow-version-mismatch is passed.
+    """
+    import re
+    import signal
+
+    try:
+        import fastapi  # noqa: F401
+        import httpx  # noqa: F401
+    except ImportError as e:
+        print(
+            f"`shard` needs the web backend's dependencies ({e}); "
+            "run `pip install -r requirements-web.txt`.",
+            file=sys.stderr,
+        )
+        return 2
+
+    from server.jobs import LOCAL_SHARD, SHARD_NAME_PATTERN
+
+    if not re.match(SHARD_NAME_PATTERN, args.name) or args.name == LOCAL_SHARD:
+        print(
+            f"Invalid shard name {args.name!r}: use letters, digits, '.', '-' or '_' "
+            f"(up to 64 characters, starting with a letter or digit), and not "
+            f"{LOCAL_SHARD!r}, which is the main server's own worker.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.max_jobs is not None:
+        if args.max_jobs < 1:
+            print("--max-jobs must be at least 1.", file=sys.stderr)
+            return 2
+        # Read by server.backtest at import, which shard_client defers
+        # until the first sweep -- so setting it here is early enough.
+        os.environ["VAI_MAX_JOBS"] = str(args.max_jobs)
+
+    from server.shard_client import ShardProcess, main_url
+
+    try:
+        base = main_url(args.main, args.port)
+    except ValueError as e:
+        print(f"--main: {e}", file=sys.stderr)
+        return 2
+
+    cache_dir = (
+        Path(args.cache_dir) if args.cache_dir else REPO_ROOT / "output" / "shard_cache" / args.name
+    )
+    process = ShardProcess(
+        args.name,
+        base,
+        cache_dir=cache_dir,
+        allow_version_mismatch=args.allow_version_mismatch,
+    )
+
+    # First signal: finish the configurations in flight, hand the sweep
+    # back, exit. Second: exit now and let the main server's timeout
+    # reassign it. SIGBREAK is Windows' graceful stop -- see cmd_live.
+    signalled = {"count": 0}
+
+    def _handle_signal(signum, _frame):
+        signalled["count"] += 1
+        if signalled["count"] > 1:
+            print("\nSecond signal -- exiting now.", file=sys.stderr, flush=True)
+            os._exit(130)
+        print(
+            f"\nReceived signal {signum} -- finishing in-flight configurations and handing "
+            "the sweep back. Press Ctrl+C again to quit immediately.",
+            file=sys.stderr,
+            flush=True,
+        )
+        process.request_stop()
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _handle_signal)
+
+    print(f"Shard {args.name!r} joining {base} (instance {process.instance})", flush=True)
+    return process.run_forever(max_runs=args.max_runs)
+
+
+def cmd_submit(args: argparse.Namespace) -> int:
+    """Submit a BacktestConfig YAML to the server's shard queue.
+
+    The config-file/local-process split this project already has
+    (`backtest`/`search` run in THIS process; `submit` hands the same
+    kind of config to server/jobs.py's durable queue instead, for a
+    sweep too big for one process, or one you want to watch drain
+    across shards in the browser) -- no bespoke script per sweep. Any
+    `BacktestConfig` YAML works; nothing here is COWZ- or
+    strategy-specific.
+
+    Chunked the same way tools/sweep_rsp_all.py already did by hand:
+    server/backtest.py's build_config() cannot accept a submission
+    whose combination space exceeds MAX_SWEEP_COMBINATIONS (grid) or
+    MAX_SWEEP_COMBINATIONS_BAYESIAN (bayesian, 100x looser -- the whole
+    point of choosing bayesian is a space too large to enumerate), so a
+    config whose declared grid/strategy_params space is larger than
+    that arrives here as more than one queued run, each a coherent
+    slice of the same space, never as a rejected request. THESE TWO
+    CONSTANTS ARE COPIED FROM server/backtest.py, NOT IMPORTED: server/
+    depends on src/ and cli.py, never the reverse (see
+    _apply_backtest_window's docstring for the same boundary), so
+    cli.py cannot import server.backtest to read them from one place.
+    Keep them in sync by hand if either changes.
+
+    BAYESIAN_DUAL_SCALE'S target_return, GENERICALLY: any strategy
+    whose target_return the server force-aligns to the grid's own
+    profit_target (build_config's "mirrors" handling) refuses a
+    submission that both sweeps target_return AND carries more than
+    one grid profit target -- the strategy is estimating P(reaching
+    ONE target), so more than one target is a different question per
+    combination, not one sweep. A config authored for the LOCAL engine
+    (which has no such rejection -- only a per-combination mismatch
+    error, so a swept target_return there just wastes most of its
+    trial budget on combinations that fail) is fanned out here into one
+    submission per target_return value instead, target_return itself
+    dropped so the server supplies it -- the same fix this project's
+    own cowz1-bayesian_dual_scale.yaml needed by hand.
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    from src.core.config import BacktestConfig
+    from src.core.exceptions import ConfigurationError
+
+    # Copied from server/backtest.py -- see docstring for why this
+    # cannot be an import instead.
+    max_grid_combos = 2000
+    max_bayes_combos = max_grid_combos * 100
+    bayes_trials_ceiling = 500
+
+    config_path = Path(args.config)
+    if not config_path.exists():
+        print(f"Config file not found: {config_path}", file=sys.stderr)
+        return 2
+    config = BacktestConfig.from_yaml(str(config_path))
+    try:
+        config.validate()
+    except ConfigurationError as e:
+        print(f"Invalid config: {e}", file=sys.stderr)
+        return 2
+
+    mode = args.search or config.search.strategy
+    if mode == "random":
+        print(
+            "search.strategy: random has no server equivalent (RunRequest supports only "
+            "grid and bayesian) -- run it locally with `cli.py search`/`run_hf_sweep.py "
+            "--search random`, or pass --search grid/bayesian to override.",
+            file=sys.stderr,
+        )
+        return 2
+    is_bayesian = mode == "bayesian"
+    if is_bayesian and not (2 <= args.trials <= bayes_trials_ceiling):
+        print(f"--trials must be between 2 and {bayes_trials_ceiling}.", file=sys.stderr)
+        return 2
+
+    def combos(values: dict) -> int:
+        n = 1
+        for v in values.values():
+            n *= len(v) if isinstance(v, list) else 1
+        return n
+
+    def split_axis(space: dict) -> str | None:
+        multi = {k: v for k, v in space.items() if isinstance(v, list) and len(v) > 1}
+        return max(multi, key=lambda k: len(multi[k])) if multi else None
+
+    def bisect(space: dict, cap: int) -> list[dict]:
+        if combos(space) <= cap:
+            return [space]
+        axis = split_axis(space)
+        if axis is None:
+            return [space]
+        values = space[axis]
+        mid = len(values) // 2
+        left, right = dict(space), dict(space)
+        left[axis], right[axis] = values[:mid], values[mid:]
+        return bisect(left, cap) + bisect(right, cap)
+
+    grid_steps = list(config.grid.steps)
+    params = dict(config.strategy.strategy_params)
+    target_groups = [list(config.grid.profit_targets)]
+    if isinstance(params.get("target_return"), list):
+        target_groups = [[v] for v in params.pop("target_return")]
+
+    cap = max_bayes_combos if is_bayesian else max_grid_combos
+    batches: list[tuple[dict, int]] = []
+    for targets in target_groups:
+        grid_axes = len(grid_steps) * len(targets)
+        chunk_cap = max(1, cap // grid_axes)
+        for chunk in bisect(params, chunk_cap):
+            n = combos(chunk) * grid_axes
+            batches.append(({"grid_steps": grid_steps, "targets": targets, "params": chunk}, n))
+
+    label_base = args.name or config_path.stem
+    total = len(batches)
+    requests = []
+    for i, (chunk, n) in enumerate(batches, start=1):
+        suffix = f" [{i}/{total}]" if total > 1 else ""
+        tag = f" pt={chunk['targets'][0]:.4g}" if len(target_groups) > 1 else ""
+        label = f"{label_base}{suffix}{tag}"
+        body = {
+            "name": label,
+            "tickers": [config.backtest.symbol],
+            "grid_steps": chunk["grid_steps"],
+            "targets": chunk["targets"],
+            "model": config.strategy.strategy_id,
+            "params": chunk["params"],
+            "fill": config.execution.fill_model,
+            "no_loss": config.execution.enforce_no_loss,
+            "limit": args.limit,
+            "rank_by": config.search.rank_by,
+            "minimize": config.search.direction == "minimize",
+        }
+        if is_bayesian:
+            body["bayes"] = {"trials": args.trials, "seed": config.search.seed}
+        requests.append((label, body, chunk["grid_steps"], chunk["targets"], n))
+
+    grid_total = sum(n for *_r, n in requests) if not is_bayesian else 0
+    print(f"{config.backtest.symbol}: {config.execution.fill_model} fills, config={config_path}")
+    if is_bayesian:
+        print(f"{total} run(s), {args.trials} trials each, {total * args.trials:,} trials total\n")
+    else:
+        print(f"{total} run(s), {grid_total:,} combinations total\n")
+    for label, _body, steps, targets, n in requests:
+        print(f"  {label}  ({len(steps)} steps x {len(targets)} targets x ... = {n:,} combos)")
+
+    if args.dry_run:
+        print("\n--dry-run: nothing submitted.")
+        return 0
+
+    print()
+    if not args.resubmit:
+        try:
+            with urllib.request.urlopen(f"{args.api}/api/backtest/history", timeout=60) as resp:
+                completed = {
+                    run.get("name") for run in json.loads(resp.read()).get("runs", {}).values()
+                }
+            with urllib.request.urlopen(f"{args.api}/api/backtest/runs", timeout=60) as resp:
+                pending = {
+                    (run.get("req") or {}).get("name")
+                    for run in json.loads(resp.read()).get("runs", [])
+                    if run.get("status") in ("queued", "running", "pausing", "paused")
+                }
+        except urllib.error.URLError as exc:
+            print(f"UNREACHABLE {args.api}: {getattr(exc, 'reason', exc)}", file=sys.stderr)
+            print("Start it with: python cli.py serve", file=sys.stderr)
+            return 1
+        already = completed | pending
+        before = len(requests)
+        for label, *_ in requests:
+            if label in already:
+                print(f"  skip (already handled) {label}")
+        requests = [r for r in requests if r[0] not in already]
+        if before != len(requests):
+            print(f"\n{before - len(requests)} of {before} already handled; {len(requests)} to queue.\n")
+
+    ok = 0
+    for label, body, *_ in requests:
+        req = urllib.request.Request(
+            f"{args.api}/api/backtest/runs",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                job = json.loads(resp.read())
+            print(f"  queued {job['id']}  {label}", flush=True)
+            ok += 1
+        except urllib.error.HTTPError as exc:
+            print(f"  REJECTED {label}\n    {exc.code}: {exc.read().decode()[:300]}")
+        except urllib.error.URLError as exc:
+            print(f"UNREACHABLE {args.api}: {exc.reason}", file=sys.stderr)
+            print("Start it with: python cli.py serve", file=sys.stderr)
+            return 1
+
+    print(f"\n{ok}/{len(requests)} queued. Watch: {args.api}  (Backtesting -> Run History)")
+    return 0 if ok == len(requests) else 1
+
+
 def main() -> int:
     # `test` is special-cased ahead of argparse -- see cmd_test's
     # docstring for why. Every other invocation (including bare
@@ -839,7 +1459,6 @@ def main() -> int:
 
     p_backtest = sub.add_parser("backtest", help="Run a parameter sweep")
     p_backtest.add_argument("--config", required=True, help="Path to a BacktestConfig YAML file")
-    p_backtest.add_argument("--data", required=True, help="Path to historical OHLCV CSV")
     p_backtest.add_argument(
         "--output", default=None, help="Optional path to write full results CSV"
     )
@@ -901,7 +1520,6 @@ def main() -> int:
         "search", help="Adaptive (Bayesian/TPE) parameter search with trial-order logging"
     )
     p_search.add_argument("--config", required=True, help="Path to a BacktestConfig YAML file")
-    p_search.add_argument("--data", required=True, help="Path to historical OHLCV CSV")
     p_search.add_argument(
         "--trials",
         type=int,
@@ -928,6 +1546,44 @@ def main() -> int:
     )
     p_search.set_defaults(func=cmd_search)
 
+    p_submit = sub.add_parser(
+        "submit", help="Submit a BacktestConfig sweep to the server's shard queue"
+    )
+    p_submit.add_argument("--config", required=True, help="Path to a BacktestConfig YAML file")
+    p_submit.add_argument(
+        "--api", default="http://127.0.0.1:8000", help="Backtest server base URL"
+    )
+    p_submit.add_argument(
+        "--name", default=None, help="Label prefix for queued runs (default: config filename)"
+    )
+    p_submit.add_argument(
+        "--search",
+        choices=("grid", "bayesian"),
+        default=None,
+        help="override the config's search.strategy (server has no 'random')",
+    )
+    p_submit.add_argument(
+        "--trials",
+        type=int,
+        default=500,
+        help="Bayesian trials PER CHUNK, max 500 (default: 500). Ignored for grid mode.",
+    )
+    p_submit.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Bar cap per configuration (default: none -- the whole file)",
+    )
+    p_submit.add_argument(
+        "--dry-run", action="store_true", help="Print the plan. Submits nothing."
+    )
+    p_submit.add_argument(
+        "--resubmit",
+        action="store_true",
+        help="Queue every run, including ones already completed or pending on the server.",
+    )
+    p_submit.set_defaults(func=cmd_submit)
+
     p_live = sub.add_parser("live", help="Connect to Alpaca and run the startup lifecycle")
     p_live.add_argument("--config", required=True, help="Path to a BacktestConfig YAML file")
     p_live.add_argument(
@@ -947,6 +1603,153 @@ def main() -> int:
         help="Stop after N ticks instead of running until signalled",
     )
     p_live.set_defaults(func=cmd_live)
+
+    p_backup = sub.add_parser("backup", help="Snapshot the DuckDB warehouse and push it to the Pi")
+    p_backup.add_argument(
+        "--warehouse",
+        default="warehouse",
+        metavar="DIR",
+        help="Warehouse root (default: warehouse/)",
+    )
+    p_backup.add_argument(
+        "--include-executions",
+        action="store_true",
+        help="Also fold warehouse/executions (per-fill trade blotters) into the archive",
+    )
+    p_backup.add_argument(
+        "--out-dir",
+        default="backups",
+        metavar="DIR",
+        help="Where local archives are written (default: backups/)",
+    )
+    p_backup.add_argument(
+        "--keep",
+        type=int,
+        default=14,
+        help="How many archives to retain locally and remotely (default: 14; 0 = keep all)",
+    )
+    p_backup.add_argument(
+        "--remote-host",
+        default=os.environ.get("VAI_BACKUP_REMOTE", DEFAULT_PI_REMOTE),
+        metavar="USER@HOST",
+        help=f"SSH target for the push (default: $VAI_BACKUP_REMOTE or {DEFAULT_PI_REMOTE})",
+    )
+    p_backup.add_argument(
+        "--remote-dir",
+        default=os.environ.get("VAI_BACKUP_REMOTE_DIR", "volatility-ai-backups"),
+        metavar="DIR",
+        help="Directory on the remote (default: $VAI_BACKUP_REMOTE_DIR or volatility-ai-backups)",
+    )
+    p_backup.add_argument(
+        "--local-only", action="store_true", help="Build the archive but do not push it to the Pi"
+    )
+    p_backup.add_argument(
+        "--dry-run", action="store_true", help="Print the ssh/scp commands instead of running them"
+    )
+    p_backup.set_defaults(func=cmd_backup)
+
+    p_restore = sub.add_parser("restore", help="Restore the DuckDB warehouse from a backup tarball")
+    p_restore.add_argument(
+        "archive",
+        nargs="?",
+        default=None,
+        help="Local path to a backup tar.gz, or a bare filename on the remote. Omit to fetch "
+        "the newest archive from --remote-host.",
+    )
+    p_restore.add_argument(
+        "--warehouse",
+        default="warehouse",
+        metavar="DIR",
+        help="Warehouse root to restore INTO (default: warehouse/); an existing file is saved "
+        "as <name>.pre-restore-<timestamp> before being overwritten",
+    )
+    p_restore.add_argument(
+        "--remote-host",
+        default=os.environ.get("VAI_BACKUP_REMOTE", DEFAULT_PI_REMOTE),
+        metavar="USER@HOST",
+        help=f"Where to fetch the archive from if not found locally "
+        f"(default: $VAI_BACKUP_REMOTE or {DEFAULT_PI_REMOTE})",
+    )
+    p_restore.add_argument(
+        "--remote-dir",
+        default=os.environ.get("VAI_BACKUP_REMOTE_DIR", "volatility-ai-backups"),
+        metavar="DIR",
+        help="Directory on the remote to fetch from (default: $VAI_BACKUP_REMOTE_DIR or "
+        "volatility-ai-backups)",
+    )
+    p_restore.add_argument(
+        "--yes", action="store_true", help="Skip the interactive confirmation prompt"
+    )
+    p_restore.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be fetched/restored without changing anything",
+    )
+    p_restore.set_defaults(func=cmd_restore)
+
+    p_serve = sub.add_parser(
+        "serve", help="Start the backend backtest engine (server/app.py) that web/ talks to"
+    )
+    p_serve.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind address (default: 127.0.0.1). No authentication exists -- 0.0.0.0 or a LAN "
+        "address exposes account balances, positions and cost bases to that network.",
+    )
+    p_serve.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
+    p_serve.add_argument(
+        "--reload",
+        action="store_true",
+        help="Restart the server on code changes (uvicorn --reload; local dev only)",
+    )
+    p_serve.set_defaults(func=cmd_serve)
+
+    p_shard = sub.add_parser(
+        "shard",
+        help="Join a backtest engine as an extra machine that runs queued sweeps",
+    )
+    p_shard.add_argument(
+        "--name", required=True, help="This shard's name as shown in the UI, e.g. fast-shard"
+    )
+    p_shard.add_argument(
+        "--main",
+        required=True,
+        metavar="HOST",
+        help="The main server: an IP or hostname (port from --port), host:port, or a URL. "
+        "It must be started with `cli.py serve --host 0.0.0.0` to be reachable.",
+    )
+    p_shard.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Main server port when --main does not name one (default: 8000)",
+    )
+    p_shard.add_argument(
+        "--cache-dir",
+        default=None,
+        metavar="DIR",
+        help="Where downloaded bars are cached (default: output/shard_cache/<name>/, which is "
+        "per shard so two on one machine never share a download)",
+    )
+    p_shard.add_argument(
+        "--max-jobs",
+        type=int,
+        default=None,
+        help="Cap the worker processes each sweep uses on this machine "
+        "(default: one less than its core count)",
+    )
+    p_shard.add_argument(
+        "--max-runs",
+        type=int,
+        default=None,
+        help="Exit after completing this many sweeps (default: run until stopped)",
+    )
+    p_shard.add_argument(
+        "--allow-version-mismatch",
+        action="store_true",
+        help="Join even if this checkout's commit differs from the main server's",
+    )
+    p_shard.set_defaults(func=cmd_shard)
 
     args = parser.parse_args()
     return args.func(args)

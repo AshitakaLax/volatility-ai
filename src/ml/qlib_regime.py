@@ -570,27 +570,42 @@ class RegimeInferenceSource:
         Runs once, on the first observed bar, because that is the first
         moment this object knows when the run starts. Failure is
         non-fatal and warns rather than raises: a missing or unreadable
-        history file costs the warmup this exists to provide, which is
+        history source costs the warmup this exists to provide, which is
         the behavior before it existed, and refusing to run a backtest
         over it would be the worse trade.
+
+        SOURCE: `history_path`, when a caller explicitly set one (tests,
+        ad-hoc research pointed at a specific file), otherwise the
+        warehouse (`warehouse/market_data.duckdb`) keyed by `self.ticker`
+        -- this is the committed/default path, and it is why
+        server/backtest.py's STRATEGY_DEFAULTS no longer sets
+        `history_path` for any ml_regime_* strategy: `None` now means
+        "look it up," not "skip it." See src/warehouse/bars.py's own
+        docstring for why this reads the warehouse rather than `data/`.
         """
-        if self.history_path is None:
-            return
         try:
             import pandas as pd
 
-            frame = (
-                pd.read_parquet(self.history_path)
-                if self.history_path.suffix == ".parquet"
-                else pd.read_csv(
-                    self.history_path, parse_dates=["timestamp"], index_col="timestamp"
+            if self.history_path is not None:
+                frame = (
+                    pd.read_parquet(self.history_path)
+                    if self.history_path.suffix == ".parquet"
+                    else pd.read_csv(
+                        self.history_path, parse_dates=["timestamp"], index_col="timestamp"
+                    )
                 )
-            )
-            # utc=True for the mixed-offset DST reason recorded in
-            # tools/train_qlib_regime.to_daily -- a tz-aware bar file
-            # spanning a DST change is object dtype otherwise.
-            index = pd.to_datetime(frame.index, utc=True).tz_convert(_NY)
-            frame = frame.set_index(index)
+                # utc=True for the mixed-offset DST reason recorded in
+                # tools/train_qlib_regime.to_daily -- a tz-aware bar file
+                # spanning a DST change is object dtype otherwise.
+                index = pd.to_datetime(frame.index, utc=True).tz_convert(_NY)
+                frame = frame.set_index(index)
+            else:
+                from src.warehouse.bars import load_frame
+
+                frame = load_frame(self.ticker)
+                if frame.empty:
+                    return
+                frame = frame.tz_convert(_NY)
             prior = frame[frame.index.date < first_session]
             if prior.empty:
                 return
@@ -604,9 +619,10 @@ class RegimeInferenceSource:
             for row in daily.tail(_MAX_WINDOW + 10).itertuples():
                 self._features.record(float(row.high), float(row.low), float(row.close))
         except Exception as exc:
+            source = self.history_path if self.history_path is not None else "the warehouse"
             print(
                 f"RegimeInferenceSource({self.ticker}): could not warm from "
-                f"{self.history_path} ({exc}); the first {self.min_sessions} sessions of this "
+                f"{source} ({exc}); the first {self.min_sessions} sessions of this "
                 "run will be unscored and will size at the floor.",
                 file=sys.stderr,
             )

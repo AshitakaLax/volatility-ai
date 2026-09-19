@@ -15,6 +15,10 @@ import type {
   Run,
   RunOp,
   RunReq,
+  Shard,
+  ShardList,
+  ShardOp,
+  ShardSchedule,
   Validation,
 } from "@/types/backtest";
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
@@ -136,6 +140,37 @@ export const api = {
 
   /** Pausing holds everything; the running run pauses after its batch. */
   setQueuePaused: (paused: boolean) => post<{ paused: boolean }>("/api/backtest/queue", { paused }),
+
+  /**
+   * The machines working the queue: the engine host's own worker ("local")
+   * plus every `cli.py shard` that has registered. 404 from an engine host
+   * that predates shards.
+   */
+  shards: () => request<ShardList>("/api/backtest/shards"),
+
+  /**
+   * Pausing a shard hands its sweep back to the queue once the
+   * configurations in flight finish -- another shard continues it. 409
+   * for forgetting a shard that is still connected.
+   */
+  controlShard: (name: string, op: ShardOp) =>
+    post<Shard>(`/api/backtest/shards/${encodeURIComponent(name)}`, op),
+
+  setShardsPaused: (paused: boolean) =>
+    post<{ paused: boolean }>("/api/backtest/shards", { paused }),
+
+  /**
+   * Set or clear a shard's daily lockout window (server-local wall-clock
+   * HH:MM). Inside it, the shard behaves as if paused: no new claim, and
+   * a running sweep hands back after its in-flight configurations.
+   * `{enabled: false}` with no start/end clears the window outright.
+   * 400 for a missing start/end while enabling, or a malformed time.
+   */
+  setShardSchedule: (name: string, schedule: ShardSchedule) =>
+    post<{ name: string; schedule: ShardSchedule | null }>(
+      `/api/backtest/shards/${encodeURIComponent(name)}/schedule`,
+      schedule,
+    ),
 
   /**
    * Dry-run the same validation `submitRun` performs, without queuing a

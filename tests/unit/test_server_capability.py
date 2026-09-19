@@ -89,6 +89,8 @@ ALL_MODULES = (
     "deployment.py",
     "ml_insights.py",
     "ml_upstream.py",
+    "shards.py",
+    "shard_client.py",
 )
 
 

@@ -5,7 +5,17 @@ FastAPI backend for `web/`. Run with:
 ```bash
 pip install -r requirements-web.txt
 uvicorn server.app:app --host 127.0.0.1 --port 8000
+# or, equivalently:
+python cli.py serve
 ```
+
+`cli.py serve` (repo root) is a thin wrapper: it checks fastapi/uvicorn
+are installed (a clear message pointing at requirements-web.txt instead
+of a bare ModuleNotFoundError if not), then shells out to the same
+`uvicorn server.app:app` invocation. `--host`, `--port`, `--reload`
+pass through; there is deliberately no `--workers` -- `jobs.py`'s
+backtest queue is single-worker by design (see below), and multiple
+uvicorn workers would each restore and run it independently.
 
 ## The boundary is the whole design
 
@@ -13,12 +23,14 @@ uvicorn server.app:app --host 127.0.0.1 --port 8000
 |---|---|---|
 | `live.py` | **Read-only.** Opens the ledger store `mode=ro` — SQLite itself refuses a write. Imports no broker. | |
 | `control.py` | **The only write.** One endpoint, reaching the existing `CircuitBreaker` and nothing else. | |
-| `backtest.py` | **Bidirectional** — a simulation over a CSV can't touch a real position. Validated through `BacktestConfig`. | |
+| `backtest.py` | **Bidirectional** — a simulation over warehouse bars can't touch a real position. Validated through `BacktestConfig`. | |
 | `deployment.py` | Read-only: which build is running (served inside `/api/health`; no route of its own). | |
 | `history.py` | Completed runs persisted to disk (`output/runs/`, capped at `MAX_RUNS`). | |
 | `contract.py` | Pure translators from the **pre-condensed** wire shape (old `RunRequest` names, `parameters`/`timeframe`/`configurations`/`executions` reports) to the current one. Applied at the read boundary: `RunRequest`'s pre-validator, `JobQueue.restore`, `history.load*`. | |
-| `jobs.py` | **Durable** single-worker queue: pending runs, their order and per-configuration checkpoints survive a restart (`output/queue/`, `VAI_QUEUE_DIR`). Pause / resume / cancel / reorder / run-next; restored by `app.py`'s lifespan hook, never at import. | |
+| `jobs.py` | **Durable** single-worker queue: pending runs, their order and per-configuration checkpoints survive a restart (`output/queue/`, `VAI_QUEUE_DIR`). Pause / resume / cancel / reorder / run-next; restored by `app.py`'s lifespan hook, never at import. Each shard may also carry a daily lockout window (`set_shard_schedule`) -- independent of a manual pause, see its "LOCKOUT WINDOWS" doc section. | |
 | `ml_insights.py` | Read-only, precomputed ML research artifacts. **Not on the path from a bar to an order** — no sizing strategy or live loop imports it. | |
+| `shards.py` | **Distributed sweeps.** The HTTP face of the queue's shard bookkeeping (register / claim / sync / finish) plus the bar download a shard needs. Under `/api/backtest/` so the Pi forwards it with the rest. | |
+| `shard_client.py` | The `cli.py shard` process: claims one sweep, runs the real `run_backtest` on that machine's cores, streams every finished configuration back. Caches bars on disk by fingerprint. | |
 | `ml_upstream.py`, `upstream.py` | Forward requests to the workstation that actually has `data/external/`, `data/ml/` and `requirements-ml.txt` (the Pi deployment doesn't). | |
 
 `tests/unit/test_server_capability.py` walks each module's AST and fails
@@ -66,6 +78,23 @@ Two things that follow from it:
 Tests never touch the real `output/queue/` or `output/runs/`:
 `tests/conftest.py` points `VAI_QUEUE_DIR` and `VAI_RUN_HISTORY_DIR` at a
 temp directory before anything imports `server`.
+
+## Distributed sweeps: one sweep per machine
+
+A run (one sweep) is the unit of distribution. `jobs.py` tracks every
+shard, including the built-in `local` one that is this process's own
+worker, and hands each a run to own; `shards.py` is only the HTTP face of
+that. Three rules stop two machines writing the same run -- ownership
+checked on every report, a timeout that releases a silent shard's run,
+and last-registration-wins for a name. See `jobs.py`'s "SHARDS" section.
+
+Pausing a SHARD is not pausing a RUN: the shard stops taking
+configurations and its sweep returns to the queue for another shard,
+which resumes it from the same checkpoint a restart would use. Pausing a
+run or the queue is unchanged.
+
+    cli.py serve --host 0.0.0.0                 # the engine host
+    cli.py shard --name fast-shard --main HOST  # each extra machine
 
 ## The wire contract is condensed — and old data still loads
 

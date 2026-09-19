@@ -130,9 +130,20 @@ python cli.py fetch-data --symbol TQQQ --days 730
 
 That writes three things — a timestamped CSV, a `..._latest.csv` symlink,
 and a `.meta.json` sidecar recording symbol, window, feed, adjustment, row
-count and SHA-256. The sidecar is what keeps a sweep result traceable to
-the exact data it ran on after you later refresh. `data/` is git-ignored;
-downloads are tens of megabytes.
+count and SHA-256. `data/` is git-ignored; downloads are tens of
+megabytes.
+
+**This file is intake, not something a backtest reads.** `cli.py
+backtest`/`search` and `src/scripts/run_hf_sweep.py` all read historical
+bars from the DuckDB/Parquet warehouse (`src/warehouse/bars.py`), never
+from `data/` directly — that is what actually keeps a sweep result
+traceable to the exact bars it ran on, warehouse-side, regardless of
+what happens to the CSV afterward. A freshly fetched symbol becomes
+visible to them only after it is loaded in:
+
+```bash
+python tools/build_warehouse.py --ingest TQQQ
+```
 
 Three defaults are deliberate and worth knowing:
 
@@ -151,7 +162,7 @@ Three defaults are deliberate and worth knowing:
   never act on. Pass `--include-extended-hours` to keep them.
 
 The downloader runs `data_validation.validate()` *before* writing, so it
-cannot emit a CSV the backtest would later reject.
+cannot emit a file the warehouse ingest would later reject.
 
 **One honest limitation:** with regular-hours filtering the 16:00 bar is
 followed by the next day's 09:30 bar, so a routine overnight gap on a 3x
@@ -162,20 +173,25 @@ backtesting, not a bug in the downloader.
 
 ### Run your first backtest
 
-The CSV schema, which `fetch-data` emits and the backtest expects:
+`cli.py backtest`/`search` read bars from the warehouse by ticker
+(`backtest.symbol` in the config) — there is no `--data` flag, and
+nothing under `data/` is read directly. A 35-bar fixture ships at
+`tests/fixtures/regression_ohlcv.csv` if you want to see it run without
+downloading anything from Alpaca; ingest it under a throwaway ticker:
 
-```csv
-timestamp,open,high,low,close,volume
-2024-01-02T14:30:00+00:00,50.0,50.075,49.925,50.0,12000000
+```bash
+python tools/build_warehouse.py --csv tests/fixtures/regression_ohlcv.csv --ingest DEMO
 ```
 
-Timestamps must be UTC-aware and strictly increasing. A 35-bar fixture
-ships at `tests/fixtures/regression_ohlcv.csv` if you just want to see it
-run without downloading anything.
+(Real data instead: `python cli.py fetch-data --symbol TQQQ --days 730`
+then `python tools/build_warehouse.py --ingest TQQQ`, per
+[Getting market data](#getting-market-data) above.)
 
 Create `config/my-config.yaml`:
 
 ```yaml
+backtest:
+  symbol: DEMO      # or TQQQ, or any ticker already in the warehouse
 strategy:
   strategy_id: fixed
   strategy_params:
@@ -190,7 +206,6 @@ Then:
 ```bash
 python cli.py backtest \
   --config config/my-config.yaml \
-  --data tests/fixtures/regression_ohlcv.csv \
   --output output/results.csv
 ```
 
@@ -200,12 +215,11 @@ summary ranked by Capital Velocity Index.
 ### Or use the Python API directly
 
 ```python
-import pandas as pd
 from src.optimization.optimization_controller import OptimizationController
 from src.size_calculators import FixedPortfolioPercentage
+from src.warehouse.bars import load_frame
 
-df = pd.read_csv("data/TQQQ_1Min_latest.csv", parse_dates=["timestamp"])
-df.set_index("timestamp", inplace=True)
+df = load_frame("TQQQ")  # ticker must already be ingested -- see Quickstart
 
 controller = OptimizationController(historical_data=df)
 results = controller.run_sweep(
@@ -234,9 +248,8 @@ Via compose, which also wires up volumes correctly:
 docker compose run --rm test
 docker compose run --rm test -k my_test -v          # args pass through
 
-docker compose run --rm backtest \
-  --config /app/config/my-config.yaml \
-  --data /app/data/TQQQ_1Min_latest.csv
+docker compose run --rm backtest python tools/build_warehouse.py --ingest TQQQ
+docker compose run --rm backtest --config /app/config/my-config.yaml
 
 docker compose run --rm live --config /app/config/my-config.yaml --check-only
 ```
@@ -244,8 +257,10 @@ docker compose run --rm live --config /app/config/my-config.yaml --check-only
 **Volumes.** `/app/state` is a *named* volume, not a bind mount, so the
 SQLite ledger and audit log survive across separate `docker compose run`
 invocations — which is what actually exercises the restart-recovery design
-through the container lifecycle. `./data` and `./config` mount read-only;
-`./output` is writable.
+through the container lifecycle. `./config` mounts read-only; `./data`,
+`./warehouse` and `./output` are writable (`backtest` only ever *reads*
+`./warehouse`, but the same image is also how `tools/build_warehouse.py
+--ingest` gets run, which writes both).
 
 **Credentials** come only from an uncommitted env file via `env_file:` —
 never baked into the image, and excluded from the build context by
@@ -435,7 +450,7 @@ strategies observe the market.
 | `src/core/secrets.py` | Credential loading and redaction |
 | `src/core/idempotency.py`, `src/trading/duplicate_order_guard.py` | Event and order deduplication |
 | `src/data/tick_validation.py` | Per-tick sanity checks |
-| `src/data/historical_data.py` | Bulk bar download -> backtest-ready CSV |
+| `src/data/historical_data.py` | Bulk bar download -> `data/` (warehouse intake, ingested via `tools/build_warehouse.py`) |
 | `src/strategies/sizing_indicators.py` | Incremental rolling max / Wilder RSI, shared by strategies |
 | `src/strategies/bayesian_sizing_calculators.py` | `BayesianDualScaleSizing` (dual-timescale Beta posterior) |
 | `src/trading/strategy_registry.py` | `strategy_id` -> sizing-strategy class |
@@ -605,16 +620,18 @@ through `cli.py`, since they predate that defect being found.
 ```bash
 .venv/Scripts/python.exe src/scripts/run_hf_sweep.py \
   --config config/<name>.yaml \
-  --data data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv \
   --search grid \
   --n-jobs 4 \
   --output output/<name>.csv
 ```
 
+Reads bars from the warehouse by `config.backtest.symbol` — there is no
+`--data` flag; ingest the ticker first (`tools/build_warehouse.py
+--ingest TICKER`) if this is the first sweep to use it.
+
 | Flag | Default | Meaning |
 |---|---|---|
 | `--config` | `config/search_hf_intrabar.yaml` | `BacktestConfig` YAML to run |
-| `--data` | `data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv` | historical OHLCV CSV |
 | `--output` | `output/search_hf_intrabar_2026-08-22.csv` | ranked results CSV, checkpointed periodically so a multi-hour run has partial output on failure |
 | `--search {grid,bayesian,random}` | the config's `search.strategy` | overrides the YAML without editing it |
 | `--trials N` | `200` | evaluation budget for `bayesian`/`random`; ignored for `grid` |
@@ -647,15 +664,15 @@ for, not just its aggregate number.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--data` | the 10-year SIP CSV | dataset to re-simulate finalists and the benchmark on |
+| `--ticker` | `TQQQ` | warehouse ticker to re-simulate finalists and the benchmark on |
 | `--cap` | none | only consider rows with `Max Drawdown % <= cap` |
 | `--top` | `3` | how many best (deduplicated) configurations to report |
 
 ### `cli.py search` / `cli.py backtest` — for non-HF strategies
 
 ```bash
-python cli.py backtest --config config/sweep_5y.yaml --data data/TQQQ_1Min_latest.csv --output output/sweep_5y.csv
-python cli.py search --config config/search_bayesian_deep.yaml --data data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv --trials 500 --output output/search_bayesian_deep.csv
+python cli.py backtest --config config/sweep_5y.yaml --output output/sweep_5y.csv
+python cli.py search --config config/search_bayesian_deep.yaml --trials 500 --output output/search_bayesian_deep.csv
 ```
 
 `backtest` runs the config's declared `search.strategy` (grid or bayesian)
@@ -682,6 +699,45 @@ bash run_frontier_chain.sh
 waits (polling every 60s, capped at 6h) for that in-flight sweep to finish
 before starting its own chain, so a long foreground run and an overnight
 chain can be queued back to back without overlapping.
+
+### `cli.py submit` — hand a sweep to the server's shard queue
+
+`backtest`/`search`/`run_hf_sweep.py` all run in THIS process. `submit`
+instead posts the same `BacktestConfig` YAML to `POST /api/backtest/runs`
+on a running `cli.py serve`, which queues it for whatever shards are
+online (`GET /api/backtest/shards`) to claim and run — watchable in the
+browser (Backtesting → Run History), and unaffected by this process
+exiting. No bespoke per-sweep script needed: any config works.
+
+```bash
+python cli.py submit --config config/search_hf_bayesian.yaml --search grid
+python cli.py submit --config config/search_bayesian_deep.yaml --trials 500
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--config` | required | `BacktestConfig` YAML to submit |
+| `--api` | `http://127.0.0.1:8000` | the running server's base URL |
+| `--search {grid,bayesian}` | the config's `search.strategy` | override without editing the file (server has no `random`) |
+| `--trials N` | `500` | bayesian trials **per chunk** (max 500, the API's own ceiling) — not a total budget |
+| `--limit N` | none (the whole file) | bar cap per configuration |
+| `--dry-run` | off | print the plan; submit nothing |
+| `--resubmit` | off | queue even runs already completed/pending on the server |
+
+A config's declared combination space can exceed what one submission may
+carry (`MAX_SWEEP_COMBINATIONS` for grid, 100x looser for bayesian, since
+the whole point of choosing bayesian is a space too large to enumerate)
+— `submit` splits it into as many runs as needed by recursively bisecting
+the widest swept axis, the same way `tools/sweep_rsp_all.py` did by hand
+before this existed. A strategy like `bayesian_dual_scale`, whose
+`target_return` the server force-aligns to the grid's own profit target,
+gets one submission per swept `target_return` value automatically (that
+parameter is never sent — the server supplies it).
+
+**Not the same as a local run:** `RunRequest` has no cost-model field, so
+every submitted run executes at zero transaction cost regardless of what
+the config's own `costs:` section says — a real gap in the web API, not
+something `submit` works around.
 
 ---
 
@@ -717,8 +773,13 @@ and use `cli.py` instead of `src/scripts/run_hf_sweep.py`:
 
 | Config | Strategy | Command |
 |---|---|---|
-| `sweep_5y.yaml` / `sweep_5y_boundary.yaml` / `sweep_5y_costed.yaml` | `fixed` (`FixedPortfolioPercentage`) — early minute-bar step/target tuning, zero-cost then costed | `python cli.py backtest --config config/sweep_5y.yaml --data data/TQQQ_1Min_latest.csv --output output/sweep_5y.csv` |
-| `sweep_bayesian.yaml` / `search_bayesian_deep.yaml` | `bayesian_dual_scale` (`BayesianDualScaleSizing`) — dual-timescale Beta-posterior sizing, TPE-searched | `python cli.py search --config config/search_bayesian_deep.yaml --data data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv --trials 500 --output output/search_bayesian_deep.csv` |
+| `sweep_5y.yaml` / `sweep_5y_boundary.yaml` / `sweep_5y_costed.yaml` | `fixed` (`FixedPortfolioPercentage`) — early minute-bar step/target tuning, zero-cost then costed | `python cli.py backtest --config config/sweep_5y.yaml --output output/sweep_5y.csv` |
+| `sweep_bayesian.yaml` / `search_bayesian_deep.yaml` | `bayesian_dual_scale` (`BayesianDualScaleSizing`) — dual-timescale Beta-posterior sizing, TPE-searched | `python cli.py search --config config/search_bayesian_deep.yaml --trials 500 --output output/search_bayesian_deep.csv` |
+
+(Both originally ran against a `--data` CSV, before `backtest`/`search`
+switched to reading the warehouse by `backtest.symbol` — TQQQ for both
+configs. Reproducing them today needs no flag change, only that TQQQ is
+ingested: `python tools/build_warehouse.py --ingest TQQQ`.)
 
 `staging.yaml` and `production.yaml` are not sweep configs at all — they
 are `live:`-enabled deployment configs; see
@@ -978,7 +1039,7 @@ evaluations.
 
 ```
 volatility-ai/
-├── cli.py                     # single entrypoint: test | backtest | search | live | fetch-data
+├── cli.py                     # single entrypoint: test | backtest | search | live | fetch-data | backup | restore | serve
 ├── src/optimization/optimization_controller.py # sweep orchestration
 ├── dashboard.py               # Streamlit view of a running deployment
 ├── src/scripts/run_hf_sweep.py            # parallel sweep driver for HF configs -- see below

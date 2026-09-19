@@ -1329,35 +1329,26 @@ class TestWorkerSelection:
 
         assert choose_jobs(13_260, 12, 4) == 4
 
-    def test_the_report_states_what_was_actually_used(self, tmp_path):
+    def test_the_report_states_what_was_actually_used(self, monkeypatch):
         """Not what was asked for -- so a reader can tell a slow sweep
         from a serial one."""
-        import pandas as pd_
-
         from server import backtest as module
         from server.backtest import run_backtest
 
-        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
-        csv = tmp_path / "TESTQ.csv"
-        frame.to_csv(csv)
+        frame = pd.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        monkeypatch.setattr(module, "available_tickers", lambda: {"TESTQ"})
+        monkeypatch.setattr(module, "load_frame", lambda ticker: frame.copy())
 
-        original = dict(module.KNOWN_DATA)
-        module.KNOWN_DATA.clear()
-        module.KNOWN_DATA["TESTQ"] = str(csv)
-        try:
-            report = run_backtest(
-                {
-                    "tickers": ["TESTQ"],
-                    "grid_steps": [0.01],
-                    "targets": [0.005],
-                    "model": "fixed",
-                    "params": {"allocation_pct": 0.05},
-                },
-                lambda fraction, note: None,
-            )
-        finally:
-            module.KNOWN_DATA.clear()
-            module.KNOWN_DATA.update(original)
+        report = run_backtest(
+            {
+                "tickers": ["TESTQ"],
+                "grid_steps": [0.01],
+                "targets": [0.005],
+                "model": "fixed",
+                "params": {"allocation_pct": 0.05},
+            },
+            lambda fraction, note: None,
+        )
 
         # A one-configuration run on a tiny fixture must report serial.
         assert report["jobs"] == 1
@@ -1366,36 +1357,30 @@ class TestWorkerSelection:
 class TestBacktestExecution:
     """The worker actually runs the engine and produces the contract."""
 
-    def test_a_run_completes_and_carries_joinable_executions(self, tmp_path):
+    def test_a_run_completes_and_carries_joinable_executions(self, monkeypatch):
         from server.backtest import run_backtest
 
         frame = pd.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
-        csv = tmp_path / "TESTQ.csv"
-        frame.to_csv(csv)
 
-        # Point KNOWN_DATA at the fixture for the duration, so this
-        # exercises the real code path without a 60 MB file.
+        # Point the warehouse read at the fixture for the duration, so
+        # this exercises the real code path without a 60 MB file.
         from server import backtest as module
 
-        original = dict(module.KNOWN_DATA)
-        module.KNOWN_DATA.clear()
-        module.KNOWN_DATA["TESTQ"] = str(csv)
-        try:
-            progress: list[tuple[float, str]] = []
-            report = run_backtest(
-                {
-                    "tickers": ["TESTQ"],
-                    "grid_steps": [0.01],
-                    "targets": [0.005],
-                    "model": "fixed",
-                    "params": {"allocation_pct": 0.05},
-                    "limit": 5000,
-                },
-                lambda fraction, note: progress.append((fraction, note)),
-            )
-        finally:
-            module.KNOWN_DATA.clear()
-            module.KNOWN_DATA.update(original)
+        monkeypatch.setattr(module, "available_tickers", lambda: {"TESTQ"})
+        monkeypatch.setattr(module, "load_frame", lambda ticker: frame.copy())
+
+        progress: list[tuple[float, str]] = []
+        report = run_backtest(
+            {
+                "tickers": ["TESTQ"],
+                "grid_steps": [0.01],
+                "targets": [0.005],
+                "model": "fixed",
+                "params": {"allocation_pct": 0.05},
+                "limit": 5000,
+            },
+            lambda fraction, note: progress.append((fraction, note)),
+        )
 
         assert progress, "the run reported no progress at all"
         fund = report["funds"]["TESTQ"]
@@ -1416,48 +1401,39 @@ class TestBacktestExecution:
         assert len(keys) == len(set(keys))
         assert "normalized" not in fund["equity"]
 
-    def test_the_report_echoes_the_submitted_name(self, tmp_path):
+    def test_the_report_echoes_the_submitted_name(self, monkeypatch):
         """Descriptive only, but it must survive from the request through
         to the archived report so history can show what a sweep was for."""
-        import pandas as pd_
-
         from server import backtest as module
         from server.backtest import run_backtest
 
-        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
-        csv = tmp_path / "TESTQ.csv"
-        frame.to_csv(csv)
+        frame = pd.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        monkeypatch.setattr(module, "available_tickers", lambda: {"TESTQ"})
+        monkeypatch.setattr(module, "load_frame", lambda ticker: frame.copy())
 
-        original = dict(module.KNOWN_DATA)
-        module.KNOWN_DATA.clear()
-        module.KNOWN_DATA["TESTQ"] = str(csv)
-        try:
-            named = run_backtest(
-                {
-                    "name": "  five percent baseline  ",
-                    "tickers": ["TESTQ"],
-                    "grid_steps": [0.01],
-                    "targets": [0.005],
-                    "model": "fixed",
-                    "params": {"allocation_pct": 0.05},
-                    "limit": 5000,
-                },
-                lambda fraction, note: None,
-            )
-            anon = run_backtest(
-                {
-                    "tickers": ["TESTQ"],
-                    "grid_steps": [0.01],
-                    "targets": [0.005],
-                    "model": "fixed",
-                    "params": {"allocation_pct": 0.05},
-                    "limit": 5000,
-                },
-                lambda fraction, note: None,
-            )
-        finally:
-            module.KNOWN_DATA.clear()
-            module.KNOWN_DATA.update(original)
+        named = run_backtest(
+            {
+                "name": "  five percent baseline  ",
+                "tickers": ["TESTQ"],
+                "grid_steps": [0.01],
+                "targets": [0.005],
+                "model": "fixed",
+                "params": {"allocation_pct": 0.05},
+                "limit": 5000,
+            },
+            lambda fraction, note: None,
+        )
+        anon = run_backtest(
+            {
+                "tickers": ["TESTQ"],
+                "grid_steps": [0.01],
+                "targets": [0.005],
+                "model": "fixed",
+                "params": {"allocation_pct": 0.05},
+                "limit": 5000,
+            },
+            lambda fraction, note: None,
+        )
 
         assert named["name"] == "five percent baseline"
         assert anon["name"] is None
@@ -1465,71 +1441,53 @@ class TestBacktestExecution:
         # history view can filter on an input rather than only the grid.
         assert named["params"] == {"allocation_pct": 0.05}
 
-    def test_the_report_records_resolved_strategy_params(self, tmp_path):
+    def test_the_report_records_resolved_strategy_params(self, monkeypatch):
         """Not what was submitted -- what the engine was built with, after
         defaults are filled in. `bell_curve` takes no params in the
         request below, so the report must still name the three it ran."""
-        import pandas as pd_
-
         from server import backtest as module
         from server.backtest import run_backtest
 
-        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
-        csv = tmp_path / "TESTQ.csv"
-        frame.to_csv(csv)
+        frame = pd.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        monkeypatch.setattr(module, "available_tickers", lambda: {"TESTQ"})
+        monkeypatch.setattr(module, "load_frame", lambda ticker: frame.copy())
 
-        original = dict(module.KNOWN_DATA)
-        module.KNOWN_DATA.clear()
-        module.KNOWN_DATA["TESTQ"] = str(csv)
-        try:
-            report = run_backtest(
-                {
-                    "tickers": ["TESTQ"],
-                    "grid_steps": [0.01],
-                    "targets": [0.005],
-                    "model": "bell_curve",
-                    "limit": 5000,
-                },
-                lambda fraction, note: None,
-            )
-        finally:
-            module.KNOWN_DATA.clear()
-            module.KNOWN_DATA.update(original)
+        report = run_backtest(
+            {
+                "tickers": ["TESTQ"],
+                "grid_steps": [0.01],
+                "targets": [0.005],
+                "model": "bell_curve",
+                "limit": 5000,
+            },
+            lambda fraction, note: None,
+        )
 
         params = report["params"]
         assert params["max_trade_pct"] == 0.08
         assert params["lookback_days"] == 20
         assert params["bars_per_day"] == 387
 
-    def test_a_multi_configuration_run_returns_every_cell(self, tmp_path):
+    def test_a_multi_configuration_run_returns_every_cell(self, monkeypatch):
         """The sweep matrix needs the whole surface, not the best row."""
-        import pandas as pd_
-
         from server import backtest as module
         from server.backtest import run_backtest
 
-        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
-        csv = tmp_path / "TESTQ.csv"
-        frame.to_csv(csv)
+        frame = pd.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        monkeypatch.setattr(module, "available_tickers", lambda: {"TESTQ"})
+        monkeypatch.setattr(module, "load_frame", lambda ticker: frame.copy())
 
-        original = dict(module.KNOWN_DATA)
-        module.KNOWN_DATA.clear()
-        module.KNOWN_DATA["TESTQ"] = str(csv)
-        try:
-            report = run_backtest(
-                {
-                    "tickers": ["TESTQ"],
-                    "grid_steps": [0.01, 0.02],
-                    "targets": [0.005, 0.01, 0.02],
-                    "model": "fixed",
-                    "params": {"allocation_pct": 0.05},
-                    "limit": 5000,
-                },
-                lambda fraction, note: None,
-            )
-        finally:
-            module.KNOWN_DATA.clear()
-            module.KNOWN_DATA.update(original)
+        report = run_backtest(
+            {
+                "tickers": ["TESTQ"],
+                "grid_steps": [0.01, 0.02],
+                "targets": [0.005, 0.01, 0.02],
+                "model": "fixed",
+                "params": {"allocation_pct": 0.05},
+                "limit": 5000,
+            },
+            lambda fraction, note: None,
+        )
 
         cells = report["funds"]["TESTQ"]["cells"]
         assert len(cells) == 6, "2 steps x 3 targets should be 6 cells"
@@ -1537,39 +1495,32 @@ class TestBacktestExecution:
         assert {c["target"] for c in cells} == {0.005, 0.01, 0.02}
         assert "metrics" not in report["funds"]["TESTQ"]  # cells[0].m is the headline
 
-    def test_a_swept_strategy_param_produces_one_cell_per_value_with_its_own_combo(self, tmp_path):
+    def test_a_swept_strategy_param_produces_one_cell_per_value_with_its_own_combo(
+        self, monkeypatch
+    ):
         """The engine already cross-products grid_steps x profit_targets x
         strategy_params_grid (src/optimization/search_strategies.py's
         GridSearch); this pins the web API's own wiring of that third
         axis: `combinations` counts it, and each cell carries the exact
         combo it ran with rather than the run's first-resolved value."""
-        import pandas as pd_
-
         from server import backtest as module
         from server.backtest import run_backtest
 
-        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
-        csv = tmp_path / "TESTQ.csv"
-        frame.to_csv(csv)
+        frame = pd.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        monkeypatch.setattr(module, "available_tickers", lambda: {"TESTQ"})
+        monkeypatch.setattr(module, "load_frame", lambda ticker: frame.copy())
 
-        original = dict(module.KNOWN_DATA)
-        module.KNOWN_DATA.clear()
-        module.KNOWN_DATA["TESTQ"] = str(csv)
-        try:
-            report = run_backtest(
-                {
-                    "tickers": ["TESTQ"],
-                    "grid_steps": [0.01],
-                    "targets": [0.005],
-                    "model": "fixed",
-                    "params": {"allocation_pct": [0.03, 0.05]},
-                    "limit": 5000,
-                },
-                lambda fraction, note: None,
-            )
-        finally:
-            module.KNOWN_DATA.clear()
-            module.KNOWN_DATA.update(original)
+        report = run_backtest(
+            {
+                "tickers": ["TESTQ"],
+                "grid_steps": [0.01],
+                "targets": [0.005],
+                "model": "fixed",
+                "params": {"allocation_pct": [0.03, 0.05]},
+                "limit": 5000,
+            },
+            lambda fraction, note: None,
+        )
 
         cells = report["funds"]["TESTQ"]["cells"]
         assert len(cells) == 2, "1 step x 1 target x 2 allocation_pct values should be 2 cells"
@@ -1579,35 +1530,26 @@ class TestBacktestExecution:
         for cell in cells:
             assert isinstance(cell["params"]["allocation_pct"], float)
 
-    def test_a_window_with_no_bars_fails_with_a_useful_message(self, tmp_path):
-        import pandas as pd_
-
+    def test_a_window_with_no_bars_fails_with_a_useful_message(self, monkeypatch):
         from server import backtest as module
         from server.backtest import run_backtest
 
-        frame = pd_.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
-        csv = tmp_path / "TESTQ.csv"
-        frame.to_csv(csv)
+        frame = pd.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        monkeypatch.setattr(module, "available_tickers", lambda: {"TESTQ"})
+        monkeypatch.setattr(module, "load_frame", lambda ticker: frame.copy())
 
-        original = dict(module.KNOWN_DATA)
-        module.KNOWN_DATA.clear()
-        module.KNOWN_DATA["TESTQ"] = str(csv)
-        try:
-            with pytest.raises(ValueError, match="no bars between"):
-                run_backtest(
-                    {
-                        "tickers": ["TESTQ"],
-                        "grid_steps": [0.01],
-                        "targets": [0.005],
-                        "model": "fixed",
-                        "start": "1990-01-01",
-                        "end": "1990-06-01",
-                    },
-                    lambda fraction, note: None,
-                )
-        finally:
-            module.KNOWN_DATA.clear()
-            module.KNOWN_DATA.update(original)
+        with pytest.raises(ValueError, match="no bars between"):
+            run_backtest(
+                {
+                    "tickers": ["TESTQ"],
+                    "grid_steps": [0.01],
+                    "targets": [0.005],
+                    "model": "fixed",
+                    "start": "1990-01-01",
+                    "end": "1990-06-01",
+                },
+                lambda fraction, note: None,
+            )
 
     def test_a_run_naming_no_downloaded_fund_fails_with_a_useful_message(self):
         from server.backtest import run_backtest
@@ -1633,25 +1575,18 @@ class TestBayesianSearch:
     from a plain grid sweep's."""
 
     @pytest.fixture
-    def known_data(self, tmp_path):
-        """Points KNOWN_DATA at the tiny regression fixture for the
-        duration of one test, the same substitution
+    def known_data(self, monkeypatch):
+        """Points the warehouse read at the tiny regression fixture for
+        the duration of one test, the same substitution
         TestBacktestExecution's own tests perform inline -- pulled into
         a fixture here since every test below needs it."""
         frame = pd.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
-        csv = tmp_path / "TESTQ.csv"
-        frame.to_csv(csv)
 
         from server import backtest as module
 
-        original = dict(module.KNOWN_DATA)
-        module.KNOWN_DATA.clear()
-        module.KNOWN_DATA["TESTQ"] = str(csv)
-        try:
-            yield "TESTQ"
-        finally:
-            module.KNOWN_DATA.clear()
-            module.KNOWN_DATA.update(original)
+        monkeypatch.setattr(module, "available_tickers", lambda: {"TESTQ"})
+        monkeypatch.setattr(module, "load_frame", lambda ticker: frame.copy())
+        yield "TESTQ"
 
     def test_trials_is_required_for_bayesian(self, client):
         response = client.post(

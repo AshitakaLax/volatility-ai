@@ -55,27 +55,26 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from server import history
-from server.backtest import KNOWN_DATA, STRATEGY_DEFAULTS, run_backtest
+from server.backtest import STRATEGY_DEFAULTS, run_backtest
+from src.warehouse.bars import row_count
 
-# A file read once per ticker; these are 60 MB and the length is all we
-# need, so only one column is parsed.
+# One COUNT(*) per ticker, cached -- the warehouse answers this from
+# Parquet row-group metadata without reading the bars themselves.
 _LENGTHS: dict[str, int] = {}
 
 
 def full_length(ticker: str) -> int | None:
-    """How many bars the whole file holds, or None if it is absent."""
+    """How many bars the warehouse holds for this ticker, or None if none."""
     if ticker in _LENGTHS:
         return _LENGTHS[ticker]
-    path = KNOWN_DATA.get(ticker)
-    if path is None or not Path(path).exists():
+    count = row_count(ticker)
+    if count is None:
         return None
-    _LENGTHS[ticker] = len(pd.read_csv(path, usecols=["close"]))
-    return _LENGTHS[ticker]
+    _LENGTHS[ticker] = count
+    return count
 
 
 def is_full(ticker: str, bars: int | None) -> bool:

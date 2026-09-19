@@ -19,6 +19,7 @@ for the `test` subcommand rather than routing it through argparse.
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,8 @@ def _run(*args, timeout=60):
 def config_path(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text(
+        "backtest:\n"
+        "  symbol: CLITEST\n"
         "strategy:\n"
         "  strategy_id: fixed\n"
         "  strategy_params:\n"
@@ -53,8 +56,43 @@ def config_path(tmp_path):
 
 
 @pytest.fixture
-def data_path():
-    return REPO_ROOT / "tests" / "fixtures" / "regression_ohlcv.csv"
+def warehouse_env(tmp_path, monkeypatch):
+    """A throwaway DuckDB warehouse holding the regression fixture's 35
+    bars under ticker CLITEST -- `cli.py backtest`/`search` read bars
+    from the warehouse only (never a CSV), so this is what gives them
+    something to find. Same shape as
+    tests/unit/test_warehouse_bars.py's own helper; kept local since
+    this is the only other place that needs one.
+    """
+    duckdb = pytest.importorskip("duckdb")
+    import pandas as pd
+
+    df = pd.read_csv(
+        REPO_ROOT / "tests" / "fixtures" / "regression_ohlcv.csv", parse_dates=["timestamp"]
+    )
+    root = tmp_path / "warehouse"
+    root.mkdir()
+    duckdb.connect(str(root / "sim_results.duckdb")).close()
+    con = duckdb.connect(str(root / "market_data.duckdb"))
+    con.register(
+        "rows", df.assign(ticker="CLITEST")[["ticker", "timestamp", "open", "high", "low", "close", "volume"]]
+    )
+    con.execute(
+        "CREATE TABLE ohlcv (ticker VARCHAR, timestamp TIMESTAMPTZ, open DOUBLE, "
+        "high DOUBLE, low DOUBLE, close DOUBLE, volume BIGINT)"
+    )
+    con.execute("INSERT INTO ohlcv SELECT * FROM rows")
+    con.close()
+    monkeypatch.setenv("VAI_WAREHOUSE_DIR", str(root))
+    return root
+
+
+@pytest.fixture
+def empty_warehouse_env(tmp_path, monkeypatch):
+    """VAI_WAREHOUSE_DIR pointed at a directory with no warehouse in
+    it, so a ticker lookup reports "no data" deterministically instead
+    of depending on whatever the real project warehouse holds."""
+    monkeypatch.setenv("VAI_WAREHOUSE_DIR", str(tmp_path / "empty_warehouse"))
 
 
 def test_bare_invocation_shows_usage_and_exits_nonzero():
@@ -98,20 +136,18 @@ def test_test_subcommand_help_does_not_crash():
     assert result.returncode == 0
 
 
-def test_backtest_runs_end_to_end_against_the_regression_fixture(config_path, data_path):
-    result = _run("backtest", "--config", str(config_path), "--data", str(data_path))
+def test_backtest_runs_end_to_end_against_the_regression_fixture(config_path, warehouse_env):
+    result = _run("backtest", "--config", str(config_path))
     assert result.returncode == 0, result.stderr
     assert "Grid Step" in result.stdout
     assert "combination(s) evaluated" in result.stdout
 
 
-def test_backtest_writes_a_loadable_full_results_csv(config_path, data_path, tmp_path):
+def test_backtest_writes_a_loadable_full_results_csv(config_path, warehouse_env, tmp_path):
     import pandas as pd
 
     output = tmp_path / "results.csv"
-    result = _run(
-        "backtest", "--config", str(config_path), "--data", str(data_path), "--output", str(output)
-    )
+    result = _run("backtest", "--config", str(config_path), "--output", str(output))
     assert result.returncode == 0, result.stderr
     assert output.exists()
 
@@ -120,35 +156,35 @@ def test_backtest_writes_a_loadable_full_results_csv(config_path, data_path, tmp
     assert "Capital Velocity Index" in df.columns
 
 
-def test_backtest_missing_config_file_fails_clearly(data_path):
-    result = _run("backtest", "--config", "/nonexistent/config.yaml", "--data", str(data_path))
+def test_backtest_missing_config_file_fails_clearly(warehouse_env):
+    result = _run("backtest", "--config", "/nonexistent/config.yaml")
     assert result.returncode == 2
     assert "not found" in result.stderr.lower()
 
 
-def test_backtest_missing_data_file_fails_clearly(config_path):
-    result = _run("backtest", "--config", str(config_path), "--data", "/nonexistent/data.csv")
+def test_backtest_missing_warehouse_ticker_fails_clearly(config_path, empty_warehouse_env):
+    result = _run("backtest", "--config", str(config_path))
     assert result.returncode == 2
-    assert "not found" in result.stderr.lower()
+    assert "no warehouse data for" in result.stderr.lower()
 
 
-def test_backtest_invalid_config_fails_with_validation_error(tmp_path, data_path):
+def test_backtest_invalid_config_fails_with_validation_error(tmp_path, warehouse_env):
     bad_config = tmp_path / "bad.yaml"
     bad_config.write_text(
         "strategy:\n  strategy_id: fixed\n  strategy_params: {allocation_pct: 0.05}\n"
         "grid:\n  steps: [1.5]\n  profit_targets: [0.01]\n"
     )  # grid step >= 1.0 is invalid
-    result = _run("backtest", "--config", str(bad_config), "--data", str(data_path))
+    result = _run("backtest", "--config", str(bad_config))
     assert result.returncode == 2
     assert "invalid config" in result.stderr.lower()
 
 
-def test_backtest_unknown_strategy_id_fails_clearly(tmp_path, data_path):
+def test_backtest_unknown_strategy_id_fails_clearly(tmp_path, warehouse_env):
     bad_config = tmp_path / "bad.yaml"
     bad_config.write_text(
         "strategy:\n  strategy_id: not_a_real_strategy\ngrid:\n  steps: [0.01]\n  profit_targets: [0.005]\n"
     )
-    result = _run("backtest", "--config", str(bad_config), "--data", str(data_path))
+    result = _run("backtest", "--config", str(bad_config))
     assert result.returncode == 2
     assert "unknown strategy_id" in result.stderr.lower()
 
@@ -679,7 +715,293 @@ def test_playwright_is_not_in_the_main_requirements():
         )
 
 
-def test_backtest_with_return_full_results_does_not_crash(config_path, data_path):
+def test_backup_help_exits_zero():
+    result = _run("backup", "--help")
+    assert result.returncode == 0
+    assert "--warehouse" in result.stdout
+    assert "--remote-host" in result.stdout
+
+
+def test_restore_help_exits_zero():
+    result = _run("restore", "--help")
+    assert result.returncode == 0
+    assert "--warehouse" in result.stdout
+    assert "--yes" in result.stdout
+
+
+def test_backup_with_no_warehouse_databases_fails_clearly(tmp_path):
+    result = _run("backup", "--warehouse", str(tmp_path / "empty_warehouse"), "--local-only")
+    assert result.returncode == 1
+    assert "No warehouse databases found" in result.stderr
+
+
+def _seed_warehouse(warehouse_dir, rows=10):
+    duckdb = pytest.importorskip("duckdb")
+    warehouse_dir.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(str(warehouse_dir / "market_data.duckdb"))
+    con.execute(f"CREATE TABLE t AS SELECT range AS n FROM range({rows})")
+    con.close()
+    con = duckdb.connect(str(warehouse_dir / "sim_results.duckdb"))
+    con.execute("CREATE TABLE s AS SELECT range AS n FROM range(1)")
+    con.close()
+
+
+def test_backup_then_restore_round_trips_the_warehouse(tmp_path):
+    """End-to-end through the real subprocess entrypoint: back up a
+    warehouse, mutate it, restore from the local archive, and confirm the
+    mutation is reverted -- the same path `cli.py backup`/`restore` is
+    for, without needing a real Pi or network."""
+    duckdb = pytest.importorskip("duckdb")
+
+    warehouse = tmp_path / "warehouse"
+    _seed_warehouse(warehouse, rows=10)
+    out_dir = tmp_path / "backups"
+
+    backup_result = _run(
+        "backup", "--warehouse", str(warehouse), "--out-dir", str(out_dir), "--local-only"
+    )
+    assert backup_result.returncode == 0, backup_result.stderr
+    archives = list(out_dir.glob("*.tar.gz"))
+    assert len(archives) == 1
+
+    con = duckdb.connect(str(warehouse / "market_data.duckdb"))
+    con.execute("INSERT INTO t VALUES (999)")
+    con.close()
+
+    restore_result = _run("restore", str(archives[0]), "--warehouse", str(warehouse), "--yes")
+    assert restore_result.returncode == 0, restore_result.stderr
+    assert "Restore complete: 2 database(s) restored" in restore_result.stdout
+
+    con = duckdb.connect(str(warehouse / "market_data.duckdb"), read_only=True)
+    assert con.execute("SELECT count(*) FROM t").fetchone()[0] == 10
+    con.close()
+
+    pre_restore = list(warehouse.glob("market_data.duckdb.pre-restore-*"))
+    assert len(pre_restore) == 1, "the mutated file must be kept, not deleted"
+
+
+def test_restore_refuses_without_yes_in_a_non_interactive_session(tmp_path):
+    warehouse = tmp_path / "warehouse"
+    _seed_warehouse(warehouse)
+    out_dir = tmp_path / "backups"
+    backup_result = _run(
+        "backup", "--warehouse", str(warehouse), "--out-dir", str(out_dir), "--local-only"
+    )
+    assert backup_result.returncode == 0, backup_result.stderr
+    archive = next(out_dir.glob("*.tar.gz"))
+
+    result = subprocess.run(
+        [sys.executable, str(CLI), "restore", str(archive), "--warehouse", str(warehouse)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        stdin=subprocess.DEVNULL,
+    )
+    assert result.returncode == 2
+    assert "--yes" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_restore_rejects_a_tampered_archive(tmp_path):
+    """A byte flip inside the gzip stream is not a reliable way to
+    provoke a checksum mismatch (it can land in padding a decoder
+    tolerates), so this builds the tampered archive directly: the same
+    MANIFEST.json (with its ORIGINAL sha256) but a swapped-out db file --
+    exactly what a torn transfer or a hand-edited archive looks like."""
+    import tarfile
+
+    warehouse = tmp_path / "warehouse"
+    _seed_warehouse(warehouse)
+    out_dir = tmp_path / "backups"
+    backup_result = _run(
+        "backup", "--warehouse", str(warehouse), "--out-dir", str(out_dir), "--local-only"
+    )
+    assert backup_result.returncode == 0, backup_result.stderr
+    archive = next(out_dir.glob("*.tar.gz"))
+
+    from tools.backup_databases import extract_archive
+
+    extract_dir = tmp_path / "extracted_for_tamper"
+    manifest = extract_archive(archive, extract_dir)
+    (extract_dir / "market_data.duckdb").write_bytes(b"corrupted" * 100)
+
+    tampered = tmp_path / "tampered.tar.gz"
+    with tarfile.open(tampered, "w:gz") as tar:
+        tar.add(extract_dir / "MANIFEST.json", arcname="MANIFEST.json")
+        for entry in manifest["databases"]:
+            tar.add(extract_dir / entry["name"], arcname=entry["name"])
+
+    result = _run("restore", str(tampered), "--warehouse", str(warehouse), "--yes")
+    assert result.returncode != 0
+    assert "sha256 mismatch" in result.stderr
+
+
+def test_serve_help_exits_zero():
+    result = _run("serve", "--help")
+    assert result.returncode == 0
+    assert "--host" in result.stdout
+    assert "--port" in result.stdout
+    assert "--reload" in result.stdout
+
+
+def _free_port() -> int:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_serve_starts_the_backend_and_answers_health(tmp_path):
+    """The real end-to-end check for `cli.py serve`: launch it as an
+    actual subprocess (matching this file's own convention of exercising
+    argument parsing, not internal function calls), poll /api/health
+    until it answers, then terminate it. Requires requirements-web.txt;
+    skipped rather than failed where that is not installed."""
+    httpx = pytest.importorskip("httpx")
+    pytest.importorskip("uvicorn")
+
+    port = _free_port()
+    proc = subprocess.Popen(
+        [sys.executable, str(CLI), "serve", "--port", str(port)],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        deadline = time.time() + 20
+        response = None
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                pytest.fail(f"server exited early:\n{proc.stdout.read()}")
+            try:
+                response = httpx.get(f"http://127.0.0.1:{port}/api/health", timeout=1)
+                break
+            except httpx.TransportError:
+                time.sleep(0.2)
+        assert response is not None, "server never answered /api/health within 20s"
+        assert response.status_code == 200
+        body = response.json()
+        assert "caps" in body and "backtest" in body["caps"]
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
+
+    # REGRESSION: `serve` runs uvicorn as a CHILD process, and terminating
+    # the wrapper used not to touch it -- so a stopped server kept holding
+    # its port. Five of them were found running after an earlier version
+    # of this test. The port must be free once the wrapper has exited.
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        try:
+            httpx.get(f"http://127.0.0.1:{port}/api/health", timeout=1)
+        except httpx.TransportError:
+            break
+        time.sleep(0.25)
+    else:
+        pytest.fail("the uvicorn child outlived `cli.py serve` and still holds the port")
+
+
+def test_serve_reports_missing_web_dependencies_clearly(tmp_path):
+    """`serve` checks for fastapi/uvicorn itself before shelling out to
+    `python -m uvicorn`, so a checkout that never ran `pip install -r
+    requirements-web.txt` gets one clear line naming the fix instead of
+    a bare ModuleNotFoundError from a subprocess."""
+    script = tmp_path / "blocked_import.py"
+    script.write_text(
+        "import builtins, sys\n"
+        "real_import = builtins.__import__\n"
+        "def blocked(name, *a, **kw):\n"
+        "    if name in ('fastapi', 'uvicorn'):\n"
+        "        raise ImportError(f'No module named {name!r}')\n"
+        "    return real_import(name, *a, **kw)\n"
+        "builtins.__import__ = blocked\n"
+        "sys.argv = ['cli.py', 'serve']\n"
+        "import runpy\n"
+        "runpy.run_path('cli.py', run_name='__main__')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "requirements-web.txt" in result.stderr
+
+
+def test_shard_help_exits_zero():
+    result = _run("shard", "--help")
+    assert result.returncode == 0
+    for flag in ("--name", "--main", "--max-jobs", "--allow-version-mismatch"):
+        assert flag in result.stdout
+
+
+def test_shard_requires_a_name_and_a_main_server():
+    result = _run("shard", "--name", "fast-shard")
+    assert result.returncode == 2
+    assert "--main" in result.stderr
+
+
+@pytest.mark.parametrize("name", ["local", "-leading-dash", "has space", "x" * 65])
+def test_shard_rejects_an_invalid_name(name):
+    # `--name=` so argparse does not read a leading dash as a flag.
+    result = _run("shard", f"--name={name}", "--main", "127.0.0.1")
+    assert result.returncode == 2
+    assert "Invalid shard name" in result.stderr
+
+
+def test_shard_rejects_an_unusable_main_address():
+    result = _run("shard", "--name", "fast-shard", "--main", "ftp://somewhere")
+    assert result.returncode == 2
+    assert "--main" in result.stderr
+
+
+def test_shard_exits_cleanly_when_main_is_not_this_projects_server(tmp_path):
+    """A plain HTTP server at --main answers the registration with an
+    error rather than a shard response. The shard must say so and exit,
+    not retry forever as if the host were merely down."""
+    port = _free_port()
+    other = subprocess.Popen(
+        [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+        cwd=tmp_path,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        import socket
+
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            with socket.socket() as probe:
+                if probe.connect_ex(("127.0.0.1", port)) == 0:
+                    break
+            time.sleep(0.1)
+        result = _run(
+            "shard",
+            "--name",
+            "fast-shard",
+            "--main",
+            f"127.0.0.1:{port}",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+            timeout=60,
+        )
+    finally:
+        other.terminate()
+        other.wait(timeout=10)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "no shard routes" in result.stdout
+
+
+def test_backtest_with_return_full_results_does_not_crash(config_path, warehouse_env):
     """Regression test: output.return_full_results=True makes
     run_sweep return (summary_df, full_results) instead of a bare
     DataFrame. cmd_backtest previously called results.head(10)
@@ -687,7 +1009,7 @@ def test_backtest_with_return_full_results_does_not_crash(config_path, data_path
     caught while running a real sweep, not a synthetic case."""
     config = config_path.parent / "config_full.yaml"
     config.write_text(config_path.read_text() + "output:\n  return_full_results: true\n")
-    result = _run("backtest", "--config", str(config), "--data", str(data_path))
+    result = _run("backtest", "--config", str(config))
     assert result.returncode == 0, result.stderr
     assert "combination(s) evaluated" in result.stdout
     assert "does not yet write them to disk" in result.stdout

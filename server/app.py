@@ -42,7 +42,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from server import backtest, control, deployment, live, ml_insights, ml_upstream, upstream
+from server import backtest, control, deployment, live, ml_insights, ml_upstream, shards, upstream
 
 
 @asynccontextmanager
@@ -97,6 +97,9 @@ if upstream.is_enabled():
     app.include_router(upstream.router)
 else:
     app.include_router(backtest.router)
+    # Remote shards (server/shards.py) work the same queue, so they belong
+    # to whichever host runs it -- and are forwarded with it otherwise.
+    app.include_router(shards.router)
 
 # THE ML RESEARCH ROUTES FOLLOW THE SAME SPLIT, FOR THE SAME REASON.
 #

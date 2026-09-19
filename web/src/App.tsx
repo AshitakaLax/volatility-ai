@@ -5,6 +5,7 @@ import { ActiveRuns } from "@/components/backtest/ActiveRuns";
 import { BacktestResult } from "@/components/backtest/BacktestResult";
 import { ParameterForm } from "@/components/backtest/ParameterForm";
 import { RunHistory } from "@/components/backtest/RunHistory";
+import { ShardPanel } from "@/components/backtest/ShardPanel";
 import { AlgorithmStatus } from "@/components/live/AlgorithmStatus";
 import { CommandCenter } from "@/components/live/CommandCenter";
 import { DeploymentHealth } from "@/components/live/DeploymentHealth";
@@ -185,6 +186,10 @@ export default function App() {
           />
         ) : (
           <>
+            {/* Above the form on purpose: which machines are connected
+                decides where a sweep submitted below will actually run. */}
+            <ShardPanel />
+
             <ParameterForm
               onSubmit={(request) => submit(request)}
               run={run}

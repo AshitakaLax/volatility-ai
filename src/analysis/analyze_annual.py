@@ -110,16 +110,21 @@ def _top_configs(cap: float | None, limit: int):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", default="data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv")
+    parser.add_argument("--ticker", default="TQQQ", help="warehouse ticker to benchmark/re-simulate")
     parser.add_argument("--cap", type=float, default=None, help="only consider maxDD <= this")
     parser.add_argument("--top", type=int, default=3)
     args = parser.parse_args()
 
-    df = pd.read_csv(args.data, parse_dates=["timestamp"]).set_index("timestamp")
+    from src.warehouse.bars import available_tickers, load_frame
+
+    df = load_frame(args.ticker)
+    if df.empty:
+        known = ", ".join(sorted(available_tickers())) or "(none ingested yet)"
+        raise SystemExit(f"No warehouse data for {args.ticker!r}. Available: {known}.")
     controller = OptimizationController(historical_data=df)
 
     benchmark = annual_returns(df["close"])
-    print(f"\n{'=' * 78}\nTQQQ BUY-AND-HOLD, annual\n{'=' * 78}")
+    print(f"\n{'=' * 78}\n{args.ticker} BUY-AND-HOLD, annual\n{'=' * 78}")
     for year, value in benchmark.items():
         print(f"  {year.year}  {value:+9.2f}%")
     print(
@@ -137,7 +142,7 @@ def main():
             float(row["Profit Target"]),
             strategy_class,
             params,
-            "TQQQ",
+            args.ticker,
             100_000.0,
             DynamicSlippageModel(base_bps=0.5, vol_multiplier=0.3, commission_per_trade=0.0),
             RiskManager(max_concurrent_lots=6000),

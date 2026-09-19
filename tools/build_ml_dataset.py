@@ -44,8 +44,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from server.backtest import KNOWN_DATA
 from src.ml import features, labels
+from src.warehouse.bars import available_tickers, load_frame
 
 # The targets this project actually trades, and horizons spanning an
 # hour to roughly a month of sessions. A lot that needs four months is
@@ -54,8 +54,8 @@ PROFIT_TARGETS = (0.003, 0.005, 0.01)
 HORIZONS = (60, 390, 1950, 7800)
 
 
-def build_one(ticker: str, path: Path, stride: int, external_directory: Path | None) -> tuple:
-    bars = pd.read_csv(path, parse_dates=["timestamp"]).set_index("timestamp").sort_index()
+def build_one(ticker: str, stride: int, external_directory: Path | None) -> tuple:
+    bars = load_frame(ticker).sort_index()
     if bars.index.tz is None:
         bars.index = bars.index.tz_localize("UTC")
 
@@ -97,17 +97,15 @@ def main(argv=None) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     schema: dict[str, dict] = {}
 
+    have_bars = available_tickers()
     for ticker in args.tickers:
-        source = KNOWN_DATA.get(ticker)
-        if source is None or not Path(source).exists():
-            print(f"SKIP {ticker}: no data file registered in KNOWN_DATA")
+        if ticker not in have_bars:
+            print(f"SKIP {ticker}: no bars in the warehouse")
             continue
 
         began = time.time()
         print(f"{ticker:<6} building ... ", end="", flush=True)
-        frame, feature_columns, label_columns = build_one(
-            ticker, Path(source), args.stride, args.external
-        )
+        frame, feature_columns, label_columns = build_one(ticker, args.stride, args.external)
 
         destination = args.out / f"{ticker}_ml.parquet"
         frame.to_parquet(destination, index=True)

@@ -47,8 +47,7 @@ import re
 import sys
 import types
 from collections.abc import Callable
-from pathlib import Path
-from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
+from typing import Any, Literal, Protocol, Union, get_args, get_origin, get_type_hints
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -69,6 +68,7 @@ from src.core.exceptions import ConfigurationError
 from src.optimization.optimization_controller import OptimizationController
 from src.optimization.search_strategies import BayesianSearch, GridSearch, SearchStrategy
 from src.trading.strategy_registry import STRATEGIES, resolve_strategy
+from src.warehouse.bars import available_tickers, load_frame
 from tools.export_ui_data import KNOWN_DATA, equity_series, executions, fund_metrics
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
@@ -395,7 +395,6 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     "ml_regime_xbi": {
         "max_trade_pct": 0.05,
         "ticker": "XBI",
-        "history_path": "data/XBI_1Min_sip_all_rth_2016-01-01_2026-09-11.csv",
         "crash_step_multiplier": 4.0,
         "regime_enter_threshold": 0.1874,
         "regime_exit_threshold": 0.1112,
@@ -408,7 +407,6 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     "ml_regime_tqqq": {
         "max_trade_pct": 0.05,
         "ticker": "TQQQ",
-        "history_path": "data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv",
         "crash_step_multiplier": 4.0,
         "regime_enter_threshold": 0.1757,
         "regime_exit_threshold": 0.0793,
@@ -421,7 +419,6 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     "ml_regime_qqq": {
         "max_trade_pct": 0.05,
         "ticker": "QQQ",
-        "history_path": "data/QQQ_1Min_sip_all_rth_2016-01-01_2026-09-05.csv",
         "crash_step_multiplier": 4.0,
         "regime_enter_threshold": 0.1742,
         "regime_exit_threshold": 0.1610,
@@ -434,7 +431,6 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     "ml_regime_rsp": {
         "max_trade_pct": 0.05,
         "ticker": "RSP",
-        "history_path": "data/RSP_1Min_sip_all_rthuniform_2016-01-01_2026-08-30.csv",
         "crash_step_multiplier": 4.0,
         "regime_enter_threshold": 0.4180,
         "regime_exit_threshold": 0.2286,
@@ -476,7 +472,6 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     "ml_regime_soxl": {
         "max_trade_pct": 0.05,
         "ticker": "SOXL",
-        "history_path": "data/SOXL_1Min_sip_all_rth_2016-01-01_2026-09-03.csv",
         "crash_step_multiplier": 4.0,
         "regime_enter_threshold": 0.20,
         "regime_exit_threshold": 0.166,
@@ -505,7 +500,6 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     "ml_regime_sqqq": {
         "max_trade_pct": 0.05,
         "ticker": "SQQQ",
-        "history_path": "data/SQQQ_1Min_sip_all_ext_2016-01-01_2026-09-01.csv",
         "crash_step_multiplier": 4.0,
         "regime_enter_threshold": 0.1239,
         "regime_exit_threshold": 0.0935,
@@ -518,7 +512,6 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     "ml_regime_spyd": {
         "max_trade_pct": 0.05,
         "ticker": "SPYD",
-        "history_path": "data/SPYD_1Min_sip_all_rth_2016-01-01_2026-09-06.csv",
         "crash_step_multiplier": 4.0,
         "regime_enter_threshold": 0.2476,
         "regime_exit_threshold": 0.2248,
@@ -549,7 +542,6 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     "ml_regime_cowz": {
         "max_trade_pct": 0.05,
         "ticker": "COWZ",
-        "history_path": "data/COWZ_1Min_sip_all_rth_2016-01-01_2026-09-06.csv",
         "crash_step_multiplier": 4.0,
         "regime_enter_threshold": 0.1090,
         "regime_exit_threshold": 0.1063,
@@ -1253,10 +1245,21 @@ class _BestOnlySink:
             self.best_result = sim_result
 
 
+class BarSource(Protocol):
+    """Where a run reads its bars. The default is this machine's warehouse;
+    a remote shard supplies its own locally cached copy of the main
+    server's (server/shard_client.py)."""
+
+    def available_tickers(self) -> set[str]: ...
+
+    def load_frame(self, ticker: str) -> pd.DataFrame: ...
+
+
 def run_backtest(
     request: dict[str, Any],
     report: Callable[[float, str], None],
     control: RunControl | None = None,
+    bars: BarSource | None = None,
 ) -> dict[str, Any]:
     """Execute one submitted run. Called on the worker thread.
 
@@ -1270,16 +1273,22 @@ def run_backtest(
     stop, no new configuration starts and RunStopped is raised after the
     ones in flight land. None -- a direct call from a script -- runs to
     completion exactly as before.
+
+    `bars` replaces the warehouse read. The module-level functions are
+    looked up at call time when it is None, so tests that monkeypatch
+    them keep working.
     """
     parsed = RunRequest(**request)
     config = build_config(parsed)
     strategy_class = resolve_strategy(config.strategy.strategy_id)
 
-    available = [t for t in parsed.tickers if t in KNOWN_DATA and Path(KNOWN_DATA[t]).exists()]
+    have_bars = (bars.available_tickers if bars is not None else available_tickers)()
+    available = [t for t in parsed.tickers if t in have_bars]
     if not available:
         raise ValueError(
-            f"None of {parsed.tickers} has a data file. Known: {sorted(KNOWN_DATA)}. "
-            "Download one with `python cli.py fetch-data --symbol <T> ...`."
+            f"None of {parsed.tickers} has bars in the warehouse. Have: {sorted(have_bars)}. "
+            "Fetch and ingest one with `python cli.py fetch-data --symbol <T> ...` then "
+            "`python tools/build_warehouse.py --ingest <T>`."
         )
 
     funds: dict[str, Any] = {}
@@ -1312,7 +1321,7 @@ def run_backtest(
 
     for ticker in available:
         report(finished_units / total_units, f"running {ticker}")
-        frame = pd.read_csv(KNOWN_DATA[ticker], parse_dates=["timestamp"]).set_index("timestamp")
+        frame = (bars.load_frame if bars is not None else load_frame)(ticker)
         frame = window(frame, parsed.start, parsed.end, parsed.limit)
         if frame.empty:
             raise ValueError(
@@ -1589,9 +1598,15 @@ def funds() -> dict[str, Any]:
     separate `sizing_details` (required names, committed defaults) is the
     params' own `required` / `suggested`.
     """
+    have_bars = available_tickers()
     return {
+        # `path` is where `cli.py fetch-data` lands a fresh download and
+        # `tools/build_warehouse.py --ingest` reads from -- informational
+        # only. `ok` answers a different question ("can this be
+        # simulated right now") and comes from the warehouse, not from
+        # whether that file happens to exist on this machine.
         "funds": [
-            {"ticker": ticker, "path": path, "ok": Path(path).exists()}
+            {"ticker": ticker, "path": path, "ok": ticker in have_bars}
             for ticker, path in sorted(KNOWN_DATA.items())
         ],
         "models": {
@@ -1647,14 +1662,14 @@ def bars(
     it whole would stall this process serialising it and the browser
     parsing it, to draw a few thousand pixels.
     """
-    path = KNOWN_DATA.get(ticker)
-    if path is None or not Path(path).exists():
+    have_bars = available_tickers()
+    if ticker not in have_bars:
         raise HTTPException(
             status_code=404,
-            detail=f"No data file for {ticker!r}. Known: {sorted(KNOWN_DATA)}.",
+            detail=f"No bars for {ticker!r} in the warehouse. Have: {sorted(have_bars)}.",
         )
 
-    frame = pd.read_csv(path, parse_dates=["timestamp"]).set_index("timestamp")
+    frame = load_frame(ticker)
     frame = window(frame, start, end, None)
     if frame.empty:
         return {"bucket_s": 60, "rows": 0, "bars": []}
@@ -2007,6 +2022,7 @@ def _with_id(snapshot: dict[str, Any], run_id: str) -> dict[str, Any]:
 
 
 __all__ = [
+    "BarSource",
     "RunOp",
     "RunRequest",
     "bar_rows",

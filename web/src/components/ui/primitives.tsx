@@ -1,3 +1,5 @@
+import { X } from "lucide-react";
+import { useEffect } from "react";
 import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
@@ -158,5 +160,57 @@ export function Badge({
       )}
       {...props}
     />
+  );
+}
+
+/**
+ * A centered modal: a dimmed backdrop (click closes it), Escape closes
+ * it, a title bar with its own close button. Built directly rather than
+ * pulling in a dependency for it -- this app's first modal, and neither
+ * package.json nor any component here already carries one.
+ */
+export function Dialog({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-lg border border-border bg-card text-card-foreground shadow-lg"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold">{title}</h2>
+          <button
+            type="button"
+            className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="p-4">{children}</div>
+      </div>
+    </div>
   );
 }

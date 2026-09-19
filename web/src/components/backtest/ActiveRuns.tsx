@@ -353,6 +353,13 @@ function RunRow({
           )}
         </span>
 
+        {/* Which machine has it -- sweeps run on shards (see ShardPanel). */}
+        {run.shard && isRunning(run.status) ? (
+          <Badge className="shrink-0 text-[11px] font-normal" title={`Running on shard ${run.shard}`}>
+            {run.shard}
+          </Badge>
+        ) : null}
+
         <div className="flex shrink-0 items-center gap-0.5">
           {actions.runNext ? control("runNext", "Run next", <ChevronsUp className="size-3.5" />) : null}
           {actions.moveUp ? control("moveUp", "Move up", <ChevronUp className="size-3.5" />) : null}

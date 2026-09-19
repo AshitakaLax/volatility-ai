@@ -216,6 +216,9 @@ export interface Run {
   /** 1-indexed place among queued + paused runs, in the order they will
    * run -- not submission order once anything moved. null otherwise. */
   pos: number | null;
+  /** The shard running it ("local" is the engine host itself); null
+   * unless running. Absent from servers that predate shards. */
+  shard?: string | null;
   msg: string | null;
   error: string | null;
   /** The submission, echoed from the moment it is queued -- the name and
@@ -227,6 +230,70 @@ export interface Run {
 /** A queue control. `pos` is 0-based among pending runs with this one
  * taken out; see lib/runQueue.ts moveTarget. */
 export type RunOp = { op: "pause" | "resume" | "cancel" | "next" } | { op: "move"; pos: number };
+
+/* ------------------------------------------------------------------ */
+/* Shards                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * "stale": no heartbeat for `stale_s`; "offline": none for `timeout_s`,
+ * and whatever it was running has been handed to another shard.
+ */
+export type ShardConn = "online" | "stale" | "offline";
+
+/** "pausing": paused (manually, or by its own lockout window opening)
+ * while a sweep is still finishing its in-flight configurations; that
+ * sweep then goes back to the queue. "locked_out": idle and currently
+ * inside its own configured window, but never manually paused --
+ * `paused` stays false throughout, since a schedule and a manual pause
+ * are independent facts (server/jobs.py's "LOCKOUT WINDOWS" doc). */
+export type ShardState = "idle" | "running" | "pausing" | "paused" | "locked_out";
+
+/** A daily lockout window, server-local wall-clock time. `start`/`end`
+ * are "HH:MM" (24-hour); both set whenever either is, even if
+ * `enabled` is false -- disabling keeps them for next time, distinct
+ * from clearing (server returns `null` for a cleared window). */
+export interface ShardSchedule {
+  enabled: boolean;
+  start: string | null;
+  end: string | null;
+}
+
+/** One machine working the backtest queue (server/jobs.py `Shard`). */
+export interface Shard {
+  name: string;
+  /** The engine host's own worker. Always online; cannot be forgotten. */
+  local: boolean;
+  conn: ShardConn;
+  state: ShardState;
+  host: string | null;
+  commit: string | null;
+  dirty: boolean | null;
+  cores: number | null;
+  /** Seconds since its last heartbeat. 0 for the local shard. */
+  seen_s: number;
+  /** Epoch seconds it registered. */
+  since: number;
+  /** The manual toggle only -- independent of `locked_out`. */
+  paused: boolean;
+  /** Whether its configured lockout window covers this instant. */
+  locked_out: boolean;
+  /** Its configured lockout window, or null if it has none. */
+  schedule: ShardSchedule | null;
+  run: { id: string; name: string | null; progress: number; msg: string | null } | null;
+}
+
+export interface ShardList {
+  shards: Shard[];
+  /** Every shard is paused (or pausing). */
+  paused: boolean;
+  /** The engine host's commit; a shard on another one is flagged. */
+  commit: string | null;
+  stale_s: number;
+  timeout_s: number;
+}
+
+export type ShardOp = { op: "pause" | "resume" | "forget" };
 
 /** One thing wrong with a would-be run; `field` when it can be pinned. */
 export interface ValidateError {

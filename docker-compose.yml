@@ -8,8 +8,10 @@ services:
   # docker compose run --rm fetch-data --symbol TQQQ --days 730
   #
   # The only service that mounts ./data READ-WRITE -- it is the one
-  # thing that writes market data. Everything downstream reads it :ro,
-  # so a backtest cannot corrupt the dataset it is measuring.
+  # thing that writes market data. `data/` is intake only, not something
+  # `backtest` reads: load a freshly fetched symbol into the warehouse
+  # with `docker compose run --rm backtest python tools/build_warehouse.py
+  # --ingest TICKER` before a sweep can see it.
   #
   # Needs credentials because Alpaca's market-data API is authenticated
   # even for historical bars. Uses the paper env file: market data is
@@ -24,12 +26,17 @@ services:
       - ./data:/app/data
       - ./config:/app/config:ro
 
-  # docker compose run --rm backtest --config /app/config/staging.yaml --data /app/data/TQQQ_1Min_latest.csv
+  # docker compose run --rm backtest --config /app/config/staging.yaml
+  #
+  # Mounts ./data too (read-write) because this is also the image used
+  # to run tools/build_warehouse.py's --ingest step above -- `backtest`
+  # itself only ever reads ./warehouse.
   backtest:
     build: .
     entrypoint: ["python", "cli.py", "backtest"]
     volumes:
-      - ./data:/app/data:ro
+      - ./data:/app/data
+      - ./warehouse:/app/warehouse
       - ./config:/app/config:ro
       - ./output:/app/output
 

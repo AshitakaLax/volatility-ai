@@ -1,5 +1,71 @@
 # Changelog
 
+## `cli.py submit`: hand any BacktestConfig sweep to the server's shard queue
+
+Getting a big COWZ sweep watchable in the browser across shards
+(server/jobs.py's queue, server/shards.py's multi-machine claiming) had
+no path except writing a one-off script per campaign -- `tools/
+sweep_rsp_all.py` did this by hand for RSP, and this project's first
+attempt at the same thing for COWZ (`tools/sweep_cowz_all.py`, now
+deleted) duplicated most of it: recursive bisection under
+MAX_SWEEP_COMBINATIONS, the bayesian_dual_scale target_return fan-out,
+dedup against already-queued/completed runs. That is exactly the kind
+of thing that belongs in the CLI once a second script needs it, not
+copied a third time for the next fund.
+
+`cli.py submit --config C` now does this generically for ANY
+`BacktestConfig` YAML -- the same config format `backtest`/`search`
+already read, converted into `RunRequest` chunks and POSTed to
+`/api/backtest/runs`. `--search grid|bayesian` overrides the config's
+own `search.strategy` (the server has no `random`); `--trials N` (max
+500) is the bayesian budget **per chunk**, not a total. A config whose
+declared space exceeds one submission's ceiling arrives as multiple
+queued runs, each a coherent slice, exactly as `tools/sweep_rsp_all.py`
+did by hand. `--dry-run` prints the plan; `--resubmit` bypasses the
+completed/pending dedup.
+
+**Known gap, inherited from the server, not introduced here:**
+`RunRequest` has no cost-model field, so every run submitted this way
+executes at zero transaction cost regardless of the config's own
+`costs:` section -- this is not new to `submit`, every prior
+web-submitted sweep in this project (RSP included) already ran this
+way; it is just more visible now that a config with real non-zero
+costs is being submitted through it.
+
+## `cli.py backtest`/`search` and `run_hf_sweep.py` now read the warehouse only
+
+`server/backtest.py` switched its simulation read path from `data/*.csv`
+to the DuckDB/Parquet warehouse back on 2026-09-16, after that directory's
+entire contents were lost to an unrelated `git worktree remove` walking a
+directory junction (`src/warehouse/bars.py`'s docstring has the full
+story) -- the web-submitted path stopped depending on `data/` surviving
+at all. The CLI entrypoints did not get the same fix at the time: `cli.py
+backtest`, `cli.py search`, and `src/scripts/run_hf_sweep.py` all still
+took a `--data <csv>` flag and read it with `pd.read_csv`, so the exact
+failure mode `bars.py` exists to prevent was still reachable through
+every non-web sweep.
+
+All three now read bars from `src/warehouse/bars.load_frame(ticker)` by
+`config.backtest.symbol` -- the same function the server already used --
+and `--data` is gone from both CLI subcommands (`src/analysis/
+analyze_annual.py` gained a `--ticker` flag in its place, default
+`TQQQ`). A ticker must be ingested (`tools/build_warehouse.py --ingest
+TICKER`) before any of them can see it; `cli.py fetch-data` still writes
+`data/*.csv`, but purely as that ingest step's intake format now, not as
+something a backtest reads.
+
+**Consequence worth knowing:** `duckdb`/`polars` (`requirements-warehouse.txt`)
+were previously optional for `cli.py backtest`/`search` -- needed only for
+the opt-in `--warehouse` result-recording flag. They are now required for
+these commands to read any data at all, since there is no CSV fallback
+left. `cli.py test`, `cli.py live`, and the Raspberry Pi live loop do not
+import this path and remain core-dependency-only.
+
+`_open_result_sink`'s `dataset_version` (the identity a recorded sweep is
+tagged with) now comes from `bars.fingerprint(ticker)` instead of hashing
+a CSV's `.meta.json` sidecar (`src/warehouse/ingest.dataset_version`) --
+there is no file left to hash it from.
+
 ## Grouped sweep progress + follow-on queuing (web UI + backtest API)
 
 The Backtesting page's "Active runs" showed every queued/running job as a

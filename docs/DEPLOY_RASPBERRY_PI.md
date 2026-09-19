@@ -228,6 +228,29 @@ docker compose -f docker-compose.pi.yml run --rm --entrypoint python paper \
   --remote-host user@workstation --remote-dir volatility-ai-backups
 ```
 
+### Warehouse-only backup and restore, from `cli.py`
+
+`cli.py backup` / `cli.py restore` are a narrower front door onto the
+same script, scoped to just `warehouse/market_data.duckdb` and
+`warehouse/sim_results.duckdb` -- the analytical warehouse a workstation
+accumulates hours of sweep compute into. They default `--remote-host` to
+`ashitakalax@172.16.0.137` (override with `--remote-host` or
+`$VAI_BACKUP_REMOTE`):
+
+```powershell
+python cli.py backup                                  # snapshot + archive + scp to the Pi
+python cli.py backup --local-only                      # archive only, no push
+python cli.py restore                                  # fetch the newest archive from the Pi, restore it
+python cli.py restore backups\volatility-ai-db_...tar.gz --yes   # from a local file, no prompt
+```
+
+`restore` reverifies every database's sha256 against the archive's
+manifest before writing anything, refuses to overwrite a DuckDB file that
+is currently open elsewhere (a sweep or ingest in progress), and renames
+whatever it replaces to `<name>.pre-restore-<timestamp>` instead of
+deleting it. It prompts for confirmation unless `--yes` is passed --
+required for any non-interactive/scripted use.
+
 `docker compose down` leaves the `state` volume intact. `down -v`
 **deletes it**, and with it every open lot the deployment knows about.
 There is no other copy unless you made one.
@@ -291,6 +314,53 @@ it and no live loop imports it — `tests/unit/test_server_capability.py`
 holds `ml_insights.py` to that the same way `live.py` is held to
 read-only. See `ml_plan.md`, "Phase ML-0" for what has actually been
 measured, and how weak most of it still is.
+
+### Running sweeps on more than one machine (shards)
+
+The engine host hands whole **sweeps** to other machines. Each shard
+claims one queued run, executes it on its own cores, and reports every
+finished configuration back, so a sweep can move between machines and
+resume from the last configuration that landed.
+
+On the **engine host** (the workstation), bound so shards can reach it:
+
+    python cli.py serve --host 0.0.0.0 --port 8000
+
+On **each extra machine**, from a checkout of the same commit:
+
+    python cli.py shard --name fast-shard --main 172.16.0.134
+
+The Pi can be one of them. It has no Python environment outside Docker,
+so run it in the image already built there, with a checkout of this repo
+bind-mounted over `/app` (its `ENTRYPOINT` is `python cli.py`, so the
+arguments below are the subcommand):
+
+```bash
+docker run -d --name vai-shard --restart unless-stopped   -v /home/ashitakalax/volatility-ai-shard:/app -w /app   -e PYTHONUNBUFFERED=1 volatility-ai:local   shard --name pi-shard --main 172.16.0.134:8000 --max-jobs 1
+
+docker logs -f vai-shard
+docker rm -f vai-shard          # stop it; any sweep it holds returns to the queue
+```
+
+**`--max-jobs 1` on the Pi is not optional in spirit**: four cores are
+shared with the trading loop, and the same reasoning that sets
+`VAI_MAX_JOBS: "1"` on the `web` service applies to a shard.
+
+Bars come from the engine host, not from the Pi: each ticker is fetched
+once (about 16 MB for a decade of minute bars) and cached under
+`output/shard_cache/<shard name>/`, keyed by a fingerprint of the
+warehouse's copy, so it is re-fetched only when those bars change.
+
+The **Shards** panel on the Backtesting tab shows every machine, whether
+it is connected, which sweep it is on, and a pause for each one (plus
+"Pause all"). Pausing a shard hands its sweep back to the queue for
+another machine rather than stopping the sweep -- that is how you take a
+machine back without stalling the work.
+
+A shard is refused if its commit differs from the engine host's, since
+its results would come from a different engine; `--allow-version-mismatch`
+overrides that deliberately. A checkout with no `.git` (an unpacked
+tarball, as above) reports an unknown commit, which is not a mismatch.
 
 ### Starting the workstation half
 

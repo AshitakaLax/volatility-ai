@@ -14,10 +14,13 @@ import pytest
 
 from tools.backup_databases import (
     build_archive,
+    extract_archive,
     prune_local,
     resolve_databases,
+    restore_databases,
     snapshot_all,
     snapshot_sqlite,
+    verify_archive,
 )
 
 
@@ -151,3 +154,154 @@ def test_prune_local_keep_zero_is_a_noop(tmp_path):
     (tmp_path / "volatility-ai-db_host_2026-01-01_000000Z.tar.gz").write_bytes(b"x")
     prune_local(tmp_path, keep=0)
     assert list(tmp_path.glob("volatility-ai-db_*.tar.gz"))
+
+
+# --------------------------------------------------------------------
+# restore: extract / verify / restore_databases
+# --------------------------------------------------------------------
+
+
+def _make_archive(tmp_path, rows=5):
+    """A real backup archive built the same way build_archive makes one,
+    for the restore-side tests below to extract/verify/restore."""
+    src = tmp_path / "ledger.db"
+    _make_sqlite(src, rows)
+    work = tmp_path / "work"
+    work.mkdir()
+    entries, errors = snapshot_all([src], work)
+    assert not errors
+    out = tmp_path / "backups"
+    return build_archive(work, entries, [], out)
+
+
+def test_extract_archive_returns_the_manifest(tmp_path):
+    archive = _make_archive(tmp_path)
+    extract_dir = tmp_path / "extracted"
+    manifest = extract_archive(archive, extract_dir)
+
+    assert manifest["databases"][0]["name"] == "ledger.db"
+    assert (extract_dir / "ledger.db").exists()
+    assert (extract_dir / "MANIFEST.json").exists()
+
+
+def test_extract_archive_rejects_a_non_backup_tarball(tmp_path):
+    fake = tmp_path / "fake.tar.gz"
+    import tarfile
+
+    with tarfile.open(fake, "w:gz") as tar:
+        info = tarfile.TarInfo("hello.txt")
+        data = b"not a backup"
+        info.size = len(data)
+        import io
+
+        tar.addfile(info, io.BytesIO(data))
+
+    with pytest.raises(RuntimeError, match=r"MANIFEST\.json"):
+        extract_archive(fake, tmp_path / "extracted")
+
+
+def test_verify_archive_passes_on_an_untampered_extraction(tmp_path):
+    archive = _make_archive(tmp_path)
+    extract_dir = tmp_path / "extracted"
+    manifest = extract_archive(archive, extract_dir)
+
+    assert verify_archive(manifest, extract_dir) == []
+
+
+def test_verify_archive_catches_a_corrupted_snapshot(tmp_path):
+    archive = _make_archive(tmp_path)
+    extract_dir = tmp_path / "extracted"
+    manifest = extract_archive(archive, extract_dir)
+
+    (extract_dir / "ledger.db").write_bytes(b"tampered")
+
+    problems = verify_archive(manifest, extract_dir)
+    assert len(problems) == 1
+    assert "sha256 mismatch" in problems[0]
+
+
+def test_verify_archive_catches_a_missing_entry(tmp_path):
+    archive = _make_archive(tmp_path)
+    extract_dir = tmp_path / "extracted"
+    manifest = extract_archive(archive, extract_dir)
+
+    (extract_dir / "ledger.db").unlink()
+
+    problems = verify_archive(manifest, extract_dir)
+    assert len(problems) == 1
+    assert "missing from archive" in problems[0]
+
+
+def test_restore_databases_writes_into_target_dir_and_keeps_a_pre_restore_copy(tmp_path):
+    archive = _make_archive(tmp_path, rows=5)
+    extract_dir = tmp_path / "extracted"
+    manifest = extract_archive(archive, extract_dir)
+
+    target = tmp_path / "restored"
+    target.mkdir()
+    existing = target / "ledger.db"
+    existing.write_bytes(b"old contents that should be preserved, not deleted")
+
+    results = restore_databases(manifest, extract_dir, target, dry_run=False)
+
+    assert results == [
+        {"name": "ledger.db", "status": "restored", "dest": str(target / "ledger.db")}
+    ]
+    con = sqlite3.connect(target / "ledger.db")
+    assert con.execute("SELECT count(*) FROM lots").fetchone()[0] == 5
+    con.close()
+
+    pre_restore = list(target.glob("ledger.db.pre-restore-*"))
+    assert len(pre_restore) == 1
+    assert pre_restore[0].read_bytes() == b"old contents that should be preserved, not deleted"
+
+
+def test_restore_databases_dry_run_changes_nothing(tmp_path):
+    archive = _make_archive(tmp_path)
+    extract_dir = tmp_path / "extracted"
+    manifest = extract_archive(archive, extract_dir)
+
+    target = tmp_path / "restored"
+    target.mkdir()
+    existing = target / "ledger.db"
+    existing.write_bytes(b"untouched")
+
+    results = restore_databases(manifest, extract_dir, target, dry_run=True)
+
+    assert results[0]["status"] == "dry-run"
+    assert existing.read_bytes() == b"untouched"
+    assert not list(target.glob("*.pre-restore-*"))
+
+
+def test_restore_databases_skips_a_duckdb_open_read_write_elsewhere(tmp_path):
+    duckdb = pytest.importorskip("duckdb")
+
+    src = tmp_path / "wh.duckdb"
+    con = duckdb.connect(str(src))
+    con.execute("CREATE TABLE t AS SELECT range AS n FROM range(5)")
+    con.close()
+    work = tmp_path / "work"
+    work.mkdir()
+    entries, errors = snapshot_all([src], work)
+    assert not errors
+    archive = build_archive(work, entries, [], tmp_path / "backups")
+
+    extract_dir = tmp_path / "extracted"
+    manifest = extract_archive(archive, extract_dir)
+
+    target = tmp_path / "restored"
+    target.mkdir()
+    dest = target / "wh.duckdb"
+    import shutil
+
+    shutil.copy2(src, dest)
+    holder = duckdb.connect(str(dest))  # stays open read-write
+    try:
+        results = restore_databases(manifest, extract_dir, target, dry_run=False)
+    finally:
+        holder.close()
+
+    assert len(results) == 1
+    assert results[0]["name"] == "wh.duckdb"
+    assert results[0]["status"] == "skipped"
+    assert not list(target.glob("*.pre-restore-*"))

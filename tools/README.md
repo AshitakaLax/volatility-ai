@@ -35,20 +35,25 @@ documentation that makes them findable.
 | `install_paper_service.ps1` | Register the paper supervisor as a daily Windows scheduled task. |
 | `run_paper_session.cmd` | The task's entry point on Windows. |
 | `docker_session_loop.sh` | The same session loop inside the Raspberry Pi container. |
-| `backup_databases.py` | Snapshot every local database (SQLite ledger + `warehouse/*.duckdb`), archive it under `backups/`, and scp it to the Pi. `--install-daily` schedules it. See below. |
+| `backup_databases.py` | Snapshot every local database (SQLite ledger + `warehouse/*.duckdb`), archive it under `backups/`, scp it to the Pi, and (`--restore`) pull one back down and write it into place. `--install-daily` schedules the backup half. See below. |
 
-### Database backups
+### Database backups and restores
 
-`backup_databases.py` is one file doing snapshot → archive → push → prune.
-Each engine gets the right method: SQLite via `sqlite3`'s online
-`.backup()` (safe while the live loop writes every tick), DuckDB by
-copying the file while holding a read-only handle open (which blocks a
-sweep from starting mid-copy; if one already holds it, that DB is
-skipped with a non-zero exit rather than a torn copy).
+`backup_databases.py` is one file doing snapshot → archive → push → prune,
+and the reverse trip back. Each engine gets the right method on the way
+out: SQLite via `sqlite3`'s online `.backup()` (safe while the live loop
+writes every tick), DuckDB by copying the file while holding a read-only
+handle open (which blocks a sweep from starting mid-copy; if one already
+holds it, that DB is skipped with a non-zero exit rather than a torn
+copy). On the way back in, the same DuckDB guard applies to the
+destination, and every snapshot's sha256 is reverified against
+`MANIFEST.json` before anything is written.
 
     python tools/backup_databases.py --local-only            # just the archive
     python tools/backup_databases.py --remote-host pi@172.16.0.137
     python tools/backup_databases.py --install-daily --at 03:30
+    python tools/backup_databases.py --restore                          # newest from the remote
+    python tools/backup_databases.py --restore backups/volatility-ai-db_host_2026-01-01_000000Z.tar.gz
 
 The push is `scp` (Git ships it; `rsync` it does not) over
 `BatchMode=yes` SSH, so key auth must be non-interactive. Set the target
@@ -58,6 +63,17 @@ values into a Windows Scheduled Task (`VolatilityAI-DbBackup`) or a cron
 line. `--keep N` (default 14) trims old archives at both ends. The
 Parquet lakes are left out by default as regenerable — `--include
 warehouse/executions` folds the non-regenerable trade blotters back in.
+
+`--restore` (with no path) fetches the newest archive from `--remote-host`;
+a local path or a bare remote filename both work too. It writes each
+database back to the absolute path recorded in `MANIFEST.json` at backup
+time unless `--restore-into DIR` overrides that. Whatever it replaces is
+renamed to `<name>.pre-restore-<timestamp>` rather than deleted.
+Interactive runs must type `restore` to confirm; a script must pass
+`--yes` (there is no ambiguous default for overwriting a live database).
+
+`cli.py backup` / `cli.py restore` are the warehouse-scoped front door to
+the same machinery — see `cli.py backup --help` / `cli.py restore --help`.
 
 ## Data preparation — produces inputs the rest of the project consumes
 
@@ -77,7 +93,7 @@ because they are catalogs, not data stores.
 
     python tools/build_warehouse.py --ingest-all --events   # bars + events + external
     python tools/build_warehouse.py --external              # just data/external/
-    python cli.py backtest --config C --data D --warehouse
+    python cli.py backtest --config C --warehouse
     python tools/build_warehouse.py --top 20
     python tools/build_warehouse.py --explain-execution <simulation_id>
     python tools/build_warehouse.py --explain-series fred_DGS10 TQQQ

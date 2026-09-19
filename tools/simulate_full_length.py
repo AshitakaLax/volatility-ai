@@ -47,7 +47,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from server import history
-from server.backtest import KNOWN_DATA, STRATEGY_DEFAULTS, run_backtest
+from server.backtest import STRATEGY_DEFAULTS, run_backtest
+from src.warehouse.bars import available_tickers
 
 # A modest grid: enough for the sweep matrix to show a real surface
 # without turning "run full simulations" into a research program.
@@ -66,15 +67,16 @@ def main(argv=None) -> int:
     )
     args = parser.parse_args(argv)
 
+    have_bars = available_tickers()
     for ticker in args.tickers:
-        if ticker not in KNOWN_DATA or not Path(KNOWN_DATA[ticker]).exists():
-            print(f"SKIP {ticker}: no data file registered in KNOWN_DATA")
+        if ticker not in have_bars:
+            print(f"SKIP {ticker}: no bars in the warehouse")
             continue
 
     plan = [
         (ticker, model, step, target)
         for ticker in args.tickers
-        if ticker in KNOWN_DATA and Path(KNOWN_DATA[ticker]).exists()
+        if ticker in have_bars
         for model in args.models
         for step in GRID_STEPS
         for target in PROFIT_TARGETS
