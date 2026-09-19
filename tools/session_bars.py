@@ -34,7 +34,7 @@ import numpy as np
 import pandas as pd
 
 from src.data.fomc_calendar import EASTERN_TZ
-from src.optimization.intraday_profile import SESSION_MINUTES, SESSION_OPEN_MINUTE
+from src.data.intraday_profile import SESSION_MINUTES, SESSION_OPEN_MINUTE
 
 # Derived, never written as literals -- see the module docstring.
 SESSION_OPEN = SESSION_OPEN_MINUTE  # 09:30 Eastern

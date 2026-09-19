@@ -515,12 +515,18 @@ from __future__ import annotations
 from math import log
 
 from src.core.exceptions import ConfigurationError
-from src.optimization.intraday_profile import relative_range
-from src.strategies.market_context import MarketContext
-from src.strategies.size_calculators import SizingStrategy
-from src.strategies.sizing_indicators import RollingMax, RollingMean, RollingStdev, bars_from_days, clamp
+from src.data.intraday_profile import relative_range
 from src.data.synthetic_bars import is_synthetic_bar
 from src.optimization.trailing_target import TrailingTargetPolicy
+from src.strategies.market_context import MarketContext
+from src.strategies.size_calculators import SizingStrategy
+from src.strategies.sizing_indicators import (
+    RollingMax,
+    RollingMean,
+    RollingStdev,
+    bars_from_days,
+    clamp,
+)
 
 # Below this, a realized-vol estimate is numerical noise rather than a
 # measurement -- see _vol_scale. Per-bar log returns here run ~1e-4.

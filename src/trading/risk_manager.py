@@ -18,7 +18,7 @@ import logging
 from enum import StrEnum
 
 from src.core.exceptions import ConfigurationError
-from src.analysis.validation import validate_positive_int, validate_unit_interval
+from src.core.validation import validate_positive_int, validate_unit_interval
 
 logger = logging.getLogger("Optimizer")
 

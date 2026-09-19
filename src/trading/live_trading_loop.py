@@ -85,23 +85,23 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from src.trading import decision_cycle
-from src.core.config import BacktestConfig
 from src.analysis.cost_models import ZeroCostModel
-from src.trading.duplicate_order_guard import DuplicateOrderGuard
-from src.data.earnings_calendar import is_earnings_reaction_day_at
+from src.core.config import BacktestConfig
 from src.core.exceptions import ConfigurationError, PersistenceError
-from src.execution.fill_accounting import FillTracker, extract_alpaca_fill
-from src.data.fomc_calendar import is_fomc_day_at
 from src.core.idempotency import compute_decision_id
-from src.strategies.implied_vol_signal import change_at
-from src.optimization.intraday_profile import minutes_since_open
-from src.strategies.market_context import MarketContext
-from src.trading.no_loss_guard import NoLossViolation, SellReason, validate_sell
-from src.execution.order_lifecycle import TERMINAL_STATES, map_broker_status
 from src.core.retry_policy import AmbiguousSubmissionError
-from src.trading.risk_manager import CircuitBreaker, RiskManager
+from src.data.earnings_calendar import is_earnings_reaction_day_at
+from src.data.fomc_calendar import is_fomc_day_at
+from src.data.intraday_profile import minutes_since_open
 from src.data.tick_validation import TickValidator
+from src.execution.fill_accounting import FillTracker, extract_alpaca_fill
+from src.execution.order_lifecycle import TERMINAL_STATES, map_broker_status
+from src.strategies.implied_vol_signal import change_at
+from src.strategies.market_context import MarketContext
+from src.trading import decision_cycle
+from src.trading.duplicate_order_guard import DuplicateOrderGuard
+from src.trading.no_loss_guard import NoLossViolation, SellReason, validate_sell
+from src.trading.risk_manager import CircuitBreaker, RiskManager
 
 logger = logging.getLogger("Optimizer")
 
@@ -323,8 +323,8 @@ class LiveTradingLoop:
         # same fallback -- see EarningsEventTable._load_event_table's
         # docstring pattern.
         try:
-            from src.data.event_calendar import EarningsEventTable
             from src.core.exceptions import DataValidationError as _DataValidationError
+            from src.data.event_calendar import EarningsEventTable
 
             self._event_table = EarningsEventTable.from_csv()
         except (FileNotFoundError, _DataValidationError) as e:

@@ -437,7 +437,7 @@ strategies observe the market.
 | `src/trading/risk_manager.py` | Exposure clamps + `CircuitBreaker` |
 | `src/strategies/market_context.py` | `MarketContext`, `SimulationResult` |
 | `src/core/config.py` | `BacktestConfig` and its nested sections |
-| `src/analysis/validation.py`, `src/data/data_validation.py` | Config and dataset validation |
+| `src/core/validation.py`, `src/data/data_validation.py` | Config and dataset validation |
 | `src/optimization/search_strategies.py` | `GridSearch`, `BayesianSearch` (Optuna) |
 | `src/optimization/walk_forward.py`, `src/optimization/monte_carlo.py` | Out-of-sample validation |
 | `src/core/persistence.py` | SQLite ledger store, crash recovery |

@@ -40,7 +40,7 @@ import numpy as np
 import pandas as pd
 
 from src.core.exceptions import ConfigurationError
-from src.analysis.validation import validate_positive_int
+from src.core.validation import validate_positive_int
 
 PERCENTILES = (5, 25, 50, 75, 95)
 

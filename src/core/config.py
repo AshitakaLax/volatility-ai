@@ -25,16 +25,10 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from src.analysis.cost_models import (
-    DynamicSlippageModel,
-    SlippageCommissionModel,
-    TransactionCostModel,
-    ZeroCostModel,
-)
 from src.core.exceptions import ConfigurationError
-from src.trading.risk_manager import RiskManager
-from src.analysis.validation import (
+from src.core.validation import (
     validate_grid_steps,
     validate_non_negative,
     validate_one_of,
@@ -43,6 +37,32 @@ from src.analysis.validation import (
     validate_profit_targets,
     validate_unit_interval,
 )
+
+# TYPE-ONLY, AND THE IMPORTS INSIDE build() BELOW ARE DELIBERATE.
+#
+# This module is the bottom of the dependency stack -- src/core is what
+# every other package imports. It used to import src.analysis.cost_models
+# and src.trading.risk_manager at module scope, which made `core` depend
+# on `analysis` and `trading`, which depend on `core`: a cycle that put
+# 10 of src/'s 12 subpackages into ONE strongly-connected component and
+# made none of them separable (or readable) on their own.
+#
+# `from __future__ import annotations` makes every annotation a string at
+# runtime, so the type names below cost nothing outside a type checker.
+# The two build() methods import their concrete classes when called.
+#
+# WHAT THIS DOES AND DOES NOT FIX. The IMPORT-time cycle is gone, which
+# is what makes core analysable, testable and openable on its own. A
+# RUNTIME dependency remains: calling build() still reaches into those
+# packages. Removing that too means moving the factories to the packages
+# that own what they construct (cost_model_from_config in analysis,
+# risk_manager_from_config in trading) and updating 28 call sites across
+# 17 files, most of them tools/ probes whose command lines are named in
+# ~130 places across README.md, plan.md and docs/. That is a worthwhile
+# follow-up, not a prerequisite, and it is separated on purpose.
+if TYPE_CHECKING:
+    from src.analysis.cost_models import TransactionCostModel
+    from src.trading.risk_manager import RiskManager
 
 
 @dataclass(frozen=True)
@@ -125,7 +145,16 @@ class CostConfig:
         ConfigurationError for an unrecognized model_type rather than
         silently falling back to zero cost, which would understate
         every subsequent result.
+
+        Imported here rather than at module scope -- see the note beside
+        this module's TYPE_CHECKING block.
         """
+        from src.analysis.cost_models import (
+            DynamicSlippageModel,
+            SlippageCommissionModel,
+            ZeroCostModel,
+        )
+
         if self.model_type == "zero":
             return ZeroCostModel()
         if self.model_type == "slippage_commission":
@@ -166,7 +195,12 @@ class RiskConfig:
         dd_exposure_start defaults to None (no-op throttle), so an
         omitted risk section yields an unconstrained manager rather than
         an error.
+
+        Imported here rather than at module scope -- see the note beside
+        this module's TYPE_CHECKING block.
         """
+        from src.trading.risk_manager import RiskManager
+
         return RiskManager(
             max_concurrent_lots=self.max_concurrent_lots,
             max_total_exposure_pct=self.max_total_exposure,
