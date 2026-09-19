@@ -67,13 +67,13 @@ import argparse
 import sys
 from pathlib import Path
 
-from src.brokers.fidelity_broker import FidelityBroker
-from src.brokers.fidelity_placing_broker import (
+from fidelity_gateway.broker import FidelityBroker
+from fidelity_gateway.placing_broker import (
     FidelityPlacingBroker,
     FileConfNumJournal,
     unresolved_orders,
 )
-from src.brokers.fidelity_session import FidelitySession, FidelitySessionError
+from fidelity_gateway.session import FidelitySession, FidelitySessionError
 from src.core.exceptions import ConfigurationError
 
 CONFIRM_PHRASE = "PLACE THE ORDER"

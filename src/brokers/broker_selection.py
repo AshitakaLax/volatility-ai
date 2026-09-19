@@ -121,7 +121,7 @@ def _build_fidelity(config, session: Any):
             "to trade, and that account must also appear in allowed_accounts."
         )
 
-    from src.brokers.fidelity_broker import FidelityBroker
+    from fidelity_gateway.broker import FidelityBroker
 
     logger.warning(
         "Building the Fidelity adapter in PREVIEW-ONLY mode. It can price, "

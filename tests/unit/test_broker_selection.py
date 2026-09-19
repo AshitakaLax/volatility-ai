@@ -9,8 +9,8 @@ import re
 
 import pytest
 
+from fidelity_gateway.broker import FidelityBroker
 from src.brokers.broker_selection import build_broker
-from src.brokers.fidelity_broker import FidelityBroker
 from src.core.config import BacktestConfig
 from src.core.exceptions import ConfigurationError
 from src.core.secrets import LiveCredentials

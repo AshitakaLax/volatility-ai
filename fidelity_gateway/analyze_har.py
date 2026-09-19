@@ -63,7 +63,7 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import urlparse
 
-from src.brokers.fidelity_capture import _ID_KEY_PATTERN, _find_id_keys
+from fidelity_gateway.capture import _ID_KEY_PATTERN, _find_id_keys
 from src.core.exceptions import ConfigurationError
 
 # Headers whose values authenticate a session. Never printed; removed by

@@ -80,7 +80,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.brokers.fidelity_capture import TrafficCapture
+from fidelity_gateway.capture import TrafficCapture
 from src.core.exceptions import ConfigurationError
 from src.core.secrets import FidelityCredentials, load_fidelity_credentials
 

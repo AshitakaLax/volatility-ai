@@ -30,9 +30,9 @@ from typing import ClassVar
 
 import pytest
 
+from fidelity_gateway import recon as fidelity_recon
 from src.core.exceptions import ConfigurationError
 from src.core.secrets import FidelityCredentials
-from src.scripts import fidelity_recon
 
 
 class FakePage:
@@ -470,7 +470,7 @@ def test_importing_the_module_does_not_require_playwright():
         [
             sys.executable,
             "-c",
-            "import src.scripts.fidelity_recon, sys; "
+            "import fidelity_gateway.recon, sys; "
             "print('LOADED' if 'playwright' in sys.modules else 'CLEAN')",
         ],
         capture_output=True,

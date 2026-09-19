@@ -30,8 +30,8 @@ from __future__ import annotations
 
 import pytest
 
+from fidelity_gateway.broker import PREVIEW_PATH, FidelityBroker
 from src.brokers.alpaca_broker import AlpacaBroker
-from src.brokers.fidelity_broker import PREVIEW_PATH, FidelityBroker
 from src.core.retry_policy import RetryConfig
 from src.core.secrets import LiveCredentials
 from src.execution.order_lifecycle import OrderState

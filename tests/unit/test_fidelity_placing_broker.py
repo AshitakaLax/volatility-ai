@@ -15,8 +15,8 @@ import json
 
 import pytest
 
-from src.brokers.fidelity_broker import FidelityBroker
-from src.brokers.fidelity_placing_broker import (
+from fidelity_gateway.broker import FidelityBroker
+from fidelity_gateway.placing_broker import (
     CANCEL_PLACE_PATH,
     CANCEL_PREVIEW_PATH,
     PLACE_PATH,
@@ -24,7 +24,7 @@ from src.brokers.fidelity_placing_broker import (
     FileConfNumJournal,
     unresolved_orders,
 )
-from src.brokers.fidelity_session import PREVIEW_ENDPOINTS, FidelitySession
+from fidelity_gateway.session import PREVIEW_ENDPOINTS, FidelitySession
 from src.core.exceptions import ConfigurationError
 from src.core.retry_policy import AmbiguousSubmissionError
 from src.execution.order_lifecycle import OrderState

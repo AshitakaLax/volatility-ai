@@ -1045,9 +1045,13 @@ volatility-ai/
 ├── src/scripts/run_hf_sweep.py            # parallel sweep driver for HF configs -- see below
 ├── src/analysis/analyze_annual.py          # annualized regime breakdown vs. buy-and-hold
 ├── resample_uniform.py        # re-grid minute bars onto a uniform index
-├── analyze_har.py             # read a browser HAR; --redact to scrub one
-├── fidelity_recon.py          # attach to a live browser and capture Fidelity's own JSON API
-├── fidelity_place_test_order.py
+├── fidelity_gateway/          # the Playwright/HTTP route into Fidelity -- see its own CLAUDE.md
+│   ├── session.py             #   log in, hold the authenticated browser session
+│   ├── broker.py              #   read-only adapter (positions, orders)
+│   ├── placing_broker.py      #   the gated write path
+│   ├── capture.py / analyze_har.py  # capture and inspect Fidelity's own JSON API
+│   ├── recon.py               #   attach to a live browser and reconcile
+│   └── place_test_order.py
 ├── run_*_chain.sh             # sequential sweep + analyze_annual wrappers
 ├── Dockerfile
 ├── docker-compose.yml         # test/backtest/live + staging/production

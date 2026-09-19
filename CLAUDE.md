@@ -19,11 +19,12 @@ gotchas README doesn't (yet) have.
 | `src/data` | | historical/live bar fetch, calendars, tick validation |
 | `src/analysis` | | cost models, performance metrics, validation, annualized reports |
 | `src/optimization` | | sweep orchestration, grid/Bayesian search, walk-forward, Monte Carlo |
-| `src/brokers` | | Alpaca + Fidelity broker adapters |
+| `src/brokers` | | Alpaca broker adapter + `broker_selection` (imports each SDK lazily) |
 | `src/ml` | | reachability-sizing research: features, labels, live feature vectors (read-only research, not a trading input by default — see `src/ml/reachability_sizing.py`) |
 | `src/ui` | | Streamlit `dashboard.py` |
-| `src/scripts` | | `run_hf_sweep.py`, Fidelity recon/order-test scripts |
+| `src/scripts` | | `run_hf_sweep.py` |
 | `cli.py` (repo root) | | single entrypoint: `test \| backtest \| search \| live \| fetch-data`, the Docker `ENTRYPOINT` |
+| `fidelity_gateway/` | [fidelity_gateway/CLAUDE.md](fidelity_gateway/CLAUDE.md) | the Playwright/HTTP route into Fidelity: session, capture, recon, the gated place path |
 | `server/` | [server/CLAUDE.md](server/CLAUDE.md) | FastAPI backend for the web UI |
 | `web/` | [web/CLAUDE.md](web/CLAUDE.md) | React/TS frontend |
 | `tools/` | [tools/README.md](tools/README.md) (already a good CLAUDE.md-equivalent) | ops scripts, data prep, research probes — nothing here is imported by `src/` |

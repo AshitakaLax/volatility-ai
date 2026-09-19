@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 
-from src.brokers.fidelity_capture import (
+from fidelity_gateway.capture import (
     DEFAULT_MAX_PAYLOAD_BYTES,
     TrafficCapture,
 )

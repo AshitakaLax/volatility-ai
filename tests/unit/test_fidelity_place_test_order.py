@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-import src.scripts.fidelity_place_test_order as script
-from src.brokers.fidelity_placing_broker import FileConfNumJournal
-from src.brokers.fidelity_session import PLACE_ENDPOINTS
+import fidelity_gateway.place_test_order as script
+from fidelity_gateway.placing_broker import FileConfNumJournal
+from fidelity_gateway.session import PLACE_ENDPOINTS
 
 PREVIEW = "/ftgw/digital/trade-equity/previewSrvc"
 ACCOUNT = "999888777"
@@ -71,7 +71,7 @@ def test_order_endpoints_are_unlocked_only_when_a_place_is_intended(kw, should_p
 
 
 def test_the_transport_refuses_placing_when_not_unlocked():
-    from src.brokers.fidelity_session import FidelitySession
+    from fidelity_gateway.session import FidelitySession
 
     session = FidelitySession(object(), allow_order_endpoints=False, allow_preview_endpoints=True)
     from src.core.exceptions import ConfigurationError
@@ -149,7 +149,7 @@ def test_each_journal_line_is_flushed_and_readable_on_its_own(tmp_path):
 def test_the_script_never_reads_a_password():
     """It attaches to a browser a human logged into. It must not contain
     a credential path at all."""
-    source = Path("src/scripts/fidelity_place_test_order.py").read_text(encoding="utf-8")
+    source = Path("fidelity_gateway/place_test_order.py").read_text(encoding="utf-8")
     for forbidden in ("FIDELITY_PASSWORD", "load_fidelity_credentials", "totp"):
         assert forbidden not in source, f"{forbidden} has no business here"
 
@@ -165,7 +165,7 @@ def test_it_places_through_the_gated_adapter_not_a_raw_post():
     """
     import ast
 
-    source = Path("src/scripts/fidelity_place_test_order.py").read_text(encoding="utf-8")
+    source = Path("fidelity_gateway/place_test_order.py").read_text(encoding="utf-8")
     assert "FidelityPlacingBroker" in source, "placing must go through the adapter"
 
     tree = ast.parse(source)

@@ -22,7 +22,7 @@ import json
 
 import pytest
 
-from src.brokers.fidelity_session import (
+from fidelity_gateway.session import (
     FIDELITY_ORIGIN,
     ORDER_ENDPOINTS,
     PLACE_ENDPOINTS,
