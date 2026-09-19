@@ -1,0 +1,52 @@
+# cowz1-ml_reachability_cowz -- TPE search over MLReachabilitySizing on
+# COWZ. See search_cowz1_hf_local_reference.yaml's header for the "cowz1"
+# sweep-series context.
+#
+# RUN THIS AGAINST THE POST-CUTOFF SLICE, NOT THE FULL FILE:
+# data/COWZ_1Min_sip_all_rth_2024-01-01_2026-09-06.csv, not
+# data/COWZ_1Min_sip_all_rth_2016-01-01_2026-09-06.csv. The persisted
+# model (data/ml/models/COWZ_reached_t0.5_h390.*) has train_cutoff
+# 2024-01-01 -- backtesting it over the full 2016-2026 history would
+# include the model's own training window, an in-sample period that
+# would make this strategy's numbers look better than a genuine
+# out-of-sample comparison against the other five cowz1-*.yaml sweeps
+# (none of which train on any part of their data). This is also why
+# trials are lower here: MLReachabilitySizing is ~600us/bar (one
+# LightGBM inference call per bar) against ~23us/bar for the other five
+# strategies -- roughly 155s/trial over the ~258k-bar post-cutoff slice,
+# so even 40 trials is close to two hours, versus the FULL file's
+# ~512k bars, which would put 40 trials near six hours.
+#
+# max_trade_pct/confidence_floor is a genuinely small (2-parameter)
+# space, so 40 trials -- 10 random-startup plus 30 adaptive -- still
+# covers it reasonably against the shared grid_steps/profit_targets axes
+# every other cowz1-*.yaml sweep in this series uses.
+strategy:
+  strategy_id: ml_reachability_cowz
+  strategy_params:
+    ticker: COWZ
+    max_trade_pct: [0.02, 0.05, 0.08, 0.12, 0.15]
+    confidence_floor: [0.0, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5]
+grid:
+  steps: [0.001, 0.0015, 0.002, 0.003, 0.004, 0.005, 0.0075, 0.01, 0.015, 0.02]
+  profit_targets: [0.002, 0.003, 0.004, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03]
+backtest:
+  symbol: COWZ
+  initial_cash: 100000.0
+costs:
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false

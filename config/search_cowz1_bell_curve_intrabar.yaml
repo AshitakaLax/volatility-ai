@@ -1,0 +1,38 @@
+# cowz1-bell_curve-intrabar -- identical to search_cowz1_bell_curve.yaml,
+# except execution.fill_model: intrabar instead of the default "close".
+# See search_cowz1_fixed_intrabar.yaml's header for why: intrabar fills a
+# level merely TOUCHED during the bar rather than requiring the bar's
+# CLOSE to reach it, which matters most on a low-volatility instrument
+# like COWZ where a bar can wick through a level and close back away.
+strategy:
+  strategy_id: bell_curve
+  strategy_params:
+    bars_per_day: 210
+    max_trade_pct: [0.02, 0.05, 0.08, 0.12, 0.15]
+    lookback_days: [0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0]
+    mu: [0.01, 0.02, 0.03, 0.05, 0.08, 0.10, 0.15]
+    sigma: [0.01, 0.02, 0.03, 0.05, 0.08, 0.10]
+grid:
+  steps: [0.001, 0.0015, 0.002, 0.003, 0.004, 0.005, 0.0075, 0.01, 0.015, 0.02]
+  profit_targets: [0.002, 0.003, 0.004, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03]
+backtest:
+  symbol: COWZ
+  initial_cash: 100000.0
+costs:
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+output:
+  return_full_results: false

@@ -1,0 +1,55 @@
+# cowz1-bayesian_dual_scale -- TPE search over BayesianDualScaleSizing on
+# COWZ. See search_cowz1_hf_local_reference.yaml's header for the "cowz1"
+# sweep-series context.
+#
+# Derived from config/search_bayesian_deep.yaml, with bounds rescaled for
+# COWZ's own measured volatility rather than reused from TQQQ:
+#   - bars_per_day: 210 (measured: 512,152 bars / 2,440 sessions, this
+#     dataset), not TQQQ's 387.
+#   - target_return / grid steps / profit_targets scaled down to COWZ's
+#     measured daily range (median 0.99%, mean 1.18%, 75th pct 1.47%),
+#     versus TQQQ's leveraged swings the parent config's [0.003, 0.03]
+#     target_return band was measured against.
+# reference_probability keeps the parent config's reasoning unchanged
+# (library default 0.5 sits below any measured base success rate and
+# pins the multiplier at its ceiling, degenerating to fixed-percentage
+# sizing) but is swept from a lower floor here since COWZ's own base
+# success rate has not been measured yet -- this sweep's own trial log
+# is what will tell us.
+strategy:
+  strategy_id: bayesian_dual_scale
+  strategy_params:
+    bars_per_day: 210
+    max_trade_pct: [0.02, 0.05, 0.08, 0.12]
+    target_return: [0.002, 0.003, 0.005, 0.0075, 0.01, 0.015]
+    horizon_days: [0.25, 0.5, 1.0, 2.0, 4.0]
+    fast_half_life_days: [1.0, 2.0, 5.0, 10.0]
+    slow_half_life_days: [20.0, 40.0, 80.0, 150.0]
+    confidence_k: [0.5, 1.0, 1.5, 2.0, 2.5]
+    reference_probability: [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
+grid:
+  steps: [0.001, 0.0015, 0.002, 0.003, 0.005, 0.0075, 0.01, 0.015]
+  profit_targets: [0.002, 0.003, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03]
+backtest:
+  symbol: COWZ
+  initial_cash: 100000.0
+costs:
+  # Non-zero on purpose -- see search_bayesian_deep.yaml: at zero cost
+  # every prior sweep here drifted to the most-active edge of whatever
+  # grid it was given.
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false

@@ -1,0 +1,54 @@
+# cowz1-hf_local_reference -- TPE search over HighFrequencyLocalReferenceSizing
+# on COWZ. One of six "cowz1" sweeps (fixed, bell_curve, rsi,
+# bayesian_dual_scale, hf_local_reference, ml_reachability_cowz) run
+# together to find the best trading parameters for COWZ across every
+# registered strategy applicable to it (ml_reachability_rsp/spyd are
+# locked to their own tickers and cannot run against COWZ).
+#
+# Derived from config/search_hf_bayesian.yaml, NOT copied verbatim: that
+# config's bounds are measured for TQQQ, a 3x-leveraged instrument, and
+# COWZ is not leveraged and measurably far less volatile -- median daily
+# range 0.99%, mean 1.18%, 75th pct 1.47% (measured against COWZ's own
+# 2016-2026 SIP minute file, this sweep's --data). Reusing TQQQ's 5-20bps
+# per_lot_pct/grid bounds unmodified would search a space tuned for a
+# different instrument's volatility regime, so both are widened here to
+# fractions of COWZ's own measured daily range instead.
+#
+# bars_per_day: 210 (measured: 512,152 bars / 2,440 sessions = 209.9,
+# this dataset), not TQQQ's 387 -- COWZ prints far fewer 1-minute bars
+# per session than TQQQ (lower liquidity), and every lookback_days-derived
+# window would silently mean the wrong number of bars with the wrong
+# constant.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 210
+    per_lot_pct: [0.0005, 0.001, 0.0015, 0.002, 0.003, 0.005, 0.0075, 0.01]
+    lookback_days: [0.02, 0.05, 0.1, 0.2, 0.5, 1.0]
+    event_day_boost_multiplier: [1.0, 1.5, 2.0]
+    earnings_day_boost_multiplier: [1.0, 1.5, 2.0]
+grid:
+  steps: [0.001, 0.0015, 0.002, 0.003, 0.004, 0.005, 0.0075, 0.01, 0.015, 0.02]
+  profit_targets: [0.002, 0.003, 0.004, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03]
+backtest:
+  symbol: COWZ
+  initial_cash: 100000.0
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+output:
+  return_full_results: false

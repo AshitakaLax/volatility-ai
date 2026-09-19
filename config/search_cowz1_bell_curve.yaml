@@ -1,0 +1,46 @@
+# cowz1-bell_curve -- TPE search over BellCurveProbabilitySizing on COWZ.
+# See search_cowz1_hf_local_reference.yaml's header for the "cowz1"
+# sweep-series context.
+#
+# bars_per_day: 210 (measured: 512,152 bars / 2,440 sessions, this
+# dataset), not the 387 measured for TQQQ elsewhere in this project --
+# every lookback_days-derived window converts through this constant.
+#
+# mu is the drawdown-from-rolling-high the Gaussian peaks at; COWZ's own
+# measured daily range (median 0.99%, mean 1.18%, 75th pct 1.47%, max
+# 12.86% on one tail day) is far smaller than a 3x-leveraged instrument's,
+# so mu is swept over a correspondingly smaller band (1%-15% rather than
+# a leveraged-instrument's 10%-40%) with sigma scaled to match.
+# lookback_days for the rolling high spans intraday to swing-length
+# windows.
+strategy:
+  strategy_id: bell_curve
+  strategy_params:
+    bars_per_day: 210
+    max_trade_pct: [0.02, 0.05, 0.08, 0.12, 0.15]
+    lookback_days: [0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0]
+    mu: [0.01, 0.02, 0.03, 0.05, 0.08, 0.10, 0.15]
+    sigma: [0.01, 0.02, 0.03, 0.05, 0.08, 0.10]
+grid:
+  steps: [0.001, 0.0015, 0.002, 0.003, 0.004, 0.005, 0.0075, 0.01, 0.015, 0.02]
+  profit_targets: [0.002, 0.003, 0.004, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03]
+backtest:
+  symbol: COWZ
+  initial_cash: 100000.0
+costs:
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+output:
+  return_full_results: false
