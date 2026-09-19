@@ -209,7 +209,7 @@ class TestBlotterLinkage:
 
         from src.core.config import BacktestConfig
         from src.optimization.optimization_controller import OptimizationController
-        from src.trading.strategy_registry import resolve_strategy
+        from src.strategies.strategy_registry import resolve_strategy
 
         frame = pd_.read_csv(
             "tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]
@@ -237,7 +237,7 @@ class TestBlotterLinkage:
 
         from src.core.config import BacktestConfig
         from src.optimization.optimization_controller import OptimizationController
-        from src.trading.strategy_registry import resolve_strategy
+        from src.strategies.strategy_registry import resolve_strategy
 
         frame = pd_.read_csv(
             "tests/fixtures/regression_ohlcv.csv", parse_dates=["timestamp"]

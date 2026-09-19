@@ -482,7 +482,7 @@ class TestStrategyParameters:
         argument fails a test rather than a user's run.
         """
         from server.backtest import STRATEGY_DEFAULTS
-        from src.trading.strategy_registry import STRATEGIES
+        from src.strategies.strategy_registry import STRATEGIES
 
         for name, cls in STRATEGIES.items():
             defaults = STRATEGY_DEFAULTS.get(name)
@@ -594,7 +594,7 @@ class TestParameterSchema:
         """The old `sizing_details` (required names, committed defaults)
         is fully recoverable from the params, so dropping it lost nothing."""
         from server.backtest import _HIDDEN_PARAMS, STRATEGY_DEFAULTS, required_parameters
-        from src.trading.strategy_registry import STRATEGIES
+        from src.strategies.strategy_registry import STRATEGIES
 
         models = client.get("/api/backtest/funds").json()["models"]
         assert set(models) == set(STRATEGIES)

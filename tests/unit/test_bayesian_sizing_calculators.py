@@ -15,8 +15,8 @@ from datetime import UTC, datetime
 import pytest
 
 from src.core.exceptions import ConfigurationError
+from src.core.market_context import MarketContext
 from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing, DecayedBetaPosterior
-from src.strategies.market_context import MarketContext
 
 EQUITY = 100_000.0
 

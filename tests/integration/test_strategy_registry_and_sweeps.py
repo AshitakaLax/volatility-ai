@@ -22,7 +22,7 @@ from src.strategies.size_calculators import (
     FixedPortfolioPercentage,
     RsiMomentumSizing,
 )
-from src.trading.strategy_registry import STRATEGIES, resolve_strategy
+from src.strategies.strategy_registry import STRATEGIES, resolve_strategy
 
 
 @pytest.fixture

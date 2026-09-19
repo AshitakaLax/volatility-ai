@@ -103,7 +103,7 @@ every combination *and its trade blotter* — the blotter that
 `cli.py:150` used to say it had no writer for. `--explain-execution`
 runs an `ASOF JOIN` matching each fill to the market bar in force at
 that instant, which is what makes recorded slippage checkable against
-`src/analysis/cost_models.py`'s assumptions. `--explain-series` does the
+`src/execution/cost_models.py`'s assumptions. `--explain-series` does the
 same for a macro series, but **lag-aware**: `external_series.lag_days`
 (from `data/external/manifest.json`) shifts each observation to its
 publication time before the match, so a bar never joins a FRED print

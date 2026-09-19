@@ -85,19 +85,19 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from src.analysis.cost_models import ZeroCostModel
 from src.core.config import BacktestConfig
 from src.core.exceptions import ConfigurationError, PersistenceError
 from src.core.idempotency import compute_decision_id
+from src.core.market_context import MarketContext
 from src.core.retry_policy import AmbiguousSubmissionError
 from src.data.earnings_calendar import is_earnings_reaction_day_at
 from src.data.fomc_calendar import is_fomc_day_at
+from src.data.implied_vol_signal import change_at
 from src.data.intraday_profile import minutes_since_open
 from src.data.tick_validation import TickValidator
+from src.execution.cost_models import ZeroCostModel
 from src.execution.fill_accounting import FillTracker, extract_alpaca_fill
 from src.execution.order_lifecycle import TERMINAL_STATES, map_broker_status
-from src.strategies.implied_vol_signal import change_at
-from src.strategies.market_context import MarketContext
 from src.trading import decision_cycle
 from src.trading.duplicate_order_guard import DuplicateOrderGuard
 from src.trading.no_loss_guard import NoLossViolation, SellReason, validate_sell
@@ -338,7 +338,7 @@ class LiveTradingLoop:
         implied_vol_path = getattr(getattr(config, "live", None), "implied_vol_path", None)
         if implied_vol_path:
             try:
-                from src.strategies.implied_vol_signal import load_implied_vol_change
+                from src.data.implied_vol_signal import load_implied_vol_change
 
                 self._implied_vol_series = load_implied_vol_change(implied_vol_path)
             except (FileNotFoundError, _DataValidationError) as e:

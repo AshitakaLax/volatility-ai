@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.analysis.cost_models import ZeroCostModel
 from src.core.ledger import AssetLotLedger
+from src.execution.cost_models import ZeroCostModel
 from src.optimization.optimization_controller import OptimizationController
 from src.strategies.size_calculators import FixedPortfolioPercentage
 from src.trading import decision_cycle

@@ -199,7 +199,7 @@ proliferation, just no longer claiming zero consumers.
 import re
 from pathlib import Path
 
-from src.strategies.market_context import MarketContext
+from src.core.market_context import MarketContext
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

@@ -96,7 +96,7 @@ def _load_strategy_registry() -> dict:
     src/ where the library, not just this entrypoint, can reach it.
     """
     if not STRATEGY_REGISTRY:
-        from src.trading.strategy_registry import STRATEGIES
+        from src.strategies.strategy_registry import STRATEGIES
 
         STRATEGY_REGISTRY.update(STRATEGIES)
     return STRATEGY_REGISTRY
@@ -509,7 +509,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         _run_one_combination,
     )
     from src.optimization.search_strategies import BayesianSearch
-    from src.trading.strategy_registry import resolve_strategy
+    from src.strategies.strategy_registry import resolve_strategy
 
     config_path = Path(args.config)
     if not config_path.exists():

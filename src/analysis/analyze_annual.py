@@ -28,11 +28,11 @@ import logging
 
 import pandas as pd
 
-from src.analysis.cost_models import DynamicSlippageModel
 from src.analysis.performance_analyzer import annual_returns
+from src.execution.cost_models import DynamicSlippageModel
 from src.optimization.optimization_controller import OptimizationController, _run_one_combination
+from src.strategies.strategy_registry import resolve_strategy
 from src.trading.risk_manager import RiskManager
-from src.trading.strategy_registry import resolve_strategy
 
 logging.disable(logging.WARNING)
 

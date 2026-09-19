@@ -28,7 +28,7 @@ from server.backtest import (
     describe_params,
     required_parameters,
 )
-from src.trading.strategy_registry import STRATEGIES
+from src.strategies.strategy_registry import STRATEGIES
 
 
 def _view(spec: dict) -> dict:

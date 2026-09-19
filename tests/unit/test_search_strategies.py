@@ -205,7 +205,7 @@ def test_search_strategy_bayesian_string_uses_search_seed():
 
 
 def test_failed_evaluation_reported_to_bayesian_search_without_crashing():
-    from src.strategies.market_context import MarketContext
+    from src.core.market_context import MarketContext
     from src.strategies.size_calculators import SizingStrategy
 
     class _ExplodingStrategy(SizingStrategy):

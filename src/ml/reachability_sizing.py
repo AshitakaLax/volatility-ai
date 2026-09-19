@@ -82,8 +82,8 @@ from typing import Any
 import numpy as np
 
 from src.core.exceptions import ConfigurationError
+from src.core.market_context import MarketContext
 from src.ml.live_features import LiveFeatureSource
-from src.strategies.market_context import MarketContext
 from src.strategies.size_calculators import _BaselineScaledStrategy
 from src.strategies.sizing_indicators import clamp
 

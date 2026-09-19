@@ -41,7 +41,7 @@ from src.core.validation import (
 # TYPE-ONLY, AND THE IMPORTS INSIDE build() BELOW ARE DELIBERATE.
 #
 # This module is the bottom of the dependency stack -- src/core is what
-# every other package imports. It used to import src.analysis.cost_models
+# every other package imports. It used to import src.execution.cost_models
 # and src.trading.risk_manager at module scope, which made `core` depend
 # on `analysis` and `trading`, which depend on `core`: a cycle that put
 # 10 of src/'s 12 subpackages into ONE strongly-connected component and
@@ -61,7 +61,7 @@ from src.core.validation import (
 # ~130 places across README.md, plan.md and docs/. That is a worthwhile
 # follow-up, not a prerequisite, and it is separated on purpose.
 if TYPE_CHECKING:
-    from src.analysis.cost_models import TransactionCostModel
+    from src.execution.cost_models import TransactionCostModel
     from src.trading.risk_manager import RiskManager
 
 
@@ -149,7 +149,7 @@ class CostConfig:
         Imported here rather than at module scope -- see the note beside
         this module's TYPE_CHECKING block.
         """
-        from src.analysis.cost_models import (
+        from src.execution.cost_models import (
             DynamicSlippageModel,
             SlippageCommissionModel,
             ZeroCostModel,

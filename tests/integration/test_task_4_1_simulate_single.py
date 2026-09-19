@@ -17,9 +17,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.analysis.cost_models import ZeroCostModel
+from src.core.market_context import MarketContext, SimulationResult
+from src.execution.cost_models import ZeroCostModel
 from src.optimization.optimization_controller import OptimizationController
-from src.strategies.market_context import MarketContext, SimulationResult
 from src.strategies.size_calculators import FixedPortfolioPercentage
 from src.trading.risk_manager import RiskManager
 from tests.fixtures.regression_baseline import BASELINE

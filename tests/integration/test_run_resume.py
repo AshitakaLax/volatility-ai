@@ -190,7 +190,7 @@ def test_the_ranking_is_the_engines_not_a_new_one(uninterrupted):
     order: descending by rank_by, with the report's best configuration the
     one run_sweep itself ranks first."""
     from server.backtest import RunRequest, build_config
-    from src.trading.strategy_registry import resolve_strategy
+    from src.strategies.strategy_registry import resolve_strategy
 
     cells = uninterrupted["funds"][TICKER]["cells"]
     equities = [cell["m"]["final_equity"] for cell in cells]

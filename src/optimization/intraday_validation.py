@@ -54,16 +54,16 @@ from typing import Literal
 
 import pandas as pd
 
-from src.analysis.cost_models import TransactionCostModel, ZeroCostModel
 from src.analysis.performance_analyzer import PerformanceAnalyzer
 from src.core.exceptions import DataValidationError
 from src.core.ledger import AssetLotLedger
+from src.core.market_context import MarketContext
 from src.data.earnings_calendar import is_earnings_reaction_day_at
 from src.data.fomc_calendar import is_fomc_day_at
+from src.data.implied_vol_signal import change_at
 from src.data.intraday_profile import minutes_since_open
+from src.execution.cost_models import TransactionCostModel, ZeroCostModel
 from src.execution.order_management_system import OrderManagementSystem, OrderStatus
-from src.strategies.implied_vol_signal import change_at
-from src.strategies.market_context import MarketContext
 from src.trading import decision_cycle
 from src.trading.no_loss_guard import NoLossViolation, SellReason, validate_sell
 
@@ -140,7 +140,7 @@ def simulate_single_intraday(
     implied_vol_series = None
     if implied_vol_path:
         try:
-            from src.strategies.implied_vol_signal import load_implied_vol_change
+            from src.data.implied_vol_signal import load_implied_vol_change
 
             implied_vol_series = load_implied_vol_change(implied_vol_path)
         except (FileNotFoundError, DataValidationError):

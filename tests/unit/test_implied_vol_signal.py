@@ -22,7 +22,7 @@ import pytest
 from src.core.exceptions import DataValidationError
 from src.data.external_index_series import ExternalIndexSeries
 from src.data.fomc_calendar import EASTERN_TZ
-from src.strategies.implied_vol_signal import (
+from src.data.implied_vol_signal import (
     CHANGE_COLUMN,
     NO_SIGNAL,
     build_session_change_series,

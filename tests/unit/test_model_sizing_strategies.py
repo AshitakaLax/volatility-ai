@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 import pytest
 
 from src.core.exceptions import ConfigurationError
-from src.strategies.market_context import MarketContext
+from src.core.market_context import MarketContext
 from src.strategies.size_calculators import BellCurveProbabilitySizing, RsiMomentumSizing
 
 EQUITY = 100_000.0

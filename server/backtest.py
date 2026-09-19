@@ -67,7 +67,7 @@ from src.core.config import BacktestConfig, expand_strategy_params
 from src.core.exceptions import ConfigurationError
 from src.optimization.optimization_controller import OptimizationController
 from src.optimization.search_strategies import BayesianSearch, GridSearch, SearchStrategy
-from src.trading.strategy_registry import STRATEGIES, resolve_strategy
+from src.strategies.strategy_registry import STRATEGIES, resolve_strategy
 from src.warehouse.bars import available_tickers, load_frame
 from tools.export_ui_data import KNOWN_DATA, equity_series, executions, fund_metrics
 

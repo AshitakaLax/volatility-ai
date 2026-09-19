@@ -21,7 +21,6 @@ from collections.abc import Callable
 
 import pandas as pd
 
-from src.analysis.cost_models import TransactionCostModel, ZeroCostModel
 from src.analysis.performance_analyzer import (
     PerformanceAnalyzer,
     annual_returns,
@@ -31,6 +30,7 @@ from src.analysis.performance_analyzer import (
 from src.core.exceptions import ConfigurationError, DataValidationError
 from src.core.idempotency import ProcessedEventStore
 from src.core.ledger import AssetLotLedger
+from src.core.market_context import MarketContext, SimulationResult
 from src.core.validation import validate_run_sweep_config
 from src.data import data_validation
 from src.data.earnings_calendar import EARNINGS_REACTION_DATES
@@ -38,10 +38,10 @@ from src.data.fomc_calendar import EASTERN_TZ as _EASTERN_TZ
 from src.data.fomc_calendar import FOMC_DECISION_DATES
 from src.data.intraday_profile import SESSION_MINUTES as _SESSION_MINUTES
 from src.data.intraday_profile import SESSION_OPEN_MINUTE as _SESSION_OPEN_MINUTE
+from src.execution.cost_models import TransactionCostModel, ZeroCostModel
 from src.execution.order_management_system import OrderManagementSystem, OrderStatus
 from src.optimization import intraday_validation
 from src.optimization.search_strategies import BayesianSearch, GridSearch, SearchStrategy
-from src.strategies.market_context import MarketContext, SimulationResult
 from src.strategies.size_calculators import SizingStrategy
 from src.strategies.sizing_indicators import WilderRSI
 from src.trading import decision_cycle
@@ -575,7 +575,7 @@ class OptimizationController:
         array is the thing that must not be.
         """
         if not self._implied_vol_series_loaded:
-            from src.strategies.implied_vol_signal import load_implied_vol_change
+            from src.data.implied_vol_signal import load_implied_vol_change
 
             series = None
             if self.implied_vol_path:
@@ -600,7 +600,7 @@ class OptimizationController:
         runnable on a checkout without the implied-vol data.
         """
         if self._implied_vol_change_cache is None:
-            from src.strategies.implied_vol_signal import changes_for_index
+            from src.data.implied_vol_signal import changes_for_index
 
             self._implied_vol_change_cache = changes_for_index(
                 self._implied_vol_series, self.data.index

@@ -19,9 +19,9 @@ from pathlib import Path
 
 import pytest
 
-from src.analysis.cost_models import SlippageCommissionModel, ZeroCostModel
 from src.core.exceptions import ExecutionError
 from src.core.ledger import AssetLotLedger
+from src.execution.cost_models import SlippageCommissionModel, ZeroCostModel
 from src.trading.no_loss_guard import (
     MONEY_EPSILON,
     NoLossViolation,
@@ -260,8 +260,8 @@ def test_sell_economics_is_immutable():
 def test_volatility_aware_cost_model_is_supported_at_the_guard():
     from datetime import datetime
 
-    from src.analysis.cost_models import DynamicSlippageModel
-    from src.strategies.market_context import MarketContext
+    from src.core.market_context import MarketContext
+    from src.execution.cost_models import DynamicSlippageModel
 
     _, lot = _lot(buy_price=100.0, shares=10.0)
     context = MarketContext(

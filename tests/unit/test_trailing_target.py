@@ -18,8 +18,8 @@ import pytest
 
 from src.core.exceptions import ConfigurationError
 from src.core.ledger import AssetLotLedger, Lot
+from src.core.market_context import MarketContext
 from src.optimization.trailing_target import TrailingTargetPolicy
-from src.strategies.market_context import MarketContext
 from src.strategies.size_calculators import FixedPortfolioPercentage
 from src.trading import decision_cycle
 

@@ -40,7 +40,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.strategies.market_context import MarketContext
+from src.core.market_context import MarketContext
 
 
 @dataclass(frozen=True)

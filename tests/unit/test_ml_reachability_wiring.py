@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import pytest
 
-# Deliberately NOT `from src.trading.strategy_registry import STRATEGIES` at
+# Deliberately NOT `from src.strategies.strategy_registry import STRATEGIES` at
 # module level: that snapshots the dict object at COLLECTION time, and
 # test_ml_optional_dependency.py in this same suite legitimately pops
 # and re-imports src.ml.reachability_sizing / src.strategy_registry to
@@ -37,7 +37,7 @@ import pytest
 # reading .STRATEGIES/.resolve_strategy off it fresh each time sidesteps
 # the whole class of bug rather than requiring every OTHER test file
 # to leave global module state pristine.
-import src.trading.strategy_registry as strategy_registry
+import src.strategies.strategy_registry as strategy_registry
 from src.core.exceptions import ConfigurationError
 
 

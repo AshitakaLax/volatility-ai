@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.analysis.cost_models import SlippageCommissionModel, TransactionCostModel, ZeroCostModel
+from src.execution.cost_models import SlippageCommissionModel, TransactionCostModel, ZeroCostModel
 from src.optimization.optimization_controller import OptimizationController
 from src.strategies.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE

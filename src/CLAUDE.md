@@ -50,7 +50,7 @@ Never reimplement this comparison elsewhere.
 
 ## `strategy_id` has no registry lookup at the config layer
 
-`trading/strategy_registry.py` maps `strategy_id` → `SizingStrategy`
+`strategies/strategy_registry.py` maps `strategy_id` → `SizingStrategy`
 class; `BacktestConfig` itself does not resolve one. When adding a
 strategy, register it there, not by hand-wiring `STRATEGY_REGISTRY` in a
 script.

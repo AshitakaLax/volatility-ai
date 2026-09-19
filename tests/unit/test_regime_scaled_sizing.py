@@ -24,9 +24,9 @@ import pytest
 
 from src.core.exceptions import ConfigurationError
 from src.core.ledger import Lot
+from src.core.market_context import MarketContext
 from src.ml.qlib_regime import NO_READING, DailyRegimeFeatures, RegimeInferenceSource
 from src.ml.regime_scaled_sizing import MLRegimeScaledSizing
-from src.strategies.market_context import MarketContext
 
 pytest.importorskip("lightgbm", reason="src/ml/ is an optional-dependency package")
 

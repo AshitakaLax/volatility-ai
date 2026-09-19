@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     # the volatility-aware path. market_context imports nothing from src,
     # so there is no cycle either way -- this is about keeping the runtime
     # dependency surface small, not about breaking one.
-    from src.strategies.market_context import MarketContext
+    from src.core.market_context import MarketContext
 
 
 class TransactionCostModel(ABC):

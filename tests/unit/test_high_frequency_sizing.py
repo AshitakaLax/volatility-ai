@@ -13,8 +13,8 @@ from datetime import UTC, datetime
 import pytest
 
 from src.core.exceptions import ConfigurationError
+from src.core.market_context import MarketContext
 from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
-from src.strategies.market_context import MarketContext
 
 INITIAL_CASH = 100_000.0
 

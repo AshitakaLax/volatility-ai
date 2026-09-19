@@ -279,9 +279,9 @@ import math
 from pathlib import Path
 
 from src.core.exceptions import ConfigurationError
+from src.core.market_context import MarketContext
 from src.ml.qlib_regime import NO_READING, RegimeInferenceSource, RegimeReading
 from src.optimization.trailing_target import TrailingTargetPolicy
-from src.strategies.market_context import MarketContext
 from src.strategies.size_calculators import _BaselineScaledStrategy
 from src.strategies.sizing_indicators import clamp
 

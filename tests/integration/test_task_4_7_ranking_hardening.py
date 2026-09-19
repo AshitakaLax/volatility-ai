@@ -13,8 +13,8 @@ import pandas as pd
 import pytest
 
 from src.core.exceptions import ConfigurationError
+from src.core.market_context import MarketContext
 from src.optimization.optimization_controller import OptimizationController
-from src.strategies.market_context import MarketContext
 from src.strategies.size_calculators import FixedPortfolioPercentage, SizingStrategy
 from tests.fixtures.regression_baseline import BASELINE
 

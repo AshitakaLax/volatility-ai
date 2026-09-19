@@ -15,7 +15,7 @@ from server.backtest import _GRID_TRIGGER, describe_grid_trigger
 from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from src.strategies.size_calculators import SizingStrategy
-from src.trading.strategy_registry import STRATEGIES
+from src.strategies.strategy_registry import STRATEGIES
 
 _LAST_BUY_ONLY = {
     "fixed",

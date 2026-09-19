@@ -433,9 +433,9 @@ strategies observe the market.
 | `src/strategies/size_calculators.py` | `SizingStrategy` ABC + `FixedPortfolioPercentage` |
 | `src/core/ledger.py` | Lot-based position tracking, full and partial closes |
 | `src/trading/no_loss_guard.py` | **The** no-loss comparison — one implementation |
-| `src/analysis/cost_models.py` | Zero / static slippage / volatility-aware slippage |
+| `src/execution/cost_models.py` | Zero / static slippage / volatility-aware slippage |
 | `src/trading/risk_manager.py` | Exposure clamps + `CircuitBreaker` |
-| `src/strategies/market_context.py` | `MarketContext`, `SimulationResult` |
+| `src/core/market_context.py` | `MarketContext`, `SimulationResult` |
 | `src/core/config.py` | `BacktestConfig` and its nested sections |
 | `src/core/validation.py`, `src/data/data_validation.py` | Config and dataset validation |
 | `src/optimization/search_strategies.py` | `GridSearch`, `BayesianSearch` (Optuna) |
@@ -453,7 +453,7 @@ strategies observe the market.
 | `src/data/historical_data.py` | Bulk bar download -> `data/` (warehouse intake, ingested via `tools/build_warehouse.py`) |
 | `src/strategies/sizing_indicators.py` | Incremental rolling max / Wilder RSI, shared by strategies |
 | `src/strategies/bayesian_sizing_calculators.py` | `BayesianDualScaleSizing` (dual-timescale Beta posterior) |
-| `src/trading/strategy_registry.py` | `strategy_id` -> sizing-strategy class |
+| `src/strategies/strategy_registry.py` | `strategy_id` -> sizing-strategy class |
 | `src/brokers/alpaca_broker.py` | The `LiveBroker` implementation — order submission, lookup, snapshot |
 | `src/data/alpaca_market_data.py` | Latest bar and market clock |
 | `src/trading/live_trading_loop.py` | The tick loop: fills, harvest, buy, persist, shutdown |

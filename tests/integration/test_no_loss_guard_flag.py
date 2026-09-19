@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.analysis.cost_models import SlippageCommissionModel
+from src.execution.cost_models import SlippageCommissionModel
 from src.optimization.optimization_controller import OptimizationController
 from src.strategies.size_calculators import FixedPortfolioPercentage
 from src.trading.risk_manager import RiskManager

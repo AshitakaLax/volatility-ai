@@ -13,11 +13,11 @@ Task 4.6 acceptance tests (A6).
 
 import pandas as pd
 
-from src.analysis.cost_models import ZeroCostModel
 from src.analysis.performance_analyzer import PerformanceAnalyzer
 from src.core.ledger import AssetLotLedger
+from src.core.market_context import SimulationResult
+from src.execution.cost_models import ZeroCostModel
 from src.optimization.optimization_controller import OptimizationController
-from src.strategies.market_context import SimulationResult
 from src.strategies.size_calculators import FixedPortfolioPercentage
 from src.trading.risk_manager import RiskManager
 from tests.fixtures.regression_baseline import BASELINE
@@ -94,7 +94,7 @@ def test_summary_df_and_full_results_stay_paired_after_sorting():
 
 
 def test_failed_combination_contributes_none_to_full_results():
-    from src.strategies.market_context import MarketContext
+    from src.core.market_context import MarketContext
     from src.strategies.size_calculators import SizingStrategy
 
     class _ExplodingStrategy(SizingStrategy):
