@@ -41,7 +41,8 @@ make it pass.
 - **Structural "there is only one of these" scanners are a pattern here,
   and they read source off disk by path — so a file move silently guts
   them.** That is exactly what the subpackage split did: the no-loss
-  duplicate scanner globbed `src/*.py` non-recursively, which after the
+  duplicate scanner globbed `src/*.py` non-recursively (the library was
+  `src/` then), which after the
   split matched almost nothing, and it read two now-nonexistent root
   paths. Both are fixed (it now uses `rglob`, and it was verified to
   catch an injected duplicate rather than pass vacuously). The live ones:
@@ -56,6 +57,15 @@ make it pass.
   loudly *if* their paths are right and go quietly useless if not, so
   anchor new ones to `REPO_ROOT` and prefer `rglob` over `glob`.
 
+  The `engine/` + `research/` split proved the point twice more.
+  `test_task_7_9_macro_signals_discovery.py`'s macro-field scanner was
+  still a NON-recursive `glob("*.py")` over the library root, so it had
+  been matching nothing since the subpackage reorg; widening it to
+  `rglob` over both packages immediately raised a `UnicodeDecodeError`,
+  because it also called `read_text()` with no encoding and Windows
+  defaulted to cp1252. Both are fixed. A scanner that has never failed
+  is not evidence that it works — check it actually matches files.
+
 See `README.md`'s [Testing](../README.md#testing) section for the fuller
-narrative; treat any exact test count there as approximate — `src/` was
+narrative; treat any exact test count there as approximate — the library was
 reorganized into subpackages more recently than that count was taken.

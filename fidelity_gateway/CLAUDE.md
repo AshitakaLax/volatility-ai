@@ -14,7 +14,7 @@ python -m playwright install chromium
 | File | Does |
 |---|---|
 | `session.py` | Log in (incl. TOTP) and hold the authenticated browser session. Owns `PLACE_ENDPOINTS`. |
-| `broker.py` | **Read-only** adapter: positions, orders, balances. Implements the same `LiveBroker` shape `src/brokers/alpaca_broker.py` does. |
+| `broker.py` | **Read-only** adapter: positions, orders, balances. Implements the same `LiveBroker` shape `engine/brokers/alpaca_broker.py` does. |
 | `placing_broker.py` | The **write** path, deliberately a separate class so a read-only caller cannot reach it by accident. |
 | `capture.py` | Records the browser's own JSON traffic to a HAR-like capture. |
 | `analyze_har.py` | Reads a capture; `--redact` scrubs one before it leaves the machine. |
@@ -29,7 +29,7 @@ not `fidelity/`: a top-level `fidelity/` package here shadows it, and
 `recon.py` would stop being able to do
 
 ```python
-from fidelity.fidelity import FidelityAutomation   # the third-party one
+from fidelity.fidelity import FidelityAutomation  # the third-party one
 ```
 
 That collision is not hypothetical — it was introduced during this
@@ -43,16 +43,16 @@ Do not rename this directory to `fidelity`.
 Upward, into the engine — a deliberately thin surface:
 
 ```
-src.core.exceptions        ConfigurationError, ExecutionError
-src.core.retry_policy      AmbiguousSubmissionError
-src.core.secrets           FidelityCredentials, load_fidelity_credentials, redact_secrets
-src.execution.order_lifecycle    OrderState
-src.execution.reconciliation     BrokerSnapshot
+engine.core.exceptions        ConfigurationError, ExecutionError
+engine.core.retry_policy      AmbiguousSubmissionError
+engine.core.secrets           FidelityCredentials, load_fidelity_credentials, redact_secrets
+engine.execution.order_lifecycle    OrderState
+engine.execution.reconciliation     BrokerSnapshot
 ```
 
 Nothing here imports the backtest engine, the strategies, the server or
 the warehouse — and nothing in `src/` imports this at module scope.
-`src/brokers/broker_selection.py` is the one caller, and it imports the
+`engine/brokers/broker_selection.py` is the one caller, and it imports the
 concrete broker **inside** `build_broker()`, so choosing a broker never
 drags Playwright into a process that only wanted Alpaca. Keep it that
 way: a module-level import here would put the browser stack in the live
@@ -71,6 +71,6 @@ and must not fail on a machine that never installed them.
 
 Captures and HARs contain session tokens and account numbers. `.har`
 files and `Fidelity*.json` are git-ignored, `analyze_har.py --redact`
-exists for when one has to be shared, and `src.core.secrets.redact_secrets`
+exists for when one has to be shared, and `engine.core.secrets.redact_secrets`
 is what the log path uses. Never paste a raw capture into an issue, a
 commit, or a chat.

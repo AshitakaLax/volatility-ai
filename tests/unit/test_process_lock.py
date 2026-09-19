@@ -18,7 +18,7 @@ import os
 
 import pytest
 
-from src.core.process_lock import LockHeldError, StateStoreLock, _process_alive
+from engine.core.process_lock import LockHeldError, StateStoreLock, _process_alive
 
 
 def test_a_second_loop_on_the_same_store_is_refused(tmp_path):

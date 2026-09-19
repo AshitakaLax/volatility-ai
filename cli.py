@@ -96,7 +96,7 @@ def _load_strategy_registry() -> dict:
     src/ where the library, not just this entrypoint, can reach it.
     """
     if not STRATEGY_REGISTRY:
-        from src.strategies.strategy_registry import STRATEGIES
+        from research.strategies.strategy_registry import STRATEGIES
 
         STRATEGY_REGISTRY.update(STRATEGIES)
     return STRATEGY_REGISTRY
@@ -116,22 +116,22 @@ def _open_result_sink(args: argparse.Namespace, config, dataset_version: str):
     have without the flag.
 
     `dataset_version` identifies the BAR DATA this sweep ran against --
-    now `src.warehouse.bars.fingerprint(ticker)`, since the simulation
+    now `engine.warehouse.bars.fingerprint(ticker)`, since the simulation
     read path is the market-data warehouse itself, not a CSV with a
     `.meta.json` sidecar to hash.
     """
     try:
-        # Probed directly: src.warehouse imports duckdb/polars lazily, so
+        # Probed directly: engine.warehouse imports duckdb/polars lazily, so
         # importing it succeeds even where neither is installed and the
         # real failure would surface later as a traceback rather than
         # the actionable message below.
         import duckdb  # noqa: F401
         import polars  # noqa: F401
 
-        from src.warehouse import schema
-        from src.warehouse.connection import open_warehouse
-        from src.warehouse.duckdb_sink import DuckDBResultSink, ensure_broker_environment
-        from src.warehouse.hashing import broker_id_for
+        from engine.warehouse import schema
+        from engine.warehouse.connection import open_warehouse
+        from engine.warehouse.duckdb_sink import DuckDBResultSink, ensure_broker_environment
+        from engine.warehouse.hashing import broker_id_for
     except ImportError as e:
         print(
             f"--warehouse needs its optional dependencies ({e}); "
@@ -199,7 +199,7 @@ def _apply_backtest_window(df, config):
     `end_date`, or return it unchanged if neither is set.
 
     FOUND BY RUNNING A SWEEP, NOT BY READING THE SCHEMA: `BacktestConfig`
-    parses and round-trips `start_date`/`end_date` (src/core/config.py's
+    parses and round-trips `start_date`/`end_date` (engine/core/config.py's
     `from_dict`/`to_dict`), but until this existed NOTHING in the CLI
     path read them back. `cli.py backtest`/`search` handed
     OptimizationController the FULL CSV regardless of what a config's
@@ -259,7 +259,7 @@ def _load_warehouse_bars(ticker: str) -> tuple[object | None, str | None]:
     computing it here means every caller gets it for free instead of
     reopening the warehouse a second time.
     """
-    from src.warehouse.bars import available_tickers, fingerprint, load_frame
+    from engine.warehouse.bars import available_tickers, fingerprint, load_frame
 
     df = load_frame(ticker)
     if df.empty:
@@ -278,8 +278,8 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     """Run a parameter sweep from a YAML config against the warehouse."""
     import pandas as pd
 
-    from src.core.config import BacktestConfig
-    from src.core.exceptions import ConfigurationError
+    from engine.core.config import BacktestConfig
+    from engine.core.exceptions import ConfigurationError
 
     config_path = Path(args.config)
     if not config_path.exists():
@@ -308,7 +308,7 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         return 2
     df = _apply_backtest_window(df, config)
 
-    from src.optimization.optimization_controller import OptimizationController
+    from research.optimization.optimization_controller import OptimizationController
 
     controller = OptimizationController(historical_data=df)
     sweep_kwargs = config.to_run_sweep_kwargs(strategy_class)
@@ -367,7 +367,7 @@ def cmd_fetch_data(args: argparse.Namespace) -> int:
     """Download historical bars into data/, the warehouse's intake format.
 
     This is intake, not backtesting: `backtest`/`search` read bars from
-    the warehouse (`src/warehouse/bars.py`) and never touch `data/`
+    the warehouse (`engine/warehouse/bars.py`) and never touch `data/`
     directly. A freshly fetched symbol becomes visible to them only
     after `tools/build_warehouse.py --ingest SYMBOL` loads this file in.
 
@@ -376,9 +376,9 @@ def cmd_fetch_data(args: argparse.Namespace) -> int:
     whose whole value is reproducibility -- two runs of the same
     invocation would silently compare different data.
     """
-    from src.core.exceptions import ConfigurationError, DataValidationError, TradingSystemError
-    from src.core.secrets import load_live_credentials
-    from src.data.historical_data import (
+    from engine.core.exceptions import ConfigurationError, DataValidationError, TradingSystemError
+    from engine.core.secrets import load_live_credentials
+    from engine.data.historical_data import (
         AlpacaHistoricalData,
         FetchSpec,
         download,
@@ -502,14 +502,14 @@ def cmd_search(args: argparse.Namespace) -> int:
 
     import pandas as pd
 
-    from src.core.config import BacktestConfig, expand_strategy_params
-    from src.core.exceptions import ConfigurationError
-    from src.optimization.optimization_controller import (
+    from engine.core.config import BacktestConfig, expand_strategy_params
+    from engine.core.exceptions import ConfigurationError
+    from research.optimization.optimization_controller import (
         OptimizationController,
         _run_one_combination,
     )
-    from src.optimization.search_strategies import BayesianSearch
-    from src.strategies.strategy_registry import resolve_strategy
+    from research.optimization.search_strategies import BayesianSearch
+    from research.strategies.strategy_registry import resolve_strategy
 
     config_path = Path(args.config)
     if not config_path.exists():
@@ -664,15 +664,15 @@ def cmd_search(args: argparse.Namespace) -> int:
 
 def cmd_live(args: argparse.Namespace) -> int:
     """Connect to Alpaca and run the startup lifecycle to READY."""
-    from src.brokers.alpaca_broker import AlpacaBroker
-    from src.core.config import BacktestConfig
-    from src.core.exceptions import ConfigurationError
-    from src.core.persistence import LedgerStore
-    from src.core.secrets import load_live_credentials
-    from src.execution.order_management_system import Mode
-    from src.execution.reconciliation import Reconciler
-    from src.trading.risk_manager import CircuitBreaker
-    from src.trading.runtime_lifecycle import RuntimeLifecycle
+    from engine.brokers.alpaca_broker import AlpacaBroker
+    from engine.core.config import BacktestConfig
+    from engine.core.exceptions import ConfigurationError
+    from engine.core.persistence import LedgerStore
+    from engine.core.secrets import load_live_credentials
+    from engine.execution.order_management_system import Mode
+    from engine.execution.reconciliation import Reconciler
+    from engine.trading.risk_manager import CircuitBreaker
+    from engine.trading.runtime_lifecycle import RuntimeLifecycle
 
     config_path = Path(args.config)
     if not config_path.exists():
@@ -706,7 +706,7 @@ def cmd_live(args: argparse.Namespace) -> int:
     # both loops compute the SAME id on the same bar and each believes
     # it is the one submitting it. Acquired before the store is opened,
     # so a refusal costs nothing and leaves no partial state.
-    from src.core.process_lock import LockHeldError, StateStoreLock
+    from engine.core.process_lock import LockHeldError, StateStoreLock
 
     lock = StateStoreLock(db_path)
     try:
@@ -786,9 +786,9 @@ def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -
     """
     import signal
 
-    from src.core.secrets import load_live_credentials
-    from src.data.alpaca_market_data import AlpacaMarketData
-    from src.trading.live_trading_loop import LiveTradingLoop
+    from engine.core.secrets import load_live_credentials
+    from engine.data.alpaca_market_data import AlpacaMarketData
+    from engine.trading.live_trading_loop import LiveTradingLoop
 
     strategy_class = _load_strategy_registry()[config.strategy.strategy_id]
     strategy = strategy_class(**config.strategy.strategy_params)
@@ -800,7 +800,7 @@ def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -
     # loop actually trades (config.live.profit_target), not a sweep
     # value -- real capital confidently estimating the probability of
     # hitting the wrong number is the same silent failure, live.
-    from src.core.exceptions import ConfigurationError
+    from engine.core.exceptions import ConfigurationError
 
     # live.profit_target can still be None here -- BacktestConfig.validate()
     # deliberately does not require it (a config may set live.enabled
@@ -904,7 +904,7 @@ def cmd_backup(args: argparse.Namespace) -> int:
     """
     import tempfile
 
-    from src.warehouse.connection import MARKET_DATA_DB, SIM_RESULTS_DB
+    from engine.warehouse.connection import MARKET_DATA_DB, SIM_RESULTS_DB
     from tools.backup_databases import build_archive, prune_local, push_to_remote, snapshot_all
 
     warehouse_dir = Path(args.warehouse)
@@ -982,7 +982,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
     """
     import tempfile
 
-    from src.warehouse.connection import MARKET_DATA_DB, SIM_RESULTS_DB
+    from engine.warehouse.connection import MARKET_DATA_DB, SIM_RESULTS_DB
     from tools.backup_databases import (
         extract_archive,
         pull_from_remote,
@@ -1285,8 +1285,8 @@ def cmd_submit(args: argparse.Namespace) -> int:
     import urllib.error
     import urllib.request
 
-    from src.core.config import BacktestConfig
-    from src.core.exceptions import ConfigurationError
+    from engine.core.config import BacktestConfig
+    from engine.core.exceptions import ConfigurationError
 
     # Copied from server/backtest.py -- see docstring for why this
     # cannot be an import instead.

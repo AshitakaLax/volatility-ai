@@ -1,11 +1,11 @@
 # config/
 
-Every file here is a `BacktestConfig` YAML (`src/core/config.py`). Three
+Every file here is a `BacktestConfig` YAML (`engine/core/config.py`). Three
 kinds live side by side — check which one before editing:
 
 | Kind | Examples | `live.enabled` | Purpose |
 |---|---|---|---|
-| **Sweep** | `search_hf_*.yaml`, `sweep_5y*.yaml`, `probe_*.yaml`, `lotcap_test_*.yaml` | false/absent | a `grid`/`bayesian`/`random` search space for `src/scripts/run_hf_sweep.py` or `python cli.py search`/`backtest` |
+| **Sweep** | `search_hf_*.yaml`, `sweep_5y*.yaml`, `probe_*.yaml`, `lotcap_test_*.yaml` | false/absent | a `grid`/`bayesian`/`random` search space for `research/run_hf_sweep.py` or `python cli.py search`/`backtest` |
 | **Pinned champion** | `best_known_2026-08-24.yaml`, `paper_aggressive.yaml`, `soxl_champion.yaml` | false | a single-point config reproducing one specific best-known result — not a search space, don't add a grid to it |
 | **Deployment** | `staging.yaml`, `production.yaml`, `staging_hf_local_reference.yaml` | **true** | drives `python cli.py live` / the `live-staging` / `live-production` containers. `staging.yaml` → paper credentials, `production.yaml` → live credentials + a passing `PromotionEvaluation`. These are never sweep configs. |
 

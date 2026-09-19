@@ -32,10 +32,13 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.optimization import intraday_validation
-from src.optimization.intraday_validation import IntradayValidationError, simulate_single_intraday
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.size_calculators import FixedPortfolioPercentage
+from research.optimization import intraday_validation
+from research.optimization.intraday_validation import (
+    IntradayValidationError,
+    simulate_single_intraday,
+)
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 GRID_STEP = 0.01
 PROFIT_TARGET = 0.06

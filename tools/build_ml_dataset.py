@@ -44,8 +44,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.ml import features, labels
-from src.warehouse.bars import available_tickers, load_frame
+from engine.warehouse.bars import available_tickers, load_frame
+from research.ml import features, labels
 
 # The targets this project actually trades, and horizons spanning an
 # hour to roughly a month of sessions. A lot that needs four months is

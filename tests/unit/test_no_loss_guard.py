@@ -19,10 +19,10 @@ from pathlib import Path
 
 import pytest
 
-from src.core.exceptions import ExecutionError
-from src.core.ledger import AssetLotLedger
-from src.execution.cost_models import SlippageCommissionModel, ZeroCostModel
-from src.trading.no_loss_guard import (
+from engine.core.exceptions import ExecutionError
+from engine.core.ledger import AssetLotLedger
+from engine.execution.cost_models import SlippageCommissionModel, ZeroCostModel
+from engine.trading.no_loss_guard import (
     MONEY_EPSILON,
     NoLossViolation,
     SellEconomics,
@@ -154,10 +154,10 @@ def test_only_one_no_loss_comparison_exists_in_the_codebase():
     offenders = []
     # rglob, not glob: src/ was flat when this was written, so a
     # non-recursive glob covered the whole library. After the split into
-    # subpackages it matched only src/__init__.py and src/promotion.py --
+    # subpackages it matched only src/__init__.py and engine/promotion.py --
     # the scan silently stopped covering decision_cycle, the controller,
     # and every strategy, which is the entire point of the test.
-    for path in (REPO_ROOT / "src").rglob("*.py"):
+    for path in [p for pkg in ("engine", "research") for p in (REPO_ROOT / pkg).rglob("*.py")]:
         if path.name == "no_loss_guard.py":
             continue  # the one legitimate home
         if comparison.search(path.read_text(encoding="utf-8")):
@@ -167,8 +167,8 @@ def test_only_one_no_loss_comparison_exists_in_the_codebase():
 
 def test_both_former_inline_sites_now_call_the_guard():
     for filename in (
-        "src/optimization/optimization_controller.py",
-        "src/optimization/intraday_validation.py",
+        "research/optimization/optimization_controller.py",
+        "research/optimization/intraday_validation.py",
     ):
         source = (REPO_ROOT / filename).read_text()
         assert "validate_sell(" in source, f"{filename} no longer calls the canonical guard"
@@ -213,9 +213,9 @@ def test_no_operational_module_can_force_a_loss_making_sell():
     """Circuit breaker, shutdown, and reconciliation each expose no
     liquidation path at all -- so there is nothing that could bypass
     this guard even if it wanted to."""
-    from src.execution.reconciliation import Reconciler
-    from src.trading.risk_manager import CircuitBreaker
-    from src.trading.runtime_lifecycle import RuntimeLifecycle
+    from engine.execution.reconciliation import Reconciler
+    from engine.trading.risk_manager import CircuitBreaker
+    from engine.trading.runtime_lifecycle import RuntimeLifecycle
 
     forbidden = ("liquidate", "close_all", "emergency_sell", "flatten", "force_exit", "force_sell")
     for obj in (CircuitBreaker(), RuntimeLifecycle(), Reconciler(store=None)):
@@ -260,8 +260,8 @@ def test_sell_economics_is_immutable():
 def test_volatility_aware_cost_model_is_supported_at_the_guard():
     from datetime import datetime
 
-    from src.core.market_context import MarketContext
-    from src.execution.cost_models import DynamicSlippageModel
+    from engine.core.market_context import MarketContext
+    from engine.execution.cost_models import DynamicSlippageModel
 
     _, lot = _lot(buy_price=100.0, shares=10.0)
     context = MarketContext(

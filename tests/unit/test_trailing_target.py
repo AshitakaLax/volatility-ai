@@ -16,12 +16,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.core.exceptions import ConfigurationError
-from src.core.ledger import AssetLotLedger, Lot
-from src.core.market_context import MarketContext
-from src.optimization.trailing_target import TrailingTargetPolicy
-from src.strategies.size_calculators import FixedPortfolioPercentage
-from src.trading import decision_cycle
+from engine.core.exceptions import ConfigurationError
+from engine.core.ledger import AssetLotLedger, Lot
+from engine.core.market_context import MarketContext
+from engine.trading import decision_cycle
+from research.optimization.trailing_target import TrailingTargetPolicy
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 EQUITY = 100_000.0
 
@@ -413,7 +413,7 @@ def test_a_strategy_without_the_method_keeps_the_old_behavior():
 def test_the_real_strategy_reports_inert_exactly_when_trailing_is_off():
     """The declaration must track the actual condition, or the early-out
     would skip work that matters."""
-    from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+    from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 
     common = dict(per_lot_pct=0.001, lookback_days=0.02, bars_per_day=390)
     assert HighFrequencyLocalReferenceSizing(**common).wants_lot_retargeting() is False
@@ -426,7 +426,7 @@ def test_the_real_strategy_reports_inert_exactly_when_trailing_is_off():
 def test_trailing_still_retargets_through_the_real_helper():
     """End-to-end guard: the early-out must not disable trailing for a
     strategy that genuinely uses it."""
-    from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+    from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 
     strategy = HighFrequencyLocalReferenceSizing(
         per_lot_pct=0.001,

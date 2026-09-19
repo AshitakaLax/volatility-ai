@@ -67,11 +67,11 @@ from __future__ import annotations
 import logging
 from typing import Any, Protocol
 
+from engine.core.exceptions import ConfigurationError
+from engine.core.retry_policy import AmbiguousSubmissionError
+from engine.execution.order_lifecycle import OrderState
 from fidelity_gateway.broker import FidelityBroker, FidelityOrder, _find_first
 from fidelity_gateway.session import PLACE_ENDPOINTS
-from src.core.exceptions import ConfigurationError
-from src.core.retry_policy import AmbiguousSubmissionError
-from src.execution.order_lifecycle import OrderState
 
 logger = logging.getLogger("Optimizer")
 

@@ -73,11 +73,11 @@ import logging
 
 import pandas as pd
 
-from src.analysis.performance_analyzer import annual_returns
-from src.core.config import BacktestConfig
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
-from src.trading.risk_manager import RiskManager
+from engine.core.config import BacktestConfig
+from engine.trading.risk_manager import RiskManager
+from research.analysis.performance_analyzer import annual_returns
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from tools.harness import TQQQ as TQQQ_CSV
 from tools.harness import DrawdownEscalation, load_bars
 

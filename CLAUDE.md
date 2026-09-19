@@ -8,32 +8,52 @@ statistical validation, promotion path, troubleshooting) — read it before
 touching anything load-bearing. This file is a condensed map plus the
 gotchas README doesn't (yet) have.
 
-## Current package map
+## Project directories (each is a session root)
 
-| Package | Nested CLAUDE.md | Responsibility |
-|---|---|---|
-| `src/core` | — | `BacktestConfig`, exceptions, ledger, audit, persistence, secrets, idempotency |
-| `src/trading` | [src/CLAUDE.md](src/CLAUDE.md) | canonical decision cycle, no-loss guard, risk manager, live loop |
-| `src/execution` | | order lifecycle, OMS, reconciliation, fill accounting |
-| `src/strategies` | | `SizingStrategy` implementations, `MarketContext` |
-| `src/data` | | historical/live bar fetch, calendars, tick validation |
-| `src/analysis` | | cost models, performance metrics, validation, annualized reports |
-| `src/optimization` | | sweep orchestration, grid/Bayesian search, walk-forward, Monte Carlo |
-| `src/brokers` | | Alpaca broker adapter + `broker_selection` (imports each SDK lazily) |
-| `src/ml` | | reachability-sizing research: features, labels, live feature vectors (read-only research, not a trading input by default — see `src/ml/reachability_sizing.py`) |
-| `src/ui` | | Streamlit `dashboard.py` |
-| `src/scripts` | | `run_hf_sweep.py` |
-| `cli.py` (repo root) | | single entrypoint: `test \| backtest \| search \| live \| fetch-data`, the Docker `ENTRYPOINT` |
-| `fidelity_gateway/` | [fidelity_gateway/CLAUDE.md](fidelity_gateway/CLAUDE.md) | the Playwright/HTTP route into Fidelity: session, capture, recon, the gated place path |
-| `server/` | [server/CLAUDE.md](server/CLAUDE.md) | FastAPI backend for the web UI |
-| `web/` | [web/CLAUDE.md](web/CLAUDE.md) | React/TS frontend |
-| `tools/` | [tools/README.md](tools/README.md) (already a good CLAUDE.md-equivalent) | ops scripts, data prep, research probes — nothing here is imported by `src/` |
-| `config/` | [config/CLAUDE.md](config/CLAUDE.md) | sweep configs vs. `live:`-enabled deployment configs |
-| `tests/` | [tests/CLAUDE.md](tests/CLAUDE.md) | unit / integration / e2e / fixtures |
+The repo is split so a session can be opened in one directory and see
+only what that job needs. Open the **root** for cross-cutting work (the
+UI↔backend contract, deployment, a change that spans layers); open one
+of the others to keep the context small.
+
+| Session root | Nested CLAUDE.md | Scope | Size |
+|---|---|---|---|
+| `engine/` | [engine/CLAUDE.md](engine/CLAUDE.md) | the trading kernel: decision cycle, no-loss guard, OMS, ledger, warehouse, brokers, config | ~15k lines |
+| `research/` | [research/CLAUDE.md](research/CLAUDE.md) | algorithm development: strategies, sweep/search, metrics, ML | ~12k lines |
+| `fidelity_gateway/` | [fidelity_gateway/CLAUDE.md](fidelity_gateway/CLAUDE.md) | the Playwright/HTTP route into Fidelity: session, capture, recon, the gated place path | ~4k lines |
+| `server/` | [server/CLAUDE.md](server/CLAUDE.md) | FastAPI backend: routes, durable queue, shards, history | ~6k lines |
+| `web/` | [web/CLAUDE.md](web/CLAUDE.md) | React/TS frontend | ~17k lines |
+| `tools/` | [tools/README.md](tools/README.md) | ops scripts, data prep, research probes — nothing in `engine/` or `research/` imports these | ~13k lines |
+| `config/` | [config/CLAUDE.md](config/CLAUDE.md) | sweep configs vs. `live:`-enabled deployment configs | |
+| `tests/` | [tests/CLAUDE.md](tests/CLAUDE.md) | unit / integration / e2e / fixtures | ~33k lines |
+| `cli.py` (root) | | single entrypoint: `test \| backtest \| search \| submit \| live \| serve \| shard \| backup \| restore \| fetch-data`, the Docker `ENTRYPOINT` | |
+
+## The dependency direction, which the split depends on
+
+```
+web/  ──HTTP──>  server/  ──>  research/  ──>  engine/  <──  fidelity_gateway/
+                                                  ^
+                                          engine/core is layer 0
+```
+
+**`engine/` never imports `research/`.** The engine calls a strategy only
+through the `SizingStrategy` port in `engine/core/sizing.py`; every
+concrete algorithm is an adapter behind it, and
+`research/strategies/strategy_registry.py` is the only module that knows
+the concrete set exists. If an engine module seems to need something
+from `research/`, move the shared thing down into `engine/core/` instead
+of adding the import — that is exactly how `market_context.py` and the
+`SizingStrategy` ABC ended up there.
+
+`engine/core` imports no other engine package at import time. Verify any
+claim here rather than trusting it:
+
+```bash
+python -c "import sys,engine.core.config; print(sorted(m for m in sys.modules if m.startswith(('engine.','research.'))))"
+```
 
 ## The one invariant that matters most
 
-`src/trading/no_loss_guard.py` is the **single** place a sell is checked
+`engine/trading/no_loss_guard.py` is the **single** place a sell is checked
 against its cost basis. It never sells for less than
 `allocated_cost_basis - 1e-8` (accounting for costs). Any change that
 touches sell logic should route through this module, not reimplement the

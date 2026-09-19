@@ -1,6 +1,6 @@
 """The MFE labels are checked against a brute-force reference.
 
-src/ml/labels.py finds "did this lot reach its target, and when" by
+research/ml/labels.py finds "did this lot reach its target, and when" by
 binary lifting over a sparse table of forward maxima -- O(n log h)
 instead of the O(n * h) scan, which matters because a 1M-bar file with
 a one-day horizon is 400M comparisons per label set.
@@ -23,7 +23,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from src.ml import labels
+from research.ml import labels
 
 
 def brute_force(high, low, entry, profit_target, horizon):

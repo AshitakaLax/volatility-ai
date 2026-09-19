@@ -45,7 +45,7 @@ def readme() -> str:
 def test_the_readme_does_not_deny_the_strategy_registry(readme):
     """src/strategy_registry.py exists and is imported by the config
     layer, so a claim that there is no registry is simply false."""
-    from src.strategies.strategy_registry import STRATEGIES
+    from research.strategies.strategy_registry import STRATEGIES
 
     assert STRATEGIES, "the registry is empty; this test's premise changed"
     assert "No strategy registry" not in readme, (
@@ -57,7 +57,7 @@ def test_the_readme_does_not_deny_the_strategy_registry(readme):
 def test_the_readme_does_not_claim_the_consumed_macro_fields_are_inert(readme):
     """Four MarketContext signal fields have a real consumer. If the
     README says nothing consumes them, one of the two is wrong."""
-    consumer = (REPO_ROOT / "src" / "strategies" / "high_frequency_sizing.py").read_text(
+    consumer = (REPO_ROOT / "research" / "strategies" / "high_frequency_sizing.py").read_text(
         encoding="utf-8"
     )
     consumed = [
@@ -102,7 +102,7 @@ def test_macro_surprise_factor_really_is_still_inert(readme):
     the README gets corrected rather than becoming stale in the other
     direction."""
     sources = [
-        (REPO_ROOT / "src" / "strategies" / path).read_text(encoding="utf-8")
+        (REPO_ROOT / "research" / "strategies" / path).read_text(encoding="utf-8")
         for path in ("high_frequency_sizing.py", "bayesian_sizing_calculators.py")
     ]
     assert all("macro_surprise_factor" not in src for src in sources), (

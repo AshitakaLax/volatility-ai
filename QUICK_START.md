@@ -77,7 +77,7 @@ docker compose stop live-staging
 2. **Check promotion criteria** (see `PRE_PRODUCTION_CHECKLIST.md`)
    ```bash
    python -c "
-   from src.promotion import evaluate_promotion
+   from engine.promotion import evaluate_promotion
    from src.persistence import LedgerStore
    store = LedgerStore('/path/to/state_staging/ledger.db')
    print(evaluate_promotion(store))

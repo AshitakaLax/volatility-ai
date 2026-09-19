@@ -17,13 +17,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from src.data.earnings_calendar import (
+from engine.data.earnings_calendar import (
     EARNINGS_REACTION_DATES,
     MEGA_CAP_SYMBOLS,
     is_earnings_reaction_day,
     is_earnings_reaction_day_at,
 )
-from src.data.fomc_calendar import FOMC_DECISION_DATES
+from engine.data.fomc_calendar import FOMC_DECISION_DATES
 
 EASTERN = ZoneInfo("America/New_York")
 

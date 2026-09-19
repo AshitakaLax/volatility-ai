@@ -12,8 +12,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.core.exceptions import DataValidationError
-from src.data.external_index_series import ExternalIndexSeries
+from engine.core.exceptions import DataValidationError
+from engine.data.external_index_series import ExternalIndexSeries
 
 
 def series(*rows: tuple[str, float]) -> pd.DataFrame:

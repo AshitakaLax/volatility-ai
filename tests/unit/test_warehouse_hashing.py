@@ -1,7 +1,7 @@
 """parameter_hash's identity boundary.
 
 These tests need no optional dependency -- hashing is pure stdlib on
-top of src/core/artifacts.py -- so they run on every checkout, unlike
+top of engine/core/artifacts.py -- so they run on every checkout, unlike
 tests/unit/test_warehouse_schema.py which skips without duckdb.
 
 What is being pinned here is not "the hash function works" but WHERE
@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.core.exceptions import ConfigurationError
-from src.warehouse.hashing import (
+from engine.core.exceptions import ConfigurationError
+from engine.warehouse.hashing import (
     EXECUTION_FLAG_FIELDS,
     broker_id_for,
     execution_flags,

@@ -17,11 +17,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.core.market_context import MarketContext, SimulationResult
-from src.execution.cost_models import ZeroCostModel
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.size_calculators import FixedPortfolioPercentage
-from src.trading.risk_manager import RiskManager
+from engine.core.market_context import MarketContext, SimulationResult
+from engine.execution.cost_models import ZeroCostModel
+from engine.trading.risk_manager import RiskManager
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "regression_ohlcv.csv"

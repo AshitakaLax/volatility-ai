@@ -51,8 +51,8 @@ enforced structurally rather than by convention.
 - Durable SQLite persistence, crash recovery, and broker reconciliation
 - A full order lifecycle state machine and audit trail
 - Docker packaging with a single CLI entrypoint
-- **Live/paper trading against Alpaca**, via `src/brokers/alpaca_broker.py` and the
-  tick loop in `src/trading/live_trading_loop.py`
+- **Live/paper trading against Alpaca**, via `engine/brokers/alpaca_broker.py` and the
+  tick loop in `engine/trading/live_trading_loop.py`
 
 **What to understand before running it with money:**
 
@@ -134,8 +134,8 @@ count and SHA-256. `data/` is git-ignored; downloads are tens of
 megabytes.
 
 **This file is intake, not something a backtest reads.** `cli.py
-backtest`/`search` and `src/scripts/run_hf_sweep.py` all read historical
-bars from the DuckDB/Parquet warehouse (`src/warehouse/bars.py`), never
+backtest`/`search` and `research/run_hf_sweep.py` all read historical
+bars from the DuckDB/Parquet warehouse (`engine/warehouse/bars.py`), never
 from `data/` directly — that is what actually keeps a sweep result
 traceable to the exact bars it ran on, warehouse-side, regardless of
 what happens to the CSV afterward. A freshly fetched symbol becomes
@@ -215,9 +215,9 @@ summary ranked by Capital Velocity Index.
 ### Or use the Python API directly
 
 ```python
-from src.optimization.optimization_controller import OptimizationController
-from src.size_calculators import FixedPortfolioPercentage
-from src.warehouse.bars import load_frame
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.size_calculators import FixedPortfolioPercentage
+from engine.warehouse.bars import load_frame
 
 df = load_frame("TQQQ")  # ticker must already be ingested -- see Quickstart
 
@@ -294,7 +294,7 @@ so `docker stop` and a host reboot are both safe.
 
 ## Configuration
 
-`BacktestConfig` (`src/core/config.py`) is the single source of truth. Build it
+`BacktestConfig` (`engine/core/config.py`) is the single source of truth. Build it
 from a dict or YAML — both deserialize through the same path, so they
 validate identically.
 
@@ -404,7 +404,7 @@ lots. It rewards capital that recycles rather than capital that sits.
 ### The canonical decision cycle
 
 Backtest and live execution **share one implementation** of the strategy
-call sequence (`src/trading/decision_cycle.py`). This is not a convention — both
+call sequence (`engine/trading/decision_cycle.py`). This is not a convention — both
 call the same functions, and a test asserts neither re-implements the
 comparison locally.
 
@@ -428,36 +428,36 @@ strategies observe the market.
 
 | Module | Responsibility |
 |---|---|
-| `src/optimization/optimization_controller.py` | Sweep orchestration; `_simulate_single` runs one combination |
-| `src/trading/decision_cycle.py` | The canonical strategy call sequence, shared by backtest and live |
-| `src/strategies/size_calculators.py` | `SizingStrategy` ABC + `FixedPortfolioPercentage` |
-| `src/core/ledger.py` | Lot-based position tracking, full and partial closes |
-| `src/trading/no_loss_guard.py` | **The** no-loss comparison — one implementation |
-| `src/execution/cost_models.py` | Zero / static slippage / volatility-aware slippage |
-| `src/trading/risk_manager.py` | Exposure clamps + `CircuitBreaker` |
-| `src/core/market_context.py` | `MarketContext`, `SimulationResult` |
-| `src/core/config.py` | `BacktestConfig` and its nested sections |
-| `src/core/validation.py`, `src/data/data_validation.py` | Config and dataset validation |
-| `src/optimization/search_strategies.py` | `GridSearch`, `BayesianSearch` (Optuna) |
-| `src/optimization/walk_forward.py`, `src/optimization/monte_carlo.py` | Out-of-sample validation |
-| `src/core/persistence.py` | SQLite ledger store, crash recovery |
-| `src/core/audit.py` | Durable, append-only event log |
-| `src/execution/order_lifecycle.py` | Order state machine + broker status mapping |
-| `src/execution/reconciliation.py` | Local vs. broker state comparison |
-| `src/trading/runtime_lifecycle.py` | Startup sequence and graceful shutdown |
-| `src/promotion.py` | Paper→live promotion gate |
-| `src/core/retry_policy.py` | Error classification and bounded backoff |
-| `src/core/secrets.py` | Credential loading and redaction |
-| `src/core/idempotency.py`, `src/trading/duplicate_order_guard.py` | Event and order deduplication |
-| `src/data/tick_validation.py` | Per-tick sanity checks |
-| `src/data/historical_data.py` | Bulk bar download -> `data/` (warehouse intake, ingested via `tools/build_warehouse.py`) |
-| `src/strategies/sizing_indicators.py` | Incremental rolling max / Wilder RSI, shared by strategies |
-| `src/strategies/bayesian_sizing_calculators.py` | `BayesianDualScaleSizing` (dual-timescale Beta posterior) |
-| `src/strategies/strategy_registry.py` | `strategy_id` -> sizing-strategy class |
-| `src/brokers/alpaca_broker.py` | The `LiveBroker` implementation — order submission, lookup, snapshot |
-| `src/data/alpaca_market_data.py` | Latest bar and market clock |
-| `src/trading/live_trading_loop.py` | The tick loop: fills, harvest, buy, persist, shutdown |
-| `src/core/exceptions.py` | Domain exception hierarchy |
+| `research/optimization/optimization_controller.py` | Sweep orchestration; `_simulate_single` runs one combination |
+| `engine/trading/decision_cycle.py` | The canonical strategy call sequence, shared by backtest and live |
+| `research/strategies/size_calculators.py` | `SizingStrategy` ABC + `FixedPortfolioPercentage` |
+| `engine/core/ledger.py` | Lot-based position tracking, full and partial closes |
+| `engine/trading/no_loss_guard.py` | **The** no-loss comparison — one implementation |
+| `engine/execution/cost_models.py` | Zero / static slippage / volatility-aware slippage |
+| `engine/trading/risk_manager.py` | Exposure clamps + `CircuitBreaker` |
+| `engine/core/market_context.py` | `MarketContext`, `SimulationResult` |
+| `engine/core/config.py` | `BacktestConfig` and its nested sections |
+| `engine/core/validation.py`, `engine/data/data_validation.py` | Config and dataset validation |
+| `research/optimization/search_strategies.py` | `GridSearch`, `BayesianSearch` (Optuna) |
+| `research/optimization/walk_forward.py`, `research/optimization/monte_carlo.py` | Out-of-sample validation |
+| `engine/core/persistence.py` | SQLite ledger store, crash recovery |
+| `engine/core/audit.py` | Durable, append-only event log |
+| `engine/execution/order_lifecycle.py` | Order state machine + broker status mapping |
+| `engine/execution/reconciliation.py` | Local vs. broker state comparison |
+| `engine/trading/runtime_lifecycle.py` | Startup sequence and graceful shutdown |
+| `engine/promotion.py` | Paper→live promotion gate |
+| `engine/core/retry_policy.py` | Error classification and bounded backoff |
+| `engine/core/secrets.py` | Credential loading and redaction |
+| `engine/core/idempotency.py`, `engine/trading/duplicate_order_guard.py` | Event and order deduplication |
+| `engine/data/tick_validation.py` | Per-tick sanity checks |
+| `engine/data/historical_data.py` | Bulk bar download -> `data/` (warehouse intake, ingested via `tools/build_warehouse.py`) |
+| `research/strategies/sizing_indicators.py` | Incremental rolling max / Wilder RSI, shared by strategies |
+| `research/strategies/bayesian_sizing_calculators.py` | `BayesianDualScaleSizing` (dual-timescale Beta posterior) |
+| `research/strategies/strategy_registry.py` | `strategy_id` -> sizing-strategy class |
+| `engine/brokers/alpaca_broker.py` | The `LiveBroker` implementation — order submission, lookup, snapshot |
+| `engine/data/alpaca_market_data.py` | Latest bar and market clock |
+| `engine/trading/live_trading_loop.py` | The tick loop: fills, harvest, buy, persist, shutdown |
+| `engine/core/exceptions.py` | Domain exception hierarchy |
 
 ### Exception hierarchy
 
@@ -486,7 +486,7 @@ rather than by documentation or convention.
 
 ### 1. Never sell at a loss
 
-`src/trading/no_loss_guard.py` is the single place this is evaluated. Two
+`engine/trading/no_loss_guard.py` is the single place this is evaluated. Two
 independent inline copies existed previously and had already begun to
 drift; they were folded into one, and a test scans the codebase for any
 reintroduced duplicate.
@@ -554,7 +554,7 @@ following held-out window. Result columns are prefixed `train_` and `test_`
 so in-sample and out-of-sample figures cannot be confused.
 
 ```python
-from src.walk_forward import WalkForwardRunner
+from research.optimization.walk_forward import WalkForwardRunner
 
 runner = WalkForwardRunner(
     lambda df_slice: OptimizationController(historical_data=df_slice),
@@ -578,7 +578,7 @@ blocks, not individual days, so volatility clustering survives. Returns
 5th/25th/50th/75th/95th percentiles.
 
 ```python
-from src.monte_carlo import MonteCarloRunner
+from research.optimization.monte_carlo import MonteCarloRunner
 
 summary = MonteCarloRunner().run(
     controller_factory=lambda p: OptimizationController(historical_data=p),
@@ -615,10 +615,10 @@ silently runs the CLOSE-only fill model regardless of what
 orders. Older, non-HF strategies (`fixed`, `bayesian_dual_scale`) still go
 through `cli.py`, since they predate that defect being found.
 
-### `src/scripts/run_hf_sweep.py` — the sweep driver
+### `research/run_hf_sweep.py` — the sweep driver
 
 ```bash
-.venv/Scripts/python.exe src/scripts/run_hf_sweep.py \
+.venv/Scripts/python.exe research/run_hf_sweep.py \
   --config config/<name>.yaml \
   --search grid \
   --n-jobs 4 \
@@ -647,7 +647,7 @@ re-proposing the same ~15 combinations for hundreds of trials once it
 locks onto a mode, where random search covers the space proportionally to
 budget. See `Add RandomSearch...` in `git log` for the measurements.
 
-### `src/analysis/analyze_annual.py` — year-by-year vs. buy-and-hold
+### `research/analysis/analyze_annual.py` — year-by-year vs. buy-and-hold
 
 The whole-period CAGR of a profit-capped strategy over a decade-long bull
 run is misleading in a specific, predictable direction. This reads every
@@ -658,8 +658,8 @@ whether the strategy actually wins the chop/correction years it is meant
 for, not just its aggregate number.
 
 ```bash
-.venv/Scripts/python.exe src/analysis/analyze_annual.py --top 3
-.venv/Scripts/python.exe src/analysis/analyze_annual.py --cap 50 --top 2   # only consider maxDD <= 50%
+.venv/Scripts/python.exe research/analysis/analyze_annual.py --top 3
+.venv/Scripts/python.exe research/analysis/analyze_annual.py --cap 50 --top 2   # only consider maxDD <= 50%
 ```
 
 | Flag | Default | Meaning |
@@ -684,7 +684,7 @@ the explore-then-exploit progression is visible instead of hidden behind
 ### Chain scripts
 
 `run_extended_chain.sh`, `run_frontier_chain.sh`, and `run_overnight_chain.sh`
-wrap a sweep plus an `src/analysis/analyze_annual.py` breakdown into one sequential run,
+wrap a sweep plus an `research/analysis/analyze_annual.py` breakdown into one sequential run,
 logging to `output/<name>_$(date +%Y%m%d_%H%M).log`. Sequential is
 deliberate, not an oversight: four `n_jobs` workers already peak near
 1.7GB of commit each, and an earlier 250-trial run was killed partway
@@ -752,24 +752,24 @@ replacement for it.
 
 | Config | Question it answers | Command | Output |
 |---|---|---|---|
-| `search_hf_intrabar.yaml` | Foundational exhaustive sweep (192 combos) that fixed the close-vs-touch fill model, a binding lot cap, and dead sub-cost-floor targets. | `src/scripts/run_hf_sweep.py --config config/search_hf_intrabar.yaml --search grid --n-jobs 4 --output output/search_hf_intrabar.csv` | superseded, not retained |
-| `search_hf_bayesian.yaml` | TPE over the same space densified to 6,272 points, uncapped. | `src/scripts/run_hf_sweep.py --config config/search_hf_bayesian.yaml --search bayesian --trials 200 --n-jobs 4 --output output/search_hf_bayesian_2026-08-22.csv` | `output/search_hf_bayesian_2026-08-22.csv` |
-| `search_hf_bayesian.yaml` | Same space, drawdown capped so the sampler stops chasing the ~80%-drawdown corner. | `src/scripts/run_hf_sweep.py --config config/search_hf_bayesian.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_bayesian_capped_2026-08-22.csv` | `output/search_hf_bayesian_capped_2026-08-22.csv` |
-| `search_hf_bayesian.yaml` | Rerun of the capped search after the penalty was graded by excess instead of flattened (the flat penalty had collapsed exploration to 14 unique combos). | `src/scripts/run_hf_sweep.py --config config/search_hf_bayesian.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_bayesian_capped_v2_2026-08-22.csv` | `output/search_hf_bayesian_capped_v2_2026-08-22.csv` |
-| `probe_vol_scaling.yaml` | Controlled probe: only `vol_scale_exponent` swept, everything else pinned at the capped run's best. Sizing down into volatility (`-1.5`) beat the no-op control by +13.05pp. | `src/scripts/run_hf_sweep.py --config config/probe_vol_scaling.yaml --search grid --output output/probe_vol_scaling.csv` | recorded in commit `5ff9eb1`, CSV not retained |
-| `search_hf_volscaled.yaml` | TPE over 3,240 points with continuous vol scaling as the primary axis, event boosts pinned. | `src/scripts/run_hf_sweep.py --config config/search_hf_volscaled.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volscaled_2026-08-23.csv` | `output/search_hf_volscaled_2026-08-23.csv` |
-| `search_hf_volscaled.yaml` | Same space, random search instead of TPE (250 distinct combos, 7.7% coverage) — added after TPE was found covering up to 17x less of a categorical space than random. | `src/scripts/run_hf_sweep.py --config config/search_hf_volscaled.yaml --search random --trials 250 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volscaled_random_2026-08-23.csv` | `output/search_hf_volscaled_random_2026-08-23.csv` |
-| `search_hf_volscaled.yaml` | Rerun after the range-based vol measure, volume field, and extended fast/slow windows were added. | `src/scripts/run_hf_sweep.py --config config/search_hf_volscaled.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volscaled_v2_2026-08-23.csv` | `output/search_hf_volscaled_v2_2026-08-23.csv` |
-| `probe_volume_scaling.yaml` | Controlled probe: only `volume_scale_exponent` swept, pinned at the random sweep's best. Worth +11pp cap-compliant / +35.8pp uncapped, despite scoring weakest of any candidate on the prior correlation screen. | `src/scripts/run_hf_sweep.py --config config/probe_volume_scaling.yaml --search grid --output output/probe_volume_scaling.csv` | recorded in commit `5449475`, CSV not retained |
-| `search_hf_wide_targets.yaml` | Does the profit target (held ≤0.003 in every sweep above) actually cap upside? No-loss guard ON. | `src/scripts/run_hf_sweep.py --config config/search_hf_wide_targets.yaml --search grid --n-jobs 4 --output output/search_hf_wide_targets.csv` | `output/search_hf_wide_targets.csv` |
-| `search_hf_wide_targets_noguard.yaml` | Same grid, no-loss guard OFF — isolates whether the guard itself costs anything at wider targets. | `src/scripts/run_hf_sweep.py --config config/search_hf_wide_targets_noguard.yaml --search grid --n-jobs 4 --output output/search_hf_wide_targets_noguard.csv` | `output/search_hf_wide_targets_noguard.csv` |
-| `search_hf_volume_sweep.yaml` | Brings volume in as a real swept axis alongside vol scaling, rather than a pinned-off control. | `src/scripts/run_hf_sweep.py --config config/search_hf_volume_sweep.yaml --search random --trials 220 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volume_sweep.csv` | `output/search_hf_volume_sweep.csv` |
-| `search_hf_targets_extended.yaml` | Extends the target axis 0.05 → 0.30 (120 combos, exhaustive) after the wide-targets sweep's winner sat on its 0.05 ceiling. | `src/scripts/run_hf_sweep.py --config config/search_hf_targets_extended.yaml --search grid --n-jobs 4 --output output/search_hf_targets_extended.csv` | `output/search_hf_targets_extended.csv` |
-| `search_hf_targets_frontier.yaml` | Extends the target axis 0.30 → 1.00 *and* re-sweeps `per_lot_pct` alongside it (64 combos), since both control how long capital stays deployed and tuning either alone would mis-attribute the effect. | `src/scripts/run_hf_sweep.py --config config/search_hf_targets_frontier.yaml --search grid --n-jobs 4 --output output/search_hf_targets_frontier.csv` | `output/search_hf_targets_frontier.csv` — launched 2026-08-24 via `bash run_frontier_chain.sh`; still running as of 2026-08-25 (see note below) |
-| `best_known_2026-08-24.yaml` | Not a sweep — a single-point config pinning the best result found to date (25.38% CAGR, 45.57% max drawdown, 86,087 trades over the 10.63-year dataset) so it can be reproduced without hunting through every sweep output. | `src/scripts/run_hf_sweep.py --config config/best_known_2026-08-24.yaml --search grid --output output/best_known_2026-08-24.csv` | not yet run standalone; value is the config itself |
+| `search_hf_intrabar.yaml` | Foundational exhaustive sweep (192 combos) that fixed the close-vs-touch fill model, a binding lot cap, and dead sub-cost-floor targets. | `research/run_hf_sweep.py --config config/search_hf_intrabar.yaml --search grid --n-jobs 4 --output output/search_hf_intrabar.csv` | superseded, not retained |
+| `search_hf_bayesian.yaml` | TPE over the same space densified to 6,272 points, uncapped. | `research/run_hf_sweep.py --config config/search_hf_bayesian.yaml --search bayesian --trials 200 --n-jobs 4 --output output/search_hf_bayesian_2026-08-22.csv` | `output/search_hf_bayesian_2026-08-22.csv` |
+| `search_hf_bayesian.yaml` | Same space, drawdown capped so the sampler stops chasing the ~80%-drawdown corner. | `research/run_hf_sweep.py --config config/search_hf_bayesian.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_bayesian_capped_2026-08-22.csv` | `output/search_hf_bayesian_capped_2026-08-22.csv` |
+| `search_hf_bayesian.yaml` | Rerun of the capped search after the penalty was graded by excess instead of flattened (the flat penalty had collapsed exploration to 14 unique combos). | `research/run_hf_sweep.py --config config/search_hf_bayesian.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_bayesian_capped_v2_2026-08-22.csv` | `output/search_hf_bayesian_capped_v2_2026-08-22.csv` |
+| `probe_vol_scaling.yaml` | Controlled probe: only `vol_scale_exponent` swept, everything else pinned at the capped run's best. Sizing down into volatility (`-1.5`) beat the no-op control by +13.05pp. | `research/run_hf_sweep.py --config config/probe_vol_scaling.yaml --search grid --output output/probe_vol_scaling.csv` | recorded in commit `5ff9eb1`, CSV not retained |
+| `search_hf_volscaled.yaml` | TPE over 3,240 points with continuous vol scaling as the primary axis, event boosts pinned. | `research/run_hf_sweep.py --config config/search_hf_volscaled.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volscaled_2026-08-23.csv` | `output/search_hf_volscaled_2026-08-23.csv` |
+| `search_hf_volscaled.yaml` | Same space, random search instead of TPE (250 distinct combos, 7.7% coverage) — added after TPE was found covering up to 17x less of a categorical space than random. | `research/run_hf_sweep.py --config config/search_hf_volscaled.yaml --search random --trials 250 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volscaled_random_2026-08-23.csv` | `output/search_hf_volscaled_random_2026-08-23.csv` |
+| `search_hf_volscaled.yaml` | Rerun after the range-based vol measure, volume field, and extended fast/slow windows were added. | `research/run_hf_sweep.py --config config/search_hf_volscaled.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volscaled_v2_2026-08-23.csv` | `output/search_hf_volscaled_v2_2026-08-23.csv` |
+| `probe_volume_scaling.yaml` | Controlled probe: only `volume_scale_exponent` swept, pinned at the random sweep's best. Worth +11pp cap-compliant / +35.8pp uncapped, despite scoring weakest of any candidate on the prior correlation screen. | `research/run_hf_sweep.py --config config/probe_volume_scaling.yaml --search grid --output output/probe_volume_scaling.csv` | recorded in commit `5449475`, CSV not retained |
+| `search_hf_wide_targets.yaml` | Does the profit target (held ≤0.003 in every sweep above) actually cap upside? No-loss guard ON. | `research/run_hf_sweep.py --config config/search_hf_wide_targets.yaml --search grid --n-jobs 4 --output output/search_hf_wide_targets.csv` | `output/search_hf_wide_targets.csv` |
+| `search_hf_wide_targets_noguard.yaml` | Same grid, no-loss guard OFF — isolates whether the guard itself costs anything at wider targets. | `research/run_hf_sweep.py --config config/search_hf_wide_targets_noguard.yaml --search grid --n-jobs 4 --output output/search_hf_wide_targets_noguard.csv` | `output/search_hf_wide_targets_noguard.csv` |
+| `search_hf_volume_sweep.yaml` | Brings volume in as a real swept axis alongside vol scaling, rather than a pinned-off control. | `research/run_hf_sweep.py --config config/search_hf_volume_sweep.yaml --search random --trials 220 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volume_sweep.csv` | `output/search_hf_volume_sweep.csv` |
+| `search_hf_targets_extended.yaml` | Extends the target axis 0.05 → 0.30 (120 combos, exhaustive) after the wide-targets sweep's winner sat on its 0.05 ceiling. | `research/run_hf_sweep.py --config config/search_hf_targets_extended.yaml --search grid --n-jobs 4 --output output/search_hf_targets_extended.csv` | `output/search_hf_targets_extended.csv` |
+| `search_hf_targets_frontier.yaml` | Extends the target axis 0.30 → 1.00 *and* re-sweeps `per_lot_pct` alongside it (64 combos), since both control how long capital stays deployed and tuning either alone would mis-attribute the effect. | `research/run_hf_sweep.py --config config/search_hf_targets_frontier.yaml --search grid --n-jobs 4 --output output/search_hf_targets_frontier.csv` | `output/search_hf_targets_frontier.csv` — launched 2026-08-24 via `bash run_frontier_chain.sh`; still running as of 2026-08-25 (see note below) |
+| `best_known_2026-08-24.yaml` | Not a sweep — a single-point config pinning the best result found to date (25.38% CAGR, 45.57% max drawdown, 86,087 trades over the 10.63-year dataset) so it can be reproduced without hunting through every sweep output. | `research/run_hf_sweep.py --config config/best_known_2026-08-24.yaml --search grid --output output/best_known_2026-08-24.csv` | not yet run standalone; value is the config itself |
 
 Two older, unrelated sweep families exist from before the HF strategy work
-and use `cli.py` instead of `src/scripts/run_hf_sweep.py`:
+and use `cli.py` instead of `research/run_hf_sweep.py`:
 
 | Config | Strategy | Command |
 |---|---|---|
@@ -813,7 +813,7 @@ OMS requires a passing `PromotionEvaluation` — there is no
 `enable_live=True` shortcut, and a truthy-but-not-passing object is
 rejected.
 
-**Promotion criteria** (`src/promotion.py`), all machine-checked and
+**Promotion criteria** (`engine/promotion.py`), all machine-checked and
 recorded in the artifact rather than left to judgment:
 
 | Criterion | Default |
@@ -940,7 +940,7 @@ so they are actionable without reading source), and `C408` in `tests/` only
 Subclass `SizingStrategy` and implement two methods:
 
 ```python
-from src.size_calculators import SizingStrategy
+from engine.core.sizing import SizingStrategy
 
 
 class DrawdownScaledSizing(SizingStrategy):
@@ -1040,10 +1040,10 @@ evaluations.
 ```
 volatility-ai/
 ├── cli.py                     # single entrypoint: test | backtest | search | live | fetch-data | backup | restore | serve
-├── src/optimization/optimization_controller.py # sweep orchestration
+├── research/optimization/optimization_controller.py # sweep orchestration
 ├── dashboard.py               # Streamlit view of a running deployment
-├── src/scripts/run_hf_sweep.py            # parallel sweep driver for HF configs -- see below
-├── src/analysis/analyze_annual.py          # annualized regime breakdown vs. buy-and-hold
+├── research/run_hf_sweep.py            # parallel sweep driver for HF configs -- see below
+├── research/analysis/analyze_annual.py          # annualized regime breakdown vs. buy-and-hold
 ├── resample_uniform.py        # re-grid minute bars onto a uniform index
 ├── fidelity_gateway/          # the Playwright/HTTP route into Fidelity -- see its own CLAUDE.md
 │   ├── session.py             #   log in, hold the authenticated browser session
@@ -1067,7 +1067,8 @@ volatility-ai/
 │   ├── paper_aggressive.yaml  # the champion configuration, paper
 │   └── production.yaml        # real capital
 ├── docs/                      # setup and deployment guides
-├── src/                       # the library -- see the module map
+├── engine/                    # the trading kernel -- see engine/CLAUDE.md
+├── research/                  # strategies, sweeps, metrics, ML -- see research/CLAUDE.md
 ├── tools/                     # ops, data prep, and research probes -- see tools/README.md
 │   └── experiments/           # shell wrappers for earlier sweep batches
 └── tests/
@@ -1081,7 +1082,7 @@ normal use: `data/` (downloaded market history — tens of MB per
 symbol-year), `output/` (sweep results), `logs/` (supervisor output),
 `state/`, `*.db` (the SQLite ledger), and the Fidelity capture
 artifacts listed in `.gitignore`. `tools/build_earnings_calendar.py`
-regenerates the one file under `data/` that `src/` actually needs.
+regenerates the one file under `data/` that `engine/` actually needs.
 
 `CHANGELOG.md` documents *why* decisions were made, including several
 resolved specification contradictions. It is worth reading before changing
@@ -1098,7 +1099,7 @@ Tracked honestly rather than hidden:
    every lot to close it is exactly 1.0 for every combination and ranks
    nothing. Verified on 2 years of TQQQ minute bars: all 9 combinations
    scored 1.0. The metric was implemented from a name with no specified
-   formula (see `src/performance_analyzer.py`'s docstring); it needs
+   formula (see `research/analysis/performance_analyzer.py`'s docstring); it needs
    either a denominator that does not saturate — time-weighted capital
    deployed, say — or demotion from the default.
 2. **`ACCEPTED → UNKNOWN` is not a permitted transition.** The order state

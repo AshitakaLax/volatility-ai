@@ -74,7 +74,7 @@ def test_the_transport_refuses_placing_when_not_unlocked():
     from fidelity_gateway.session import FidelitySession
 
     session = FidelitySession(object(), allow_order_endpoints=False, allow_preview_endpoints=True)
-    from src.core.exceptions import ConfigurationError
+    from engine.core.exceptions import ConfigurationError
 
     for path in PLACE_ENDPOINTS:
         with pytest.raises(ConfigurationError, match="PLACES OR CANCELS A REAL ORDER"):

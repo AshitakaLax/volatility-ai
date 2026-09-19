@@ -57,9 +57,9 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from engine.warehouse.bars import row_count
 from server import history
 from server.backtest import STRATEGY_DEFAULTS, run_backtest
-from src.warehouse.bars import row_count
 
 # One COUNT(*) per ticker, cached -- the warehouse answers this from
 # Parquet row-group metadata without reading the bars themselves.

@@ -70,7 +70,7 @@ ignore = [
 "run_hf_sweep.py" = ["E402"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["src", "optimization_controller"]
+known-first-party = ["engine", "research", "server", "fidelity_gateway", "tools"]
 
 [tool.ruff.format]
 quote-style = "double"

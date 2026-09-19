@@ -17,9 +17,9 @@ import pandas as pd
 import pytest
 from alpaca.data.models import BarSet
 
-from src.core.exceptions import ConfigurationError, DataValidationError
-from src.core.retry_policy import RetryConfig
-from src.data.historical_data import (
+from engine.core.exceptions import ConfigurationError, DataValidationError
+from engine.core.retry_policy import RetryConfig
+from engine.data.historical_data import (
     BACKTEST_COLUMNS,
     AlpacaHistoricalData,
     FetchSpec,

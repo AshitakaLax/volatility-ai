@@ -11,8 +11,8 @@ Task 4.9 acceptance tests.
 import pandas as pd
 import pytest
 
-from src.core.exceptions import ConfigurationError
-from src.core.validation import (
+from engine.core.exceptions import ConfigurationError
+from engine.core.validation import (
     validate_grid_steps,
     validate_non_negative,
     validate_one_of,
@@ -22,8 +22,8 @@ from src.core.validation import (
     validate_run_sweep_config,
     validate_unit_interval,
 )
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.size_calculators import FixedPortfolioPercentage
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def _load_fixture() -> pd.DataFrame:

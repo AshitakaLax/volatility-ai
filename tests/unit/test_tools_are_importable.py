@@ -108,7 +108,7 @@ def test_there_is_exactly_one_escalating_definition():
     """
     from dataclasses import dataclass
 
-    from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+    from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
     from tools.harness import Escalating as Canonical
 
     @dataclass

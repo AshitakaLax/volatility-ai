@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import pytest
 
+from research.strategies.strategy_registry import STRATEGIES
 from server.backtest import (
     _DERIVED_PARAMS,
     _HIDDEN_PARAMS,
@@ -28,7 +29,6 @@ from server.backtest import (
     describe_params,
     required_parameters,
 )
-from src.strategies.strategy_registry import STRATEGIES
 
 
 def _view(spec: dict) -> dict:

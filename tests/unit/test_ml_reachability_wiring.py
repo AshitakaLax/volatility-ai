@@ -23,10 +23,10 @@ from __future__ import annotations
 
 import pytest
 
-# Deliberately NOT `from src.strategies.strategy_registry import STRATEGIES` at
+# Deliberately NOT `from research.strategies.strategy_registry import STRATEGIES` at
 # module level: that snapshots the dict object at COLLECTION time, and
 # test_ml_optional_dependency.py in this same suite legitimately pops
-# and re-imports src.ml.reachability_sizing / src.strategy_registry to
+# and re-imports research.ml.reachability_sizing / src.strategy_registry to
 # simulate a machine without lightgbm. `from x import y` copies a
 # REFERENCE, not a live link, so a snapshot taken before that reload
 # and a fresh import taken after it can hold two different (if
@@ -37,12 +37,12 @@ import pytest
 # reading .STRATEGIES/.resolve_strategy off it fresh each time sidesteps
 # the whole class of bug rather than requiring every OTHER test file
 # to leave global module state pristine.
-import src.strategies.strategy_registry as strategy_registry
-from src.core.exceptions import ConfigurationError
+import research.strategies.strategy_registry as strategy_registry
+from engine.core.exceptions import ConfigurationError
 
 
 def test_all_three_tickers_are_registered_to_the_same_class():
-    from src.ml.reachability_sizing import MLReachabilitySizing
+    from research.ml.reachability_sizing import MLReachabilitySizing
 
     ids = {"ml_reachability_rsp", "ml_reachability_cowz", "ml_reachability_spyd"}
     assert ids <= set(strategy_registry.STRATEGIES)
@@ -116,7 +116,7 @@ def test_the_deeper_guard_in_optimization_controller_also_names_the_mismatch(cap
     """
     import pandas as pd
 
-    from src.optimization.optimization_controller import OptimizationController
+    from research.optimization.optimization_controller import OptimizationController
 
     index = pd.date_range("2024-01-02 14:30", periods=200, freq="1min", tz="UTC")
     frame = pd.DataFrame(

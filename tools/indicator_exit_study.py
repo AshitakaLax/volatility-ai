@@ -55,7 +55,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 warnings.filterwarnings("ignore")
 
-from src.strategies.indicator_library import (
+from research.strategies.indicator_library import (
     available,
     compute,
     load_bars,

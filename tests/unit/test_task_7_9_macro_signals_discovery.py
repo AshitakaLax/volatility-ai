@@ -199,7 +199,7 @@ proliferation, just no longer claiming zero consumers.
 import re
 from pathlib import Path
 
-from src.core.market_context import MarketContext
+from engine.core.market_context import MarketContext
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -233,15 +233,15 @@ MACRO_FIELDS = (
 # appearing, rather than only ever checking the one already known
 # about.
 STRATEGY_MODULES = (
-    "src/strategies/size_calculators.py",
-    "src/trading/decision_cycle.py",
-    "src/trading/risk_manager.py",
-    "src/strategies/bayesian_sizing_calculators.py",
+    "research/strategies/size_calculators.py",
+    "engine/trading/decision_cycle.py",
+    "engine/trading/risk_manager.py",
+    "research/strategies/bayesian_sizing_calculators.py",
 )
 
 # The one documented, deliberate consumer (see module docstring's
 # "DISCOVERY OUTCOME, RE-RUN" section for the full step-3 writeup).
-CONFIRMED_CONSUMER_MODULE = "src/strategies/high_frequency_sizing.py"
+CONFIRMED_CONSUMER_MODULE = "research/strategies/high_frequency_sizing.py"
 # Now two fields, not one: the same strategy branches on both event
 # flags, with a separate multiplier each (see that module's docstring
 # for why they are not folded into a single flag).
@@ -342,10 +342,10 @@ def test_nothing_branches_on_the_macro_fields_outside_the_confirmed_consumer():
         r"(if|elif|while|assert)\b[^\n]*\b(" + "|".join(MACRO_FIELDS) + r")\b"
     )
     offenders = []
-    for path in (REPO_ROOT / "src").glob("*.py"):
+    for path in [p for pkg in ("engine", "research") for p in (REPO_ROOT / pkg).rglob("*.py")]:
         if path.name == Path(CONFIRMED_CONSUMER_MODULE).name:
             continue
-        for line_no, line in enumerate(path.read_text().splitlines(), start=1):
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if branch_pattern.search(line):
                 offenders.append(f"{path.name}:{line_no}")
 
@@ -409,9 +409,9 @@ def test_the_named_bayesian_strategy_now_exists_and_is_still_not_macroeconomic()
     remain the live gate; this test now guards the narrower claim that
     the Bayesian strategy did not become such a consumer.
     """
-    from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
+    from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 
-    source = (REPO_ROOT / "src" / "strategies" / "bayesian_sizing_calculators.py").read_text()
+    source = (REPO_ROOT / "research" / "strategies" / "bayesian_sizing_calculators.py").read_text()
 
     for field in MACRO_FIELDS:
         assert field not in source, (

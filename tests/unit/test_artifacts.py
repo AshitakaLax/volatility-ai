@@ -21,7 +21,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.core.artifacts import (
+from engine.core.artifacts import (
     DeploymentArtifact,
     assert_deployable,
     canonical_hash,
@@ -29,8 +29,8 @@ from src.core.artifacts import (
     hash_config,
     hash_dataset,
 )
-from src.core.config import BacktestConfig
-from src.core.exceptions import ConfigurationError
+from engine.core.config import BacktestConfig
+from engine.core.exceptions import ConfigurationError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -132,8 +132,8 @@ def test_artifact_hash_stable_across_processes():
         f"""
         import sys
         sys.path.insert(0, {str(REPO_ROOT)!r})
-        from src.core.config import BacktestConfig
-        from src.core.artifacts import DeploymentArtifact
+        from engine.core.config import BacktestConfig
+        from engine.core.artifacts import DeploymentArtifact
         config = BacktestConfig.from_dict({{
             "strategy": {{"strategy_id": "fixed", "strategy_params": {{"allocation_pct": 0.05}}}},
             "grid": {{"steps": [0.01], "profit_targets": [0.005]}},

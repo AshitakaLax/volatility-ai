@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import pytest
 
+from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
+from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from research.strategies.size_calculators import SizingStrategy
+from research.strategies.strategy_registry import STRATEGIES
 from server.backtest import _GRID_TRIGGER, describe_grid_trigger
-from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
-from src.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
-from src.strategies.size_calculators import SizingStrategy
-from src.strategies.strategy_registry import STRATEGIES
 
 _LAST_BUY_ONLY = {
     "fixed",

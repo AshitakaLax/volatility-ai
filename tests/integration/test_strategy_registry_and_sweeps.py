@@ -13,16 +13,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.core.config import BacktestConfig, expand_strategy_params
-from src.core.exceptions import ConfigurationError
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
-from src.strategies.size_calculators import (
+from engine.core.config import BacktestConfig, expand_strategy_params
+from engine.core.exceptions import ConfigurationError
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
+from research.strategies.size_calculators import (
     BellCurveProbabilitySizing,
     FixedPortfolioPercentage,
     RsiMomentumSizing,
 )
-from src.strategies.strategy_registry import STRATEGIES, resolve_strategy
+from research.strategies.strategy_registry import STRATEGIES, resolve_strategy
 
 
 @pytest.fixture

@@ -16,8 +16,8 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
+from engine.core.persistence import LedgerStore
 from server.app import app
-from src.core.persistence import LedgerStore
 
 FIXTURE = "tests/fixtures/regression_ohlcv.csv"
 
@@ -85,7 +85,7 @@ class TestLiveParametersAndIndicators:
         profit target visible without diffing a config against a ledger."""
         import json as json_
 
-        from src.core.persistence import LedgerStore
+        from engine.core.persistence import LedgerStore
 
         writer = LedgerStore(store)
         writer.set_meta(
@@ -101,7 +101,7 @@ class TestLiveParametersAndIndicators:
     def test_malformed_parameters_do_not_break_the_whole_state(self, client, store):
         """A dashboard that will not load because one metadata row is
         malformed is worse than one that says the config is unknown."""
-        from src.core.persistence import LedgerStore
+        from engine.core.persistence import LedgerStore
 
         writer = LedgerStore(store)
         writer.set_meta("live.parameters", "{not json")
@@ -120,8 +120,8 @@ class TestLiveParametersAndIndicators:
         assert 0 <= body["rsi"] <= 100
 
         # And it agrees with WilderRSI driven directly over the same bars.
-        from src.data.dashboard_data import find_bar_files, load_bars
-        from src.strategies.sizing_indicators import WilderRSI
+        from engine.data.dashboard_data import find_bar_files, load_bars
+        from research.strategies.sizing_indicators import WilderRSI
 
         frame = load_bars(find_bar_files("TQQQ", "data")[0], limit=max(14 * 20, 390))
         tracker = WilderRSI(period=14)
@@ -481,8 +481,8 @@ class TestStrategyParameters:
         invented -- and asserted here so a strategy gaining a required
         argument fails a test rather than a user's run.
         """
+        from research.strategies.strategy_registry import STRATEGIES
         from server.backtest import STRATEGY_DEFAULTS
-        from src.strategies.strategy_registry import STRATEGIES
 
         for name, cls in STRATEGIES.items():
             defaults = STRATEGY_DEFAULTS.get(name)
@@ -593,8 +593,8 @@ class TestParameterSchema:
     def test_required_and_suggested_carry_what_sizing_details_did(self, client):
         """The old `sizing_details` (required names, committed defaults)
         is fully recoverable from the params, so dropping it lost nothing."""
+        from research.strategies.strategy_registry import STRATEGIES
         from server.backtest import _HIDDEN_PARAMS, STRATEGY_DEFAULTS, required_parameters
-        from src.strategies.strategy_registry import STRATEGIES
 
         models = client.get("/api/backtest/funds").json()["models"]
         assert set(models) == set(STRATEGIES)
@@ -1499,7 +1499,7 @@ class TestBacktestExecution:
         self, monkeypatch
     ):
         """The engine already cross-products grid_steps x profit_targets x
-        strategy_params_grid (src/optimization/search_strategies.py's
+        strategy_params_grid (research/optimization/search_strategies.py's
         GridSearch); this pins the web API's own wiring of that third
         axis: `combinations` counts it, and each cell carries the exact
         combo it ran with rather than the run's first-resolved value."""

@@ -11,12 +11,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.core.config import BacktestConfig
-from src.core.market_context import MarketContext
-from src.core.secrets import API_KEY_ID_ENV_VAR, API_SECRET_KEY_ENV_VAR
-from src.data.tick_validation import TickRejectionReason, TickValidator
-from src.execution.live_execution import LiveExecutionLoop
-from src.strategies.size_calculators import FixedPortfolioPercentage
+from engine.core.config import BacktestConfig
+from engine.core.market_context import MarketContext
+from engine.core.secrets import API_KEY_ID_ENV_VAR, API_SECRET_KEY_ENV_VAR
+from engine.data.tick_validation import TickRejectionReason, TickValidator
+from engine.execution.live_execution import LiveExecutionLoop
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def _live_config() -> BacktestConfig:

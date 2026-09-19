@@ -73,6 +73,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Path, Request, Response
 from pydantic import BaseModel, Field
 
+from engine.warehouse import bars as warehouse_bars
 from server import backtest, deployment
 from server.jobs import (
     SHARD_NAME_PATTERN,
@@ -83,7 +84,6 @@ from server.jobs import (
     ShardSuperseded,
     UnknownShard,
 )
-from src.warehouse import bars as warehouse_bars
 
 router = APIRouter(prefix="/api/backtest", tags=["shards"])
 

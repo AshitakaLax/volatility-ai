@@ -1,6 +1,6 @@
 """IncrementalBarFeatures, replayed bar-by-bar, against the offline batch.
 
-The whole point of src/ml/rolling.py is to compute what
+The whole point of research/ml/rolling.py is to compute what
 features.bar_features() computes, using only what a SizingStrategy
 actually has: one bar at a time, in order, with no look-ahead. If the
 two ever disagree, a persisted model (trained on the offline numbers)
@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.ml.rolling import FEATURE_NAMES, IncrementalBarFeatures
+from research.ml.rolling import FEATURE_NAMES, IncrementalBarFeatures
 
 
 def _synthetic_bars(n: int, seed: int) -> pd.DataFrame:
@@ -43,7 +43,7 @@ def _replay(bars: pd.DataFrame) -> pd.DataFrame:
 
 @pytest.mark.parametrize("seed", range(6))
 def test_incremental_matches_the_offline_batch(seed):
-    from src.ml.features import bar_features
+    from research.ml.features import bar_features
 
     bars = _synthetic_bars(2500, seed)
     offline = bar_features(bars)
@@ -99,7 +99,7 @@ def test_the_entry_bar_cannot_see_its_own_close():
 def test_feature_names_match_the_offline_set_minus_volume():
     """FEATURE_NAMES is documented as bar_features()'s 22 minus
     volume_ratio_390b -- pinned so the two cannot silently drift apart."""
-    from src.ml.features import bar_features
+    from research.ml.features import bar_features
 
     bars = _synthetic_bars(50, seed=2)
     offline_columns = set(bar_features(bars).columns)

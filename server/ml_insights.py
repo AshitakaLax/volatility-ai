@@ -25,9 +25,9 @@ naming the command to run, never a fabricated empty result that reads
 as "nothing here" instead of "nobody has built this yet".
 
 --------------------------------------------------------------------
-WHY NO IMPORT OF src.ml.* HERE
+WHY NO IMPORT OF research.ml.* HERE
 
-src/ml/sources.py and features.py pull in network calls and pandas
+research/ml/sources.py and features.py pull in network calls and pandas
 transforms this module has no reason to trigger, and evaluate/ablate
 need lightgbm -- a dependency this project deliberately keeps out of
 the Raspberry Pi's install (see requirements-ml.txt). Reading the JSON

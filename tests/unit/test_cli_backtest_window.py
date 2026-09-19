@@ -4,7 +4,7 @@ hand to OptimizationController.
 
 FOUND BY RUNNING A REAL SWEEP, NOT BY READING THE SCHEMA. `start_date`/
 `end_date` round-trip through BacktestConfig.from_dict/to_dict
-(src/core/config.py) but, before this module existed, nothing in the
+(engine/core/config.py) but, before this module existed, nothing in the
 CLI path read them back -- config/search_soxl_regime_bayesian.yaml's
 `start_date: "2024-01-01"` silently searched all 10.6 years of history.
 The tell was every threshold candidate in an 80-trial sweep producing
@@ -110,7 +110,7 @@ class TestCliBacktestConfigsActuallyHonorTheWindow:
     just the hand-rolled dataclass above."""
 
     def test_real_backtest_config_start_date_filters(self):
-        from src.core.config import BacktestConfig
+        from engine.core.config import BacktestConfig
 
         raw = {
             "strategy": {"strategy_id": "fixed", "strategy_params": {"allocation_pct": 0.05}},

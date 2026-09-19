@@ -24,7 +24,7 @@ SERVER = Path(__file__).resolve().parents[2] / "server"
 
 # Anything that could reach a venue, a credential, or an order. Matched
 # against imported MODULE names, so `src.alpaca_broker` and
-# `from src.brokers.alpaca_broker import X` are both caught.
+# `from engine.brokers.alpaca_broker import X` are both caught.
 FORBIDDEN_MODULES = (
     "alpaca",
     "alpaca_broker",
@@ -239,7 +239,7 @@ class TestMlInsightsIsReadOnly:
 
     def test_it_imports_no_ml_training_code(self):
         """It reads JSON that tools/*.py already wrote. Importing
-        src.ml.sources or .features would pull in network calls and
+        research.ml.sources or .features would pull in network calls and
         pandas transforms an HTTP GET has no business triggering;
         importing lightgbm or sklearn would pull in a dependency this
         project deliberately keeps off the Raspberry Pi image (see

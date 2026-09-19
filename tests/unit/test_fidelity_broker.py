@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from engine.core.exceptions import ConfigurationError, ExecutionError
+from engine.execution.order_lifecycle import OrderState
 from fidelity_gateway import broker as fidelity_broker
 from fidelity_gateway.broker import (
     PENDING_PATH,
@@ -29,8 +31,6 @@ from fidelity_gateway.broker import (
     derive_order_state,
 )
 from fidelity_gateway.session import PLACE_ENDPOINTS, FidelitySession
-from src.core.exceptions import ConfigurationError, ExecutionError
-from src.execution.order_lifecycle import OrderState
 
 # A DELIBERATELY FAKE account number. This was the operator's real
 # Fidelity account until it was noticed that this repository is public,

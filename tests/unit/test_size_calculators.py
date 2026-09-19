@@ -2,9 +2,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.core.exceptions import ConfigurationError
-from src.core.market_context import MarketContext
-from src.strategies.size_calculators import FixedPortfolioPercentage
+from engine.core.exceptions import ConfigurationError
+from engine.core.market_context import MarketContext
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def _context(**overrides) -> MarketContext:

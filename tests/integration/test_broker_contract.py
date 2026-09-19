@@ -30,12 +30,12 @@ from __future__ import annotations
 
 import pytest
 
+from engine.brokers.alpaca_broker import AlpacaBroker
+from engine.core.retry_policy import RetryConfig
+from engine.core.secrets import LiveCredentials
+from engine.execution.order_lifecycle import OrderState
+from engine.execution.reconciliation import BrokerSnapshot, Reconciler
 from fidelity_gateway.broker import PREVIEW_PATH, FidelityBroker
-from src.brokers.alpaca_broker import AlpacaBroker
-from src.core.retry_policy import RetryConfig
-from src.core.secrets import LiveCredentials
-from src.execution.order_lifecycle import OrderState
-from src.execution.reconciliation import BrokerSnapshot, Reconciler
 from tests.unit.test_alpaca_broker import FakeAccount, FakeClient, FakeOrder, FakePosition
 from tests.unit.test_fidelity_broker import ACCOUNT, FILLED, FakeSession
 
@@ -280,7 +280,7 @@ def test_every_adapter_accepts_the_arguments_the_loop_passes_to_submit_buy(build
     """Pinned against the CALL SITE, not against a remembered signature."""
     import inspect
 
-    from src.trading.live_trading_loop import LiveTradingLoop
+    from engine.trading.live_trading_loop import LiveTradingLoop
 
     source = inspect.getsource(LiveTradingLoop._maybe_buy)
     assert "limit_price=" in source, (

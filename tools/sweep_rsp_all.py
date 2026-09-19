@@ -72,7 +72,7 @@ rejected one at a time.
 --------------------------------------------------------------------
 WHICH STRATEGIES, AND WHY NOT THE OTHERS
 
-STRATEGIES (src/trading/strategy_registry.py) lists sixteen ids, but
+STRATEGIES (engine/trading/strategy_registry.py) lists sixteen ids, but
 nine of them are MLRegimeScaledSizing / MLReachabilitySizing bound to a
 specific ticker's trained model -- ml_regime_tqqq loads
 data/ml/models/TQQQ_regime_crash.txt. Pointing those at RSP bars would

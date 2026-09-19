@@ -53,6 +53,12 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, model_validator
 
+from engine.core.config import BacktestConfig, expand_strategy_params
+from engine.core.exceptions import ConfigurationError
+from engine.warehouse.bars import available_tickers, load_frame
+from research.optimization.optimization_controller import OptimizationController
+from research.optimization.search_strategies import BayesianSearch, GridSearch, SearchStrategy
+from research.strategies.strategy_registry import STRATEGIES, resolve_strategy
 from server import contract, history
 from server.jobs import (
     TERMINAL,
@@ -63,12 +69,6 @@ from server.jobs import (
     RunStopped,
     UnknownRun,
 )
-from src.core.config import BacktestConfig, expand_strategy_params
-from src.core.exceptions import ConfigurationError
-from src.optimization.optimization_controller import OptimizationController
-from src.optimization.search_strategies import BayesianSearch, GridSearch, SearchStrategy
-from src.strategies.strategy_registry import STRATEGIES, resolve_strategy
-from src.warehouse.bars import available_tickers, load_frame
 from tools.export_ui_data import KNOWN_DATA, equity_series, executions, fund_metrics
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
@@ -242,7 +242,7 @@ class RunRequest(BaseModel):
     # on the frontend, expand_strategy_params on the engine). Absent
     # (default) enumerates every combination exhaustively. Present samples
     # `trials` of them via Optuna's TPE sampler
-    # (src/optimization/search_strategies.BayesianSearch) -- the same
+    # (research/optimization/search_strategies.BayesianSearch) -- the same
     # engine `cli.py search` drives from a YAML config.
     bayes: BayesSearch | None = None
     # The objective Optuna optimizes toward AND the column the final
@@ -467,7 +467,7 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     # STILL LOSES TO hf_local_reference ON THE SAME WINDOW (Sharpe 0.59
     # at this grid step) -- an improvement over this strategy's own
     # prior defaults, not a claim it beats the incumbent. See
-    # src/ml/regime_scaled_sizing.py's "UNMEASURED" note; this sweep is
+    # research/ml/regime_scaled_sizing.py's "UNMEASURED" note; this sweep is
     # the measurement, and the answer is still "not yet."
     "ml_regime_soxl": {
         "max_trade_pct": 0.05,
@@ -551,7 +551,7 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     # UNVALIDATED PLACEHOLDER, AND CURRENTLY INFEASIBLE TO FIX. No
     # model exists at data/ml/models/URSP_regime_*; selecting this id
     # fails at ensure_model_available() with a clear ConfigurationError
-    # naming that, per src/ml/regime_scaled_sizing.py's own lazy-load
+    # naming that, per research/ml/regime_scaled_sizing.py's own lazy-load
     # design. Not just untrained: Alpaca's own history for URSP starts
     # 2025-08-27 (~260 sessions total, confirmed by fetching it), well
     # under the 250 TRAIN sessions alone every other fund's model

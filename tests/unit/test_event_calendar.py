@@ -13,14 +13,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.core.exceptions import ConfigurationError, DataValidationError
-from src.data.event_calendar import (
+from engine.core.exceptions import ConfigurationError, DataValidationError
+from engine.data.event_calendar import (
     DEFAULT_EARNINGS_CSV,
     DEFAULT_LEAD_MINUTES,
     NO_EVENT_MINUTES,
     EarningsEventTable,
 )
-from src.data.index_weights import weight_pct
+from engine.data.index_weights import weight_pct
 
 
 def events(*rows: tuple[str, str]) -> pd.DataFrame:

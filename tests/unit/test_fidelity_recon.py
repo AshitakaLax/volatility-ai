@@ -30,9 +30,9 @@ from typing import ClassVar
 
 import pytest
 
+from engine.core.exceptions import ConfigurationError
+from engine.core.secrets import FidelityCredentials
 from fidelity_gateway import recon as fidelity_recon
-from src.core.exceptions import ConfigurationError
-from src.core.secrets import FidelityCredentials
 
 
 class FakePage:
@@ -475,7 +475,7 @@ def test_importing_the_module_does_not_require_playwright():
         ],
         capture_output=True,
         text=True,
-        # The repo root, so `import src...` resolves. This was the
+        # The repo root, so `import engine...` resolves. This was the
         # module's own parent directory back when fidelity_recon.py sat
         # at the repo root; after the move to src/scripts/ that parent
         # is src/scripts/, where `src` is not importable at all.

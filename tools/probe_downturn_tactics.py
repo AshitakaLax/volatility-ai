@@ -92,9 +92,9 @@ import logging
 
 import pandas as pd
 
-from src.core.config import BacktestConfig
-from src.optimization.optimization_controller import OptimizationController
-from src.trading.risk_manager import RiskManager
+from engine.core.config import BacktestConfig
+from engine.trading.risk_manager import RiskManager
+from research.optimization.optimization_controller import OptimizationController
 from tools.harness import TQQQ as TQQQ_CSV
 from tools.harness import Escalating, load_bars
 

@@ -56,9 +56,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from src.core.config import BacktestConfig
-from src.core.ledger import AssetLotLedger
-from src.core.persistence import LedgerStore
+from engine.core.config import BacktestConfig
+from engine.core.ledger import AssetLotLedger
+from engine.core.persistence import LedgerStore
 
 
 def parse_args(argv=None):

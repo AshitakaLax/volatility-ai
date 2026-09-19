@@ -24,9 +24,9 @@ from pathlib import Path
 
 import pytest
 
+from research.optimization.optimization_controller import OptimizationController
 from server.backtest import KNOWN_DATA, run_backtest
 from server.jobs import RunStopped, _json_default
-from src.optimization.optimization_controller import OptimizationController
 
 TICKER = "TQQQ"
 
@@ -189,8 +189,8 @@ def test_the_ranking_is_the_engines_not_a_new_one(uninterrupted):
     an inverted ranking would pass them. This anchors it to run_sweep's own
     order: descending by rank_by, with the report's best configuration the
     one run_sweep itself ranks first."""
+    from research.strategies.strategy_registry import resolve_strategy
     from server.backtest import RunRequest, build_config
-    from src.strategies.strategy_registry import resolve_strategy
 
     cells = uninterrupted["funds"][TICKER]["cells"]
     equities = [cell["m"]["final_equity"] for cell in cells]

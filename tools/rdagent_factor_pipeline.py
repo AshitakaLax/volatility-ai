@@ -274,7 +274,7 @@ task:
 ENV_TEMPLATE = """\
 # RD-Agent LLM configuration. NEVER COMMIT THIS FILE.
 #
-# This project already has a secrets discipline (src/core/secrets.py,
+# This project already has a secrets discipline (engine/core/secrets.py,
 # .env chmod 600, gitignored) -- hold to it here. An LLM key with a
 # billing account attached is a credential in exactly the sense
 # docs/DEPLOY_RASPBERRY_PI.md means it.
@@ -354,7 +354,7 @@ naming. RD-Agent's backtest is being used here as a FACTOR SCREEN, and
 charging a cross-sectional TopkDropout rotation this project's real
 costs would mix "is this factor informative" with "does a 5-name
 rotation survive fees" -- two questions, one number. The costs that
-matter are charged where the money is: src/analysis/cost_models.py, in
+matter are charged where the money is: research/analysis/cost_models.py, in
 the grid backtest, on the strategy actually traded.
 """)
     return 0
@@ -429,7 +429,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     # LAGGED BY ONE SESSION BEFORE THE JOIN. A mined factor's value is
     # computed from a session's own close, so joining it onto that same
     # session's row would let a model see a close it is being asked to
-    # predict from. This is the identical hazard src/warehouse/queries.py
+    # predict from. This is the identical hazard engine/warehouse/queries.py
     # applies publication lags for, and the one src/CLAUDE.md's
     # causal-transform rule calls out as failing silently.
     factors = factors.shift(1)

@@ -17,10 +17,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.core.audit import AUDIT_SCHEMA_VERSION, REQUIRED_PAYLOAD_FIELDS, AuditLog, EventType
-from src.core.exceptions import PersistenceError
-from src.core.idempotency import ProcessedEventStore, compute_decision_id
-from src.core.persistence import LedgerStore
+from engine.core.audit import AUDIT_SCHEMA_VERSION, REQUIRED_PAYLOAD_FIELDS, AuditLog, EventType
+from engine.core.exceptions import PersistenceError
+from engine.core.idempotency import ProcessedEventStore, compute_decision_id
+from engine.core.persistence import LedgerStore
 
 DECISION_KWARGS = dict(
     deployment_id="deploy-1",
@@ -237,7 +237,7 @@ def test_audit_event_ids_are_the_same_ids_task_4_10_uses(store, audit):
 
 
 def test_the_same_id_also_gates_task_7_4_duplicate_protection(store, audit):
-    from src.trading.duplicate_order_guard import DuplicateOrderGuard
+    from engine.trading.duplicate_order_guard import DuplicateOrderGuard
 
     decision_id = compute_decision_id(**DECISION_KWARGS)
     submissions = []

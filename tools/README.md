@@ -1,7 +1,8 @@
 # tools/
 
 Scripts that are **not** part of the trading or backtesting path —
-nothing in `src/` imports anything here, and a live run never calls one.
+nothing in `engine/` or `research/` imports anything here, and a live run
+never calls one.
 
 They live here rather than in the repository root because the root is
 for what you run routinely (`cli.py`, `run_hf_sweep.py`,
@@ -79,7 +80,7 @@ the same machinery — see `cli.py backup --help` / `cli.py restore --help`.
 
 | Script | Produces |
 |---|---|
-| `build_earnings_calendar.py` | `data/earnings_releases_derived.csv`. **Load-bearing for a fresh checkout** — `data/` is git-ignored, so this is absent after a clone and `src/event_calendar.py` needs it. Makes network requests; slow. |
+| `build_earnings_calendar.py` | `data/earnings_releases_derived.csv`. **Load-bearing for a fresh checkout** — `data/` is git-ignored, so this is absent after a clone and `engine/data/event_calendar.py` needs it. Makes network requests; slow. |
 | `pull_extended_history.py` | Extended-hours minute datasets under `data/`, year by year. |
 | `export_strategy_curves.py` | One JSON blob of every strategy measured here, for the dashboard and the artifact. |
 | `build_warehouse.py` | `warehouse/` — two DuckDB catalogs plus ZSTD Parquet lakes for bars (`ticker/year`), macro series (`provider/series_key`) and trade executions (`simulation_id`). Needs `requirements-warehouse.txt`; prints an install hint and exits 2 without it, so a core-only checkout is unaffected. See below. |
@@ -103,16 +104,16 @@ every combination *and its trade blotter* — the blotter that
 `cli.py:150` used to say it had no writer for. `--explain-execution`
 runs an `ASOF JOIN` matching each fill to the market bar in force at
 that instant, which is what makes recorded slippage checkable against
-`src/execution/cost_models.py`'s assumptions. `--explain-series` does the
+`engine/execution/cost_models.py`'s assumptions. `--explain-series` does the
 same for a macro series, but **lag-aware**: `external_series.lag_days`
 (from `data/external/manifest.json`) shifts each observation to its
 publication time before the match, so a bar never joins a FRED print
 that did not exist yet.
 
 Unlike every other script here, this one has a library behind it
-(`src/warehouse/`) because `cli.py` imports the sink too. The
-`tools/`-scripts-are-never-imported-by-`src/` rule still holds: nothing
-in `src/` imports *this file*.
+(`engine/warehouse/`) because `cli.py` imports the sink too. The
+`tools/`-scripts-are-never-imported-by-the-library rule still holds:
+nothing in `engine/` or `research/` imports *this file*.
 
 ## Research — measurements and probes. Read-only; they answer questions
 
@@ -184,8 +185,8 @@ Both forms work:
     python tools/build_earnings_calendar.py
     python -m tools.pull_extended_history
 
-Scripts that import from `src/` need the repo root on `sys.path`, and
+Scripts that import from `engine/` or `research/` need the repo root on `sys.path`, and
 Python puts the *script's* directory on `sys.path[0]` rather than the
-working directory — so `python tools/x.py` would fail on `from src...`
+working directory — so `python tools/x.py` would fail on `from engine...`
 while `python -m tools.x` succeeded. Each carries a small repo-root
 bootstrap so neither invocation surprises anyone.

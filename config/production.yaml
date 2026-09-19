@@ -1,5 +1,5 @@
 # Production: real capital. Requires promotion evidence (Task 7.7) in
-# addition to live.enabled/paper_trading -- see src/promotion.py.
+# addition to live.enabled/paper_trading -- see engine/promotion.py.
 # Credentials come from .env.production (APCA_API_KEY_ID / APCA_API_SECRET_KEY
 # for the Alpaca LIVE account), never from this file.
 strategy:
@@ -33,7 +33,7 @@ live:
   enabled: true
   paper_trading: false
   # The SINGLE parameter set real capital trades. These should be
-  # promoted from a paper-trading run that met src/promotion.py's
+  # promoted from a paper-trading run that met engine/promotion.py's
   # criteria, not copied optimistically from a backtest.
   step: 0.01
   profit_target: 0.005

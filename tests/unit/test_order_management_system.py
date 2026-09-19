@@ -1,8 +1,8 @@
 import pytest
 
-from src.core.exceptions import ConfigurationError
-from src.execution.order_management_system import OrderManagementSystem, OrderStatus
-from src.promotion import PaperTradingRecord, evaluate_promotion
+from engine.core.exceptions import ConfigurationError
+from engine.execution.order_management_system import OrderManagementSystem, OrderStatus
+from engine.promotion import PaperTradingRecord, evaluate_promotion
 
 
 def _passing_promotion():

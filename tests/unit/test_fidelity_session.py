@@ -22,6 +22,7 @@ import json
 
 import pytest
 
+from engine.core.exceptions import ConfigurationError
 from fidelity_gateway.session import (
     FIDELITY_ORIGIN,
     ORDER_ENDPOINTS,
@@ -33,7 +34,6 @@ from fidelity_gateway.session import (
     FidelitySessionExpired,
     service_of,
 )
-from src.core.exceptions import ConfigurationError
 
 PENDING = "/ftgw/digital/activityapi/api/v1/transactions/pending"
 PLACE = "/ftgw/digital/trade-equity/placeOrder"

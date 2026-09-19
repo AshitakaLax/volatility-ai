@@ -46,9 +46,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from engine.warehouse.bars import available_tickers
 from server import history
 from server.backtest import STRATEGY_DEFAULTS, run_backtest
-from src.warehouse.bars import available_tickers
 
 # A modest grid: enough for the sweep matrix to show a real surface
 # without turning "run full simulations" into a research program.

@@ -125,7 +125,7 @@ Only start this after:
    - The audit log (in `docker compose logs live-staging`)
    - No reconciliation errors
    - Orders that actually filled (and at reasonable prices)
-2. **You have promotion evidence** — a successful paper-trading run that meets `src/promotion.py`'s criteria
+2. **You have promotion evidence** — a successful paper-trading run that meets `engine/promotion.py`'s criteria
 
 ```bash
 # Start production (real capital trading)
@@ -219,7 +219,7 @@ Once staging is running successfully:
 1. **Watch the audit trail** for 1-2 weeks
 2. **Verify fills** — check that orders are actually executing at reasonable prices
 3. **Monitor the ledger** (`docker compose exec live-staging sqlite3 /app/state/ledger.db "SELECT * FROM ledger_lots LIMIT 5;"`)
-4. **Review promotion criteria** (`src/promotion.py`) to understand what constitutes a "successful" paper run
+4. **Review promotion criteria** (`engine/promotion.py`) to understand what constitutes a "successful" paper run
 5. **Generate promotion evidence** before moving to production
 
 ---

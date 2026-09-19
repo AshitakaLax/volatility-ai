@@ -37,9 +37,9 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.core.config import BacktestConfig
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.strategy_registry import resolve_strategy
+from engine.core.config import BacktestConfig
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.strategy_registry import resolve_strategy
 
 # Every instrument with a full-history minute file in data/. Kept here
 # rather than discovered by glob so a half-downloaded file cannot
@@ -62,9 +62,9 @@ KNOWN_DATA = {
     # trading days total, NOT a fetch artifact (requested back to
     # 2016-01-01; that is simply all there is). Present here so the
     # backtest UI and manual inspection can use it; NOT enough for
-    # src/ml/qlib_regime's training pipeline, which needs 250+ TRAIN
+    # research/ml/qlib_regime's training pipeline, which needs 250+ TRAIN
     # sessions alone before a held-out test window on top -- see
-    # src/ml/regime_scaled_sizing.py's module docstring and
+    # research/ml/regime_scaled_sizing.py's module docstring and
     # ml_regime_ursp's own STRATEGY_DEFAULTS comment below.
     "URSP": "data/URSP_1Min_sip_all_rth_2016-01-01_2026-09-11.csv",
     # SPDR S&P Biotech -- fetched to fill the volatility gap every other
@@ -185,7 +185,7 @@ def equity_series(curve: pd.Series) -> dict:
 
 
 def run_one(ticker: str, config: BacktestConfig, limit: int | None) -> dict:
-    from src.warehouse.bars import load_frame
+    from engine.warehouse.bars import load_frame
 
     frame = load_frame(ticker)
     if limit:
@@ -231,7 +231,7 @@ def main(argv=None) -> int:
     config = BacktestConfig.from_yaml(args.config)
     config.validate()
 
-    from src.warehouse.bars import available_tickers
+    from engine.warehouse.bars import available_tickers
 
     have_bars = available_tickers()
     funds: dict[str, dict] = {}

@@ -13,14 +13,14 @@ Acceptance criteria:
 
 import pytest
 
-from src.core.exceptions import ExecutionError
-from src.core.idempotency import compute_decision_id
-from src.core.ledger import AssetLotLedger
-from src.core.persistence import LedgerStore
-from src.execution.reconciliation import BrokerSnapshot, Reconciler
-from src.trading.duplicate_order_guard import DuplicateOrderGuard
-from src.trading.risk_manager import CircuitBreaker, CircuitBreakerState
-from src.trading.runtime_lifecycle import (
+from engine.core.exceptions import ExecutionError
+from engine.core.idempotency import compute_decision_id
+from engine.core.ledger import AssetLotLedger
+from engine.core.persistence import LedgerStore
+from engine.execution.reconciliation import BrokerSnapshot, Reconciler
+from engine.trading.duplicate_order_guard import DuplicateOrderGuard
+from engine.trading.risk_manager import CircuitBreaker, CircuitBreakerState
+from engine.trading.runtime_lifecycle import (
     BLOCKED_STATES,
     STARTUP_SEQUENCE,
     RuntimeLifecycle,

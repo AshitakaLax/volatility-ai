@@ -60,8 +60,8 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 warnings.filterwarnings("ignore")
 
-from src.core.config import BacktestConfig
-from src.strategies.indicator_library import available
+from engine.core.config import BacktestConfig
+from research.strategies.indicator_library import available
 from tools.indicator_sweep import INSTRUMENTS, Journal, config_id
 from tools.stage2_grid import daily_regime, score
 

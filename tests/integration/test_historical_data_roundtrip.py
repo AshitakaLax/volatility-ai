@@ -21,10 +21,10 @@ import pandas as pd
 import pytest
 from alpaca.data.models import BarSet
 
-from src.data import data_validation
-from src.data.historical_data import to_backtest_frame, write_csv
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.size_calculators import FixedPortfolioPercentage
+from engine.data import data_validation
+from engine.data.historical_data import to_backtest_frame, write_csv
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def synthetic_session_bars(minutes: int = 360, seed: int = 7):

@@ -80,9 +80,9 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from engine.core.exceptions import ConfigurationError
+from engine.core.secrets import FidelityCredentials, load_fidelity_credentials
 from fidelity_gateway.capture import TrafficCapture
-from src.core.exceptions import ConfigurationError
-from src.core.secrets import FidelityCredentials, load_fidelity_credentials
 
 # Where the session profile and the traffic dump go by default: outside
 # the repo, so that neither a git add nor a Docker `COPY . .` can pick

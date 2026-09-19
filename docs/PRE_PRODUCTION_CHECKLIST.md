@@ -58,11 +58,11 @@ Your paper account and the system's behavior must establish trust before real ca
 
 ### Promotion Evidence
 
-Run `src/promotion.py` (or the `evaluate_promotion` function) against your paper-trading ledger:
+Run `engine/promotion.py` (or the `evaluate_promotion` function) against your paper-trading ledger:
 
 ```bash
 python -c "
-from src.promotion import evaluate_promotion
+from engine.promotion import evaluate_promotion
 from src.persistence import LedgerStore
 
 store = LedgerStore('.state_staging/ledger.db')  # Point to your ledger

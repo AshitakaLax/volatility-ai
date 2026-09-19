@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Train and persist the model src/ml/reachability_sizing.py loads.
+"""Train and persist the model research/ml/reachability_sizing.py loads.
 
     python tools/train_ml_model.py --tickers RSP COWZ SPYD
 
@@ -14,7 +14,7 @@ saves a model something else actually loads.
 36 FEATURES, NOT THE 95 THE OFFLINE DATASET CARRIES
 
 The persisted model is trained on exactly what
-src/ml/live_features.LiveFeatureSource can compute FROM MarketContext
+research/ml/live_features.LiveFeatureSource can compute FROM MarketContext
 alone at inference time: the 21 bar-local features MarketContext's OHLC
 supports (volume_ratio_390b is dropped -- MarketContext carries no
 volume, the same gap this project already hit once for RSI-at-entry and
@@ -78,8 +78,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sklearn.metrics import roc_auc_score
 
-from src.ml.live_features import VOL_BLOCK
-from src.ml.rolling import FEATURE_NAMES as BAR_LOCAL_FEATURES
+from research.ml.live_features import VOL_BLOCK
+from research.ml.rolling import FEATURE_NAMES as BAR_LOCAL_FEATURES
 
 # Exactly what LiveFeatureSource can supply at inference time -- see
 # module docstring. Order matters: it is written into the metadata

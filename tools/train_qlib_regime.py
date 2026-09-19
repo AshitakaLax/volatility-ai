@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Train and persist the two models src/ml/qlib_regime.py loads.
+"""Train and persist the two models research/ml/qlib_regime.py loads.
 
     python tools/train_qlib_regime.py --ticker XBI --bars data/XBI_1min.csv
     python tools/train_qlib_regime.py --ticker COWZ --use-qlib --vol-block
@@ -16,7 +16,7 @@ THE FEATURES ARE NOT COMPUTED HERE. THEY ARE REPLAYED.
 
 This script does not contain a vectorized twin of the inference-time
 feature code, and must never grow one. It instantiates the SAME
-src/ml/qlib_regime.DailyRegimeFeatures the live strategy uses and
+research/ml/qlib_regime.DailyRegimeFeatures the live strategy uses and
 replays it session by session over history.
 
 src/CLAUDE.md's causal-transform rule is the reason: "every rolling
@@ -25,7 +25,7 @@ value at bar D uses only bars < D. This is the easiest way to leak the
 future into a backtest and it fails silently." Two implementations of
 the same window -- one offline in pandas, one online in a ring buffer
 -- is exactly how a shift gets forgotten in one of them.
-src/ml/rolling.IncrementalBarFeatures exists to solve this problem at
+research/ml/rolling.IncrementalBarFeatures exists to solve this problem at
 MINUTE frequency, where replaying a million bars is expensive enough to
 need care. At DAILY frequency there are a few thousand sessions, so
 replay costs nothing and the whole class of bug goes away.
@@ -43,7 +43,7 @@ the artifact format.
 
 Everything qlib touches stops at this file. The output is a plain
 LightGBM booster in native text format plus a JSON sidecar, which is
-what src/ml/qlib_regime.py loads, and that module may not import qlib
+what research/ml/qlib_regime.py loads, and that module may not import qlib
 (see its docstring: requirements.txt's rule is that the Pi must never
 need an optional dependency to start).
 
@@ -95,8 +95,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.ml.features import catalogue, default_directory, transformed_sources
-from src.ml.qlib_regime import DAILY_FEATURES, VOL_BLOCK, DailyRegimeFeatures
+from research.ml.features import catalogue, default_directory, transformed_sources
+from research.ml.qlib_regime import DAILY_FEATURES, VOL_BLOCK, DailyRegimeFeatures
 
 DEFAULT_CUTOFF = "2024-01-01"
 DEFAULT_HORIZON = 20
@@ -122,7 +122,7 @@ def to_daily(bars: pd.DataFrame) -> pd.DataFrame:
         # reading it.
         #
         # Reading a NAIVE timestamp as UTC (rather than as local) is the
-        # same convention src/execution/live_execution.py's build_context
+        # same convention engine/execution/live_execution.py's build_context
         # states: "Naive timestamps are coerced to UTC rather than
         # rejected, since a broker feed supplying local-naive times is
         # common and silently mixing zones is the worse failure."
@@ -161,7 +161,7 @@ def build_features(daily: pd.DataFrame, *, vol_block: bool) -> pd.DataFrame:
                 f"{default_directory()}. Run: python tools/fetch_market_inputs.py --category vol"
             )
         for name in VOL_BLOCK:
-            # .scalar() is the same as-of accessor src/ml/live_features.py
+            # .scalar() is the same as-of accessor research/ml/live_features.py
             # uses at inference, and it already applies each series' own
             # publication lag -- so a value only appears on a date it had
             # actually been printed by.

@@ -15,6 +15,9 @@ import json
 
 import pytest
 
+from engine.core.exceptions import ConfigurationError
+from engine.core.retry_policy import AmbiguousSubmissionError
+from engine.execution.order_lifecycle import OrderState
 from fidelity_gateway.broker import FidelityBroker
 from fidelity_gateway.placing_broker import (
     CANCEL_PLACE_PATH,
@@ -25,9 +28,6 @@ from fidelity_gateway.placing_broker import (
     unresolved_orders,
 )
 from fidelity_gateway.session import PREVIEW_ENDPOINTS, FidelitySession
-from src.core.exceptions import ConfigurationError
-from src.core.retry_policy import AmbiguousSubmissionError
-from src.execution.order_lifecycle import OrderState
 from tests.unit.test_fidelity_broker import ACCOUNT, FakeSession
 
 SYMBOL = "CWH"
@@ -440,7 +440,7 @@ def test_a_transport_refusal_while_cancelling_is_not_reported_as_ambiguous():
 def test_cancelling_reads_the_account_back_out_of_the_reply():
     """The request naming the right account is not proof the venue
     applied it."""
-    from src.core.exceptions import ExecutionError
+    from engine.core.exceptions import ExecutionError
 
     session = _cancel_session(echo_account="111111111")
     with pytest.raises(ExecutionError, match="DIFFERENT account"):

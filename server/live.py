@@ -46,7 +46,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 
-from src.data.dashboard_data import (
+from engine.data.dashboard_data import (
     DashboardError,
     find_bar_files,
     find_stores,
@@ -54,7 +54,7 @@ from src.data.dashboard_data import (
     load_bars,
     load_state,
 )
-from src.strategies.sizing_indicators import WilderRSI
+from research.strategies.sizing_indicators import WilderRSI
 
 router = APIRouter(prefix="/api/live", tags=["live"])
 

@@ -68,7 +68,7 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
-from src.core.secrets import REDACTED, redact_secrets
+from engine.core.secrets import REDACTED, redact_secrets
 
 # Per-payload cap. A brokerage page streams a lot -- quote ticks over
 # WebSocket, JS bundles over XHR -- and an unbounded recorder attached for

@@ -12,8 +12,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.core.exceptions import ConfigurationError
-from src.strategies.sizing_indicators import (
+from engine.core.exceptions import ConfigurationError
+from research.strategies.sizing_indicators import (
     RollingMax,
     RollingMean,
     RollingStdev,

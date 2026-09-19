@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.ml.sources import SourceUnavailable, default_directory, fetch, registry
+from research.ml.sources import SourceUnavailable, default_directory, fetch, registry
 
 # Four at a time. These are public endpoints being asked for a hundred
 # files; the sequential version takes about two minutes and a heavier

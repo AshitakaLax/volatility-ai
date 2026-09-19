@@ -83,7 +83,7 @@ import json
 import time
 from typing import Any
 
-from src.core.exceptions import ConfigurationError
+from engine.core.exceptions import ConfigurationError
 
 FIDELITY_ORIGIN = "https://digital.fidelity.com"
 

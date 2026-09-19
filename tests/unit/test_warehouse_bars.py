@@ -1,4 +1,4 @@
-"""src/warehouse/bars.py: what the simulation and shards read bars through.
+"""engine/warehouse/bars.py: what the simulation and shards read bars through.
 
 SKIPS WITHOUT DUCKDB, like the other warehouse tests: it is an optional
 dependency (requirements-warehouse.txt) and a checkout without it must
@@ -12,7 +12,7 @@ import pytest
 
 duckdb = pytest.importorskip("duckdb")
 
-from src.warehouse import bars  # noqa: E402
+from engine.warehouse import bars  # noqa: E402
 
 
 def _write_warehouse(root, frame: pd.DataFrame, ticker: str = "TESTQ") -> None:

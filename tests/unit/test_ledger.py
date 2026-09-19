@@ -1,6 +1,6 @@
 import pytest
 
-from src.core.ledger import AssetLotLedger, Lot
+from engine.core.ledger import AssetLotLedger, Lot
 
 
 def test_register_buy_creates_open_lot_with_computed_target():

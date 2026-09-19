@@ -47,7 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-from src.ml.features import catalogue
+from research.ml.features import catalogue
 from tools.evaluate_ml_features import evaluate, folds, split_columns
 
 

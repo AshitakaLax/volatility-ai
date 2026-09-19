@@ -22,13 +22,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from src.core.exceptions import ConfigurationError
-from src.core.ledger import Lot
-from src.core.market_context import MarketContext
-from src.ml.qlib_regime import NO_READING, DailyRegimeFeatures, RegimeInferenceSource
-from src.ml.regime_scaled_sizing import MLRegimeScaledSizing
+from engine.core.exceptions import ConfigurationError
+from engine.core.ledger import Lot
+from engine.core.market_context import MarketContext
+from research.ml.qlib_regime import NO_READING, DailyRegimeFeatures, RegimeInferenceSource
+from research.ml.regime_scaled_sizing import MLRegimeScaledSizing
 
-pytest.importorskip("lightgbm", reason="src/ml/ is an optional-dependency package")
+pytest.importorskip("lightgbm", reason="research/ml/ is an optional-dependency package")
 
 
 def context(
@@ -472,7 +472,7 @@ def test_reading_is_computed_from_completed_sessions_only(monkeypatch):
         self._features = DailyRegimeFeatures()
         self._session = None
         self._high, self._low, self._close = -math.inf, math.inf, math.nan
-        self._reading = __import__("src.ml.qlib_regime", fromlist=["NO_READING"]).NO_READING
+        self._reading = __import__("research.ml.qlib_regime", fromlist=["NO_READING"]).NO_READING
         self._external = {}
         self.history_path = None
         self._history_loaded = True

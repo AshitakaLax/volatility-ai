@@ -6,7 +6,7 @@ file's own docstring: "the live trading loop and the Raspberry Pi that
 runs it must never need these to start"). server/app.py imports
 `backtest`, and therefore `strategy_registry`, UNCONDITIONALLY at
 module load time regardless of whether VAI_BACKTEST_UPSTREAM routes
-those requests elsewhere -- so if src/ml/reachability_sizing.py ever
+those requests elsewhere -- so if research/ml/reachability_sizing.py ever
 imported lightgbm at its own module level instead of lazily inside
 MLReachabilitySizing.__init__, simply STARTING the Pi's web container
 would crash with ModuleNotFoundError, taking /api/live/* and the halt
@@ -61,8 +61,8 @@ def lightgbm_and_sklearn_unavailable(monkeypatch):
     reload_targets = [
         name
         for name in list(sys.modules)
-        if (name.split(".")[0] in {"server", "src"} and "ml" in name)
-        or name in ("server.app", "server.backtest", "src.strategies.strategy_registry")
+        if (name.split(".")[0] in {"server", "engine", "research"} and "ml" in name)
+        or name in ("server.app", "server.backtest", "research.strategies.strategy_registry")
     ]
     saved = {name: sys.modules[name] for name in reload_targets}
     for name in reload_targets:
@@ -85,15 +85,15 @@ def test_server_app_imports_without_lightgbm_or_sklearn(lightgbm_and_sklearn_una
 
 
 def test_strategy_registry_imports_and_lists_ml_strategies(lightgbm_and_sklearn_unavailable):
-    registry = importlib.import_module("src.strategies.strategy_registry")
+    registry = importlib.import_module("research.strategies.strategy_registry")
     assert "ml_reachability_cowz" in registry.STRATEGIES
 
 
 def test_only_constructing_the_ml_strategy_needs_the_missing_dependency(
     lightgbm_and_sklearn_unavailable,
 ):
-    from src.core.exceptions import ConfigurationError
-    from src.strategies.strategy_registry import resolve_strategy
+    from engine.core.exceptions import ConfigurationError
+    from research.strategies.strategy_registry import resolve_strategy
 
     with pytest.raises(ConfigurationError, match=r"requirements-ml.txt"):
         resolve_strategy("ml_reachability_cowz")(max_trade_pct=0.05, ticker="COWZ")

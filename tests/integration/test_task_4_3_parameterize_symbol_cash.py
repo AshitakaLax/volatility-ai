@@ -10,8 +10,8 @@ Task 4.3 acceptance tests (A4, S1, S2).
 
 import pandas as pd
 
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.size_calculators import FixedPortfolioPercentage
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.size_calculators import FixedPortfolioPercentage
 from tests.fixtures.regression_baseline import BASELINE
 
 
@@ -39,7 +39,7 @@ def test_default_symbol_and_initial_cash_reproduce_baseline_exactly():
 
 
 def test_custom_symbol_does_not_leak_hardcoded_tqqq(monkeypatch):
-    from src.execution.order_management_system import OrderManagementSystem as RealOMS
+    from engine.execution.order_management_system import OrderManagementSystem as RealOMS
 
     calls = {"buy_symbols": [], "sell_symbols": []}
 
@@ -55,7 +55,7 @@ def test_custom_symbol_does_not_leak_hardcoded_tqqq(monkeypatch):
             calls["sell_symbols"].append(symbol)
             return self._real.execute_sell(symbol, qty, price)
 
-    import src.optimization.optimization_controller as oc_module
+    import research.optimization.optimization_controller as oc_module
 
     monkeypatch.setattr(oc_module, "OrderManagementSystem", RecordingOMS)
 

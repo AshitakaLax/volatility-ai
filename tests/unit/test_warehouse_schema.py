@@ -23,9 +23,9 @@ import pytest
 duckdb = pytest.importorskip("duckdb")
 pytest.importorskip("polars")
 
-from src.warehouse import ingest, queries, schema  # noqa: E402
-from src.warehouse.connection import open_warehouse, total_system_ram_bytes  # noqa: E402
-from src.warehouse.duckdb_sink import (  # noqa: E402
+from engine.warehouse import ingest, queries, schema  # noqa: E402
+from engine.warehouse.connection import open_warehouse, total_system_ram_bytes  # noqa: E402
+from engine.warehouse.duckdb_sink import (  # noqa: E402
     BLOTTER_SCHEMA,
     METRIC_KEYS,
     DuckDBResultSink,
@@ -519,8 +519,8 @@ def test_unknown_row_key_is_treated_as_a_parameter_not_a_metric():
 def test_metric_keys_covers_what_the_engine_actually_emits():
     """Guards against the engine adding a metric that this module then
     mistakes for a parameter."""
-    from src.analysis.performance_analyzer import PerformanceAnalyzer
-    from src.core.ledger import AssetLotLedger
+    from engine.core.ledger import AssetLotLedger
+    from research.analysis.performance_analyzer import PerformanceAnalyzer
 
     produced = PerformanceAnalyzer.calculate_metrics(
         AssetLotLedger(), final_portfolio_value=100.0, initial_cash=100.0
@@ -551,8 +551,8 @@ def test_blotter_schema_covers_every_column_the_engine_writes():
 
 
 def _run_sweep_into(con, root, *, dataset_version="v1", steps=(0.01,), targets=(0.02,)):
-    from src.optimization.optimization_controller import OptimizationController
-    from src.strategies.size_calculators import FixedPortfolioPercentage
+    from research.optimization.optimization_controller import OptimizationController
+    from research.strategies.size_calculators import FixedPortfolioPercentage
 
     broker_id = ensure_broker_environment(con, "zero", _Cost(), "Zero")
     sink = DuckDBResultSink(con, root, dataset_version=dataset_version)

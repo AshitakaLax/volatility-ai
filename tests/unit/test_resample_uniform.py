@@ -16,8 +16,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.core.exceptions import ConfigurationError, DataValidationError
-from src.data.resample_uniform import (
+from engine.core.exceptions import ConfigurationError, DataValidationError
+from engine.data.resample_uniform import (
     bars_per_session,
     default_output_path,
     load_minute_csv,
@@ -224,7 +224,7 @@ def test_the_sidecar_records_the_per_year_synthetic_gradient(tmp_path):
 
 
 def test_sidecar_checksum_matches_the_file_actually_written(tmp_path):
-    from src.data.historical_data import _sha256
+    from engine.data.historical_data import _sha256
 
     out = _run(tmp_path, session_start="09:30", session_end="10:00")
     meta = json.loads(out.with_suffix(".meta.json").read_text())

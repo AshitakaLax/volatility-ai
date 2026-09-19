@@ -19,8 +19,8 @@ import re
 
 import pytest
 
-from src.core.config import BacktestConfig, FidelityConfig
-from src.core.exceptions import ConfigurationError
+from engine.core.config import BacktestConfig, FidelityConfig
+from engine.core.exceptions import ConfigurationError
 
 
 def _config(live: dict | None = None) -> dict:

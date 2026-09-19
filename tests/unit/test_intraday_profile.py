@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from src.data.intraday_profile import (
+from engine.data.intraday_profile import (
     INTRADAY_RANGE_PROFILE,
     SESSION_MINUTES,
     minutes_since_open,

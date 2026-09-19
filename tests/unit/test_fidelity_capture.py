@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import json
 
+from engine.core.secrets import REDACTED
 from fidelity_gateway.capture import (
     DEFAULT_MAX_PAYLOAD_BYTES,
     TrafficCapture,
 )
-from src.core.secrets import REDACTED
 
 
 class FakeWebSocket:

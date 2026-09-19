@@ -71,7 +71,7 @@ services:
 
   # 24/7 production: Alpaca LIVE account (real capital), isolated state
   # volume. Reaching real capital is additionally gated by
-  # src/promotion.py's promotion evidence -- Mode.LIVE will not
+  # engine/promotion.py's promotion evidence -- Mode.LIVE will not
   # construct without a passing paper-trading record.
   live-production:
     build: .

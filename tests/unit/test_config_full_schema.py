@@ -16,12 +16,16 @@ Acceptance criteria:
 import pandas as pd
 import pytest
 
-from src.core.config import BacktestConfig
-from src.core.exceptions import ConfigurationError
-from src.execution.cost_models import DynamicSlippageModel, SlippageCommissionModel, ZeroCostModel
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.size_calculators import FixedPortfolioPercentage
-from src.trading.risk_manager import RiskManager
+from engine.core.config import BacktestConfig
+from engine.core.exceptions import ConfigurationError
+from engine.execution.cost_models import (
+    DynamicSlippageModel,
+    SlippageCommissionModel,
+    ZeroCostModel,
+)
+from engine.trading.risk_manager import RiskManager
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def _load_fixture() -> pd.DataFrame:
@@ -198,7 +202,7 @@ def test_invalid_yaml_non_mapping_rejected():
 
 
 def test_search_direction_threaded_through_bayesian_construction():
-    from src.optimization.search_strategies import BayesianSearch
+    from research.optimization.search_strategies import BayesianSearch
 
     search = BayesianSearch([0.01], [0.005], [{"allocation_pct": 0.05}], direction="minimize")
     assert search._study.direction.name.lower() == "minimize"

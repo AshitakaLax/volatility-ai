@@ -21,10 +21,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.core.exceptions import ConfigurationError
-from src.optimization.monte_carlo import MonteCarloRunner, generate_synthetic_path
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.size_calculators import FixedPortfolioPercentage
+from engine.core.exceptions import ConfigurationError
+from research.optimization.monte_carlo import MonteCarloRunner, generate_synthetic_path
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def _fixture(vol: float, seed: int, n: int = 80) -> pd.DataFrame:

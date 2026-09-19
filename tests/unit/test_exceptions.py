@@ -12,7 +12,7 @@ Acceptance criteria:
 
 import pytest
 
-from src.core.exceptions import (
+from engine.core.exceptions import (
     ConfigurationError,
     ExecutionError,
     PersistenceError,
@@ -21,12 +21,12 @@ from src.core.exceptions import (
     StrategyError,
     TradingSystemError,
 )
-from src.core.exceptions import (
+from engine.core.exceptions import (
     DataValidationError as CanonicalDataValidationError,
 )
-from src.data.data_validation import DataValidationError, validate
-from src.execution.order_management_system import OrderManagementSystem
-from src.strategies.size_calculators import FixedPortfolioPercentage
+from engine.data.data_validation import DataValidationError, validate
+from engine.execution.order_management_system import OrderManagementSystem
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def test_all_seven_domain_exceptions_descend_from_the_common_root():
@@ -55,7 +55,7 @@ def test_distinguishable_by_type_not_message_string():
 
 
 def test_data_validation_error_is_now_the_canonical_domain_exception():
-    # src/data_validation.py's DataValidationError must be the exact
+    # engine/data_validation.py's DataValidationError must be the exact
     # same class as src/exceptions.py's -- not a second, differently-
     # named lookalike -- so `except DataValidationError` (from either
     # import path) or `except TradingSystemError` both work.

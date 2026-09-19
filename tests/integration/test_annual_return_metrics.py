@@ -13,9 +13,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.analysis.performance_analyzer import annual_returns
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.size_calculators import FixedPortfolioPercentage
+from research.analysis.performance_analyzer import annual_returns
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def _flat_price_series(years: int = 3) -> pd.DataFrame:

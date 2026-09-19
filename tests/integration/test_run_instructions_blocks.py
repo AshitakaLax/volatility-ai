@@ -55,9 +55,10 @@ def _sandbox(tmp_path: Path) -> Path:
     happens to have fetched.
     """
     # optimization_controller.py used to sit at the repo root and needed
-    # its own copy; it now lives in src/optimization/, so copying src/
+    # its own copy; it now lives in research/optimization/, so copying src/
     # already brings it along.
-    shutil.copytree(REPO_ROOT / "src", tmp_path / "src")
+    for _pkg in ("engine", "research"):
+        shutil.copytree(REPO_ROOT / _pkg, tmp_path / _pkg)
     (tmp_path / "data").mkdir()
     shutil.copy(
         REPO_ROOT / "tests" / "fixtures" / "regression_ohlcv.csv",
@@ -101,7 +102,7 @@ def test_each_documented_example_runs_verbatim(tmp_path, name):
 
 def test_the_documented_yaml_is_accepted_by_the_real_config_loader(tmp_path):
     """The YAML is validated by BacktestConfig, not merely parsed."""
-    from src.core.config import BacktestConfig
+    from engine.core.config import BacktestConfig
 
     path = tmp_path / "config.yaml"
     path.write_text(block("example-config.yaml"), encoding="utf-8")
@@ -125,7 +126,7 @@ def test_every_documented_yaml_field_is_a_real_config_field():
 
     import yaml
 
-    from src.core import config as config_module
+    from engine.core import config as config_module
 
     sections = {
         "strategy": config_module.StrategyConfig,
@@ -150,7 +151,7 @@ def test_every_documented_yaml_field_is_a_real_config_field():
 
 def test_every_documented_run_sweep_kwarg_is_real():
     """The capabilities list is checked against the real signature."""
-    from src.optimization.optimization_controller import OptimizationController
+    from research.optimization.optimization_controller import OptimizationController
 
     documented = set(re.findall(r"^- (\w+)", block("run-sweep-kwargs"), flags=re.MULTILINE))
     real = set(inspect.signature(OptimizationController.run_sweep).parameters)
@@ -163,7 +164,7 @@ def test_the_example_uses_the_real_constructor_keyword():
     """Guards the drift this file was originally written to catch:
     Run_Instructions once documented `allocations`, which has never
     been a parameter of anything."""
-    from src.strategies.size_calculators import FixedPortfolioPercentage
+    from research.strategies.size_calculators import FixedPortfolioPercentage
 
     FixedPortfolioPercentage(allocation_pct=0.05)  # TypeError if the name is wrong
 

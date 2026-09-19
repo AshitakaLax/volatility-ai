@@ -11,8 +11,8 @@ Acceptance criteria:
 
 import pytest
 
-from src.core.exceptions import ExecutionError
-from src.execution.order_lifecycle import (
+from engine.core.exceptions import ExecutionError
+from engine.execution.order_lifecycle import (
     ALLOWED_TRANSITIONS,
     TERMINAL_STATES,
     OrderRecord,

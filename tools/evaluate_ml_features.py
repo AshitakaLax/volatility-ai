@@ -86,7 +86,8 @@ def split_columns(schema: dict, ticker: str) -> tuple[list[str], list[str]]:
     """Feature columns, divided into bar-local and macro."""
     feature_columns = schema[ticker]["feature_columns"]
     macro = {
-        feature.name for feature in __import__("src.ml.features", fromlist=["features"]).catalogue()
+        feature.name
+        for feature in __import__("research.ml.features", fromlist=["features"]).catalogue()
     }
     macro_columns = [c for c in feature_columns if c in macro]
     bar_columns = [c for c in feature_columns if c not in macro]

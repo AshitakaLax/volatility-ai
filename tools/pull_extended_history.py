@@ -14,7 +14,7 @@ import logging
 
 # tools/ scripts import from src/, and Python puts THIS file's directory
 # on sys.path[0] -- not the working directory -- so `python
-# tools/pull_extended_history.py` would otherwise fail on `from src...` while
+# tools/pull_extended_history.py` would otherwise fail on `from engine...` while
 # `python -m tools.pull_extended_history` succeeded. Same bootstrap as
 # tests/fixtures/regression_baseline.py, so both invocations work.
 import os as _os
@@ -29,9 +29,9 @@ _REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _REPO_ROOT not in _sys.path:
     _sys.path.insert(0, _REPO_ROOT)
 
-from src.data.data_validation import validate
-from src.data.hf_market_data import HFMarketData
-from src.data.historical_data import FetchSpec, session_scope_tag, write_csv
+from engine.data.data_validation import validate
+from engine.data.hf_market_data import HFMarketData
+from engine.data.historical_data import FetchSpec, session_scope_tag, write_csv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 logger = logging.getLogger("pull")

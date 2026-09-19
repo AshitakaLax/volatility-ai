@@ -2,10 +2,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.core.config import BacktestConfig
-from src.core.exceptions import ConfigurationError
-from src.execution.live_execution import LiveExecutionLoop
-from src.strategies.size_calculators import FixedPortfolioPercentage
+from engine.core.config import BacktestConfig
+from engine.core.exceptions import ConfigurationError
+from engine.execution.live_execution import LiveExecutionLoop
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 
 def live_config():

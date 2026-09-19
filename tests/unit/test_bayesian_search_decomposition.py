@@ -9,8 +9,8 @@ decomposition happens only when it is safe.
 
 from __future__ import annotations
 
-from src.core.config import expand_strategy_params
-from src.optimization.search_strategies import BayesianSearch, decompose_params_grid
+from engine.core.config import expand_strategy_params
+from research.optimization.search_strategies import BayesianSearch, decompose_params_grid
 
 
 class FakeResult:

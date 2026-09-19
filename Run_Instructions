@@ -211,8 +211,8 @@ Direct call, no config file:
 --- BEGIN example-direct.py ---
 import pandas as pd
 
-from src.optimization.optimization_controller import OptimizationController
-from src.strategies.size_calculators import FixedPortfolioPercentage
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.size_calculators import FixedPortfolioPercentage
 
 frame = pd.read_csv("data/TQQQ_historical.csv", parse_dates=["timestamp"])
 frame.set_index("timestamp", inplace=True)
@@ -236,9 +236,9 @@ Config-driven, which is what anything repeatable should use:
 --- BEGIN example-config.py ---
 import pandas as pd
 
-from src.optimization.optimization_controller import OptimizationController
-from src.core.config import BacktestConfig
-from src.strategies.strategy_registry import resolve_strategy
+from research.optimization.optimization_controller import OptimizationController
+from engine.core.config import BacktestConfig
+from research.strategies.strategy_registry import resolve_strategy
 
 frame = pd.read_csv("data/TQQQ_historical.csv", parse_dates=["timestamp"])
 frame.set_index("timestamp", inplace=True)

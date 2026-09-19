@@ -161,8 +161,8 @@ def main(argv: list[str] | None = None) -> int:
     # Deferred -- see the module docstring.
     #
     # duckdb and polars are probed DIRECTLY rather than relying on the
-    # src.warehouse import to raise. That package imports its own
-    # dependencies lazily (so that `import src.warehouse` stays cheap),
+    # engine.warehouse import to raise. That package imports its own
+    # dependencies lazily (so that `import engine.warehouse` stays cheap),
     # which means importing it succeeds on a machine that has neither,
     # and the real ImportError would otherwise surface several frames
     # later as a traceback out of open_warehouse instead of the
@@ -171,8 +171,8 @@ def main(argv: list[str] | None = None) -> int:
         import duckdb  # noqa: F401
         import polars  # noqa: F401
 
-        from src.warehouse import ingest, queries, schema
-        from src.warehouse.connection import open_warehouse
+        from engine.warehouse import ingest, queries, schema
+        from engine.warehouse.connection import open_warehouse
     except ImportError as e:
         print(
             f"The warehouse needs its optional dependencies: {e}\n"
