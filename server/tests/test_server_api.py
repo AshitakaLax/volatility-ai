@@ -1050,6 +1050,41 @@ class TestRunHistory:
         assert body["runs"]["r1"]["start"] == "2026-01-01"
         assert "model" not in rows[0] and "funds" not in body["runs"]["r1"]
 
+    def test_the_listing_strips_fills_and_equity_from_a_current_format_run(self, client):
+        """contract.run(detail=False) only translates a LEGACY `report` --
+        a run saved since the contract was condensed has no `parameters`
+        key, so it passes through untouched unless load_all() strips
+        fills/equity itself. A brute-force sweep's best fund can carry
+        tens of thousands of fills; the listing must not ship them, even
+        though the single-run detail view still needs them in full."""
+        from server import history
+
+        history.save(
+            "condensed",
+            {
+                "id": "condensed",
+                "status": "complete",
+                "report": {
+                    "funds": {
+                        "COWZ": {
+                            "cells": [{"grid": 0.01, "target": 0.005, "params": {}, "m": {}}],
+                            "fills": [{"side": "buy"}] * 3,
+                            "equity": {"dates": ["d"], "equity": [1.0]},
+                            "bars": {"count": 1},
+                        }
+                    }
+                },
+            },
+        )
+        listed = client.get("/api/backtest/history").json()
+        assert listed["rows"], "the fixture's own cell should still be listed"
+        fund = history.load_all()[0]["report"]["funds"]["COWZ"]
+        assert fund["fills"] == []
+        assert fund["equity"] == {"dates": [], "equity": []}
+        # The single-run detail path is a separate call and is unaffected.
+        detail = client.get("/api/backtest/runs/condensed").json()
+        assert len(detail["report"]["funds"]["COWZ"]["fills"]) == 3
+
     def test_a_runs_name_is_joinable_from_every_configuration_row(self, client):
         """The table is one row per (run, fund, cell); a reader scanning
         it should see the label on each row, not only the first -- joined

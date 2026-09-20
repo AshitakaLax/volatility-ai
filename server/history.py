@@ -95,10 +95,14 @@ def _prune(target: Path) -> None:
 def load_all() -> list[dict[str, Any]]:
     """Every persisted run, newest first -- a LISTING, for run history.
 
-    A run archived before the contract was condensed comes back without
-    its fills or equity curve: nothing that lists runs reads them, and
-    translating them for 200 runs is most of the cost. load() returns a
-    single run in full.
+    Every fund's `fills` and `equity` are stripped here explicitly, not
+    left to contract.run(detail=False): that only translates a LEGACY
+    `report` blob, so a run saved since the contract was condensed has
+    no `report` key to translate and passes through untouched -- full
+    trade blotter included. A single brute-force sweep's best fund can
+    carry tens of thousands of fills; nothing that lists runs reads
+    them, and shipping them here once blew up this endpoint's response
+    to 100+ MB for 200 runs. load() returns a single run in full.
 
     An unreadable file is SKIPPED with a warning rather than failing the
     listing. One corrupt run must not hide the other hundred -- and the
@@ -120,7 +124,11 @@ def load_all() -> list[dict[str, Any]]:
             loaded.setdefault("saved_at", path.stat().st_mtime)
             # A run archived before the contract was condensed is read in
             # the new shape; the file itself is left as it was written.
-            out.append(contract.run(loaded, detail=False))
+            translated = contract.run(loaded, detail=False)
+            for fund in ((translated.get("report") or {}).get("funds") or {}).values():
+                fund["fills"] = []
+                fund["equity"] = {"dates": [], "equity": []}
+            out.append(translated)
     return out
 
 
