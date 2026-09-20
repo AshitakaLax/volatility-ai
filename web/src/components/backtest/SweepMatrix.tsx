@@ -95,7 +95,7 @@ function comboLabel(params: Cell["params"]): string {
 
 export function SweepMatrix({ funds, onSelectConfiguration, onLoadIntoForm }: Props) {
   const withGrid = Object.entries(funds).filter(
-    ([, fund]) => fund.cells.length > 1,
+    ([, fund]) => (fund.cells?.length ?? 0) > 1,
   );
   const [metric, setMetric] = useState<MetricKey>("cagr_pct");
   const [ticker, setTicker] = useState<string>(withGrid[0]?.[0] ?? "");

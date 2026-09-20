@@ -234,12 +234,24 @@ export const api = {
    * The static export, for looking at a run without the server running.
    * Returns null rather than throwing when absent: no export is a normal
    * state on a fresh checkout, not a failure.
+   *
+   * A file left over from before the wire contract was condensed has
+   * funds shaped like the OLD MultiFundBacktestReport (`executions`,
+   * `equity_curve`, no `cells`) -- this fetch bypasses server/contract.py
+   * entirely, so nothing translates it. Rather than let every consumer
+   * crash on a missing field, treat a shape that isn't current the same
+   * as no export at all.
    */
   staticReport: async (): Promise<Report | null> => {
     try {
       const response = await fetch("/data/backtest_report.json");
       if (!response.ok) return null;
-      return (await response.json()) as Report;
+      const body = (await response.json()) as Report;
+      const funds = Object.values(body.funds ?? {});
+      if (funds.length === 0 || funds.some((fund) => !Array.isArray(fund.cells))) {
+        return null;
+      }
+      return body;
     } catch {
       return null;
     }
