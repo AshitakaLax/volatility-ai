@@ -4,7 +4,7 @@ Static FOMC decision-day calendar.
 --------------------------------------------------------------------
 WHY STATIC, NOT AN INGESTION PIPELINE
 
-Task 7.9 (see tests/unit/test_task_7_9_macro_signals_discovery.py)
+Task 7.9 (see tests/test_task_7_9_macro_signals_discovery.py)
 deliberately deferred building any macro/seasonality ingestion because
 no consumer existed. HighFrequencyLocalReferenceSizing's
 event_day_boost_multiplier is now that consumer -- but FOMC meeting

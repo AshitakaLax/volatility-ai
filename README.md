@@ -875,29 +875,40 @@ under-counts what it may already own rather than spending twice.
 
 ## Testing
 
+The suite is split so each project directory (`engine/`, `research/`,
+`server/`, `fidelity_gateway/`, `tools/`) carries its own `tests/`, and
+the root `tests/` holds only what genuinely spans two of them as peers
+(a broker-contract check across `engine.brokers` + `fidelity_gateway`,
+the live-vs-backtest parity check across `engine` + `research`,
+whole-repo doc verifiers, and `cli.py`'s own entrypoint tests) plus
+`tests/e2e/` and the one shared `tests/fixtures/`. See `tests/CLAUDE.md`
+for the full breakdown and the naming/scanner pitfalls that split
+surfaced.
+
 ```bash
-python cli.py test              # everything
-python cli.py test -q           # quiet
-python cli.py test -k promotion # filtered
-pytest tests/unit -q            # or invoke pytest directly
+python cli.py test                    # everything: every section + root tests/
+python cli.py test -q                 # quiet
+python cli.py test -k promotion       # filtered, still across all sections
+python cli.py test engine/tests -q    # one section only
+pytest engine/tests/test_config.py -q # or invoke pytest directly on one file
 ```
 
-**905 passing** (a parallelism timing test auto-skips on single-core
-machines).
+`cli.py test` inserts every section's `tests/` directory automatically
+when the arguments don't already name an explicit path or node id (see
+`TEST_ROOTS`/`cmd_test` in `cli.py`) — so a bare `-q`/`-k` invocation
+still runs the whole suite even though it now lives in six places, not
+one.
 
-| Suite | Count |
-|---|---|
-| `tests/unit` | 660 |
-| `tests/integration` | 143 |
-| Regression baseline | 1 |
-| Live-execution parity | 3 |
+**2,600+ passing** across the whole suite (exact count drifts with
+active development; treat it as approximate).
 
 ### The regression baseline
 
-`tests/test_regression_baseline.py` pins a full sweep result value-for-value
-and asserts **no extra columns** appear. It has caught real behavioral drift
-repeatedly across development. If you change result columns intentionally,
-update the baseline deliberately — do not loosen the assertion.
+`research/tests/test_regression_baseline.py` pins a full sweep result
+value-for-value and asserts **no extra columns** appear. It has caught
+real behavioral drift repeatedly across development. If you change
+result columns intentionally, update the baseline deliberately — do not
+loosen the assertion.
 
 ### Testing conventions
 
@@ -907,6 +918,10 @@ update the baseline deliberately — do not loosen the assertion.
   deterministically without real delays
 - CLI behavior is tested through real subprocesses, since exit codes and
   argument parsing are what a `docker run` actually exercises
+- A structural "there is only one of these" scanner that `rglob`s a
+  package tree must exclude that package's own `tests/` subdirectory,
+  or it sweeps its own assertions up as false positives once the test
+  files move inside the tree they test — see `tests/CLAUDE.md`
 
 ---
 
@@ -1068,13 +1083,18 @@ volatility-ai/
 │   └── production.yaml        # real capital
 ├── docs/                      # setup and deployment guides
 ├── engine/                    # the trading kernel -- see engine/CLAUDE.md
+│   └── tests/                 # engine-only tests
 ├── research/                  # strategies, sweeps, metrics, ML -- see research/CLAUDE.md
+│   └── tests/                 # research-only tests
+├── server/                    # FastAPI backend -- see server/CLAUDE.md
+│   └── tests/                 # server-only tests
 ├── tools/                     # ops, data prep, and research probes -- see tools/README.md
-│   └── experiments/           # shell wrappers for earlier sweep batches
-└── tests/
-    ├── unit/                  # fast, isolated
-    ├── integration/           # cross-module, end-to-end
-    └── fixtures/              # synthetic OHLCV + regression baseline
+│   ├── experiments/           # shell wrappers for earlier sweep batches
+│   └── tests/                 # tools-only tests
+├── conftest.py                # queue/history test isolation -- global, not under tests/ (see tests/CLAUDE.md)
+└── tests/                     # only what spans two sections as peers -- see tests/CLAUDE.md
+    ├── e2e/                   # the actual Raspberry Pi deployment path
+    └── fixtures/              # synthetic OHLCV + regression baseline, shared by every section
 ```
 
 Git-ignored and therefore absent from a fresh clone, but created by
@@ -1124,7 +1144,7 @@ Tracked honestly rather than hidden:
 7. **One `MarketContext` field is still inert.** `macro_surprise_factor`
    is defined on `MarketContext` but is never populated by any
    construction path and never read. It is guarded by
-   `tests/unit/test_task_7_9_macro_signals_discovery.py` so it cannot be
+   `tests/test_task_7_9_macro_signals_discovery.py` so it cannot be
    consumed undocumented; it should be either populated or removed.
 
    The other macro/seasonality fields are **no longer inert** —

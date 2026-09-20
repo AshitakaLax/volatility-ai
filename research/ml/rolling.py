@@ -60,7 +60,7 @@ model a different RSI than it was trained on, so RSI is re-derived
 below to match the exact recursive formula pandas' ewm(adjust=False)
 uses, not imported from sizing_indicators.
 
-tests/unit/test_ml_rolling.py runs this bar-by-bar against
+research/tests/test_ml_rolling.py runs this bar-by-bar against
 features.bar_features() over real data and asserts they agree -- the
 only way subtle mismatches like the two above stay caught rather than
 silently degrading a model that validates perfectly offline.

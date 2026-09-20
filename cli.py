@@ -4,13 +4,20 @@ Single entrypoint for running this project inside a container (or
 locally). Ten subcommands cover everything the project can honestly
 do today:
 
-  cli.py test [pytest args...]     Run the test suite. Extra arguments
-                                    pass straight to pytest (e.g.
-                                    `cli.py test -k my_test -v`) -- do
-                                    not prefix them with `--`, which
-                                    pytest itself treats as "everything
-                                    after this is a file path", not as
-                                    a separator to strip.
+  cli.py test [pytest args...]     Run the whole suite: every project
+                                    directory's own tests/ (engine/,
+                                    research/, server/, fidelity_gateway/,
+                                    tools/) plus the root tests/ for what
+                                    genuinely spans more than one of them.
+                                    Extra arguments pass straight to
+                                    pytest (e.g. `cli.py test -k my_test
+                                    -v`) -- do not prefix them with `--`,
+                                    which pytest itself treats as
+                                    "everything after this is a file
+                                    path", not as a separator to strip.
+                                    Name an explicit path/node id (e.g.
+                                    `cli.py test engine/tests/test_x.py`)
+                                    to run only that.
   cli.py fetch-data --symbol S --days N
                                     Download historical bars from Alpaca
                                     into data/, the intake format for
@@ -81,6 +88,25 @@ sys.path.insert(0, str(REPO_ROOT))
 # these two commands delegate to) deliberately has no default of its own,
 # but a CLI meant to be run without flags needs one.
 DEFAULT_PI_REMOTE = "ashitakalax@172.16.0.137"
+
+# `test`'s default targets. The suite is split so each project directory
+# (a session root -- see CLAUDE.md's "Project directories" table) carries
+# its own tests/, with the root tests/ holding only what genuinely spans
+# two of them (a broker-contract check across engine+fidelity_gateway, the
+# whole-repo doc/README verifiers, cli.py's own entrypoint tests). Listed
+# explicitly, not left to pytest's own recursive discovery from ".", so
+# `cli.py test` still visibly runs the WHOLE suite in one command and a
+# reader can see every root it covers without knowing pytest's discovery
+# rules -- see cmd_test's docstring for how a real path/node id overrides
+# this list instead of adding to it.
+TEST_ROOTS = (
+    "tests",
+    "engine/tests",
+    "research/tests",
+    "fidelity_gateway/tests",
+    "server/tests",
+    "tools/tests",
+)
 
 # strategy_id -> class. BacktestConfig only stores the id as a string
 # (Task 6.1); this is the same manual mapping Run_Instructions
@@ -178,7 +204,8 @@ def _open_result_sink(args: argparse.Namespace, config, dataset_version: str):
 
 
 def cmd_test(pytest_args: list[str]) -> int:
-    """Run pytest, forwarding arguments verbatim.
+    """Run pytest, forwarding arguments verbatim -- across every project
+    directory's own tests/, not just the root one.
 
     Deliberately NOT parsed through argparse's subparsers: nargs=REMAINDER
     fails to capture a leading option-like token when no positional
@@ -188,8 +215,22 @@ def cmd_test(pytest_args: list[str]) -> int:
     from what a user expects for `cli.py test [pytest args...]`, and
     `-q` is the single most common invocation. sys.argv is read
     directly instead, which has no such failure mode.
+
+    TEST_ROOTS IS INSERTED ONLY WHEN THE CALLER NAMED NO PATH OF THEIR
+    OWN. `cli.py test -q` and `cli.py test -k some_name -v` have no
+    positional that looks like a path, so TEST_ROOTS is prepended and
+    every section's suite runs. `cli.py test engine/tests/test_x.py -q`
+    already names exactly what to run, so nothing is added -- a token
+    counts as "names a path" if it contains a path separator, ends in
+    `.py`, or contains `::` (a pytest node id), which covers every
+    positional pytest itself accepts as a test target without having to
+    duplicate pytest's own argument parser here.
     """
-    cmd = [sys.executable, "-m", "pytest", *pytest_args]
+    names_a_path = any(
+        "/" in arg or "\\" in arg or arg.endswith(".py") or "::" in arg for arg in pytest_args
+    )
+    roots = [] if names_a_path else [r for r in TEST_ROOTS if (REPO_ROOT / r).is_dir()]
+    cmd = [sys.executable, "-m", "pytest", *roots, *pytest_args]
     print(f"+ {' '.join(cmd)}", file=sys.stderr)
     return subprocess.run(cmd, cwd=REPO_ROOT).returncode
 

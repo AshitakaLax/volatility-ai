@@ -49,9 +49,16 @@ ignore = [
 # The dict(...) call form mirrors the keyword arguments it becomes, which
 # reads better than a string-keyed literal at these sites. C408 exists for
 # a micro-optimization that is irrelevant in a test helper, so this is a
-# deliberate style exemption rather than an unaddressed finding -- src/ and
-# optimization_controller.py are held to the rule and are C408-clean.
-"tests/**" = ["C408"]
+# deliberate style exemption rather than an unaddressed finding -- engine/
+# and research/ themselves are held to the rule and are C408-clean.
+#
+# `**/tests/**`, not `tests/**`: the suite now lives in one tests/ per
+# project directory (engine/tests/, research/tests/, server/tests/,
+# fidelity_gateway/tests/, tools/tests/) plus the root one for genuine
+# cross-boundary tests, not a single tree -- see CLAUDE.md's "Project
+# directories" table. The doubled `**` matches a tests/ directory at any
+# depth, so a new section's tests/ is covered automatically.
+"**/tests/**" = ["C408"]
 
 # tools/ and the root-level scripts put the repo root on sys.path before
 # importing anything from src/, because they are run BOTH as

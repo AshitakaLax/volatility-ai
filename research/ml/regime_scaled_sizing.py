@@ -444,7 +444,7 @@ class MLRegimeScaledSizing(_BaselineScaledStrategy):
         # does. server/backtest.py's describe_params() and the /funds
         # response instantiate every registered strategy just to
         # introspect its signature and render a form; so does
-        # tests/unit/test_backtest_param_schema.py. Requiring a trained
+        # server/tests/test_backtest_param_schema.py. Requiring a trained
         # binary artifact -- which lives under gitignored data/ and is
         # absent on any fresh clone or CI runner -- in order to draw a
         # number field is the wrong coupling, and it is already a latent

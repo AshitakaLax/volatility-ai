@@ -20,6 +20,7 @@ python -m playwright install chromium
 | `analyze_har.py` | Reads a capture; `--redact` scrubs one before it leaves the machine. |
 | `recon.py` | Attaches to a live browser and reconciles Fidelity's positions against the local ledger. |
 | `place_test_order.py` | Places one small order through the gated adapter — the manual end-to-end check. |
+| `tests/` | This section's own suite. `test_broker_selection.py`/`test_broker_contract.py` (the engine↔fidelity_gateway seam) live in the ROOT `tests/` instead — see `tests/CLAUDE.md`. |
 
 ## `fidelity` (the PyPI package) is not this package
 
@@ -33,7 +34,7 @@ from fidelity.fidelity import FidelityAutomation  # the third-party one
 ```
 
 That collision is not hypothetical — it was introduced during this
-split and caught by `tests/unit/test_fidelity_recon.py`'s
+split and caught by `fidelity_gateway/tests/test_fidelity_recon.py`'s
 `test_the_import_path_works_against_the_really_installed_package`,
 which imports in a subprocess against the really-installed package.
 Do not rename this directory to `fidelity`.

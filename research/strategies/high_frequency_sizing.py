@@ -71,7 +71,7 @@ RE-RUN
 
 MarketContext.is_macro_event_day (architecture_overview.md Section
 5.1) existed with a safe default and NO consumer anywhere in this
-repository -- tests/unit/test_task_7_9_macro_signals_discovery.py
+repository -- tests/test_task_7_9_macro_signals_discovery.py
 documents that finding and is written to fail the moment a real
 consumer appears. This is that consumer, so per that gate's own step
 3, its source dataset, join semantics, and defaults are documented
@@ -397,7 +397,7 @@ Join semantics: EarningsEventTable.vectorized (backtest) and .scalar
 (live) share one window definition -- [release - lead_minutes, release
 + reaction_minutes), lead_minutes=15.0 by default -- and are pinned
 equal on every bar by
-tests/unit/test_event_calendar.py::test_scalar_and_vectorized_agree_on_every_bar.
+engine/tests/test_event_calendar.py::test_scalar_and_vectorized_agree_on_every_bar.
 event_intensity is the SUM of index weight over every event whose
 window currently contains the bar (not max -- see that module's
 docstring on why two overlapping releases are independent exposure,
@@ -430,7 +430,7 @@ Task 7.9 step-3 writeup for MarketContext.implied_vol_change:
   AFTER the session that produced it. Every bar of the following
   session -- pre-market included -- therefore reads a value that was
   already history when that session opened, so there is no lookahead;
-  tests/unit/test_implied_vol_signal.py asserts that directly rather
+  engine/tests/test_implied_vol_signal.py asserts that directly rather
   than inferring it from the construction. Absent file, or bars before
   the series starts, yield 0.0.
 

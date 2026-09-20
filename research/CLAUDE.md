@@ -13,6 +13,7 @@ live loop, the queue, or the web stack.
 | `analysis/` | `performance_analyzer.py`, `analyze_annual.py` | result metrics, annualized vs. buy-and-hold |
 | `ml/` | `features.py`, `labels.py`, `rolling.py`, `live_features.py`, `reachability_sizing.py`, `regime_scaled_sizing.py`, `qlib_regime.py`, `sources.py` | the learned-sizing research line — read-only research, not a trading input by default |
 | `run_hf_sweep.py` | | the parallel sweep driver (`--n-jobs`, per-combination progress, checkpointed CSV) |
+| `tests/` | | this section's own suite, including the regression baseline (`test_regression_baseline.py`) — see `tests/CLAUDE.md` for what stays here versus moves to the root `tests/` |
 
 ## The one direction that matters
 

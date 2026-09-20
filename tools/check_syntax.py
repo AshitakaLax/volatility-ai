@@ -13,7 +13,7 @@ heredoc that turned a backslash-n into a literal newline inside a
 string: invisible in review, fatal at parse time, and the file had run
 successfully BEFORE that edit and never again after it.
 
-tests/unit/test_tools_are_importable.py asserts the same thing, but it
+tools/tests/test_tools_are_importable.py asserts the same thing, but it
 needs pandas and the rest of the dependency stack just to be collected.
 This needs nothing but the standard library, so CI can run it in
 seconds without installing anything -- which means it still works on

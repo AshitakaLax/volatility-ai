@@ -33,7 +33,7 @@ uvicorn workers would each restore and run it independently.
 | `shard_client.py` | The `cli.py shard` process: claims one sweep, runs the real `run_backtest` on that machine's cores, streams every finished configuration back. Caches bars on disk by fingerprint. | |
 | `ml_upstream.py`, `upstream.py` | Forward requests to the workstation that actually has `data/external/`, `data/ml/` and `requirements-ml.txt` (the Pi deployment doesn't). | |
 
-`tests/unit/test_server_capability.py` walks each module's AST and fails
+`server/tests/test_server_capability.py` walks each module's AST and fails
 if a module reaches for power its docstring disclaims — don't add an
 import to `live.py` or `deployment.py` that would trip it; add the write
 to `control.py` instead.
@@ -73,10 +73,12 @@ Two things that follow from it:
   15 GB machine. `_BestOnlySink` keeps only the running best, and a best
   that finished before a restart is rebuilt by re-simulating that one
   configuration (the engine is deterministic).
-  `tests/integration/test_run_resume.py` pins both.
+  `server/tests/test_run_resume.py` pins both.
 
-Tests never touch the real `output/queue/` or `output/runs/`:
-`tests/conftest.py` points `VAI_QUEUE_DIR` and `VAI_RUN_HISTORY_DIR` at a
+Tests never touch the real `output/queue/` or `output/runs/`: the root
+`conftest.py` (repo root, not under `tests/` -- it has to be an ancestor
+of every project directory's own `server/tests/`, `tests/`, etc. to apply
+to all of them) points `VAI_QUEUE_DIR` and `VAI_RUN_HISTORY_DIR` at a
 temp directory before anything imports `server`.
 
 ## Distributed sweeps: one sweep per machine

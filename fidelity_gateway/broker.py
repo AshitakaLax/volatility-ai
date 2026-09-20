@@ -73,7 +73,7 @@ usable price.
 
 This is not a stylistic preference. AlpacaBroker already raises
 ValueError for exactly these argument cases and its tests pin that, so
-the first run of tests/integration/test_broker_contract.py caught this
+the first run of tests/test_broker_contract.py caught this
 module diverging from it. Two adapters that reject the same bad input
 with different exception types is precisely the divergence that
 conformance test exists to find, and the older, live-money path is the

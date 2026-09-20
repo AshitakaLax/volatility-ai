@@ -11,7 +11,7 @@ instrument rather than a report.
 
 The line between the two is drawn by capability, not by convention:
 this module never opens a ledger store and never imports a broker, and
-tests/unit/test_server_capability.py fails if either changes.
+server/tests/test_server_capability.py fails if either changes.
 
 --------------------------------------------------------------------
 PARAMETERS ARE VALIDATED BY BacktestConfig, NOT BY A SECOND SCHEMA
@@ -625,7 +625,7 @@ _DERIVED_PARAMS: frozenset[str] = frozenset({"baseline_price"})
 # base-class grid-reference argument and this must not add one.
 # `window_param` is keyed here, never inferred from a name, because
 # bell_curve also takes a required `lookback_days` that is a Gaussian
-# SIZING window, not a trigger window. tests/unit/test_backtest_grid_trigger.py
+# SIZING window, not a trigger window. server/tests/test_backtest_grid_trigger.py
 # ties this table to the actual override.
 _GRID_TRIGGER_LAST_BUY: dict[str, Any] = {
     "methods": ["last_buy"],
@@ -655,7 +655,7 @@ _GRID_TRIGGER: dict[str, dict[str, Any]] = {
 # above: not plain last_buy (the multiplier is not 1), and not
 # local_reference (the reference is still the last fill, not a rolling
 # high). It gets its own locked method rather than being described as
-# last_buy, because tests/unit/test_backtest_grid_trigger.py's anti-rot
+# last_buy, because server/tests/test_backtest_grid_trigger.py's anti-rot
 # check ties this table to whether the class actually overrides
 # _grid_trigger_level -- and describing a widened grid as an unwidened
 # one is exactly the drift that check exists to catch.
@@ -666,7 +666,7 @@ _GRID_TRIGGER: dict[str, dict[str, Any]] = {
 # Derived from the registry rather than listed, so registering a new
 # ml_regime_* id cannot forget its trigger descriptor -- which is
 # exactly what happened when six funds were added at once and
-# tests/unit/test_backtest_grid_trigger.py's anti-rot check caught it.
+# server/tests/test_backtest_grid_trigger.py's anti-rot check caught it.
 for _regime_id in (_i for _i in STRATEGIES if _i.startswith("ml_regime_")):
     _GRID_TRIGGER[_regime_id] = {
         "methods": ["regime_widened"],

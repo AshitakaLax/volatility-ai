@@ -134,7 +134,7 @@ with a change landing here would risk the live strategy over a
 convenience save. The formula is copied, not imported: same ratio,
 same clamp, same warm-up-returns-1.0 behavior, same synthetic-bar
 guard (see record_tick) -- verified equal in
-tests/unit/test_bayesian_sizing_calculators.py.
+research/tests/test_bayesian_sizing_calculators.py.
 
 Defaults: vol_scale_exponent=0.0, an exact no-op -- existing configs
 and search_bayesian_deep.yaml's already-recorded results are unaffected.

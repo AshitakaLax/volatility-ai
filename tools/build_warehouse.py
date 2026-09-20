@@ -19,7 +19,7 @@ rebuilds it from data/.
 
 WHY THE HEAVY IMPORTS ARE INSIDE main()
 
-tests/unit/test_tools_are_importable.py imports every tools/*.py and
+tools/tests/test_tools_are_importable.py imports every tools/*.py and
 asserts the import is fast and silent. duckdb and polars are in
 requirements-warehouse.txt, NOT requirements.txt, so a developer or CI
 job that has not installed them must still be able to import this

@@ -10,7 +10,7 @@ Three independent layers, the same three dashboard.py established:
      not a convention someone could forget.
   2. Nothing here imports a broker, a session, or an order type. There
      is no code path to an order to be reached by accident.
-  3. tests/unit/test_server_capability.py walks this file's AST and
+  3. server/tests/test_server_capability.py walks this file's AST and
      fails if either of those stops being true.
 
 The halt lives in server/control.py, deliberately in a different module,

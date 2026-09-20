@@ -14,7 +14,7 @@ TWO ROUTERS, DELIBERATELY DIFFERENT POWERS
                touch a position. Validated through BacktestConfig.
 
 The split is the whole design: live state is something to look at, a
-backtest is something to run. tests/unit/test_server_capability.py walks
+backtest is something to run. server/tests/test_server_capability.py walks
 each module's AST and fails if the boundary moves.
 
 --------------------------------------------------------------------

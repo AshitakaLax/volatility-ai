@@ -9,7 +9,7 @@ anything. Putting the halt in there would make that claim false, and a
 safety claim that is only mostly true is worse than none -- a reader
 would stop checking.
 
-So the write lives here, alone, and tests/unit/test_server_capability.py
+So the write lives here, alone, and server/tests/test_server_capability.py
 asserts that this module reaches CircuitBreaker and NOTHING ELSE: no
 broker, no session, no order type, no sell path.
 

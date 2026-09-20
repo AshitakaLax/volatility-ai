@@ -440,7 +440,7 @@ class OptimizationController:
 
         Uses the same conversion the scalar helper documents (naive
         index treated as UTC, matched on the Eastern calendar date), so
-        the two cannot disagree; tests/unit/test_fomc_calendar.py pins
+        the two cannot disagree; engine/tests/test_fomc_calendar.py pins
         the scalar semantics and an integration test pins that this
         path agrees with it.
         """

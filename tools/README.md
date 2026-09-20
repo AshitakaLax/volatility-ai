@@ -127,7 +127,7 @@ dataset paths and `load_bars()` (parquet-cached, ~12x faster than a bare
 `escalation()` formula, and `DrawdownEscalation` -- a mixin for probes
 that are a *different* strategy but embed the same escalate-into-drawdown
 mechanism. Two tests in
-`tests/unit/test_tools_are_importable.py` enforce this: one pins that
+`tools/tests/test_tools_are_importable.py` enforce this: one pins that
 `Escalating` has a single definition, the other scans every script's
 executable code (docstrings stripped, since several legitimately
 describe the formula in prose) and fails if the formula or the

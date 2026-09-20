@@ -4,7 +4,7 @@
 READ-ONLY, AND NARROW ABOUT IT
 
 Everything here answers "which build is this". It touches no store, no
-broker and no order path, and tests/unit/test_server_capability.py holds
+broker and no order path, and server/tests/test_server_capability.py holds
 it to that alongside the other modules.
 
 The one thing it does that no other module does is run a subprocess, so

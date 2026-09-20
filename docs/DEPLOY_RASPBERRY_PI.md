@@ -310,7 +310,7 @@ generated with `tools/{fetch_market_inputs,build_ml_dataset,
 evaluate_ml_features,ablate_ml_features}.py`).
 
 **This tab is research, not a trading input.** No sizing strategy reads
-it and no live loop imports it — `tests/unit/test_server_capability.py`
+it and no live loop imports it — `server/tests/test_server_capability.py`
 holds `ml_insights.py` to that the same way `live.py` is held to
 read-only. See `ml_plan.md`, "Phase ML-0" for what has actually been
 measured, and how weak most of it still is.

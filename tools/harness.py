@@ -124,7 +124,7 @@ class Escalating(DrawdownEscalation, HighFrequencyLocalReferenceSizing):
 
     THE CANONICAL DEFINITION. Three copies of this previously lived in
     probe_downturn_tactics, probe_escalating_risk and probe_regime_combo;
-    tests/unit/test_tools_are_importable.py verified they computed
+    tools/tests/test_tools_are_importable.py verified they computed
     identical lot sizes before they were replaced by this one.
     """
 

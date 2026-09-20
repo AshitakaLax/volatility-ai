@@ -202,7 +202,7 @@ class AssetLotLedger:
         The invariant is maintained at the three mutation points
         (register_buy, and both branches of close_lot) and is asserted
         against a recomputed sum by
-        tests/unit/test_ledger.py::test_the_running_share_total_matches_a_recomputed_sum.
+        engine/tests/test_ledger.py::test_the_running_share_total_matches_a_recomputed_sum.
 
         A ledger rebuilt by src/persistence.py appends to open_lots
         directly, bypassing register_buy, so that path calls

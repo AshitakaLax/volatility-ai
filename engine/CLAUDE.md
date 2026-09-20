@@ -20,6 +20,7 @@ other engine package at import time.
 | `brokers/` | `alpaca_broker.py`, `broker_selection.py` | the Alpaca `LiveBroker`; `broker_selection` imports each SDK **inside** `build_broker()` so picking one never loads the other (Fidelity lives in `fidelity_gateway/`) |
 | `ui/` | `dashboard.py` | Streamlit view of a running deployment |
 | `promotion.py` | | the paper→live gate |
+| `tests/` | | this section's own suite — see `tests/CLAUDE.md` for what stays here versus moves to the root `tests/` |
 
 ## The canonical decision cycle (`trading/decision_cycle.py`)
 
