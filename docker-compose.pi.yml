@@ -21,9 +21,9 @@
 #     web         the React UI + the read-only live API, :8000.
 #
 # THE BACKTEST ENGINE IS NOT ON THIS MACHINE. `web` forwards
-# /api/backtest/* to VAI_BACKTEST_UPSTREAM (the workstation) and serves
-# /api/live/* itself, because the ledger lives in this host's Docker
-# volume and nothing else can read it. Cores here belong to `paper`.
+# /api/backtest/* to VAI_BACKTEST_UPSTREAM (the main backtest server) and
+# serves /api/live/* itself, because the ledger lives in this host's
+# Docker volume and nothing else can read it. Cores here belong to `paper`.
 #
 # The old Streamlit `dashboard` service was removed: the React `web` UI
 # is the live view now, and the `src/` reorg left the Streamlit
@@ -102,14 +102,13 @@ services:
       TZ: America/New_York
       PYTHONUNBUFFERED: "1"
       # THE ENGINE DOES NOT RUN HERE. Backtest routes are forwarded to
-      # the workstation, which has twelve cores and every bar file,
-      # while /api/live/* stays local because the ledger lives in this
-      # host's volume and nothing else can read it. One origin for the
-      # browser either way -- see server/upstream.py.
+      # the main backtest server, while /api/live/* stays local because
+      # the ledger lives in this host's volume and nothing else can read
+      # it. One origin for the browser either way -- see server/upstream.py.
       #
       # Blank or unset would run sweeps on this Pi instead, on the same
       # four cores as the trading loop above.
-      VAI_BACKTEST_UPSTREAM: "${VAI_BACKTEST_UPSTREAM:-http://172.16.0.134:8000}"
+      VAI_BACKTEST_UPSTREAM: "${VAI_BACKTEST_UPSTREAM:-http://172.16.0.102:8000}"
       # Belt and braces. With the upstream set no engine runs here at
       # all, so this only matters if someone clears that -- at which
       # point a sweep must not saturate the cores the loop is using.
