@@ -39,6 +39,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -81,6 +82,13 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+# /api/backtest/history flattens every stored run to one row per grid
+# cell -- a brute-force sweep run this way pushed a single response past
+# 120 MB and made it unreliable to deliver. The JSON is thousands of
+# near-identical numeric records, so it compresses roughly 12x; gzip
+# costs nothing on the (already lean) small responses everywhere else.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(live.router)
 app.include_router(control.router)
