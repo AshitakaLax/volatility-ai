@@ -11,6 +11,12 @@ strategy:
   strategy_id: bayesian_dual_scale
   strategy_params:
     bars_per_day: 210
+    # target_return is swept as its OWN axis, independent of
+    # grid.profit_targets -- an intentional mismatch for this broad
+    # exploratory sweep (empirically ~87.5% of TPE-sampled combinations
+    # would otherwise be rejected outright: 6 target_return values vs.
+    # 8 profit_targets, matching by chance only). Confirmed deliberate.
+    allow_target_return_mismatch: true
     max_trade_pct: [0.02, 0.05, 0.08, 0.12]
     target_return: [0.002, 0.003, 0.005, 0.0075, 0.01, 0.015]
     horizon_days: [0.25, 0.5, 1.0, 2.0, 4.0]

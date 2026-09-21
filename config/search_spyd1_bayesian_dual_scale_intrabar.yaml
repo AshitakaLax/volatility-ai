@@ -6,6 +6,10 @@ strategy:
   strategy_id: bayesian_dual_scale
   strategy_params:
     bars_per_day: 279
+    # Deliberate mismatch against grid.profit_targets -- see the cowz1
+    # sibling config's comment. Confirmed via an actual run: without
+    # this, ~87.5% of TPE-sampled combinations are rejected outright.
+    allow_target_return_mismatch: true
     max_trade_pct: [0.02, 0.05, 0.08, 0.12]
     target_return: [0.003, 0.005, 0.008, 0.012, 0.02, 0.03]
     horizon_days: [0.25, 0.5, 1.0, 2.0, 4.0]
