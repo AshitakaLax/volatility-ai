@@ -1592,6 +1592,20 @@ def main() -> int:
         "warehouse at DIR (default: warehouse/). Needs requirements-warehouse.txt; "
         "without the flag nothing changes and neither dependency is imported.",
     )
+    p_backtest.add_argument(
+        "--record-history",
+        action="store_true",
+        help="Also write the completed run into output/runs/, in the same shape the "
+        "server's job queue produces -- so it appears in the web UI's Run History "
+        "exactly as if it had been submitted through the form. Independent of "
+        "--warehouse: the job queue never writes to the warehouse (see "
+        "engine/warehouse/duckdb_sink.py), so a run that needs both sets both flags.",
+    )
+    p_backtest.add_argument(
+        "--name",
+        default=None,
+        help="Label shown in the web UI's Run History (default: the config file's name)",
+    )
     p_backtest.set_defaults(func=cmd_backtest)
 
     p_fetch = sub.add_parser("fetch-data", help="Download historical bars for backtesting")

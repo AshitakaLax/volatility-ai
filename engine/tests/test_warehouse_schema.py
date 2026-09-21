@@ -29,9 +29,11 @@ from engine.warehouse.duckdb_sink import (  # noqa: E402
     BLOTTER_SCHEMA,
     METRIC_KEYS,
     DuckDBResultSink,
+    _jsonable,
     ensure_broker_environment,
     split_row,
 )
+from engine.warehouse.hashing import parameter_hash  # noqa: E402
 
 
 class _Cost:
@@ -635,6 +637,98 @@ def test_failed_combination_is_recorded_as_failed(warehouse):
     assert status == "FAILED"
     assert trace == "boom"
     assert sharpe is None
+
+
+def test_a_row_streamed_without_a_sim_result_is_still_recorded_as_succeeded(warehouse):
+    """A row arriving from a remote shard's /sync carries only the
+    flattened metrics dict, never a SimulationResult (server/jobs.py's
+    shard_sync/RunControl.record_row have no such object to send).
+    Success must be decided from error_text alone -- deciding it from
+    `sim_result is not None` as well would misrecord every remotely
+    executed success as FAILED."""
+    con, root = warehouse
+    ensure_broker_environment(con, "zero", _Cost(), "Zero")
+    sink = DuckDBResultSink(con, root, dataset_version="v")
+    sink.open_sweep(algorithm="grid", base_parameters={}, broker_id="zero", dataset_version="v")
+    sink.record(
+        row={
+            "Grid Step": 0.01,
+            "Profit Target": 0.02,
+            "Strategy": "X",
+            "Total Return %": 5.0,
+            "Sharpe": 1.0,
+        },
+        sim_result=None,
+        elapsed_ms=7,
+    )
+    status, sharpe = con.execute("SELECT status, sharpe_ratio FROM sim.simulations").fetchone()
+    assert status == "COMPLETED"
+    assert sharpe == 1.0
+    assert sink.stats["recorded"] == 1
+    assert sink.stats["failed"] == 0
+    assert sink.wrote_any_execution is False
+
+
+def test_attach_execution_backfills_a_blotter_for_an_already_recorded_row(warehouse):
+    """The companion path: once a metrics-only row is recorded, its
+    blotter can be attached later. This is what the main server does
+    for a batch's overall-best combination after re-simulating it,
+    once every sibling chunk (possibly on other shards) is terminal --
+    calling record() again for the same row would silently no-op on the
+    duplicate parameter_hash check before ever reaching the blotter
+    write, which is exactly why this is a separate method."""
+    con, root = warehouse
+    broker_id = ensure_broker_environment(con, "zero", _Cost(), "Zero")
+    sink = DuckDBResultSink(con, root, dataset_version="v1")
+    sink.open_sweep(algorithm="grid", base_parameters={}, broker_id=broker_id, dataset_version="v1")
+
+    from research.optimization.optimization_controller import OptimizationController
+    from research.strategies.size_calculators import FixedPortfolioPercentage
+
+    controller = OptimizationController(historical_data=_bars(400))
+    summary, full = controller.run_sweep(
+        grid_steps=[0.01],
+        profit_targets=[0.02],
+        strategy_class=FixedPortfolioPercentage,
+        strategy_params_grid=[{"allocation_pct": 0.05}],
+        symbol="TQQQ",
+        initial_cash=100_000.0,
+        return_full_results=True,
+    )
+    row = summary.iloc[0].to_dict()
+    sim_result = full[0]
+    assert sim_result is not None and not sim_result.trade_blotter.empty, (
+        "Fixture didn't produce a trade -- can't verify blotter attachment"
+    )
+
+    # Recorded metrics-only first, exactly as a remote shard's /sync row would be.
+    sink.record(row=row, sim_result=None, elapsed_ms=1)
+    assert sink.wrote_any_execution is False
+
+    params, execution, _ = split_row(row)
+    simulation_id = parameter_hash(
+        strategy_id=str(row.get("Strategy", "unknown")),
+        strategy_params=_jsonable(params),
+        grid_step=float(row["Grid Step"]),
+        profit_target=float(row["Profit Target"]),
+        dataset_version="v1",
+        broker_id=broker_id,
+        execution=_jsonable(execution),
+    )[:16]
+
+    assert sink.attach_execution(simulation_id, sim_result) is True
+    assert sink.wrote_any_execution is True
+    count = con.execute(
+        "SELECT count(*) FROM read_parquet(?)",
+        [str(Path(root) / "executions" / f"simulation_id={simulation_id}" / "*.parquet")],
+    ).fetchone()[0]
+    assert count == len(sim_result.trade_blotter)
+
+
+def test_attach_execution_on_an_unknown_simulation_id_returns_false(warehouse):
+    con, root = warehouse
+    sink = DuckDBResultSink(con, root, dataset_version="v")
+    assert sink.attach_execution("does-not-exist", object()) is False
 
 
 def test_non_finite_metrics_are_stored_as_null_not_crashed(warehouse):

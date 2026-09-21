@@ -165,6 +165,32 @@ def test_backtest_missing_config_file_fails_clearly(warehouse_env):
     assert "not found" in result.stderr.lower()
 
 
+def test_backtest_accepts_record_history_and_name_flags(warehouse_env):
+    """Regression: p_backtest's argparse subparser never registered
+    --record-history/--name even after cmd_backtest's body started
+    referencing args.record_history/args.name (added alongside
+    cmd_search's own copy of the same flags) -- so every invocation of
+    `cli.py backtest`, not just ones passing these flags, raised
+    AttributeError once execution reached that line. A nonexistent
+    config path makes this fail fast at the "config not found" check,
+    which only happens AFTER argparse has already accepted the flags --
+    an "unrecognized arguments" exit here would mean the parser
+    regressed again; unit tests that build argparse.Namespace by hand
+    (see tests/test_cli_backtest_record_history.py) cannot catch that,
+    since they never go through argparse at all."""
+    result = _run(
+        "backtest",
+        "--config",
+        "/nonexistent/config.yaml",
+        "--record-history",
+        "--name",
+        "test-run",
+    )
+    assert result.returncode == 2
+    assert "unrecognized arguments" not in result.stderr.lower()
+    assert "not found" in result.stderr.lower()
+
+
 def test_backtest_missing_warehouse_ticker_fails_clearly(config_path, empty_warehouse_env):
     result = _run("backtest", "--config", str(config_path))
     assert result.returncode == 2

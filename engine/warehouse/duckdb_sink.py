@@ -253,7 +253,14 @@ class DuckDBResultSink:
 
         params, execution, metrics = split_row(row)
         error_text = row.get("error")
-        succeeded = error_text is None and sim_result is not None
+        # sim_result is None whenever _run_one_combination itself failed
+        # (its own contract), but ALSO for a row streamed back from a
+        # remote shard's /sync -- that path only ever carries the
+        # flattened metrics dict, never the SimulationResult, for a
+        # genuinely successful combination. Success is decided by
+        # error_text alone; sim_result merely gates whether there is a
+        # blotter to write below.
+        succeeded = error_text is None
 
         phash = parameter_hash(
             strategy_id=str(row.get("Strategy", "unknown")),
@@ -314,9 +321,39 @@ class DuckDBResultSink:
 
         if succeeded:
             self._recorded += 1
-            self._write_executions(simulation_id, sim_result)
+            if sim_result is not None:
+                self._write_executions(simulation_id, sim_result)
         else:
             self._failed += 1
+
+    def attach_execution(self, simulation_id: str, sim_result: Any) -> bool:
+        """Backfill a blotter for an already-recorded simulation whose row
+        arrived without one (a remote shard's /sync only ever sends the
+        flattened metrics row, never the SimulationResult).
+
+        Calling record() again for the same simulation_id would silently
+        no-op -- the duplicate-parameter_hash check above returns before
+        ever reaching _write_executions. This is the separate, additive
+        path for that case: caller supplies simulation_id directly
+        (parameter_hash(...)[:16], a pure computation, needs no lookup).
+        Never raises (rule 1); never retains sim_result past this call
+        (rule 2). Returns whether simulation_id was found.
+        """
+        try:
+            self._con.execute("USE sim")
+            found = self._con.execute(
+                "SELECT 1 FROM simulations WHERE simulation_id = ? LIMIT 1", [simulation_id]
+            ).fetchone()
+            if not found:
+                return False
+            self._write_executions(simulation_id, sim_result)
+            return True
+        except Exception as e:
+            self._errors += 1
+            logger.error(f"Warehouse could not attach an execution ({type(e).__name__}: {e})")
+            return False
+        finally:
+            sim_result = None
 
     def _write_executions(self, simulation_id: str, sim_result: Any) -> None:
         """Append this combination's blotter to the executions lake."""

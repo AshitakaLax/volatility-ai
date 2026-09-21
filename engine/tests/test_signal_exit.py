@@ -90,7 +90,14 @@ def test_flag_without_the_hook_liquidates_nothing():
     assert on == pytest.approx(
         {k: v for k, v in off.items() if isinstance(v, (int, float))}, rel=0, abs=1e-12
     ) or all(on[k] == off[k] for k in off if not isinstance(off[k], (int, float)))
+    # allow_signal_exit itself is excluded: the row now echoes back
+    # exactly the execution flag each run was called with (see
+    # engine.warehouse.hashing.EXECUTION_FLAG_FIELDS), so it is SUPPOSED
+    # to differ between `on` and `off` -- that echo is the input under
+    # test, not a behavioral side effect of it.
     for key, value in off.items():
+        if key == "allow_signal_exit":
+            continue
         assert on[key] == value, f"{key} moved when the flag was enabled with no hook"
 
 

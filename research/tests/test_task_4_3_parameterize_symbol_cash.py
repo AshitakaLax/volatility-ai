@@ -38,6 +38,46 @@ def test_default_symbol_and_initial_cash_reproduce_baseline_exactly():
         assert result[key] == expected
 
 
+def test_row_carries_every_execution_flag_it_was_actually_called_with():
+    """engine.warehouse.hashing.EXECUTION_FLAG_FIELDS names 8 fields as
+    part of a simulation's warehouse dedup identity; the row returned by
+    _run_one_combination silently omitted all of them for as long as the
+    warehouse-recording feature existed, so every recorded simulation
+    hashed as if execution were always {}. Non-default values here, not
+    just presence, so a call site that hardcodes a flag rather than
+    threading it through would still be caught."""
+    df = _load_fixture()
+    result = (
+        OptimizationController(historical_data=df)
+        .run_sweep(
+            grid_steps=[BASELINE["Grid Step"]],
+            profit_targets=[BASELINE["Profit Target"]],
+            strategy_class=FixedPortfolioPercentage,
+            strategy_params_grid=[{"allocation_pct": BASELINE["allocation_pct"]}],
+            symbol="SPXL",
+            initial_cash=250_000.0,
+            fill_model="intrabar",
+            intrabar_priority="sell_first",
+            on_flat_reentry="reset_to_market",
+            enforce_no_loss=False,
+            allow_signal_exit=True,
+            settlement_days=1,
+        )
+        .iloc[0]
+    )
+    assert result["symbol"] == "SPXL"
+    assert result["initial_cash"] == 250_000.0
+    assert result["fill_model"] == "intrabar"
+    assert result["intrabar_priority"] == "sell_first"
+    assert result["on_flat_reentry"] == "reset_to_market"
+    # == not is: this value comes back through a pandas column, which
+    # types a bool as numpy's np.bool_ -- equal to, but not the same
+    # object as, the Python bool singleton.
+    assert result["enforce_no_loss"] == False  # noqa: E712
+    assert result["allow_signal_exit"] == True  # noqa: E712
+    assert result["settlement_days"] == 1
+
+
 def test_custom_symbol_does_not_leak_hardcoded_tqqq(monkeypatch):
     from engine.execution.order_management_system import OrderManagementSystem as RealOMS
 

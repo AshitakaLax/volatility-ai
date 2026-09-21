@@ -326,11 +326,29 @@ def _run_one_combination(
         # from different strategies were previously indistinguishable
         # once combined.
         identity = {"Strategy": _strategy_name(strategy_class)}
+        # engine.warehouse.hashing.EXECUTION_FLAG_FIELDS names these 8
+        # keys as part of a simulation's dedup identity, and
+        # DuckDBResultSink.split_row() pulls them out of exactly this
+        # row -- omitting them here (as this row always did before) left
+        # every warehouse-recorded simulation hashing as if execution
+        # were always {}, so two runs differing only in e.g. fill_model
+        # silently collided as "the same simulation, already recorded."
+        execution_flags = {
+            "symbol": symbol,
+            "initial_cash": initial_cash,
+            "fill_model": fill_model,
+            "intrabar_priority": intrabar_priority,
+            "on_flat_reentry": on_flat_reentry,
+            "enforce_no_loss": enforce_no_loss,
+            "allow_signal_exit": allow_signal_exit,
+            "settlement_days": settlement_days,
+        }
         result_row = {
             "Grid Step": step,
             "Profit Target": target,
             **identity,
             **params,
+            **execution_flags,
             **result.metrics,
         }
         return result_row, result
@@ -341,6 +359,14 @@ def _run_one_combination(
             "Profit Target": target,
             "Strategy": _strategy_name(strategy_class),
             **params,
+            "symbol": symbol,
+            "initial_cash": initial_cash,
+            "fill_model": fill_model,
+            "intrabar_priority": intrabar_priority,
+            "on_flat_reentry": on_flat_reentry,
+            "enforce_no_loss": enforce_no_loss,
+            "allow_signal_exit": allow_signal_exit,
+            "settlement_days": settlement_days,
             "error": str(e),
         }, None
 

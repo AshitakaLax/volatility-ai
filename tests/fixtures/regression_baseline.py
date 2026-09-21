@@ -109,11 +109,30 @@ def run_baseline_sweep() -> dict:
 # previously pinned value was confirmed byte-identical first, so this
 # revision adds a column and changes no behavior. If a future edit here
 # also moves a number, that is a regression, not a schema change.
+#
+# Added when _run_one_combination started including its own execution
+# flags in the row it returns (engine/warehouse/hashing.py's
+# EXECUTION_FLAG_FIELDS names these 8 as part of a simulation's dedup
+# identity; the row previously omitted all of them, so every
+# warehouse-recorded simulation hashed as if execution were always {}).
+# Every value above was re-derived and compared -- byte-identical,
+# modulo int/float repr of whole-number trade counts, which
+# _assert_matches_baseline's math.isclose already treats as equal --
+# before these eight keys were appended. This file still pins exactly
+# the behavior it did before, plus eight new columns.
 BASELINE: dict | None = {
     "Grid Step": 0.01,
     "Profit Target": 0.005,
     "Strategy": "FixedPortfolioPercentage",
     "allocation_pct": 0.05,
+    "symbol": "TQQQ",
+    "initial_cash": 100000.0,
+    "fill_model": "close",
+    "intrabar_priority": "sell_first",
+    "on_flat_reentry": "stale_reference",
+    "enforce_no_loss": True,
+    "allow_signal_exit": False,
+    "settlement_days": 0,
     "Final Equity": 100099.81489816227,
     "Total Return %": 0.09981489816226485,
     "Realized PnL": 99.81489816224163,
