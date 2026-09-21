@@ -184,6 +184,124 @@ def equity_series(curve: pd.Series) -> dict:
     }
 
 
+def _native(value):
+    """A pandas/numpy scalar as a plain Python one -- duplicated from
+    server/backtest.py's own `_native` rather than imported: this module
+    must stay importable from `cli.py` without FastAPI installed, and
+    `server/` depends on this side of the boundary, never the reverse."""
+    return value.item() if hasattr(value, "item") else value
+
+
+def build_search_report(
+    config: BacktestConfig,
+    symbol: str,
+    results: pd.DataFrame,
+    top_sim_result,
+    frame: pd.DataFrame,
+    run_id: str,
+    name: str | None = None,
+) -> dict:
+    """A Report dict for a completed `cli.py search`/`backtest` run, in
+    the exact shape server/backtest.py serves from the job queue -- so a
+    sweep run directly against the warehouse (which the queue path
+    cannot record results into, see engine/warehouse/duckdb_sink.py)
+    still appears in the web UI's Run History exactly as if it had been
+    submitted through the form.
+
+    `results` is the same ranked DataFrame `cmd_search`/`cmd_backtest`
+    already print and write to CSV: one row per combination, each
+    either full engine metrics or an `error` key from a failed
+    combination (see optimization_controller._run_one_combination). A
+    failed row has no metrics to report and is skipped, not zeroed --
+    `cells[0]` is still the engine's actual top pick either way, since
+    `results` is pre-sorted by the search's own rank_by.
+
+    `top_sim_result` supplies the one fund-level `fills`/`equity` this
+    shape carries (cells[0]'s), matching the queue path's own "the
+    engine's top pick, not every cell" memory discipline -- pass None
+    if every combination failed.
+    """
+    strategy_param_keys = set(config.strategy.strategy_params)
+    cells = []
+    for _, row in results.iterrows():
+        if "error" in row.index and pd.notna(row.get("error")):
+            continue
+        cells.append(
+            {
+                "grid": float(row["Grid Step"]),
+                "target": float(row["Profit Target"]),
+                "params": {key: _native(row[key]) for key in strategy_param_keys if key in row},
+                "m": fund_metrics(dict(row)),
+            }
+        )
+    bars = {
+        "start": pd.Timestamp(frame.index[0]).isoformat(),
+        "end": pd.Timestamp(frame.index[-1]).isoformat(),
+        "count": len(frame),
+    }
+    fund = {
+        "cells": cells,
+        "fills": executions(top_sim_result.trade_blotter) if top_sim_result is not None else [],
+        "equity": (
+            equity_series(top_sim_result.equity_curve)
+            if top_sim_result is not None
+            else {"dates": [], "equity": []}
+        ),
+        "bars": bars,
+    }
+    return {
+        "id": run_id,
+        "name": name,
+        "model": config.strategy.strategy_id,
+        "fill": config.execution.fill_model,
+        "no_loss": config.execution.enforce_no_loss,
+        "params": dict(config.strategy.strategy_params),
+        "grid": config.grid.steps[0] if config.grid.steps else None,
+        "target": config.grid.profit_targets[0] if config.grid.profit_targets else None,
+        "start": bars["start"],
+        "end": bars["end"],
+        "interval": "1Min",
+        "funds": {symbol: fund},
+    }
+
+
+# Mirrors server/history.py's MAX_RUNS exactly -- a run recorded from
+# this side of the boundary should age out on the same schedule as one
+# the job queue recorded, not accumulate without bound because it
+# bypassed the queue's own pruning.
+_RUN_HISTORY_MAX = 200
+
+
+def write_run_history(run_id: str, report: dict) -> Path:
+    """Write a completed run's report into output/runs/, in the exact
+    shape server/history.py's store uses, so it appears in the web UI's
+    Run History. Duplicates that module's tiny save()/_prune() rather
+    than importing server: cli.py must keep working without FastAPI
+    installed, and server/ depends on this side of the boundary, never
+    the reverse (see server/history.py's own module docstring for why
+    JSON files under output/runs/ are the format at all).
+    """
+    import os
+
+    root = Path(os.environ.get("VAI_RUN_HISTORY_DIR") or "output/runs")
+    root.mkdir(parents=True, exist_ok=True)
+    snapshot = {
+        "id": run_id,
+        "status": "complete",
+        "progress": 1.0,
+        "report": report,
+    }
+    path = root / f"{run_id}.json"
+    staging = path.with_suffix(".json.tmp")
+    staging.write_text(json.dumps(snapshot), encoding="utf-8")
+    staging.replace(path)
+
+    existing = sorted(root.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for stale in existing[_RUN_HISTORY_MAX:]:
+        stale.unlink(missing_ok=True)
+    return path
+
+
 def run_one(ticker: str, config: BacktestConfig, limit: int | None) -> dict:
     from engine.warehouse.bars import load_frame
 

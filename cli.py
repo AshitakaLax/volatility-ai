@@ -401,6 +401,49 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         results.to_csv(out_path, index=False)
         print(f"Full results written to {out_path}")
+
+    if args.record_history and len(results) > 0:
+        import uuid
+
+        from research.optimization.optimization_controller import _run_one_combination
+        from tools.export_ui_data import build_search_report, write_run_history
+
+        # run_sweep already ranked `results`, so row 0 is the engine's
+        # own top pick -- re-run just that one combination for its
+        # blotter/equity, the same "rebuild the best configuration's
+        # trade log" pattern server/backtest.py uses, rather than
+        # keeping every combination's SimulationResult (return_full_results
+        # on the whole sweep is the exact memory hazard config/CLAUDE.md
+        # and server/CLAUDE.md both warn against).
+        top = results.iloc[0]
+        strategy_param_keys = set(config.strategy.strategy_params)
+        _, top_sim_result = _run_one_combination(
+            controller,
+            float(top["Grid Step"]),
+            float(top["Profit Target"]),
+            strategy_class,
+            {key: top[key] for key in strategy_param_keys if key in top},
+            config.backtest.symbol,
+            config.backtest.initial_cash,
+            config.costs.build(),
+            config.risk.build(),
+            config.execution.on_flat_reentry,
+            fill_model=config.execution.fill_model,
+            intrabar_priority=config.execution.intrabar_priority,
+            enforce_no_loss=config.execution.enforce_no_loss,
+        )
+        run_id = uuid.uuid4().hex[:12]
+        report = build_search_report(
+            config,
+            config.backtest.symbol,
+            results,
+            top_sim_result,
+            df,
+            run_id,
+            name=args.name or config_path.stem,
+        )
+        history_path = write_run_history(run_id, report)
+        print(f"History: recorded as {run_id} -> {history_path} (visible in the web UI)")
     return 0
 
 
@@ -624,6 +667,14 @@ def cmd_search(args: argparse.Namespace) -> int:
     rows, trial_log = [], []
     started = time.time()
     trial_number = 0
+    # The one SimulationResult this command keeps -- the engine's own
+    # top pick, by the search's own rank_by/direction, so build_search_report
+    # can carry its fills/equity without retaining all `args.trials` of
+    # them (the exact memory hazard server/backtest.py's own "rebuild
+    # the best configuration's trade log" comment already documents).
+    best_objective: float | None = None
+    best_sim_result = None
+    ascending = config.search.direction == "minimize"
     while True:
         suggestion = search.suggest()
         if suggestion is None:
@@ -641,6 +692,9 @@ def cmd_search(args: argparse.Namespace) -> int:
             cost_model,
             risk_manager,
             config.execution.on_flat_reentry,
+            fill_model=config.execution.fill_model,
+            intrabar_priority=config.execution.intrabar_priority,
+            enforce_no_loss=config.execution.enforce_no_loss,
         )
         search.report(suggestion, sim_result)
         rows.append(row)
@@ -648,6 +702,12 @@ def cmd_search(args: argparse.Namespace) -> int:
             sink.record(row=row, sim_result=sim_result, elapsed_ms=int((time.time() - t0) * 1000))
 
         objective = None if "error" in row else row.get(config.search.rank_by)
+        if objective is not None and sim_result is not None:
+            is_better = best_objective is None or (
+                objective < best_objective if ascending else objective > best_objective
+            )
+            if is_better:
+                best_objective, best_sim_result = objective, sim_result
         trial_log.append(
             {
                 "trial": trial_number,
@@ -681,7 +741,6 @@ def cmd_search(args: argparse.Namespace) -> int:
     )
 
     results = pd.DataFrame(rows)
-    ascending = config.search.direction == "minimize"
     if config.search.rank_by in results.columns:
         results = results.sort_values(
             config.search.rank_by, ascending=ascending, na_position="last"
@@ -700,6 +759,24 @@ def cmd_search(args: argparse.Namespace) -> int:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame(trial_log).to_csv(log_path, index=False)
         print(f"Trial-order log -> {log_path}")
+
+    if args.record_history:
+        import uuid
+
+        from tools.export_ui_data import build_search_report, write_run_history
+
+        run_id = uuid.uuid4().hex[:12]
+        report = build_search_report(
+            config,
+            config.backtest.symbol,
+            results,
+            best_sim_result,
+            df,
+            run_id,
+            name=args.name or config_path.stem,
+        )
+        history_path = write_run_history(run_id, report)
+        print(f"History: recorded as {run_id} -> {history_path} (visible in the web UI)")
     return 0
 
 
@@ -1586,6 +1663,20 @@ def main() -> int:
         metavar="DIR",
         help="Also record every trial and its trade blotter into the DuckDB warehouse "
         "at DIR (default: warehouse/). Needs requirements-warehouse.txt.",
+    )
+    p_search.add_argument(
+        "--record-history",
+        action="store_true",
+        help="Also write the completed run into output/runs/, in the same shape the "
+        "server's job queue produces -- so it appears in the web UI's Run History "
+        "exactly as if it had been submitted through the form. Independent of "
+        "--warehouse: the job queue never writes to the warehouse (see "
+        "engine/warehouse/duckdb_sink.py), so a run that needs both sets both flags.",
+    )
+    p_search.add_argument(
+        "--name",
+        default=None,
+        help="Label shown in the web UI's Run History (default: the config file's name)",
     )
     p_search.set_defaults(func=cmd_search)
 
