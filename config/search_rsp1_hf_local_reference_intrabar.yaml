@@ -1,0 +1,36 @@
+# rsp1-hf_local_reference-intrabar -- TPE search over
+# HighFrequencyLocalReferenceSizing on RSP, intrabar fills. per_lot_pct
+# scaled to this file's own (finer than COWZ/SPYD) grid.
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 390
+    per_lot_pct: [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.003]
+    lookback_days: [0.02, 0.05, 0.1, 0.2, 0.5, 1.0]
+    event_day_boost_multiplier: [1.0, 1.5, 2.0]
+    earnings_day_boost_multiplier: [1.0, 1.5, 2.0]
+grid:
+  steps: [0.0001, 0.0002, 0.0004, 0.0007, 0.001, 0.002, 0.004]
+  profit_targets: [0.0025, 0.005, 0.01, 0.02, 0.03, 0.05, 0.08]
+backtest:
+  symbol: RSP
+  initial_cash: 100000.0
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+output:
+  return_full_results: false

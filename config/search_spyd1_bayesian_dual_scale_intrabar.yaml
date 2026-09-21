@@ -1,0 +1,39 @@
+# spyd1-bayesian_dual_scale-intrabar -- TPE search over
+# BayesianDualScaleSizing on SPYD, intrabar fills. target_return tracks
+# this file's own grid.profit_targets scale (not COWZ's), same relative
+# spread as the cowz1 sibling config.
+strategy:
+  strategy_id: bayesian_dual_scale
+  strategy_params:
+    bars_per_day: 279
+    max_trade_pct: [0.02, 0.05, 0.08, 0.12]
+    target_return: [0.003, 0.005, 0.008, 0.012, 0.02, 0.03]
+    horizon_days: [0.25, 0.5, 1.0, 2.0, 4.0]
+    fast_half_life_days: [1.0, 2.0, 5.0, 10.0]
+    slow_half_life_days: [20.0, 40.0, 80.0, 150.0]
+    confidence_k: [0.5, 1.0, 1.5, 2.0, 2.5]
+    reference_probability: [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
+grid:
+  steps: [0.0002, 0.0005, 0.001, 0.002, 0.004, 0.0075, 0.012]
+  profit_targets: [0.003, 0.006, 0.01, 0.02, 0.03, 0.05, 0.08]
+backtest:
+  symbol: SPYD
+  initial_cash: 100000.0
+costs:
+  model_type: slippage_commission
+  commission_per_trade: 0.0
+  slippage_bps: 5.0
+risk:
+  max_concurrent_lots: null
+  max_total_exposure: null
+search:
+  strategy: bayesian
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+output:
+  return_full_results: false
