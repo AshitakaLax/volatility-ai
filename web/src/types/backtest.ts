@@ -144,6 +144,12 @@ export interface RunMeta {
   start: string | null;
   end: string | null;
   interval: string;
+  /** A sweep too large for one submission is split into independent
+   * chunks that share a batch_id; batch_total is 1 for the common,
+   * unsplit case. Absent on a run archived before batching existed. */
+  batch_id?: string | null;
+  batch_index?: number;
+  batch_total?: number;
 }
 
 /** One run, one or more funds. */
@@ -190,6 +196,13 @@ export interface RunReq {
    * "Sharpe Ratio" is display-only and not valid here. */
   rank_by?: string;
   minimize?: boolean;
+  /** ECHO ONLY -- stamped by the server (POST /runs), never sent by the
+   * client. A sweep too large for one submission is bisected into
+   * independent chunks that share a batch_id; batch_total is 1 for the
+   * common, unsplit case. See SubmitResponse. */
+  batch_id?: string;
+  batch_index?: number;
+  batch_total?: number;
 }
 
 /**
@@ -226,6 +239,18 @@ export interface Run {
   req: RunReq;
   report: Report | null;
 }
+
+/**
+ * POST /api/backtest/runs's response. A sweep that fits under the
+ * combination ceiling in one submission returns a plain Run, exactly as
+ * every server has always returned -- backward compatible, and still
+ * what most submissions get back. One too large for that is bisected
+ * server-side into independent chunks that share a batch_id, each
+ * queued as its own Run; every chunk's own req.batch_id/batch_index/
+ * batch_total agree with this wrapper's own fields. lib/runBatches.ts
+ * groups Run[] back into batches for display.
+ */
+export type SubmitResponse = Run | { batch_id: string; runs: Run[] };
 
 /** A queue control. `pos` is 0-based among pending runs with this one
  * taken out; see lib/runQueue.ts moveTarget. */
@@ -341,6 +366,10 @@ export interface HistoryRow extends Cell {
   end: string | null;
   /** Epoch seconds, from the stored file's mtime. */
   saved_at: number | null;
+  /** Absent on a run archived before batching existed. */
+  batch_id: string | null;
+  batch_index: number | null;
+  batch_total: number | null;
 }
 
 /* ------------------------------------------------------------------ */

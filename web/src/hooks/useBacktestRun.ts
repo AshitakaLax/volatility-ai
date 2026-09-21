@@ -6,6 +6,16 @@ import type { Frame, Run, RunReq } from "@/types/backtest";
 
 import { useWebSocket } from "./useWebSocket";
 
+/** A submission too large for one Run, bisected server-side. There is no
+ * single report to follow -- each chunk produces its own -- so this is
+ * a name and a count, not something this hook watches. ActiveRuns'
+ * own poll (which already covers every job regardless of origin) is
+ * where the chunks are actually followed. */
+export interface Batch {
+  batchId: string;
+  count: number;
+}
+
 /**
  * Submit a backtest and follow it to completion.
  *
@@ -17,6 +27,7 @@ import { useWebSocket } from "./useWebSocket";
  */
 export function useBacktestRun() {
   const [run, setRun] = useState<Run | null>(null);
+  const [batch, setBatch] = useState<Batch | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,12 +61,21 @@ export function useBacktestRun() {
   const submit = useCallback(async (request: RunReq) => {
     setSubmitting(true);
     setError(null);
+    setBatch(null);
     try {
       // Replaces any previous run rather than accumulating: the server
       // keeps the history, and a form that quietly queued a second run
       // because someone double-clicked would be a way to lose a machine
       // to a queue nobody asked for.
-      setRun(await api.submitRun(request));
+      const response = await api.submitRun(request);
+      if ("batch_id" in response) {
+        // Bisected into independent chunks -- nothing here is "the"
+        // run to watch, so stop tracking one and name the batch instead.
+        setRun(null);
+        setBatch({ batchId: response.batch_id, count: response.runs.length });
+      } else {
+        setRun(response);
+      }
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : String(cause));
       setRun(null);
@@ -64,5 +84,5 @@ export function useBacktestRun() {
     }
   }, []);
 
-  return { run, submit, attach, submitting, error, health };
+  return { run, batch, submit, attach, submitting, error, health };
 }

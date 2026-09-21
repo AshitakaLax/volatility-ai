@@ -563,10 +563,15 @@ class TestStrategyParameters:
         assert response.status_code == 400
         assert "swept independently" in response.json()["detail"]
 
-    def test_it_refuses_a_sweep_that_exceeds_the_combinations_cap(self, client, monkeypatch):
+    def test_a_sweep_over_the_combinations_cap_is_bisected_into_a_batch(self, client, monkeypatch):
         """Unbounded, a single request could ask for an arbitrarily long
         sweep -- narrowed here to a cap small enough to hit with an
-        ordinary request, rather than actually submitting thousands."""
+        ordinary request, rather than actually submitting thousands.
+
+        Oversized no longer means refused: `submit` bisects into
+        independent chunks instead of 400ing, stamping batch_id/
+        batch_index/batch_total onto each one so a client can still
+        show them as one group."""
         import server.backtest as module
 
         monkeypatch.setattr(module, "MAX_SWEEP_COMBINATIONS", 3)
@@ -580,9 +585,148 @@ class TestStrategyParameters:
                 "params": {"allocation_pct": [0.02, 0.03, 0.05, 0.08]},
             },
         )
-        assert response.status_code == 400
-        detail = response.json()["detail"]
-        assert "4" in detail and "3" in detail
+        assert response.status_code == 202
+        body = response.json()
+        assert body["batch_id"]
+        assert len(body["runs"]) == 2
+        for index, run in enumerate(body["runs"], start=1):
+            assert run["req"]["batch_id"] == body["batch_id"]
+            assert run["req"]["batch_index"] == index
+            assert run["req"]["batch_total"] == 2
+        # Every requested value covered exactly once, split across the
+        # two chunks -- nothing dropped, nothing doubled.
+        covered = sorted(
+            v for run in body["runs"] for v in run["req"]["params"]["allocation_pct"]
+        )
+        assert covered == [0.02, 0.03, 0.05, 0.08]
+
+
+class TestBatchBisection:
+    """server/backtest.py's bisect_request -- server/backtest.py's own
+    copy of cli.py submit's bisect()/split_axis()/combos(), so the web
+    form's Sweep checkboxes get the same cross-shard fan-out a CLI
+    sweep already did."""
+
+    def test_a_request_under_the_cap_is_not_split(self):
+        from server.backtest import RunRequest, bisect_request
+
+        request = RunRequest(
+            tickers=["TQQQ"],
+            grid_steps=[0.01],
+            targets=[0.005],
+            model="fixed",
+            params={"allocation_pct": [0.02, 0.03]},
+        )
+        assert bisect_request(request, cap=10) == [request]
+
+    def test_a_request_over_the_cap_is_bisected_on_its_widest_swept_axis(self):
+        from server.backtest import RunRequest, bisect_request
+
+        request = RunRequest(
+            tickers=["TQQQ"],
+            grid_steps=[0.01],
+            targets=[0.005],
+            model="fixed",
+            params={"allocation_pct": [0.02, 0.03, 0.05, 0.08]},
+        )
+        chunks = bisect_request(request, cap=3)
+        assert len(chunks) == 2
+        covered = sorted(v for chunk in chunks for v in chunk.params["allocation_pct"])
+        assert covered == [0.02, 0.03, 0.05, 0.08]
+
+    def test_grid_axes_shrink_the_per_chunk_budget_left_for_strategy_params(self):
+        """The cap covers grid_steps x targets x strategy-param combos
+        together, not strategy params alone -- 2 grid steps already
+        spend half of a cap of 4, leaving room for only 2 strategy-param
+        values per chunk."""
+        from server.backtest import RunRequest, bisect_request
+
+        request = RunRequest(
+            tickers=["TQQQ"],
+            grid_steps=[0.01, 0.02],
+            targets=[0.005],
+            model="fixed",
+            params={"allocation_pct": [0.02, 0.03, 0.05, 0.08]},
+        )
+        chunks = bisect_request(request, cap=4)
+        assert len(chunks) == 2
+        for chunk in chunks:
+            assert len(chunk.params["allocation_pct"]) <= 2
+
+    def test_every_chunk_is_stamped_with_batch_id_index_and_total(self, client, monkeypatch):
+        import server.backtest as module
+
+        monkeypatch.setattr(module, "MAX_SWEEP_COMBINATIONS", 2)
+        body = client.post(
+            "/api/backtest/runs",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "targets": [0.005],
+                "model": "fixed",
+                "params": {"allocation_pct": [0.02, 0.03, 0.05]},
+            },
+        ).json()
+        assert len(body["runs"]) > 1
+        ids = {run["req"]["batch_id"] for run in body["runs"]}
+        assert ids == {body["batch_id"]}
+        totals = {run["req"]["batch_total"] for run in body["runs"]}
+        assert totals == {len(body["runs"])}
+        assert sorted(run["req"]["batch_index"] for run in body["runs"]) == list(
+            range(1, len(body["runs"]) + 1)
+        )
+
+    def test_the_common_unbisected_case_still_returns_a_flat_run(self, client):
+        """Backward compatible: a request that was never going to be
+        rejected still gets today's plain Run back, not a batch wrapper
+        -- batch_total=1 rides along on req for a client that always
+        looks for it, but the response shape itself is unchanged."""
+        body = client.post(
+            "/api/backtest/runs",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "targets": [0.005],
+                "model": "fixed",
+                "params": {"allocation_pct": 0.05},
+            },
+        ).json()
+        assert "batch_id" not in body
+        assert "runs" not in body
+        assert body["id"]
+        assert body["req"]["batch_total"] == 1
+        assert body["req"]["batch_index"] == 1
+
+    def test_a_bayesian_sweep_is_bisected_against_the_looser_bayesian_ceiling(
+        self, client, monkeypatch
+    ):
+        """A combination count that would already be over
+        MAX_SWEEP_COMBINATIONS must survive whole under the 100x-looser
+        bayesian ceiling -- proving submit() actually branches on
+        is_bayesian rather than always bisecting against the grid cap."""
+        import server.backtest as module
+
+        monkeypatch.setattr(module, "MAX_SWEEP_COMBINATIONS", 3)
+        monkeypatch.setattr(module, "MAX_SWEEP_COMBINATIONS_BAYESIAN", 300)
+        response = client.post(
+            "/api/backtest/runs",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.005],
+                "targets": [0.01],
+                "model": "bayesian_dual_scale",
+                "bayes": {"trials": 10},
+                "params": {
+                    "max_trade_pct": [0.03, 0.05, 0.08, 0.1],
+                    "horizon_days": 1.0,
+                    "bars_per_day": 387,
+                },
+            },
+        )
+        assert response.status_code == 202
+        body = response.json()
+        assert "batch_id" not in body
+        assert body["req"]["batch_total"] == 1
 
 
 class TestParameterSchema:
@@ -836,14 +980,43 @@ class TestValidateEndpoint:
         assert "swept independently" in " ".join(e["msg"] for e in body["errors"])
         self._assert_no_side_effects()
 
-    def test_validate_shares_build_config_with_submit(self):
-        """One definition of 'valid' -- not a second that can drift."""
+    def test_an_oversized_sweep_no_longer_reports_the_stale_limit_error(self, client, monkeypatch):
+        """Before submit() bisected instead of rejecting, this same
+        request would validate as a hard "exceeds the limit" error --
+        now that submitting it actually succeeds (as several chunks),
+        validate must agree it is fine rather than blocking the operator
+        on advice ("split this into more than one run") the server
+        already does for them."""
+        import server.backtest as module
+
+        monkeypatch.setattr(module, "MAX_SWEEP_COMBINATIONS", 3)
+        body = client.post(
+            "/api/backtest/validate",
+            json={
+                "tickers": ["TQQQ"],
+                "grid_steps": [0.01],
+                "targets": [0.005],
+                "model": "fixed",
+                "params": {"allocation_pct": [0.02, 0.03, 0.05, 0.08]},
+            },
+        ).json()
+        assert body["errors"] == []
+        self._assert_no_side_effects()
+
+    def test_validate_shares_bisection_and_build_config_with_submit(self):
+        """One definition of 'valid' -- not a second that can drift.
+        Both routes bisect a request the identical way (which ceiling
+        applies is decided once, in _bisect_for_request) before
+        validating every resulting chunk with build_config."""
         import inspect
 
         from server import backtest as module
 
-        source = inspect.getsource(module.validate)
-        assert "build_config(request)" in source
+        validate_source = inspect.getsource(module.validate)
+        submit_source = inspect.getsource(module.submit)
+        for source in (validate_source, submit_source):
+            assert "_bisect_for_request(request)" in source
+        assert "build_config(chunk)" in validate_source
 
 
 class TestRunHistory:
@@ -1731,12 +1904,22 @@ class TestBayesianSearch:
             "and ran the full grid instead"
         )
 
-    def test_bayesian_relaxes_the_combination_ceiling_grid_does_not(self, client):
-        """Same combination count (2100, past MAX_SWEEP_COMBINATIONS'
-        2000), two outcomes: grid must still refuse it -- that ceiling
-        exists independently of search mode -- bayesian with a small
-        trial budget must not, since MAX_SWEEP_COMBINATIONS_BAYESIAN is
-        the ceiling that actually governs it."""
+    def test_an_oversized_sweep_validates_clean_in_both_grid_and_bayesian_mode(self, client):
+        """Before submit() bisected instead of rejecting, this pair of
+        requests demonstrated MAX_SWEEP_COMBINATIONS_BAYESIAN's whole
+        reason to exist: the SAME oversized combination count (2100,
+        past MAX_SWEEP_COMBINATIONS' 2000) was refused in grid mode and
+        accepted in bayesian mode, since only bayesian was governed by
+        the looser ceiling.
+
+        Now that "oversized" means "bisected into more than one chunk"
+        rather than "refused", /validate has nothing left to distinguish
+        here -- both modes validate clean, because every chunk either
+        mode would actually submit builds fine on its own. The ceilings
+        still differ (grid needs far more, smaller chunks for the same
+        sweep); that difference is what
+        TestBatchBisection.test_a_bayesian_sweep_is_bisected_against_the_looser_bayesian_ceiling
+        verifies now, against the route that actually acts on it."""
         big_sweep = [round(0.01 + i * 0.0001, 6) for i in range(2100)]
 
         grid = client.post(
@@ -1749,8 +1932,7 @@ class TestBayesianSearch:
                 "params": {"allocation_pct": big_sweep},
             },
         ).json()
-        assert grid["errors"]
-        assert "2000" in grid["errors"][0]["msg"]
+        assert grid["errors"] == []
 
         bayesian = client.post(
             "/api/backtest/validate",

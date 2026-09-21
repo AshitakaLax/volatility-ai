@@ -19,6 +19,7 @@ import type {
   ShardList,
   ShardOp,
   ShardSchedule,
+  SubmitResponse,
   Validation,
 } from "@/types/backtest";
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
@@ -117,6 +118,9 @@ export const api = {
         start: run?.start ?? null,
         end: run?.end ?? null,
         saved_at: run?.saved_at ?? null,
+        batch_id: run?.batch_id ?? null,
+        batch_index: run?.batch_index ?? null,
+        batch_total: run?.batch_total ?? null,
       };
     });
     return { rows, runs: new Set(body.rows.map((row) => row.run)).size };
@@ -127,7 +131,13 @@ export const api = {
   /** A queued, running or archived run -- the server falls back to history. */
   run: (runId: string) => request<Run>(`/api/backtest/runs/${runId}`),
 
-  submitRun: (body: RunReq) => post<Run>("/api/backtest/runs", body),
+  /**
+   * A sweep that fits under the combination ceiling queues as one Run,
+   * exactly as before. One too large for that comes back bisected --
+   * `{batch_id, runs}` covering every independent chunk the server
+   * split it into, each already queued.
+   */
+  submitRun: (body: RunReq) => post<SubmitResponse>("/api/backtest/runs", body),
 
   /**
    * A queue control; answers with the run's new snapshot. Pause/cancel on

@@ -46,6 +46,7 @@ import os
 import re
 import sys
 import types
+import uuid
 from collections.abc import Callable
 from typing import Any, Literal, Protocol, Union, get_args, get_origin, get_type_hints
 
@@ -1101,6 +1102,72 @@ def build_config(request: RunRequest) -> BacktestConfig:
     return config
 
 
+def _combos(values: dict[str, Any]) -> int:
+    n = 1
+    for v in values.values():
+        n *= len(v) if isinstance(v, list) else 1
+    return n
+
+
+def _split_axis(space: dict[str, Any]) -> str | None:
+    multi = {k: v for k, v in space.items() if isinstance(v, list) and len(v) > 1}
+    return max(multi, key=lambda k: len(multi[k])) if multi else None
+
+
+def _bisect_params(space: dict[str, Any], cap: int) -> list[dict[str, Any]]:
+    if _combos(space) <= cap:
+        return [space]
+    axis = _split_axis(space)
+    if axis is None:
+        return [space]
+    values = space[axis]
+    mid = len(values) // 2
+    # Fresh lists for every key, not just the one being split -- a
+    # shallow dict(space) would leave every OTHER list-valued key
+    # pointing at the same object in both halves, which is fine as
+    # long as nothing downstream ever mutates one in place, but costs
+    # nothing to rule out here rather than trust that forever.
+    left = {k: (list(v) if isinstance(v, list) else v) for k, v in space.items()}
+    right = dict(left)
+    left[axis], right[axis] = values[:mid], values[mid:]
+    return _bisect_params(left, cap) + _bisect_params(right, cap)
+
+
+def bisect_request(request: RunRequest, cap: int) -> list[RunRequest]:
+    """Split `request` into chunks whose combination count each fits
+    `cap`, recursively halving whichever swept strategy_params entry has
+    the most values.
+
+    Only strategy_params ever needs this: grid_steps/targets are already
+    bounded to 12 each by RunRequest's own Field limits (144 combinations
+    max), so a request can only exceed `cap` through a swept
+    strategy_params entry, which is a free-form dict with no such bound.
+    Mirrors cli.py submit's own bisect()/split_axis()/combos exactly --
+    that copy stays client-side only for the one thing genuinely specific
+    to it (fanning a YAML-authored target_return list into separate
+    submissions, an idiom the web form never exposes).
+
+    Returns `[request]` unchanged if it already fits under `cap`.
+    """
+    grid_axes = len(request.grid_steps) * len(request.targets)
+    chunk_cap = max(1, cap // grid_axes)
+    chunks = _bisect_params(dict(request.params), chunk_cap)
+    if len(chunks) == 1:
+        return [request]
+    return [request.model_copy(update={"params": chunk}) for chunk in chunks]
+
+
+def _bisect_for_request(request: RunRequest) -> list[RunRequest]:
+    """The chunks `submit` would actually create for `request` -- shared
+    with `validate` so which ceiling applies (grid vs. the 100x-looser
+    bayesian one) has exactly one definition, not two kept in sync by
+    hand."""
+    combination_ceiling = (
+        MAX_SWEEP_COMBINATIONS_BAYESIAN if request.is_bayesian else MAX_SWEEP_COMBINATIONS
+    )
+    return bisect_request(request, combination_ceiling)
+
+
 def _native(value: Any) -> Any:
     """A pandas/numpy scalar as a plain Python one.
 
@@ -1562,6 +1629,16 @@ def run_backtest(
         "start": min((f["bars"]["start"] for f in funds.values()), default=None),
         "end": max((f["bars"]["end"] for f in funds.values()), default=None),
         "interval": "1Min",
+        # Echoed straight off the raw request dict, not `parsed` --
+        # batch_id/batch_index/batch_total are stamped onto the wire
+        # dict by submit() itself, not RunRequest fields (Pydantic
+        # silently drops them on `RunRequest(**request)` above). Absent
+        # on a job queued before batching existed or resumed from that
+        # era's checkpoint; batch_total defaults to 1 so an old archive
+        # reads the same as a request that was never split.
+        "batch_id": request.get("batch_id"),
+        "batch_index": request.get("batch_index", 1),
+        "batch_total": request.get("batch_total", 1),
         "funds": funds,
     }
 
@@ -1762,21 +1839,46 @@ def run(run_id: str) -> dict[str, Any]:
 
 @router.post("/runs", status_code=202)
 def submit(request: RunRequest) -> dict[str, Any]:
-    """Queue a run. Returns immediately with its snapshot.
+    """Queue a run. Returns immediately with its snapshot -- or, for a
+    sweep too large for one submission, `{"batch_id", "runs"}` covering
+    every chunk it was split into.
 
     202, not 200: nothing has been computed yet. Validation happens HERE
     rather than on the worker so a malformed request fails as a 400 the
-    caller can act on, instead of as a job that fails 20 seconds later.
-    """
-    try:
-        build_config(request)
-    except ConfigurationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid run request: {exc}") from exc
+    caller can act on, instead of as a job that fails 20 seconds later --
+    now once per chunk, so one bad slice cannot half-submit a batch and
+    leave the rest silently unqueued.
 
-    job = queue.submit(request.wire())
-    return _with_id(job.snapshot(), job.run_id)
+    EVERY chunk is stamped with batch_id/batch_index/batch_total
+    (1/1 for the common, unbisected case) directly on its stored request
+    dict, so the web UI has one field to group by regardless of whether
+    a submission happened to need splitting. This is also what lets
+    cli.py submit and the web form's own "Sweep" checkboxes converge on
+    one code path: both already build the same list-valued RunRequest
+    shape, and this is the one place either of them gets bisected.
+    """
+    chunks = _bisect_for_request(request)
+    batch_id = uuid.uuid4().hex[:12]
+
+    runs = []
+    for index, chunk in enumerate(chunks, start=1):
+        try:
+            build_config(chunk)
+        except ConfigurationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid run request: {exc}") from exc
+
+        wire = chunk.wire()
+        wire["batch_id"] = batch_id
+        wire["batch_index"] = index
+        wire["batch_total"] = len(chunks)
+        job = queue.submit(wire)
+        runs.append(_with_id(job.snapshot(), job.run_id))
+
+    if len(runs) == 1:
+        return runs[0]
+    return {"batch_id": batch_id, "runs": runs}
 
 
 # ---------------------------------------------------------------------
@@ -1932,12 +2034,17 @@ def validate(request: RunRequest) -> dict[str, Any]:
 
     The form calls this while the operator types so a bad parameter is a
     red line under a field, not a 400 on click or a job that dies twenty
-    seconds later. It goes through the SAME `build_config(request)` the
-    submit path uses -- there is no second definition of "valid" to
-    drift -- and `build_config` opens no store, imports no broker and
-    touches neither the queue nor history (the capability test holds
-    this module to that). Always HTTP 200: the errors are the payload,
-    which is easier to consume from a debounced keystroke than a 400.
+    seconds later. It goes through the SAME `_bisect_for_request` +
+    `build_config` the submit path uses, one call per chunk -- there is
+    no second definition of "valid" to drift, and an
+    oversized-but-otherwise-fine sweep no longer reports the stale
+    "exceeds the limit" error `submit` itself stopped raising once it
+    started bisecting instead of rejecting. `build_config` opens no
+    store, imports no broker and touches neither the queue nor history
+    (the capability test holds this module to that), so validating every
+    chunk costs nothing queued or persisted. Always HTTP 200: the errors
+    are the payload, which is easier to consume from a debounced
+    keystroke than a 400.
 
     DELIBERATELY ITS OWN ROUTE, not `POST /runs?dry_run=1`: a server that
     predated the flag would ignore it and QUEUE the run being validated.
@@ -1949,13 +2056,23 @@ def validate(request: RunRequest) -> dict[str, Any]:
         if strategy_class is not None
         else []
     )
+    chunks = _bisect_for_request(request)
     try:
-        config = build_config(request)
+        # Every chunk, not just the first: a bad value in whichever
+        # swept value landed in chunk 3 of 7 must show up here too, the
+        # same way `submit` will hit it when that chunk's own
+        # `build_config` call runs.
+        configs = [build_config(chunk) for chunk in chunks]
     except ConfigurationError as exc:
         return _validation(_explode_error(str(exc), names))
     except Exception as exc:
         return _validation([ValidateError(field=None, msg=str(exc))])
 
+    # Bisection only narrows the swept axis's VALUE LIST; chunks[0] keeps
+    # the same first combination the unbisected request would have, so
+    # resolved/aligned (both about that one representative combination)
+    # are unaffected by however many chunks the sweep was split into.
+    config = configs[0]
     resolved = dict(config.strategy.strategy_params)
     aligned = {
         key: value

@@ -3,8 +3,10 @@ import {
   Ban,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   ChevronsUp,
+  Layers,
   Loader2,
   Pause,
   Play,
@@ -21,10 +23,18 @@ import {
   isActive,
   moveTarget,
   isRunning,
-  orderActiveRuns,
   queuePositions,
   type QueuePosition,
 } from "@/lib/runQueue";
+import {
+  batchCounts,
+  batchProgress,
+  groupByBatch,
+  isBatch,
+  itemIsActive,
+  orderActiveItems,
+  type RunBatch,
+} from "@/lib/runBatches";
 import { cn, runUrl } from "@/lib/utils";
 import type { Run } from "@/types/backtest";
 
@@ -153,8 +163,13 @@ export function ActiveRuns({ onSettled }: Props) {
   }, []);
 
   const positions = queuePositions(runs);
-  const active = orderActiveRuns(runs);
-  const recent = runs.filter((run) => !isActive(run.status)).slice(0, 3);
+  // Grouped by batch_id before active/recent are split out -- a batch
+  // straddling both (some chunks done, some not) would otherwise have
+  // its terminal chunks compete with unrelated runs for "recent"'s 3
+  // slots one chunk at a time, instead of as the one thing it is.
+  const grouped = groupByBatch(runs);
+  const active = orderActiveItems(grouped, positions);
+  const recent = grouped.filter((item) => !itemIsActive(item)).slice(0, 3);
 
   const onAction = (run: Run, action: RunAction) => {
     const label = runLabel(run) ?? run.id;
@@ -181,9 +196,11 @@ export function ActiveRuns({ onSettled }: Props) {
     void perform(`${run.id}:${action}`, calls[action]);
   };
 
-  const running = active.filter((run) => run.status === "running").length;
-  const queued = active.filter((run) => run.status === "queued").length;
-  const paused = active.filter((run) => run.status === "paused").length;
+  // Per CHUNK, not per card -- a 7-chunk batch with 3 running should say
+  // so, even though it renders as one card in the list below.
+  const running = runs.filter((run) => run.status === "running").length;
+  const queued = runs.filter((run) => run.status === "queued").length;
+  const paused = runs.filter((run) => run.status === "paused").length;
 
   // Nothing active and nothing recent is the ordinary state, and an
   // empty card saying "no runs" every time is noise. A paused queue is
@@ -240,16 +257,27 @@ export function ActiveRuns({ onSettled }: Props) {
         {/* Scrolls inside itself: a sweep series is dozens of runs, and the
             parameter form below should not be pushed off the page by it. */}
         <div className="max-h-[36rem] space-y-3 overflow-y-auto pr-1">
-          {[...active, ...recent].map((run) => (
-            <RunRow
-              key={run.id}
-              run={run}
-              position={positions.get(run.id)}
-              queuePaused={queuePaused}
-              busy={busy}
-              onAction={(action) => onAction(run, action)}
-            />
-          ))}
+          {[...active, ...recent].map((item) =>
+            isBatch(item) ? (
+              <BatchRow
+                key={item.batchId}
+                batch={item}
+                positions={positions}
+                queuePaused={queuePaused}
+                busy={busy}
+                onAction={onAction}
+              />
+            ) : (
+              <RunRow
+                key={item.id}
+                run={item}
+                position={positions.get(item.id)}
+                queuePaused={queuePaused}
+                busy={busy}
+                onAction={(action) => onAction(item, action)}
+              />
+            ),
+          )}
         </div>
         {error ? <p className="text-xs text-muted-foreground">{error}</p> : null}
       </CardContent>
@@ -444,6 +472,108 @@ function RunRow({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * One batch: a sweep too large for one submission, bisected server-side
+ * into independent chunks that share a batch_id (server/backtest.py
+ * bisect_request). Collapsed to a single card with rolled-up progress by
+ * default -- an operator steering the queue thinks of it as one sweep,
+ * the same way they submitted it -- with every chunk's own RunRow, and
+ * its own controls, one click away.
+ */
+function BatchRow({
+  batch,
+  positions,
+  queuePaused,
+  busy,
+  onAction,
+}: {
+  batch: RunBatch;
+  positions: Map<string, QueuePosition>;
+  queuePaused: boolean;
+  busy: string | null;
+  onAction: (run: Run, action: RunAction) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const active = itemIsActive(batch);
+  const percent = Math.round(batchProgress(batch) * 100);
+  const label = runLabel(batch.runs[0]!);
+  // Bisection only ever splits one chunk's swept values into two --
+  // summing each chunk's own count recovers the original total exactly.
+  const totalSimulations = batch.runs.reduce(
+    (sum, run) => sum + describeRequestAxes(run.req).simulationCount,
+    0,
+  );
+  const counts = batchCounts(batch);
+  const summary = (Object.entries(counts) as [Run["status"], number][])
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => `${count} ${status}`)
+    .join(", ");
+
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-border/60 p-2">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="flex size-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+          aria-label={expanded ? "Collapse batch" : "Expand batch"}
+          aria-expanded={expanded}
+        >
+          {expanded ? (
+            <ChevronDown className="size-3.5" />
+          ) : (
+            <ChevronRight className="size-3.5" />
+          )}
+        </button>
+        <Layers className="size-3.5 shrink-0 text-muted-foreground" />
+        <span
+          className="min-w-0 flex-1 truncate text-xs"
+          title={`${label} · batch ${batch.batchId}`}
+        >
+          <span className="text-foreground">{label}</span>
+        </span>
+        <Badge className="shrink-0 text-[11px] font-normal">{batch.runs.length} runs</Badge>
+      </div>
+
+      <div className="pl-8">
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="text-muted-foreground">{summary}</span>
+          {active && percent > 0 ? (
+            <span className="tnum text-muted-foreground">{percent}%</span>
+          ) : null}
+        </div>
+        {active ? (
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full bg-primary transition-all duration-500"
+              style={{ width: `${Math.max(percent, 2)}%` }}
+            />
+          </div>
+        ) : null}
+        <div className="mt-1 text-[11px] text-muted-foreground">
+          {totalSimulations} simulation{totalSimulations === 1 ? "" : "s"} total across{" "}
+          {batch.runs.length} runs
+        </div>
+      </div>
+
+      {expanded ? (
+        <div className="mt-1 flex flex-col gap-2 border-l border-border/60 py-1 pl-3">
+          {batch.runs.map((run) => (
+            <RunRow
+              key={run.id}
+              run={run}
+              position={positions.get(run.id)}
+              queuePaused={queuePaused}
+              busy={busy}
+              onAction={(action) => onAction(run, action)}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

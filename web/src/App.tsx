@@ -39,7 +39,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("backtest");
   const [staticReport, setStaticReport] = useState<Report | null>(null);
   const [filters, setFilters] = useState<ExecutionFilters>(DEFAULT_FILTERS);
-  const { run, submit, attach, submitting, error } = useBacktestRun();
+  const { run, batch, submit, attach, submitting, error } = useBacktestRun();
   // Bumped whenever a run settles, so history reloads without the
   // reader having to press anything.
   const [historyToken, setHistoryToken] = useState(0);
@@ -193,6 +193,7 @@ export default function App() {
             <ParameterForm
               onSubmit={(request) => submit(request)}
               run={run}
+              batch={batch}
               submitting={submitting}
               error={error}
               range={filters.range}

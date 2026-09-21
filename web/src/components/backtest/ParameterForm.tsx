@@ -26,6 +26,7 @@ import {
   seedValues,
   type OptionsSweepFieldState,
 } from "@/lib/strategyParams";
+import type { Batch } from "@/hooks/useBacktestRun";
 import type {
   Catalog,
   DateRange,
@@ -37,15 +38,19 @@ import type {
   Validation,
 } from "@/types/backtest";
 
-// Mirrors server/backtest.py's MAX_SWEEP_COMBINATIONS default -- catches
-// an oversized sweep client-side, before the round trip to a 400.
+// Mirrors server/backtest.py's MAX_SWEEP_COMBINATIONS default. No longer a
+// submission gate -- the server bisects an oversized sweep into several
+// batch_id-linked runs rather than refusing it (server/backtest.py
+// bisect_request) -- just the threshold for the estimated-chunk-count
+// note below, so the number shown roughly agrees with what actually
+// gets submitted.
 const MAX_SWEEP_COMBINATIONS = 2000;
 // Mirrors server/backtest.py's MAX_SWEEP_COMBINATIONS_BAYESIAN -- a
 // bayesian search is bounded by its OWN trial budget (searchMethodErrors
 // already enforces that), not by the size of the space it samples from,
-// so the client-side ceiling has to relax the identical amount the
-// server's does or a legitimate large bayesian sweep would be blocked
-// here before ever reaching the server that would have accepted it.
+// so the client-side estimate has to relax the identical amount the
+// server's ceiling does, or a legitimate large bayesian sweep would show
+// a bisection note the actual submission never triggers.
 const MAX_SWEEP_COMBINATIONS_BAYESIAN = MAX_SWEEP_COMBINATIONS * 100;
 
 /**
@@ -68,6 +73,10 @@ const MAX_SWEEP_COMBINATIONS_BAYESIAN = MAX_SWEEP_COMBINATIONS * 100;
 interface Props {
   onSubmit: (request: RunReq) => void;
   run: Run | null;
+  /** Set instead of `run` when the submission was too large for one Run
+   * and the server bisected it -- there is no single report to follow,
+   * so this names the group rather than tracking a run. */
+  batch: Batch | null;
   submitting: boolean;
   error: string | null;
   /**
@@ -88,7 +97,7 @@ interface Props {
   staged?: { gridStep: number; profitTarget: number } | null;
 }
 
-export function ParameterForm({ onSubmit, run, submitting, error, range, staged }: Props) {
+export function ParameterForm({ onSubmit, run, batch, submitting, error, range, staged }: Props) {
   const [funds, setFunds] = useState<Catalog["funds"]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [paramSpecs, setParamSpecs] = useState<Record<string, ParamSpec[]>>({});
@@ -540,7 +549,7 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
               : ""}
           </p>
         </div>
-        {run ? <RunStatus run={run} /> : null}
+        {run ? <RunStatus run={run} /> : batch ? <BatchStatus batch={batch} /> : null}
       </CardHeader>
 
       <CardContent className="flex flex-wrap items-end gap-4">
@@ -694,7 +703,6 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
             blanks.length > 0 ||
             (validation?.errors.length ?? 0) > 0 ||
             sweepErrors.length > 0 ||
-            totalCombinations > combinationCeiling ||
             (method === "local_reference" &&
               windowParam !== null &&
               ((paramValues[windowParam] ?? "").trim() === "" ||
@@ -762,13 +770,21 @@ export function ParameterForm({ onSubmit, run, submitting, error, range, staged 
             <p
               className={
                 totalCombinations > combinationCeiling
-                  ? "text-[11px] leading-tight text-loss"
+                  ? "text-[11px] leading-tight text-stuck"
                   : "text-[11px] leading-tight text-muted-foreground"
               }
             >
               {totalCombinations} configurations across every enabled sweep
               {totalCombinations > combinationCeiling
-                ? ` — exceeds the ${combinationCeiling} limit for one submission; narrow a swept range.`
+                ? // No longer a hard limit -- the server bisects this into
+                  // several independent submissions sharing one batch_id
+                  // rather than refusing it. The chunk count is an
+                  // ESTIMATE (the server's own split may differ slightly
+                  // once grid_steps/targets are folded in); Active runs
+                  // below shows the real one once submitted.
+                  ` — too many for one submission, so it will run as ~${Math.ceil(
+                      totalCombinations / combinationCeiling,
+                    )} separate runs grouped together.`
                 : searchMethod.strategy === "bayesian"
                   ? ` — Optuna will sample ${searchMethod.nTrials || "the requested"} of them.`
                   : "."}
@@ -849,5 +865,16 @@ function RunStatus({ run }: { run: Run }) {
       ) : null}
       <Badge tone={tone}>{run.msg ?? run.status}</Badge>
     </div>
+  );
+}
+
+/** Too large for one Run: queued as `count` independent chunks sharing
+ * one batch_id. Each is already progressing on its own -- Active runs
+ * below is where to watch them, grouped under the same id shown here. */
+function BatchStatus({ batch }: { batch: Batch }) {
+  return (
+    <Badge tone="stuck" title={`batch ${batch.batchId}`}>
+      queued as {batch.count} runs — see Active runs below
+    </Badge>
   );
 }
