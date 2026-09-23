@@ -64,13 +64,29 @@ the thing being sped up currently earns.
 --------------------------------------------------------------------
 ONE MODEL, ONE TICKER -- ENFORCED, NOT ASSUMED
 
-Loaded at construction from data/ml/models/{ticker}_reached_t0.5_h390.*,
+Loaded lazily on the first record_tick (see ensure_model_available),
 and `ticker` is a plain attribute a caller can read back. Analogous to
 BayesianDualScaleSizing's target_return: optimization_controller.py
 checks it against the symbol actually being simulated and refuses the
 combination on a mismatch, for the identical reason that class's own
 docstring gives -- a mismatch would have this confidently answering a
 question about a different instrument's price action.
+
+Lazy for the same reason MLRegimeScaledSizing is lazy:
+constructing a sizing strategy is not only something a RUN does.
+server/backtest.py's build_config() instantiates every submitted
+strategy to validate it, and server/tests/test_server_api.py constructs
+every registered strategy from STRATEGY_DEFAULTS just to prove the
+dropdown's defaults work. Requiring trained binaries under gitignored
+data/ml/models (plus the volatility-block files LiveFeatureSource
+needs under data/external/) in order to construct -- or to draw a
+number field -- is the wrong coupling, and it is a latent failure on
+any fresh clone or CI runner that has not run
+tools/train_ml_model.py / tools/fetch_market_inputs.py. What stays
+front-loaded is every numeric argument check; what moves is only the
+disk read. A live deployment catches a missing artifact via
+tools/preflight.py before trading, and a run catches it on its first
+bar rather than silently trading as a plain grid.
 """
 
 from __future__ import annotations
@@ -91,13 +107,6 @@ _LABEL = "reached_t0.5_h390"
 
 
 def _load_model(ticker: str, model_dir: Path) -> tuple[Any, dict]:
-    model_path = model_dir / f"{ticker}_{_LABEL}.txt"
-    meta_path = model_dir / f"{ticker}_{_LABEL}.json"
-    if not model_path.exists() or not meta_path.exists():
-        raise ConfigurationError(
-            f"MLReachabilitySizing: no trained model for {ticker!r} under {model_dir}. Run: "
-            f"python tools/train_ml_model.py --tickers {ticker}"
-        )
     try:
         import lightgbm as lgb
     except ImportError as exc:
@@ -107,11 +116,22 @@ def _load_model(ticker: str, model_dir: Path) -> tuple[Any, dict]:
         # Raspberry Pi that runs it must never NEED it to start).
         # Importing it lazily, here, means merely importing this module
         # -- which src/strategy_registry.py does unconditionally -- does
-        # not require it; only actually SELECTING this strategy does.
+        # not require it; only actually USING this strategy does.
+        # Checked BEFORE the artifact files exist so a machine without
+        # requirements-ml.txt gets the actionable dependency error
+        # rather than a missing-file error it cannot act on without the
+        # dependency installed first.
         raise ConfigurationError(
             "MLReachabilitySizing needs lightgbm, which is not installed. Run: "
             "pip install -r requirements-ml.txt"
         ) from exc
+    model_path = model_dir / f"{ticker}_{_LABEL}.txt"
+    meta_path = model_dir / f"{ticker}_{_LABEL}.json"
+    if not model_path.exists() or not meta_path.exists():
+        raise ConfigurationError(
+            f"MLReachabilitySizing: no trained model for {ticker!r} under {model_dir}. Run: "
+            f"python tools/train_ml_model.py --tickers {ticker}"
+        )
 
     booster = lgb.Booster(model_file=str(model_path))
     metadata = json.loads(meta_path.read_text())
@@ -140,13 +160,42 @@ class MLReachabilitySizing(_BaselineScaledStrategy):
 
         self.ticker = ticker
         self.confidence_floor = confidence_floor
-        self._booster, self.metadata = _load_model(ticker, Path(model_dir))
-        self._feature_order: list[str] = self.metadata["feature_columns"]
-        self._features = LiveFeatureSource(external_directory=external_dir)
+        # Loaded lazily -- see ensure_model_available. Constructing must
+        # not touch data/ml/models or data/external, so that validation
+        # (server/backtest.py build_config), introspection
+        # (describe_params via inspect.signature), and the defaults
+        # construction test all work on a machine without trained
+        # artifacts. The first record_tick loads, and tools/preflight.py
+        # is where a live deployment fails fast before trading.
+        self._model_dir = Path(model_dir)
+        self._external_dir = external_dir
+        self._booster: Any | None = None
+        self.metadata: dict = {}
+        self._feature_order: list[str] = []
+        self._features: LiveFeatureSource | None = None
         self._last_probability: float | None = None
+
+    def ensure_model_available(self) -> Any:
+        """Load the model now, raising ConfigurationError if it is absent.
+
+        Called on the first record_tick, and callable directly by a
+        startup check that wants the failure BEFORE a session begins
+        rather than on its first bar -- which is what tools/preflight.py
+        is for. Idempotent.
+        """
+        if self._booster is None:
+            booster, metadata = _load_model(self.ticker, self._model_dir)
+            self._booster = booster
+            self.metadata = metadata
+            self._feature_order = list(metadata["feature_columns"])
+            self._features = LiveFeatureSource(external_directory=self._external_dir)
+        assert self._booster is not None and self._features is not None
+        return self._booster
 
     def record_tick(self, context: MarketContext) -> None:
         self._capture_baseline(context.price)
+        self.ensure_model_available()
+        assert self._features is not None
         vector = self._features.record(context.timestamp, context.high, context.low, context.close)
         row = np.array([[vector[name] for name in self._feature_order]], dtype=np.float64)
 

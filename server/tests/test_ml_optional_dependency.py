@@ -120,8 +120,13 @@ def test_only_constructing_the_ml_strategy_needs_the_missing_dependency(
     from engine.core.exceptions import ConfigurationError
     from research.strategies.strategy_registry import resolve_strategy
 
+    # Construction alone must not need lightgbm -- the model loads lazily
+    # on first use (like MLRegimeScaledSizing), so validation and the
+    # /funds response work on a machine without requirements-ml.txt.
+    # Only actually USING it does.
+    strategy = resolve_strategy("ml_reachability_cowz")(max_trade_pct=0.05, ticker="COWZ")
     with pytest.raises(ConfigurationError, match=r"requirements-ml.txt"):
-        resolve_strategy("ml_reachability_cowz")(max_trade_pct=0.05, ticker="COWZ")
+        strategy.ensure_model_available()
 
     # Every other strategy is completely unaffected.
     resolve_strategy("fixed")(allocation_pct=0.1)
