@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, History, RefreshCw } from "lucide-reac
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { RunHistoryFilterBar } from "@/components/backtest/RunHistoryFilterBar";
+import { Pagination } from "@/components/ui/Pagination";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import {
@@ -12,6 +13,7 @@ import {
   type RunHistorySort,
 } from "@/lib/filters";
 import { cn, pct, runUrl, timestamp, usd } from "@/lib/utils";
+import { usePagination } from "@/hooks/usePagination";
 import {
   EMPTY_RUN_HISTORY_FILTERS,
   type Metrics,
@@ -226,6 +228,8 @@ export function RunHistory({ refreshToken }: Props) {
         if (right === null) return -1;
         return spec.higherIsBetter ? right - left : left - right;
       });
+  const pagination = usePagination(ranked.length, 50);
+  const pageRows = pagination.paginate(ranked);
 
   return (
     <Card>
@@ -379,7 +383,7 @@ export function RunHistory({ refreshToken }: Props) {
               </tr>
             </thead>
             <tbody className="tnum">
-              {ranked.slice(0, 100).map((row, index) => {
+              {pageRows.map((row, index) => {
                 const value = valueOf(row, spec.key);
                 const worst = valueOf(row, "worst_year_pct");
                 return (
@@ -397,7 +401,7 @@ export function RunHistory({ refreshToken }: Props) {
                     onClick={() => window.open(runUrl(row.run), "_blank", "noopener,noreferrer")}
                     title="Open this run in a new tab"
                   >
-                    <td className="py-2 text-muted-foreground">{index + 1}</td>
+                    <td className="py-2 text-muted-foreground">{pagination.start + index + 1}</td>
                     <td
                       className="max-w-[180px] truncate py-2 text-xs"
                       title={row.name ?? undefined}
@@ -493,11 +497,14 @@ export function RunHistory({ refreshToken }: Props) {
             trade count before reading a row as a result.
           </p>
         ) : null}
-        {ranked.length > 100 ? (
-          <p className="mt-3 text-xs text-muted-foreground">
-            Showing the top 100 of {ranked.length}.
-          </p>
-        ) : null}
+        <Pagination
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          total={ranked.length}
+          onPageChange={pagination.setPage}
+          onPageSizeChange={pagination.setPageSize}
+        />
       </CardContent>
     </Card>
   );

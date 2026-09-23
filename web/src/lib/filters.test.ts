@@ -291,6 +291,9 @@ function histRow(over: HistRowOverride = {}): HistoryRow {
     start: "2026-01-01",
     end: "2026-02-01",
     bars: 1000,
+    batch_id: null,
+    batch_index: null,
+    batch_total: null,
     ...over,
     m: metrics(over.m),
   };
@@ -321,6 +324,26 @@ describe("historyFieldValue", () => {
     // worst_year_pct is optional; a row without it must read as unknown,
     // not zero.
     expect(historyFieldValue(histRow(), "metric:worst_year_pct")).toBeNull();
+  });
+
+  it("computes window_days from start and end dates (inclusive)", () => {
+    // Same day = 1 day
+    expect(historyFieldValue(histRow({ start: "2026-01-01", end: "2026-01-01" }), "window_days")).toBe(1);
+    // 30 days inclusive
+    expect(historyFieldValue(histRow({ start: "2026-01-01", end: "2026-01-30" }), "window_days")).toBe(30);
+    // Full year (non-leap)
+    expect(historyFieldValue(histRow({ start: "2026-01-01", end: "2026-12-31" }), "window_days")).toBe(365);
+    // Leap year
+    expect(historyFieldValue(histRow({ start: "2024-01-01", end: "2024-12-31" }), "window_days")).toBe(366);
+    // Returns null when start or end is missing
+    expect(historyFieldValue(histRow({ start: "2026-01-01", end: null }), "window_days")).toBeNull();
+    expect(historyFieldValue(histRow({ start: null, end: "2026-01-01" }), "window_days")).toBeNull();
+    expect(historyFieldValue(histRow({ start: null, end: null }), "window_days")).toBeNull();
+  });
+
+  it("reads window_bars from the row, null when absent", () => {
+    expect(historyFieldValue(histRow({ bars: 1000 }), "window_bars")).toBe(1000);
+    expect(historyFieldValue(histRow({ bars: null }), "window_bars")).toBeNull();
   });
 });
 
@@ -526,6 +549,42 @@ describe("filterHistoryRows", () => {
     });
     expect(out).toHaveLength(1);
   });
+
+  it("matches a simulation window by OVERLAP, inclusive of both ends", () => {
+    const rows = [
+      histRow({ start: "2026-01-01", end: "2026-03-31" }),
+      histRow({ start: "2026-04-01", end: "2026-06-30" }),
+    ];
+    expect(
+      filterHistoryRows(rows, { ...NONE, window: { start: "2026-02-01", end: "2026-05-01" } }),
+    ).toHaveLength(2);
+    expect(
+      filterHistoryRows(rows, { ...NONE, window: { start: "2026-04-01", end: null } }),
+    ).toHaveLength(1);
+    expect(
+      filterHistoryRows(rows, { ...NONE, window: { start: null, end: "2026-01-01" } }),
+    ).toHaveLength(1);
+    expect(
+      filterHistoryRows(rows, { ...NONE, window: { start: "2027-01-01", end: null } }),
+    ).toHaveLength(0);
+  });
+
+  it("excludes a row with no window once a bound is set", () => {
+    const rows = [histRow({ start: null, end: null })];
+    expect(filterHistoryRows(rows, NONE)).toHaveLength(1);
+    expect(
+      filterHistoryRows(rows, { ...NONE, window: { start: "2026-01-01", end: null } }),
+    ).toHaveLength(0);
+  });
+
+  it("filters window_bars as a numeric band", () => {
+    const rows = [histRow({ bars: 500 }), histRow({ bars: 2000 })];
+    const out = filterHistoryRows(rows, {
+      ...NONE,
+      ranges: { window_bars: { min: 1000, max: null } },
+    });
+    expect(out.map((r) => r.bars)).toEqual([2000]);
+  });
 });
 
 describe("runHistoryFilterActive", () => {
@@ -544,6 +603,9 @@ describe("runHistoryFilterActive", () => {
   it("is true as soon as any clause would remove a row", () => {
     expect(runHistoryFilterActive({ ...NONE, name: "x" })).toBe(true);
     expect(runHistoryFilterActive({ ...NONE, tickers: ["TQQQ"] })).toBe(true);
+    expect(runHistoryFilterActive({ ...NONE, window: { start: "2026-01-01", end: null } })).toBe(
+      true,
+    );
     expect(runHistoryFilterActive({ ...NONE, ranges: { grid_step: { min: 1, max: null } } })).toBe(
       true,
     );
@@ -561,6 +623,26 @@ describe("historyInputFields", () => {
     const gridStep = fields.find((f) => f.key === "grid_step")!;
     expect(gridStep.values).toEqual([0.5, 2]);
     expect(fields.some((f) => f.key === "profit_target")).toBe(true);
+  });
+
+  it("offers the computed window_days field with distinct values", () => {
+    const rows = [
+      histRow({ start: "2026-01-01", end: "2026-01-30" }), // 30 days
+      histRow({ start: "2026-01-01", end: "2026-12-31" }), // 365 days
+      histRow({ start: "2026-01-01", end: "2026-01-30" }), // 30 days (duplicate)
+    ];
+    const fields = historyInputFields(rows);
+    const windowField = fields.find((f) => f.key === "window_days")!;
+    expect(windowField.label).toBe("Window (days)");
+    expect(windowField.values).toEqual([30, 365]);
+  });
+
+  it("offers the window_bars field with distinct values", () => {
+    const rows = [histRow({ bars: 500 }), histRow({ bars: 2000 }), histRow({ bars: 500 })];
+    const fields = historyInputFields(rows);
+    const barsField = fields.find((f) => f.key === "window_bars")!;
+    expect(barsField.label).toBe("Window (bars)");
+    expect(barsField.values).toEqual([500, 2000]);
   });
 
   it("offers every numeric sizing-model argument and skips non-numeric ones", () => {

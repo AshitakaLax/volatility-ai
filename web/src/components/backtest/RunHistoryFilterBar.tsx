@@ -273,6 +273,33 @@ export function RunHistoryFilterBar({ rows, filters, onChange, showing, total }:
           />
         ) : null}
 
+        <Field label="Window from">
+          <Input
+            type="date"
+            className="w-36"
+            value={filters.window.start ?? ""}
+            onChange={(event) =>
+              onChange({
+                ...filters,
+                window: { ...filters.window, start: event.currentTarget.value || null },
+              })
+            }
+          />
+        </Field>
+        <Field label="Window to">
+          <Input
+            type="date"
+            className="w-36"
+            value={filters.window.end ?? ""}
+            onChange={(event) =>
+              onChange({
+                ...filters,
+                window: { ...filters.window, end: event.currentTarget.value || null },
+              })
+            }
+          />
+        </Field>
+
         <div className="ml-auto flex items-center gap-3">
           <Badge tone={showing !== total ? "stuck" : "neutral"} className="gap-1">
             <Filter className="size-3" />

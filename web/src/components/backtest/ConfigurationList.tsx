@@ -1,5 +1,8 @@
 import { ListChecks } from "lucide-react";
 
+import { Pagination } from "@/components/ui/Pagination";
+import { usePagination } from "@/hooks/usePagination";
+
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { configurationKey } from "@/lib/sweepSummary";
 import { cn, pct } from "@/lib/utils";
@@ -27,6 +30,11 @@ function paramsLabel(params: Cell["params"]): string {
 }
 
 export function ConfigurationList({ configurations, selectedKey, onSelect }: Props) {
+  const pagination = usePagination(configurations.length, 25);
+  const pageConfigs = pagination.paginate(configurations);
+  const selectedIndex = selectedKey
+    ? configurations.findIndex((entry) => configurationKey(entry) === selectedKey)
+    : -1;
   if (configurations.length <= 1) return null;
 
   return (
@@ -38,6 +46,9 @@ export function ConfigurationList({ configurations, selectedKey, onSelect }: Pro
         </CardTitle>
         <p className="mt-1 text-xs text-muted-foreground">
           Select one to see its metrics, chart and trade log below.
+          {selectedIndex >= 0
+            ? ` Selected: #${selectedIndex + 1} (page ${Math.floor(selectedIndex / pagination.pageSize) + 1}).`
+            : null}
         </p>
       </CardHeader>
       <CardContent className="overflow-x-auto pt-0">
@@ -53,9 +64,10 @@ export function ConfigurationList({ configurations, selectedKey, onSelect }: Pro
             </tr>
           </thead>
           <tbody className="tnum">
-            {configurations.map((config, index) => {
+            {pageConfigs.map((config) => {
               const key = configurationKey(config);
               const selected = key === selectedKey;
+              const index = configurations.findIndex((entry) => configurationKey(entry) === key);
               return (
                 <tr
                   key={key}
@@ -84,6 +96,14 @@ export function ConfigurationList({ configurations, selectedKey, onSelect }: Pro
             })}
           </tbody>
         </table>
+        <Pagination
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          total={configurations.length}
+          onPageChange={pagination.setPage}
+          onPageSizeChange={pagination.setPageSize}
+        />
       </CardContent>
     </Card>
   );

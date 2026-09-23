@@ -545,6 +545,8 @@ export interface RunHistoryFilters {
   tickers: string[];
   models: string[];
   fillModels: string[];
+  /** Simulation-window overlap bounds (YYYY-MM-DD, inclusive). Null = open. */
+  window: DateRange;
   /** Namespaced key -> exact values to keep. Empty/absent = open. */
   values: Record<string, number[]>;
   /** Namespaced key -> inclusive band. Absent = open. */
@@ -559,6 +561,7 @@ export const EMPTY_RUN_HISTORY_FILTERS: RunHistoryFilters = {
   tickers: [],
   models: [],
   fillModels: [],
+  window: { start: null, end: null },
   values: {},
   ranges: {},
   extraFields: [],

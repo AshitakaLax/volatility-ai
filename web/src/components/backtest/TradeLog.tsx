@@ -2,6 +2,8 @@ import { ChevronDown, ChevronRight, Download, ListOrdered } from "lucide-react";
 import { useState } from "react";
 
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { Pagination } from "@/components/ui/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { buildCycles, fillKey } from "@/lib/filters";
 import { cn, usd } from "@/lib/utils";
 import type { Fill } from "@/types/backtest";
@@ -43,9 +45,9 @@ interface Props {
 }
 
 // Enough to scroll through and see the shape; past this a table stops
-// being something a person reads. The count is always stated so the cap
-// is visible rather than silently truncating.
-const MAX_ROWS = 500;
+// being something a person reads. Paginated (not silently truncated),
+// with the CSV uncapped for the full set.
+const PAGE_SIZE = 50;
 
 type View = "fills" | "cycles";
 
@@ -59,6 +61,9 @@ export function TradeLog({ executions, ticker, totalBeforeFilters, profitTarget 
   const realised = closed.reduce((total, cycle) => total + (cycle.realized ?? 0), 0);
 
   const rows = view === "fills" ? executions.length : cycles.length;
+  const cyclesPagination = usePagination(cycles.length, PAGE_SIZE);
+  const fillsPagination = usePagination(executions.length, PAGE_SIZE);
+  const pagination = view === "cycles" ? cyclesPagination : fillsPagination;
 
   return (
     <Card>
@@ -138,7 +143,7 @@ export function TradeLog({ executions, ticker, totalBeforeFilters, profitTarget 
                   </tr>
                 </thead>
                 <tbody className="tnum">
-                  {cycles.slice(0, MAX_ROWS).map((cycle) => {
+                  {cyclesPagination.paginate(cycles).map((cycle) => {
                     const exit = cycle.sells[cycle.sells.length - 1];
                     return (
                       <tr key={cycle.lotId} className="border-b border-border/50 last:border-0">
@@ -200,7 +205,7 @@ export function TradeLog({ executions, ticker, totalBeforeFilters, profitTarget 
                   </tr>
                 </thead>
                 <tbody className="tnum">
-                  {executions.slice(0, MAX_ROWS).map((execution) => (
+                  {fillsPagination.paginate(executions).map((execution) => (
                     <tr
                       key={fillKey(execution)}
                       className="border-b border-border/50 last:border-0"
@@ -239,12 +244,14 @@ export function TradeLog({ executions, ticker, totalBeforeFilters, profitTarget 
               </table>
             )}
 
-            {rows > MAX_ROWS ? (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Showing the first {MAX_ROWS} of {rows}. Narrow the date range, or use the
-                CSV, which is not capped.
-              </p>
-            ) : null}
+            <Pagination
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              pageSize={pagination.pageSize}
+              total={rows}
+              onPageChange={pagination.setPage}
+              onPageSizeChange={pagination.setPageSize}
+            />
           </CardContent>
         </>
       ) : null}

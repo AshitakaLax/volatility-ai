@@ -250,6 +250,8 @@ export function sameNumber(a: number, b: number): boolean {
  *   param:<name>                the raw argument, when it is numeric
  *   metric:<key>                the raw metric (cagr_pct etc. are
  *                               already percent-scaled by the engine)
+ *   window_days                 the number of calendar days between the
+ *                               run's start and end dates (inclusive)
  *
  * Returns null when the field does not apply -- an old report with no
  * such metric, a model that never took the argument, or a non-numeric
@@ -258,6 +260,16 @@ export function sameNumber(a: number, b: number): boolean {
 export function historyFieldValue(row: HistoryRow, key: string): number | null {
   if (key === "grid_step") return row.grid === null ? null : row.grid * 100;
   if (key === "profit_target") return row.target === null ? null : row.target * 100;
+  if (key === "window_bars")
+    return typeof row.bars === "number" && Number.isFinite(row.bars) ? row.bars : null;
+  if (key === "window_days") {
+    if (!row.start || !row.end) return null;
+    const startMs = new Date(row.start).getTime();
+    const endMs = new Date(row.end).getTime();
+    if (Number.isNaN(startMs) || Number.isNaN(endMs)) return null;
+    // Inclusive of both start and end day
+    return Math.max(0, Math.floor((endMs - startMs) / 86_400_000) + 1);
+  }
   if (key.startsWith("param:")) {
     const raw = row.params[key.slice("param:".length)];
     return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
@@ -313,8 +325,21 @@ export function runHistoryFilterActive(filters: RunHistoryFilters): boolean {
     filters.tickers.length > 0 ||
     filters.models.length > 0 ||
     filters.fillModels.length > 0 ||
+    filters.window.start !== null ||
+    filters.window.end !== null ||
     activeNumericFieldKeys(filters).length > 0
   );
+}
+
+/** Overlap of a row's simulation window with the selected bounds. */
+function matchesWindow(row: HistoryRow, range: DateRange): boolean {
+  if (range.start === null && range.end === null) return true;
+  if (!row.start || !row.end) return false;
+  const start = row.start.slice(0, 10);
+  const end = row.end.slice(0, 10);
+  if (range.start && end < range.start) return false;
+  if (range.end && start > range.end) return false;
+  return true;
 }
 
 /** Apply every run-history filter. All clauses are conjunctive. */
@@ -340,6 +365,7 @@ export function filterHistoryRows(
     ) {
       return false;
     }
+    if (!matchesWindow(row, filters.window)) return false;
     for (const key of numericKeys) {
       if (!numericFieldPasses(row, key, filters)) return false;
     }
@@ -469,7 +495,8 @@ function runHistoryColumnValue(
     case "total_trades":
       return metricValue("total_trades");
     case "window":
-      return row.start;
+      if (!row.start) return null;
+      return `${row.start.slice(0, 10)}→${row.end?.slice(0, 10) ?? ""}`;
     case "run_id":
       return row.run;
     case "saved_at":
@@ -529,7 +556,7 @@ export function sortHistoryRows(
  * swept dimensions -- even when the loaded history holds a single value
  * of each. Every numeric sizing-model argument seen in any row is
  * offered too; non-numeric arguments (`ticker`) are left to the Fund
- * control.
+ * control. The computed `window_days` field is also always offered.
  */
 export function historyInputFields(rows: HistoryRow[]): HistoryFieldOption[] {
   const out: HistoryFieldOption[] = [
@@ -539,6 +566,18 @@ export function historyInputFields(rows: HistoryRow[]): HistoryFieldOption[] {
       label: "Profit target %",
       group: "Input arguments",
       values: distinctValues(rows, "profit_target"),
+    },
+    {
+      key: "window_days",
+      label: "Window (days)",
+      group: "Input arguments",
+      values: distinctValues(rows, "window_days"),
+    },
+    {
+      key: "window_bars",
+      label: "Window (bars)",
+      group: "Input arguments",
+      values: distinctValues(rows, "window_bars"),
     },
   ];
 
