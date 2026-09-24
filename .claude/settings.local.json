@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat)",
+      "Bash(python /tmp/analyze_frontier.py)",
+      "Bash(python /tmp/annual_returns.py)",
+      "Bash(python)",
+      "Bash(bash run_5strategy_comparison.sh)",
+      "PowerShell(Get-Process python -ErrorAction SilentlyContinue)",
+      "Bash(python -c \"import optuna\")",
+      "Bash(pip install *)",
+      "Bash(.venv/Scripts/python.exe -c \"import optuna\")",
+      "Bash(.venv/Scripts/python.exe --version)",
+      "Bash(python -c \"import sys; print\\(sys.executable\\)\")",
+      "Bash(bash run_2strategy_retry2.sh)"
+    ]
+  }
+}

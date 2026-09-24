@@ -1,0 +1,77 @@
+# sweep_spyd_hf_intrabar_broad -- Broad exhaustive grid sweep over
+# HighFrequencyLocalReferenceSizing on SPYD using the INTRABAR fill model.
+#
+# SPYD characteristics (measured on this dataset, 2016-01 to 2026-09):
+#   bars_per_day: 279 (749,308 bars / 2,684 sessions)
+#   median daily range: 1.04%, mean 1.25%, p75 1.47%
+#   median 1-min intrabar range: 2.5 bps
+#   Total return: 172.8% (2.73x over decade)
+#   High-dividend S&P 500 ETF, NOT leveraged
+#
+# Design rationale:
+# - per_lot_pct scaled to SPYD's own daily range (~1%)
+# - steps centered on SPYD's 2.5bps median intrabar range
+# - profit_targets scaled to SPYD's 2.73x decade return (lower than COWZ/RSP)
+# - bars_per_day = 279 (critical for lookback_days window sizing)
+# - event_day_boost_multiplier includes 1.0 as control
+# - earnings_day_boost_multiplier added (dividend capture dynamics)
+#
+# Grid size: 8 per_lot_pct x 6 lookback x 3 event_boost x 3 earn_boost x 10 steps x 9 targets
+# = 11,664 combinations. Use --search random with --trials 500 for coverage.
+#
+# fill_model: intrabar (resting limit orders fill on TOUCH, not close)
+# enforce_no_loss: true (structural invariant)
+
+strategy:
+  strategy_id: hf_local_reference
+  strategy_params:
+    bars_per_day: 279
+    per_lot_pct: [0.0005, 0.001, 0.0015, 0.002, 0.003, 0.005, 0.0075, 0.01]
+    lookback_days: [0.02, 0.05, 0.1, 0.2, 0.5, 1.0]
+    event_day_boost_multiplier: [1.0, 1.5, 2.0]
+    earnings_day_boost_multiplier: [1.0, 1.5, 2.0]
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    weighted_event_boost_multiplier: 2.5
+
+grid:
+  # Steps centered on SPYD's ~2.5bps median intrabar range
+  # 0.001 = ~1x median, 0.002 = ~2x, 0.004 = ~4x (too wide arm)
+  steps: [0.001, 0.0015, 0.002, 0.003, 0.004, 0.005, 0.0075, 0.01, 0.015, 0.02]
+  # Targets scaled to SPYD's 2.73x decade return
+  # 0.002 = 0.2%, 0.03 = 3% -- moves that recur on 1% daily vol
+  profit_targets: [0.002, 0.003, 0.004, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03]
+
+backtest:
+  symbol: SPYD
+  initial_cash: 100000.0
+
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+
+search:
+  strategy: grid
+  rank_by: Total Return %
+  direction: maximize
+  seed: 42
+
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  enforce_no_loss: true
+
+output:
+  return_full_results: false
