@@ -595,9 +595,7 @@ class TestStrategyParameters:
             assert run["req"]["batch_total"] == 2
         # Every requested value covered exactly once, split across the
         # two chunks -- nothing dropped, nothing doubled.
-        covered = sorted(
-            v for run in body["runs"] for v in run["req"]["params"]["allocation_pct"]
-        )
+        covered = sorted(v for run in body["runs"] for v in run["req"]["params"]["allocation_pct"])
         assert covered == [0.02, 0.03, 0.05, 0.08]
 
 
