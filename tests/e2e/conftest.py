@@ -9,6 +9,13 @@ Pi -- CI, a fresh clone, a laptop on a different network -- every test
 here must SKIP, not fail. A suite that goes red because someone is not
 on the right LAN teaches people to ignore red.
 
+The same reasoning covers `httpx` itself: it's in requirements-web.txt,
+not the base requirements.txt CI installs (deliberately -- see
+.github/workflows/ci.yml), so a bare `import httpx` would turn "no
+web extras installed" into a hard collection error for the WHOLE
+suite, not just this directory. `importorskip` below makes that a
+skip too.
+
 The probe below runs once per session and skips the whole module when
 the deployment is not answering.
 
@@ -28,8 +35,9 @@ from __future__ import annotations
 
 import os
 
-import httpx
 import pytest
+
+httpx = pytest.importorskip("httpx")
 
 # The deployment under test. Overridable so the same tests can point at
 # a local server, which is how they are debugged.
