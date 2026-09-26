@@ -108,7 +108,7 @@ services:
       #
       # Blank or unset would run sweeps on this Pi instead, on the same
       # four cores as the trading loop above.
-      VAI_BACKTEST_UPSTREAM: "${VAI_BACKTEST_UPSTREAM:-http://172.16.0.102:8000}"
+      VAI_BACKTEST_UPSTREAM: "${VAI_BACKTEST_UPSTREAM:-http://172.16.0.134:8000}"
       # Belt and braces. With the upstream set no engine runs here at
       # all, so this only matters if someone clears that -- at which
       # point a sweep must not saturate the cores the loop is using.

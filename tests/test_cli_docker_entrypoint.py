@@ -981,6 +981,12 @@ def test_shard_requires_a_name_and_a_main_server():
 
 @pytest.mark.parametrize("name", ["local", "-leading-dash", "has space", "x" * 65])
 def test_shard_rejects_an_invalid_name(name):
+    # `shard` checks for fastapi/httpx before validating --name (see
+    # test_shard_reports_missing_web_dependencies_clearly); skipped
+    # rather than failed where requirements-web.txt is not installed,
+    # matching test_serve_starts_the_backend_and_answers_health.
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
     # `--name=` so argparse does not read a leading dash as a flag.
     result = _run("shard", f"--name={name}", "--main", "127.0.0.1")
     assert result.returncode == 2
@@ -988,6 +994,8 @@ def test_shard_rejects_an_invalid_name(name):
 
 
 def test_shard_rejects_an_unusable_main_address():
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
     result = _run("shard", "--name", "fast-shard", "--main", "ftp://somewhere")
     assert result.returncode == 2
     assert "--main" in result.stderr
@@ -997,6 +1005,8 @@ def test_shard_exits_cleanly_when_main_is_not_this_projects_server(tmp_path):
     """A plain HTTP server at --main answers the registration with an
     error rather than a shard response. The shard must say so and exit,
     not retry forever as if the host were merely down."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
     port = _free_port()
     other = subprocess.Popen(
         [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
