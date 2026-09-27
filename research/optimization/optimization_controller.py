@@ -140,6 +140,23 @@ class BacktestState:
         if not self._pending:
             self.unsettled = 0.0
 
+    def accrue_daily_interest(self, daily_rate: float) -> None:
+        """Credit one day of money-market yield on the FULL cash balance.
+
+        Unsettled included, deliberately: a real cash-sweep account
+        (Fidelity's SPAXX core position, which is what this models --
+        see ExecutionConfig.cash_yield_pct) earns yield on money sitting
+        there regardless of settlement status. T+N settlement restricts
+        what can be SPENT, not what earns yield -- unlike buying_power,
+        this reads plain `cash`, not the settled subset.
+
+        Compounds `cash` in place rather than tracking accrued interest
+        separately: nothing downstream (buying_power, equity) needs to
+        distinguish principal from interest, and a strategy that then
+        buys with it is just spending real, already-credited cash.
+        """
+        self.cash *= 1.0 + daily_rate
+
 
 def _resolve_search_strategy(
     search_strategy,
@@ -230,6 +247,7 @@ def _run_one_combination(
     enforce_no_loss: bool = True,
     allow_signal_exit: bool = False,
     settlement_days: int = 0,
+    cash_yield_pct: float | None = 0.0,
 ):
     """
     Task 4.5. Module-level (not a method) so it, and everything passed
@@ -317,6 +335,7 @@ def _run_one_combination(
             allow_signal_exit=allow_signal_exit,
             settlement_days=settlement_days,
             intrabar_priority=intrabar_priority,
+            cash_yield_pct=cash_yield_pct,
         )
         # Strategy is identified by name rather than by the config's
         # strategy_id, because run_sweep takes a callable and never
@@ -342,6 +361,7 @@ def _run_one_combination(
             "enforce_no_loss": enforce_no_loss,
             "allow_signal_exit": allow_signal_exit,
             "settlement_days": settlement_days,
+            "cash_yield_pct": cash_yield_pct,
         }
         result_row = {
             "Grid Step": step,
@@ -367,6 +387,7 @@ def _run_one_combination(
             "enforce_no_loss": enforce_no_loss,
             "allow_signal_exit": allow_signal_exit,
             "settlement_days": settlement_days,
+            "cash_yield_pct": cash_yield_pct,
             "error": str(e),
         }, None
 
@@ -409,6 +430,18 @@ class OptimizationController:
         self._implied_vol_change_cache = None
         self._implied_vol_series_cache = None
         self._implied_vol_series_loaded = False
+        # Same split as implied vol just above: the loaded series is
+        # tens of KB (one row per calendar day since 2000, not per bar)
+        # and stays out of _DERIVED_CACHES; the per-bar array it expands
+        # into is the thing that must not ship on every task.
+        self._smart_cash_yield_series_cache = None
+        self._smart_cash_yield_series_loaded = False
+        self._smart_cash_yield_pct_cache = None
+        # A handful of scalars, not one-per-bar -- deliberately NOT in
+        # _DERIVED_CACHES below. It costs nothing to ship to a worker and
+        # recomputing it there would still need self.data["close"]'s
+        # cummax(), which is not free either.
+        self._buy_hold_cache = None
         logger.info(
             f"OptimizationController initialized with historical dataset length: {len(historical_data)}"
         )
@@ -424,6 +457,7 @@ class OptimizationController:
         "_event_intensity_cache",
         "_minutes_to_event_cache",
         "_implied_vol_change_cache",
+        "_smart_cash_yield_pct_cache",
     )
 
     def __getstate__(self):
@@ -473,6 +507,41 @@ class OptimizationController:
         if self._fomc_flags_cache is None:
             self._fomc_flags_cache = [d in FOMC_DECISION_DATES for d in self._eastern_dates]
         return self._fomc_flags_cache
+
+    @property
+    def _buy_hold(self):
+        """Buy-and-hold on this controller's own data: the bar every
+        grid/harvest strategy should be measured against, since a book
+        that never traded is always a possible "strategy".
+
+        Depends only on self.data, not on any per-combination parameter,
+        so it is computed once here and reused by every combination in a
+        sweep -- exactly the reasoning _fomc_flags documents. Mirrors
+        tools/stage4_leverage.py's buy_and_hold(): raw close, no
+        dividend adjustment (matching this project's own data feed), and
+        the same growth/years CAGR formula _simulate_single uses on
+        equity, applied to price instead.
+        """
+        if self._buy_hold_cache is None:
+            close = self.data["close"]
+            start_price = float(close.iloc[0])
+            end_price = float(close.iloc[-1])
+            span_days = (close.index[-1] - close.index[0]).days
+            years = span_days / 365.25 if span_days > 0 else 0.0
+            growth = end_price / start_price if start_price else 0.0
+            if years > 0.0 and growth > 0.0:
+                cagr_pct = ((growth ** (1.0 / years)) - 1.0) * 100.0
+            else:
+                cagr_pct = -100.0 if growth <= 0.0 else 0.0
+            # Same peak-to-trough measure as the strategy's own Max
+            # Drawdown %, computed on price rather than equity.
+            max_drawdown_pct = abs(float((close / close.cummax() - 1.0).min())) * 100.0
+            self._buy_hold_cache = {
+                "Buy-Hold CAGR %": cagr_pct,
+                "Buy-Hold Return %": (growth - 1.0) * 100.0,
+                "Buy-Hold Max Drawdown %": max_drawdown_pct,
+            }
+        return self._buy_hold_cache
 
     @property
     def _eastern_index(self):
@@ -633,6 +702,54 @@ class OptimizationController:
             )
         return self._implied_vol_change_cache
 
+    @property
+    def _smart_cash_yield_series(self):
+        """The EFFR-proxy series itself (see money_market_yield.py) --
+        SMALL (one row per calendar day since 2000, not per bar) and
+        deliberately NOT in _DERIVED_CACHES, same split _implied_vol_series
+        documents above and for the identical reason: cheap to ship,
+        and rebuilding it on a worker still means re-reading the CSV.
+
+        None when data/external/fred_EFFR.csv was never fetched (a Pi, a
+        shard, a fresh clone) -- smart_cash_yield_pct_for_index's own
+        FLOOR_PCT fallback handles that, so a sweep stays runnable
+        without this data exactly like the implied-vol signal does.
+        """
+        if not self._smart_cash_yield_series_loaded:
+            from research.ml.sources import default_directory
+            from research.optimization.money_market_yield import (
+                load_money_market_yield_history,
+            )
+
+            series = None
+            path = default_directory() / "fred_EFFR.csv"
+            if path.exists():
+                try:
+                    series = load_money_market_yield_history(path)
+                except (FileNotFoundError, DataValidationError) as exc:
+                    logger.warning(
+                        f"Money-market yield history {path} unusable ({exc}); "
+                        "continuing with the smart-default floor rate."
+                    )
+            self._smart_cash_yield_series_cache = series
+            self._smart_cash_yield_series_loaded = True
+        return self._smart_cash_yield_series_cache
+
+    @property
+    def _smart_cash_yield_pct(self):
+        """Per-bar smart-default annual cash yield (percentage points),
+        cached like _fomc_flags -- see money_market_yield.py for the
+        EFFR-minus-expense-ratio-with-a-floor computation this wraps."""
+        if self._smart_cash_yield_pct_cache is None:
+            from research.optimization.money_market_yield import (
+                smart_cash_yield_pct_for_index,
+            )
+
+            self._smart_cash_yield_pct_cache = smart_cash_yield_pct_for_index(
+                self._smart_cash_yield_series, self.data.index
+            )
+        return self._smart_cash_yield_pct_cache
+
     def _simulate_single(
         self,
         step: float,
@@ -648,6 +765,7 @@ class OptimizationController:
         enforce_no_loss: bool = True,
         allow_signal_exit: bool = False,
         settlement_days: int = 0,
+        cash_yield_pct: float | None = 0.0,
     ) -> SimulationResult:
         """
         Task 4.1. One isolated combination: fresh AssetLotLedger and
@@ -753,6 +871,29 @@ class OptimizationController:
         # on the first bar (no previous close exists) --
         # DynamicSlippageModel falls back to base_bps in that case.
         prev_close = None
+        # None means SMART: look up the real historical rate per day
+        # (money_market_yield.py's EFFR-proxy) instead of one fixed
+        # number for the whole run -- see _smart_cash_yield_pct. 0.0 (the
+        # default parameter here, matching every other flag in this
+        # function) means the feature is off entirely, which makes
+        # cash_yield_active False, so the day-boundary block below never
+        # runs and this path costs nothing beyond the one comparison per
+        # bar. A plain nonzero float is the explicit-override case,
+        # unchanged from before this smart mode existed: compounded into
+        # a daily rate once, outside the loop, since ** is not something
+        # to pay per bar for a value that never changes mid-run.
+        smart_cash_yield = cash_yield_pct is None
+        cash_yield_active = smart_cash_yield or cash_yield_pct != 0.0
+        daily_cash_yield_rate = (
+            (1.0 + cash_yield_pct) ** (1.0 / 365.0) - 1.0
+            if cash_yield_active and not smart_cash_yield
+            else 0.0
+        )
+        # Only built when actually needed: this triggers loading and
+        # expanding the EFFR-proxy series to one value per bar
+        # (self._smart_cash_yield_pct), which a fixed-override or
+        # feature-off run has no reason to pay for.
+        smart_cash_yield_pct_by_bar = self._smart_cash_yield_pct if smart_cash_yield else None
         fomc_flags = self._fomc_flags
         earnings_flags = self._earnings_flags
         minute_flags = self._minutes_since_open
@@ -771,19 +912,31 @@ class OptimizationController:
             # once trading a moving average that had not warmed up.
             rsi_value = rsi_tracker.update(current_price)
 
-            # SESSION BOUNDARY, for T+N settlement only. Guarded on the
-            # flag so the default path pays one integer comparison per
-            # bar rather than a date extraction over ~1M bars -- the
-            # same discipline wants_lot_retargeting exists for.
+            # SESSION BOUNDARY, for T+N settlement AND money-market
+            # accrual. Guarded on the flags so the default path (both
+            # off) pays one boolean check per bar rather than a date
+            # extraction over ~1M bars -- the same discipline
+            # wants_lot_retargeting exists for.
             #
             # Counts CALENDAR days present in the data, not sessions in
             # the exchange sense. On a continuous minute series those are
             # the same thing for settlement purposes: what matters is
             # that a sale on one trading day is spendable on the next
             # one, and a day absent from the data cannot host a trade.
-            if settlement_days > 0:
+            # Interest for one day makes the same assumption: a day
+            # absent from the data (a weekend, a holiday) still elapses
+            # in the real account, but this only ever prices what the
+            # DATA can see, same as everything else here.
+            if settlement_days > 0 or cash_yield_active:
                 day = timestamp.toordinal()
                 if day != state.session:
+                    if cash_yield_active:
+                        if smart_cash_yield_pct_by_bar is not None:
+                            annual_pct = smart_cash_yield_pct_by_bar[bar_index]
+                            rate = (1.0 + annual_pct / 100.0) ** (1.0 / 365.0) - 1.0
+                        else:
+                            rate = daily_cash_yield_rate
+                        state.accrue_daily_interest(rate)
                     state.advance_session(day)
 
             # Peaks/drawdown every bar (B3), before constructing context,
@@ -1151,6 +1304,12 @@ class OptimizationController:
             # validated dataset but must not raise here.
             metrics["CAGR %"] = -100.0 if growth <= 0.0 else 0.0
 
+        # THE BAR THAT MATTERS: what buying this fund at the window's
+        # first close and never selling would have returned. Cached at
+        # the controller level (self._buy_hold) since it depends only on
+        # self.data, not on this combination's step/target/strategy.
+        metrics.update(self._buy_hold)
+
         # Built once here and reused for SimulationResult.equity_curve
         # below, rather than constructed twice from the same lists.
         equity_curve = pd.Series(
@@ -1205,6 +1364,7 @@ class OptimizationController:
             "enforce_no_loss": enforce_no_loss,
             "allow_signal_exit": allow_signal_exit,
             "settlement_days": settlement_days,
+            "cash_yield_pct": cash_yield_pct,
             # Underscore-prefixed attributes are excluded deliberately.
             # The intent above is "the strategy's own constructor-derived
             # attributes"; a stateful strategy's rolling indicator state
@@ -1248,6 +1408,7 @@ class OptimizationController:
         enforce_no_loss: bool = True,
         allow_signal_exit: bool = False,
         settlement_days: int = 0,
+        cash_yield_pct: float | None = 0.0,
         symbol: str = "TQQQ",
         initial_cash: float = 100_000.0,
         n_jobs: int = 1,
@@ -1453,6 +1614,7 @@ class OptimizationController:
                     enforce_no_loss,
                     allow_signal_exit,
                     settlement_days,
+                    cash_yield_pct,
                 )
                 elapsed_ms = int((time.perf_counter() - started_at) * 1000)
                 resolved_search_strategy.report(suggestion, sim_result)
@@ -1505,6 +1667,7 @@ class OptimizationController:
                             enforce_no_loss,
                             allow_signal_exit,
                             settlement_days,
+                            cash_yield_pct,
                         ): s
                         for s in batch
                     }

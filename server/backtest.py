@@ -221,17 +221,44 @@ class RunRequest(BaseModel):
     targets: list[float] = Field(..., min_length=1, max_length=12)
     model: str = "fixed"
     params: dict[str, Any] = Field(default_factory=dict)
-    fill: str = "close"
+    # intrabar is the more realistic fill model (a resting limit order
+    # fills on a touch, not only a close) -- see ExecutionConfig's
+    # docstring in engine/core/config.py, which carries the matching
+    # default and the note on why it does not move
+    # tests/fixtures/regression_baseline.py (that path calls run_sweep
+    # directly, with its own independent "close" default parameter).
+    fill: str = "intrabar"
     no_loss: bool = True
+    # Annual yield (a fraction: 0.033 is 3.3%, not 33%) on cash not tied
+    # up in an open lot -- a real brokerage sweeps it into a money-market
+    # fund automatically (Fidelity's default is SPAXX). None (default)
+    # is SMART: the real historical rate for each day of the run, not
+    # today's rate applied to the whole window -- see
+    # ExecutionConfig.cash_yield_pct in engine/core/config.py and
+    # research/optimization/money_market_yield.py for the full
+    # rationale. A number is a FIXED override instead; 0.0 disables
+    # accrual entirely. This mirrors the engine's own default rather
+    # than run_sweep()'s bare-parameter default of 0.0, which exists
+    # only to keep tests/fixtures/regression_baseline.py's pinned
+    # numbers unmoved -- a live submission always states this explicitly
+    # (as None, to mean smart, or as a number to override it).
+    cash_yield_pct: float | None = Field(default=None, ge=0.0, le=1.0)
     # A DATE WINDOW, applied before the engine sees anything. `limit` is
     # the backstop that remains: these files are a million rows and a
     # sweep over all of them is minutes per configuration.
     #
     # The two compose in that order -- window first, then cap the tail --
     # so "the last 20k bars of 2022" means what it says.
+    #
+    # Defaults to the full range this project's own "Bars" selector
+    # calls "everything" (ParameterForm.tsx) -- a request that omits
+    # `limit` gets the whole available history, not a silent truncation
+    # to a fraction of it. Still capped at 2,000,000 (le, below): a
+    # sweep over many configurations pays for this once per
+    # configuration, and this remains the backstop for that cost.
     start: str | None = Field(default=None, description="ISO date, inclusive.")
     end: str | None = Field(default=None, description="ISO date, inclusive of the whole day.")
-    limit: int | None = Field(default=200_000, ge=500, le=2_000_000)
+    limit: int | None = Field(default=2_000_000, ge=500, le=2_000_000)
     # None means "decide for me" -- DEFAULT_JOBS. Explicit 1 forces the
     # sequential path, which is worth keeping reachable: a single
     # configuration gains nothing from a process pool and pays the cost
@@ -933,6 +960,7 @@ def build_config(request: RunRequest) -> BacktestConfig:
             "execution": {
                 "fill_model": request.fill,
                 "enforce_no_loss": request.no_loss,
+                "cash_yield_pct": request.cash_yield_pct,
             },
             "search": {
                 "strategy": "bayesian" if request.bayes else "grid",
@@ -1085,6 +1113,7 @@ def build_config(request: RunRequest) -> BacktestConfig:
                 "execution": {
                     "fill_model": config.execution.fill_model,
                     "enforce_no_loss": config.execution.enforce_no_loss,
+                    "cash_yield_pct": config.execution.cash_yield_pct,
                 },
                 # Carried through explicitly -- from_dict defaults an
                 # absent "search" key to plain grid, which would

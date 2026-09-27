@@ -163,6 +163,12 @@ def fund_metrics(metrics: dict) -> dict:
         "open_trades": int(metrics.get("Open Trade Count", 0)),
         "signal_exits": int(metrics.get("Signal Exit Count", 0)),
         "final_equity": round(float(metrics.get("Final Equity", 0.0)), 2),
+        # THE BAR THAT MATTERS: buying this fund at the window's first
+        # close and never selling. Absent (0.0) only for a result
+        # produced before this existed -- see OptimizationController._buy_hold.
+        "buy_hold_cagr_pct": round(float(metrics.get("Buy-Hold CAGR %", 0.0)), 4),
+        "buy_hold_return_pct": round(float(metrics.get("Buy-Hold Return %", 0.0)), 4),
+        "buy_hold_max_drawdown_pct": round(float(metrics.get("Buy-Hold Max Drawdown %", 0.0)), 4),
     }
 
 

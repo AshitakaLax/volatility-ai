@@ -133,6 +133,13 @@ BASELINE: dict | None = {
     "enforce_no_loss": True,
     "allow_signal_exit": False,
     "settlement_days": 0,
+    # Added alongside money-market idle-cash accrual. 0.0 is run_sweep()'s
+    # own default parameter (unrelated to ExecutionConfig's, which
+    # defaults to a nonzero rate) -- this path calls run_sweep directly
+    # and never passes cash_yield_pct, so it stays off and every value
+    # below is unaffected. All eighteen previous values were re-derived
+    # and confirmed byte-identical before this one key was appended.
+    "cash_yield_pct": 0.0,
     "Final Equity": 100099.81489816227,
     "Total Return %": 0.09981489816226485,
     "Realized PnL": 99.81489816224163,
@@ -197,6 +204,16 @@ BASELINE: dict | None = {
     "Average Annual Return %": 0.09981489816226485,
     "Best Year Return %": 0.09981489816226485,
     "Worst Year Return %": 0.09981489816226485,
+    # Added when OptimizationController started reporting buy-and-hold
+    # on its own data (OptimizationController._buy_hold) as the bar a
+    # strategy should be measured against. Depends only on self.data, so
+    # it is one number per dataset, unaffected by anything a
+    # combination's own step/target/strategy does -- all seventeen
+    # values above were re-derived and confirmed byte-identical before
+    # these three were appended.
+    "Buy-Hold CAGR %": 335.4856318610149,
+    "Buy-Hold Return %": 14.67799999999999,
+    "Buy-Hold Max Drawdown %": 5.837999999999999,
 }
 
 
