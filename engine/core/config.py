@@ -227,18 +227,23 @@ class ExecutionConfig:
     maps to validate_finalists_intraday/simulate_single_intraday (Task
     2.3) and, since fill_model was added, to run_sweep as well.
 
-    fill_model selects how a bar produces fills: "close" (default,
+    fill_model selects how a bar produces fills: "close" (the
     original behavior -- a level must be reached by the bar's CLOSE)
-    or "intrabar" (a level TOUCHED during the bar fills, at that
-    level, modelling the resting limit orders a grid strategy actually
-    uses). See OptimizationController._simulate_single for the
+    or "intrabar" (default here; a level TOUCHED during the bar fills,
+    at that level, modelling the resting limit orders a grid strategy
+    actually uses). See OptimizationController._simulate_single for the
     measured difference -- roughly 1.85x more fills on both sides on
-    this repo's own minute data -- and for why "close" remains the
-    default despite that."""
+    this repo's own minute data.
+
+    This default is independent of run_sweep()'s own "close" default
+    parameter (research/optimization/optimization_controller.py) and of
+    tests/fixtures/regression_baseline.py's pinned config, which calls
+    run_sweep directly and never passes through this dataclass -- so
+    changing it here does not move the pinned baseline."""
 
     on_flat_reentry: str = "stale_reference"
     intrabar_priority: str = "sell_first"
-    fill_model: str = "close"
+    fill_model: str = "intrabar"
     # Task 7.15's no-loss guard, made switchable rather than absolute.
     # TRUE (default) preserves today's behavior exactly: a sell whose
     # net proceeds would not cover the lot's allocated cost basis is
@@ -282,6 +287,36 @@ class ExecutionConfig:
     # the conservative direction and the one that reveals how much of a
     # result depended on money that would not have been there.
     settlement_days: int = 0
+    # Annual yield (as a fraction -- 0.033 is 3.3%, not 33%) on cash NOT
+    # tied up in an open lot. Every dollar this strategy has not put to
+    # work sits in a brokerage's default cash sweep, which is a real
+    # money-market fund and not a non-earning parking spot -- Fidelity's
+    # own default (and the target deployment's, alongside the IRA note
+    # above) is SPAXX. Compounded DAILY on
+    # OptimizationController._simulate_single's BacktestState.cash,
+    # unsettled included: a real sweep account earns yield on money
+    # sitting there regardless of settlement status -- settlement_days
+    # restricts what can be SPENT, not what earns yield.
+    #
+    # None (default) is SMART, not a fixed rate: a backtest run over
+    # 2015-2020 should not price idle cash at TODAY's yield any more
+    # than it prices TQQQ at today's price. OptimizationController looks
+    # up the real historical rate for each day of the run instead --
+    # research/optimization/money_market_yield.py, an EFFR-from-FRED
+    # proxy for SPAXX (which publishes no fetchable yield history of its
+    # own), haircut by SPAXX's expense ratio and floored at a realistic
+    # minimum for the near-zero-rate stretches (2009-2015, 2020-2021)
+    # where that haircut alone would go negative -- see that module's
+    # docstring for the reasoning and the calibration check.
+    #
+    # A plain float still means exactly what it always did: a FIXED
+    # override, for whoever wants one rate for the whole run instead of
+    # history. 0.0 disables accrual entirely (no interest at all -- the
+    # pre-existing behavior, and what run_sweep()'s own default
+    # parameter still is, so this default does not move
+    # tests/fixtures/regression_baseline.py, which calls run_sweep
+    # directly and never passes through this dataclass).
+    cash_yield_pct: float | None = None
 
 
 @dataclass(frozen=True)
@@ -523,10 +558,15 @@ class BacktestConfig:
         execution = ExecutionConfig(
             on_flat_reentry=execution_data.get("on_flat_reentry", "stale_reference"),
             intrabar_priority=execution_data.get("intrabar_priority", "sell_first"),
-            fill_model=execution_data.get("fill_model", "close"),
+            fill_model=execution_data.get("fill_model", "intrabar"),
             enforce_no_loss=bool(execution_data.get("enforce_no_loss", True)),
             allow_signal_exit=bool(execution_data.get("allow_signal_exit", False)),
             settlement_days=int(execution_data.get("settlement_days", 0)),
+            cash_yield_pct=(
+                float(execution_data["cash_yield_pct"])
+                if execution_data.get("cash_yield_pct") is not None
+                else None
+            ),
         )
 
         output_data = data.get("output", {})
@@ -610,6 +650,8 @@ class BacktestConfig:
             "costs.model_type",
         )
         validate_non_negative(self.execution.settlement_days, "execution.settlement_days")
+        if self.execution.cash_yield_pct is not None:
+            validate_unit_interval(self.execution.cash_yield_pct, "execution.cash_yield_pct")
         validate_non_negative(self.costs.commission_per_trade, "costs.commission_per_trade")
         validate_non_negative(self.costs.slippage_bps, "costs.slippage_bps")
         validate_non_negative(self.costs.base_bps, "costs.base_bps")
@@ -752,6 +794,7 @@ class BacktestConfig:
                 "enforce_no_loss": self.execution.enforce_no_loss,
                 "allow_signal_exit": self.execution.allow_signal_exit,
                 "settlement_days": self.execution.settlement_days,
+                "cash_yield_pct": self.execution.cash_yield_pct,
             },
             "output": {"return_full_results": self.output.return_full_results},
             "live": {
@@ -805,6 +848,7 @@ class BacktestConfig:
             "fill_model": self.execution.fill_model,
             "intrabar_priority": self.execution.intrabar_priority,
             "enforce_no_loss": self.execution.enforce_no_loss,
+            "cash_yield_pct": self.execution.cash_yield_pct,
             "symbol": self.backtest.symbol,
             "initial_cash": self.backtest.initial_cash,
             "search_strategy": self.search.strategy,

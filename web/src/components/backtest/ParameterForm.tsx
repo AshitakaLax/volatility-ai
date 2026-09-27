@@ -130,8 +130,23 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
   const [triggerMethod, setTriggerMethod] = useState<TriggerMethod>("last_buy");
   const [profitTarget, setProfitTarget] = useState(0.5);
   const [model, setModel] = useState("fixed");
-  const [fillModel, setFillModel] = useState<"close" | "intrabar">("close");
-  const [limit, setLimit] = useState(50_000);
+  // intrabar and the full available history are the defaults: intrabar
+  // is the more realistic fill model (a resting limit order fills on a
+  // touch, not only a close -- see the fill-model note near the Select
+  // below), and a truncated default row count silently hid most of a
+  // fund's history from a first-time run.
+  const [fillModel, setFillModel] = useState<"close" | "intrabar">("intrabar");
+  const [limit, setLimit] = useState(2_000_000);
+  // Annual yield on cash not tied up in an open lot -- a real brokerage
+  // sweep (Fidelity's default is SPAXX) earns this on it automatically.
+  // Blank (the default) omits cash_yield_pct from the request entirely,
+  // which the server reads as SMART: the real historical rate for each
+  // day of the run, not today's rate applied to the whole backtest
+  // window -- see ExecutionConfig.cash_yield_pct's docstring. A typed
+  // value is a FIXED override instead, held as a PERCENT string (e.g.
+  // "3.3") and divided by 100 only when building the request body
+  // below, matching cash_yield_pct's fraction convention.
+  const [cashYieldPct, setCashYieldPct] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Per-field text for the current model, keyed by parameter name. Held
@@ -310,7 +325,12 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
       setTickers(priorTickers.current);
       priorTickers.current = null;
     }
-  }, [specs]);
+    // model is redundant with specs (specs is derived FROM model, see
+    // its useMemo above) but harmless to state explicitly. gridTriggerMap
+    // is the real fix: it loads asynchronously, and without it here this
+    // effect could run once against the initial {} (falling back to
+    // GENERIC_TRIGGER) and never re-run once the real map arrives.
+  }, [specs, model, gridTriggerMap]);
 
   useEffect(() => {
     if (!staged) return;
@@ -354,6 +374,12 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
     // reproduces the model's committed defaults byte-for-byte.
     params: buildStrategyParams(specs, paramValues, sweepFields, optionSweepFields),
     limit,
+    // Blank or unparsable -> omitted, falling back to the server's own
+    // default (ExecutionConfig.cash_yield_pct) rather than sending a
+    // stray 0 that would silently disable the feature.
+    ...(cashYieldPct.trim() !== "" && !Number.isNaN(Number(cashYieldPct))
+      ? { cash_yield_pct: Number(cashYieldPct) / 100 }
+      : {}),
     ...(range.start ? { start: range.start } : {}),
     ...(range.end ? { end: range.end } : {}),
     // Omitted entirely for "grid" (the default) -- a grid submission's
@@ -408,6 +434,7 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
     profitTarget,
     fillModel,
     limit,
+    cashYieldPct,
     range.start,
     range.end,
     paramsKey,
@@ -684,6 +711,21 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
             <option value="200000">200k</option>
             <option value="2000000">everything (slow)</option>
           </Select>
+        </Field>
+
+        <Field label="Cash yield %">
+          <Input
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            className="w-20"
+            placeholder="smart"
+            title="Annual yield on cash not tied up in an open lot -- what a brokerage's cash sweep (e.g. Fidelity's SPAXX) earns on it automatically. Blank (smart) uses the real historical rate for each day of the backtest instead of one fixed number. Enter a value to override with a fixed rate; 0 disables it entirely."
+            value={cashYieldPct}
+            disabled={busy}
+            onChange={(event) => setCashYieldPct(event.currentTarget.value)}
+          />
         </Field>
 
         <SearchMethodPanel

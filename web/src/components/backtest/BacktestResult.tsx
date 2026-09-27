@@ -238,7 +238,12 @@ export function BacktestResult({
 
   return (
     <>
-      {selectedConfig ? <RiskRewardMetrics metrics={selectedConfig.m} /> : null}
+      {selectedConfig ? (
+        <RiskRewardMetrics
+          metrics={selectedConfig.m}
+          benchmarkCagr={selectedConfig.m.buy_hold_cagr_pct ?? null}
+        />
+      ) : null}
 
       {showSweepDetails ? <SweepSummary configurations={configurations} /> : null}
 

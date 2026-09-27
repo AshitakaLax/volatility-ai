@@ -75,6 +75,7 @@ EXECUTION_FLAG_FIELDS = (
     "enforce_no_loss",
     "allow_signal_exit",
     "settlement_days",
+    "cash_yield_pct",
 )
 
 

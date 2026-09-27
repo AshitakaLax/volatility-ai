@@ -67,6 +67,12 @@ export interface Metrics {
   /** Sells permitted to realise a loss. 0 unless signal exits are on. */
   signal_exits: number;
   final_equity: number;
+  /** Buying this fund at the window's first close and never selling --
+   * the bar every grid/harvest strategy should be measured against.
+   * Optional: absent on a report archived before this existed. */
+  buy_hold_cagr_pct?: number;
+  buy_hold_return_pct?: number;
+  buy_hold_max_drawdown_pct?: number;
 }
 
 /**
@@ -180,6 +186,13 @@ export interface RunReq {
   params?: SweptParams;
   fill?: "close" | "intrabar";
   no_loss?: boolean;
+  /** Annual yield (a fraction: 0.033 is 3.3%) on cash not tied up in an
+   * open lot -- what a brokerage's cash sweep (e.g. Fidelity's SPAXX)
+   * earns on it. Omitted (the default) is SMART: the real historical
+   * rate for each day of the run. A number is a FIXED override; 0
+   * disables accrual entirely. See ExecutionConfig.cash_yield_pct in
+   * engine/core/config.py. */
+  cash_yield_pct?: number;
   /** ISO date, inclusive. Applied BEFORE the bar cap. */
   start?: string;
   /** ISO date, inclusive of the whole day. */

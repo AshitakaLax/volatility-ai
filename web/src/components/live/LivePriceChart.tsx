@@ -174,7 +174,6 @@ export function LivePriceChart({ symbol, lastPrice, lastPriceAt, height = 400 }:
       chart.current = null;
       series.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height]);
 
   // -----------------------------------------------------------------------

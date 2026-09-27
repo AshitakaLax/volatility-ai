@@ -157,6 +157,9 @@ export function FundComparison({ funds }: Props) {
                 <th className="pb-2 font-medium">Fund</th>
                 <th className="pb-2 text-right font-medium">Net yield</th>
                 <th className="pb-2 text-right font-medium">CAGR</th>
+                <th className="pb-2 text-right font-medium" title="Buying this fund at the window's first close and never selling">
+                  Hold CAGR
+                </th>
                 <th className="pb-2 text-right font-medium">Max DD</th>
                 <th className="pb-2 text-right font-medium">Sharpe</th>
                 <th className="pb-2 text-right font-medium">Win rate</th>
@@ -179,7 +182,18 @@ export function FundComparison({ funds }: Props) {
                     >
                       {pct(m.net_yield_pct)}
                     </td>
-                    <td className="py-2 text-right">{pct(m.cagr_pct)}</td>
+                    <td
+                      className={cn(
+                        "py-2 text-right",
+                        m.buy_hold_cagr_pct !== undefined &&
+                          (m.cagr_pct > m.buy_hold_cagr_pct ? "text-profit" : "text-loss"),
+                      )}
+                    >
+                      {pct(m.cagr_pct)}
+                    </td>
+                    <td className="py-2 text-right text-muted-foreground">
+                      {m.buy_hold_cagr_pct === undefined ? "--" : pct(m.buy_hold_cagr_pct)}
+                    </td>
                     <td className="py-2 text-right text-loss">{pct(m.max_drawdown_pct)}</td>
                     <td className="py-2 text-right">{m.sharpe_ratio.toFixed(2)}</td>
                     <td className="py-2 text-right">{pct(m.win_rate_pct, 1)}</td>
