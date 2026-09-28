@@ -9,7 +9,12 @@ import { describe, expect, it } from "vitest";
 
 import type { Cell } from "@/types/backtest";
 
-import { configurationKey, configurationLabel, describeSweepAxes } from "./sweepSummary";
+import {
+  configurationKey,
+  configurationLabel,
+  describeSweepAxes,
+  resolveSweepTicker,
+} from "./sweepSummary";
 
 function metrics(cagr = 0) {
   return {
@@ -64,6 +69,33 @@ describe("configurationKey", () => {
     const a = config({ grid: 0.02, target: 0.01, params: { x: 5 } });
     const b = config({ grid: 0.02, target: 0.01, params: { x: 5 } });
     expect(configurationKey(a)).toBe(configurationKey(b));
+  });
+});
+
+describe("resolveSweepTicker", () => {
+  // SweepMatrix used to own a Fund selector of its own, entirely
+  // disconnected from FilterPanel's -- picking a fund in one control
+  // left every other section (RiskRewardMetrics, the Simulations table,
+  // the chart, the trade log) showing the PREVIOUS fund, which read as
+  // "selecting a fund doesn't clear the old results" even though nothing
+  // was actually stale, just split across two selections.
+  it("shows the shared selection when that fund has a sweep of its own", () => {
+    expect(resolveSweepTicker("QQQ", ["TQQQ", "QQQ"])).toBe("QQQ");
+  });
+
+  it("falls back to the first fund WITH a sweep when the shared selection has none", () => {
+    // e.g. the shared selection is a fund run with a single configuration
+    // while another fund in the same report was actually swept.
+    expect(resolveSweepTicker("RSP", ["TQQQ", "QQQ"])).toBe("TQQQ");
+  });
+
+  it("falls back to empty when nothing has a sweep", () => {
+    expect(resolveSweepTicker("TQQQ", [])).toBe("");
+  });
+
+  it("never drifts from the shared selection once it has its own sweep -- switching TO it is picked up, not just away from it", () => {
+    expect(resolveSweepTicker("TQQQ", ["TQQQ", "QQQ"])).toBe("TQQQ");
+    expect(resolveSweepTicker("QQQ", ["TQQQ", "QQQ"])).toBe("QQQ");
   });
 });
 

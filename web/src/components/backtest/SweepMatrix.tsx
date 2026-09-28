@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
 import { comboKey } from "@/lib/filters";
+import { resolveSweepTicker } from "@/lib/sweepSummary";
 import { cn, pct, usd } from "@/lib/utils";
 import type { Fund, Cell } from "@/types/backtest";
 
@@ -26,6 +27,14 @@ import type { Fund, Cell } from "@/types/backtest";
 
 interface Props {
   funds: Record<string, Fund>;
+  /** The fund selected everywhere else on the page (FilterPanel's own
+   * "Fund" control) -- the heatmap shows THIS fund's grid, not a
+   * selection of its own, so picking a fund anywhere on the page updates
+   * every section at once. See resolveSweepTicker's own docstring for
+   * why this replaced a local, disconnected selector. */
+  selectedTicker: string;
+  /** Changes the SHARED fund selection (FilterPanel's), not a local one. */
+  onSelectTicker: (ticker: string) => void;
   /**
    * A cell was clicked -- selects it as BacktestResult's current
    * configuration, so RiskRewardMetrics (instant, metrics are already
@@ -93,18 +102,27 @@ function comboLabel(params: Cell["params"]): string {
   return entries.length === 0 ? "—" : entries.map(([key, value]) => `${key}=${value}`).join(", ");
 }
 
-export function SweepMatrix({ funds, onSelectConfiguration, onLoadIntoForm }: Props) {
+export function SweepMatrix({
+  funds,
+  selectedTicker,
+  onSelectTicker,
+  onSelectConfiguration,
+  onLoadIntoForm,
+}: Props) {
   const withGrid = Object.entries(funds).filter(
     ([, fund]) => (fund.cells?.length ?? 0) > 1,
   );
   const [metric, setMetric] = useState<MetricKey>("cagr_pct");
-  const [ticker, setTicker] = useState<string>(withGrid[0]?.[0] ?? "");
   const [combo, setCombo] = useState<string>("");
 
   // A single-configuration run has no surface to show. Rendering an
   // empty 1x1 grid would suggest the sweep did something it did not.
   if (withGrid.length === 0) return null;
 
+  const ticker = resolveSweepTicker(
+    selectedTicker,
+    withGrid.map(([name]) => name),
+  );
   const fund = funds[ticker] ?? withGrid[0]?.[1];
   const allCells: Cell[] = fund?.cells ?? [];
   const spec = METRICS.find((entry) => entry.key === metric) ?? METRICS[0]!;
@@ -147,7 +165,7 @@ export function SweepMatrix({ funds, onSelectConfiguration, onLoadIntoForm }: Pr
         <div className="flex gap-3">
           {withGrid.length > 1 ? (
             <Field label="Fund">
-              <Select value={ticker} onChange={(event) => setTicker(event.currentTarget.value)}>
+              <Select value={ticker} onChange={(event) => onSelectTicker(event.currentTarget.value)}>
                 {withGrid.map(([name]) => (
                   <option key={name} value={name}>
                     {name}

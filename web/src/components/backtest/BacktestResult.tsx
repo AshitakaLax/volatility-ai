@@ -249,6 +249,8 @@ export function BacktestResult({
 
       <SweepMatrix
         funds={report.funds}
+        selectedTicker={selected ?? ""}
+        onSelectTicker={(ticker) => onFiltersChange({ ...filters, tickers: [ticker] })}
         onSelectConfiguration={(config) => setSelectedConfigKey(configurationKey(config))}
         onLoadIntoForm={onLoadIntoForm}
       />

@@ -33,6 +33,29 @@ export function configurationKey(config: Cell): string {
   ]);
 }
 
+/**
+ * Which fund SweepMatrix's heatmap should render.
+ *
+ * SweepMatrix used to own its OWN "Fund" selector, entirely disconnected
+ * from the one on FilterPanel that drives everything else on the page --
+ * RiskRewardMetrics, ConfigurationList's "Simulations" table, the chart,
+ * the trade log. Picking a fund in one control left every other section
+ * showing the PREVIOUS fund's results, which read as "selecting a fund
+ * doesn't clear the old table" even though each table was individually
+ * correct for whichever fund IT thought was selected.
+ *
+ * The fix is one shared selection: the caller's selected fund is what the
+ * heatmap shows too, UNLESS that fund has no sweep of its own (a single
+ * configuration, so there is no grid to draw) -- then it falls back to
+ * the first fund that does, exactly as SweepMatrix's own local state used
+ * to default, but without ever diverging from the shared selection once
+ * the reader is looking at a fund that actually has one.
+ */
+export function resolveSweepTicker(selectedTicker: string, fundsWithGrid: string[]): string {
+  if (fundsWithGrid.includes(selectedTicker)) return selectedTicker;
+  return fundsWithGrid[0] ?? "";
+}
+
 /** A human-readable label for one configuration. */
 export function configurationLabel(config: Cell): string {
   const base = `step ${((config.grid ?? 0) * 100).toFixed(2)}% · target ${((config.target ?? 0) * 100).toFixed(2)}%`;
