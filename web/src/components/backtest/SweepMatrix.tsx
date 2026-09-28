@@ -2,6 +2,7 @@ import { FileInput, Grid3x3 } from "lucide-react";
 import { useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
+import { comboKey } from "@/lib/filters";
 import { cn, pct, usd } from "@/lib/utils";
 import type { Fund, Cell } from "@/types/backtest";
 
@@ -84,10 +85,9 @@ function shade(value: number, min: number, max: number, higherIsBetter: boolean)
 
 /** A stable, human-readable label for one cell's resolved combo --
  * dictionary order isn't guaranteed on the wire, so entries are sorted
- * by key before joining. `{}` (no strategy param swept) reads as "—". */
-function comboKey(params: Cell["params"]): string {
-  return JSON.stringify(Object.entries(params ?? {}).sort(([a], [b]) => a.localeCompare(b)));
-}
+ * by key before joining. `{}` (no strategy param swept) reads as "—".
+ * The key form (identity, not display) is comboKey, shared with
+ * RunHistory -- see lib/filters.ts. */
 function comboLabel(params: Cell["params"]): string {
   const entries = Object.entries(params ?? {}).sort(([a], [b]) => a.localeCompare(b));
   return entries.length === 0 ? "—" : entries.map(([key, value]) => `${key}=${value}`).join(", ");

@@ -14,6 +14,7 @@ import type {
   HistoryRow,
   Metrics,
   OrderStatusFilter,
+  Params,
   RunHistoryFilters,
   Timeframe,
 } from "@/types/backtest";
@@ -240,6 +241,27 @@ export function chartWindow(
  * the last bit; treat them as equal within a hair. */
 export function sameNumber(a: number, b: number): boolean {
   return Math.abs(a - b) <= 1e-9;
+}
+
+/**
+ * A stable, order-independent identity for a cell's resolved strategy-
+ * param combination. Dictionary order isn't guaranteed on the wire, so
+ * entries are sorted by key before joining.
+ *
+ * (grid, target) alone is NOT a unique identity: once a strategy param
+ * is swept too (a Bayesian search over e.g. oversold_threshold/period
+ * with grid_step/profit_target held fixed), many cells legitimately
+ * share one (grid, target) pair, one per combo. This is what lets a
+ * caller tell them apart -- SweepMatrix's combo selector, and
+ * RunHistory's row `key` (a `<tr key={...}>` built from run/ticker/
+ * grid/target alone collided across every combo sharing that pair, so
+ * React rendered/reconciled them as if they were the SAME row: a
+ * filter that correctly shrank the underlying data still showed old
+ * rows, because React matched new data onto old, colliding-key DOM
+ * nodes instead of replacing them).
+ */
+export function comboKey(params: Params | null | undefined): string {
+  return JSON.stringify(Object.entries(params ?? {}).sort(([a], [b]) => a.localeCompare(b)));
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   aggregate,
   buildCycles,
   chartWindow,
+  comboKey,
   fillKey,
   filterExecutions,
   filterHistoryRows,
@@ -344,6 +345,33 @@ describe("historyFieldValue", () => {
   it("reads window_bars from the row, null when absent", () => {
     expect(historyFieldValue(histRow({ bars: 1000 }), "window_bars")).toBe(1000);
     expect(historyFieldValue(histRow({ bars: null }), "window_bars")).toBeNull();
+  });
+});
+
+describe("comboKey", () => {
+  // RunHistory's <tr key> is built from run/ticker/grid/target PLUS this
+  // -- see its own comment. Once a strategy param is swept too (a
+  // Bayesian search over e.g. oversold_threshold with grid_step/
+  // profit_target held fixed), many rows legitimately share that
+  // quadruple, and without comboKey they collided on one React key: a
+  // filter that correctly shrank the row set still showed stale rows,
+  // because React matched new data onto old, colliding-key DOM nodes
+  // instead of replacing them.
+  it("differs for rows that share grid/target/run but differ only in params", () => {
+    const a = comboKey({ oversold_threshold: 30, period: 7 });
+    const b = comboKey({ oversold_threshold: 40, period: 7 });
+    expect(a).not.toBe(b);
+  });
+
+  it("is order-independent -- the same combo never produces two keys", () => {
+    const a = comboKey({ oversold_threshold: 30, period: 7 });
+    const b = comboKey({ period: 7, oversold_threshold: 30 });
+    expect(a).toBe(b);
+  });
+
+  it("treats absent and empty params as the same combo", () => {
+    expect(comboKey(undefined)).toBe(comboKey({}));
+    expect(comboKey(null)).toBe(comboKey({}));
   });
 });
 

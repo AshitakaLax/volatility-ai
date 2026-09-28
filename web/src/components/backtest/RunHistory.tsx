@@ -6,6 +6,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import {
+  comboKey,
   filterHistoryRows,
   nextRunHistorySort,
   sortHistoryRows,
@@ -388,7 +389,15 @@ export function RunHistory({ refreshToken }: Props) {
                 const worst = valueOf(row, "worst_year_pct");
                 return (
                   <tr
-                    key={`${row.run}-${row.ticker}-${row.grid}-${row.target}`}
+                    // grid/target alone collide once a strategy param is
+                    // ALSO swept (a Bayesian search over e.g.
+                    // oversold_threshold/period with grid_step/
+                    // profit_target held fixed): many rows then share
+                    // one (run, ticker, grid, target), React reconciles
+                    // them as the same element, and a filter that
+                    // correctly shrinks `rows` still shows stale ones --
+                    // see comboKey's own docstring in lib/filters.ts.
+                    key={`${row.run}-${row.ticker}-${row.grid}-${row.target}-${comboKey(row.params)}`}
                     data-testid="history-row"
                     className="cursor-pointer border-b border-border/50 last:border-0 hover:bg-accent"
                     // A real <a> (below, in the Run column) is what gives
