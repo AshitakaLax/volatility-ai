@@ -30,6 +30,7 @@ import {
   historyInputFields,
   nextRunHistorySort,
   openLotIds,
+  resolveSelectedFund,
   runHistoryFilterActive,
   sortHistoryRows,
 } from "./filters";
@@ -165,6 +166,27 @@ describe("filterExecutions", () => {
   it("does not filter on tickers -- they pick the fund, and fills are one fund's", () => {
     expect(filterExecutions([buy("A", 1)], { ...BASE, tickers: [] })).toHaveLength(1);
     expect(filterExecutions([buy("A", 1)], { ...BASE, tickers: ["RSP"] })).toHaveLength(1);
+  });
+});
+
+describe("resolveSelectedFund", () => {
+  it("uses the filter's pick when the report has that fund", () => {
+    expect(resolveSelectedFund(["QQQ"], ["TQQQ", "QQQ"])).toBe("QQQ");
+  });
+
+  it("falls back to the first fund when nothing is picked ('All')", () => {
+    expect(resolveSelectedFund([], ["TQQQ", "QQQ"])).toBe("TQQQ");
+  });
+
+  it("falls back to the first fund when the pick came from a different report", () => {
+    // The filter outlives the report. Trusting a stale "QQQ" on a
+    // TQQQ-only report left the page with no fund and, with one fund,
+    // no selector to change it.
+    expect(resolveSelectedFund(["QQQ"], ["TQQQ"])).toBe("TQQQ");
+  });
+
+  it("is null when the report has no funds", () => {
+    expect(resolveSelectedFund(["QQQ"], [])).toBeNull();
   });
 });
 

@@ -118,6 +118,21 @@ export function filterExecutions(fills: Fill[], filters: ExecutionFilters): Fill
   );
 }
 
+/**
+ * Which fund the result page shows: the filter's pick when the loaded
+ * report actually has it, else the report's first fund.
+ *
+ * The filter outlives any one report -- App owns it so the date range
+ * survives a tab switch -- so a fund picked on one report can be absent
+ * from the next. Trusting it there left the page with no fund, no
+ * metrics, and, on a single-fund report, no Fund selector to get out.
+ */
+export function resolveSelectedFund(picked: string[], available: string[]): string | null {
+  const first = picked[0];
+  if (first !== undefined && available.includes(first)) return first;
+  return available[0] ?? null;
+}
+
 /** Seconds per aggregation bucket, for rolling bars up. */
 export const TIMEFRAME_SECONDS: Record<Timeframe, number> = {
   "1Min": 60,

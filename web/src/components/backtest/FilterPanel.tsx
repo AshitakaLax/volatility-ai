@@ -135,7 +135,10 @@ export function FilterPanel({ filters, onChange, availableTickers, showing, tota
         {availableTickers.length > 1 ? (
           <Field label="Fund">
             <Select
-              value={filters.tickers[0] ?? ""}
+              // A fund picked on a previous report may not be in this one;
+              // the page has already fallen back to the first fund, which
+              // is what "All" shows.
+              value={availableTickers.includes(filters.tickers[0] ?? "") ? filters.tickers[0] : ""}
               onChange={(event) =>
                 set("tickers", event.currentTarget.value === "" ? [] : [event.currentTarget.value])
               }

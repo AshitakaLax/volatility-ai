@@ -10,8 +10,9 @@ import { SweepSummary } from "@/components/backtest/SweepSummary";
 import { TradeLog } from "@/components/backtest/TradeLog";
 import { Button, Card, CardContent } from "@/components/ui/primitives";
 import { useBacktestRun } from "@/hooks/useBacktestRun";
-import { filterExecutions, openLotIds } from "@/lib/filters";
-import { configurationKey, configurationLabel } from "@/lib/sweepSummary";
+import { buildDetailRequest } from "@/lib/detailRun";
+import { filterExecutions, openLotIds, resolveSelectedFund } from "@/lib/filters";
+import { configurationKey } from "@/lib/sweepSummary";
 import { isRunning } from "@/lib/runQueue";
 import type {
   Cell,
@@ -20,7 +21,6 @@ import type {
   ExecutionFilters,
   Report,
   Run,
-  RunReq,
 } from "@/types/backtest";
 
 /**
@@ -43,9 +43,9 @@ import type {
  * (grid_step, profit_target, strategy_params) configurations, but every
  * configuration but the engine's top pick carries METRICS ONLY on the
  * wire (server/backtest.py: carrying every cell's executions too "would
- * multiply the payload by the size of the grid"). So `selectedConfigKey`
- * (below) is local, page-only UI state -- unlike `filters`, it need not
- * survive a tab switch -- and selecting a non-top configuration shows its
+ * multiply the payload by the size of the grid"). So `selection` (below)
+ * is local, page-only UI state -- unlike `filters`, it need not survive a
+ * tab switch -- and selecting a non-top configuration shows its
  * metrics INSTANTLY (already shipped) while the chart/trade log offer an
  * explicit "View full detail" re-run (a normal, scoped ~23s backtest
  * job) rather than pretending that data already exists.
@@ -66,6 +66,11 @@ interface Props {
   onLoadIntoForm: (gridStep: number, profitTarget: number) => void;
 }
 
+/** A configuration key qualified by its fund -- the detail cache's key. */
+function scopedKey(ticker: string, configKey: string): string {
+  return JSON.stringify([ticker, configKey]);
+}
+
 export function BacktestResult({
   report,
   run,
@@ -74,35 +79,39 @@ export function BacktestResult({
   onLoadIntoForm,
 }: Props) {
   const tickers = report ? Object.keys(report.funds) : [];
-  const selected = filters.tickers[0] ?? tickers[0] ?? null;
+  const selected = resolveSelectedFund(filters.tickers, tickers);
   const fund = report && selected ? report.funds[selected] : undefined;
   const configurations = useMemo(() => fund?.cells ?? [], [fund]);
   const topPick = configurations[0];
 
-  // Which configuration this page shows -- null means "the engine's top
-  // pick," so an ordinary (non-swept) run needs no selection at all.
-  const [selectedConfigKey, setSelectedConfigKey] = useState<string | null>(null);
-  // One on-demand "View full detail" re-run per configuration a reader
-  // has actually asked to see, cached by the same key so re-selecting a
-  // previously-viewed configuration doesn't refire the job.
+  // Which configuration this page shows, qualified by the fund it was
+  // picked on -- null means "the engine's top pick," so an ordinary
+  // (non-swept) run needs no selection at all. A selection applies only
+  // while its fund is the one in view: configurationKey carries no fund,
+  // and every fund in a sweep shares the same keys, so an unqualified key
+  // would silently select the same-looking cell on a different fund.
+  const [selection, setSelection] = useState<{ ticker: string; key: string } | null>(null);
+  // One on-demand "View full detail" re-run per fund+configuration a
+  // reader has actually asked to see (scopedKey), so re-selecting one
+  // already viewed doesn't refire the job.
   const [detailRuns, setDetailRuns] = useState<Record<string, Run>>({});
-  // Which configuration the CURRENTLY IN-FLIGHT detail run belongs to --
-  // tracked separately from `selectedConfigKey` because a reader can
-  // select a different configuration while one is still running; the
-  // completion handler must file the result under the key it was
-  // actually submitted for, not whatever is selected when it lands.
+  // Which fund+configuration the CURRENTLY IN-FLIGHT detail run belongs
+  // to -- tracked separately from `selection` because a reader can select
+  // something else while one is still running; the completion handler
+  // must file the result under what it was actually submitted for.
   const [pendingDetailKey, setPendingDetailKey] = useState<string | null>(null);
   const detailBacktest = useBacktestRun();
 
-  // A different fund or a different report entirely invalidates all of
-  // the above -- a stale selection or cached detail run from one sweep
-  // must never leak into another.
+  // A different report invalidates all of the above. A different FUND
+  // does not need to: everything is keyed by fund already, so switching
+  // back restores that fund's selection and cached detail.
   useEffect(() => {
-    setSelectedConfigKey(null);
+    setSelection(null);
     setDetailRuns({});
     setPendingDetailKey(null);
-  }, [report?.id, selected]);
+  }, [report?.id]);
 
+  const selectedConfigKey = selection && selection.ticker === selected ? selection.key : null;
   const selectedConfig: Cell | undefined =
     (selectedConfigKey &&
       configurations.find((entry) => configurationKey(entry) === selectedConfigKey)) ||
@@ -112,7 +121,8 @@ export function BacktestResult({
   // `fund`'s baked-in fills/equity are already the right ones to show.
   const isTopPick =
     !topPick || !selectedConfig || configurationKey(selectedConfig) === configurationKey(topPick);
-  const detailKey = selectedConfig ? configurationKey(selectedConfig) : null;
+  const detailKey =
+    selected && selectedConfig ? scopedKey(selected, configurationKey(selectedConfig)) : null;
   const detailRun = detailKey ? detailRuns[detailKey] : undefined;
   const detailFund = selected ? detailRun?.report?.funds[selected] : undefined;
   // The fund result actually feeding the chart/trade log below.
@@ -141,33 +151,29 @@ export function BacktestResult({
         (detailBacktest.run?.status === "failed" ? "The run failed." : null))
       : null;
 
+  // The original request's cash yield, when the run this tab follows IS
+  // the report on screen. A report doesn't carry it; the run's echoed
+  // request does, archived runs included. Otherwise unknown, and omitted.
+  const originalCashYield =
+    run?.report && report && run.report.id === report.id ? run.req.cash_yield_pct : undefined;
+
   const viewFullDetail = () => {
     if (!report || !selected || !selectedConfig || !fund) return;
-    const key = configurationKey(selectedConfig);
-    setPendingDetailKey(key);
-    if (selectedConfig.grid === null || selectedConfig.target === null) return;
-    const request: RunReq = {
-      name: `detail: ${configurationLabel(selectedConfig)}`,
-      tickers: [selected],
-      grid_steps: [selectedConfig.grid],
-      targets: [selectedConfig.target],
-      ...(report.model ? { model: report.model } : {}),
-      // Already the full resolved combo for this cell -- confirmed by
-      // reading server/backtest.py's strategy_param_keys, which covers
-      // the whole run, not just the swept subset.
-      params: selectedConfig.params,
-      fill: report.fill === "intrabar" ? "intrabar" : "close",
-      no_loss: report.no_loss,
-      // window() applies start/end FIRST, then .tail(limit) -- pinning
-      // the exact original bounds plus a limit at least as large as what
-      // they already produced reproduces the identical frame, without
-      // needing the original request's own `limit` (never stored on the
-      // report).
-      start: fund.bars.start,
-      end: fund.bars.end,
-      limit: fund.bars.count,
-    };
+    const request = buildDetailRequest(report, selected, fund, selectedConfig, originalCashYield);
+    // Only marked pending once there is something to submit -- a pending
+    // key with no submission behind it would file whatever run the hook
+    // still holds from before.
+    if (!request) return;
+    setPendingDetailKey(scopedKey(selected, configurationKey(selectedConfig)));
     void detailBacktest.submit(request);
+  };
+
+  // Picking a heatmap cell can switch the fund too: when the fund in view
+  // has no sweep, the heatmap shows another fund's, and a cell there only
+  // means something on that fund.
+  const selectFromHeatmap = (config: Cell, ticker: string) => {
+    setSelection({ ticker, key: configurationKey(config) });
+    if (ticker !== selected) onFiltersChange({ ...filters, tickers: [ticker] });
   };
 
   // Stabilise `executions` so the two downstream useMemos don't see a new
@@ -251,7 +257,7 @@ export function BacktestResult({
         funds={report.funds}
         selectedTicker={selected ?? ""}
         onSelectTicker={(ticker) => onFiltersChange({ ...filters, tickers: [ticker] })}
-        onSelectConfiguration={(config) => setSelectedConfigKey(configurationKey(config))}
+        onSelectConfiguration={selectFromHeatmap}
         onLoadIntoForm={onLoadIntoForm}
       />
 
@@ -259,7 +265,9 @@ export function BacktestResult({
         <ConfigurationList
           configurations={configurations}
           selectedKey={selectedConfig ? configurationKey(selectedConfig) : null}
-          onSelect={(config) => setSelectedConfigKey(configurationKey(config))}
+          onSelect={(config) => {
+            if (selected) setSelection({ ticker: selected, key: configurationKey(config) });
+          }}
         />
       ) : null}
 

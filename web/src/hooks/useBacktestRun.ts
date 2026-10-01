@@ -35,7 +35,10 @@ export function useBacktestRun() {
   const health = useWebSocket<Frame<Run>>(
     watching ? `ws://${window.location.host}/api/backtest/ws/${run.id}` : null,
     (frame) => {
-      if (frame.t === "data") setRun(frame.d);
+      // A message already queued on the previous run's socket can land
+      // after a new submission replaced that run; it must not bring the
+      // old run back.
+      if (frame.t === "data") setRun((current) => (current?.id === frame.d.id ? frame.d : current));
       else if (frame.t === "err") setError(frame.msg);
     },
   );
@@ -62,6 +65,10 @@ export function useBacktestRun() {
     setSubmitting(true);
     setError(null);
     setBatch(null);
+    // Cleared NOW, not when the POST answers: until then the previous run
+    // -- possibly already complete -- would read as this submission's
+    // result to anything watching for completion.
+    setRun(null);
     try {
       // Replaces any previous run rather than accumulating: the server
       // keeps the history, and a form that quietly queued a second run

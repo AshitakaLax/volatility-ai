@@ -86,11 +86,14 @@ export interface Rsi {
   source: string;
 }
 
-/** A row from the loop's activity journal, newest first. */
+/** A row from the loop's revision log, newest first -- every mutation it
+ * made (engine/data/dashboard_data.py load_activity, over the `revisions`
+ * table in engine/core/persistence.py). */
 export interface Activity {
-  timestamp: string;
-  kind: string;
-  detail: string;
+  revision: number;
+  operation: string;
+  order_id: string | null;
+  detail: string | null;
 }
 
 /* ------------------------------------------------------------------ */

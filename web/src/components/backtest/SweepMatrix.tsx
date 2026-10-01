@@ -42,9 +42,10 @@ interface Props {
    * detail", a scoped re-run) reflect exactly this configuration. Fired
    * with the whole cell, not just the two axes, since a cell's identity
    * also depends on its resolved strategy_params once one of those is
-   * swept too.
+   * swept too -- and with the fund the heatmap is SHOWING, which differs
+   * from `selectedTicker` when that fund has no sweep of its own.
    */
-  onSelectConfiguration?: (config: Cell) => void;
+  onSelectConfiguration?: (config: Cell, ticker: string) => void;
   /**
    * Stage a cell's grid_step/profit_target onto the Run-a-Backtest form
    * and switch to the Backtesting tab -- for launching a broader NEW
@@ -161,6 +162,14 @@ export function SweepMatrix({
             profit target across. Colour is scaled to this grid's own range, and inverted
             where lower is better.
           </p>
+          {selectedTicker && ticker !== selectedTicker ? (
+            // Said out loud: otherwise the heatmap and the rest of the page
+            // silently describe two different funds.
+            <p className="mt-1 text-xs text-stuck" data-testid="sweep-fund-fallback">
+              {selectedTicker} has no sweep of its own, so this is {ticker}&apos;s. Selecting a
+              cell switches the page to {ticker}.
+            </p>
+          ) : null}
         </div>
         <div className="flex gap-3">
           {withGrid.length > 1 ? (
@@ -243,7 +252,7 @@ export function SweepMatrix({
                         "border border-border/40",
                         onSelectConfiguration && "cursor-pointer hover:ring-1 hover:ring-ring",
                       )}
-                      onClick={() => onSelectConfiguration?.(cell)}
+                      onClick={() => onSelectConfiguration?.(cell, ticker)}
                       style={{ background: shade(value, min, max, spec.higherIsBetter) }}
                       title={
                         `step ${(step * 100).toFixed(2)}% · target ${(target * 100).toFixed(2)}%\n` +
