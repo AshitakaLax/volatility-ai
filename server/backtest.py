@@ -51,7 +51,8 @@ from collections.abc import Callable
 from typing import Any, Literal, Protocol, Union, get_args, get_origin, get_type_hints
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from engine.core.config import BacktestConfig, expand_strategy_params
@@ -60,7 +61,9 @@ from engine.warehouse.bars import available_tickers, load_frame
 from research.optimization.optimization_controller import OptimizationController
 from research.optimization.search_strategies import BayesianSearch, GridSearch, SearchStrategy
 from research.strategies.strategy_registry import STRATEGIES, resolve_strategy
-from server import contract, history
+from server import contract, history, history_query
+from server.fills import MAX_LIMIT as FILLS_MAX_LIMIT
+from server.fills import FundFills, strip_report
 from server.jobs import (
     TERMINAL,
     JobQueue,
@@ -1681,6 +1684,11 @@ def _archive(job) -> None:
     endpoint that serves it back.
     """
     history.save(job.run_id, _with_id(job.snapshot(), job.run_id))
+    # The archive and its derived files now hold the fills; the queue
+    # keeps every finished job in memory for the process's lifetime, and
+    # a busy run's fills are ~100 MB. Served from history.load_fills from
+    # here on. Reassigned, never mutated: a reader may hold the old dict.
+    job.result = strip_report(job.result)
 
 
 # DURABLE: pending runs, their order and per-configuration checkpoints
@@ -1800,42 +1808,50 @@ def bars(
     }
 
 
-@router.get("/history")
-def history_rows() -> dict[str, Any]:
-    """Every completed run: run-level fields once, then one row PER CELL.
+class HistoryQuery(BaseModel):
+    """One page of one fund's Run History. `filters` takes the browser's
+    RunHistoryFilters shape (name, models, fillModels, window, values,
+    ranges); see server/history_query.py for the rules."""
 
-    A run can hold several funds and each fund several configurations,
-    so "rank the runs" is the wrong shape -- the thing worth comparing
-    is a (run, fund, grid step, profit target, params) cell and its
-    metrics. Flattening here means the client sorts an array rather than
-    walking a tree to find comparable numbers.
+    ticker: str = Field(..., min_length=1, max_length=16)
+    filters: dict[str, Any] = Field(default_factory=dict)
+    sort: dict[str, Any] | None = None
+    rank_by: str = "cagr_pct"
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=50, ge=1, le=history_query.MAX_PAGE)
 
-    The run-level fields (name, model, fill, window, ...) are NOT
-    repeated on every row: a 1,536-cell sweep would otherwise carry them
-    1,536 times. `runs[row.run]` joins them back.
 
-    Ranking itself is deliberately NOT done here. The metric is the
-    reader's choice and changing it should be instant, not a round trip.
+@router.get("/history/funds")
+def history_funds() -> list[dict[str, Any]]:
+    """Every fund with stored results: how many cells and runs, and when
+    it was last run -- what Run History's required Fund picker lists."""
+    return history_query.funds()
+
+
+@router.get("/history/runs")
+def history_runs() -> dict[str, Any]:
+    """Run-level fields of every stored run, without cells. For callers
+    that need names or windows (cli.py submit's dedupe), not results."""
+    return {"runs": history_query.runs()}
+
+
+@router.get("/history/facets")
+def history_facets(ticker: str = Query(..., min_length=1, max_length=16)) -> dict[str, Any]:
+    """The filter bar's options for one fund: algorithms, fill models and
+    every numeric input field with its distinct values."""
+    return history_query.facets(ticker)
+
+
+@router.post("/history/query")
+def history_page(body: HistoryQuery) -> dict[str, Any]:
+    """Run History, one fund at a time, filtered, sorted and paged here.
+
+    REPLACES `GET /history`, which returned every cell of every stored run
+    (31 MB raw, 20-28 s with 200 runs) for the browser to filter. With
+    retention no longer capped that would grow without bound; a page is
+    the same size whatever is stored.
     """
-    runs: dict[str, Any] = {}
-    rows: list[dict[str, Any]] = []
-    for run in history.load_all():
-        report = run.get("report")
-        if not isinstance(report, dict):
-            continue
-        run_id = run["id"]
-        runs[run_id] = {
-            **{key: value for key, value in report.items() if key not in ("id", "funds")},
-            "saved_at": run.get("saved_at"),
-        }
-        for ticker, fund in (report.get("funds") or {}).items():
-            count = (fund.get("bars") or {}).get("count")
-            for index, cell in enumerate(fund.get("cells") or []):
-                # rank: where the ENGINE ranked this cell; 0 is its own
-                # pick, so a reader can see when their chosen metric
-                # disagrees with it.
-                rows.append({**cell, "run": run_id, "ticker": ticker, "rank": index, "bars": count})
-    return {"runs": runs, "rows": rows}
+    return history_query.query(body.model_dump())
 
 
 @router.get("/runs")
@@ -1868,11 +1884,105 @@ def run(run_id: str) -> dict[str, Any]:
     """
     job = queue.get(run_id)
     if job is not None:
-        return _with_id(job.snapshot(), run_id)
-    stored = history.load(run_id)
+        return _public(_with_id(job.snapshot(), run_id))
+    # The derived summary, not the archive: identical but without fills,
+    # so a busy run reads ~0.25 MB here instead of parsing ~100 MB.
+    stored = history.load_summary(run_id)
     if stored is None:
         raise HTTPException(status_code=404, detail=f"No run {run_id!r}.")
     return stored
+
+
+_LIVE_FILLS: dict[tuple[str, str, int], FundFills] = {}
+
+
+def _fund_fills(run_id: str, ticker: str) -> FundFills:
+    """A fund's fills, from history once archived -- or, in the moment
+    between a run completing and its archive being written, from the
+    queue's copy of the result."""
+    stored = history.load_fills(run_id, ticker)
+    if stored is not None:
+        return stored
+    job = queue.get(run_id)
+    result = job.result if job is not None else None
+    fund = ((result or {}).get("funds") or {}).get(ticker) if isinstance(result, dict) else None
+    if isinstance(fund, dict) and isinstance(fund.get("fills"), list):
+        key = (run_id, ticker, job.revision)
+        cached = _LIVE_FILLS.get(key)
+        if cached is None:
+            cached = FundFills.from_fills(fund["fills"])
+            _LIVE_FILLS.clear()
+            _LIVE_FILLS[key] = cached
+        return cached
+    if job is None and history.load_summary(run_id) is None:
+        raise HTTPException(status_code=404, detail=f"No run {run_id!r}.")
+    raise HTTPException(status_code=404, detail=f"Run {run_id!r} has no fund {ticker!r}.")
+
+
+def _check_dates(*values: str | None) -> None:
+    for value in values:
+        if value is None:
+            continue
+        try:
+            pd.Timestamp(value)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=f"Not a date: {value!r}.") from exc
+
+
+@router.get("/runs/{run_id}/fills")
+def run_fills(
+    run_id: str,
+    ticker: str = Query(..., min_length=1, max_length=16),
+    start: str | None = None,
+    end: str | None = None,
+    status: Literal["all", "stuck", "closed"] = "all",
+    rsi_min: float | None = None,
+    rsi_max: float | None = None,
+    view: Literal["fills", "cycles"] = "fills",
+    cycles: Literal["all", "closed", "open"] = "all",
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=0, le=FILLS_MAX_LIMIT),
+) -> dict[str, Any]:
+    """One page of a fund's executions -- or its buy/sell cycles -- filtered
+    the way the result page filters them (see server/fills.py), with
+    counts over the whole filtered set in `summary`.
+
+    Reports no longer carry fills inline: a busy run's are ~850k rows. The
+    chart asks for its visible window, the trade log for its page.
+    """
+    _check_dates(start, end)
+    return _fund_fills(run_id, ticker).query(
+        start=start,
+        end=end,
+        status=status,
+        rsi_min=rsi_min,
+        rsi_max=rsi_max,
+        view=view,
+        cycles=cycles,
+        offset=offset,
+        limit=limit,
+    )
+
+
+@router.get("/runs/{run_id}/fills.csv")
+def run_fills_csv(
+    run_id: str,
+    ticker: str = Query(..., min_length=1, max_length=16),
+    start: str | None = None,
+    end: str | None = None,
+    status: Literal["all", "stuck", "closed"] = "all",
+    rsi_min: float | None = None,
+    rsi_max: float | None = None,
+) -> StreamingResponse:
+    """Every filtered fill as CSV, streamed -- the trade log's export."""
+    _check_dates(start, end)
+    fills = _fund_fills(run_id, ticker)
+    selected = fills.select(start=start, end=end, status=status, rsi_min=rsi_min, rsi_max=rsi_max)
+    return StreamingResponse(
+        fills.csv_lines(ticker, selected),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="trades-{run_id}-{ticker}.csv"'},
+    )
 
 
 @router.post("/runs", status_code=202)
@@ -1978,7 +2088,7 @@ def control_run(run_id: str, body: RunOp) -> dict[str, Any]:
         ) from exc
     except QueueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return _with_id(job.snapshot(), run_id)
+    return _public(_with_id(job.snapshot(), run_id))
 
 
 class QueueState(BaseModel):
@@ -2156,11 +2266,22 @@ async def run_socket(socket: WebSocket, run_id: str) -> None:
                 await socket.send_json({"t": "hb"})
                 continue
             seen = current.revision
-            await socket.send_json({"t": "data", "d": _with_id(current.snapshot(), run_id)})
+            await socket.send_json(
+                {"t": "data", "d": _public(_with_id(current.snapshot(), run_id))}
+            )
             if current.status in TERMINAL:
                 return
     except WebSocketDisconnect:
         return
+
+
+def _public(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """A snapshot as the API serves it: the report without fills (each
+    fund carries `fills_count`; GET /runs/{id}/fills pages them)."""
+    report = snapshot.get("report")
+    if isinstance(report, dict):
+        return {**snapshot, "report": strip_report(report)}
+    return snapshot
 
 
 def _with_id(snapshot: dict[str, Any], run_id: str) -> dict[str, Any]:

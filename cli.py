@@ -1514,7 +1514,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
     print()
     if not args.resubmit:
         try:
-            with urllib.request.urlopen(f"{args.api}/api/backtest/history", timeout=60) as resp:
+            with urllib.request.urlopen(
+                f"{args.api}/api/backtest/history/runs", timeout=60
+            ) as resp:
                 completed = {
                     run.get("name") for run in json.loads(resp.read()).get("runs", {}).values()
                 }

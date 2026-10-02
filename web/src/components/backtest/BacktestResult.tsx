@@ -10,8 +10,9 @@ import { SweepSummary } from "@/components/backtest/SweepSummary";
 import { TradeLog } from "@/components/backtest/TradeLog";
 import { Button, Card, CardContent } from "@/components/ui/primitives";
 import { useBacktestRun } from "@/hooks/useBacktestRun";
+import { type FillsSource, useFills } from "@/hooks/useFills";
 import { buildDetailRequest } from "@/lib/detailRun";
-import { filterExecutions, openLotIds, resolveSelectedFund } from "@/lib/filters";
+import { fillsParams, resolveSelectedFund } from "@/lib/filters";
 import { configurationKey } from "@/lib/sweepSummary";
 import { isRunning } from "@/lib/runQueue";
 import type {
@@ -176,15 +177,16 @@ export function BacktestResult({
     if (ticker !== selected) onFiltersChange({ ...filters, tickers: [ticker] });
   };
 
-  // Stabilise `executions` so the two downstream useMemos don't see a new
-  // array reference on every render (activeFund?.fills ?? []
-  // creates a new [] literal each time activeFund is undefined).
-  const executions = useMemo(() => activeFund?.fills ?? [], [activeFund]);
-  const visible = useMemo(
-    () => filterExecutions(executions, filters),
-    [executions, filters],
-  );
-  const open = useMemo(() => openLotIds(executions), [executions]);
+  // Where the chart and trade log read fills from: the run on screen, or
+  // the detail re-run for a non-top configuration. Reports carry only a
+  // count; each view pages exactly what it shows (GET /runs/{id}/fills).
+  const activeRunId = isTopPick ? report?.id : (detailRun?.report?.id ?? detailRun?.id);
+  const fillsSource: FillsSource | null =
+    activeFund && selected && activeRunId ? { runId: activeRunId, ticker: selected } : null;
+  const filterQuery = useMemo(() => fillsParams(filters), [filters]);
+  // Counts only (limit 0): the filter panel's "showing / total" and the
+  // trade log's header, over the whole filtered set.
+  const { page: counts } = useFills(fillsSource, { ...filterQuery, limit: 0 });
 
   // The run's actual data bounds -- the anchor the chart's zoom levels
   // measure back from when the filter range is open. Per-fund `bars` is
@@ -275,29 +277,30 @@ export function BacktestResult({
         filters={filters}
         onChange={onFiltersChange}
         availableTickers={tickers}
-        showing={visible.length}
-        total={executions.length}
+        showing={counts?.summary.fills ?? 0}
+        total={counts?.summary.fills_unfiltered ?? activeFund?.fills_count ?? 0}
       />
 
       {activeFund ? (
         <>
           <BacktestChart
             ticker={selected}
-            executions={visible}
+            source={fillsSource}
+            filterQuery={filterQuery}
             resolution={filters.chartResolution}
             onResolutionChange={(chartResolution: ChartResolution) =>
               onFiltersChange({ ...filters, chartResolution })
             }
             range={filters.range}
             dataRange={dataRange}
-            openLotIds={open}
             profitTarget={profitTarget}
           />
 
           <TradeLog
-            executions={visible}
+            source={fillsSource}
+            filterQuery={filterQuery}
+            summary={counts?.summary ?? null}
             ticker={selected}
-            totalBeforeFilters={executions.length}
             profitTarget={profitTarget}
           />
         </>

@@ -163,7 +163,7 @@ class TestARunCompletesThroughTheWholeChain:
         run_id = client.post("/api/backtest/runs", json=SMALL_RUN).json()["id"]
         wait_for(client, run_id)
 
-        after = client.get("/api/backtest/history").json()
+        after = client.get("/api/backtest/history/runs").json()
         assert run_id in after["runs"]
         rows = [row for row in after["rows"] if row["run"] == run_id]
         assert len(rows) == 4, "the sweep's four cells are not all in history"

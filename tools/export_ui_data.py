@@ -271,18 +271,11 @@ def build_search_report(
     }
 
 
-# Mirrors server/history.py's MAX_RUNS exactly -- a run recorded from
-# this side of the boundary should age out on the same schedule as one
-# the job queue recorded, not accumulate without bound because it
-# bypassed the queue's own pruning.
-_RUN_HISTORY_MAX = 200
-
-
 def write_run_history(run_id: str, report: dict) -> Path:
     """Write a completed run's report into output/runs/, in the exact
     shape server/history.py's store uses, so it appears in the web UI's
-    Run History. Duplicates that module's tiny save()/_prune() rather
-    than importing server: cli.py must keep working without FastAPI
+    Run History. Duplicates that module's tiny save() rather than
+    importing server: cli.py must keep working without FastAPI
     installed, and server/ depends on this side of the boundary, never
     the reverse (see server/history.py's own module docstring for why
     JSON files under output/runs/ are the format at all).
@@ -301,10 +294,9 @@ def write_run_history(run_id: str, report: dict) -> Path:
     staging = path.with_suffix(".json.tmp")
     staging.write_text(json.dumps(snapshot), encoding="utf-8")
     staging.replace(path)
-
-    existing = sorted(root.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-    for stale in existing[_RUN_HISTORY_MAX:]:
-        stale.unlink(missing_ok=True)
+    # No pruning: history keeps every run (see server/history.py, "NO
+    # RETENTION CAP"). The server builds this run's derived files the
+    # first time it reads it.
     return path
 
 

@@ -1,23 +1,23 @@
 import { ArrowDown, ArrowUp, ArrowUpDown, History, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { RunHistoryFilterBar } from "@/components/backtest/RunHistoryFilterBar";
 import { Pagination } from "@/components/ui/Pagination";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import {
-  comboKey,
-  filterHistoryRows,
+  historyQueryBody,
   nextRunHistorySort,
-  sortHistoryRows,
   type RunHistoryColumn,
   type RunHistorySort,
 } from "@/lib/filters";
 import { cn, pct, runUrl, timestamp, usd } from "@/lib/utils";
-import { usePagination } from "@/hooks/usePagination";
 import {
   EMPTY_RUN_HISTORY_FILTERS,
-  type Metrics,
+  type HistoryFacets,
+  type HistoryFund,
+  type HistoryMetrics,
+  type HistoryPage,
   type HistoryRow,
   type RunHistoryFilters,
 } from "@/types/backtest";
@@ -45,7 +45,14 @@ interface Props {
   refreshToken?: number;
 }
 
-type MetricKey = keyof Metrics;
+type MetricKey = keyof HistoryMetrics;
+
+/** The fund to open on: the one most recently run, since that is what a
+ * reader most likely came back to look at. */
+function defaultFund(funds: HistoryFund[]): string | null {
+  const ranked = [...funds].sort((a, b) => (b.last_saved ?? 0) - (a.last_saved ?? 0));
+  return ranked[0]?.ticker ?? null;
+}
 
 interface RankSpec {
   key: MetricKey;
@@ -172,7 +179,9 @@ function SortableHeader({
 }
 
 export function RunHistory({ refreshToken }: Props) {
-  const [rows, setRows] = useState<HistoryRow[]>([]);
+  const [funds, setFunds] = useState<HistoryFund[] | null>(null);
+  const [ticker, setTicker] = useState<string | null>(null);
+  const [facets, setFacets] = useState<HistoryFacets | null>(null);
   const [metric, setMetric] = useState<MetricKey>("cagr_pct");
   // Clicking a column header overrides Rank by's fixed direction for as
   // long as it is active; null ("off") falls back to Rank by exactly as
@@ -181,56 +190,116 @@ export function RunHistory({ refreshToken }: Props) {
   const toggleSort = (column: RunHistoryColumn) =>
     setColumnSort((current) => nextRunHistorySort(current, column));
   const [filters, setFilters] = useState<RunHistoryFilters>(EMPTY_RUN_HISTORY_FILTERS);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [data, setData] = useState<HistoryPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reloads, setReloads] = useState(0);
+  const load = useCallback(() => setReloads((count) => count + 1), []);
 
-  const load = useCallback(() => {
-    setLoading(true);
+  // Which funds have history; keep the current pick if it still does.
+  useEffect(() => {
+    let cancelled = false;
     api
-      .history()
-      .then((body) => {
-        setRows(body.rows);
-        setError(null);
+      .historyFunds()
+      .then((list) => {
+        if (cancelled) return;
+        setFunds(list);
+        setTicker((current) =>
+          current && list.some((fund) => fund.ticker === current) ? current : defaultFund(list),
+        );
       })
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : String(cause)),
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshToken, reloads]);
+
+  // The selected fund's filter options.
+  useEffect(() => {
+    if (!ticker) return;
+    let cancelled = false;
+    setFacets(null);
+    api
+      .historyFacets(ticker)
+      .then((body) => {
+        if (!cancelled) setFacets(body);
+      })
+      .catch(() => {
+        if (!cancelled) setFacets(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker, refreshToken, reloads]);
+
+  // A different fund's rows are never shown under this one's header.
+  useEffect(() => {
+    setData(null);
+  }, [ticker]);
+
+  // Back to the first page whenever what is being paged changes.
+  useEffect(() => {
+    setPage(1);
+  }, [ticker, filters, columnSort, metric, pageSize]);
+
+  const spec = RANKINGS.find((entry) => entry.key === metric) ?? RANKINGS[0]!;
+  const bodyKey = ticker
+    ? JSON.stringify(
+        historyQueryBody({
+          ticker,
+          filters,
+          sort: columnSort,
+          rankBy: metric,
+          higherIsBetter: spec.higherIsBetter,
+          page,
+          pageSize,
+        }),
       )
-      .finally(() => setLoading(false));
-  }, []);
+    : null;
 
-  useEffect(load, [load, refreshToken]);
-
-  // The filter narrows the flattened rows; ranking then orders whatever
-  // survives. Both are cheap, but memoised so typing in a range box
-  // does not re-sort a thousand rows on every keystroke.
-  const visible = useMemo(() => filterHistoryRows(rows, filters), [rows, filters]);
-  const visibleRuns = useMemo(
-    () => new Set(visible.map((row) => row.run)).size,
-    [visible],
-  );
+  // One page, queried server-side. Debounced so typing in a range box is
+  // one request, not one per keystroke; a response to anything but the
+  // latest request is dropped.
+  useEffect(() => {
+    if (!bodyKey) return;
+    let cancelled = false;
+    setLoading(true);
+    const timer = window.setTimeout(() => {
+      api
+        .historyQuery(JSON.parse(bodyKey))
+        .then((body) => {
+          if (cancelled) return;
+          setData(body);
+          setError(null);
+        })
+        .catch((cause: unknown) => {
+          if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [bodyKey, refreshToken, reloads]);
 
   // When a simulation's own save time is unknown, it's treated as having
   // happened right now -- read once at mount via useState's lazy
   // initializer (React's sanctioned escape hatch for an impure read like
-  // this one; a bare Date.now() in the render body, even inside useMemo,
-  // trips the purity lint rule), not once per row, so every row missing
-  // `saved_at` agrees on what "now" means for the life of this view.
+  // this one), not once per row, so every row missing `saved_at` agrees
+  // on what "now" means for the life of this view.
   const [nowSeconds] = useState(() => Date.now() / 1000);
-  const spec = RANKINGS.find((entry) => entry.key === metric) ?? RANKINGS[0]!;
-  // A column click overrides the ranking's fixed direction while it is
-  // active; "off" (columnSort === null) is exactly today's Rank-by sort.
-  const ranked = columnSort
-    ? sortHistoryRows(visible, columnSort, metric)
-    : [...visible].sort((a, b) => {
-        const left = valueOf(a, spec.key);
-        const right = valueOf(b, spec.key);
-        if (left === null && right === null) return 0;
-        if (left === null) return 1;
-        if (right === null) return -1;
-        return spec.higherIsBetter ? right - left : left - right;
-      });
-  const pagination = usePagination(ranked.length, 50);
-  const pageRows = pagination.paginate(ranked);
+  const total = data?.total ?? 0;
+  const totalUnfiltered = data?.total_unfiltered ?? 0;
+  const pageRows = data?.rows ?? [];
+  const firstIndex = data?.offset ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <Card>
@@ -241,11 +310,12 @@ export function RunHistory({ refreshToken }: Props) {
             Run history
           </CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            {visible.length === rows.length
-              ? `${rows.length}`
-              : `${visible.length} of ${rows.length}`}{" "}
-            configuration{rows.length === 1 ? "" : "s"} across {visibleRuns} run
-            {visibleRuns === 1 ? "" : "s"}, ranked by {spec.label.toLowerCase()}
+            {ticker ? `${ticker}: ` : ""}
+            {total === totalUnfiltered
+              ? total.toLocaleString()
+              : `${total.toLocaleString()} of ${totalUnfiltered.toLocaleString()}`}{" "}
+            configuration{totalUnfiltered === 1 ? "" : "s"} across {data?.runs_matched ?? 0} run
+            {data?.runs_matched === 1 ? "" : "s"}, ranked by {spec.label.toLowerCase()}
             {spec.hint ? ` — ${spec.hint}` : ""}.
           </p>
         </div>
@@ -269,14 +339,17 @@ export function RunHistory({ refreshToken }: Props) {
         </div>
       </CardHeader>
 
-      {!error && rows.length > 0 ? (
+      {funds && funds.length > 0 && ticker ? (
         <CardContent className="pt-0">
           <RunHistoryFilterBar
-            rows={rows}
+            funds={funds}
+            ticker={ticker}
+            onTickerChange={setTicker}
+            facets={facets}
             filters={filters}
             onChange={setFilters}
-            showing={visible.length}
-            total={rows.length}
+            showing={total}
+            total={totalUnfiltered}
           />
         </CardContent>
       ) : null}
@@ -286,12 +359,14 @@ export function RunHistory({ refreshToken }: Props) {
           <p className="text-sm text-loss">
             {error} — the backtest engine host may be unreachable.
           </p>
-        ) : rows.length === 0 ? (
+        ) : funds !== null && funds.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No completed runs yet. Submit one above; every finished run is kept and appears
             here, including across a server restart.
           </p>
-        ) : visible.length === 0 ? (
+        ) : data === null ? (
+          <p className="text-sm text-muted-foreground">Loading {ticker ?? "history"}…</p>
+        ) : total === 0 ? (
           <p className="text-sm text-muted-foreground">
             No runs match these filters. Loosen a bound or{" "}
             <button
@@ -304,7 +379,12 @@ export function RunHistory({ refreshToken }: Props) {
             .
           </p>
         ) : (
-          <table className="w-full min-w-[1080px] text-sm">
+          // Dimmed while the next page or filter result is on its way, so
+          // a reader never mistakes the previous result for the new one.
+          <table
+            className={cn("w-full min-w-[1080px] text-sm transition-opacity", loading && "opacity-50")}
+            aria-busy={loading}
+          >
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
                 <th className="pb-2 font-medium">#</th>
@@ -389,15 +469,13 @@ export function RunHistory({ refreshToken }: Props) {
                 const worst = valueOf(row, "worst_year_pct");
                 return (
                   <tr
-                    // grid/target alone collide once a strategy param is
-                    // ALSO swept (a Bayesian search over e.g.
-                    // oversold_threshold/period with grid_step/
-                    // profit_target held fixed): many rows then share
-                    // one (run, ticker, grid, target), React reconciles
-                    // them as the same element, and a filter that
-                    // correctly shrinks `rows` still shows stale ones --
-                    // see comboKey's own docstring in lib/filters.ts.
-                    key={`${row.run}-${row.ticker}-${row.grid}-${row.target}-${comboKey(row.params)}`}
+                    // (run, fund, rank) -- rank is the cell's index in that
+                    // fund's engine-ranked list, so it is unique where no
+                    // combination of its VALUES is: a Bayesian search
+                    // re-tries the same configuration (dozens of identical
+                    // rows), and colliding keys let React reconcile new
+                    // data onto stale rows -- the "table didn't clear" bug.
+                    key={`${row.run}-${row.ticker}-${row.rank}`}
                     data-testid="history-row"
                     className="cursor-pointer border-b border-border/50 last:border-0 hover:bg-accent"
                     // A real <a> (below, in the Run column) is what gives
@@ -410,7 +488,7 @@ export function RunHistory({ refreshToken }: Props) {
                     onClick={() => window.open(runUrl(row.run), "_blank", "noopener,noreferrer")}
                     title="Open this run in a new tab"
                   >
-                    <td className="py-2 text-muted-foreground">{pagination.start + index + 1}</td>
+                    <td className="py-2 text-muted-foreground">{firstIndex + index + 1}</td>
                     <td
                       className="max-w-[180px] truncate py-2 text-xs"
                       title={row.name ?? undefined}
@@ -498,7 +576,7 @@ export function RunHistory({ refreshToken }: Props) {
             </tbody>
           </table>
         )}
-        {visible.some((row) => row.m.total_trades === 0) &&
+        {pageRows.some((row) => row.m.total_trades === 0) &&
         !spec.higherIsBetter ? (
           <p className="mt-3 text-xs text-stuck">
             Some configurations never traded. A book that sits in cash has no drawdown and
@@ -507,12 +585,16 @@ export function RunHistory({ refreshToken }: Props) {
           </p>
         ) : null}
         <Pagination
-          page={pagination.page}
-          totalPages={pagination.totalPages}
-          pageSize={pagination.pageSize}
-          total={ranked.length}
-          onPageChange={pagination.setPage}
-          onPageSizeChange={pagination.setPageSize}
+          page={page}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={(next) =>
+            setPage((prev) =>
+              Math.min(Math.max(1, typeof next === "function" ? next(prev) : next), totalPages),
+            )
+          }
+          onPageSizeChange={setPageSize}
         />
       </CardContent>
     </Card>

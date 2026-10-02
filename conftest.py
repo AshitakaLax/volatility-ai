@@ -24,9 +24,7 @@ of their own; that overrides this for the test and restores it after.
                        spend engine time on it.
   VAI_RUN_HISTORY_DIR  server/history.py archives completed runs here.
                        Left at its default, every test run that completes
-                       lands in the operator's Run History, and because
-                       history is capped at MAX_RUNS, each one silently
-                       evicts one of their real runs.
+                       would land in the operator's Run History.
 """
 
 from __future__ import annotations

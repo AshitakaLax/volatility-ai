@@ -313,13 +313,13 @@ def already_handled(api: str) -> tuple[set[str], set[str]]:
     what was already in Run History. Matching is by run name, which this
     script makes unique per chunk.
 
-    Completed names come from /history, which keeps at most MAX_RUNS
-    runs; a completed run pruned from there is indistinguishable from one
-    that never ran, and would be queued again. Pending names come from
+    Completed names come from /history/runs (every stored run -- history
+    is no longer capped, so nothing completed can age out and be queued
+    again). Pending names come from
     /runs, so a second invocation while the first series is still queued
     is a no-op rather than a duplicate of all 84 runs.
     """
-    with urllib.request.urlopen(f"{api}/api/backtest/history", timeout=60) as resp:
+    with urllib.request.urlopen(f"{api}/api/backtest/history/runs", timeout=60) as resp:
         # Run-level fields are stated once per run, under `runs`.
         completed = {run.get("name") for run in json.loads(resp.read()).get("runs", {}).values()}
     with urllib.request.urlopen(f"{api}/api/backtest/runs", timeout=60) as resp:

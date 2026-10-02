@@ -214,7 +214,7 @@ export function FundComparison({ funds }: Props) {
               })}
             </tbody>
           </table>
-          {entries.some(([, fund]) => fund.fills.length === 0) ? (
+          {entries.some(([, fund]) => fund.fills_count === 0) ? (
             <p className="mt-3 text-xs text-muted-foreground">
               A fund with no executions is not an error: a low-volatility instrument on a
               grid tuned for a leveraged one legitimately never triggers.

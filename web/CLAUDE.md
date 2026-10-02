@@ -49,6 +49,11 @@ src/
 - Types in `types/*.ts` mirror `server/`'s response shapes by hand — there
   is no shared schema generation, so a backend field rename needs a
   matching edit here. The wire omits what can be derived: a `Param` is
-  expanded to a `ParamSpec` by `lib/strategyParams.ts` `paramSpec`, history
-  rows are joined with their run's fields in `lib/api.ts` `history`, and a
+  expanded to a `ParamSpec` by `lib/strategyParams.ts` `paramSpec`, and a
   fill's unique key is `lib/filters.ts` `fillKey`.
+- **Big data is queried, never downloaded.** Run History asks the server
+  for one page of one fund (`api.historyQuery`, fund required); a report
+  carries `fills_count` and the chart / trade log page fills through
+  `hooks/useFills` (`GET /runs/{id}/fills`). Don't reintroduce a call that
+  pulls every history row or every fill into the browser -- both are
+  unbounded (history is uncapped; a busy run has ~850k fills).

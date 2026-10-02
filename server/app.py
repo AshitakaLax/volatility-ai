@@ -33,6 +33,7 @@ discovered later by someone who bound it to a LAN.
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -43,7 +44,17 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from server import backtest, control, deployment, live, ml_insights, ml_upstream, shards, upstream
+from server import (
+    backtest,
+    control,
+    deployment,
+    history,
+    live,
+    ml_insights,
+    ml_upstream,
+    shards,
+    upstream,
+)
 
 
 @asynccontextmanager
@@ -60,6 +71,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         restored = backtest.queue.restore()
         if restored:
             logging.getLogger("Optimizer").info(f"Restored {restored} queued backtest run(s).")
+        # Build any missing derived history files (server/history.py) in
+        # the background: archives written before they existed -- or by
+        # tools that bypass the queue -- would otherwise make the first
+        # history query parse every one of them.
+        threading.Thread(target=history.warm, name="history-warm", daemon=True).start()
     yield
 
 
@@ -83,11 +99,9 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-# /api/backtest/history flattens every stored run to one row per grid
-# cell -- a brute-force sweep run this way pushed a single response past
-# 120 MB and made it unreliable to deliver. The JSON is thousands of
-# near-identical numeric records, so it compresses roughly 12x; gzip
-# costs nothing on the (already lean) small responses everywhere else.
+# Large JSON responses (a run report, a page of fills) are thousands of
+# near-identical numeric records and compress roughly 8-12x; gzip costs
+# nothing on the (already lean) small responses everywhere else.
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(live.router)

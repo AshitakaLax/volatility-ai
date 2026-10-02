@@ -118,9 +118,11 @@ export interface Fund {
   /** Every configuration, ranked by the engine. cells[0] is the one
    * `fills` and `equity` come from, and its `m` is the fund's headline. */
   cells: Cell[];
-  /** May be empty: a low-volatility fund on a grid tuned for a 3x one
-   * legitimately never trades. Render "no executions", not an error. */
-  fills: Fill[];
+  /** How many fills cells[0] made. The fills themselves are NOT inline --
+   * a busy run's are ~850k rows; page them with GET /runs/{id}/fills
+   * (lib/api.ts fills). 0 is legitimate: a low-volatility fund on a grid
+   * tuned for a 3x one never trades. Render "no executions", not an error. */
+  fills_count: number;
   /** Daily, parallel arrays. The overlay chart rebases to 100 itself
    * (FundComparison), so that form is not sent. */
   equity: { dates: string[]; equity: number[] };
@@ -365,17 +367,36 @@ export interface Validation {
 /* ------------------------------------------------------------------ */
 
 /** GET /history: run-level fields once, then one row per cell. */
-export interface History {
-  runs: Record<string, RunMeta & { saved_at: number | null }>;
-  rows: (Cell & { run: string; ticker: string; rank: number; bars: number | null })[];
-}
+/** The metrics a history row carries -- what Run History ranks by, shows
+ * and filters on (server/history.py HISTORY_METRICS). A cell's others
+ * stay in its run's own report. */
+export type HistoryMetrics = Partial<
+  Pick<
+    Metrics,
+    | "net_yield_pct"
+    | "cagr_pct"
+    | "worst_year_pct"
+    | "best_year_pct"
+    | "max_drawdown_pct"
+    | "return_over_drawdown"
+    | "sharpe_ratio"
+    | "sortino_ratio"
+    | "profit_factor"
+    | "win_rate_pct"
+    | "capital_velocity_index"
+    | "stuck_capital_value"
+    | "avg_hold_duration"
+    | "total_trades"
+  >
+>;
 
 /**
- * One row of the history table as the client uses it: a cell joined with
- * the run-level fields it is filtered and sorted on (lib/api.ts history).
- * `rank` is where the ENGINE ranked the cell; 0 is its own pick.
+ * One row of the history table: a cell joined server-side with the
+ * run-level fields it is filtered and sorted on. `rank` is where the
+ * ENGINE ranked the cell; 0 is its own pick.
  */
-export interface HistoryRow extends Cell {
+export interface HistoryRow extends Omit<Cell, "m"> {
+  m: HistoryMetrics;
   run: string;
   ticker: string;
   rank: number;
@@ -391,6 +412,104 @@ export interface HistoryRow extends Cell {
   batch_id: string | null;
   batch_index: number | null;
   batch_total: number | null;
+}
+
+/** GET /api/backtest/history/funds: a fund with stored results. */
+export interface HistoryFund {
+  ticker: string;
+  rows: number;
+  runs: number;
+  /** Epoch seconds of its newest run. */
+  last_saved: number | null;
+}
+
+/** One numeric filter field and its distinct values (for chips). */
+export interface HistoryField {
+  key: string;
+  label: string;
+  group: "Input arguments" | "Results";
+  values: number[];
+}
+
+/** GET /api/backtest/history/facets?ticker=: one fund's filter options. */
+export interface HistoryFacets {
+  ticker: string;
+  rows: number;
+  runs: number;
+  models: string[];
+  fills: string[];
+  fields: HistoryField[];
+}
+
+/** POST /api/backtest/history/query. History is queried, never
+ * downloaded: one fund (required), filtered, sorted and paged
+ * server-side (server/history_query.py). */
+export interface HistoryQuery {
+  ticker: string;
+  filters: Omit<RunHistoryFilters, "extraFields">;
+  sort: { column: string; direction: "asc" | "desc" };
+  /** The Metrics key the "metric" column sorts by. */
+  rank_by: string;
+  offset: number;
+  limit: number;
+}
+
+export interface HistoryPage {
+  ticker: string;
+  /** Rows matching the filters. */
+  total: number;
+  /** Rows the fund has before filtering. */
+  total_unfiltered: number;
+  runs_matched: number;
+  offset: number;
+  rows: HistoryRow[];
+}
+
+/* ------------------------------------------------------------------ */
+/* Fills: paged per fund, never inline in a report                     */
+/* ------------------------------------------------------------------ */
+
+/** GET /api/backtest/runs/{id}/fills's filters and paging. */
+export interface FillsQuery {
+  ticker: string;
+  /** ISO date or timestamp; the end covers its whole day. */
+  start?: string | null;
+  end?: string | null;
+  status?: OrderStatusFilter;
+  rsi_min?: number | null;
+  rsi_max?: number | null;
+  view?: "fills" | "cycles";
+  /** cycles view only. */
+  cycles?: "all" | "closed" | "open";
+  offset?: number;
+  limit?: number;
+}
+
+/** A buy and the sells that closed it, built from the filtered fills. */
+export interface CycleRow {
+  lot: string;
+  buy: Fill;
+  /** Empty for a lot still open -- what this project calls "stuck". */
+  sells: Fill[];
+  /** Summed across partial sells. null while nothing has closed. */
+  realized: number | null;
+  open: boolean;
+}
+
+/** Counts over the WHOLE filtered set, not just the page. */
+export interface FillsSummary {
+  fills: number;
+  fills_unfiltered: number;
+  closed: number;
+  open: number;
+  realized: number;
+}
+
+export interface FillsPage<Row = Fill> {
+  total: number;
+  offset: number;
+  summary: FillsSummary;
+  rows: Row[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -563,7 +682,6 @@ export const DEFAULT_FILTERS: ExecutionFilters = {
 export interface RunHistoryFilters {
   /** Case-insensitive substring over the run name. */
   name: string;
-  tickers: string[];
   models: string[];
   fillModels: string[];
   /** Simulation-window overlap bounds (YYYY-MM-DD, inclusive). Null = open. */
@@ -573,13 +691,12 @@ export interface RunHistoryFilters {
   /** Namespaced key -> inclusive band. Absent = open. */
   ranges: Record<string, NumericRange>;
   /** Optional numeric fields ADDED to the panel but not yet bounded.
-   * Presentational only -- filterHistoryRows ignores it. */
+   * Presentational only -- never sent to the server. */
   extraFields: string[];
 }
 
 export const EMPTY_RUN_HISTORY_FILTERS: RunHistoryFilters = {
   name: "",
-  tickers: [],
   models: [],
   fillModels: [],
   window: { start: null, end: null },

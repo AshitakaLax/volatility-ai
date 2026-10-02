@@ -1,10 +1,11 @@
 /**
- * The frontend's only real logic, tested.
+ * The pure helpers the browser still owns, tested.
  *
- * Everything else in this app renders data it was handed. These
- * functions DECIDE things -- which executions belong to which lot, which
- * survive a filter, how minute bars roll up -- and each of the cases
- * below is one where the wrong answer looks entirely plausible on screen.
+ * Execution and history FILTERING moved server-side, and the cases that
+ * pinned them moved with it (server/tests/test_fills.py,
+ * server/tests/test_history_api.py). What remains here still decides
+ * things -- request shapes, how minute bars roll up, chart windows, row
+ * identity -- where the wrong answer looks entirely plausible on screen.
  */
 import { describe, expect, it } from "vitest";
 
@@ -12,27 +13,20 @@ import {
   EMPTY_RUN_HISTORY_FILTERS,
   type ExecutionFilters,
   type Fill,
-  type HistoryRow,
-  type Metrics,
   type RunHistoryFilters,
 } from "@/types/backtest";
 
 import {
   CHART_RESOLUTIONS,
   aggregate,
-  buildCycles,
   chartWindow,
   comboKey,
   fillKey,
-  filterExecutions,
-  filterHistoryRows,
-  historyFieldValue,
-  historyInputFields,
+  fillsParams,
+  historyQueryBody,
   nextRunHistorySort,
-  openLotIds,
   resolveSelectedFund,
   runHistoryFilterActive,
-  sortHistoryRows,
 } from "./filters";
 
 function buy(lot: string, bar: number, extra: Partial<Fill> = {}): Fill {
@@ -70,102 +64,6 @@ describe("fillKey", () => {
   it("keeps a buy and its partial sells distinct", () => {
     const keys = [buy("A", 1), sell("A", 5), sell("A", 9)].map(fillKey);
     expect(new Set(keys).size).toBe(3);
-  });
-});
-
-describe("buildCycles", () => {
-  it("pairs a buy with the sell that closed it", () => {
-    const cycles = buildCycles([buy("A", 1), sell("A", 9)]);
-    expect(cycles).toHaveLength(1);
-    expect(cycles[0]!.open).toBe(false);
-    expect(cycles[0]!.realized).toBe(1);
-  });
-
-  it("sums partial sells against one lot", () => {
-    const cycles = buildCycles([
-      buy("A", 1),
-      sell("A", 5, { pnl: 0.4 }),
-      sell("A", 9, { pnl: 0.6 }),
-    ]);
-    expect(cycles[0]!.sells).toHaveLength(2);
-    expect(cycles[0]!.realized).toBeCloseTo(1.0);
-  });
-
-  it("reports an unsold lot as open with null realised", () => {
-    // null, not 0. Zero would read as "closed for no gain", which is a
-    // different and much better outcome than "never came back".
-    const cycles = buildCycles([buy("A", 1)]);
-    expect(cycles[0]!.open).toBe(true);
-    expect(cycles[0]!.realized).toBeNull();
-  });
-
-  it("keeps the FIRST buy when a lot id somehow appears twice", () => {
-    const cycles = buildCycles([buy("A", 1), buy("A", 50), sell("A", 60)]);
-    expect(cycles).toHaveLength(1);
-    expect(fillKey(cycles[0]!.buy)).toBe("A-buy-1");
-  });
-
-  it("ignores a sell whose lot has no buy rather than inventing one", () => {
-    const cycles = buildCycles([sell("GHOST", 5)]);
-    expect(cycles).toHaveLength(0);
-  });
-});
-
-describe("openLotIds", () => {
-  it("is the buys with no matching sell", () => {
-    const open = openLotIds([buy("A", 1), sell("A", 2), buy("B", 3)]);
-    expect([...open]).toEqual(["B"]);
-  });
-});
-
-describe("filterExecutions", () => {
-  it("excludes executions with NO rsi when a bound is set", () => {
-    // THE ONE THAT MATTERS. An execution inside the 14-bar warmup has no
-    // RSI. Including it in "RSI < 30" would claim the strategy entered
-    // on a reading that did not exist.
-    const warmup = buy("A", 1);
-    const known = buy("B", 2, { rsi: 25 });
-    const out = filterExecutions([warmup, known], { ...BASE, rsiMax: 30 });
-    expect(out.map(fillKey)).toEqual(["B-buy-2"]);
-  });
-
-  it("keeps unknown-rsi executions when no bound is set", () => {
-    const out = filterExecutions([buy("A", 1)], BASE);
-    expect(out).toHaveLength(1);
-  });
-
-  it("treats rsi bounds as inclusive", () => {
-    const at30 = buy("A", 1, { rsi: 30 });
-    expect(filterExecutions([at30], { ...BASE, rsiMax: 30 })).toHaveLength(1);
-    expect(filterExecutions([at30], { ...BASE, rsiMin: 30 })).toHaveLength(1);
-  });
-
-  it("includes the whole of the end day, not the instant it begins", () => {
-    // A picker gives "2026-03-02". Someone choosing a single day means
-    // that day; a naive string compare against the full ISO timestamp
-    // would return nothing at all.
-    const sameDay = sell("A", 9); // 2026-03-02T14:30
-    const out = filterExecutions([sameDay], {
-      ...BASE,
-      range: { start: "2026-03-02", end: "2026-03-02" },
-    });
-    expect(out).toHaveLength(1);
-  });
-
-  it("splits open from closed lots by status", () => {
-    const rows = [buy("A", 1), sell("A", 2), buy("B", 3)];
-    expect(filterExecutions(rows, { ...BASE, status: "stuck" }).map(fillKey)).toEqual([
-      "B-buy-3",
-    ]);
-    expect(filterExecutions(rows, { ...BASE, status: "closed" }).map(fillKey)).toEqual([
-      "A-buy-1",
-      "A-sell-2",
-    ]);
-  });
-
-  it("does not filter on tickers -- they pick the fund, and fills are one fund's", () => {
-    expect(filterExecutions([buy("A", 1)], { ...BASE, tickers: [] })).toHaveLength(1);
-    expect(filterExecutions([buy("A", 1)], { ...BASE, tickers: ["RSP"] })).toHaveLength(1);
   });
 });
 
@@ -272,113 +170,13 @@ describe("chartWindow", () => {
 
 /* ---------------- run-history filtering ---------------------------- */
 
-function metrics(over: Partial<Metrics> = {}): Metrics {
-  return {
-    net_yield_pct: 0,
-    cagr_pct: 0,
-    max_drawdown_pct: 0,
-    sharpe_ratio: 0,
-    sortino_ratio: 0,
-    profit_factor: 0,
-    win_rate_pct: 0,
-    max_consecutive_losses: 0,
-    stuck_capital_value: 0,
-    capital_velocity_index: 0,
-    harvest_to_stuck_ratio: 0,
-    avg_hold_duration: 0,
-    total_trades: 0,
-    closed_trades: 0,
-    open_trades: 0,
-    signal_exits: 0,
-    final_equity: 0,
-    ...over,
-  };
-}
-
-type HistRowOverride = Partial<Omit<HistoryRow, "m">> & {
-  m?: Partial<Metrics>;
-};
-
-function histRow(over: HistRowOverride = {}): HistoryRow {
-  return {
-    run: "r1",
-    name: null,
-    saved_at: 0,
-    ticker: "TQQQ",
-    grid: 0.01,
-    target: 0.005,
-    model: "fixed",
-    params: {},
-    fill: "close",
-    rank: 0,
-    start: "2026-01-01",
-    end: "2026-02-01",
-    bars: 1000,
-    batch_id: null,
-    batch_index: null,
-    batch_total: null,
-    ...over,
-    m: metrics(over.m),
-  };
-}
-
 const NONE: RunHistoryFilters = EMPTY_RUN_HISTORY_FILTERS;
 
-describe("historyFieldValue", () => {
-  it("reads the swept dimensions as a PERCENT, not a fraction", () => {
-    // The table shows grid_step * 100, so the filter inputs are percents
-    // too -- comparing a typed "1" against a stored 0.01 would match
-    // nothing.
-    expect(historyFieldValue(histRow({ grid: 0.015 }), "grid_step")).toBeCloseTo(1.5);
-    expect(historyFieldValue(histRow({ target: 0.005 }), "profit_target")).toBeCloseTo(0.5);
-  });
-
-  it("reads a numeric sizing-model argument by its param: key", () => {
-    const row = histRow({ params: { allocation_pct: 0.05, ticker: "COWZ" } });
-    expect(historyFieldValue(row, "param:allocation_pct")).toBe(0.05);
-    // A non-numeric argument is not a numeric field -- Fund handles it.
-    expect(historyFieldValue(row, "param:ticker")).toBeNull();
-  });
-
-  it("reads a result metric by its metric: key, and null when absent", () => {
-    expect(historyFieldValue(histRow({ m: { cagr_pct: 12.5 } }), "metric:cagr_pct")).toBe(
-      12.5,
-    );
-    // worst_year_pct is optional; a row without it must read as unknown,
-    // not zero.
-    expect(historyFieldValue(histRow(), "metric:worst_year_pct")).toBeNull();
-  });
-
-  it("computes window_days from start and end dates (inclusive)", () => {
-    // Same day = 1 day
-    expect(historyFieldValue(histRow({ start: "2026-01-01", end: "2026-01-01" }), "window_days")).toBe(1);
-    // 30 days inclusive
-    expect(historyFieldValue(histRow({ start: "2026-01-01", end: "2026-01-30" }), "window_days")).toBe(30);
-    // Full year (non-leap)
-    expect(historyFieldValue(histRow({ start: "2026-01-01", end: "2026-12-31" }), "window_days")).toBe(365);
-    // Leap year
-    expect(historyFieldValue(histRow({ start: "2024-01-01", end: "2024-12-31" }), "window_days")).toBe(366);
-    // Returns null when start or end is missing
-    expect(historyFieldValue(histRow({ start: "2026-01-01", end: null }), "window_days")).toBeNull();
-    expect(historyFieldValue(histRow({ start: null, end: "2026-01-01" }), "window_days")).toBeNull();
-    expect(historyFieldValue(histRow({ start: null, end: null }), "window_days")).toBeNull();
-  });
-
-  it("reads window_bars from the row, null when absent", () => {
-    expect(historyFieldValue(histRow({ bars: 1000 }), "window_bars")).toBe(1000);
-    expect(historyFieldValue(histRow({ bars: null }), "window_bars")).toBeNull();
-  });
-});
-
 describe("comboKey", () => {
-  // RunHistory's <tr key> is built from run/ticker/grid/target PLUS this
-  // -- see its own comment. Once a strategy param is swept too (a
-  // Bayesian search over e.g. oversold_threshold with grid_step/
-  // profit_target held fixed), many rows legitimately share that
-  // quadruple, and without comboKey they collided on one React key: a
-  // filter that correctly shrank the row set still showed stale rows,
-  // because React matched new data onto old, colliding-key DOM nodes
-  // instead of replacing them.
+  // SweepMatrix's combo selector tells cells apart by this once a
+  // strategy param is swept too (several cells then share one
+  // grid/target pair). Not a row identity: a Bayesian search re-tries
+  // identical combos, which is why Run History keys rows by rank.
   it("differs for rows that share grid/target/run but differ only in params", () => {
     const a = comboKey({ oversold_threshold: 30, period: 7 });
     const b = comboKey({ oversold_threshold: 40, period: 7 });
@@ -415,228 +213,6 @@ describe("nextRunHistorySort", () => {
   });
 });
 
-describe("sortHistoryRows", () => {
-  it("a null sort returns the rows completely unchanged (caller applies its own default)", () => {
-    const rows = [histRow({ run: "b" }), histRow({ run: "a" })];
-    expect(sortHistoryRows(rows, null, "cagr_pct")).toBe(rows);
-  });
-
-  it("sorts a plain string column both directions", () => {
-    const rows = [histRow({ name: "beta" }), histRow({ name: "alpha" }), histRow({ name: "gamma" })];
-    expect(sortHistoryRows(rows, { column: "name", direction: "asc" }, "cagr_pct").map((r) => r.name)).toEqual([
-      "alpha",
-      "beta",
-      "gamma",
-    ]);
-    expect(sortHistoryRows(rows, { column: "name", direction: "desc" }, "cagr_pct").map((r) => r.name)).toEqual([
-      "gamma",
-      "beta",
-      "alpha",
-    ]);
-  });
-
-  it("sorts a numeric column", () => {
-    const rows = [histRow({ grid: 0.02 }), histRow({ grid: 0.01 }), histRow({ grid: 0.03 })];
-    expect(
-      sortHistoryRows(rows, { column: "grid_step", direction: "asc" }, "cagr_pct").map((r) => r.grid),
-    ).toEqual([0.01, 0.02, 0.03]);
-  });
-
-  it("a null value sorts LAST regardless of direction", () => {
-    const rows = [histRow({ name: "known" }), histRow({ name: null }), histRow({ name: "also known" })];
-    expect(sortHistoryRows(rows, { column: "name", direction: "asc" }, "cagr_pct").at(-1)!.name).toBeNull();
-    expect(sortHistoryRows(rows, { column: "name", direction: "desc" }, "cagr_pct").at(-1)!.name).toBeNull();
-  });
-
-  it("the 'metric' column reads whichever FundPerformanceMetrics key is passed", () => {
-    const rows = [
-      histRow({ run: "hi", m: { sharpe_ratio: 2 } }),
-      histRow({ run: "lo", m: { sharpe_ratio: 1 } }),
-    ];
-    expect(
-      sortHistoryRows(rows, { column: "metric", direction: "desc" }, "sharpe_ratio").map((r) => r.run),
-    ).toEqual(["hi", "lo"]);
-  });
-
-  it("does not mutate the input array", () => {
-    const rows = [histRow({ run: "b" }), histRow({ run: "a" })];
-    const copy = [...rows];
-    sortHistoryRows(rows, { column: "run_id", direction: "asc" }, "cagr_pct");
-    expect(rows).toEqual(copy);
-  });
-
-  describe("saved_at", () => {
-    it("sorts by recorded save time", () => {
-      const rows = [
-        histRow({ run: "old", saved_at: 100 }),
-        histRow({ run: "new", saved_at: 300 }),
-        histRow({ run: "mid", saved_at: 200 }),
-      ];
-      expect(
-        sortHistoryRows(rows, { column: "saved_at", direction: "asc" }, "cagr_pct").map(
-          (r) => r.run,
-        ),
-      ).toEqual(["old", "mid", "new"]);
-    });
-
-    it("a row with no saved_at is treated as NOW, not as missing -- it sorts among the most recent, not last", () => {
-      const rows = [
-        histRow({ run: "old", saved_at: 100 }),
-        histRow({ run: "unknown", saved_at: null }),
-      ];
-      // Descending (newest first): the unknown row -- "now" -- outranks
-      // a row genuinely saved in 1970.
-      expect(
-        sortHistoryRows(rows, { column: "saved_at", direction: "desc" }, "cagr_pct").map(
-          (r) => r.run,
-        ),
-      ).toEqual(["unknown", "old"]);
-    });
-  });
-});
-
-describe("filterHistoryRows", () => {
-  it("matches the name as a case-insensitive substring", () => {
-    const rows = [histRow({ name: "RSI oversold sweep" }), histRow({ name: "bell curve" }), histRow()];
-    const out = filterHistoryRows(rows, { ...NONE, name: "oversold" });
-    expect(out.map((r) => r.name)).toEqual(["RSI oversold sweep"]);
-  });
-
-  it("drops an unnamed row once a name filter is set", () => {
-    expect(filterHistoryRows([histRow({ name: null })], { ...NONE, name: "x" })).toHaveLength(0);
-  });
-
-  it("treats a categorical list as OR-within, AND-between", () => {
-    const rows = [
-      histRow({ ticker: "TQQQ", model: "fixed" }),
-      histRow({ ticker: "RSP", model: "fixed" }),
-      histRow({ ticker: "TQQQ", model: "rsi" }),
-    ];
-    const out = filterHistoryRows(rows, { ...NONE, tickers: ["TQQQ", "RSP"], models: ["fixed"] });
-    expect(out).toHaveLength(2);
-    expect(out.every((r) => r.model === "fixed")).toBe(true);
-  });
-
-  it("filters a swept dimension by a percent RANGE", () => {
-    const rows = [
-      histRow({ grid: 0.005 }),
-      histRow({ grid: 0.01 }),
-      histRow({ grid: 0.02 }),
-    ];
-    const out = filterHistoryRows(rows, {
-      ...NONE,
-      ranges: { grid_step: { min: 0.75, max: 1.5 } },
-    });
-    expect(out.map((r) => r.grid)).toEqual([0.01]);
-  });
-
-  it("filters a swept dimension by a set of exact values", () => {
-    const rows = [
-      histRow({ grid: 0.005 }),
-      histRow({ grid: 0.01 }),
-      histRow({ grid: 0.02 }),
-    ];
-    const out = filterHistoryRows(rows, { ...NONE, values: { grid_step: [0.5, 2] } });
-    expect(out.map((r) => r.grid).sort()).toEqual([0.005, 0.02]);
-  });
-
-  it("passes a row that satisfies EITHER the value set or the range", () => {
-    const rows = [histRow({ grid: 0.005 }), histRow({ grid: 0.03 })];
-    const out = filterHistoryRows(rows, {
-      ...NONE,
-      values: { grid_step: [3] },
-      ranges: { grid_step: { min: null, max: 0.6 } },
-    });
-    expect(out).toHaveLength(2);
-  });
-
-  it("filters on a result metric range", () => {
-    const rows = [
-      histRow({ m: { cagr_pct: 5 } }),
-      histRow({ m: { cagr_pct: 20 } }),
-      histRow({ m: { cagr_pct: 40 } }),
-    ];
-    const out = filterHistoryRows(rows, { ...NONE, ranges: { "metric:cagr_pct": { min: 10, max: 30 } } });
-    expect(out.map((r) => r.m.cagr_pct)).toEqual([20]);
-  });
-
-  it("EXCLUDES a row missing the gated field rather than letting it through", () => {
-    // The same rule filterExecutions follows for an execution with no
-    // RSI: a run that never recorded worst_year_pct, or a model that
-    // never took `period`, must not slip past a bound the reader set.
-    const rows = [
-      histRow({ m: { cagr_pct: 10, worst_year_pct: -5 } }),
-      histRow({ m: { cagr_pct: 10 } }), // no worst_year_pct
-    ];
-    const out = filterHistoryRows(rows, {
-      ...NONE,
-      ranges: { "metric:worst_year_pct": { min: -10, max: 0 } },
-    });
-    expect(out).toHaveLength(1);
-
-    const paramRows = [
-      histRow({ params: { period: 14 } }),
-      histRow({ params: {} }),
-    ];
-    expect(
-      filterHistoryRows(paramRows, { ...NONE, ranges: { "param:period": { min: 10, max: 20 } } }),
-    ).toHaveLength(1);
-  });
-
-  it("is conjunctive across every clause", () => {
-    const rows = [
-      histRow({ name: "keep", ticker: "TQQQ", grid: 0.01, m: { cagr_pct: 25 } }),
-      histRow({ name: "keep", ticker: "RSP", grid: 0.01, m: { cagr_pct: 25 } }),
-      histRow({ name: "drop", ticker: "TQQQ", grid: 0.01, m: { cagr_pct: 25 } }),
-      histRow({ name: "keep", ticker: "TQQQ", grid: 0.05, m: { cagr_pct: 25 } }),
-      histRow({ name: "keep", ticker: "TQQQ", grid: 0.01, m: { cagr_pct: 1 } }),
-    ];
-    const out = filterHistoryRows(rows, {
-      ...NONE,
-      name: "keep",
-      tickers: ["TQQQ"],
-      ranges: { grid_step: { min: 0.5, max: 2 }, "metric:cagr_pct": { min: 10, max: null } },
-    });
-    expect(out).toHaveLength(1);
-  });
-
-  it("matches a simulation window by OVERLAP, inclusive of both ends", () => {
-    const rows = [
-      histRow({ start: "2026-01-01", end: "2026-03-31" }),
-      histRow({ start: "2026-04-01", end: "2026-06-30" }),
-    ];
-    expect(
-      filterHistoryRows(rows, { ...NONE, window: { start: "2026-02-01", end: "2026-05-01" } }),
-    ).toHaveLength(2);
-    expect(
-      filterHistoryRows(rows, { ...NONE, window: { start: "2026-04-01", end: null } }),
-    ).toHaveLength(1);
-    expect(
-      filterHistoryRows(rows, { ...NONE, window: { start: null, end: "2026-01-01" } }),
-    ).toHaveLength(1);
-    expect(
-      filterHistoryRows(rows, { ...NONE, window: { start: "2027-01-01", end: null } }),
-    ).toHaveLength(0);
-  });
-
-  it("excludes a row with no window once a bound is set", () => {
-    const rows = [histRow({ start: null, end: null })];
-    expect(filterHistoryRows(rows, NONE)).toHaveLength(1);
-    expect(
-      filterHistoryRows(rows, { ...NONE, window: { start: "2026-01-01", end: null } }),
-    ).toHaveLength(0);
-  });
-
-  it("filters window_bars as a numeric band", () => {
-    const rows = [histRow({ bars: 500 }), histRow({ bars: 2000 })];
-    const out = filterHistoryRows(rows, {
-      ...NONE,
-      ranges: { window_bars: { min: 1000, max: null } },
-    });
-    expect(out.map((r) => r.bars)).toEqual([2000]);
-  });
-});
-
 describe("runHistoryFilterActive", () => {
   it("is false for the empty filter and for empty sub-parts", () => {
     expect(runHistoryFilterActive(NONE)).toBe(false);
@@ -652,7 +228,6 @@ describe("runHistoryFilterActive", () => {
 
   it("is true as soon as any clause would remove a row", () => {
     expect(runHistoryFilterActive({ ...NONE, name: "x" })).toBe(true);
-    expect(runHistoryFilterActive({ ...NONE, tickers: ["TQQQ"] })).toBe(true);
     expect(runHistoryFilterActive({ ...NONE, window: { start: "2026-01-01", end: null } })).toBe(
       true,
     );
@@ -662,47 +237,46 @@ describe("runHistoryFilterActive", () => {
   });
 });
 
-describe("historyInputFields", () => {
-  it("always offers the two swept dimensions, with their distinct values sorted", () => {
-    const rows = [
-      histRow({ grid: 0.02 }),
-      histRow({ grid: 0.005 }),
-      histRow({ grid: 0.02 }),
-    ];
-    const fields = historyInputFields(rows);
-    const gridStep = fields.find((f) => f.key === "grid_step")!;
-    expect(gridStep.values).toEqual([0.5, 2]);
-    expect(fields.some((f) => f.key === "profit_target")).toBe(true);
+describe("fillsParams", () => {
+  it("sends the page's execution filters to the fills endpoint unchanged", () => {
+    expect(
+      fillsParams({ ...BASE, range: { start: "2026-01-01", end: "2026-02-01" }, status: "stuck", rsiMin: 20, rsiMax: 30 }),
+    ).toEqual({ start: "2026-01-01", end: "2026-02-01", status: "stuck", rsi_min: 20, rsi_max: 30 });
   });
 
-  it("offers the computed window_days field with distinct values", () => {
-    const rows = [
-      histRow({ start: "2026-01-01", end: "2026-01-30" }), // 30 days
-      histRow({ start: "2026-01-01", end: "2026-12-31" }), // 365 days
-      histRow({ start: "2026-01-01", end: "2026-01-30" }), // 30 days (duplicate)
-    ];
-    const fields = historyInputFields(rows);
-    const windowField = fields.find((f) => f.key === "window_days")!;
-    expect(windowField.label).toBe("Window (days)");
-    expect(windowField.values).toEqual([30, 365]);
+  it("leaves open bounds open rather than inventing them", () => {
+    expect(fillsParams(BASE)).toEqual({ start: null, end: null, status: "all", rsi_min: null, rsi_max: null });
+  });
+});
+
+describe("historyQueryBody", () => {
+  const args = {
+    ticker: "TQQQ",
+    filters: { ...NONE, name: "sweep", extraFields: ["metric:cagr_pct"] },
+    sort: null,
+    rankBy: "max_drawdown_pct" as const,
+    higherIsBetter: false,
+    page: 3,
+    pageSize: 50,
+  };
+
+  it("defaults to the rank metric, best end first", () => {
+    expect(historyQueryBody(args).sort).toEqual({ column: "metric", direction: "asc" });
+    expect(historyQueryBody({ ...args, higherIsBetter: true }).sort).toEqual({ column: "metric", direction: "desc" });
   });
 
-  it("offers the window_bars field with distinct values", () => {
-    const rows = [histRow({ bars: 500 }), histRow({ bars: 2000 }), histRow({ bars: 500 })];
-    const fields = historyInputFields(rows);
-    const barsField = fields.find((f) => f.key === "window_bars")!;
-    expect(barsField.label).toBe("Window (bars)");
-    expect(barsField.values).toEqual([500, 2000]);
+  it("an explicitly clicked column wins over the rank default", () => {
+    const sort = { column: "name", direction: "desc" } as const;
+    expect(historyQueryBody({ ...args, sort }).sort).toEqual(sort);
   });
 
-  it("offers every numeric sizing-model argument and skips non-numeric ones", () => {
-    const rows = [
-      histRow({ params: { allocation_pct: 0.05 } }),
-      histRow({ params: { max_trade_pct: 0.08, ticker: "COWZ" } }),
-    ];
-    const keys = historyInputFields(rows).map((f) => f.key);
-    expect(keys).toContain("param:allocation_pct");
-    expect(keys).toContain("param:max_trade_pct");
-    expect(keys).not.toContain("param:ticker");
+  it("pages by offset and never sends the presentational extraFields", () => {
+    const body = historyQueryBody(args);
+    expect(body.offset).toBe(100);
+    expect(body.limit).toBe(50);
+    expect(body.ticker).toBe("TQQQ");
+    expect(body.rank_by).toBe("max_drawdown_pct");
+    expect(body.filters).not.toHaveProperty("extraFields");
+    expect(body.filters.name).toBe("sweep");
   });
 });

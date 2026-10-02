@@ -2,16 +2,12 @@ import { Filter, RotateCcw, X } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 
 import { Badge, Button, Field, Input, Select } from "@/components/ui/primitives";
-import {
-  HISTORY_METRIC_FIELDS,
-  historyInputFields,
-  runHistoryFilterActive,
-  sameNumber,
-} from "@/lib/filters";
+import { HISTORY_METRIC_FIELDS, runHistoryFilterActive, sameNumber } from "@/lib/filters";
 import { cn } from "@/lib/utils";
 import {
   EMPTY_RUN_HISTORY_FILTERS,
-  type HistoryRow,
+  type HistoryFacets,
+  type HistoryFund,
   type NumericRange,
   type RunHistoryFilters,
 } from "@/types/backtest";
@@ -27,13 +23,19 @@ import {
  * argument take a set of exact values AND a band, and every result
  * metric can be added as a band of its own.
  *
- * The actual filtering is `filterHistoryRows` in lib/filters.ts, tested
- * there; this component only edits the RunHistoryFilters object.
+ * THE FUND IS REQUIRED. History is queried one fund at a time and
+ * filtered server-side (server/history_query.py); this component only
+ * edits the RunHistoryFilters object, and its options -- algorithms, fill
+ * models, every numeric field and its distinct values -- come from that
+ * fund's facets rather than from rows the browser no longer downloads.
  */
 
 interface Props {
-  /** The UNFILTERED rows -- the control derives its options from them. */
-  rows: HistoryRow[];
+  funds: HistoryFund[];
+  ticker: string;
+  onTickerChange: (ticker: string) => void;
+  /** The selected fund's filter options; null while loading. */
+  facets: HistoryFacets | null;
   filters: RunHistoryFilters;
   onChange: (next: RunHistoryFilters) => void;
   /** Rows surviving the current filter, out of the total. */
@@ -71,22 +73,19 @@ function Chip({
   );
 }
 
-export function RunHistoryFilterBar({ rows, filters, onChange, showing, total }: Props) {
-  const funds = useMemo(
-    () => [...new Set(rows.map((row) => row.ticker))].sort(),
-    [rows],
-  );
-  const models = useMemo(
-    () =>
-      [...new Set(rows.map((row) => row.model).filter((v): v is string => Boolean(v)))].sort(),
-    [rows],
-  );
-  const fills = useMemo(
-    () =>
-      [...new Set(rows.map((row) => row.fill).filter((v): v is string => Boolean(v)))].sort(),
-    [rows],
-  );
-  const inputFields = useMemo(() => historyInputFields(rows), [rows]);
+export function RunHistoryFilterBar({
+  funds,
+  ticker,
+  onTickerChange,
+  facets,
+  filters,
+  onChange,
+  showing,
+  total,
+}: Props) {
+  const models = facets?.models ?? [];
+  const fills = facets?.fills ?? [];
+  const inputFields = useMemo(() => facets?.fields ?? [], [facets]);
 
   const labelFor = (key: string): string => {
     const input = inputFields.find((field) => field.key === key);
@@ -123,10 +122,7 @@ export function RunHistoryFilterBar({ rows, filters, onChange, showing, total }:
     return { inputs, metrics };
   }, [extraKeys, inputFields]);
 
-  const setToggle = (
-    listKey: "tickers" | "models" | "fillModels",
-    value: string,
-  ) => {
+  const setToggle = (listKey: "models" | "fillModels", value: string) => {
     const current = filters[listKey];
     onChange({
       ...filters,
@@ -246,14 +242,20 @@ export function RunHistoryFilterBar({ rows, filters, onChange, showing, total }:
           />
         </Field>
 
-        {funds.length > 1 ? (
-          <ChipGroup
-            label="Fund"
-            options={funds}
-            selected={filters.tickers}
-            onToggle={(value) => setToggle("tickers", value)}
-          />
-        ) : null}
+        <Field label="Fund">
+          <Select
+            data-testid="history-fund"
+            className="w-44"
+            value={ticker}
+            onChange={(event) => onTickerChange(event.currentTarget.value)}
+          >
+            {funds.map((fund) => (
+              <option key={fund.ticker} value={fund.ticker}>
+                {fund.ticker} ({fund.rows.toLocaleString()})
+              </option>
+            ))}
+          </Select>
+        </Field>
 
         {models.length > 1 ? (
           <ChipGroup

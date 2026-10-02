@@ -1168,13 +1168,14 @@ class TestRunHistory:
         (history.directory() / "empty.json").write_text("{}", encoding="utf-8")
         assert [r["id"] for r in history.load_all()] == ["good"]
 
-    def test_pruning_keeps_the_newest(self, monkeypatch):
+    def test_every_run_is_kept(self):
+        """No retention cap. A 200-run ceiling once silently evicted a
+        170k-cell study as a day of new sweeps landed."""
         from server import history
 
-        monkeypatch.setattr(history, "MAX_RUNS", 3)
-        for index in range(6):
+        for index in range(205):
             history.save(f"run{index}", {"id": f"run{index}"})
-        assert len(history.load_all()) == 3
+        assert len(history.load_all()) == 205
 
     def test_history_flattens_to_one_row_per_configuration(self, client):
         """Ranking compares configurations, not runs: a run can hold
@@ -1209,25 +1210,27 @@ class TestRunHistory:
                 },
             },
         )
-        body = client.get("/api/backtest/history").json()
+        body = client.post("/api/backtest/history/query", json={"ticker": "TQQQ"}).json()
         rows = body["rows"]
-        assert len(rows) == 2
+        assert body["total"] == 2 and body["runs_matched"] == 1
         assert {row["grid"] for row in rows} == {0.01, 0.02}
         # The engine's own ranking is preserved, so a reader can see
         # when their chosen metric disagrees with it.
         assert rows[0]["rank"] == 0
-        # Run-level fields are stated once, not on every row.
-        assert body["runs"]["r1"]["model"] == "fixed"
-        assert body["runs"]["r1"]["start"] == "2026-01-01"
-        assert "model" not in rows[0] and "funds" not in body["runs"]["r1"]
+        # Run-level fields are joined onto each row server-side; a page
+        # is small enough that repeating them costs nothing.
+        assert rows[0]["model"] == "fixed" and rows[0]["start"] == "2026-01-01"
+        runs = client.get("/api/backtest/history/runs").json()["runs"]
+        assert runs["r1"]["model"] == "fixed" and "funds" not in runs["r1"]
 
     def test_the_listing_strips_fills_and_equity_from_a_current_format_run(self, client):
         """contract.run(detail=False) only translates a LEGACY `report` --
         a run saved since the contract was condensed has no `parameters`
         key, so it passes through untouched unless load_all() strips
         fills/equity itself. A brute-force sweep's best fund can carry
-        tens of thousands of fills; the listing must not ship them, even
-        though the single-run detail view still needs them in full."""
+        tens of thousands of fills; the listing must not ship them, and
+        the single-run view carries a count -- fills are paged by
+        GET /runs/{id}/fills."""
         from server import history
 
         history.save(
@@ -1247,19 +1250,18 @@ class TestRunHistory:
                 },
             },
         )
-        listed = client.get("/api/backtest/history").json()
+        listed = client.post("/api/backtest/history/query", json={"ticker": "COWZ"}).json()
         assert listed["rows"], "the fixture's own cell should still be listed"
         fund = history.load_all()[0]["report"]["funds"]["COWZ"]
         assert fund["fills"] == []
         assert fund["equity"] == {"dates": [], "equity": []}
-        # The single-run detail path is a separate call and is unaffected.
         detail = client.get("/api/backtest/runs/condensed").json()
-        assert len(detail["report"]["funds"]["COWZ"]["fills"]) == 3
+        assert detail["report"]["funds"]["COWZ"]["fills_count"] == 3
+        assert "fills" not in detail["report"]["funds"]["COWZ"]
 
     def test_a_runs_name_is_joinable_from_every_configuration_row(self, client):
         """The table is one row per (run, fund, cell); a reader scanning
-        it should see the label on each row, not only the first -- joined
-        through `runs[row.run]` rather than repeated on the wire."""
+        it should see the label on each row, not only the first."""
         from server import history
 
         history.save(
@@ -1282,9 +1284,9 @@ class TestRunHistory:
                 },
             },
         )
-        body = client.get("/api/backtest/history").json()
+        body = client.post("/api/backtest/history/query", json={"ticker": "TQQQ"}).json()
         assert len(body["rows"]) == 2
-        assert all(body["runs"][row["run"]]["name"] == "champion re-run" for row in body["rows"])
+        assert all(row["name"] == "champion re-run" for row in body["rows"])
 
     def test_history_rows_carry_the_resolved_strategy_params(self, client):
         """So the client can filter history by an input argument. `{}`
@@ -1323,7 +1325,12 @@ class TestRunHistory:
                 },
             },
         )
-        rows = {row["run"]: row for row in client.get("/api/backtest/history").json()["rows"]}
+        rows = {
+            row["run"]: row
+            for row in client.post("/api/backtest/history/query", json={"ticker": "TQQQ"}).json()[
+                "rows"
+            ]
+        }
         assert rows["with-params"]["params"] == {"period": 14, "max_trade_pct": 0.08}
         assert rows["legacy"]["params"] == {}
 
@@ -1365,7 +1372,7 @@ class TestRunHistory:
                 },
             },
         )
-        rows = client.get("/api/backtest/history").json()["rows"]
+        rows = client.post("/api/backtest/history/query", json={"ticker": "TQQQ"}).json()["rows"]
         by_params = [row["params"] for row in rows]
         assert {"allocation_pct": 0.03} in by_params
         assert {"allocation_pct": 0.05} in by_params
@@ -1383,8 +1390,9 @@ class TestRunHistory:
                 },
             },
         )
-        body = client.get("/api/backtest/history").json()
-        assert body["runs"][body["rows"][0]["run"]]["name"] is None
+        body = client.post("/api/backtest/history/query", json={"ticker": "TQQQ"}).json()
+        assert body["rows"][0]["name"] is None
+        assert client.get("/api/backtest/history/runs").json()["runs"]["anon"]["name"] is None
 
     def test_an_old_report_without_configurations_still_appears(self, client):
         """Reports predating the sweep matrix have headline metrics only.
@@ -1401,7 +1409,7 @@ class TestRunHistory:
                 },
             },
         )
-        rows = client.get("/api/backtest/history").json()["rows"]
+        rows = client.post("/api/backtest/history/query", json={"ticker": "TQQQ"}).json()["rows"]
         assert len(rows) == 1
         assert rows[0]["m"]["cagr_pct"] == 7.0
         assert (rows[0]["grid"], rows[0]["target"]) == (0.01, 0.005)

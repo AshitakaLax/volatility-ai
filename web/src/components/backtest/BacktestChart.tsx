@@ -8,13 +8,14 @@ import {
   type SeriesMarker,
   type Time,
 } from "lightweight-charts";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { type FillsSource, useFills } from "@/hooks/useFills";
 import { usePriceBars } from "@/hooks/usePriceBars";
-import { CHART_RESOLUTIONS, aggregate, buildCycles, chartWindow, toEpochSeconds } from "@/lib/filters";
+import { CHART_RESOLUTIONS, aggregate, chartWindow, toEpochSeconds } from "@/lib/filters";
 import { cn } from "@/lib/utils";
-import type { Fill, ChartResolution, DateRange } from "@/types/backtest";
+import type { ChartResolution, CycleRow, DateRange, FillsQuery } from "@/types/backtest";
 
 /**
  * Price with executions on it.
@@ -44,7 +45,11 @@ import type { Fill, ChartResolution, DateRange } from "@/types/backtest";
 
 interface Props {
   ticker: string | null;
-  executions: Fill[];
+  /** The run+fund to page fills from; the chart asks only for the window
+   * it is drawing (reports no longer carry fills inline). */
+  source: FillsSource | null;
+  /** The page's execution filters as fills-endpoint parameters. */
+  filterQuery: Omit<FillsQuery, "ticker">;
   /** The Execution-chart zoom level, and how to change it. Held in the
    * parent's filters so it survives a tab switch. */
   resolution: ChartResolution;
@@ -54,8 +59,6 @@ interface Props {
   range: DateRange;
   /** The run's actual data bounds -- the anchor when `range` is open. */
   dataRange: DateRange;
-  /** Lots with no matching sell, so their targets are still live. */
-  openLotIds: Set<string>;
   /**
    * The run's profit target, as a fraction. Required, not defaulted: a
    * lot's exit price is buy_price * (1 + target), and an assumed value
@@ -70,17 +73,21 @@ interface Props {
 // explaining it, and the canvas work stops being free. The cap is
 // reported in the UI rather than applied silently.
 const MAX_CONNECTORS = 400;
+// Above this many fills in view, markers stop explaining anything (and a
+// busy run's whole-history view is ~850k): the chart says so instead.
+const MAX_MARKERS = 5000;
+const MAX_TARGET_LINES = 60;
 
 const RESOLUTION_ORDER: ChartResolution[] = ["1d", "1h", "1m"];
 
 export function BacktestChart({
   ticker,
-  executions,
+  source,
+  filterQuery,
   resolution,
   onResolutionChange,
   range,
   dataRange,
-  openLotIds,
   profitTarget,
   height = 460,
 }: Props) {
@@ -95,9 +102,35 @@ export function BacktestChart({
   const { candles, error } = usePriceBars(ticker, win.start, win.end, spec.maxPoints);
   const loading = candles === null;
 
-  const cycles = buildCycles(executions);
-  const closed = cycles.filter((cycle) => !cycle.open);
-  const truncated = Math.max(0, closed.length - MAX_CONNECTORS);
+  // Fills in the window being drawn, its closed cycles (for connectors),
+  // and the open lots' resting targets across the filter range.
+  const windowQuery = {
+    ...filterQuery,
+    start: win.start ?? filterQuery.start ?? null,
+    end: win.end ?? filterQuery.end ?? null,
+  };
+  const { page: markerPage } = useFills(source, { ...windowQuery, limit: MAX_MARKERS });
+  const { page: closedPage } = useFills<CycleRow>(source, {
+    ...windowQuery,
+    view: "cycles",
+    cycles: "closed",
+    limit: MAX_CONNECTORS,
+  });
+  const { page: openPage } = useFills<CycleRow>(
+    source,
+    filterQuery.status === "closed"
+      ? null
+      : { ...filterQuery, status: "stuck", view: "cycles", limit: MAX_TARGET_LINES },
+  );
+  const tooManyMarkers = (markerPage?.total ?? 0) > MAX_MARKERS;
+  const executions = useMemo(
+    () => (markerPage && !tooManyMarkers ? markerPage.rows : []),
+    [markerPage, tooManyMarkers],
+  );
+  const closed = useMemo(() => closedPage?.rows ?? [], [closedPage]);
+  const openCycles = useMemo(() => openPage?.rows ?? [], [openPage]);
+  const closedTotal = closedPage?.total ?? 0;
+  const truncated = Math.max(0, closedTotal - MAX_CONNECTORS);
 
   // --- chart lifecycle -------------------------------------------------
   useEffect(() => {
@@ -199,10 +232,7 @@ export function BacktestChart({
 
     // Target lines for lots still open: the orders actually resting.
     for (const line of priceLines.current) series.current.removePriceLine(line);
-    priceLines.current = cycles
-      .filter((cycle) => openLotIds.has(cycle.lotId))
-      .slice(0, 60)
-      .map((cycle) =>
+    priceLines.current = openCycles.map((cycle) =>
         series.current!.createPriceLine({
           // buy_price * (1 + profit_target) is how the engine derives a
           // lot's target. The execution does not carry the target, so it
@@ -220,7 +250,7 @@ export function BacktestChart({
     chart.current?.timeScale().fitContent();
     drawConnectors();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, executions, resolution, openLotIds, profitTarget]);
+  }, [candles, executions, resolution, openCycles, profitTarget]);
 
   // --- connectors ------------------------------------------------------
   function sizeOverlay() {
@@ -311,7 +341,7 @@ export function BacktestChart({
           <Legend color="#ef4444" label="loss exit" />
           <Legend color="rgba(234,179,8,0.8)" label="open target" />
           <span>
-            {closed.length} cycle{closed.length === 1 ? "" : "s"}
+            {closedTotal} cycle{closedTotal === 1 ? "" : "s"}
             {truncated > 0 ? ` (${truncated} connectors not drawn)` : ""} · {spanLabel}
           </span>
         </div>
@@ -328,7 +358,12 @@ export function BacktestChart({
             Could not load price bars: {error}. Markers are still placed at their execution
             prices.
           </p>
-        ) : executions.length === 0 ? (
+        ) : tooManyMarkers ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            {markerPage?.total.toLocaleString()} executions in this window -- too many to mark
+            individually. Zoom in (1H or 1m) or narrow the date range to see them.
+          </p>
+        ) : markerPage && markerPage.total === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">
             No executions in this range. A low-volatility fund on a grid tuned for a
             leveraged one legitimately never trades -- widen the date range, or lower the

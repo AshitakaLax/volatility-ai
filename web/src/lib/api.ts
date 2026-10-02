@@ -9,8 +9,13 @@
 import type {
   Bars,
   Catalog,
-  History,
-  HistoryRow,
+  Fill,
+  FillsPage,
+  FillsQuery,
+  HistoryFacets,
+  HistoryFund,
+  HistoryPage,
+  HistoryQuery,
   Report,
   Run,
   RunOp,
@@ -102,30 +107,28 @@ export const api = {
   bars: (ticker: string, start?: string | null, end?: string | null, maxPoints = 3000) =>
     request<Bars>(`/api/backtest/bars?${query({ ticker, start, end, max_points: maxPoints })}`),
 
-  /**
-   * Run history as table rows: each cell joined with the run-level fields
-   * it is filtered and sorted on. The wire states those once per run
-   * (`runs`) rather than once per cell.
-   */
-  history: async (): Promise<{ rows: HistoryRow[]; runs: number }> => {
-    const body = await request<History>("/api/backtest/history");
-    const rows = body.rows.map((row): HistoryRow => {
-      const run = body.runs[row.run];
-      return {
-        ...row,
-        name: run?.name ?? null,
-        model: run?.model ?? null,
-        fill: run?.fill ?? null,
-        start: run?.start ?? null,
-        end: run?.end ?? null,
-        saved_at: run?.saved_at ?? null,
-        batch_id: run?.batch_id ?? null,
-        batch_index: run?.batch_index ?? null,
-        batch_total: run?.batch_total ?? null,
-      };
-    });
-    return { rows, runs: new Set(body.rows.map((row) => row.run)).size };
-  },
+  /** Funds with stored results -- Run History's required Fund picker. */
+  historyFunds: () => request<HistoryFund[]>("/api/backtest/history/funds"),
+
+  /** One fund's filter options: algorithms, fill models, numeric fields. */
+  historyFacets: (ticker: string) =>
+    request<HistoryFacets>(`/api/backtest/history/facets?${query({ ticker })}`),
+
+  /** One page of one fund's history, filtered and sorted server-side.
+   * History is never downloaded whole: it is uncapped and unbounded. */
+  historyQuery: (body: HistoryQuery) => post<HistoryPage>("/api/backtest/history/query", body),
+
+  /** One page of a fund's fills (or buy/sell cycles), filtered the way the
+   * result page filters them, with counts over the whole filtered set.
+   * Reports never carry fills inline -- a busy run's are ~850k rows. */
+  fills: <Row = Fill>(runId: string, params: FillsQuery) =>
+    request<FillsPage<Row>>(
+      `/api/backtest/runs/${runId}/fills?${query({ ...params })}`,
+    ),
+
+  /** Every filtered fill as CSV, streamed by the server. */
+  fillsCsvUrl: (runId: string, params: Omit<FillsQuery, "view" | "cycles" | "offset" | "limit">) =>
+    `/api/backtest/runs/${runId}/fills.csv?${query({ ...params })}`,
 
   runs: () => request<{ runs: RunSummary[]; paused: boolean }>("/api/backtest/runs"),
 

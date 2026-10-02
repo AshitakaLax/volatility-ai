@@ -3,10 +3,12 @@ import { useState } from "react";
 
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { Pagination } from "@/components/ui/Pagination";
+import { type FillsSource, useFills } from "@/hooks/useFills";
 import { usePagination } from "@/hooks/usePagination";
-import { buildCycles, fillKey } from "@/lib/filters";
+import { api } from "@/lib/api";
+import { fillKey } from "@/lib/filters";
 import { cn, usd } from "@/lib/utils";
-import type { Fill } from "@/types/backtest";
+import type { CycleRow, Fill, FillsQuery, FillsSummary } from "@/types/backtest";
 
 /**
  * Every trade the simulation would make, in the window in view.
@@ -21,6 +23,11 @@ import type { Fill } from "@/types/backtest";
  * A log that ignored the filters would disagree with the markers beside
  * it, and the reader would have no way to tell which was right.
  *
+ * PAGED FROM THE SERVER. A busy run has ~850k fills; the log fetches only
+ * the page it is showing (and nothing while collapsed), the header's
+ * counts come from the filtered set's summary, and the CSV streams from
+ * the server rather than being assembled in the browser.
+ *
  * TWO VIEWS OF THE SAME DATA:
  *
  *   fills   every buy and sell as the engine recorded it.
@@ -30,11 +37,13 @@ import type { Fill } from "@/types/backtest";
  */
 
 interface Props {
-  executions: Fill[];
-  /** The fund these fills belong to, for the CSV export. */
+  /** The run+fund to page fills from. */
+  source: FillsSource | null;
+  /** The page's execution filters as fills-endpoint parameters. */
+  filterQuery: Omit<FillsQuery, "ticker">;
+  /** Counts over the whole filtered set, fetched by the parent. */
+  summary: FillsSummary | null;
   ticker: string | null;
-  /** For the header, so a reader knows the log respects the filters. */
-  totalBeforeFilters: number;
   /**
    * The run's profit target, as a fraction, so an open lot can show the
    * price it is waiting for. Passed rather than derived: the execution
@@ -51,19 +60,27 @@ const PAGE_SIZE = 50;
 
 type View = "fills" | "cycles";
 
-export function TradeLog({ executions, ticker, totalBeforeFilters, profitTarget }: Props) {
+export function TradeLog({ source, filterQuery, summary, ticker, profitTarget }: Props) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("cycles");
 
-  const cycles = buildCycles(executions);
-  const closed = cycles.filter((cycle) => !cycle.open);
-  const stuck = cycles.filter((cycle) => cycle.open);
-  const realised = closed.reduce((total, cycle) => total + (cycle.realized ?? 0), 0);
+  const fillCount = summary?.fills ?? 0;
+  const cycleCount = (summary?.closed ?? 0) + (summary?.open ?? 0);
+  const realised = summary?.realized ?? 0;
 
-  const rows = view === "fills" ? executions.length : cycles.length;
-  const cyclesPagination = usePagination(cycles.length, PAGE_SIZE);
-  const fillsPagination = usePagination(executions.length, PAGE_SIZE);
+  const rows = view === "fills" ? fillCount : cycleCount;
+  const cyclesPagination = usePagination(cycleCount, PAGE_SIZE);
+  const fillsPagination = usePagination(fillCount, PAGE_SIZE);
   const pagination = view === "cycles" ? cyclesPagination : fillsPagination;
+  const pageQuery = open
+    ? { ...filterQuery, offset: pagination.start, limit: pagination.pageSize }
+    : null;
+  const { page: cyclesPage } = useFills<CycleRow>(
+    source,
+    pageQuery && view === "cycles" ? { ...pageQuery, view: "cycles" } : null,
+  );
+  const { page: fillsPage } = useFills<Fill>(source, pageQuery && view === "fills" ? pageQuery : null);
+  const csvHref = source ? api.fillsCsvUrl(source.runId, { ...filterQuery, ticker: source.ticker }) : null;
 
   return (
     <Card>
@@ -79,13 +96,13 @@ export function TradeLog({ executions, ticker, totalBeforeFilters, profitTarget 
         </CardTitle>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span>
-            {executions.length} fill{executions.length === 1 ? "" : "s"}
-            {executions.length !== totalBeforeFilters
-              ? ` of ${totalBeforeFilters}, filtered`
+            {fillCount.toLocaleString()} fill{fillCount === 1 ? "" : "s"}
+            {summary && summary.fills !== summary.fills_unfiltered
+              ? ` of ${summary.fills_unfiltered.toLocaleString()}, filtered`
               : ""}
           </span>
           <span>
-            {closed.length} closed · {stuck.length} open
+            {(summary?.closed ?? 0).toLocaleString()} closed · {(summary?.open ?? 0).toLocaleString()} open
           </span>
           <Badge tone={realised >= 0 ? "profit" : "loss"}>{usd(realised)}</Badge>
         </div>
@@ -109,15 +126,17 @@ export function TradeLog({ executions, ticker, totalBeforeFilters, profitTarget 
                 ? "one row per lot: entry, exit, and what it actually made"
                 : "every buy and sell as the engine recorded it"}
             </span>
-            <Button
-              variant="ghost"
-              className="ml-auto h-7 px-2 text-xs"
-              onClick={() => download(executions, ticker)}
-              title="Download the filtered fills as CSV"
-            >
-              <Download className="size-3.5" />
-              CSV
-            </Button>
+            {csvHref ? (
+              <a
+                href={csvHref}
+                download={`trades-${ticker ?? "fund"}.csv`}
+                className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium hover:bg-accent"
+                title="Download the filtered fills as CSV"
+              >
+                <Download className="size-3.5" />
+                CSV
+              </a>
+            ) : null}
           </CardContent>
 
           <CardContent className="overflow-x-auto pt-0">
@@ -143,11 +162,11 @@ export function TradeLog({ executions, ticker, totalBeforeFilters, profitTarget 
                   </tr>
                 </thead>
                 <tbody className="tnum">
-                  {cyclesPagination.paginate(cycles).map((cycle) => {
+                  {(cyclesPage?.rows ?? []).map((cycle) => {
                     const exit = cycle.sells[cycle.sells.length - 1];
                     return (
-                      <tr key={cycle.lotId} className="border-b border-border/50 last:border-0">
-                        <td className="py-1.5 font-mono text-xs">{cycle.lotId}</td>
+                      <tr key={cycle.lot} className="border-b border-border/50 last:border-0">
+                        <td className="py-1.5 font-mono text-xs">{cycle.lot}</td>
                         <td className="py-1.5 text-xs">{stamp(cycle.buy.ts)}</td>
                         <td className="py-1.5 text-right">{usd(cycle.buy.px, 4)}</td>
                         <td className="py-1.5 text-right">{cycle.buy.qty.toFixed(4)}</td>
@@ -205,7 +224,7 @@ export function TradeLog({ executions, ticker, totalBeforeFilters, profitTarget 
                   </tr>
                 </thead>
                 <tbody className="tnum">
-                  {fillsPagination.paginate(executions).map((execution) => (
+                  {(fillsPage?.rows ?? []).map((execution) => (
                     <tr
                       key={fillKey(execution)}
                       className="border-b border-border/50 last:border-0"
@@ -263,40 +282,4 @@ function stamp(iso: string): string {
   // Minute precision: the engine runs on minute bars, and seconds would
   // be three characters of noise on every row.
   return iso.replace("T", " ").slice(0, 16);
-}
-
-function download(executions: Fill[], ticker: string | null): void {
-  const header = [
-    "timestamp",
-    "type",
-    "lot_id",
-    "ticker",
-    "price",
-    "shares",
-    "rsi_at_entry",
-    "profit_realized",
-    "sell_reason",
-  ];
-  const lines = executions.map((execution) =>
-    [
-      execution.ts,
-      execution.side,
-      execution.lot,
-      ticker ?? "",
-      execution.px,
-      execution.qty,
-      // Empty, not 0. A spreadsheet that read a warmup bar as RSI 0
-      // would filter it as extremely oversold.
-      execution.rsi ?? "",
-      execution.pnl ?? "",
-      execution.why ?? "",
-    ].join(","),
-  );
-  const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = "trades.csv";
-  anchor.click();
-  URL.revokeObjectURL(url);
 }

@@ -1,19 +1,21 @@
 /**
- * Filtering and cycle-matching over a run's executions.
+ * The result page's and Run History's pure helpers.
  *
- * Pure functions on purpose: this is where the only real logic in the
- * frontend lives, and logic that renders is logic nobody tests. Every
- * function here takes data and returns data, and filters.test.ts covers
- * the cases below that are easy to get quietly wrong.
+ * Filtering itself moved server-side: fills are paged per fund
+ * (server/fills.py) and history is queried per fund
+ * (server/history_query.py), each with the rules this file used to
+ * apply in the browser -- and the tests that pinned them, ported. What
+ * stays here is what the browser still decides: request shapes, chart
+ * windows and aggregation, sort-header cycling, and row identity.
  */
 import type {
   ChartResolution,
   DateRange,
   ExecutionFilters,
   Fill,
-  HistoryRow,
+  FillsQuery,
+  HistoryQuery,
   Metrics,
-  OrderStatusFilter,
   Params,
   RunHistoryFilters,
   Timeframe,
@@ -24,98 +26,6 @@ import type {
  * and bar, in exactly one place rather than at each call site. */
 export function fillKey(fill: Fill): string {
   return `${fill.lot}-${fill.side.toLowerCase()}-${fill.i}`;
-}
-
-/** A buy and the sells that closed it. */
-export interface TradeCycle {
-  lotId: string;
-  buy: Fill;
-  /** Empty for a lot still open -- what this project calls "stuck". */
-  sells: Fill[];
-  /** Summed across partial sells. null while nothing has closed. */
-  realized: number | null;
-  open: boolean;
-}
-
-/** Group fills into cycles by lot -- a sell and its buy share `lot`. */
-export function buildCycles(fills: Fill[]): TradeCycle[] {
-  const buys = new Map<string, Fill>();
-  const sells = new Map<string, Fill[]>();
-
-  for (const fill of fills) {
-    if (fill.side === "BUY") {
-      // FIRST buy wins. A lot has exactly one opening fill; if two rows
-      // ever claimed the same lot, silently overwriting would move the
-      // cycle's start and change every hold duration drawn from it.
-      if (!buys.has(fill.lot)) buys.set(fill.lot, fill);
-    } else {
-      const existing = sells.get(fill.lot);
-      if (existing) existing.push(fill);
-      else sells.set(fill.lot, [fill]);
-    }
-  }
-
-  const cycles: TradeCycle[] = [];
-  for (const [lotId, buy] of buys) {
-    const closes = sells.get(lotId) ?? [];
-    const realized = closes.reduce<number | null>(
-      (total, sell) => (sell.pnl === undefined ? total : (total ?? 0) + sell.pnl),
-      null,
-    );
-    cycles.push({ lotId, buy, sells: closes, realized, open: closes.length === 0 });
-  }
-  return cycles;
-}
-
-/**
- * Which lots are still open, from the fills alone -- open is simply the
- * absence of a matching sell; the engine does not mark it.
- */
-export function openLotIds(fills: Fill[]): Set<string> {
-  const closed = new Set(fills.filter((fill) => fill.side === "SELL").map((fill) => fill.lot));
-  return new Set(
-    fills.filter((fill) => fill.side === "BUY" && !closed.has(fill.lot)).map((fill) => fill.lot),
-  );
-}
-
-function withinRange(timestamp: string, range: DateRange): boolean {
-  if (range.start && timestamp < range.start) return false;
-  // The end bound is INCLUSIVE of the whole day. A picker gives
-  // "2026-03-27", and a user selecting a single day means that day, not
-  // the instant midnight begins it -- a plain `>` would return nothing.
-  if (range.end && timestamp.slice(0, 10) > range.end) return false;
-  return true;
-}
-
-function matchesStatus(fill: Fill, status: OrderStatusFilter, open: Set<string>): boolean {
-  if (status === "all") return true;
-  const isOpen = open.has(fill.lot);
-  return status === "stuck" ? isOpen : !isOpen;
-}
-
-function matchesRsi(fill: Fill, min: number | null, max: number | null): boolean {
-  if (min === null && max === null) return true;
-  // UNKNOWN IS NOT IN RANGE. A fill inside the indicator's warmup has no
-  // RSI, and including it in an "RSI < 30" query would claim the
-  // strategy entered on a reading that did not exist.
-  if (fill.rsi === undefined) return false;
-  if (min !== null && fill.rsi < min) return false;
-  if (max !== null && fill.rsi > max) return false;
-  return true;
-}
-
-/**
- * Apply every filter. Order is irrelevant; all are conjunctive. The fills
- * are one fund's already -- `filters.tickers` picks the fund, not rows.
- */
-export function filterExecutions(fills: Fill[], filters: ExecutionFilters): Fill[] {
-  const open = openLotIds(fills);
-  return fills.filter(
-    (fill) =>
-      withinRange(fill.ts, filters.range) &&
-      matchesStatus(fill, filters.status, open) &&
-      matchesRsi(fill, filters.rsiMin, filters.rsiMax),
-  );
 }
 
 /**
@@ -131,6 +41,20 @@ export function resolveSelectedFund(picked: string[], available: string[]): stri
   const first = picked[0];
   if (first !== undefined && available.includes(first)) return first;
   return available[0] ?? null;
+}
+
+/**
+ * The page's execution filters as GET /runs/{id}/fills parameters -- the
+ * same filters the browser used to apply, sent instead of applied.
+ */
+export function fillsParams(filters: ExecutionFilters): Omit<FillsQuery, "ticker"> {
+  return {
+    start: filters.range.start,
+    end: filters.range.end,
+    status: filters.status,
+    rsi_min: filters.rsiMin,
+    rsi_max: filters.rsiMax,
+  };
 }
 
 /** Seconds per aggregation bucket, for rolling bars up. */
@@ -242,13 +166,11 @@ export function chartWindow(
 }
 
 /* ------------------------------------------------------------------ */
-/* Run-history filtering                                              */
+/* Run-history helpers                                                */
 /*                                                                    */
-/* The history table is flattened to one row per (run, fund, grid     */
-/* cell). Filtering it is the same shape of problem as filtering       */
-/* executions -- pure, conjunctive, and easy to get quietly wrong on  */
-/* the "unknown value" case -- so it lives here beside the other      */
-/* filter and is covered by the same test file.                       */
+/* The table is one row per (run, fund, cell), filtered, sorted and   */
+/* paged by the server (server/history_query.py). These are the bits  */
+/* the filter bar and table still decide in the browser.              */
 /* ------------------------------------------------------------------ */
 
 /** Floats that came from the same computation but a different path
@@ -266,80 +188,15 @@ export function sameNumber(a: number, b: number): boolean {
  * (grid, target) alone is NOT a unique identity: once a strategy param
  * is swept too (a Bayesian search over e.g. oversold_threshold/period
  * with grid_step/profit_target held fixed), many cells legitimately
- * share one (grid, target) pair, one per combo. This is what lets a
- * caller tell them apart -- SweepMatrix's combo selector, and
- * RunHistory's row `key` (a `<tr key={...}>` built from run/ticker/
- * grid/target alone collided across every combo sharing that pair, so
- * React rendered/reconciled them as if they were the SAME row: a
- * filter that correctly shrank the underlying data still showed old
- * rows, because React matched new data onto old, colliding-key DOM
- * nodes instead of replacing them).
+ * share one (grid, target) pair, one per combo. This is what lets
+ * SweepMatrix's combo selector tell them apart.
+ *
+ * NOT a row identity on its own: a Bayesian search re-tries identical
+ * configurations, so equal combos recur within one run. Run History keys
+ * rows by (run, fund, engine rank) instead.
  */
 export function comboKey(params: Params | null | undefined): string {
   return JSON.stringify(Object.entries(params ?? {}).sort(([a], [b]) => a.localeCompare(b)));
-}
-
-/**
- * The value of one namespaced numeric field on a history row, in the
- * SAME unit the table and the filter inputs use:
- *
- *   grid_step / profit_target   stored as a fraction, read as a PERCENT
- *   param:<name>                the raw argument, when it is numeric
- *   metric:<key>                the raw metric (cagr_pct etc. are
- *                               already percent-scaled by the engine)
- *   window_days                 the number of calendar days between the
- *                               run's start and end dates (inclusive)
- *
- * Returns null when the field does not apply -- an old report with no
- * such metric, a model that never took the argument, or a non-numeric
- * argument such as `ticker`.
- */
-export function historyFieldValue(row: HistoryRow, key: string): number | null {
-  if (key === "grid_step") return row.grid === null ? null : row.grid * 100;
-  if (key === "profit_target") return row.target === null ? null : row.target * 100;
-  if (key === "window_bars")
-    return typeof row.bars === "number" && Number.isFinite(row.bars) ? row.bars : null;
-  if (key === "window_days") {
-    if (!row.start || !row.end) return null;
-    const startMs = new Date(row.start).getTime();
-    const endMs = new Date(row.end).getTime();
-    if (Number.isNaN(startMs) || Number.isNaN(endMs)) return null;
-    // Inclusive of both start and end day
-    return Math.max(0, Math.floor((endMs - startMs) / 86_400_000) + 1);
-  }
-  if (key.startsWith("param:")) {
-    const raw = row.params[key.slice("param:".length)];
-    return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
-  }
-  if (key.startsWith("metric:")) {
-    const raw = row.m[key.slice("metric:".length) as keyof Metrics];
-    return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
-  }
-  return null;
-}
-
-function numericFieldPasses(row: HistoryRow, key: string, filters: RunHistoryFilters): boolean {
-  const values = filters.values[key];
-  const range = filters.ranges[key];
-  const hasValues = values !== undefined && values.length > 0;
-  const hasRange = range !== undefined && (range.min !== null || range.max !== null);
-  if (!hasValues && !hasRange) return true;
-
-  const actual = historyFieldValue(row, key);
-  // UNKNOWN IS NOT A MATCH. A row missing this field must not slip
-  // through a gate the reader deliberately set -- same rule the RSI
-  // filter follows for an execution inside the indicator warmup.
-  if (actual === null) return false;
-
-  const inValues = hasValues && values.some((value) => sameNumber(value, actual));
-  const inRange =
-    hasRange &&
-    (range.min === null || actual >= range.min) &&
-    (range.max === null || actual <= range.max);
-
-  // values OR range: either one satisfied is enough, so a discrete pick
-  // and a band can be combined on the same field without fighting.
-  return Boolean(inValues || inRange);
 }
 
 /** The namespaced keys of every numeric field the filter actually
@@ -359,65 +216,12 @@ export function activeNumericFieldKeys(filters: RunHistoryFilters): string[] {
 export function runHistoryFilterActive(filters: RunHistoryFilters): boolean {
   return (
     filters.name.trim() !== "" ||
-    filters.tickers.length > 0 ||
     filters.models.length > 0 ||
     filters.fillModels.length > 0 ||
     filters.window.start !== null ||
     filters.window.end !== null ||
     activeNumericFieldKeys(filters).length > 0
   );
-}
-
-/** Overlap of a row's simulation window with the selected bounds. */
-function matchesWindow(row: HistoryRow, range: DateRange): boolean {
-  if (range.start === null && range.end === null) return true;
-  if (!row.start || !row.end) return false;
-  const start = row.start.slice(0, 10);
-  const end = row.end.slice(0, 10);
-  if (range.start && end < range.start) return false;
-  if (range.end && start > range.end) return false;
-  return true;
-}
-
-/** Apply every run-history filter. All clauses are conjunctive. */
-export function filterHistoryRows(
-  rows: HistoryRow[],
-  filters: RunHistoryFilters,
-): HistoryRow[] {
-  const needle = filters.name.trim().toLowerCase();
-  const numericKeys = activeNumericFieldKeys(filters);
-
-  return rows.filter((row) => {
-    if (needle && !(row.name ?? "").toLowerCase().includes(needle)) return false;
-    if (filters.tickers.length > 0 && !filters.tickers.includes(row.ticker)) return false;
-    if (
-      filters.models.length > 0 &&
-      !(row.model !== null && filters.models.includes(row.model))
-    ) {
-      return false;
-    }
-    if (
-      filters.fillModels.length > 0 &&
-      !(row.fill !== null && filters.fillModels.includes(row.fill))
-    ) {
-      return false;
-    }
-    if (!matchesWindow(row, filters.window)) return false;
-    for (const key of numericKeys) {
-      if (!numericFieldPasses(row, key, filters)) return false;
-    }
-    return true;
-  });
-}
-
-/** One filterable field, plus the distinct values present for its
- * "pick specific values" chips (ascending; empty for a continuous
- * field like a metric). */
-export interface HistoryFieldOption {
-  key: string;
-  label: string;
-  group: "Input arguments" | "Results";
-  values: number[];
 }
 
 /** The curated result metrics offered as range filters, in the order
@@ -438,17 +242,6 @@ export const HISTORY_METRIC_FIELDS: { key: keyof Metrics; label: string }[] = [
   { key: "avg_hold_duration", label: "Avg hold (bars)" },
   { key: "total_trades", label: "Total trades" },
 ];
-
-function distinctValues(rows: HistoryRow[], key: string): number[] {
-  const seen: number[] = [];
-  for (const row of rows) {
-    const value = historyFieldValue(row, key);
-    if (value !== null && !seen.some((existing) => sameNumber(existing, value))) {
-      seen.push(value);
-    }
-  }
-  return seen.sort((a, b) => a - b);
-}
 
 /* ------------------------------------------------------------------ */
 /* Run-history column sort                                            */
@@ -492,141 +285,28 @@ export function nextRunHistorySort(
   return null;
 }
 
-/** One column's raw sortable value off a row. Distinct from
- * `historyFieldValue` above (which percent-scales and namespaces a
- * field for the FILTER inputs) -- this is the bare value the column
- * itself displays. `metric` reads whichever `Metrics`
- * key the "Rank by" dropdown currently has selected, so the dynamic
- * metric column sorts by whatever it is showing. `now` (epoch seconds)
- * is what `saved_at` falls back to when a row doesn't have one -- see
- * `sortHistoryRows`. */
-function runHistoryColumnValue(
-  row: HistoryRow,
-  column: RunHistoryColumn,
-  metric: keyof Metrics,
-  now: number,
-): string | number | null {
-  const metricValue = (key: keyof Metrics): number | null => {
-    const value = row.m[key];
-    return typeof value === "number" && Number.isFinite(value) ? value : null;
+/**
+ * One Run History page request. The fund is required; the "Rank by"
+ * default sort (no column picked) is the rank metric, best end first --
+ * `higherIsBetter` says which end that is for the chosen metric.
+ */
+export function historyQueryBody(args: {
+  ticker: string;
+  filters: RunHistoryFilters;
+  sort: RunHistorySort | null;
+  rankBy: keyof Metrics;
+  higherIsBetter: boolean;
+  page: number;
+  pageSize: number;
+}): HistoryQuery {
+  const { extraFields: _presentational, ...filters } = args.filters;
+  void _presentational;
+  return {
+    ticker: args.ticker,
+    filters,
+    sort: args.sort ?? { column: "metric", direction: args.higherIsBetter ? "desc" : "asc" },
+    rank_by: args.rankBy,
+    offset: Math.max(0, (args.page - 1) * args.pageSize),
+    limit: args.pageSize,
   };
-  switch (column) {
-    case "name":
-      return row.name;
-    case "ticker":
-      return row.ticker;
-    case "grid_step":
-      return row.grid;
-    case "profit_target":
-      return row.target;
-    case "sizing_model":
-      return row.model;
-    case "metric":
-      return metricValue(metric);
-    case "cagr_pct":
-      return metricValue("cagr_pct");
-    case "max_drawdown_pct":
-      return metricValue("max_drawdown_pct");
-    case "worst_year_pct":
-      return metricValue("worst_year_pct");
-    case "total_trades":
-      return metricValue("total_trades");
-    case "window":
-      if (!row.start) return null;
-      return `${row.start.slice(0, 10)}→${row.end?.slice(0, 10) ?? ""}`;
-    case "run_id":
-      return row.run;
-    case "saved_at":
-      // A row with no recorded save time is treated as having happened
-      // NOW -- the caller's own stated rule, not "unknown" -- so it
-      // reads as the most recent row rather than falling to the bottom
-      // of the table the way a genuinely absent metric does.
-      return row.saved_at ?? now;
-  }
-}
-
-/** Compares two column values for one direction. `null` (a metric
- * absent from an older report, an unset grid axis) sorts LAST
- * regardless of direction -- missing is not "smallest" or "largest",
- * the same rule the Rank-by ranking in RunHistory.tsx already follows. */
-function compareRunHistoryValues(
-  a: string | number | null,
-  b: string | number | null,
-  direction: "asc" | "desc",
-): number {
-  if (a === null && b === null) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  const cmp =
-    typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
-  return direction === "asc" ? cmp : -cmp;
-}
-
-/**
- * Sort history rows by one clicked column, or return them UNCHANGED
- * when `sort` is null -- the caller applies its own default ranking in
- * that case, "off" being "go back to Rank by" rather than a sort of
- * its own.
- */
-export function sortHistoryRows(
-  rows: HistoryRow[],
-  sort: RunHistorySort | null,
-  metric: keyof Metrics,
-): HistoryRow[] {
-  if (!sort) return rows;
-  // Computed once per sort, not once per row/comparison, so every row
-  // missing `saved_at` in this one pass agrees on what "now" means.
-  const now = Date.now() / 1000;
-  return [...rows].sort((a, b) =>
-    compareRunHistoryValues(
-      runHistoryColumnValue(a, sort.column, metric, now),
-      runHistoryColumnValue(b, sort.column, metric, now),
-      sort.direction,
-    ),
-  );
-}
-
-/**
- * The numeric INPUT-argument fields present across the loaded rows.
- *
- * `grid_step` and `profit_target` are always offered -- they are the
- * swept dimensions -- even when the loaded history holds a single value
- * of each. Every numeric sizing-model argument seen in any row is
- * offered too; non-numeric arguments (`ticker`) are left to the Fund
- * control. The computed `window_days` field is also always offered.
- */
-export function historyInputFields(rows: HistoryRow[]): HistoryFieldOption[] {
-  const out: HistoryFieldOption[] = [
-    { key: "grid_step", label: "Grid step %", group: "Input arguments", values: distinctValues(rows, "grid_step") },
-    {
-      key: "profit_target",
-      label: "Profit target %",
-      group: "Input arguments",
-      values: distinctValues(rows, "profit_target"),
-    },
-    {
-      key: "window_days",
-      label: "Window (days)",
-      group: "Input arguments",
-      values: distinctValues(rows, "window_days"),
-    },
-    {
-      key: "window_bars",
-      label: "Window (bars)",
-      group: "Input arguments",
-      values: distinctValues(rows, "window_bars"),
-    },
-  ];
-
-  const paramKeys = new Set<string>();
-  for (const row of rows) {
-    for (const [name, value] of Object.entries(row.params)) {
-      if (typeof value === "number" && Number.isFinite(value)) paramKeys.add(name);
-    }
-  }
-  for (const name of [...paramKeys].sort()) {
-    const key = `param:${name}`;
-    out.push({ key, label: name, group: "Input arguments", values: distinctValues(rows, key) });
-  }
-  return out;
 }

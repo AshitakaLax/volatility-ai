@@ -322,7 +322,13 @@ class TestShardProcess:
         assert run["status"] == "complete", run
         remote = run["report"]["funds"]["TESTQ"]
         assert remote["cells"] == json.loads(json.dumps(local["funds"]["TESTQ"]["cells"]))
-        assert remote["fills"] == json.loads(json.dumps(local["funds"]["TESTQ"]["fills"]))
+        # Reports carry a count; the fills themselves are paged.
+        local_fills = json.loads(json.dumps(local["funds"]["TESTQ"]["fills"]))
+        assert remote["fills_count"] == len(local_fills)
+        page = client.get(
+            f"/api/backtest/runs/{run_id}/fills", params={"ticker": "TESTQ", "limit": 5000}
+        ).json()
+        assert page["rows"] == local_fills
         # Downloaded once, cached under the fingerprint.
         assert (tmp_path / "cache" / "TESTQ.npz").exists()
         assert (tmp_path / "cache" / "TESTQ.fingerprint").read_text()
