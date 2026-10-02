@@ -15,6 +15,7 @@ import type {
   Run,
   RunOp,
   RunReq,
+  RunSummary,
   Shard,
   ShardList,
   ShardOp,
@@ -126,7 +127,7 @@ export const api = {
     return { rows, runs: new Set(body.rows.map((row) => row.run)).size };
   },
 
-  runs: () => request<{ runs: Run[]; paused: boolean }>("/api/backtest/runs"),
+  runs: () => request<{ runs: RunSummary[]; paused: boolean }>("/api/backtest/runs"),
 
   /** A queued, running or archived run -- the server falls back to history. */
   run: (runId: string) => request<Run>(`/api/backtest/runs/${runId}`),

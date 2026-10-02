@@ -36,7 +36,7 @@ import {
   type RunBatch,
 } from "@/lib/runBatches";
 import { cn, runUrl } from "@/lib/utils";
-import type { Run } from "@/types/backtest";
+import type { RunSummary } from "@/types/backtest";
 
 /**
  * Backtests in flight, and the controls to steer them.
@@ -81,7 +81,7 @@ const IDLE_POLL_MS = 15000;
 type RunAction = "pause" | "resume" | "cancel" | "runNext" | "moveUp" | "moveDown";
 
 export function ActiveRuns({ onSettled }: Props) {
-  const [runs, setRuns] = useState<Run[]>([]);
+  const [runs, setRuns] = useState<RunSummary[]>([]);
   const [queuePaused, setQueuePaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -171,7 +171,7 @@ export function ActiveRuns({ onSettled }: Props) {
   const active = orderActiveItems(grouped, positions);
   const recent = grouped.filter((item) => !itemIsActive(item)).slice(0, 3);
 
-  const onAction = (run: Run, action: RunAction) => {
+  const onAction = (run: RunSummary, action: RunAction) => {
     const label = runLabel(run) ?? run.id;
     const position = positions.get(run.id);
     const calls: Record<RunAction, () => Promise<unknown>> = {
@@ -285,14 +285,14 @@ export function ActiveRuns({ onSettled }: Props) {
   );
 }
 
-function runLabel(run: Run): string | null {
+function runLabel(run: RunSummary): string | null {
   return (
     run.req.name?.trim() || `${run.req.model ?? "fixed"} · ${run.req.tickers.join(", ")}`
   );
 }
 
 function statusText(
-  run: Run,
+  run: RunSummary,
   position: QueuePosition | undefined,
   queuePaused: boolean,
 ): string {
@@ -325,7 +325,7 @@ function RunRow({
   busy,
   onAction,
 }: {
-  run: Run;
+  run: RunSummary;
   /** This run's place among pending jobs, or undefined when it isn't pending. */
   position: QueuePosition | undefined;
   queuePaused: boolean;
@@ -495,7 +495,7 @@ function BatchRow({
   positions: Map<string, QueuePosition>;
   queuePaused: boolean;
   busy: string | null;
-  onAction: (run: Run, action: RunAction) => void;
+  onAction: (run: RunSummary, action: RunAction) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const active = itemIsActive(batch);
@@ -508,7 +508,7 @@ function BatchRow({
     0,
   );
   const counts = batchCounts(batch);
-  const summary = (Object.entries(counts) as [Run["status"], number][])
+  const summary = (Object.entries(counts) as [RunSummary["status"], number][])
     .filter(([, count]) => count > 0)
     .map(([status, count]) => `${count} ${status}`)
     .join(", ");

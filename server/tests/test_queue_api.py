@@ -82,6 +82,23 @@ def test_runs_listing_reports_positions_and_queue_state(client, runner):
     assert (by_id[a]["pos"], by_id[b]["pos"]) == (1, 2)
 
 
+def test_runs_listing_omits_the_report_that_the_single_run_route_carries(client, runner):
+    # The listing is polled every 2 s by the Recent runs panel and holds
+    # every job since the process started; with reports embedded it grew
+    # to ~600 MB. Nothing that reads the listing needs a report.
+    run_id = submit(client, "done")
+    runner.release.set()
+    wait_for("complete", run_id)
+
+    listed = {run["id"]: run for run in client.get("/api/backtest/runs").json()["runs"]}[run_id]
+    assert "report" not in listed
+    assert listed["status"] == "complete"
+    assert listed["req"]["name"] == "done"
+
+    single = client.get(f"/api/backtest/runs/{run_id}").json()
+    assert "funds" in single["report"]
+
+
 def test_run_next_and_move_reorder_and_answer_with_the_new_snapshot(client, runner):
     submit(client, "first")
     assert runner.arrived.wait(TIMEOUT)

@@ -385,9 +385,16 @@ class Job:
     # that was running when this process died comes back queued.
     shard: str | None = None
 
-    def snapshot(self) -> dict[str, Any]:
-        """The job as a wire `Run` (web/src/types/backtest.ts)."""
-        return {
+    def snapshot(self, include_report: bool = True) -> dict[str, Any]:
+        """The job as a wire `Run` (web/src/types/backtest.ts).
+
+        `include_report=False` is the listing form (`RunSummary`): every
+        field except the report. A completed report carries every fill of
+        the top configuration -- ~100 MB raw for a busy 3x-fund run -- and
+        the listing holds every job since the process started, which made
+        GET /runs ~600 MB for a panel that reads none of it.
+        """
+        snapshot = {
             "id": self.run_id,
             # A pending stop on a running job is reported AS its status
             # (pausing / cancelling) rather than as a second field.
@@ -404,8 +411,10 @@ class Job:
             # QUEUED or RUNNING job (tickers, grid, strategy params, name)
             # before it has a report to read that from.
             "req": self.request,
-            "report": self.result,
         }
+        if include_report:
+            snapshot["report"] = self.result
+        return snapshot
 
 
 class RunControl:

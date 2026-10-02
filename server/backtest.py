@@ -1846,8 +1846,17 @@ def runs() -> dict[str, Any]:
     Each snapshot carries its own `pos`; the order a client should show
     pending runs in is that, not submission order -- the two differ the
     moment anything has been moved.
+
+    WITHOUT REPORTS (`RunSummary`). Every consumer of this listing -- the
+    Recent runs panel, `cli.py submit`'s dedupe -- reads status, progress
+    and the echoed request only; a report is fetched per run from
+    GET /runs/{id}. Embedding them made this ~600 MB once a day of busy
+    sweeps had completed, and the panel polls it every 2 s.
     """
-    return {"runs": [job.snapshot() for job in queue.all()], "paused": queue.paused}
+    return {
+        "runs": [job.snapshot(include_report=False) for job in queue.all()],
+        "paused": queue.paused,
+    }
 
 
 @router.get("/runs/{run_id}")

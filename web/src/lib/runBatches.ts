@@ -11,21 +11,21 @@
  */
 import { isActive } from "@/lib/runQueue";
 import type { QueuePosition } from "@/lib/runQueue";
-import type { Run, RunStatus } from "@/types/backtest";
+import type { RunSummary, RunStatus } from "@/types/backtest";
 
 export interface RunBatch {
   batchId: string;
-  runs: Run[];
+  runs: RunSummary[];
 }
 
-export type BatchItem = Run | RunBatch;
+export type BatchItem = RunSummary | RunBatch;
 
 /** Type guard: a batch carries runs, a run carries an id. */
 export function isBatch(item: BatchItem): item is RunBatch {
   return (item as RunBatch).batchId !== undefined && Array.isArray((item as RunBatch).runs);
 }
 
-function batchIdOf(run: Run): string | null {
+function batchIdOf(run: RunSummary): string | null {
   return run.req.batch_id ?? null;
 }
 
@@ -35,8 +35,8 @@ function batchIdOf(run: Run): string | null {
  * row, not as a one-child batch card. Chunk rows inside a batch follow
  * batch_index order.
  */
-export function groupByBatch(runs: Run[]): BatchItem[] {
-  const byId = new Map<string, Run[]>();
+export function groupByBatch(runs: RunSummary[]): BatchItem[] {
+  const byId = new Map<string, RunSummary[]>();
   for (const run of runs) {
     const id = batchIdOf(run);
     if (id === null) continue;

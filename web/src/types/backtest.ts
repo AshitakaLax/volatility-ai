@@ -254,6 +254,14 @@ export interface Run {
 }
 
 /**
+ * A Run as GET /api/backtest/runs lists it: everything except `report`.
+ * A completed report carries every fill of the top configuration (~100 MB
+ * raw for a busy 3x-fund run), so the listing never embeds one -- read it
+ * from GET /api/backtest/runs/{id} instead.
+ */
+export type RunSummary = Omit<Run, "report">;
+
+/**
  * POST /api/backtest/runs's response. A sweep that fits under the
  * combination ceiling in one submission returns a plain Run, exactly as
  * every server has always returned -- backward compatible, and still

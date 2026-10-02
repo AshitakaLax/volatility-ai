@@ -5,7 +5,7 @@
  * Pure, like lib/sweepSummary.ts and lib/requestSummary.ts. Covered in
  * runQueue.test.ts.
  */
-import type { Run, RunStatus } from "@/types/backtest";
+import type { RunSummary, RunStatus } from "@/types/backtest";
 
 export interface QueuePosition {
   /** 1-indexed; 1 means "next up". */
@@ -34,7 +34,7 @@ export function isActive(status: RunStatus): boolean {
  * is execution order. Submission order stopped being that the moment runs
  * could be reordered, so it is never derived client-side.
  */
-export function queuePositions(runsNewestFirst: Run[]): Map<string, QueuePosition> {
+export function queuePositions(runsNewestFirst: RunSummary[]): Map<string, QueuePosition> {
   const pending = runsNewestFirst.filter((run) => isPending(run.status));
   const positions = new Map<string, QueuePosition>();
   for (const run of pending) {
@@ -47,7 +47,7 @@ export function queuePositions(runsNewestFirst: Run[]): Map<string, QueuePositio
  * Active jobs in the order they will run: the running one first, then
  * pending jobs by queue position. Terminal jobs are excluded.
  */
-export function orderActiveRuns(runsNewestFirst: Run[]): Run[] {
+export function orderActiveRuns(runsNewestFirst: RunSummary[]): RunSummary[] {
   const positions = queuePositions(runsNewestFirst);
   const running = runsNewestFirst.filter((run) => isRunning(run.status));
   const pending = runsNewestFirst
@@ -89,7 +89,7 @@ const NONE: RunActions = {
  * control is not offered twice, and a pending pause can still be taken
  * back with resume.
  */
-export function availableActions(run: Run, position: QueuePosition | undefined): RunActions {
+export function availableActions(run: RunSummary, position: QueuePosition | undefined): RunActions {
   switch (run.status) {
     case "running":
       return { ...NONE, pause: true, cancel: true };
