@@ -126,11 +126,17 @@ class TestARunCompletesThroughTheWholeChain:
         # 2 steps x 2 targets. The sweep matrix needs all of them.
         assert len(fund["cells"]) == 4
 
-        # And the fills carry what the chart's cycle connectors join on --
+        # Fills are counted on the report and paged from their own
+        # endpoint -- and carry what the chart's cycle connectors join on,
         # the reason the blotter was given lot identity.
-        sells = [e for e in fund["fills"] if e["side"] == "SELL"]
-        buys = {e["lot"] for e in fund["fills"] if e["side"] == "BUY"}
-        if sells:
+        page = client.get(
+            f"/api/backtest/runs/{run_id}/fills", params={"ticker": "TQQQ", "limit": 5000}
+        ).json()
+        assert page["total"] == fund["fills_count"]
+        assert len(page["rows"]) == min(fund["fills_count"], 5000)
+        sells = [e for e in page["rows"] if e["side"] == "SELL"]
+        buys = {e["lot"] for e in page["rows"] if e["side"] == "BUY"}
+        if sells and fund["fills_count"] <= 5000:
             assert {sell["lot"] for sell in sells} <= buys
 
     def test_progress_is_reported_between_start_and_finish(self, client):
@@ -160,13 +166,18 @@ class TestARunCompletesThroughTheWholeChain:
     def test_a_completed_run_reaches_history(self, client):
         """History is written on the workstation and read back through
         the Pi, so this covers persistence AND the forwarding of it."""
-        run_id = client.post("/api/backtest/runs", json=SMALL_RUN).json()["id"]
+        name = f"e2e-history-{time.time_ns()}"
+        run_id = client.post("/api/backtest/runs", json={**SMALL_RUN, "name": name}).json()["id"]
         wait_for(client, run_id)
 
-        after = client.get("/api/backtest/history/runs").json()
-        assert run_id in after["runs"]
-        rows = [row for row in after["rows"] if row["run"] == run_id]
-        assert len(rows) == 4, "the sweep's four cells are not all in history"
+        assert run_id in client.get("/api/backtest/history/runs").json()["runs"]
+        # The table's own query: one fund, filtered server-side.
+        page = client.post(
+            "/api/backtest/history/query",
+            json={"ticker": "TQQQ", "filters": {"name": name}, "limit": 50},
+        ).json()
+        rows = [row for row in page["rows"] if row["run"] == run_id]
+        assert page["total"] == len(rows) == 4, "the sweep's four cells are not all in history"
         assert all(row["ticker"] == "TQQQ" for row in rows)
         # Rankable: the fields the history table sorts on are present.
         assert all("cagr_pct" in row["m"] for row in rows)
@@ -391,7 +402,8 @@ def test_the_run_payload_matches_the_documented_contract(client):
         "funds",
     }
     fund = report["funds"]["TQQQ"]
-    assert set(fund) == {"cells", "fills", "equity", "bars"}
+    # Fills are counted, never inline -- they are paged from /fills.
+    assert set(fund) == {"cells", "fills_count", "equity", "bars"}
     # Parallel arrays, which the overlay chart indexes together (and
     # rebases to 100 client-side).
     assert set(fund["equity"]) == {"dates", "equity"}
