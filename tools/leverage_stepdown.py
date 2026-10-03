@@ -93,6 +93,8 @@ from engine.core.config import BacktestConfig
 from research.optimization.optimization_controller import OptimizationController
 from research.strategies.natr_regime import calm_by_date, count_flips, daily_bars
 from research.strategies.regime_sleeve_sizing import RegimeSleeveSizing
+from research.strategies.turbulence_regime import basket_closes
+from research.strategies.turbulence_regime import calm_by_date as turbulence_calm_by_date
 
 FOCUS_YEARS = (2018, 2020, 2022)
 
@@ -189,6 +191,17 @@ def main(argv=None) -> int:
     p.add_argument("--period", type=int, default=10)
     p.add_argument("--lookback", type=int, default=100)
     p.add_argument("--lag", type=int, choices=(0, 1), default=1)
+    p.add_argument(
+        "--regime",
+        choices=("natr", "turbulence"),
+        default="natr",
+        help="natr: NATR below its median (plan.md). turbulence: basket Mahalanobis "
+        "distance below its trailing quantile (research/strategies/turbulence_regime.py)",
+    )
+    p.add_argument("--basket", nargs="+", default=["QQQ", "RSP", "TLT", "GLD"])
+    p.add_argument("--turb-lookback", type=int, default=252)
+    p.add_argument("--turb-quantile", type=float, default=0.9)
+    p.add_argument("--turb-threshold-lookback", type=int, default=252)
     p.add_argument("--qqq-scale", type=float, default=3.0)
     p.add_argument("--qqq-per-lot-pct", type=float, default=None)
     p.add_argument(
@@ -230,16 +243,34 @@ def main(argv=None) -> int:
         frames[name] = load_frame(name)
         if frames[name].empty:
             raise SystemExit(f"No warehouse data for {name!r}; ingest it first.")
-    source = frames[args.tqqq if args.regime_from == "tqqq" else args.qqq]
-    regime = calm_by_date(
-        daily_bars(source), period=args.period, lookback=args.lookback, lag=args.lag
-    )
+    if args.regime == "natr":
+        source = frames[args.tqqq if args.regime_from == "tqqq" else args.qqq]
+        regime = calm_by_date(
+            daily_bars(source), period=args.period, lookback=args.lookback, lag=args.lag
+        )
+        desc = f"NATR({args.period}) vs {args.lookback}-day median on {args.regime_from}"
+    else:
+        basket = {}
+        for name in args.basket:
+            basket[name] = frames[name] if name in frames else load_frame(name)
+            if basket[name].empty:
+                raise SystemExit(f"No warehouse data for basket member {name!r}; ingest it first.")
+        regime = turbulence_calm_by_date(
+            basket_closes(basket),
+            lookback=args.turb_lookback,
+            quantile=args.turb_quantile,
+            threshold_lookback=args.turb_threshold_lookback,
+            lag=args.lag,
+        )
+        source = frames[args.tqqq]
+        desc = (
+            f"turbulence({args.turb_lookback}d) below its {args.turb_quantile:g} quantile "
+            f"over {args.turb_threshold_lookback}d, basket {'+'.join(args.basket)}"
+        )
     start = pd.Timestamp(min(regime), tz=source.index.tz)
     calm_share = 100.0 * sum(regime.values()) / len(regime)
     label = "lag 1 (causal)" if args.lag == 1 else "lag 0 -- LOOKAHEAD, comparison only"
-    print(
-        f"Regime: NATR({args.period}) vs {args.lookback}-day median on {args.regime_from}, {label}"
-    )
+    print(f"Regime: {desc}, {label}")
     print(f"  {len(regime)} sessions from {start.date()}, {calm_share:.1f}% calm, ")
     print(f"  {count_flips(regime)} flips (each one liquidates whichever sleeve is leaving)")
     fill = args.fill_model + (f"/{args.intrabar_fill}" if args.fill_model == "intrabar" else "")
@@ -309,7 +340,12 @@ def main(argv=None) -> int:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    tag = f"lag{args.lag}_p{args.period}_lb{args.lookback}_s{args.qqq_scale:g}_{args.fill_model}"
+    regime_tag = (
+        f"natr_p{args.period}_lb{args.lookback}"
+        if args.regime == "natr"
+        else f"turb_lb{args.turb_lookback}_q{args.turb_quantile:g}"
+    )
+    tag = f"{regime_tag}_lag{args.lag}_s{args.qqq_scale:g}_{args.fill_model}"
     if args.fill_model == "intrabar":
         tag += f"_{args.intrabar_fill}"
     pd.DataFrame(

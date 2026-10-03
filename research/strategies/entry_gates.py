@@ -104,6 +104,8 @@ from research.strategies.sizing_indicators import RollingMean
 BREAKDOWN_MODES: tuple[str, ...] = ("off", "dual_thrust", "opening_range", "prior_low")
 RELEASE_MODES: tuple[str, ...] = ("reclaim", "session")
 PATTERN_MODES: tuple[str, ...] = ("off", "shooting_star")
+MOMENTUM_MODES: tuple[str, ...] = ("off", "early_negative")
+SESSION_MINUTES = 390  # 09:30-16:00; a half-day never reaches a late window
 
 
 def as_count(name: str, value, minimum: int = 1) -> int:
@@ -491,12 +493,128 @@ class ShootingStarGate:
                 self.episodes += 1
 
 
+class IntradayMomentumGate:
+    """Block buys late in a session that started badly.
+
+    Gao, Han, Li & Zhou, "Market Intraday Momentum" (Journal of Financial
+    Economics, 2018): the return from the previous close to the end of
+    the first half hour predicts the last half hour's, more strongly on
+    volatile days. This system is long-only, so the usable half is the
+    negative one: when the early window closed below the previous
+    session's close by more than `threshold`, the last `late_minutes`
+    are expected to keep falling, and buying into them adds lots the
+    no-loss guard can only exit after a recovery.
+
+      early return = close at the end of the first early_minutes
+                     / previous session's last close - 1
+      blocked      = minute >= 390 - late_minutes  and
+                     early return < -threshold
+
+    Causal like the other gates: the early return becomes known at the
+    start of the first bar after the early window (the window's last bar
+    is folded then), long before the late window it governs. It clears
+    at the session end. Half-days (13:00 close) never reach a late window
+    of a 390-minute session, so the gate is inert on them.
+    """
+
+    def __init__(
+        self,
+        mode: str = "off",
+        *,
+        early_minutes: int = 30,
+        late_minutes: int = 30,
+        threshold: float = 0.0,
+    ) -> None:
+        if mode not in MOMENTUM_MODES:
+            raise ConfigurationError(f"momentum_gate must be one of {MOMENTUM_MODES}, got {mode!r}")
+        if threshold < 0.0:
+            raise ConfigurationError(f"momentum_threshold must be >= 0, got {threshold}")
+        self.mode = mode
+        self.early_minutes = as_count("momentum_early_minutes", early_minutes)
+        self.late_minutes = as_count("momentum_late_minutes", late_minutes)
+        if self.early_minutes + self.late_minutes > SESSION_MINUTES:
+            raise ConfigurationError(
+                "momentum_early_minutes + momentum_late_minutes must fit in one "
+                f"{SESSION_MINUTES}-minute session"
+            )
+        self.threshold = float(threshold)
+        self._late_start = SESSION_MINUTES - self.late_minutes
+        self._day: int | None = None
+        self._pending: tuple[int, float] | None = None
+        self._last_close: float | None = None
+        self._prev_session_close: float | None = None
+        self._early_close: float | None = None
+        self._early_return: float | None = None
+        self._suppressed = False
+        self.suppressed_bars = 0
+        self.episodes = 0
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode != "off"
+
+    @property
+    def suppressed(self) -> bool:
+        return self._suppressed
+
+    @property
+    def early_return(self) -> float | None:
+        """This session's early-window return, once known."""
+        return self._early_return
+
+    def observe(self, context: MarketContext) -> None:
+        """Advance one bar. Call once per bar, from record_tick."""
+        if not self.enabled:
+            return
+        minute = _regular_session_minute(context)
+        if minute is None:
+            return
+        # 1. Fold the previous bar -- BEFORE any session roll, so the
+        #    previous session's last close is the reference for this one.
+        if self._pending is not None:
+            pending_minute, pending_close = self._pending
+            self._pending = None
+            self._last_close = pending_close
+            if pending_minute < self.early_minutes:
+                self._early_close = pending_close
+        day = context.timestamp.toordinal()
+        if day != self._day:
+            self._day = day
+            self._prev_session_close = self._last_close
+            self._early_close = None
+            self._early_return = None
+            self._suppressed = False
+        # 2. The early window is complete once a bar starts after it.
+        if (
+            self._early_return is None
+            and minute >= self.early_minutes
+            and self._early_close is not None
+            and self._prev_session_close
+        ):
+            self._early_return = self._early_close / self._prev_session_close - 1.0
+        was = self._suppressed
+        self._suppressed = (
+            minute >= self._late_start
+            and self._early_return is not None
+            and self._early_return < -self.threshold
+        )
+        if self._suppressed and not was:
+            self.episodes += 1
+        if self._suppressed:
+            self.suppressed_bars += 1
+        # 3. Hold this bar back until it is history.
+        self._pending = (minute, context.close)
+
+
 __all__ = [
     "BREAKDOWN_MODES",
+    "MOMENTUM_MODES",
     "PATTERN_MODES",
     "RELEASE_MODES",
+    "SESSION_MINUTES",
     "BreakdownGate",
     "Candle",
+    "IntradayMomentumGate",
     "ShootingStarGate",
     "as_count",
     "is_shooting_star",

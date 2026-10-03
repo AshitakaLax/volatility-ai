@@ -639,6 +639,14 @@ _PARAM_ENUMS: dict[str, list[str]] = {
     "breakdown_gate": ["off", "dual_thrust", "opening_range", "prior_low"],
     "breakdown_release": ["reclaim", "session"],
     "pattern_gate": ["off", "shooting_star"],
+    "momentum_gate": ["off", "early_negative"],
+    "vol_target_estimator": [
+        "yang_zhang",
+        "close_to_close",
+        "parkinson",
+        "garman_klass",
+        "rogers_satchell",
+    ],
 }
 
 # Filesystem wiring the engine supplies. Never shown, never sent -- the

@@ -7,7 +7,7 @@ Entries are recorded **regardless of merit** — a rejected idea with its
 reason is worth as much as a promising one, because it stops the same
 idea being re-researched.
 
-*Compiled 2026-10-02. Covers patches 0001–0004 on top of `7961b1b`.*
+*Compiled 2026-10-02. Covers patches 0001–0005 on top of `7961b1b`.*
 
 ---
 
@@ -108,7 +108,7 @@ idea being re-researched.
 | Q16 | Wisdom of Crowds | quant-trading #16 | Sentiment | ❌ | Low |
 | Q17 | Shooting star (as a trade) | quant-trading #17 | Reversal | ⛔ (gate built) | — |
 | A1 | Deep RL agents (FinRL, DQN, PPO, DDQN, gyms) | awesome-ai-in-finance | RL | ❌ (for now) | Unknown |
-| A2 | FinRL ensemble turbulence index | awesome-ai-in-finance (paper) | Regime exit | ⏳ | **High** |
+| A2 | FinRL ensemble turbulence index | awesome-ai-in-finance (paper) | Regime exit | 🆕🧪 | **High** |
 | A3 | LPPLS / Dragon-Kings crash hazard | awesome-ai-in-finance (paper) | Crash forecast | ⏳ (research) | Medium |
 | A4 | DL portfolio management (PGPortfolio, DeepDow, qtrader) | awesome-ai-in-finance | Allocation | ❌ (for now) | Low |
 | A5 | skfolio / HRP allocation | awesome-ai-in-finance | Allocation | ⏳ (later) | Medium |
@@ -117,10 +117,10 @@ idea being re-researched.
 | A8 | Pattern / forecasting libraries (mlforecast, patternity) | awesome-ai-in-finance | Forecasting | ❌ (for now) | Low |
 | S1 | ThetaGang (wheel) | awesome-systematic-trading | Short options | ⛔❌ | Negative |
 | S2 | PyTrendFollow | awesome-systematic-trading | Futures trend | ⛔ (idea → V16/Q8) | — |
-| S3 | volest (Sinclair estimators, Yang-Zhang) | awesome-systematic-trading | Vol estimation | ⏳ | **High** |
-| S4 | pysystemtrade (Carver vol targeting) | awesome-systematic-trading | Exposure scaling | ⏳ | **High** |
+| S3 | volest (Sinclair estimators, Yang-Zhang) | awesome-systematic-trading | Vol estimation | 🆕 | **High** |
+| S4 | pysystemtrade (Carver vol targeting) | awesome-systematic-trading | Exposure scaling | 🆕🧪 | **High** |
 | S5 | czsc (Chan theory) | awesome-systematic-trading | Technical | ❌ (unvetted) | Unknown |
-| X1 | Intraday momentum gate (Gao et al. 2018) | outside the lists | Entry gate | ⏳ | **High** |
+| X1 | Intraday momentum gate (Gao et al. 2018) | outside the lists | Entry gate | 🆕🧪 | **High** |
 | X2 | Defensive rotation (T-bills, XLP, XLU, USMV, SPLV) | this work | Rotation | ⏳ | Medium |
 | X3 | Long-only relative-strength rotation | quant-trading #2, adapted | Rotation | ⏳ | Medium |
 | X4 | Capitulation-bounce entries | quant-trading #9, adapted | Entry rule | ⏳ | Medium |
@@ -438,16 +438,26 @@ far more free parameters than the repo's multiple-comparison discipline
 can support, and few correction episodes in 10.6 years to learn from.
 Revisit only after the simple regime work is settled.
 
-### A2. Turbulence index (FinRL ensemble paper) ⏳ — high priority
+### A2. Turbulence index (FinRL ensemble paper) 🆕🧪 (0005)
 "Deep Reinforcement Learning for Automated Stock Trading: An Ensemble
-Strategy" (2020) stops trading when market turbulence — the Mahalanobis
-distance of today's multi-asset returns from their history — exceeds a
-threshold. Catches correlation breaks (stocks and bonds falling
-together) that single-asset NATR cannot. **Fit:** builds a
-`regime_by_date` map for N6 sleeves from daily closes of a basket
-(QQQ, RSP, TLT, GLD) used as data only. **Next step:** a
-`turbulence_regime.py` beside `natr_regime.py`, run through
-`leverage_stepdown.py`.
+Strategy" (2020) stops trading when market turbulence crosses a
+threshold. The index (Kritzman & Li) is the Mahalanobis distance of a
+day's basket returns from the mean and covariance of the previous
+`lookback` days. It catches correlation breaks that single-asset NATR
+cannot: in the tests, two negatively correlated assets both falling
+1.5% score more than three times a same-sized move in their usual
+pattern.
+
+* **Built:** `research/strategies/turbulence_regime.py`. Calm while the
+  index is below its trailing `quantile` (default 0.9 over 252
+  sessions), applied to the next session (lag 1, via `apply_lag`). The
+  basket is data only; nothing in it is traded.
+* **Use:** `python -m tools.leverage_stepdown --regime turbulence
+  --basket QQQ RSP TLT GLD` — every basket member must be ingested.
+* **Shape:** ~90% of sessions are calm by construction, so the QQQ
+  sleeve runs only in the turbulent tail — a different book from the
+  NATR regime, which is calm 54% of the time.
+* **Unmeasured.**
 
 ### A3. LPPLS / Dragon-Kings crash hazard ⏳ (research-grade)
 Sornette, "Dragon-Kings, Black Swans and the Prediction of Crises".
@@ -489,19 +499,32 @@ Systematic futures trend following — the classic "crisis alpha"
 strategy. Futures and shorts are out of scope; its long-only trend logic
 is covered by V16/Q3/Q8 regime builders.
 
-### S3. volest (Euan Sinclair's volatility estimators) ⏳ — high priority
-Parkinson, Garman-Klass, Rogers-Satchell and **Yang-Zhang**, which
-accounts for overnight gaps. Corrections begin with gaps that
-close-to-close and intraday-range measures understate. **Fit:** a
-drop-in estimator for N5 (a Yang-Zhang regime) and for S4.
+### S3. volest (Euan Sinclair's volatility estimators) 🆕 (0005)
+`research/strategies/volatility_estimators.py`: close-to-close,
+Parkinson, Garman-Klass, Rogers-Satchell and Yang-Zhang, each pinned to
+its textbook formula. Yang-Zhang is the default because corrections
+arrive overnight: in a market whose every move is an overnight gap, the
+three range estimators read exactly zero, while Yang-Zhang reads what
+close-to-close does (pinned in the tests). `SessionVolatility` estimates
+from completed sessions only and equals the vectorized reference one
+session late. Used by S4; also a candidate replacement for NATR in a
+regime builder.
 
-### S4. pysystemtrade (Rob Carver) — volatility targeting ⏳ — high priority
-Size positions by target volatility ÷ forecast volatility. Supported by
-the repo's own V18 result. Unlike V7 (a *ratio* of fast to slow vol),
-this targets an *absolute* level, so exposure falls as volatility rises
-regardless of history. **Fit:** a sizing change only — never realizes a
-loss. **Next step:** a `vol_target` lever on the champion using an S3
-estimator; probe against V11.
+### S4. pysystemtrade (Rob Carver) — volatility targeting 🆕🧪 (0005)
+On `hf_entry_gated`: lot × clamp(`vol_target` / realized vol,
+`vol_target_min`, `vol_target_max`), realized vol over the last
+`vol_target_days` completed sessions (S3; Yang-Zhang by default).
+Neutral (×1) until the window fills — no estimate is not a low one.
+Supported by the repo's V18 result. Unlike V7 (a fast/slow *ratio*,
+which drifts back to 1 during a sustained high-volatility correction),
+this targets an absolute level. A sizing change only, so it cannot
+realize a loss. Through the real controller it scales buys only after
+its window fills (tested under both fill models).
+
+* **Probe:** `config/probe_vol_target.yaml` — targets 0.45/0.60/0.75 ×
+  10/20 sessions × Yang-Zhang vs close-to-close (12 combinations).
+* **Unmeasured.** Compare with V11 `dd_throttle`, the other exposure
+  lever.
 
 ### S5. czsc (Chan theory) ❌ (unvetted)
 A Chinese technical-analysis framework (缠论). No published evidence base
@@ -511,12 +534,22 @@ to weigh; not pursued.
 
 ## 8. Proposed during this research (outside the linked lists)
 
-### X1. Intraday-momentum gate ⏳ — high priority
+### X1. Intraday-momentum gate 🆕🧪 (0005)
 Gao, Han, Li & Zhou, "Market Intraday Momentum" (Journal of Financial
-Economics, 2018): the first half-hour's return predicts the last
-half-hour's, more strongly on volatile days. Long-only form: block
-late-session buys when the first half hour was down. **Fit:** an
-N1–N4-style gate.
+Economics, 2018): the return from the previous close to the end of the
+first half hour predicts the last half hour's, more strongly on volatile
+days. `momentum_gate="early_negative"` on `hf_entry_gated`
+(`entry_gates.IntradayMomentumGate`) blocks buys in the last
+`momentum_late_minutes` of a session whose first `momentum_early_minutes`
+closed below the previous close by more than `momentum_threshold`.
+
+* Known at the start of the first bar after the early window, from that
+  window's last close; clears at the session end; inert on half-days.
+* Through the real controller it removes exactly the late-window buys
+  and changes nothing before them (tested under both fill models).
+* **Probe:** `config/probe_entry_gate_intraday_momentum.yaml` (4
+  combinations), included in `run_entry_gate_chain.sh`.
+* **Unmeasured.**
 
 ### X2. Defensive rotation ⏳
 Move capital out of TQQQ on a regime exit into something that holds up:
@@ -599,8 +632,15 @@ python -m tools.stage1_grid --lag 1 --out output/stage1_grid_lag1.jsonl
 python -m tools.leverage_stepdown                # causal booking, lag 1
 python -m tools.leverage_stepdown --lag 0        # same-session reading
 
-# Entry gates under the corrected booking
+# Entry gates, now including the intraday-momentum gate (X1)
 FILL=causal bash run_entry_gate_chain.sh
+
+# Volatility targeting (S4 with S3)
+python -m research.run_hf_sweep --config config/probe_vol_target.yaml \
+    --search grid --intrabar-fill causal --output output/probe_vol_target_causal.csv
+
+# Turbulence regime (A2) for the step-down -- ingest QQQ, RSP, TLT, GLD first
+python -m tools.leverage_stepdown --regime turbulence
 ```
 
 ---
@@ -615,9 +655,11 @@ FILL=causal bash run_entry_gate_chain.sh
    trustworthy list of regime builders.
 4. **Measure V11 `dd_throttle`** — the existing, unmeasured
    correction lever.
-5. **Build S4 + S3** (volatility targeting with a Yang-Zhang estimator).
-6. **Build A2** (turbulence regime) as a second regime source for N6.
-7. **Build X1** (intraday-momentum gate).
+5. **Measure S4** (`probe_vol_target.yaml`) alongside V11 `dd_throttle`
+   — the two exposure levers.
+6. **Measure A2** — `leverage_stepdown --regime turbulence` against
+   `--regime natr`, both at lag 1.
+7. **Measure X1** through the gate chain (`FILL=causal`).
 8. **Decide the `run_hf_sweep` cash-yield threading** — changes every
    result, so do it once, deliberately, with a re-baselined champion.
 9. Then X3/X4, and only after a portfolio allocator exists, Q13/A5.

@@ -27,7 +27,7 @@ say() { echo "" | tee -a "$LOG"; echo "### $(date '+%H:%M:%S')  $*" | tee -a "$L
 
 # Control first: if it does not reproduce best_known_2026-08-24.yaml
 # (25.38% CAGR, 45.57% max drawdown), nothing after it is interpretable.
-PROBES="control dual_thrust opening_range prior_low shooting_star"
+PROBES="control dual_thrust opening_range prior_low shooting_star intraday_momentum"
 n=0; total=$(echo $PROBES | wc -w)
 for probe in $PROBES; do
     n=$((n + 1))

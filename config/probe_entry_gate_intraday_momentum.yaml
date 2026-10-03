@@ -1,0 +1,42 @@
+# PROBE: intraday-momentum gate (Gao, Han, Li & Zhou 2018). No buys in the
+# last momentum_late_minutes of a session whose first 30 minutes closed
+# below the previous close by more than momentum_threshold.
+#
+# 2 late windows x 2 thresholds = 4 combinations.
+#
+# Every champion parameter is pinned to config/best_known_2026-08-24.yaml,
+# so the only difference from that run is the lever below. strategy_id
+# hf_entry_gated is the champion exactly with every lever off -- see
+# probe_entry_gate_control.yaml. Ranked by Return/Drawdown.
+#
+# Run with --intrabar-fill causal as well as the default: every recorded
+# intrabar result is booked "level" (see ExecutionConfig.intrabar_fill).
+#
+# UNMEASURED as of this commit.
+strategy:
+  strategy_id: hf_entry_gated
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: 0.0002
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    momentum_gate: early_negative
+    momentum_late_minutes: [30, 60]
+    momentum_threshold: [0.0, 0.005]
+grid:
+  steps: [0.00075]
+  profit_targets: [0.3]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: Return/Drawdown, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}
