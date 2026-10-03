@@ -35,7 +35,7 @@ from research.optimization.optimization_controller import (
     OptimizationController,
     _run_one_combination,
 )
-from research.strategies.strategy_registry import resolve_strategy
+from research.strategies.strategy_registry import STRATEGIES, resolve_strategy
 
 logging.disable(logging.WARNING)
 
@@ -93,6 +93,32 @@ def _constructor_params(strategy_class, row):
     return params
 
 
+def _strategy_class_for(row):
+    """The class that produced `row`, from its "Strategy" column.
+
+    This used to be resolve_strategy("hf_local_reference") for every row.
+    That was correct while every sweep in output/ was HF, and became a
+    silent wrong answer once a subclass with extra parameters existed:
+    _constructor_params asks HF's signature what it accepts, drops the
+    subclass's own columns as unknown, and re-simulates the row as plain
+    HF -- printing the champion's year-by-year under the subclass's
+    headline numbers.
+
+    The column holds the class __name__ (optimization_controller.
+    _strategy_name). Several ids can share one class (the ml_* families);
+    any of them resolves to the same class, which is all this needs. A
+    row with no Strategy column predates it and was HF, so that stays the
+    fallback.
+    """
+    name = row.get("Strategy") if hasattr(row, "get") else None
+    if name is None or (isinstance(name, float) and pd.isna(name)):
+        return resolve_strategy("hf_local_reference")
+    for cls in STRATEGIES.values():
+        if cls.__name__ == name:
+            return cls
+    raise SystemExit(f"output/ row names strategy {name!r}, which is not registered")
+
+
 def _top_configs(cap: float | None, limit: int):
     """Best rows across every sweep output, deduplicated by parameters."""
     frames = []
@@ -139,7 +165,7 @@ def main():
     )
 
     for rank, (_, row) in enumerate(_top_configs(args.cap, args.top).iterrows(), start=1):
-        strategy_class = resolve_strategy("hf_local_reference")
+        strategy_class = _strategy_class_for(row)
         params = _constructor_params(strategy_class, row)
         result_row, sim = _run_one_combination(
             controller,

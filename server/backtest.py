@@ -599,6 +599,10 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
         "vol_reference": 0.55,
     },
 }
+# hf_entry_gated: the champion's committed values with both gates off, so
+# selecting it and changing nothing reproduces hf_local_reference. Derived
+# from that entry rather than copied, so the two cannot drift apart.
+STRATEGY_DEFAULTS["hf_entry_gated"] = dict(STRATEGY_DEFAULTS["hf_local_reference"])
 
 
 def required_parameters(strategy_class: type) -> list[str]:
@@ -628,7 +632,14 @@ def required_parameters(strategy_class: type) -> list[str]:
 # (`if vol_measure not in ("stdev", "range"): raise`). A unit test
 # asserts every key here is a real parameter of some registered
 # strategy, so this cannot rot silently.
-_PARAM_ENUMS: dict[str, list[str]] = {"vol_measure": ["stdev", "range"]}
+_PARAM_ENUMS: dict[str, list[str]] = {
+    "vol_measure": ["stdev", "range"],
+    # research/strategies/entry_gates.py -- the tuples there are the
+    # guard; these lists must match them (server/tests pin that).
+    "breakdown_gate": ["off", "dual_thrust", "opening_range", "prior_low"],
+    "breakdown_release": ["reclaim", "session"],
+    "pattern_gate": ["off", "shooting_star"],
+}
 
 # Filesystem wiring the engine supplies. Never shown, never sent -- the
 # constructor's own default is used.
@@ -667,6 +678,17 @@ _GRID_TRIGGER_LAST_BUY: dict[str, Any] = {
 }
 _GRID_TRIGGER: dict[str, dict[str, Any]] = {
     "hf_local_reference": {
+        "methods": ["local_reference"],
+        "default": "local_reference",
+        "controlled_by": None,
+        "window_param": "lookback_days",
+        "window_default": None,
+    },
+    # Inherits hf_local_reference's level unchanged whenever no gate is
+    # shut; while one is, it returns an unreachable level instead. That
+    # is a pause of local_reference, not a different method, so it is
+    # described as local_reference with the same window.
+    "hf_entry_gated": {
         "methods": ["local_reference"],
         "default": "local_reference",
         "controlled_by": None,

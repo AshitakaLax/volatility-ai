@@ -500,8 +500,17 @@ def main():
                 f"\n{len(admissible)} of {len(distinct)} distinct combinations are within "
                 f"the {args.max_drawdown}% drawdown cap."
             )
+        # `cols` is a curated list, so a swept parameter not on it (the
+        # dd_throttle_* and implied_vol_* levers, every entry-gate
+        # parameter) used to be invisible here -- rows differing only in
+        # that parameter printed as identical. Any axis that actually
+        # varies across this run is shown after the curated axes.
+        swept = [c for c in axis_cols if c not in cols and distinct[c].nunique(dropna=False) > 1]
+        shown = (
+            [c for c in cols if c in axis_cols] + swept + [c for c in cols if c not in axis_cols]
+        )
         print(f"\nTop 15 distinct combinations by Total Return % (of {len(distinct)} evaluated):")
-        print(admissible.sort_values("Total Return %", ascending=False)[cols].head(15).to_string())
+        print(admissible.sort_values("Total Return %", ascending=False)[shown].head(15).to_string())
 
 
 if __name__ == "__main__":
