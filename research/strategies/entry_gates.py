@@ -97,6 +97,8 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 
+import numpy as np
+
 from engine.core.exceptions import ConfigurationError
 from engine.core.market_context import MarketContext
 from research.strategies.sizing_indicators import RollingMean
@@ -105,6 +107,8 @@ BREAKDOWN_MODES: tuple[str, ...] = ("off", "dual_thrust", "opening_range", "prio
 RELEASE_MODES: tuple[str, ...] = ("reclaim", "session")
 PATTERN_MODES: tuple[str, ...] = ("off", "shooting_star")
 MOMENTUM_MODES: tuple[str, ...] = ("off", "early_negative")
+BOUNCE_MODES: tuple[str, ...] = ("off", "w_bottom")
+RSI_GATE_MODES: tuple[str, ...] = ("off", "head_shoulders")
 SESSION_MINUTES = 390  # 09:30-16:00; a half-day never reaches a late window
 
 
@@ -606,15 +610,296 @@ class IntradayMomentumGate:
         self._pending = (minute, context.close)
 
 
+class CandleStream:
+    """Regular-session bars in, completed N-minute candles out -- causally.
+
+    A candle completes when the first bar of the NEXT bucket arrives, so
+    whatever a gate decides from it applies from that bar on, never to a
+    bar inside the candle. Buckets align to the open (minute // N) and,
+    unlike ShootingStarGate's, candles here may sit either side of a
+    session break: indicators like Bollinger bands and RSI span sessions.
+    """
+
+    def __init__(self, minutes: int) -> None:
+        self.minutes = as_count("candle_minutes", minutes)
+        self._pending: tuple[tuple[int, int], float, float, float, float] | None = None
+        self._building: list[float] | None = None
+        self._bucket: tuple[int, int] | None = None
+
+    def push(self, context: MarketContext) -> Candle | None:
+        minute = _regular_session_minute(context)
+        if minute is None:
+            return None
+        bucket = (context.timestamp.toordinal(), minute // self.minutes)
+        if self._pending is not None:
+            pending_bucket, o, h, lo, c = self._pending
+            self._pending = None
+            if self._building is None:
+                self._building, self._bucket = [o, h, lo, c], pending_bucket
+            else:
+                self._building[1] = max(self._building[1], h)
+                self._building[2] = min(self._building[2], lo)
+                self._building[3] = c
+        done = None
+        if self._building is not None and bucket != self._bucket:
+            done = Candle(*self._building)
+            self._building, self._bucket = None, None
+        self._pending = (bucket, context.open, context.high, context.low, context.close)
+        return done
+
+
+class BollingerWGate:
+    """Allow buys ONLY after a confirmed Bollinger W-bottom
+    (je-suis-tm/quant-trading #9) -- a permission gate.
+
+    Every other gate here says "not now"; this one says "only now". It
+    is meant for a sleeve that should buy capitulation bounces rather
+    than every step down (the turbulent QQQ sleeve: tools/
+    leverage_stepdown.py --qqq-entry w_bottom). On N-minute candles with
+    Bollinger bands (window, k standard deviations):
+
+      first low    a candle closes below the lower band
+      rebound      a later candle closes above the middle band
+      second dip   price falls back below the middle band WITHOUT
+                   closing below the lower band, and its low holds
+                   within `tolerance` of the first low
+      confirmed    a candle closes back above the middle band
+
+    Confirmation arms the gate for `hold_candles` candles. A second dip
+    that closes below the lower band is not a W -- it becomes a new
+    first low. A pattern that has not completed within `max_span`
+    candles is abandoned.
+    """
+
+    def __init__(
+        self,
+        mode: str = "off",
+        *,
+        candle_minutes: int = 30,
+        window: int = 20,
+        k: float = 2.0,
+        hold_candles: int = 8,
+        max_span: int = 40,
+        tolerance: float = 0.01,
+    ) -> None:
+        if mode not in BOUNCE_MODES:
+            raise ConfigurationError(f"bounce_gate must be one of {BOUNCE_MODES}, got {mode!r}")
+        if k <= 0 or tolerance < 0:
+            raise ConfigurationError("bounce_k must be > 0 and bounce_tolerance >= 0")
+        self.mode = mode
+        self.window = as_count("bounce_window", window, minimum=2)
+        self.k = float(k)
+        self.hold_candles = as_count("bounce_hold_candles", hold_candles)
+        self.max_span = as_count("bounce_max_span", max_span)
+        self.tolerance = float(tolerance)
+        self._stream = CandleStream(candle_minutes)
+        self._closes: deque[float] = deque(maxlen=self.window)
+        self._reset()
+        self._armed = 0
+        self.suppressed_bars = 0
+        self.episodes = 0
+
+    def _reset(self) -> None:
+        self._state = "idle"
+        self._low1: float | None = None
+        self._low2: float | None = None
+        self._span = 0
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode != "off"
+
+    @property
+    def suppressed(self) -> bool:
+        return self.enabled and self._armed <= 0
+
+    @property
+    def state(self) -> str:
+        return self._state
+
+    def observe(self, context: MarketContext) -> None:
+        if not self.enabled:
+            return
+        candle = self._stream.push(context)
+        if candle is not None:
+            self._on_candle(candle)
+        if self.suppressed:
+            self.suppressed_bars += 1
+
+    def _on_candle(self, c: Candle) -> None:
+        if self._armed > 0:
+            self._armed -= 1
+        self._closes.append(c.close)
+        if len(self._closes) < self.window:
+            return
+        closes = np.fromiter(self._closes, float)
+        mid = float(closes.mean())
+        lower = mid - self.k * float(closes.std())
+        if self._state != "idle":
+            self._span += 1
+            if self._span > self.max_span:
+                self._reset()
+        if self._state == "idle":
+            if c.close < lower:
+                self._state, self._low1, self._span = "first_low", c.low, 0
+        elif self._state == "first_low":
+            self._low1 = min(self._low1, c.low)
+            if c.close > mid:
+                self._state = "rebound"
+        elif self._state == "rebound":
+            if c.close < lower:
+                self._state, self._low1, self._span = "first_low", c.low, 0
+            elif c.close < mid:
+                self._state, self._low2 = "second_dip", c.low
+        elif self._state == "second_dip":
+            self._low2 = min(self._low2, c.low)
+            if c.close < lower:
+                self._state, self._low1, self._span = "first_low", c.low, 0
+            elif c.close > mid:
+                if self._low2 >= self._low1 * (1.0 - self.tolerance):
+                    self._armed = self.hold_candles
+                    self.episodes += 1
+                self._reset()
+
+
+class RsiHeadShouldersGate:
+    """Block buys after a head-and-shoulders top in the RSI
+    (je-suis-tm/quant-trading #10), on N-minute candles.
+
+    Wilder RSI(period) on candle closes. A swing high is a candle whose
+    RSI exceeds both neighbours, known once the candle after it
+    completes. The last three swing highs form a top when the middle
+    (head) is at or above `overbought` and higher than both shoulders,
+    and the shoulders are within `tolerance` RSI points of each other.
+    The neckline is the average of the two troughs between them. When a
+    later candle's RSI closes below the neckline, buys stop for
+    `hold_candles` candles. A new swing high above the head first
+    cancels the pattern.
+    """
+
+    def __init__(
+        self,
+        mode: str = "off",
+        *,
+        candle_minutes: int = 30,
+        period: int = 14,
+        overbought: float = 70.0,
+        tolerance: float = 5.0,
+        hold_candles: int = 8,
+    ) -> None:
+        if mode not in RSI_GATE_MODES:
+            raise ConfigurationError(f"rsi_gate must be one of {RSI_GATE_MODES}, got {mode!r}")
+        if not 0 < overbought < 100 or tolerance < 0:
+            raise ConfigurationError("rsi_overbought must be in (0, 100), rsi_tolerance >= 0")
+        self.mode = mode
+        self.period = as_count("rsi_period", period, minimum=2)
+        self.overbought = float(overbought)
+        self.tolerance = float(tolerance)
+        self.hold_candles = as_count("rsi_hold_candles", hold_candles)
+        self._stream = CandleStream(candle_minutes)
+        self._prev_close: float | None = None
+        self._seed: list[float] = []
+        self._avg_gain: float | None = None
+        self._avg_loss: float | None = None
+        self._last3: deque[float] = deque(maxlen=3)
+        self._segment: list[float] = []  # RSI values since the last swing high
+        self._peaks: deque[tuple[float, float | None]] = deque(maxlen=3)
+        self._neckline: float | None = None
+        self._head: float | None = None
+        self._hold = 0
+        self.rsi: float | None = None
+        self.suppressed_bars = 0
+        self.episodes = 0
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode != "off"
+
+    @property
+    def suppressed(self) -> bool:
+        return self._hold > 0
+
+    def observe(self, context: MarketContext) -> None:
+        if not self.enabled:
+            return
+        candle = self._stream.push(context)
+        if candle is not None:
+            self._on_close(candle.close)
+        if self.suppressed:
+            self.suppressed_bars += 1
+
+    def _update_rsi(self, close: float) -> float | None:
+        if self._prev_close is None:
+            self._prev_close = close
+            return None
+        change = close - self._prev_close
+        self._prev_close = close
+        gain, loss = max(change, 0.0), max(-change, 0.0)
+        if self._avg_gain is None:
+            self._seed.append(change)
+            if len(self._seed) < self.period:
+                return None
+            self._avg_gain = sum(max(x, 0.0) for x in self._seed) / self.period
+            self._avg_loss = sum(max(-x, 0.0) for x in self._seed) / self.period
+        else:
+            self._avg_gain = (self._avg_gain * (self.period - 1) + gain) / self.period
+            self._avg_loss = (self._avg_loss * (self.period - 1) + loss) / self.period
+        if self._avg_loss == 0:
+            return 100.0
+        return 100.0 - 100.0 / (1.0 + self._avg_gain / self._avg_loss)
+
+    def _on_close(self, close: float) -> None:
+        if self._hold > 0:
+            self._hold -= 1
+        rsi = self._update_rsi(close)
+        if rsi is not None:
+            self._on_rsi(rsi)
+
+    def _on_rsi(self, rsi: float) -> None:
+        """The pattern logic, given each completed candle's RSI."""
+        self.rsi = rsi
+        self._last3.append(rsi)
+        self._segment.append(rsi)
+        last3 = self._last3
+        if len(last3) == 3 and last3[1] > last3[0] and last3[1] > last3[2]:
+            peak = last3[1]
+            trough = min(self._segment[:-2]) if len(self._segment) > 2 else None
+            self._segment = [rsi]
+            if self._head is not None and peak > self._head:
+                self._neckline = self._head = None  # a higher high: no longer a top
+            self._peaks.append((peak, trough))
+            if len(self._peaks) == 3:
+                (p1, _), (p2, t12), (p3, t23) = self._peaks
+                if (
+                    t12 is not None
+                    and t23 is not None
+                    and p2 >= self.overbought
+                    and p2 > p1
+                    and p2 > p3
+                    and abs(p1 - p3) <= self.tolerance
+                ):
+                    self._neckline, self._head = (t12 + t23) / 2.0, p2
+        if self._neckline is not None and rsi < self._neckline:
+            self._hold = self.hold_candles
+            self.episodes += 1
+            self._neckline = self._head = None
+            self._peaks.clear()
+
+
 __all__ = [
+    "BOUNCE_MODES",
     "BREAKDOWN_MODES",
     "MOMENTUM_MODES",
     "PATTERN_MODES",
     "RELEASE_MODES",
+    "RSI_GATE_MODES",
     "SESSION_MINUTES",
+    "BollingerWGate",
     "BreakdownGate",
     "Candle",
+    "CandleStream",
     "IntradayMomentumGate",
+    "RsiHeadShouldersGate",
     "ShootingStarGate",
     "as_count",
     "is_shooting_star",

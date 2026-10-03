@@ -163,6 +163,31 @@ def apply_lag(flags_by_date: Mapping[date, bool], lag: int) -> dict[date, bool]:
     return dict(flags_by_date) if lag == 0 else shift_to_next_session(flags_by_date)
 
 
+def debounce(flags_by_date: Mapping[date, bool], min_hold: int) -> dict[date, bool]:
+    """Hold each regime for at least `min_hold` sessions before it may
+    flip again. Causal: walks the dates in order and only ever looks
+    back. min_hold <= 1 returns the map unchanged.
+
+    Every flip liquidates whichever sleeve is leaving, and plan.md found
+    that liquidating costs return almost every time -- a fast regime
+    pays that cost on every whipsaw. This trades responsiveness for
+    fewer flips.
+    """
+    if min_hold <= 1:
+        return dict(flags_by_date)
+    out: dict[date, bool] = {}
+    state: bool | None = None
+    held = 0
+    for d in sorted(flags_by_date):
+        raw = bool(flags_by_date[d])
+        if state is None or (raw != state and held >= min_hold):
+            state, held = raw, 1
+        else:
+            held += 1
+        out[d] = state
+    return out
+
+
 def count_flips(regime: dict[date, bool]) -> int:
     """Calm/turbulent transitions, in date order. Each one is a
     liquidation for whichever sleeve is leaving the market."""
@@ -175,6 +200,7 @@ __all__ = [
     "calm_by_date",
     "count_flips",
     "daily_bars",
+    "debounce",
     "shift_to_next_session",
     "wilder_natr",
 ]

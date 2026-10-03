@@ -7,7 +7,7 @@ Entries are recorded **regardless of merit** — a rejected idea with its
 reason is worth as much as a promising one, because it stops the same
 idea being re-researched.
 
-*Compiled 2026-10-02. Covers patches 0001–0005 on top of `7961b1b`.*
+*Compiled 2026-10-02. Covers patches 0001–0006 on top of `7961b1b`.*
 
 ---
 
@@ -90,28 +90,28 @@ idea being re-researched.
 | N7 | Leverage step-down (TQQQ calm / QQQ turbulent) | this work | Rotation | 🆕🧪 | **High** |
 | N8 | `intrabar_fill` booking modes | this work | Engine | 🆕 | Measurement |
 | N9 | Causal stage re-screen (`--lag`) | this work | Research tooling | 🆕 | **High** |
-| Q1 | MACD oscillator | quant-trading #1 | Momentum | ⏳ (as regime) | Low |
+| Q1 | MACD oscillator | quant-trading #1 | Momentum | 🆕🧪 (regime) | Low |
 | Q2 | Pair trading (long/short) | quant-trading #2 | Stat-arb | ⛔ | — |
-| Q3 | Heikin-Ashi | quant-trading #3 | Trend | ⏳ (as regime) | Medium |
+| Q3 | Heikin-Ashi | quant-trading #3 | Trend | 🆕🧪 (regime) | Medium |
 | Q4 | London Breakout (as a trade) | quant-trading #4 | Breakout | ⛔ (gate built) | — |
-| Q5 | Awesome oscillator | quant-trading #5 | Momentum | ⏳ (as regime) | Low |
+| Q5 | Awesome oscillator | quant-trading #5 | Momentum | 🆕🧪 (regime) | Low |
 | Q6 | Oil Money | quant-trading #6 | FX/commodity | ❌ | None |
 | Q7 | Dual Thrust (as a trade) | quant-trading #7 | Breakout | ⛔ (gate built) | — |
-| Q8 | Parabolic SAR | quant-trading #8 | Trend | ⏳ (as regime) | Medium |
-| Q9 | Bollinger W-bottom | quant-trading #9 | Mean reversion | ⏳ | Medium |
-| Q10 | RSI pattern recognition | quant-trading #10 | Reversal | ⏳ (gate) | Low |
+| Q8 | Parabolic SAR | quant-trading #8 | Trend | 🆕🧪 (regime) | Medium |
+| Q9 | Bollinger W-bottom | quant-trading #9 | Mean reversion | 🆕🧪 (entry rule) | Medium |
+| Q10 | RSI pattern recognition | quant-trading #10 | Reversal | 🆕🧪 (gate) | Low |
 | Q11 | Monte Carlo project | quant-trading #11 | Simulation | ❌ (as signal) | None |
 | Q12 | Options straddle | quant-trading #12 | Long vol | ⛔ | — |
-| Q13 | Portfolio optimization project | quant-trading #13 | Allocation | ⏳ (later) | Medium |
+| Q13 | Portfolio optimization project | quant-trading #13 | Allocation | 🆕🧪 (HRP) | Medium |
 | Q14 | Smart Farmers | quant-trading #14 | Commodity | ❌ | None |
-| Q15 | VIX calculator | quant-trading #15 | Vol index | ⏳ (data tool) | Medium |
+| Q15 | VIX calculator | quant-trading #15 | Vol index | 🆕 (data tool) | Medium |
 | Q16 | Wisdom of Crowds | quant-trading #16 | Sentiment | ❌ | Low |
 | Q17 | Shooting star (as a trade) | quant-trading #17 | Reversal | ⛔ (gate built) | — |
 | A1 | Deep RL agents (FinRL, DQN, PPO, DDQN, gyms) | awesome-ai-in-finance | RL | ❌ (for now) | Unknown |
 | A2 | FinRL ensemble turbulence index | awesome-ai-in-finance (paper) | Regime exit | 🆕🧪 | **High** |
-| A3 | LPPLS / Dragon-Kings crash hazard | awesome-ai-in-finance (paper) | Crash forecast | ⏳ (research) | Medium |
+| A3 | LPPLS / Dragon-Kings crash hazard | awesome-ai-in-finance (paper) | Crash forecast | 🆕🧪 (research) | Medium |
 | A4 | DL portfolio management (PGPortfolio, DeepDow, qtrader) | awesome-ai-in-finance | Allocation | ❌ (for now) | Low |
-| A5 | skfolio / HRP allocation | awesome-ai-in-finance | Allocation | ⏳ (later) | Medium |
+| A5 | skfolio / HRP allocation | awesome-ai-in-finance | Allocation | 🆕🧪 | Medium |
 | A6 | HFT pairs with IB | awesome-ai-in-finance | Stat-arb | ⛔ | — |
 | A7 | Crypto bots / arbitrage / blackbird | awesome-ai-in-finance | Crypto | ❌ | None |
 | A8 | Pattern / forecasting libraries (mlforecast, patternity) | awesome-ai-in-finance | Forecasting | ❌ (for now) | Low |
@@ -121,14 +121,14 @@ idea being re-researched.
 | S4 | pysystemtrade (Carver vol targeting) | awesome-systematic-trading | Exposure scaling | 🆕🧪 | **High** |
 | S5 | czsc (Chan theory) | awesome-systematic-trading | Technical | ❌ (unvetted) | Unknown |
 | X1 | Intraday momentum gate (Gao et al. 2018) | outside the lists | Entry gate | 🆕🧪 | **High** |
-| X2 | Defensive rotation (T-bills, XLP, XLU, USMV, SPLV) | this work | Rotation | ⏳ | Medium |
-| X3 | Long-only relative-strength rotation | quant-trading #2, adapted | Rotation | ⏳ | Medium |
-| X4 | Capitulation-bounce entries | quant-trading #9, adapted | Entry rule | ⏳ | Medium |
+| X2 | Defensive rotation (T-bills, XLP, XLU, USMV, SPLV) | this work | Rotation | 🆕🧪 | Medium |
+| X3 | Long-only relative-strength rotation | quant-trading #2, adapted | Rotation | 🆕🧪 | Medium |
+| X4 | Capitulation-bounce entries | quant-trading #9, adapted | Entry rule | 🆕🧪 | Medium |
 | X5 | Long Treasuries (TLT) as the hedge | this work | Rotation | ❌ | Failed 2022 |
 | X6 | Inverse-ETF regime sleeve | this work | Inverse | ⛔ | — |
 | X7 | Managed-futures ETF sleeve | this work | Crisis alpha | ⛔ | — |
 | X8 | Long-volatility ETF sleeve (VIXY) | this work | Long vol | ⛔ | — |
-| X9 | Gold (GLD) | this work | Rotation | ⏳ (low) | Low–medium |
+| X9 | Gold (GLD) | this work | Rotation | 🆕🧪 | Low–medium |
 
 ---
 
@@ -335,15 +335,31 @@ Part of the result-cache identity and every result row;
 default 1 (causal). `--lag 0` reproduces `plan.md`. Every regime family
 in V15–V19 can now be re-measured without lookahead.
 
+
+### N10. Regime minimum hold (`debounce`) 🆕 (0006)
+`natr_regime.debounce`: once a regime flips, it holds for at least
+`min_hold` sessions. Causal. Every flip liquidates the outgoing sleeve,
+and `plan.md` found liquidation costs return in 146 of 147 paired runs,
+so fast regimes pay on every whipsaw. `--min-hold N` on both harnesses,
+for every regime.
+
+### N11. Rotation harness 🆕🧪 (0006)
+`tools/rotation.py` — X2, X3 and A5 (with X9) through the same sleeve
+machinery and additive account as N7, sharing its regime options. Writes
+the session-by-session holding alongside the summary.
+
 ---
 
 ## 5. je-suis-tm/quant-trading (17 strategies)
 
-### Q1. MACD oscillator ⏳ (as a regime only)
-Long when a short moving average is above a long one. Momentum
-crossover; whipsaws in range-bound markets. Already in the V15 sweep as
-an in/out filter. As a trade it needs a short side for corrections. Next
-step: causal re-screen (N9).
+### Q1. MACD oscillator 🆕🧪 (as a regime)
+Long when a short moving average is above a long one — momentum
+crossover; whipsaws in range-bound markets. As a trade it needs a short
+side for corrections; as a regime it does not.
+**Built (0006):** `research/strategies/trend_regimes.py`, a daily
+risk-on map — `--regime macd` on `tools/leverage_stepdown.py` and
+`tools/rotation.py`, lagged one session like every other regime.
+MACD line (EMA 12 − EMA 26) above its 9-period signal line; pinned to that definition. Unmeasured.
 
 ### Q2. Pair trading ⛔ (long/short) · see X3
 Engle-Granger two-step cointegration on a rolling window, trading the
@@ -352,11 +368,12 @@ warns that cointegration breaks; correlations converge in sell-offs.
 Requires a short leg — out of scope. Its relative-value logic survives
 long-only as X3.
 
-### Q3. Heikin-Ashi candlestick ⏳ (as a regime)
-Smoothed candles; long on strong bullish candles with no lower shadow,
-exit on reversal. Trend-following. Usable as a daily regime builder for
-N6 sleeves. Weak prior from the trend family (V16), but that prior
-carries the lookahead.
+### Q3. Heikin-Ashi candlestick 🆕🧪 (as a regime)
+Smoothed candles; long on strong bullish candles, exit on reversal.
+**Built (0006):** `research/strategies/trend_regimes.py`, a daily
+risk-on map — `--regime heikin_ashi` on `tools/leverage_stepdown.py` and
+`tools/rotation.py`, lagged one session like every other regime.
+Risk-on after `confirm` consecutive bullish Heikin-Ashi candles, off after as many bearish; a single opposite candle is ignored at confirm > 1 (tested). Unmeasured.
 
 ### Q4. London Breakout ⛔ (as a trade) · gate built (N2/N3)
 Tokyo's last pre-open hour sets the range; trade the break in the first
@@ -364,9 +381,13 @@ minutes after London opens; skip abnormally large breaks; 50bp
 stop/target; flat at session end. Needs stops and a short side. Mapped
 onto US hours as the N2 and N3 gates.
 
-### Q5. Awesome oscillator ⏳ (as a regime)
-SMA(5) − SMA(34) of the median price, with "saucer" entries. MACD-like
-momentum. Same treatment as Q1.
+### Q5. Awesome oscillator 🆕🧪 (as a regime)
+SMA(5) − SMA(34) of the median price (H+L)/2, MACD-like momentum. The
+source's "saucer" entries need a short side; the zero line does not.
+**Built (0006):** `research/strategies/trend_regimes.py`, a daily
+risk-on map — `--regime awesome` on `tools/leverage_stepdown.py` and
+`tools/rotation.py`, lagged one session like every other regime.
+Risk-on while the oscillator is above zero; pinned to the definition. Unmeasured.
 
 ### Q6. Oil Money project ❌
 Regression of the Norwegian krone on Brent crude — an FX/commodity
@@ -378,20 +399,29 @@ short below open − k₂·range; reverse on cross; flat at the close. As a
 trade it needs a short side and end-of-day flattening. The lower band is
 the N1 gate.
 
-### Q8. Parabolic SAR ⏳ (as a regime)
-Stop-and-reverse trailing level with an accelerating factor. As a
-TQQQ↔cash or TQQQ↔QQQ switch it fits N6 sleeves. Intraday whipsaw is
-the main risk. In the V15 sweep as a filter only.
+### Q8. Parabolic SAR 🆕🧪 (as a regime)
+Wilder's stop-and-reverse trailing level with an accelerating factor
+(0.02 step, 0.2 cap).
+**Built (0006):** `research/strategies/trend_regimes.py`, a daily
+risk-on map — `--regime psar` on `tools/leverage_stepdown.py` and
+`tools/rotation.py`, lagged one session like every other regime.
+Risk-on in the rising phase; agrees with TA-Lib's SAR on the trend side on more than 95% of sessions (tested — the two differ only in how the first trend is seeded). Unmeasured.
 
-### Q9. Bollinger Bands pattern recognition ⏳ · see X4
-Detects a W-bottom against the lower band, then a breakout. Mean
-reversion after capitulation — the shape corrections produce. Candidate
-entry rule for the turbulent sleeve (X4).
+### Q9. Bollinger Bands pattern recognition 🆕🧪 (entry rule) · see X4
+Detects a W-bottom against the lower band, then a breakout. **Built
+(0006)** as `entry_gates.BollingerWGate` — a *permission* gate (buys
+only after a confirmed W) — on `hf_entry_gated` (`bounce_gate=w_bottom`)
+and as `tools/leverage_stepdown.py --qqq-entry w_bottom`. Unmeasured.
 
-### Q10. RSI pattern recognition ⏳ (as a gate)
-Overbought/oversold plus head-and-shoulders on the RSI line. As an
-entry-suppression gate (no new buys after a bearish RSI pattern) it fits
-the N1–N4 framework. Weak alone.
+### Q10. RSI pattern recognition 🆕🧪 (as a gate)
+Overbought/oversold plus head-and-shoulders on the RSI line. **Built
+(0006)** as `entry_gates.RsiHeadShouldersGate` on `hf_entry_gated`
+(`rsi_gate=head_shoulders`): Wilder RSI on N-minute candles (matches
+TA-Lib's RSI to 1e-9); three swing highs with an overbought head and
+shoulders within `rsi_tolerance` points; buys stop for
+`rsi_hold_candles` once the RSI closes below the neckline. Probe:
+`config/probe_entry_gate_rsi_head_shoulders.yaml` (4 combinations), in
+the gate chain. Unmeasured.
 
 ### Q11. Monte Carlo project ❌ (as a signal)
 Simulated price paths (geometric Brownian motion) — a simulation study,
@@ -402,17 +432,21 @@ volatility-ai already covers with the random-regime null (V19).
 Long at-the-money call and put; pays on large moves either way.
 Excluded (options). Would also need option chain data.
 
-### Q13. Portfolio optimization project ⏳ (later) · see A5
-Efficient-frontier allocation. Only meaningful once there is a
-portfolio-level allocator over several sleeves.
+### Q13. Portfolio optimization project 🆕🧪 (as HRP) · see A5
+Efficient-frontier allocation in the source. Built as hierarchical risk
+parity instead (A5), which needs no expected-return estimates — the
+weakest input of a mean-variance optimiser.
 
 ### Q14. Smart Farmers project ❌
 Agricultural/commodity quantamental study. Not applicable.
 
-### Q15. VIX calculator ⏳ (as a data tool)
-CBOE's VIX methodology from an option chain. Could compute the VXN
-series V12 could not source, from Nasdaq-100 option quotes. A data tool,
-not a strategy.
+### Q15. VIX calculator 🆕 (as a data tool)
+**Built (0006):** `research/strategies/vix_calculator.py` — the CBOE
+methodology (forward from put-call parity, out-of-the-money strip, the
+two-zero-bid cutoff, 30-day interpolation). Returns 25.0 ± 0.4 on a
+flat-25%-volatility Black-Scholes chain (tested). With Nasdaq-100 or QQQ
+option quotes it can supply the VXN series V12 could not source.
+Ingesting option quotes is not built.
 
 ### Q16. Wisdom of Crowds project ❌
 Aggregating crowd/analyst forecasts. Sentiment data pipelines are
@@ -459,19 +493,29 @@ pattern.
   NATR regime, which is calm 54% of the time.
 * **Unmeasured.**
 
-### A3. LPPLS / Dragon-Kings crash hazard ⏳ (research-grade)
+### A3. LPPLS / Dragon-Kings crash hazard 🆕🧪 (research-grade)
 Sornette, "Dragon-Kings, Black Swans and the Prediction of Crises".
-Fits a log-periodic power law to detect bubble dynamics ahead of a
-crash. Daily-scale; too few correction events in the sample to validate
-with any confidence.
+**Built (0006):** `research/strategies/lppls.py`. Filimonov–Sornette
+linearisation with a (tc, m, ω) grid — NumPy only. A window is a
+positive bubble when B < 0, 0.1 ≤ m ≤ 0.9, 6 ≤ ω ≤ 13, tc within 40
+sessions and damping ≥ 0.5; confidence is the share of windows (60–250
+sessions) that are. Recovers a planted bubble exactly and scores random
+walks low (tested). `--regime lppls` (risk-on below `--lppls-threshold`,
+re-fitted every `--lppls-step` sessions). Still research-grade: too few
+correction episodes in 10.6 years to validate.
 
 ### A4. Deep-learning portfolio management ❌ (for now)
 PGPortfolio, DeepDow, qtrader, ml-quant-trading. Learned allocation
 weights. Same objection as A1.
 
-### A5. skfolio / hierarchical risk parity ⏳ (later)
-Portfolio optimization on scikit-learn (HRP, risk budgeting). Needs the
-portfolio allocator first; then a principled way to weight sleeves.
+### A5. skfolio / hierarchical risk parity 🆕🧪
+**Built (0006):** `research/strategies/hrp.py` — López de Prado's HRP,
+NumPy only, allocating along the dendrogram so a duplicated asset cannot
+double its weight (tested), and inverse-variance for two independent
+assets (tested). Used by `tools/rotation.py --mode hrp` to size
+concurrent sleeves from weights fitted on the warm-up only. Concurrent
+sleeves stretch the additive-account approximation: total deployed
+capital can exceed one account's. Unmeasured.
 
 ### A6. High-Frequency-Trading-Model-with-IB ⛔
 Pairs trading through Interactive Brokers. Needs a short leg.
@@ -551,25 +595,26 @@ closed below the previous close by more than `momentum_threshold`.
   combinations), included in `run_entry_gate_chain.sh`.
 * **Unmeasured.**
 
-### X2. Defensive rotation ⏳
-Move capital out of TQQQ on a regime exit into something that holds up:
-* **T-bills (BIL, SHV, SGOV):** the only asset class that held up in
-  both the March 2020 crash and the 2022 grind. Largely modeled already
-  by the engine's historical money-market yield on idle cash — once
-  `run_hf_sweep` passes `cash_yield_pct` through (see §9).
-* **Defensive sectors / low volatility (XLP, XLU, USMV, SPLV):** held up
-  in 2022, fell nearly as hard as the market in March 2020. Only with
-  their own volatility gate.
+### X2. Defensive rotation 🆕🧪
+**Built (0006):** `tools/rotation.py --mode defensive`. The lead (TQQQ)
+while any regime is risk-on; otherwise the `--defensive` ETF (default
+XLP, XLU, USMV, GLD) with the best trailing return **among those whose
+own NATR regime is calm** — the guard against March 2020, when
+defensives fell with the market; none calm → cash at the configured
+cash yield (T-bills, in effect). Grid step and target are scaled by each
+instrument's warm-up daily range. Unmeasured.
 
-### X3. Long-only relative-strength rotation ⏳
-Q2's spread logic used to *choose* among QQQ, RSP, XLP and USMV rather
-than to trade a long/short pair. Needs N7's harness generalized from two
-sleeves to N with mutually exclusive regimes.
+### X3. Long-only relative-strength rotation 🆕🧪
+**Built (0006):** `tools/rotation.py --mode relative_strength` — dual
+momentum over `--universe` (default QQQ, RSP, XLP, USMV): best trailing
+`--rs-days` return, cash when even the best is negative. Every choice
+uses closes through the previous session (pinned against mutation).
+Unmeasured.
 
-### X4. Capitulation-bounce entries ⏳
-Q9's W-bottom as the entry rule for the turbulent sleeve: buy only after
-a reversal confirms, rather than on every step down. Failed bounces wait
-for the regime exit, so size small.
+### X4. Capitulation-bounce entries 🆕🧪
+**Built (0006)** as Q9's W-bottom permission gate; for the turbulent
+QQQ sleeve: `tools/leverage_stepdown.py --qqq-entry w_bottom`. Failed
+bounces still wait for the regime exit, so lots stay small. Unmeasured.
 
 ### X5. Long Treasuries (TLT) as the hedge ❌
 Fell alongside stocks in 2022 — the longest correction in the dataset.
@@ -588,9 +633,10 @@ in 2022. Excluded by the owner as not "standard" ETFs.
 VIXY spike capture. Most convex payoff in fast crashes, heavy bleed
 otherwise. Excluded by the owner. VIXY remains in use as V12's *data*.
 
-### X9. Gold (GLD) ⏳ (low priority)
-Roughly flat in 2022; no hedge in a fast crash. Low expected value as a
-rotation target.
+### X9. Gold (GLD) 🆕🧪 (as a defensive candidate)
+Roughly flat in 2022; no hedge in a fast crash. Included in X2's default
+`--defensive` list, where its own NATR regime must be calm before it is
+held. Low expected value.
 
 ---
 
@@ -641,6 +687,18 @@ python -m research.run_hf_sweep --config config/probe_vol_target.yaml \
 
 # Turbulence regime (A2) for the step-down -- ingest QQQ, RSP, TLT, GLD first
 python -m tools.leverage_stepdown --regime turbulence
+
+# Every regime side by side (0006), with and without a minimum hold
+for r in natr turbulence macd awesome psar heikin_ashi lppls; do
+  python -m tools.leverage_stepdown --regime $r
+  python -m tools.leverage_stepdown --regime $r --min-hold 5
+done
+python -m tools.leverage_stepdown --qqq-entry w_bottom     # X4 for the QQQ sleeve
+
+# Rotations (0006) -- ingest XLP, XLU, USMV, GLD, RSP, QQQ first
+python -m tools.rotation --mode defensive
+python -m tools.rotation --mode relative_strength
+python -m tools.rotation --mode hrp
 ```
 
 ---
@@ -662,4 +720,10 @@ python -m tools.leverage_stepdown --regime turbulence
 7. **Measure X1** through the gate chain (`FILL=causal`).
 8. **Decide the `run_hf_sweep` cash-yield threading** — changes every
    result, so do it once, deliberately, with a re-baselined champion.
-9. Then X3/X4, and only after a portfolio allocator exists, Q13/A5.
+9. **Measure the regime family side by side** — every `--regime` at
+   lag 1, with and without `--min-hold 5`.
+10. **Measure the rotations** — `tools.rotation --mode defensive`,
+    `relative_strength` and `hrp`.
+11. **Build a portfolio-level allocator** in the engine if any
+    multi-instrument book earns it. It removes the additive-account
+    approximation that N7, N11 and A5 all rest on.

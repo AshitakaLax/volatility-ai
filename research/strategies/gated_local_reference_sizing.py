@@ -86,8 +86,10 @@ from __future__ import annotations
 from engine.core.exceptions import ConfigurationError
 from engine.core.market_context import MarketContext
 from research.strategies.entry_gates import (
+    BollingerWGate,
     BreakdownGate,
     IntradayMomentumGate,
+    RsiHeadShouldersGate,
     ShootingStarGate,
 )
 from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
@@ -156,6 +158,21 @@ class GatedLocalReferenceSizing(HighFrequencyLocalReferenceSizing):
         vol_target_estimator: str = "yang_zhang",
         vol_target_min: float = 0.25,
         vol_target_max: float = 2.0,
+        # -- capitulation-bounce permission gate (BollingerWGate) --------
+        bounce_gate: str = "off",
+        bounce_candle_minutes: int = 30,
+        bounce_window: int = 20,
+        bounce_k: float = 2.0,
+        bounce_hold_candles: int = 8,
+        bounce_max_span: int = 40,
+        bounce_tolerance: float = 0.01,
+        # -- RSI head-and-shoulders gate (RsiHeadShouldersGate) ----------
+        rsi_gate: str = "off",
+        rsi_candle_minutes: int = 30,
+        rsi_period: int = 14,
+        rsi_overbought: float = 70.0,
+        rsi_tolerance: float = 5.0,
+        rsi_hold_candles: int = 8,
     ) -> None:
         super().__init__(
             per_lot_pct=per_lot_pct,
@@ -220,8 +237,27 @@ class GatedLocalReferenceSizing(HighFrequencyLocalReferenceSizing):
         self.vol_target_max = float(vol_target_max)
         # Built (so validated) even when off, like the gates.
         self._session_vol = SessionVolatility(vol_target_estimator, vol_target_days)
+        self.bounce = BollingerWGate(
+            bounce_gate,
+            candle_minutes=bounce_candle_minutes,
+            window=bounce_window,
+            k=bounce_k,
+            hold_candles=bounce_hold_candles,
+            max_span=bounce_max_span,
+            tolerance=bounce_tolerance,
+        )
+        self.rsi_top = RsiHeadShouldersGate(
+            rsi_gate,
+            candle_minutes=rsi_candle_minutes,
+            period=rsi_period,
+            overbought=rsi_overbought,
+            tolerance=rsi_tolerance,
+            hold_candles=rsi_hold_candles,
+        )
         self._gates = tuple(
-            gate for gate in (self.breakdown, self.pattern, self.momentum) if gate.enabled
+            gate
+            for gate in (self.breakdown, self.pattern, self.momentum, self.bounce, self.rsi_top)
+            if gate.enabled
         )
         self._entry_suppressed = False
 
@@ -288,6 +324,12 @@ class GatedLocalReferenceSizing(HighFrequencyLocalReferenceSizing):
             "vol_target": self.vol_target,
             "vol_target_realized": self._session_vol.value,
             "vol_target_multiplier": self.vol_target_multiplier,
+            "bounce_gate": self.bounce.mode,
+            "bounce_state": self.bounce.state,
+            "bounce_confirmations": self.bounce.episodes,
+            "rsi_gate": self.rsi_top.mode,
+            "rsi": self.rsi_top.rsi,
+            "rsi_episodes": self.rsi_top.episodes,
         }
 
 

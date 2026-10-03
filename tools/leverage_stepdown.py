@@ -91,8 +91,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from engine.core.config import BacktestConfig
 from research.optimization.optimization_controller import OptimizationController
-from research.strategies.natr_regime import calm_by_date, count_flips, daily_bars
+from research.strategies.lppls import risk_on_by_date as lppls_risk_on_by_date
+from research.strategies.natr_regime import calm_by_date, count_flips, daily_bars, debounce
 from research.strategies.regime_sleeve_sizing import RegimeSleeveSizing
+from research.strategies.trend_regimes import TREND_METHODS
+from research.strategies.trend_regimes import risk_on_by_date as trend_risk_on_by_date
 from research.strategies.turbulence_regime import basket_closes
 from research.strategies.turbulence_regime import calm_by_date as turbulence_calm_by_date
 
@@ -182,28 +185,91 @@ def summarize(curve: pd.Series, start) -> dict:
     }
 
 
-def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--config", default="config/best_known_2026-08-24.yaml")
-    p.add_argument("--tqqq", default="TQQQ", help="warehouse ticker for the leveraged sleeve")
-    p.add_argument("--qqq", default="QQQ", help="warehouse ticker for the step-down sleeve")
-    p.add_argument("--regime-from", choices=("tqqq", "qqq"), default="tqqq")
-    p.add_argument("--period", type=int, default=10)
-    p.add_argument("--lookback", type=int, default=100)
-    p.add_argument("--lag", type=int, choices=(0, 1), default=1)
+REGIMES: tuple[str, ...] = ("natr", "turbulence", *TREND_METHODS, "lppls")
+
+
+def add_regime_args(p: argparse.ArgumentParser) -> None:
+    """The regime options, shared with tools/rotation.py."""
     p.add_argument(
         "--regime",
-        choices=("natr", "turbulence"),
+        choices=REGIMES,
         default="natr",
-        help="natr: NATR below its median (plan.md). turbulence: basket Mahalanobis "
-        "distance below its trailing quantile (research/strategies/turbulence_regime.py)",
+        help="natr (plan.md), turbulence (basket Mahalanobis), a trend switch "
+        "(macd/awesome/psar/heikin_ashi), or lppls (bubble confidence)",
+    )
+    p.add_argument("--regime-from", choices=("tqqq", "qqq"), default="tqqq")
+    p.add_argument("--period", type=int, default=10, help="NATR period")
+    p.add_argument("--lookback", type=int, default=100, help="NATR median lookback")
+    p.add_argument("--lag", type=int, choices=(0, 1), default=1)
+    p.add_argument(
+        "--min-hold",
+        type=int,
+        default=0,
+        help="hold each regime at least this many sessions before it may flip",
     )
     p.add_argument("--basket", nargs="+", default=["QQQ", "RSP", "TLT", "GLD"])
     p.add_argument("--turb-lookback", type=int, default=252)
     p.add_argument("--turb-quantile", type=float, default=0.9)
     p.add_argument("--turb-threshold-lookback", type=int, default=252)
+    p.add_argument("--lppls-threshold", type=float, default=0.5)
+    p.add_argument("--lppls-step", type=int, default=5)
+
+
+def build_regime(args, source: pd.DataFrame, load) -> tuple[dict, str]:
+    """{session: risk-on} for args.regime -- causal under the default lag,
+    debounced by --min-hold. `source` gives the daily bars for the
+    single-instrument regimes; `load(name)` fetches basket members."""
+    daily = daily_bars(source)
+    if args.regime == "natr":
+        regime = calm_by_date(daily, period=args.period, lookback=args.lookback, lag=args.lag)
+        desc = f"NATR({args.period}) vs {args.lookback}-day median on {args.regime_from}"
+    elif args.regime == "turbulence":
+        basket = {}
+        for name in args.basket:
+            basket[name] = load(name)
+            if basket[name].empty:
+                raise SystemExit(f"No warehouse data for basket member {name!r}; ingest it first.")
+        regime = turbulence_calm_by_date(
+            basket_closes(basket),
+            lookback=args.turb_lookback,
+            quantile=args.turb_quantile,
+            threshold_lookback=args.turb_threshold_lookback,
+            lag=args.lag,
+        )
+        desc = (
+            f"turbulence({args.turb_lookback}d) below its {args.turb_quantile:g} quantile "
+            f"over {args.turb_threshold_lookback}d, basket {'+'.join(args.basket)}"
+        )
+    elif args.regime == "lppls":
+        regime = lppls_risk_on_by_date(
+            daily, threshold=args.lppls_threshold, step=args.lppls_step, lag=args.lag
+        )
+        desc = f"LPPLS bubble confidence below {args.lppls_threshold:g} on {args.regime_from}"
+    else:
+        regime = trend_risk_on_by_date(daily, args.regime, lag=args.lag)
+        desc = f"{args.regime} trend on {args.regime_from}"
+    if args.min_hold > 1:
+        regime = debounce(regime, args.min_hold)
+        desc += f", min hold {args.min_hold}"
+    if not regime:
+        raise SystemExit("the regime covers no sessions -- not enough data for its warm-up")
+    return regime, desc
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("--config", default="config/best_known_2026-08-24.yaml")
+    p.add_argument("--tqqq", default="TQQQ", help="warehouse ticker for the leveraged sleeve")
+    p.add_argument("--qqq", default="QQQ", help="warehouse ticker for the step-down sleeve")
+    add_regime_args(p)
     p.add_argument("--qqq-scale", type=float, default=3.0)
     p.add_argument("--qqq-per-lot-pct", type=float, default=None)
+    p.add_argument(
+        "--qqq-entry",
+        choices=("grid", "w_bottom"),
+        default="grid",
+        help="w_bottom: the QQQ sleeve buys only after a confirmed Bollinger W-bottom",
+    )
     p.add_argument(
         "--cash-yield",
         type=float,
@@ -243,30 +309,10 @@ def main(argv=None) -> int:
         frames[name] = load_frame(name)
         if frames[name].empty:
             raise SystemExit(f"No warehouse data for {name!r}; ingest it first.")
-    if args.regime == "natr":
-        source = frames[args.tqqq if args.regime_from == "tqqq" else args.qqq]
-        regime = calm_by_date(
-            daily_bars(source), period=args.period, lookback=args.lookback, lag=args.lag
-        )
-        desc = f"NATR({args.period}) vs {args.lookback}-day median on {args.regime_from}"
-    else:
-        basket = {}
-        for name in args.basket:
-            basket[name] = frames[name] if name in frames else load_frame(name)
-            if basket[name].empty:
-                raise SystemExit(f"No warehouse data for basket member {name!r}; ingest it first.")
-        regime = turbulence_calm_by_date(
-            basket_closes(basket),
-            lookback=args.turb_lookback,
-            quantile=args.turb_quantile,
-            threshold_lookback=args.turb_threshold_lookback,
-            lag=args.lag,
-        )
-        source = frames[args.tqqq]
-        desc = (
-            f"turbulence({args.turb_lookback}d) below its {args.turb_quantile:g} quantile "
-            f"over {args.turb_threshold_lookback}d, basket {'+'.join(args.basket)}"
-        )
+    source = frames[args.tqqq if args.regime_from == "tqqq" else args.qqq]
+    regime, desc = build_regime(
+        args, source, lambda name: frames[name] if name in frames else load_frame(name)
+    )
     start = pd.Timestamp(min(regime), tz=source.index.tz)
     calm_share = 100.0 * sum(regime.values()) / len(regime)
     label = "lag 1 (causal)" if args.lag == 1 else "lag 0 -- LOOKAHEAD, comparison only"
@@ -277,6 +323,8 @@ def main(argv=None) -> int:
     print(f"  fill model: {fill}\n")
 
     qqq_params = dict(params)
+    if args.qqq_entry == "w_bottom":
+        qqq_params["bounce_gate"] = "w_bottom"
     if args.qqq_per_lot_pct is not None:
         qqq_params["per_lot_pct"] = args.qqq_per_lot_pct
 
@@ -340,11 +388,11 @@ def main(argv=None) -> int:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    regime_tag = (
-        f"natr_p{args.period}_lb{args.lookback}"
-        if args.regime == "natr"
-        else f"turb_lb{args.turb_lookback}_q{args.turb_quantile:g}"
-    )
+    regime_tag = {
+        "natr": f"natr_p{args.period}_lb{args.lookback}",
+        "turbulence": f"turb_lb{args.turb_lookback}_q{args.turb_quantile:g}",
+        "lppls": f"lppls_t{args.lppls_threshold:g}",
+    }.get(args.regime, args.regime) + (f"_hold{args.min_hold}" if args.min_hold > 1 else "")
     tag = f"{regime_tag}_lag{args.lag}_s{args.qqq_scale:g}_{args.fill_model}"
     if args.fill_model == "intrabar":
         tag += f"_{args.intrabar_fill}"

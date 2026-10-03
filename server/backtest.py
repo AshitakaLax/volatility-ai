@@ -640,6 +640,8 @@ _PARAM_ENUMS: dict[str, list[str]] = {
     "breakdown_release": ["reclaim", "session"],
     "pattern_gate": ["off", "shooting_star"],
     "momentum_gate": ["off", "early_negative"],
+    "bounce_gate": ["off", "w_bottom"],
+    "rsi_gate": ["off", "head_shoulders"],
     "vol_target_estimator": [
         "yang_zhang",
         "close_to_close",
