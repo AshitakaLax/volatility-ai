@@ -66,7 +66,7 @@ if TYPE_CHECKING:
 
 
 # execution.intrabar_fill -- see ExecutionConfig.
-INTRABAR_FILL_MODES: tuple[str, ...] = ("level", "open_or_level")
+INTRABAR_FILL_MODES: tuple[str, ...] = ("level", "open_or_level", "causal")
 
 
 @dataclass(frozen=True)
@@ -334,6 +334,15 @@ class ExecutionConfig:
     # resting limit order would actually have filled: buys at
     # min(level, open), profit-target sells at max(target, open). Every
     # booked price is then one the bar traded.
+    #
+    # "causal" books like "open_or_level" AND tells the strategy (via
+    # SizingStrategy.use_prior_bar_trigger) to compute its trigger level
+    # from bars BEFORE the current one. The champion's rolling high is
+    # updated with bar t's close in record_tick, before the engine asks
+    # for bar t's level and compares it with bar t's low -- so a bar that
+    # dips and then closes at a new high can "trigger" a buy no resting
+    # order would have filled. level -> open_or_level -> causal isolates
+    # the booking effect, then the lookahead effect.
     intrabar_fill: str = "level"
 
 

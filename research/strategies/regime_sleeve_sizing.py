@@ -168,7 +168,7 @@ class RegimeSleeveSizing(GatedLocalReferenceSizing):
         if not self._active:
             return NO_BUY_LEVEL
         if self._fresh and not self._entry_suppressed:
-            rolling_high = self._rolling_high.value
+            rolling_high = self._trigger_rolling_high()
             reference = context.open if rolling_high is None else rolling_high
             return reference * (1.0 - step)
         return super()._grid_trigger_level(context, last_buy_price, step)

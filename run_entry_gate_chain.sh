@@ -10,7 +10,7 @@
 #   bash run_entry_gate_chain.sh             # all five probes
 #   PY=.venv/bin/python bash run_entry_gate_chain.sh
 #   N_JOBS=2 bash run_entry_gate_chain.sh
-#   FILL=open_or_level bash run_entry_gate_chain.sh   # see execution.intrabar_fill
+#   FILL=causal bash run_entry_gate_chain.sh          # see execution.intrabar_fill
 set -u
 cd "$(dirname "$0")"
 

@@ -36,6 +36,28 @@ class SizingStrategy(ABC):
     """Target-form sizing-strategy contract (architecture_overview.md
     Section 5.2), as of Task 4.1."""
 
+    # Set by the backtest engine, never by a constructor: see
+    # use_prior_bar_trigger. Underscore-prefixed so the controller's
+    # strategy-parameter row, built from public attributes, never shows it.
+    _trigger_from_prior_bars: bool = False
+
+    def use_prior_bar_trigger(self, enabled: bool) -> None:
+        """Compute the trigger level from bars BEFORE the current one.
+
+        Called by optimization_controller under fill_model="intrabar" with
+        execution.intrabar_fill="causal", where the level for bar t is
+        compared with bar t's LOW: a level that already folded in bar t's
+        close would be deciding the bar with its own ending. Under
+        fill_model="close" the decision is taken AT the close, so reading
+        the close is not lookahead and this is never set.
+
+        The base formula (last_buy_price * (1 - step)) reads no bar data,
+        so it needs nothing. A strategy whose level reads state that
+        record_tick updated from the current bar must honor the flag --
+        see HighFrequencyLocalReferenceSizing._trigger_rolling_high.
+        """
+        self._trigger_from_prior_bars = bool(enabled)
+
     def _grid_trigger_level(
         self, context: MarketContext, last_buy_price: float, step: float
     ) -> float:

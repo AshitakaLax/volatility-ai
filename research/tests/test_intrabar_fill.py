@@ -201,3 +201,71 @@ def test_yaml_round_trip_and_validation(tmp_path):
 def test_run_sweep_rejects_an_unknown_mode():
     with pytest.raises(ConfigurationError):
         _run(_gap_down(), "midpoint")
+
+
+# --------------------------------------------------------------------
+# "causal": the level for bar t may only use bars before t
+
+
+def _dip_then_new_high() -> pd.DataFrame:
+    """Ten flat bars at 100 (rolling high 100, so a 0.2% step rests a buy
+    at 99.8). Then one bar that dips only to 99.85 -- never reaching
+    99.8 -- and CLOSES at 101. Then flat at 101. A resting order never
+    fills; a level that already folded in the 101 close (100.798) is
+    "touched" by the 99.85 low."""
+    rows = [(100.0, 100.02, 99.98, 100.0)] * 10
+    rows += [(100.0, 101.02, 99.85, 101.0)]
+    rows += [(101.0, 101.02, 100.98, 101.0)] * 5
+    index = pd.date_range("2024-01-02 14:30", periods=len(rows), freq="1min", tz="UTC")
+    return pd.DataFrame(rows, columns=["open", "high", "low", "close"], index=index).assign(
+        volume=1e4
+    )
+
+
+def test_causal_does_not_buy_a_dip_that_only_the_close_made_visible():
+    df = _dip_then_new_high()
+    common = dict(step=0.002, target=0.3)
+    same_bar = _run(df, "open_or_level", **common)
+    causal = _run(df, "causal", **common)
+    assert same_bar["Trade Count"] == 1, "the lookahead buy must exist, or this proves nothing"
+    assert causal["Trade Count"] == 0
+    assert causal["intrabar_fill"] == "causal"
+
+
+def test_causal_books_like_open_or_level_when_the_level_reads_no_bar_data():
+    """FixedPortfolioPercentage's level is last_buy_price * (1 - step):
+    nothing record_tick touched, so the two modes must agree exactly."""
+    df = _gap_down()
+    common = dict(
+        cls=FixedPortfolioPercentage, params={"allocation_pct": 0.05}, step=0.005, target=0.01
+    )
+    a, b = _run(df, "open_or_level", **common), _run(df, "causal", **common)
+    assert a["Trade Count"] > 0
+    for column in OUTCOMES:
+        assert a[column] == b[column], column
+
+
+def test_the_champion_reads_the_prior_high_only_when_told():
+    from engine.core.market_context import MarketContext
+
+    def ctx(minute, price):
+        return MarketContext(
+            timestamp=pd.Timestamp("2024-01-02 14:30", tz="UTC") + pd.Timedelta(minutes=minute),
+            open=price,
+            high=price,
+            low=price,
+            close=price,
+            cash=1e5,
+            equity=1e5,
+            peak_equity=1e5,
+            drawdown=0.0,
+            open_lot_count=0,
+            bar_index=minute,
+        )
+
+    s = HighFrequencyLocalReferenceSizing(**HF_PARAMS)
+    s.record_tick(ctx(0, 100.0))
+    s.record_tick(ctx(1, 105.0))
+    assert s._grid_trigger_level(ctx(1, 105.0), 1.0, 0.01) == pytest.approx(105.0 * 0.99)
+    s.use_prior_bar_trigger(True)
+    assert s._grid_trigger_level(ctx(1, 105.0), 1.0, 0.01) == pytest.approx(100.0 * 0.99)

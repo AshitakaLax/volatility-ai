@@ -115,7 +115,7 @@ def main():
     )
     parser.add_argument(
         "--intrabar-fill",
-        choices=("level", "open_or_level"),
+        choices=("level", "open_or_level", "causal"),
         default=None,
         help=(
             "override execution.intrabar_fill without editing the YAML. open_or_level books "

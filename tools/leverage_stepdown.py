@@ -64,9 +64,10 @@ would remove the assumption.
 --------------------------------------------------------------------
 FILL MODEL
 
-Defaults to fill_model=intrabar with execution.intrabar_fill=
-open_or_level: a resting limit fills at its price, or at the open when
-the bar opened through it, so every booked price is one the bar traded.
+Defaults to fill_model=intrabar with execution.intrabar_fill=causal: a
+resting limit fills at its price, or at the open when the bar opened
+through it, and the level itself is computed from bars before the
+current one (see ExecutionConfig.intrabar_fill).
 The champion's recorded configuration is intrabar + "level", which books
 at the order price even when the whole bar traded beyond it (measured:
 125 of 183 champion buys booked above their bar's high on a synthetic
@@ -204,8 +205,8 @@ def main(argv=None) -> int:
     )
     p.add_argument(
         "--intrabar-fill",
-        choices=("level", "open_or_level"),
-        default="open_or_level",
+        choices=("level", "open_or_level", "causal"),
+        default="causal",
         help="level reproduces the champion's recorded booking; see module docstring",
     )
     p.add_argument("--out", default="output/stepdown")

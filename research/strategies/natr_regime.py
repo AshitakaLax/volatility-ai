@@ -42,6 +42,7 @@ lookahead and must never back a decision that will trade.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
 from itertools import pairwise
 
@@ -137,6 +138,31 @@ def calm_by_date(
     return {dates[i + 1]: bool(calm[i]) for i in range(skip, len(dates) - 1)}
 
 
+def shift_to_next_session(flags_by_date: Mapping[date, bool]) -> dict[date, bool]:
+    """Re-key a {session: flag} map so each flag applies to the NEXT
+    session in the map. For a flag computed from a session's own bar,
+    this is what makes it usable at that next session's open.
+
+    The tools/stage*_grid.py harnesses build their maps keyed by the
+    session the flag was COMPUTED from and apply each at that same
+    session's first bar; their --lag 1 (the default) passes the map
+    through here. The final session's flag applies to a session the map
+    does not contain and is dropped.
+    """
+    dates = sorted(flags_by_date)
+    return {later: bool(flags_by_date[earlier]) for earlier, later in pairwise(dates)}
+
+
+def apply_lag(flags_by_date: Mapping[date, bool], lag: int) -> dict[date, bool]:
+    """lag 1: each flag applies to the NEXT session -- causal. lag 0: to
+    its own session, which is how plan.md's engine stages were measured
+    (a one-day lookahead; kept only to reproduce them). Used by every
+    tools/stage*_grid.py regime builder behind --lag."""
+    if lag not in (0, 1):
+        raise ConfigurationError(f"lag must be 0 or 1, got {lag}")
+    return dict(flags_by_date) if lag == 0 else shift_to_next_session(flags_by_date)
+
+
 def count_flips(regime: dict[date, bool]) -> int:
     """Calm/turbulent transitions, in date order. Each one is a
     liquidation for whichever sleeve is leaving the market."""
@@ -144,4 +170,11 @@ def count_flips(regime: dict[date, bool]) -> int:
     return sum(1 for a, b in pairwise(values) if a != b)
 
 
-__all__ = ["calm_by_date", "count_flips", "daily_bars", "wilder_natr"]
+__all__ = [
+    "apply_lag",
+    "calm_by_date",
+    "count_flips",
+    "daily_bars",
+    "shift_to_next_session",
+    "wilder_natr",
+]

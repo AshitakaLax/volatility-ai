@@ -60,6 +60,7 @@ from research.strategies.indicator_library import (
     signals,
     warmup_bars,
 )
+from research.strategies.natr_regime import apply_lag
 from tools.indicator_sweep import INSTRUMENTS
 from tools.probe_regime_integrated import RegimeSwitched, annual_returns
 
@@ -73,7 +74,9 @@ CANDIDATES = [
 ]
 
 
-def daily_regime(symbol: str, name: str, output: str, variant: str, params: dict, lookback: int):
+def daily_regime(
+    symbol: str, name: str, output: str, variant: str, params: dict, lookback: int, lag: int = 1
+):
     """The bull/bear flag per session date, from daily bars."""
     inventory = {i.name: i for i in available()}
     ind = inventory[name]
@@ -82,7 +85,7 @@ def daily_regime(symbol: str, name: str, output: str, variant: str, params: dict
     flags = signals(values, ind, lookback=lookback)[variant]
     skip = max(warmup_bars(ind, **params), lookback)
     flags = flags.iloc[skip:]
-    return {ts.date(): bool(v) for ts, v in flags.items()}
+    return apply_lag({ts.date(): bool(v) for ts, v in flags.items()}, lag)
 
 
 class IndicatorRegime(RegimeSwitched):
@@ -121,7 +124,7 @@ def run_one(symbol, name, output, variant, params, lookback, args) -> dict:
         "timestamp"
     )
     controller = OptimizationController(historical_data=frame)
-    regime = daily_regime(symbol, name, output, variant, params, lookback)
+    regime = daily_regime(symbol, name, output, variant, params, lookback, lag=args.lag)
 
     strategy_params = dict(cfg.strategy.strategy_params)
     strategy_params.update(
@@ -175,6 +178,14 @@ def run_one(symbol, name, output, variant, params, lookback, args) -> dict:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--config", default="config/paper_aggressive.yaml")
+    p.add_argument(
+        "--lag",
+        type=int,
+        choices=(0, 1),
+        default=1,
+        help="1 = regime flag applies to the NEXT session (causal). 0 reproduces plan.md's "
+        "engine stages, which applied each flag on its own session -- a one-day lookahead.",
+    )
     p.add_argument("--target", type=float, default=0.04)
     p.add_argument("--only", help="Substring filter on the indicator name.")
     p.add_argument("--out", default="output/stage3_engine.csv")
@@ -186,6 +197,12 @@ def main(argv=None) -> int:
     )
     p.set_defaults(signal_exits=True)
     args = p.parse_args(argv)
+    print(
+        "regime lag:",
+        "1 (causal)"
+        if args.lag == 1
+        else "0 -- SAME-SESSION, the plan.md lookahead; comparison only",
+    )
 
     print("Stage 3: daily signal, MINUTE execution, real engine.")
     print("Prior from Stage 2, recorded before running: the TQQQ trend-line family")

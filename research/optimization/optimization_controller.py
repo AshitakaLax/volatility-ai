@@ -834,6 +834,10 @@ class OptimizationController:
         """
         _validate_fill_model(fill_model, intrabar_priority)
         _validate_intrabar_fill(intrabar_fill)
+        if fill_model == "intrabar" and intrabar_fill == "causal":
+            # The level for bar t is compared with bar t's LOW below, so it
+            # may only use bars before t -- see ExecutionConfig.intrabar_fill.
+            strategy_instance.use_prior_bar_trigger(True)
         ledger = AssetLotLedger()
         # mode="SIMULATION" stays a bare string here (Task 4.3): a Mode
         # enum would live in src/order_management_system.py, which isn't
@@ -1035,7 +1039,7 @@ class OptimizationController:
             if liquidations:
                 condemned = {lot.order_id for lot in liquidations}
                 marketable = [lot for lot in marketable if lot.order_id not in condemned]
-            if fill_model == "intrabar" and intrabar_fill == "open_or_level":
+            if fill_model == "intrabar" and intrabar_fill in ("open_or_level", "causal"):
                 # The mirror of the buy side: a resting sell limit at the
                 # target fills at the OPEN when the bar opens at or above it.
                 exits.extend(
@@ -1178,7 +1182,7 @@ class OptimizationController:
                     context, state.last_buy_price, step
                 )
                 buy_fill_price = trigger_level
-                if intrabar_fill == "open_or_level":
+                if intrabar_fill in ("open_or_level", "causal"):
                     # A resting buy limit at the level fills at the OPEN
                     # when the bar opens at or below it -- book a price the
                     # bar actually traded. See ExecutionConfig.intrabar_fill.
