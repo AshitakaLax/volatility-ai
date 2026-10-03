@@ -65,6 +65,10 @@ if TYPE_CHECKING:
     from engine.trading.risk_manager import RiskManager
 
 
+# execution.intrabar_fill -- see ExecutionConfig.
+INTRABAR_FILL_MODES: tuple[str, ...] = ("level", "open_or_level")
+
+
 @dataclass(frozen=True)
 class StrategyConfig:
     """Which sizing strategy to run and how to construct it.
@@ -317,6 +321,20 @@ class ExecutionConfig:
     # tests/fixtures/regression_baseline.py, which calls run_sweep
     # directly and never passes through this dataclass).
     cash_yield_pct: float | None = None
+    # Where an intrabar fill is BOOKED when the bar opened through the
+    # order. Only meaningful with fill_model="intrabar".
+    #
+    # "level" (default) books every fill at the order price. Unchanged, so
+    # every recorded intrabar result reproduces -- but that includes bars
+    # that traded ENTIRELY below a buy level, where the booked price never
+    # printed (measured: 125 of 183 of the champion's intrabar buys on a
+    # synthetic two-session test were booked above their bar's high).
+    #
+    # "open_or_level" books such a fill at the bar's open, which is where a
+    # resting limit order would actually have filled: buys at
+    # min(level, open), profit-target sells at max(target, open). Every
+    # booked price is then one the bar traded.
+    intrabar_fill: str = "level"
 
 
 @dataclass(frozen=True)
@@ -562,6 +580,7 @@ class BacktestConfig:
             enforce_no_loss=bool(execution_data.get("enforce_no_loss", True)),
             allow_signal_exit=bool(execution_data.get("allow_signal_exit", False)),
             settlement_days=int(execution_data.get("settlement_days", 0)),
+            intrabar_fill=execution_data.get("intrabar_fill", "level"),
             cash_yield_pct=(
                 float(execution_data["cash_yield_pct"])
                 if execution_data.get("cash_yield_pct") is not None
@@ -650,6 +669,9 @@ class BacktestConfig:
             "costs.model_type",
         )
         validate_non_negative(self.execution.settlement_days, "execution.settlement_days")
+        validate_one_of(
+            self.execution.intrabar_fill, INTRABAR_FILL_MODES, "execution.intrabar_fill"
+        )
         if self.execution.cash_yield_pct is not None:
             validate_unit_interval(self.execution.cash_yield_pct, "execution.cash_yield_pct")
         validate_non_negative(self.costs.commission_per_trade, "costs.commission_per_trade")
@@ -795,6 +817,7 @@ class BacktestConfig:
                 "allow_signal_exit": self.execution.allow_signal_exit,
                 "settlement_days": self.execution.settlement_days,
                 "cash_yield_pct": self.execution.cash_yield_pct,
+                "intrabar_fill": self.execution.intrabar_fill,
             },
             "output": {"return_full_results": self.output.return_full_results},
             "live": {
@@ -849,6 +872,7 @@ class BacktestConfig:
             "intrabar_priority": self.execution.intrabar_priority,
             "enforce_no_loss": self.execution.enforce_no_loss,
             "cash_yield_pct": self.execution.cash_yield_pct,
+            "intrabar_fill": self.execution.intrabar_fill,
             "symbol": self.backtest.symbol,
             "initial_cash": self.backtest.initial_cash,
             "search_strategy": self.search.strategy,

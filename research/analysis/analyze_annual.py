@@ -119,6 +119,15 @@ def _strategy_class_for(row):
     raise SystemExit(f"output/ row names strategy {name!r}, which is not registered")
 
 
+def _intrabar_fill_for(row) -> str:
+    """The row's own execution.intrabar_fill. Rows from before the column
+    existed were all booked at the order price, which is "level"."""
+    value = row.get("intrabar_fill") if hasattr(row, "get") else None
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "level"
+    return str(value)
+
+
 def _top_configs(cap: float | None, limit: int):
     """Best rows across every sweep output, deduplicated by parameters."""
     frames = []
@@ -181,6 +190,7 @@ def main():
             "intrabar",
             "sell_first",
             True,
+            intrabar_fill=_intrabar_fill_for(row),
         )
         if sim is None:
             print(f"\n#{rank} FAILED: {result_row.get('error')}")

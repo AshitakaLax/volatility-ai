@@ -14,7 +14,11 @@ import io
 import pandas as pd
 import pytest
 
-from research.analysis.analyze_annual import _constructor_params, _strategy_class_for
+from research.analysis.analyze_annual import (
+    _constructor_params,
+    _intrabar_fill_for,
+    _strategy_class_for,
+)
 from research.strategies.gated_local_reference_sizing import GatedLocalReferenceSizing
 from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 
@@ -82,3 +86,11 @@ def test_an_unregistered_class_name_stops_rather_than_guessing():
     row = pd.Series({"Strategy": "SomethingDeleted"})
     with pytest.raises(SystemExit):
         _strategy_class_for(row)
+
+
+def test_each_row_is_resimulated_with_its_own_intrabar_fill():
+    """Same trap as the class: a hardcoded default would print the
+    "level" booking's year-by-year under an open_or_level headline."""
+    assert _intrabar_fill_for(pd.Series({"intrabar_fill": "open_or_level"})) == "open_or_level"
+    assert _intrabar_fill_for(pd.Series({"intrabar_fill": float("nan")})) == "level"
+    assert _intrabar_fill_for(pd.Series({"Grid Step": 0.001})) == "level"

@@ -10,6 +10,7 @@
 #   bash run_entry_gate_chain.sh             # all five probes
 #   PY=.venv/bin/python bash run_entry_gate_chain.sh
 #   N_JOBS=2 bash run_entry_gate_chain.sh
+#   FILL=open_or_level bash run_entry_gate_chain.sh   # see execution.intrabar_fill
 set -u
 cd "$(dirname "$0")"
 
@@ -19,8 +20,9 @@ if [ -z "${PY:-}" ]; then
     else PY=python; fi
 fi
 N_JOBS="${N_JOBS:-4}"
+FILL="${FILL:-level}"   # level = how every recorded result was booked
 mkdir -p output
-LOG="output/entry_gates_$(date +%Y%m%d_%H%M).log"
+LOG="output/entry_gates_${FILL}_$(date +%Y%m%d_%H%M).log"
 say() { echo "" | tee -a "$LOG"; echo "### $(date '+%H:%M:%S')  $*" | tee -a "$LOG"; }
 
 # Control first: if it does not reproduce best_known_2026-08-24.yaml
@@ -32,8 +34,8 @@ for probe in $PROBES; do
     say "STEP $n/$((total + 1))  probe_entry_gate_$probe"
     "$PY" -m research.run_hf_sweep \
         --config "config/probe_entry_gate_$probe.yaml" \
-        --search grid --n-jobs "$N_JOBS" \
-        --output "output/probe_entry_gate_$probe.csv" >>"$LOG" 2>&1
+        --search grid --n-jobs "$N_JOBS" --intrabar-fill "$FILL" \
+        --output "output/probe_entry_gate_${probe}_${FILL}.csv" >>"$LOG" 2>&1
 done
 
 say "STEP $((total + 1))/$((total + 1))  year-by-year, best under a 50% drawdown cap"

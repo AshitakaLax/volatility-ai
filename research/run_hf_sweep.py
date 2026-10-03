@@ -37,6 +37,7 @@ worse than the log volume.
 
 import argparse
 import concurrent.futures
+import dataclasses
 import itertools
 import logging
 import time
@@ -112,9 +113,24 @@ def main():
             "a penalized objective, so it stops exploring that region."
         ),
     )
+    parser.add_argument(
+        "--intrabar-fill",
+        choices=("level", "open_or_level"),
+        default=None,
+        help=(
+            "override execution.intrabar_fill without editing the YAML. open_or_level books "
+            "fills the bar opened through at the open -- see ExecutionConfig.intrabar_fill"
+        ),
+    )
     args = parser.parse_args()
 
     config = BacktestConfig.from_yaml(args.config)
+    if args.intrabar_fill is not None:
+        config = dataclasses.replace(
+            config,
+            execution=dataclasses.replace(config.execution, intrabar_fill=args.intrabar_fill),
+        )
+        config.validate()
     config.validate()
     strategy_class = resolve_strategy(config.strategy.strategy_id)
     mode = args.search or config.search.strategy
@@ -156,6 +172,16 @@ def main():
             config.execution.fill_model,
             config.execution.intrabar_priority,
             config.execution.enforce_no_loss,
+            # allow_signal_exit / settlement_days / cash_yield_pct have NEVER
+            # been threaded by this driver: every run_hf_sweep result to date
+            # used these values whatever its YAML said. Stated explicitly so
+            # intrabar_fill can follow positionally WITHOUT changing them --
+            # threading the config's values is a separate decision, since it
+            # would move every recorded result (cash yield especially).
+            False,
+            0,
+            0.0,
+            config.execution.intrabar_fill,
         )
 
     search = None
@@ -196,6 +222,7 @@ def main():
         f"({100 * total / space:.2f}%) | n_jobs={args.n_jobs}\n"
         f"data=warehouse:{ticker} ({len(df):,} bars, {df.index.normalize().nunique():,} sessions)\n"
         f"fill_model={config.execution.fill_model} "
+        f"intrabar_fill={config.execution.intrabar_fill} "
         f"| enforce_no_loss={config.execution.enforce_no_loss} "
         f"| max_concurrent_lots={config.risk.max_concurrent_lots} "
         f"| rank_by={config.search.rank_by}",

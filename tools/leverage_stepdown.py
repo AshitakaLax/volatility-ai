@@ -62,16 +62,16 @@ on that as unmeasured; a portfolio-level allocator in the engine is what
 would remove the assumption.
 
 --------------------------------------------------------------------
-FILL MODEL: CLOSE BY DEFAULT, AND WHY
+FILL MODEL
 
-optimization_controller's intrabar model fills a buy AT the trigger
-level whenever the bar's low reached it -- including when the whole bar
-traded below the level, so the booked price is one the bar never
-printed. On a synthetic test the champion booked 125 of 183 intrabar
-buys above their bar's high (worst +5.5%, on a gap). The close model
-fills at a price that traded. Until the engine fills at min(level,
-open), this tool defaults to --fill-model close; pass intrabar to match
-the champion's recorded configuration, and read it knowing that.
+Defaults to fill_model=intrabar with execution.intrabar_fill=
+open_or_level: a resting limit fills at its price, or at the open when
+the bar opened through it, so every booked price is one the bar traded.
+The champion's recorded configuration is intrabar + "level", which books
+at the order price even when the whole bar traded beyond it (measured:
+125 of 183 champion buys booked above their bar's high on a synthetic
+test). Pass --intrabar-fill level to reproduce that reading, or
+--fill-model close for the close-fill model.
 
 The window starts at the first session the regime covers (the warm-up
 is ~250 sessions), and every curve is rebased there, the champion's
@@ -111,7 +111,18 @@ class SleeveFactory:
         return RegimeSleeveSizing(sleeve=self.sleeve, regime_by_date=self.regime, **params)
 
 
-def run_book(frame, cfg, factory, symbol, step, target, params, cash_yield, fill_model=None):
+def run_book(
+    frame,
+    cfg,
+    factory,
+    symbol,
+    step,
+    target,
+    params,
+    cash_yield,
+    fill_model=None,
+    intrabar_fill=None,
+):
     """One engine run; returns (equity curve, summary row)."""
     kwargs = cfg.to_run_sweep_kwargs(factory)
     kwargs.update(
@@ -127,6 +138,8 @@ def run_book(frame, cfg, factory, symbol, step, target, params, cash_yield, fill
         kwargs["cash_yield_pct"] = cash_yield
     if fill_model is not None:
         kwargs["fill_model"] = fill_model
+    if intrabar_fill is not None:
+        kwargs["intrabar_fill"] = intrabar_fill
     summary, full = OptimizationController(historical_data=frame).run_sweep(**kwargs)
     if full[0] is None:
         raise SystemExit(f"{factory.__name__} on {symbol} failed: {summary.iloc[0].get('error')}")
@@ -186,8 +199,14 @@ def main(argv=None) -> int:
     p.add_argument(
         "--fill-model",
         choices=("close", "intrabar"),
-        default="close",
-        help="see module docstring; intrabar matches the champion config but overbooks buys",
+        default="intrabar",
+        help="see module docstring",
+    )
+    p.add_argument(
+        "--intrabar-fill",
+        choices=("level", "open_or_level"),
+        default="open_or_level",
+        help="level reproduces the champion's recorded booking; see module docstring",
     )
     p.add_argument("--out", default="output/stepdown")
     args = p.parse_args(argv)
@@ -222,7 +241,8 @@ def main(argv=None) -> int:
     )
     print(f"  {len(regime)} sessions from {start.date()}, {calm_share:.1f}% calm, ")
     print(f"  {count_flips(regime)} flips (each one liquidates whichever sleeve is leaving)")
-    print(f"  fill model: {args.fill_model}\n")
+    fill = args.fill_model + (f"/{args.intrabar_fill}" if args.fill_model == "intrabar" else "")
+    print(f"  fill model: {fill}\n")
 
     qqq_params = dict(params)
     if args.qqq_per_lot_pct is not None:
@@ -244,7 +264,16 @@ def main(argv=None) -> int:
     for name, factory, symbol, s, t, prm in runs:
         print(f"[{name}] {symbol} step={s:.6g} target={t:.6g} ...", flush=True)
         curves[name], rows[name] = run_book(
-            frames[symbol], cfg, factory, symbol, s, t, prm, args.cash_yield, args.fill_model
+            frames[symbol],
+            cfg,
+            factory,
+            symbol,
+            s,
+            t,
+            prm,
+            args.cash_yield,
+            args.fill_model,
+            args.intrabar_fill,
         )
 
     books = {
@@ -280,6 +309,8 @@ def main(argv=None) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     tag = f"lag{args.lag}_p{args.period}_lb{args.lookback}_s{args.qqq_scale:g}_{args.fill_model}"
+    if args.fill_model == "intrabar":
+        tag += f"_{args.intrabar_fill}"
     pd.DataFrame(
         {name: {k: v for k, v in st.items() if k != "annual"} for name, st in stats.items()}
     ).T.to_csv(out / f"summary_{tag}.csv")
