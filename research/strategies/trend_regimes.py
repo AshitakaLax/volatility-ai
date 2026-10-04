@@ -8,6 +8,9 @@ indicators, as daily risk-on maps for regime sleeves.
   psar         #8  Parabolic SAR (Wilder) in its rising phase
   heikin_ashi  #3  Heikin-Ashi candles bullish, after `confirm`
                    consecutive candles of the new colour
+  sma          catalog R1 (Gayed & Bilello, "Leverage for the Long Run",
+                   2016): close above its 200-day simple moving average --
+                   not from quant-trading, added with the correction catalog
 
 Each flag is computed at a session's close from that session and those
 before it; risk_on_by_date then applies it to the NEXT session through
@@ -32,7 +35,7 @@ import pandas as pd
 from engine.core.exceptions import ConfigurationError
 from research.strategies.natr_regime import apply_lag, debounce
 
-TREND_METHODS: tuple[str, ...] = ("macd", "awesome", "psar", "heikin_ashi")
+TREND_METHODS: tuple[str, ...] = ("macd", "awesome", "psar", "heikin_ashi", "sma")
 
 
 def _count(name: str, value) -> int:
@@ -58,6 +61,17 @@ def awesome_risk_on(daily: pd.DataFrame, fast: int = 5, slow: int = 34) -> pd.Se
     median = (daily["high"].astype(float) + daily["low"].astype(float)) / 2.0
     ao = median.rolling(fast).mean() - median.rolling(slow).mean()
     return (ao > 0).iloc[slow - 1 :]
+
+
+def sma_risk_on(daily: pd.DataFrame, window: int = 200) -> pd.Series:
+    """Gayed & Bilello, "Leverage for the Long Run" (2016): hold leverage
+    while the unleveraged index closes above its `window`-day simple moving
+    average, T-bills below it (catalog R1). Same-session flag; risk_on_by_date
+    applies it to the NEXT session, as the paper switches at the next open."""
+    window = _count("window", window)
+    close = daily["close"].astype(float)
+    sma = close.rolling(window).mean()
+    return (close > sma).iloc[window - 1 :]
 
 
 def parabolic_sar(
@@ -133,6 +147,7 @@ _BUILDERS = {
     "awesome": awesome_risk_on,
     "psar": psar_risk_on,
     "heikin_ashi": heikin_ashi_risk_on,
+    "sma": sma_risk_on,
 }
 
 
@@ -161,4 +176,5 @@ __all__ = [
     "psar_risk_on",
     "risk_on_by_date",
     "risk_on_flags",
+    "sma_risk_on",
 ]

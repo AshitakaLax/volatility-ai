@@ -7,7 +7,9 @@ Entries are recorded **regardless of merit** — a rejected idea with its
 reason is worth as much as a promising one, because it stops the same
 idea being re-researched.
 
-*Compiled 2026-10-02. Covers patches 0001–0006 on top of `7961b1b`.*
+*Compiled 2026-10-02. Covers patches 0001–0006 on top of `7961b1b`. Section 8A (2026-10-03) adds the
+records of `docs/research/correction-strategies.md`; 🧪 entries there
+were built the same day (uncommitted).*
 
 ---
 
@@ -129,6 +131,49 @@ idea being re-researched.
 | X7 | Managed-futures ETF sleeve | this work | Crisis alpha | ⛔ | — |
 | X8 | Long-volatility ETF sleeve (VIXY) | this work | Long vol | ⛔ | — |
 | X9 | Gold (GLD) | this work | Rotation | 🆕🧪 | Low–medium |
+| C-MR1 | Short-term reversal as paid liquidity provision (VIX-conditioned) | Nagel 2012; Collin-Dufresne & Daniel | Mean reversion | 🧪 | Medium |
+| C-MR2 | ETF-residual Ornstein-Uhlenbeck stat arb (s-score) | Avellaneda & Lee 2010 | Stat arb | 🧪 | Low–medium |
+| C-MR4 | Mean-reversion diagnostics: ADF, Hurst exponent, variance ratio, OU half-life | letianzj/QuantResearch | Regime filter | 🧪 | Medium |
+| C-MR7 | R-Breaker pivot reversal and breakout | letianzj/QuantResearch (R-Breaker) | Reversal / breakout | 🧪 | Low–medium |
+| C-M1 | Noise-Area intraday momentum ("Beat the Market", Concretum Bands) | Zarattini, Aziz & Barbon 2024 | Intraday momentum | 🧪 | High |
+| C-M2 | Five-minute opening range breakout (ORB) on QQQ/TQQQ and "Stocks in Play" | Zarattini & Aziz 2023; Zarattini, Barbon & Aziz 2024 | Breakout | ⛔ (as published) | Low–medium |
+| C-G2 | Inventory-skewed grid (Avellaneda-Stoikov reservation price) | hftbacktest; Avellaneda & Stoikov 2008 | Grid | 🧪 | High |
+| C-G3 | Volatility-scaled grid ("simplified GLFT") | hftbacktest (simplified GLFT) | Grid | 🧪 | High |
+| C-G4 | Dynamic grid reset (DGT) | Chen, Chen & Jang 2025 | Grid lifecycle | 🧪 | Low–medium |
+| C-G5 | Turtle ATR-unit pyramiding (scale in on strength) | letianzj/QuantResearch; huseinzol05 | Scale-in sizing | 🧪 (scale-in) · ⛔ (stop) | Medium |
+| C-G6 | Grid ruin analysis with absorbing barriers | Taranto & Khan 2020 | Risk analysis | 🧪 | Medium–high |
+| C-MM1 | Avellaneda-Stoikov optimal quotes | Avellaneda & Stoikov 2008 | Market making | 🧪 (buy side) | Medium–high |
+| C-MM2 | Guéant-Lehalle-Fernandez-Tapia (GLFT) closed-form quotes | Guéant 2017 via hftbacktest | Market making | 🧪 (needs L1) | Medium |
+| C-MM3 | Alpha-shifted quoting (fair value = mid + a × forecast) | hftbacktest | Market making | 🧪 | Medium–high |
+| C-MM4 | VPIN flow-toxicity filter | Easley, López de Prado & O'Hara 2012 | Microstructure regime | 🧪 (needs trades) | Medium |
+| C-MM5 | Probabilistic queue-position fill models | hftbacktest | Execution model | 🧪 (needs L2) | Measurement |
+| C-R3 | Hidden Markov, Gaussian-mixture and Markov-switching volatility regimes | letianzj/QuantResearch | Regime | 🧪 | Medium–high |
+| C-ML1 | Triple-barrier and trend-scanning labels | ML4T ch. 7; Advanced-Deep-Trading | ML labelling | 🧪 | Medium |
+| C-ML3 | Purged k-fold, embargo and combinatorial purged CV (CPCV) | eslazarev/purged-cross-validation | Validation | 🧪 | Validation |
+| C-ML4 | Deflated Sharpe ratio and probability of backtest overfitting | Bailey & López de Prado 2014; Bailey et al. | Validation | 🧪 | Validation |
+| C-ML5 | Information-driven bars and fractional differentiation | Advanced-Deep-Trading; ML4T ch. 3 | Data preparation | 🧪 | Low–medium |
+| C-RL4 | Deep recurrent Q-network with action augmentation | Huang 2018 | Reinforcement learning | ❌ (for now) | Low |
+| C-RL5 | Direct reinforcement with a risk-adjusted online reward | Moody & Saffell 2001 | Reinforcement learning | ❌ (for now) | Low–medium |
+| C-S2 | Kelly and fractional Kelly | deltaray-io/kelly-criterion; riskkit; ML4T ch. 17 | Position sizing | 🧪 | Medium |
+| C-S4 | Inventory-capped inverse-exposure sizing | hftbacktest; riskkit | Position sizing | 🧪 | High |
+| C-X2 | Time-limit and end-of-day exits | charlieyanhx/exitkit; M1/M2 papers | Exit | ⛔ (loss-realizing) · 🧪 (profit-only) | Low |
+| C-X4 | Session caps and cooldowns on new lots | riskkit (SessionManager) | Risk throttle | 🧪 | Medium–high |
+| C-MS1 | Order-flow imbalance (OFI) at the best bid and ask | Cont, Kukanov & Stoikov 2014 | Microstructure | 🧪 (needs L1) | Medium |
+| C-MS2 | Order-book imbalance and micro-price | hftbacktest | Microstructure | 🧪 (needs L2) | Medium |
+| C-MS3 | VWAP-relative gating | Zarattini, Aziz & Barbon 2024 (VWAP) | Intraday gate | 🧪 | High |
+| C-MS5 | Bar-only microstructure proxies | twowaymind/orderflow-metrics | Microstructure | 🧪 | Measurement |
+| C-MS6 | Leveraged-ETF end-of-day rebalancing flow | Cheng & Madhavan 2009; Ivanov & Lenkey 2018 | Hypothesis | 🧪 | Low |
+| C-MS7 | Market profile and volume profile | letianzj/QuantResearch | Rung placement | 🧪 | Low–medium |
+| C-E2 | Tactical asset allocation with moving-average filters | letianzj/QuantResearch (Faber TAA) | Rotation / parking | 🧪 | Low–medium |
+| C-E4 | Regime-aware risk for concentrated mega-cap exposure | paperswithbacktest/awesome-systematic-trading | Regime | ⏳ (unverified) | Unknown |
+| C-RJ1 | Dealer gamma-imbalance signals | Baltussen et al. 2021, cited in M1 | Rejected in catalog | ⛔ | — |
+| C-RJ2 | Funding-rate arbitrage; perpetual-futures scanners | ML4T crypto-perps case study; crypto entries in awesome-quant and awesome-ai-in-finance | Rejected in catalog | ❌ | — |
+| C-RJ3 | Martingale / averaging-down sizing | binary-martingale in awesome-quant | Rejected in catalog | ❌ | — |
+| C-RJ4 | 18 deep sequence forecasters and stacked ensembles | huseinzol05/Stock-Prediction-Models | Rejected in catalog | ❌ | — |
+| C-RJ5 | Ghost Trader | letianzj/QuantResearch | Rejected in catalog | ❌ | — |
+| C-RJ6 | Index/ETF creation-redemption arbitrage | the research brief | Rejected in catalog | ⛔ | — |
+| C-RJ7 | LLM agent frameworks (TradingAgents, FinRobot and similar) | curated lists | Rejected in catalog | ❌ | — |
+| C-RJ8 | Novelty strategies (tweet-driven trading, lottery prediction) | awesome-ai-in-finance | Rejected in catalog | ❌ | — |
 
 ---
 
@@ -640,6 +685,378 @@ held. Low expected value.
 
 ---
 
+## 8A. Research catalog additions (`docs/research/correction-strategies.md`)
+
+[`docs/research/correction-strategies.md`](research/correction-strategies.md)
+(Oct 3, 2026) catalogs 66 algorithm records mined from 17 repositories
+and lists plus 18 papers, judged against the same constraints as this
+ledger. Records already covered by an entry above are mapped in the
+cross-reference table below; the rest are recorded here. Their IDs are
+the catalog's own with a `C-` prefix, because the catalog reuses S and
+X numbers that mean other things in this ledger (its S4 is
+inventory-capped sizing, this ledger's S4 is volatility targeting).
+
+Each entry gives the source and links to the full record in the
+catalog (role, parameters, data, evidence quality, failure modes).
+Statuses apply this ledger's constraints. Entries marked 🧪 were
+built on 2026-10-03 as standalone research modules, each with unit
+tests pinned to its source's definitions (the Built line names them);
+none is wired into a strategy, the engine host or a harness yet, and
+none has been run on market data. The catalog's own
+[ranked shortlist](research/correction-strategies.md#ranked-shortlist-and-implementation-order)
+proposes a build order (sizing and regime exits first); it is not
+merged into section 11.
+
+### C-MR1. Short-term reversal as paid liquidity provision (VIX-conditioned) 🧪
+Buying recent losers earns a liquidity-provision premium that rises with the VIX; the counter-study finds the Sharpe ratio no better once the strategy's own volatility is controlled.
+
+* **Fit:** Long-only basket form only. The grid is already a liquidity provider, so the transferable lesson is to widen spacing and shrink lots with realized volatility (C-G3, S4) rather than switch off. Daily, long-short evidence.
+* **Built:** `research/strategies/mean_reversion.py` — contrarian_weights, decayed_reversal_scores.
+* **Source:** Nagel, "Evaporating Liquidity", Review of Financial Studies 25(7), 2012 ([NBER w17653](https://nber.org/papers/w17653)); Collin-Dufresne & Daniel, "Liquidity and Return Reversals", working paper, 2014 ([PDF](https://business.columbia.edu/sites/default/files-efs/pubfiles/11568/str1.pdf)).
+* **Details:** [catalog MR1](research/correction-strategies.md#mr1-short-term-reversal-as-paid-liquidity-provision-vix-conditioned)
+
+### C-MR2. ETF-residual Ornstein-Uhlenbeck stat arb (s-score) 🧪
+Ornstein-Uhlenbeck model of a stock's cumulative residual against its sector ETF; long below s = −1.25, exit above −0.50.
+
+* **Fit:** Short side dropped (⛔). The long-only form is net long and needs a regime gate; it picks single stocks, not the TQQQ book. Daily evidence.
+* **Built:** `research/strategies/mean_reversion.py` — s_score, s_score_long_signal.
+* **Source:** Avellaneda & Lee, "Statistical Arbitrage in the US Equities Market", Quantitative Finance 10(7), 2010 ([PDF](https://traders.berkeley.edu/papers/Statistical%20arbitrage%20in%20the%20US%20equities%20market.pdf), [abstract](https://cims.nyu.edu/ams/abstracts/avellaneda.html)); thresholds confirmed in [Avellaneda's lecture slides](https://math.nyu.edu/inmemoriam/avellaneda/Lecture8Risk2011.pdf).
+* **Details:** [catalog MR2](research/correction-strategies.md#mr2-etf-residual-ornstein-uhlenbeck-stat-arb-s-score)
+
+### C-MR4. Mean-reversion diagnostics: ADF, Hurst exponent, variance ratio, OU half-life 🧪
+Rolling ADF, Hurst exponent, variance ratio and OU half-life classify the tape as mean-reverting or trending; run the grid dense in the first state and wide or paused in the second.
+
+* **Fit:** Fits: changes spacing and pausing only, never sells. No trading backtest in the source.
+* **Built:** `research/strategies/mean_reversion.py` — adf, hurst_exponent, variance_ratio, half_life.
+* **Source:** [letianzj/QuantResearch, notebooks/mean\_reversion.py](https://github.com/letianzj/QuantResearch/blob/master/notebooks/mean_reversion.py).
+* **Details:** [catalog MR4](research/correction-strategies.md#mr4-mean-reversion-diagnostics-adf-hurst-exponent-variance-ratio-ou-half-life)
+
+### C-MR7. R-Breaker pivot reversal and breakout 🧪
+Prior-day pivots P, R1–R3, S1–S3; a reversal buy when the day's low pierces S2 and price recovers above S1.
+
+* **Fit:** Usable as the condition for re-opening grid buys on a correction day; the breakout and short legs are not needed. Code only, no results.
+* **Built:** `research/strategies/intraday_gates.py` — RBreakerGate, r_breaker_levels.
+* **Source:** [letianzj/QuantResearch, backtest/r\_breaker.py](https://github.com/letianzj/QuantResearch) (credits Richard Saidenberg, 1994).
+* **Details:** [catalog MR7](research/correction-strategies.md#mr7-r-breaker-pivot-reversal-and-breakout)
+
+### C-M1. Noise-Area intraday momentum ("Beat the Market", Concretum Bands) 🧪
+Minute-of-day noise bands from the last 14 sessions; long above the upper band, exit below max(band, VWAP), flat at the close, volatility-scaled shares. Sharpe rose with the VIX and returns were positive in each of the ten worst S&P 500 quarters since 2008.
+
+* **Fit:** As a gate on grid buys (pause while below the band) it fits the rules (catalog rank 7). As a sleeve, its band/VWAP exit and end-of-day flatten can realize losses, which the loss policy forbids unless reclassified — an open question in the catalog. Reported results include short trades.
+* **Built:** `research/strategies/intraday_gates.py` — NoiseAreaGate, noise_bounds (gate form).
+* **Source:** Zarattini, Aziz, Barbon, "Beat the Market: An Effective Intraday Momentum Strategy for S&P500 ETF (SPY)", SFI Research Paper 24-97, 2024 ([paper PDF](https://alexandria.unisg.ch/server/api/core/bitstreams/a99aba00-f967-49b3-aceb-f544dc386e0b/content), [IDEAS](https://ideas.repec.org/p/chf/rpseri/rp2497.html)).
+* **Details:** [catalog M1](research/correction-strategies.md#m1-noise-area-intraday-momentum-beat-the-market-concretum-bands)
+
+### C-M2. Five-minute opening range breakout (ORB) on QQQ/TQQQ and "Stocks in Play" ⛔ (as published)
+Buy if the first 5-minute bar closes up, exit at the close or an ATR stop; the Stocks-in-Play variant trades the highest relative-volume names.
+
+* **Fit:** The published form needs a price stop, a short side and an end-of-day exit, all out of scope; a long-only, no-stop version is untested. The breakdown side already exists as the N2 gate.
+* **Source:** Zarattini & Aziz, "Can Day Trading Really Be Profitable?", 2023 ([SSRN 4416622](https://papers.ssrn.com/abstract=4416622)); Zarattini, Barbon & Aziz, "A Profitable Day Trading Strategy for the U.S. Equity Market", 2024 ([SSRN 4729284](https://ssrn.com/abstract=4729284)); rule summary by [CXO Advisory](https://www.cxoadvisory.com/technical-trading/day-trading-with-an-opening-range-breakout-strategy).
+* **Details:** [catalog M2](research/correction-strategies.md#m2-five-minute-opening-range-breakout-orb-on-qqqtqqq-and-stocks-in-play)
+
+### C-G2. Inventory-skewed grid (Avellaneda-Stoikov reservation price) 🧪
+Centre the grid on a reservation price, mid − skew × position, so buy rungs move lower and thin out as inventory grows.
+
+* **Fit:** Fits on the buy side only: sell rungs cannot move below each lot's cost. Catalog rank 2, with C-S4.
+* **Built:** `research/strategies/inventory_control.py` — skewed_depths, inventory_skewed_level.
+* **Source:** [hftbacktest tutorial (skew section)](https://hftbacktest.readthedocs.io/en/latest/tutorials/High-Frequency%20Grid%20Trading.html); model from [Avellaneda & Stoikov 2008](https://math.nyu.edu/~avellane/HighFrequencyTrading.pdf) as linked in the tutorial code.
+* **Details:** [catalog G2](research/correction-strategies.md#g2-inventory-skewed-grid-avellaneda-stoikov-reservation-price)
+
+### C-G3. Volatility-scaled grid ("simplified GLFT") 🧪
+Grid step, half-spread and skew proportional to short-term volatility, with a minimum step; centred on the micro-price.
+
+* **Fit:** Fits directly, and is distinct from V7 and S4, which scale lot size: the champion's step is fixed. Catalog rank 1, with S1/S4. The volatility part works on minute bars; micro-price centring needs L1 sizes.
+* **Built:** `research/strategies/grid_spacing.py` — VolatilityScaledStep, step_series, volatility_scaled_step.
+* **Source:** [hftbacktest tutorial: Grid Trading — Simplified from GLFT](https://hftbacktest.readthedocs.io/en/latest/tutorials/High-Frequency%20Grid%20Trading%20-%20Simplified%20from%20GLFT.html).
+* **Details:** [catalog G3](research/correction-strategies.md#g3-volatility-scaled-grid-simplified-glft)
+
+### C-G4. Dynamic grid reset (DGT) 🧪
+Re-centre the whole grid on the current price whenever price leaves its range, instead of stopping; the paper argues a static finite grid has roughly zero expected value.
+
+* **Fit:** Compatible with the no-loss ledger, but a downside reset adds rungs below held lots, which is averaging down; pair it with C-G2/C-G3 and a regime exit. Crypto-only evidence.
+* **Built:** `research/strategies/grid_lifecycle.py` — DynamicGrid, geometric_levels.
+* **Source:** Chen, Chen & Jang, "Dynamic Grid Trading Strategy: From Zero Expectation to Market Outperformance", 2025 ([arXiv 2506.11921](https://arxiv.org/abs/2506.11921v1), [IDEAS](https://ideas.repec.org/p/arx/papers/2506.11921.html)).
+* **Details:** [catalog G4](research/correction-strategies.md#g4-dynamic-grid-reset-dgt)
+
+### C-G5. Turtle ATR-unit pyramiding (scale in on strength) 🧪 (scale-in) · ⛔ (stop)
+Turtle units: one ATR-sized unit per +0.5 ATR, up to three adds, after a 20-day high.
+
+* **Fit:** Useful as a recovery-mode rebuild of TQQQ inventory after a regime exit, buying confirmation rather than the low. Its 2-ATR price stop is out of scope. Code only.
+* **Built:** `research/strategies/position_sizing.py` — TurtlePyramid, turtle_atr, turtle_unit_shares (scale-in only).
+* **Source:** [letianzj/QuantResearch, backtest/turtle.py](https://github.com/letianzj/QuantResearch); turtle agent in [huseinzol05/Stock-Prediction-Models](https://github.com/huseinzol05/Stock-Prediction-Models).
+* **Details:** [catalog G5](research/correction-strategies.md#g5-turtle-atr-unit-pyramiding-scale-in-on-strength)
+
+### C-G6. Grid ruin analysis with absorbing barriers 🧪
+The grid as a random walk between two absorbing barriers, capital exhaustion and a profit target, giving the probability of hitting each for a chosen depth and spacing.
+
+* **Fit:** An analysis tool rather than a rule: size a correction sleeve so a −30% TQQQ leg cannot exhaust capital before a regime exit fires. Theoretical; abstract only.
+* **Built:** `research/strategies/grid_lifecycle.py` — target_first_probability, ruin_probability, expected_steps, rungs_for_decline.
+* **Source:** Taranto & Khan, "Bi-directional grid absorption barrier constrained stochastic processes with applications in finance and investment", 2020 ([USQ repository listing](https://research.usq.edu.au/item/q5x8w/bi-directional-grid-absorption-barrier-constrained-stochastic-processes-with-applications-in-finance-and-investment)); I saw only the listing and abstract.
+* **Details:** [catalog G6](research/correction-strategies.md#g6-grid-ruin-analysis-with-absorbing-barriers)
+
+### C-MM1. Avellaneda-Stoikov optimal quotes 🧪 (buy side)
+Reservation price r = mid − q·γ·σ²·(T−t) and an optimal spread that widens with volatility and with lower order-arrival intensity.
+
+* **Fit:** Long-only, buy-side use: lower and thin buy rungs as lots accumulate; asks stay at or above cost. Calibrating arrival intensity needs L1 quotes and trades.
+* **Built:** `research/strategies/inventory_control.py` — as_reservation_price, as_optimal_spread, as_quotes.
+* **Source:** [Avellaneda & Stoikov paper](https://math.nyu.edu/~avellane/HighFrequencyTrading.pdf) as linked in the hftbacktest grid code.
+* **Details:** [catalog MM1](research/correction-strategies.md#mm1-avellaneda-stoikov-optimal-quotes)
+
+### C-MM2. Guéant-Lehalle-Fernandez-Tapia (GLFT) closed-form quotes 🧪 (needs L1)
+Closed-form bid and ask depths from risk aversion, volatility and a fitted arrival intensity λ = A·exp(−k·δ), with no terminal time.
+
+* **Fit:** The most principled spacing model (catalog rank 14), but minute bars cannot calibrate A and k: it needs trade prints and L1 quotes.
+* **Built:** `research/strategies/inventory_control.py` — glft_coefficients, glft_quotes, fit_arrival_intensity.
+* **Source:** [hftbacktest tutorial: GLFT Market Making Model and Grid Trading](https://hftbacktest.readthedocs.io/en/latest/tutorials/GLFT%20Market%20Making%20Model%20and%20Grid%20Trading.html), implementing equations 4.6–4.7 of Guéant, "Optimal market making" ([arXiv 1605.01862](https://arxiv.org/abs/1605.01862)).
+* **Details:** [catalog MM2](research/correction-strategies.md#mm2-guéant-lehalle-fernandez-tapia-glft-closed-form-quotes)
+
+### C-MM3. Alpha-shifted quoting (fair value = mid + a × forecast) 🧪
+Fair value = mid + a × forecast − an inventory-risk term; a negative forecast lowers bids instead of switching the grid off.
+
+* **Fit:** The cleanest way to merge a momentum signal (X1, C-M1) into the grid without a hard gate. Crypto tutorials only.
+* **Built:** `research/strategies/inventory_control.py` — alpha_shifted_quotes.
+* **Source:** [hftbacktest README quick example](https://github.com/nkaz001/hftbacktest); [Market Making with Alpha — Order Book Imbalance](https://hftbacktest.readthedocs.io/en/latest/tutorials/Market%20Making%20with%20Alpha%20-%20Order%20Book%20Imbalance.html).
+* **Details:** [catalog MM3](research/correction-strategies.md#mm3-alpha-shifted-quoting-fair-value--mid--a--forecast)
+
+### C-MM4. VPIN flow-toxicity filter 🧪 (needs trades)
+VPIN: volume-bucketed order-flow imbalance; high readings mean liquidity providers are being adversely selected.
+
+* **Fit:** A bid-side gate only. Disputed: Andersen & Bondarenko find the bar-level (bulk-classified) version adds nothing beyond volume and volatility, and that is the only version minute bars allow.
+* **Built:** `research/strategies/microstructure.py` — vpin, volume_buckets.
+* **Source:** Easley, López de Prado & O'Hara, "Flow Toxicity and Liquidity in a High Frequency World", Review of Financial Studies 25(5), 2012 ([SSRN 1695596](https://papers.ssrn.com/abstract=1695596)); critique by Andersen & Bondarenko ([CREATES paper](https://repec.econ.au.dk/repec/creates/rp/13/rp13_43.pdf)); rejoinder in Journal of Financial Markets 17, 2014 ([record](https://opus.lib.uts.edu.au/citation/handle/10453/118180)).
+* **Details:** [catalog MM4](research/correction-strategies.md#mm4-vpin-flow-toxicity-filter)
+
+### C-MM5. Probabilistic queue-position fill models 🧪 (needs L2)
+Probabilistic queue-position models: a resting order fills only after the queue ahead of it clears, so backtests stop assuming every touch fills.
+
+* **Fit:** Bears on N8's booking question: touch fills overstate grid profits, most of all in fast selloffs. Not possible with minute bars.
+* **Built:** `research/strategies/microstructure.py` — QueuePositionEstimator.
+* **Source:** [hftbacktest tutorial: Probability Queue Models](https://github.com/nkaz001/hftbacktest/blob/master/examples/Probability%20Queue%20Models.ipynb).
+* **Details:** [catalog MM5](research/correction-strategies.md#mm5-probabilistic-queue-position-fill-models)
+
+### C-R3. Hidden Markov, Gaussian-mixture and Markov-switching volatility regimes 🧪
+Two or three hidden states fitted to returns (HMM, Gaussian mixture, Markov switching); trade the grid fully in the calm state and thin it in the turbulent one.
+
+* **Fit:** Good as a sizing input; as an exit it needs hysteresis (compare N10). The source notebooks fit and decode on the full sample (lookahead) and invert their return formula, so they cannot be reused as they stand.
+* **Built:** `research/strategies/regime_models.py` — GaussianHMM, GaussianMixture, causal_turbulence.
+* **Source:** [letianzj/QuantResearch notebooks #12 (hidden\_markov\_chain.py) and #18 (gaussian\_mixture\_markov\_switching.ipynb)](https://github.com/letianzj/QuantResearch).
+* **Details:** [catalog R3](research/correction-strategies.md#r3-hidden-markov-gaussian-mixture-and-markov-switching-volatility-regimes)
+
+### C-ML1. Triple-barrier and trend-scanning labels 🧪
+Triple-barrier labels: each entry labelled by the first barrier hit — profit target, lower barrier or time limit — plus trend-scanning labels.
+
+* **Fit:** Maps one-to-one onto lots: upper barrier = take-profit, lower = regime-exit level, vertical = maximum hold. Training input for meta-label sizing (catalog rank 10; compare V13).
+* **Built:** `research/ml/barrier_labels.py` — triple_barrier_labels, trend_scanning_labels.
+* **Source:** [stefan-jansen/machine-learning-for-trading, chapter 7](https://github.com/stefan-jansen/machine-learning-for-trading) (forward-return, triple-barrier and trend-scanning labels); [Rachnog/Advanced-Deep-Trading, bars-labels-diff/Labeling.ipynb](https://github.com/Rachnog/Advanced-Deep-Trading).
+* **Details:** [catalog ML1](research/correction-strategies.md#ml1-triple-barrier-and-trend-scanning-labels)
+
+### C-ML3. Purged k-fold, embargo and combinatorial purged CV (CPCV) 🧪
+Purged k-fold, embargo and combinatorial purged cross-validation: drop training rows whose label horizons overlap the test fold, skip a buffer after it, and recombine folds into many backtest paths.
+
+* **Fit:** For every parameter of a correction sleeve, especially regime thresholds. Complements the walk-forward runner and the random-regime null (V19).
+* **Built:** `research/optimization/purged_cv.py` — purged_kfold, combinatorial_purged_splits, n_backtest_paths.
+* **Source:** [eslazarev/purged-cross-validation](https://github.com/eslazarev/purged-cross-validation) (pip `purgedcv`, scikit-learn compatible, active as of Oct 2026); [Advanced-Deep-Trading, proba\_backtest/Combinatorial Cross Validation.ipynb](https://github.com/Rachnog/Advanced-Deep-Trading).
+* **Details:** [catalog ML3](research/correction-strategies.md#ml3-purged-k-fold-embargo-and-combinatorial-purged-cv-cpcv)
+
+### C-ML4. Deflated Sharpe ratio and probability of backtest overfitting 🧪
+Deflated Sharpe ratio (corrects a Sharpe for the number of trials, skew and kurtosis) and probability of backtest overfitting (how often the in-sample winner ranks below median out of sample).
+
+* **Fit:** The catalog asks for DSR/PBO scoring of every sweep before its rank 1, and the sweeps recorded in this ledger (V15, the HF retunes) are exactly the many-trial case it corrects.
+* **Built:** `research/optimization/overfitting.py` — probabilistic_sharpe, deflated_sharpe, probability_of_backtest_overfitting.
+* **Source:** Bailey & López de Prado, "The Deflated Sharpe Ratio", Journal of Portfolio Management 40(5), 2014 ([SSRN 2460551](https://papers.ssrn.com/abstract=2460551)); Bailey, Borwein, López de Prado & Zhu, "The Probability of Backtest Overfitting", Journal of Computational Finance 20(4) ([SSRN 2326253](https://papers.ssrn.com/abstract=2326253)); [Advanced-Deep-Trading, backtest\_veroft/Overfit Probability.ipynb](https://github.com/Rachnog/Advanced-Deep-Trading).
+* **Details:** [catalog ML4](research/correction-strategies.md#ml4-deflated-sharpe-ratio-and-probability-of-backtest-overfitting)
+
+### C-ML5. Information-driven bars and fractional differentiation 🧪
+Information-driven bars (volume, dollar or imbalance sampling instead of clock time) and fractional differentiation (stationary prices that keep memory).
+
+* **Fit:** Activity-based bars raise resolution exactly during selloffs; minute bars with volume approximate them.
+* **Built:** `research/ml/info_bars.py` — tick/volume/dollar/tick-imbalance bars, frac_diff_ffd.
+* **Source:** [Advanced-Deep-Trading, bars-labels-diff](https://github.com/Rachnog/Advanced-Deep-Trading); [ML4T chapter 3](https://github.com/stefan-jansen/machine-learning-for-trading) (bar-sampling comparison); [twowaymind/orderflow-metrics](https://github.com/twowaymind/orderflow-metrics).
+* **Details:** [catalog ML5](research/correction-strategies.md#ml5-information-driven-bars-and-fractional-differentiation)
+
+### C-RL4. Deep recurrent Q-network with action augmentation ❌ (for now)
+Deep recurrent Q-network with action augmentation: a small trader does not move prices, so every action's reward is computable at each step and random exploration is unnecessary.
+
+* **Fit:** Not pursued, for A1's reason. If RL is revisited, the augmentation idea could score every candidate lot size at historical grid triggers. FX-only preprint.
+* **Source:** Huang, "Financial Trading as a Game: A Deep Reinforcement Learning Approach", 2018 ([arXiv 1807.02787](https://arxiv.org/abs/1807.02787v1)).
+* **Details:** [catalog RL4](research/correction-strategies.md#rl4-deep-recurrent-q-network-with-action-augmentation)
+
+### C-RL5. Direct reinforcement with a risk-adjusted online reward ❌ (for now)
+Direct reinforcement: optimise trading decisions directly against an incrementally updated risk-adjusted measure instead of forecasting prices.
+
+* **Fit:** Not pursued, for A1's reason, but the reward idea carries over: any learned sizing policy should optimise return/drawdown, this ledger's objective.
+* **Source:** Moody & Saffell, "Learning to trade via direct reinforcement", IEEE Transactions on Neural Networks 12, 2001 (cited in the RL1 paper); "Reinforcement Learning for Trading" ([NIPS paper link](http://papers.nips.cc/paper/1551-reinforcement-learning-for-trading.pdf)) and Ritter, "Machine Learning for Trading" ([PDF](https://cims.nyu.edu/~ritter/ritter2017machine.pdf)), both listed in awesome-ai-in-finance. I did not open these.
+* **Details:** [catalog RL5](research/correction-strategies.md#rl5-direct-reinforcement-with-a-risk-adjusted-online-reward)
+
+### C-S2. Kelly and fractional Kelly 🧪
+Kelly leverage f = mean excess return / variance; fractional Kelly trades growth for much lower drawdown; long-only clips negative f to zero.
+
+* **Fit:** As a ceiling on total sleeve exposure, not per lot; TQQQ's 3× can exceed what a full-Kelly estimate on QQQ supports.
+* **Built:** `research/strategies/position_sizing.py` — kelly_leverage, kelly_portfolio, kelly_growth_rate.
+* **Source:** [deltaray-io/kelly-criterion](https://github.com/deltaray-io/kelly-criterion) (Python 2.7; no commits since Feb 2019, unmaintained); half-Kelly ceiling in [riskkit](https://github.com/HasibVortex369/riskkit); Kelly and conformal sizing in [ML4T chapter 17](https://github.com/stefan-jansen/machine-learning-for-trading).
+* **Details:** [catalog S2](research/correction-strategies.md#s2-kelly-and-fractional-kelly)
+
+### C-S4. Inventory-capped inverse-exposure sizing 🧪
+Inventory-capped inverse-exposure sizing: lot size decays as open lots or open notional rise, under hard caps on total open notional and heat.
+
+* **Fit:** The sizing-engine form of C-G2 (catalog rank 2) and the cheapest way to make a correction consume capital slowly. The engine's RiskManager already has hard caps (`max_concurrent_lots`, `max_total_exposure`); the decaying lot size is the new part.
+* **Built:** `research/strategies/inventory_control.py` — inventory_decay_multiplier, inventory_capped_lot.
+* **Source:** Skew mechanism in the [hftbacktest grid tutorial](https://hftbacktest.readthedocs.io/en/latest/tutorials/High-Frequency%20Grid%20Trading.html); portfolio caps (open notional, heat, sector) in [riskkit](https://github.com/HasibVortex369/riskkit).
+* **Details:** [catalog S4](research/correction-strategies.md#s4-inventory-capped-inverse-exposure-sizing)
+
+### C-X2. Time-limit and end-of-day exits ⛔ (loss-realizing) · 🧪 (profit-only)
+Time-limit and end-of-day exits: close after a fixed holding period or at the session close, regardless of P&L.
+
+* **Fit:** Conflicts with the loss policy (no end-of-day flatten; losses only through regime exits) unless reclassified, an open question in the catalog. A profit-only variant fits. Anecdotal evidence.
+* **Built:** `research/strategies/grid_lifecycle.py` — profit_only_time_exits (profit-only variant, through the no-loss guard).
+* **Source:** [charlieyanhx/exitkit](https://github.com/charlieyanhx/exitkit) (27 exit models in 6 families; last commit Sep 2026); M1 and M2 papers for end-of-day flattening.
+* **Details:** [catalog X2](research/correction-strategies.md#x2-time-limit-and-end-of-day-exits)
+
+### C-X4. Session caps and cooldowns on new lots 🧪
+Session caps and cooldowns: cap new lots per day, enforce minimum time between fills, and escalate cooldowns after runs of adverse fills.
+
+* **Fit:** Throttles buys only (catalog rank 9, with V9). Pairs with X1: defer buys on strongly negative mornings.
+* **Built:** `research/strategies/intraday_gates.py` — SessionLotThrottle.
+* **Source:** SessionManager in [riskkit](https://github.com/HasibVortex369/riskkit).
+* **Details:** [catalog X4](research/correction-strategies.md#x4-session-caps-and-cooldowns-on-new-lots)
+
+### C-MS1. Order-flow imbalance (OFI) at the best bid and ask 🧪 (needs L1)
+Order-flow imbalance at the touch: signed bid/ask size and price changes; short-interval price changes are roughly linear in OFI.
+
+* **Fit:** Hold back a grid bid while OFI is strongly negative. Needs quote updates, and the relation is contemporaneous, so forecasting value must be tested separately.
+* **Built:** `research/strategies/microstructure.py` — ofi, ofi_events.
+* **Source:** Cont, Kukanov & Stoikov, "The Price Impact of Order Book Events", Journal of Financial Econometrics 12(1), 2014 ([arXiv 1011.6402](https://arxiv.org/abs/1011.6402)); implementation in [twowaymind/orderflow-metrics](https://github.com/twowaymind/orderflow-metrics).
+* **Details:** [catalog MS1](research/correction-strategies.md#ms1-order-flow-imbalance-ofi-at-the-best-bid-and-ask)
+
+### C-MS2. Order-book imbalance and micro-price 🧪 (needs L2)
+Standardised order-book imbalance near the mid, and the micro-price (each side weighted by the other's size).
+
+* **Fit:** A fair-value shift for grid quotes (feeds C-MM3). L1 sizes suffice for the micro-price; the imbalance needs depth.
+* **Built:** `research/strategies/microstructure.py` — micro_price, depth_imbalance, standardized.
+* **Source:** [hftbacktest tutorial: Market Making with Alpha — Order Book Imbalance](https://hftbacktest.readthedocs.io/en/latest/tutorials/Market%20Making%20with%20Alpha%20-%20Order%20Book%20Imbalance.html).
+* **Details:** [catalog MS2](research/correction-strategies.md#ms2-order-book-imbalance-and-micro-price)
+
+### C-MS3. VWAP-relative gating 🧪
+VWAP-relative gating: add lots only when price is below VWAP by k·σ, and pause when it is far below and still falling.
+
+* **Fit:** Catalog rank 7, with C-M1. Minute bars with volume suffice, and as a gate it needs no price stop.
+* **Built:** `research/strategies/intraday_gates.py` — VwapGate, session_vwap.
+* **Source:** M1 paper ([PDF](https://alexandria.unisg.ch/server/api/core/bitstreams/a99aba00-f967-49b3-aceb-f544dc386e0b/content)), which cites Zarattini & Aziz, "Volume Weighted Average Price (VWAP): The Holy Grail for Day Trading Systems", SSRN 2023 (not opened).
+* **Details:** [catalog MS3](research/correction-strategies.md#ms3-vwap-relative-gating)
+
+### C-MS5. Bar-only microstructure proxies 🧪
+Bar-only proxies: effective-spread, volatility and jump estimators from OHLC, and bar-volume buy/sell classification.
+
+* **Fit:** Mainly realistic cost and fill assumptions for grid backtests when only minute bars exist.
+* **Built:** `research/strategies/microstructure.py` — roll_spread, corwin_schultz, abdi_ranaldo, amihud_illiquidity, kyle_lambda, bvc_buy_fraction.
+* **Source:** [twowaymind/orderflow-metrics](https://github.com/twowaymind/orderflow-metrics) (Python and TypeScript; last commit Sep 2026).
+* **Details:** [catalog MS5](research/correction-strategies.md#ms5-bar-only-microstructure-proxies)
+
+### C-MS6. Leveraged-ETF end-of-day rebalancing flow 🧪
+Daily-reset leveraged ETFs must trade with the day's move near the close.
+
+* **Fit:** Contested: Ivanov & Lenkey find fund flows offset most of it. At most a reason to avoid buying in the last 30 minutes of large down days, which X1 already covers.
+* **Built:** `research/strategies/microstructure.py` — letf_rebalance_demand.
+* **Source:** Cheng & Madhavan, "The Dynamics of Leveraged and Inverse ETFs", Journal of Investment Management 2009 ([PDF](https://joim.com/wp-content/uploads/emember/downloads/p0283.pdf)); Ivanov & Lenkey, "Do leveraged ETFs really amplify late-day returns and volatility?", Journal of Financial Markets 41, 2018 ([record](https://pure.psu.edu/en/publications/do-leveraged-etfs-really-amplify-late-day-returns-and-volatility/)); Lenkey's [literature survey](https://www.aimspress.com/article/id/676a38d5ba35de0ad141c3c3).
+* **Details:** [catalog MS6](research/correction-strategies.md#ms6-leveraged-etf-end-of-day-rebalancing-flow)
+
+### C-MS7. Market profile and volume profile 🧪
+Market and volume profile: the volume-at-price histogram, whose point of control and value-area edges act as reaction levels.
+
+* **Fit:** Snap grid rungs to high-volume nodes instead of a uniform ladder. Code and blog only.
+* **Built:** `research/strategies/microstructure.py` — volume_profile, tpo_profile, point_of_control, value_area.
+* **Source:** [letianzj/QuantResearch, market/market\_profile.ipynb (#25)](https://github.com/letianzj/QuantResearch).
+* **Details:** [catalog MS7](research/correction-strategies.md#ms7-market-profile-and-volume-profile)
+
+### C-E2. Tactical asset allocation with moving-average filters 🧪
+Tactical asset allocation: hold each asset-class ETF only while it is above its long moving average, otherwise cash.
+
+* **Fit:** A parking rule for idle correction-sleeve capital; compare X2, which gates each defensive ETF on its own NATR regime. Code only.
+* **Built:** `research/strategies/tactical_allocation.py` — faber_targets, held_weights.
+* **Source:** [letianzj/QuantResearch, backtest/mebane\_faber\_taa.py](https://github.com/letianzj/QuantResearch); the original Faber paper was not opened.
+* **Details:** [catalog E2](research/correction-strategies.md#e2-tactical-asset-allocation-with-moving-average-filters)
+
+### C-E4. Regime-aware risk for concentrated mega-cap exposure ⏳ (unverified)
+A listed replication on regime-aware risk management in portfolios concentrated in the Magnificent Seven.
+
+* **Fit:** Only the title and summary statistics were seen; kept for follow-up because the Nasdaq-100 is concentrated in a few mega-caps.
+* **Source:** [paperswithbacktest/awesome-systematic-trading, Multi-asset table](https://github.com/paperswithbacktest/awesome-systematic-trading) (Sharpe 1.11, t-stat 6.4, 33 years, gross of costs).
+* **Details:** [catalog E4](research/correction-strategies.md#e4-regime-aware-risk-for-concentrated-mega-cap-exposure)
+
+### Catalog records already in this ledger
+
+| Catalog record | Ledger entry | Note |
+|---|---|---|
+| [MR3. Cointegration pairs (Engle-Granger) and Kalman-filter hedge ratio](research/correction-strategies.md#mr3-cointegration-pairs-engle-granger-and-kalman-filter-hedge-ratio) | Q2, X3 | Pair trading is Q2 (short leg ⛔); its long-only rotation form is X3. The Kalman-filter hedge ratio is not built. **Built:** Engle-Granger test and the notebook's Kalman hedge ratio, long-only signal (`research/strategies/pairs.py`). |
+| [MR5. Bollinger Band reversion and W-bottom](research/correction-strategies.md#mr5-bollinger-band-reversion-and-w-bottom) | Q9, X4 | The W-bottom permission gate is built; using band width as rung spacing is C-G3's idea. |
+| [MR6. RSI oversold/overbought and RSI head-and-shoulders](research/correction-strategies.md#mr6-rsi-oversoldoverbought-and-rsi-head-and-shoulders) | V3, Q10 | RSI sizing (V3) and the RSI head-and-shoulders gate (Q10). The catalog adds that a low prior-day RSI(5) predicts stickier intraday trends (C-M1): widen rungs when oversold. |
+| [MR8. Beta and volatility-ratio pairs (IB high-frequency model)](research/correction-strategies.md#mr8-beta-and-volatility-ratio-pairs-ib-high-frequency-model) | A6 | Same source. The catalog's long-only form (buy A only when cheap to β × B) is not built. |
+| [M3. Market intraday momentum (first half-hour predicts last half-hour)](research/correction-strategies.md#m3-market-intraday-momentum-first-half-hour-predicts-last-half-hour) | X1 | Same paper (Gao, Han, Li & Zhou 2018). Catalog rank 6. |
+| [M4. Dual Thrust](research/correction-strategies.md#m4-dual-thrust) | Q7, N1 | The lower band is the N1 gate; the trade itself is ⛔. |
+| [M5. London Breakout (pre-open range breakout)](research/correction-strategies.md#m5-london-breakout-pre-open-range-breakout) | Q4, N2, N3 | Mapped onto US hours as the N2/N3 gates; the trade is ⛔. |
+| [M6. Parabolic SAR](research/correction-strategies.md#m6-parabolic-sar) | Q8 | Built as a regime. The catalog's use, a profit-only trailing exit for lots past target, is not built (compare V10). **Built:** profit-only PSAR exit through the no-loss guard (`grid_lifecycle.psar_profit_exits`). |
+| [M7. Heikin-Ashi trend filter](research/correction-strategies.md#m7-heikin-ashi-trend-filter) | Q3 |  |
+| [M8. MACD and Awesome Oscillator crossovers](research/correction-strategies.md#m8-macd-and-awesome-oscillator-crossovers) | Q1, Q5 |  |
+| [G1. Plain high-frequency grid](research/correction-strategies.md#g1-plain-high-frequency-grid) | V5 | The champion is the plain HF grid, with sell rungs only for lots whose target is above cost. |
+| [R1. Moving-average leverage regime ("Leverage for the Long Run")](research/correction-strategies.md#r1-moving-average-leverage-regime-leverage-for-the-long-run) | V16 | Same idea (SMA200 leverage switch); the catalog's source is Gayed & Bilello, "Leverage for the Long Run". plan.md's measurement carries the same-session lookahead, and SMA is not yet a `--regime` option on N7/N11. Catalog rank 3. **Built:** `--regime sma` on N7/N11 (`trend_regimes.sma_risk_on`, 200-day default). |
+| [R2. Financial turbulence index liquidation rule](research/correction-strategies.md#r2-financial-turbulence-index-liquidation-rule) | A2 | Catalog rank 4; also RL1's turbulence override. |
+| [R4. Realized-volatility, ATR and VIX-level gates](research/correction-strategies.md#r4-realized-volatility-atr-and-vix-level-gates) | V17/N5, V7, V12 | NATR (ATR) regime and realized/implied-vol scaling exist. A VIX-level gate is not built: the VIX is not ingested. **Built:** VIX bands (`research/strategies/vix_bands.py`); the VIX series is in data/external/ after the ML input fetch. |
+| [R5. Drawdown-state regimes](research/correction-strategies.md#r5-drawdown-state-regimes) | V11 | The throttle exists (unmeasured). The catalog's final tier, halting new lots or liquidating as a regime exit, is not built. Catalog rank 5, with S3 below. **Built:** tiered ladder with a halt tier, hysteresis and a liquidation request (`position_sizing.DrawdownLadder`). |
+| [R6. LPPLS bubble and critical-time detection](research/correction-strategies.md#r6-lppls-bubble-and-critical-time-detection) | A3 |  |
+| [ML2. Meta-labeling the grid's own triggers](research/correction-strategies.md#ml2-meta-labeling-the-grids-own-triggers) | V13 | V13's model scores whether a lot's target is reachable and scales its size, which is meta-labelling the grid's own triggers. The catalog's version adds triple-barrier labels (C-ML1) and DSR/PBO validation (C-ML4). |
+| [ML6. Gradient boosting on intraday microstructure features](research/correction-strategies.md#ml6-gradient-boosting-on-intraday-microstructure-features) | V13, V14 | Both are LightGBM on bar-local and volatility features. |
+| [RL1. Turbulence-gated actor-critic ensemble (FinRL, ICAIF 2020)](research/correction-strategies.md#rl1-turbulence-gated-actor-critic-ensemble-finrl-icaif-2020) | A1, A2 | The agents are A1 (❌ for now); the turbulence override is A2. |
+| [RL2. FinRL library agents (A2C, DDPG, PPO, SAC, TD3)](research/correction-strategies.md#rl2-finrl-library-agents-a2c-ddpg-ppo-sac-td3) | A1 |  |
+| [RL3. EIIE portfolio policy ("Deep Portfolio Management")](research/correction-strategies.md#rl3-eiie-portfolio-policy-deep-portfolio-management) | A4 | EIIE is the PGPortfolio policy. |
+| [RL6. Single-asset DQN/DDPG and evolution-strategy agents](research/correction-strategies.md#rl6-single-asset-dqnddpg-and-evolution-strategy-agents) | A1 | huseinzol05's and Albert-Z-Guo's agents fall under A1's reasoning. |
+| [S1. Volatility targeting](research/correction-strategies.md#s1-volatility-targeting) | S4, V18 | Same mechanism. Catalog rank 1. |
+| [S3. Volatility-adjusted fixed-fractional sizing with a drawdown ladder](research/correction-strategies.md#s3-volatility-adjusted-fixed-fractional-sizing-with-a-drawdown-ladder) | V11, S4 | riskkit's tiered drawdown ladder is a stepped form of V11 on top of volatility sizing; tiers that halt new lots are not built. |
+| [S5. Probability-scaled (meta-label or conformal) sizing](research/correction-strategies.md#s5-probability-scaled-meta-label-or-conformal-sizing) | V13 | Probability-scaled sizing is V13's mechanism; conformal calibration is not built. **Built:** AFML bet-size curve and split-conformal sizing (`position_sizing.bet_size_from_probability`, `conformal_long_size`). |
+| [S6. Inverse-volatility weights across a small ETF set](research/correction-strategies.md#s6-inverse-volatility-weights-across-a-small-etf-set) | A5 | Inverse-volatility weights are HRP's limit for independent assets. |
+| [X1. Composite regime-exit policy (`lots_to_liquidate`)](research/correction-strategies.md#x1-composite-regime-exit-policy-lots_to_liquidate) | §1 loss policy, N6 | `lots_to_liquidate` + `allow_signal_exit` is the only loss-realizing path. The catalog's open question on liquidation order (highest-cost first, all lots, or a fraction) is still open. |
+| [X3. Profit-only trailing exits](research/correction-strategies.md#x3-profit-only-trailing-exits) | V10 | Catalog rank 8. |
+| [MS4. Time-of-day-normalized volatility](research/correction-strategies.md#ms4-time-of-day-normalized-volatility) | V9 | V9 scales lot size by the intraday profile; using the profile for spacing belongs with C-G3. |
+| [E1. Regime-based leverage stepping (TQQQ → QQQ → T-bills)](research/correction-strategies.md#e1-regime-based-leverage-stepping-tqqq--qqq--t-bills) | N7, X2 | N7 steps TQQQ → QQQ; X2's no-calm-defensive fallback is cash at the T-bill yield. Catalog rank 11. |
+| [E3. Cross-asset ETF momentum and mean reversion](research/correction-strategies.md#e3-cross-asset-etf-momentum-and-mean-reversion) | X3 | Dual momentum over a small ETF universe. |
+
+One disagreement: the catalog rejects the VIX calculator with the
+options straddle (options pricing); this ledger built it as a
+data-only tool (Q15) and still trades no options.
+
+### Rejected in the catalog ([rejected list](research/correction-strategies.md#rejected-list))
+
+Items not already recorded above (the straddle, VIX calculator, crypto
+bots, Monte Carlo, Oil Money, Smart Farmers, Wisdom of Crowds, short
+legs and inverse/volatility/managed-futures ETFs are Q12, Q15, A7, Q11,
+Q6, Q14, Q16 and X6–X8).
+
+| ID | Item | Source | Status | Reason |
+|---|---|---|---|---|
+| C-RJ1 | Dealer gamma-imbalance signals | Baltussen et al. 2021, cited in M1 | ⛔ | Needs options positioning data; M1's RSI(5) proxy is kept instead. |
+| C-RJ2 | Funding-rate arbitrage; perpetual-futures scanners | ML4T crypto-perps case study; crypto entries in awesome-quant and awesome-ai-in-finance | ❌ | Crypto-specific mechanics (compare A7). |
+| C-RJ3 | Martingale / averaging-down sizing | binary-martingale in awesome-quant | ❌ | Ruin-prone sizing that works against the drawdown goal. |
+| C-RJ4 | 18 deep sequence forecasters and stacked ensembles | huseinzol05/Stock-Prediction-Models | ❌ | Daily, no costs, no trading evidence, unmaintained since Jan 2021 (compare A8). |
+| C-RJ5 | Ghost Trader | letianzj/QuantResearch | ❌ | Daily MA/RSI/new-high entry with a Donchian price stop; redundant with Q1/Q5 and V3, and stop-dependent. |
+| C-RJ6 | Index/ETF creation-redemption arbitrage | the research brief | ⛔ | Requires authorized-participant access. |
+| C-RJ7 | LLM agent frameworks (TradingAgents, FinRobot and similar) | curated lists | ❌ | Frameworks rather than algorithms; no verifiable trading results. |
+| C-RJ8 | Novelty strategies (tweet-driven trading, lottery prediction) | awesome-ai-in-finance | ❌ | No credible evidence. |
+
+### Leads from the catalog's [gap analysis](research/correction-strategies.md#gap-analysis) (not catalogued)
+
+Named as searches to run next; the catalog did not verify them.
+
+| Lead | Gap it addresses | Standing |
+|---|---|---|
+| HAR-type realized-volatility forecasting | Intraday regime detection | suggested search |
+| VIX term structure as a data-only regime input | Intraday regime detection | suggested search |
+| Drawdown-constrained investing and CPPI (e.g. Grossman & Zhou) | Drawdown-constrained sizing theory | suggested search |
+| Nasdaq-100 futures → ETF lead-lag as a data-only leading signal | ETF-specific intraday ideas | suggested search |
+| Online mean-reversion portfolios (OLMAR/PAMR, Marigold/universal-portfolios) | Mean-reverting ETF rotation sleeve | listed in awesome-quant, not opened |
+| MacroHFT (KDD'24), IMM (IJCAI'24), LLM crash detection (arXiv 2410.17266) | Regime-aware RL and market making | listed in ihobbang250/Awesome-AI-in-Finance, not opened |
+| Cartea, Jaimungal & Penalva; Guéant market-liquidity books | Grid trading on equities | listed in awesome-systematic-trading |
+| Intraday periodicity (Heston, Korajczyk & Sadka); overnight-vs-intraday returns | Intraday mean reversion in stress | suggested search |
+
+---
 ## 9. Engine and methodology findings
 
 Problems found while researching the algorithms above. Each affects how
