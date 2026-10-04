@@ -206,3 +206,27 @@ def test_search_direction_threaded_through_bayesian_construction():
 
     search = BayesianSearch([0.01], [0.005], [{"allocation_pct": 0.05}], direction="minimize")
     assert search._study.direction.name.lower() == "minimize"
+
+
+def test_signal_exit_and_settlement_reach_run_sweep():
+    """A config that sets allow_signal_exit or settlement_days must be
+    simulated with them -- to_run_sweep_kwargs once dropped both, so such
+    a config silently ran without them. The defaults stay off and 0."""
+    default = BacktestConfig.from_dict(FULL_DICT).to_run_sweep_kwargs(FixedPortfolioPercentage)
+    assert default["allow_signal_exit"] is False
+    assert default["settlement_days"] == 0
+
+    data = dict(FULL_DICT)
+    data["execution"] = {
+        **FULL_DICT.get("execution", {}),
+        "allow_signal_exit": True,
+        "settlement_days": 1,
+    }
+    config = BacktestConfig.from_dict(data)
+    config.validate()
+    kwargs = config.to_run_sweep_kwargs(FixedPortfolioPercentage)
+    assert kwargs["allow_signal_exit"] is True
+    assert kwargs["settlement_days"] == 1
+    row = OptimizationController(historical_data=_load_fixture()).run_sweep(**kwargs).iloc[0]
+    assert row["allow_signal_exit"] == True  # noqa: E712 -- the row echoes the setting
+    assert row["settlement_days"] == 1

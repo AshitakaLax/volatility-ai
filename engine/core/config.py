@@ -868,7 +868,15 @@ class BacktestConfig:
         strategy_class is an explicit argument since BacktestConfig only
         holds strategy_id (a string identifier). src/strategy_registry.py
         can now resolve one, but this signature stays explicit so a
-        caller can sweep a class the registry does not know about."""
+        caller can sweep a class the registry does not know about.
+
+        allow_signal_exit and settlement_days used to be dropped here, so
+        a config that set either was silently simulated without it (the
+        ledger's V5 caveat records the same gap in run_hf_sweep). Both
+        pass through now. Their defaults are unchanged -- off and 0 --
+        so a config that does not set them runs exactly as before, and
+        a signal exit still needs BOTH the strategy's lots_to_liquidate
+        and this flag (decision_cycle.collect_liquidations)."""
         return {
             "grid_steps": list(self.grid.steps),
             "profit_targets": list(self.grid.profit_targets),
@@ -880,6 +888,8 @@ class BacktestConfig:
             "fill_model": self.execution.fill_model,
             "intrabar_priority": self.execution.intrabar_priority,
             "enforce_no_loss": self.execution.enforce_no_loss,
+            "allow_signal_exit": self.execution.allow_signal_exit,
+            "settlement_days": self.execution.settlement_days,
             "cash_yield_pct": self.execution.cash_yield_pct,
             "intrabar_fill": self.execution.intrabar_fill,
             "symbol": self.backtest.symbol,
