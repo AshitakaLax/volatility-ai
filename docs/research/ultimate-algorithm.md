@@ -42,6 +42,7 @@ CAGR, max drawdown and calendar-year returns.
 | L13 | **Capitulation-close reversal is consistent but capacity-limited.** It cannot carry a book alone; it is what the book does *inside* a detected downturn, on top of the cash yield. | exp8: 94–100% of trades exit at target, 9–11 of 12 corrections positive, but 51–132 trades in ten years. |
 | L14 | **Never execute the regime exit at the flip session's open.** The flip follows a volatility spike, so that open is usually a panic gap that recovers intraday — the selling-side mirror of L11. Wait an hour, or sell at the close. | exp11: detection cost −8% to −10% → +1% to +3%; max DD 16.4% → 13.6%; Calmar 1.74 → 2.14. |
 | L15 | **Take the volatility regime from the MARKET, not from the traded instrument.** A sector leveraged ETF's own NATR is noisy with idiosyncratic shocks; the Nasdaq-100's regime transfers. | exp13 vs exp15, SOXL: own regime Calmar 0.43–0.67 (no better than the champion's 0.57); market regime 1.06–1.16. |
+| L16 | **It is a leveraged-ETF design.** Its payoff is sidestepping the catastrophic drawdowns of a leveraged fund; an unleveraged fund has no such drawdowns to sidestep, so gating it halves return and drawdown together. | exp17: Calmar on QQQ 0.72 → 1.13 but CAGR 10.4% → 4.5%; RSP/SPYD/COWZ roughly unchanged vs TQQQ 0.61 → 2.16. |
 | L10 | **Even sized properly, long-only intraday harvesting in turbulent regimes does not beat the downside drift.** The fewer lots the sleeve buys, the better it does in corrections. Target decay cannot help a lot that is under water — the no-loss guard (rightly) blocks it. | exp4: 48 sized QQQ harvest sleeves ($200–$500 lots, 30–100 cap, steps 0.2–0.4%, targets 0.4–1.5%, ± decay): alone, 1.5–4.0% CAGR, 0–4 of 12 corrections positive, mean −0.3% to −5.2%. |
 
 ## Architecture (current, evidence-backed)
@@ -140,6 +141,41 @@ parameter on a plateau except two limits — keep the bear window long
   No causal volatility regime avoids the first leg of a correction; from
   each QQQ peak to its trough the book still usually loses a little.
 
+## Deployment notes (not yet done)
+
+* **Warm-up.** The internal regime flags nothing until
+  max(250, 5 × natr_period, natr_lookback) sessions have completed, and
+  the strategy buys nothing while the regime is unknown. A fresh live
+  start would sit idle for about a year unless the loop replays history
+  through `record_tick` first, or a precomputed causal map is injected
+  (`regime_by_date`, refreshed after each close).
+* **Other instruments** need the market's regime (L15), which a
+  single-symbol strategy cannot compute from its own bars: inject it.
+* **The regime exit needs `execution.allow_signal_exit: true`**;
+  without it the strategy stops buying on the flip but holds its calm
+  lots.
+* **Not registered.** `UltimateSizing` takes `**params` for the
+  inherited grid parameters; the server's run form and
+  `analyze_annual` read explicit signatures (see
+  `gated_local_reference_sizing.py`), so registration needs an explicit
+  constructor signature and the server enum/test updates that come with
+  it.
+* **Cash yield** is the historical short rate in every result above;
+  without it Calmar falls from 2.16 to 2.05 (exp16).
+
+## Walk-forward selection check
+
+Choosing among the 155 deployable TQQQ variants using **2017–2021 only**
+selects the 1-year filter, exit +120 min, reversal −9% / +6% / 20%
+(in-sample Calmar 3.81). **On the unseen 2022–2026 data it returns 12.8%
+CAGR with a 4.3% max DD — Calmar 2.95, 11th of 155.** In-sample and
+out-of-sample Calmar rank-correlate at 0.34. In 2017–2021 the bear filter
+costs nothing (median Calmar 2.67 filtered vs 2.68 unfiltered), which is
+why an honest 2021 selection keeps it; out of sample it is decisive
+(2.02 vs 0.66). This checks parameter *selection*, not design
+*discovery*: the bear-filter and delayed-exit ideas came from studying
+the full period.
+
 ## Validation (exp10 finalists)
 
 * **Every era profitable, every era's drawdown shallow** (best book):
@@ -179,6 +215,8 @@ parameter on a plateau except two limits — keep the bear window long
 | 5 | Bear filter on calm re-entry (drawdown-from-high or SMA, ANDed with NATR calm; 15 filters). | **The first lever that changes downturns.** Cash book: no filter 29.0% / 22.3% DD / Calmar 1.30 / 2022 −10.8%; within 15% of the 20-session high 28.9% / 16.5% / **1.75** / −1.4%; within 50% of the 1-year high 28.1% / 16.5% / 1.70 / −2.0% (Sharpe 1.55; calm regime exits net **+$37k** vs −$109k); above the 200-day SMA 27.0% / 16.5% / 1.63 / **+0.9%**. Stepdown books do not improve: the wider "not calm" set lets the champion-shaped QQQ sleeve accumulate through bear-market calm stretches — the turbulent side must be cash or selective entries. |
 | 6 | Calm-sleeve shape: target 3–30% × step 0.075%/0.2% × lot cap 2,000/6,000 (24 shapes). | **Keep the champion's shape.** Smaller targets hold less inventory at peaks and soften correction windows (3%: mean −1.5% vs −3.6%, worst −9.0% vs −11.0%) but cut CAGR from 29% to 9–15%; no shape beats the +30% target's Calmar in the cash book. |
 | 7 | Capitulation-only turbulent sleeve (W-bottom entries) and gated harvest (noise / VWAP / throttle). | **First sleeve positive on average in corrections:** the bounded harvest shape ($200 lots, 100 cap, 0.8% target) behind the W-bottom gate ends 7/12 corrections positive alone, mean +0.18% — but trades rarely (1,854 buys) so it barely moves the book. W-bottom with the champion's large targets is worse (holds too long); noise / VWAP / throttle gates do not help. Capitulation entries + quick targets is the right shape; scale is the open question. |
+| 18 | Intraday refinements on the recommended configuration: calm-mode gates N2 / N3 / X1 / N4, exit minute 90 / 120 / 150, reversal window 5 / 20 / 30 (12 runs). | **Converged.** Gates are neutral inside the design (N2 2.17, X1 2.16, N3 2.08, N4 never fires) — the regime and bear filter already do their job (L3). Exit minute is a plateau 60–385 (Calmar 2.11–2.36), best at +120 (2.36, 12.7% DD). Reversal window 5–30 min: no meaningful change. |
+| 17 | Generality across UNLEVERAGED funds (QQQ, RSP, SPYD, COWZ): each fund's own champion grid, market regime + 1-year filter, exit +60, cash or −3% / +2% reversal (12 runs). | **A leveraged-ETF design.** Regime gating roughly halves both return and drawdown on unleveraged funds — QQQ 10.4% / 14.4% DD → 4.5% / 4.0% (Calmar 0.72 → 1.13); RSP 0.47 → 0.43; SPYD 0.18 → 0.36; COWZ 0.36 → 0.42 — while every detected downturn stays positive in cash mode. A −3% reversal is too loose for them (SPYD worst spell −13.9%). |
 | 16 | **Stress test of the recommended configuration**, one change at a time (32 runs). | **Robust.** Internal bar-by-bar regime reproduces exp14's injected map exactly (29.69 / 13.7 / 2.16). Slippage ×2 / ×4 / ×10: Calmar 2.08 / 1.90 / 1.81. Level fills 2.05; close-only fills 1.96. No cash yield 2.05. Plateaus: bear depth 0.35–0.7 (2.03–2.19), exit minute 60–385 (2.11–2.36; +120 best at 12.7% DD), reversal target, lot 10–25%, threshold −8% to −12%. **Sensitive:** bear window must be long (125 sessions → 1.22, 2022 −14%) and the threshold no looser than −8% (−7% → 1.57). Without the bear filter 1.53; cash mode 1.93. |
 | 15 | SOXL with the MARKET's regime (computed from TQQQ, injected) instead of its own; exit at the open or +60; reversal −9% or −12% (scaled for SOXL); cash (12 runs). | **The design transfers when the regime is the market's.** SOXL: 28–31% CAGR, 26–27% max DD, **Calmar 1.06–1.16** (champion 0.57; own-regime Ultimate 0.43–0.67). 1-year filter: 2022 −14.5% → −3%. −12% reversal: 41/42 downturns positive, worst −0.1%. |
 | 14 | **The deployable `UltimateSizing` with every lesson:** bear filter × delayed regime exit (+60 min, close) × cash or TQQQ reversal (30 runs). | **20-session filter, exit +60, reversal ≤ −9% / +6% / 20%: 30.3% CAGR, 13.7% max DD, Calmar 2.21**, Sharpe 1.60, 2022 −1.3%, 46/47 downturns positive. **1-year filter, exit +60: 29.7% / 13.7% / 2.16, Sharpe 1.66, 2022 −1.5% with a 3.5% intra-year max DD, 42/42 downturns positive.** Champion always-in (same fill model): 25.7% / 42.2% / 0.61. |
