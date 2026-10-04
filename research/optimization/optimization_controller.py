@@ -228,6 +228,20 @@ def _validate_intrabar_fill(intrabar_fill: str) -> None:
         )
 
 
+def _validate_warm_up(warm_up_daily: pd.DataFrame | None, data: pd.DataFrame) -> None:
+    """See run_sweep's warm_up_daily. History that reaches past the data's
+    first session would be observed out of order -- a later session
+    replayed before an earlier one -- which corrupts the state silently."""
+    if warm_up_daily is None or warm_up_daily.empty or data.empty:
+        return
+    last, first = warm_up_daily.index.max().date(), data.index[0].date()
+    if last > first:
+        raise ConfigurationError(
+            f"warm_up_daily runs to {last}, past the data's first session {first}: it may "
+            "hold only the sessions before the run"
+        )
+
+
 def _strategy_name(strategy_class) -> str:
     """Human-readable name for whatever run_sweep was handed.
 
@@ -258,6 +272,7 @@ def _run_one_combination(
     settlement_days: int = 0,
     cash_yield_pct: float | None = 0.0,
     intrabar_fill: str = "level",
+    warm_up_daily: pd.DataFrame | None = None,
 ):
     """
     Task 4.5. Module-level (not a method) so it, and everything passed
@@ -331,6 +346,17 @@ def _run_one_combination(
                 f"different instrument's bars. Pick the sizing model that matches the fund "
                 f"being simulated (e.g. ml_reachability_cowz for COWZ)."
             )
+        # A strategy whose state needs more history than the run window
+        # holds (UltimateSizing's volatility regime: ~250 sessions) is
+        # handed the sessions before the window. Duck-typed like
+        # target_return and ticker above, so this module never imports a
+        # strategy type. Recorded in the row because a warmed run is a
+        # different simulation from a cold one: split_row hashes a key it
+        # does not know as a parameter, which keeps the two apart.
+        warmed = {}
+        warm_up = getattr(sizing_engine, "warm_up", None)
+        if warm_up_daily is not None and callable(warm_up):
+            warmed["warm_up_sessions"] = warm_up(warm_up_daily)
         result = controller._simulate_single(
             step=step,
             target=target,
@@ -380,6 +406,7 @@ def _run_one_combination(
             "Profit Target": target,
             **identity,
             **params,
+            **warmed,
             **execution_flags,
             **result.metrics,
         }
@@ -1454,6 +1481,7 @@ class OptimizationController:
         search_seed: int | None = None,
         search_direction: str = "maximize",
         result_sink=None,
+        warm_up_daily: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
@@ -1550,6 +1578,15 @@ class OptimizationController:
             access and does not need its own locking. A sink is
             contractually forbidden from raising and from retaining the
             SimulationResult it is handed.
+        :param warm_up_daily: Optional session OHLC (natr_regime.daily_bars'
+            shape) for the sessions BEFORE this controller's data. Every
+            combination's strategy that defines warm_up(daily) is handed it
+            before the first bar, so a strategy with long-memory state
+            starts the window as if it had watched that history rather than
+            spending the window's first year blind; its row gains
+            warm_up_sessions. The last row may be the first session's own
+            earlier bars; anything later is refused. None (default) calls
+            nothing -- exactly today's behavior.
         """
         # Task 4.9: validate everything up front, before building
         # combinations or running anything -- a bad config fails
@@ -1572,6 +1609,7 @@ class OptimizationController:
         # for callers that reach it directly.
         _validate_fill_model(fill_model, intrabar_priority)
         _validate_intrabar_fill(intrabar_fill)
+        _validate_warm_up(warm_up_daily, self.data)
         cost_model = cost_model if cost_model is not None else ZeroCostModel()
         risk_manager = risk_manager if risk_manager is not None else RiskManager()
         results = []
@@ -1651,6 +1689,7 @@ class OptimizationController:
                     settlement_days,
                     cash_yield_pct,
                     intrabar_fill,
+                    warm_up_daily,
                 )
                 elapsed_ms = int((time.perf_counter() - started_at) * 1000)
                 resolved_search_strategy.report(suggestion, sim_result)
@@ -1705,6 +1744,7 @@ class OptimizationController:
                             settlement_days,
                             cash_yield_pct,
                             intrabar_fill,
+                            warm_up_daily,
                         ): s
                         for s in batch
                     }

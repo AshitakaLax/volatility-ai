@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Field, Input, Select } from "@/components/ui/primitives";
 import { buildGridSteps } from "@/lib/gridSteps";
 import { isRunning } from "@/lib/runQueue";
-import { GENERIC_TRIGGER, initialTriggerMethod } from "@/lib/gridTrigger";
+import { GENERIC_TRIGGER, initialTriggerMethod, usesWindow } from "@/lib/gridTrigger";
 import { DEFAULT_SEARCH_METHOD_STATE, searchMethodErrors, type SearchMethodState } from "@/lib/searchMethod";
 import { DEFAULT_SWEEP_FIELD_STATE, type SweepFieldState } from "@/lib/sweepStrategies";
 import {
@@ -478,7 +478,7 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
     if (windowParam) {
       setParam(
         windowParam,
-        next === "local_reference"
+        usesWindow(next)
           ? (paramValues[windowParam] ?? "").trim() || String(trigger.window?.seed ?? "")
           : "",
       );
@@ -500,7 +500,7 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
   const renderedFields = new Set(
     [...primary, ...(showAdvanced ? advanced : [])].map((spec) => spec.name),
   );
-  if (method === "local_reference" && windowParam) renderedFields.add(windowParam);
+  if (usesWindow(method) && windowParam) renderedFields.add(windowParam);
   const bannerErrors = (validation?.errors ?? []).filter(
     (entry) => entry.field === undefined || !renderedFields.has(entry.field),
   );
@@ -745,7 +745,7 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
             blanks.length > 0 ||
             (validation?.errors.length ?? 0) > 0 ||
             sweepErrors.length > 0 ||
-            (method === "local_reference" &&
+            (usesWindow(method) &&
               windowParam !== null &&
               ((paramValues[windowParam] ?? "").trim() === "" ||
                 Number(paramValues[windowParam]) <= 0))

@@ -1,0 +1,80 @@
+# THE ULTIMATE ALGORITHM, recommended configuration, on TQQQ
+# (docs/research/ultimate-algorithm.md -- read its caveats before using this
+# for anything but a backtest).
+#
+# A pinned single-point config, not a search space and not a deployment:
+# there is no `live:` section.
+#
+#   CALM       (NATR(10) below its 100-session median at the previous
+#              close, held at least 5 sessions, and within 50% of the
+#              250-session high close): the champion grid of
+#              config/best_known_2026-08-24.yaml, unchanged.
+#   TURBULENT  no grid. One event lot (20% of starting capital, +6%
+#              target, at most 4 open) in the last 10 minutes of any
+#              session down 9% or more on the previous close.
+#   THE FLIP   calm-mode lots are sold an hour into the first turbulent
+#              session -- the one sale that may realise a loss, which is
+#              why execution.allow_signal_exit is on.
+#
+# Research-lab result (intrabar causal fills, 2016-12 to 2026-08, scored
+# from the regime's first session; the first ~250 sessions of any run are
+# its warm-up and buy nothing):
+#
+#                          CAGR    max DD   Calmar   2022
+#   this configuration     29.7%   13.7%    2.16     -1.5%
+#   champion, always in    25.7%   42.2%    0.61
+#
+# Sharpe 1.66; every one of 42 turbulent spells finished positive. Robust
+# to 10x slippage (Calmar 1.81) and to level or close-only fills. Sensitive
+# to two things: bear_window must stay long (125 -> Calmar 1.22) and
+# reversal_threshold no looser than -0.08.
+#
+# NOT STATISTICALLY PROVEN. Deflated Sharpe 0.63-0.75 (not significant),
+# PBO 0.54-0.76 within the design families, and it was designed on this
+# one instrument. The one out-of-sample check -- choosing on 2017-21,
+# scoring 2022-26 -- held (12.8% CAGR, 4.3% max DD, Calmar 2.95), but that
+# winner ranked 11th of 155 in its own test.
+#
+# Pinned to server/backtest.py's STRATEGY_DEFAULTS["ultimate"] by
+# research/tests/test_ultimate_sizing.py.
+strategy:
+  strategy_id: ultimate
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: 0.0002
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    natr_period: 10
+    natr_lookback: 100
+    regime_min_hold: 5
+    bear_dd: 0.5
+    bear_window: 250
+    turbulent_mode: reversal
+    reversal_threshold: -0.09
+    reversal_target: 0.06
+    reversal_lot_pct: 0.2
+    reversal_max_lots: 4
+    liquidate_minute: 60
+grid:
+  steps: [0.00075]
+  profit_targets: [0.3]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: Total Return %, direction: maximize, seed: 42}
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  intrabar_fill: causal
+  enforce_no_loss: true
+  allow_signal_exit: true
+output: {return_full_results: false}
