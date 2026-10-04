@@ -271,15 +271,13 @@ class HarvestSleeveSizing(RegimeSleeveSizing):
         # the same session (or the session's last bar, if it ends sooner).
         self._liq_now = False
         if self._flipped_out:
-            self._liq_pending = True
+            self._liq_pending = context.timestamp.toordinal()
         minute = context.time_of_day_flag
-        if (
-            self._liq_pending
-            and minute >= 0
-            and (minute >= self.liquidate_minute or minute == SESSION_MINUTES - 1)
-        ):
-            self._liq_now = True
-            self._liq_pending = False
+        if self._liq_pending is not False and minute >= 0:
+            carried = context.timestamp.toordinal() != self._liq_pending
+            if carried or minute >= self.liquidate_minute or minute == SESSION_MINUTES - 1:
+                self._liq_now = True
+                self._liq_pending = False
         if self._volstep is not None:
             self._step_prev = self._step_now
             self._volstep.observe(context.close)

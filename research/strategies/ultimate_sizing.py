@@ -26,8 +26,9 @@ how the research lab reproduces it.
 --------------------------------------------------------------------
 EXITS AND THE ONE LOSS PATH
 
-Every lot exits at its target through the no-loss guard, except on the
-first bar of the first session of a TURBULENT spell: there,
+Every lot exits at its target through the no-loss guard, except at
+`liquidate_minute` of the first session of a TURBULENT spell (default 0,
+the session's first bar; exp11 found later is better): there,
 lots_to_liquidate returns every CALM-mode lot (the step-down's regime
 exit, L6) -- the only sale that may be below cost, and only with
 execution.allow_signal_exit. Reversal lots are kept through the flip back
@@ -81,9 +82,17 @@ class UltimateSizing(GatedLocalReferenceSizing):
         reversal_target: float = 0.03,
         reversal_max_lots: int = 3,
         liquidate_reversal_on_calm: bool = False,
+        liquidate_minute: int = 0,
         **params,
     ) -> None:
         super().__init__(**params)
+        if not 0 <= liquidate_minute < 390:
+            raise ConfigurationError(
+                f"liquidate_minute must be in [0, 390), got {liquidate_minute}"
+            )
+        self.liquidate_minute = int(liquidate_minute)
+        self._liq_pending_day: int | None = None
+        self._liq_now = False
         if turbulent_mode not in ("reversal", "cash"):
             raise ConfigurationError(
                 f"turbulent_mode must be 'reversal' or 'cash', got {turbulent_mode!r}"
@@ -161,6 +170,18 @@ class UltimateSizing(GatedLocalReferenceSizing):
                 if new_mode == CALM and self.mode != CALM:
                     self._fresh = True
                 self.mode = new_mode
+        # The regime exit fires at liquidate_minute of the flip session (exp11:
+        # the flip session usually opens in a panic gap and recovers, so
+        # selling at the open sells the low). A pending exit from a session
+        # that ended early (a half day) fires at the next session's first bar.
+        self._liq_now = False
+        if self._flip_to_turbulent:
+            self._liq_pending_day = context.timestamp.toordinal()
+        if self._liq_pending_day is not None and minute >= 0:
+            carried = context.timestamp.toordinal() != self._liq_pending_day
+            if carried or minute >= self.liquidate_minute or minute == 389:
+                self._liq_now = True
+                self._liq_pending_day = None
         self._reversal.observe(
             context, self._new_lot and self.mode == TURBULENT, self._trigger_from_prior_bars
         )
@@ -234,7 +255,7 @@ class UltimateSizing(GatedLocalReferenceSizing):
         self._reversal_ids &= keep
 
     def lots_to_liquidate(self, open_lots, context: MarketContext) -> list:
-        if self._flip_to_turbulent:
+        if self._liq_now:
             return [lot for lot in open_lots if lot.order_id not in self._reversal_ids]
         if self._flip_to_calm and self.liquidate_reversal_on_calm:
             return [lot for lot in open_lots if lot.order_id in self._reversal_ids]

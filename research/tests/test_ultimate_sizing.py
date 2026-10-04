@@ -138,3 +138,23 @@ def test_cash_mode_buys_nothing_while_turbulent():
 def test_bad_parameters(bad):
     with pytest.raises(ConfigurationError):
         UltimateSizing(**HF, **bad)
+
+
+def test_delayed_regime_exit_fires_at_the_chosen_minute_of_the_flip_session():
+    df = _sessions(300)
+    reg = debounce(calm_by_date(daily_bars(df), period=5, lookback=20, lag=1), 3)
+    _, full = _run(
+        df,
+        UltimateSizing,
+        {"regime_by_date": reg, "turbulent_mode": "cash", "liquidate_minute": 381},
+        full=True,
+    )
+    blot = full[0].trade_blotter
+    sig = blot[(blot["side"] == "sell") & blot["sell_reason"].str.lower().str.contains("signal")]
+    assert len(sig) > 0
+    minute = sig["timestamp"].dt.hour * 60 + sig["timestamp"].dt.minute - (14 * 60 + 30)
+    assert (minute == 381).all()  # this fixture's sessions have bars at 0-9 and 380-389
+    flip_days = {
+        d for d, prev in zip(sorted(reg)[1:], sorted(reg), strict=False) if reg[prev] and not reg[d]
+    }
+    assert set(sig["timestamp"].dt.date) <= flip_days

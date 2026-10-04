@@ -40,6 +40,7 @@ CAGR, max drawdown and calendar-year returns.
 | L11 | **The downturn edge that survives long-only is CAPITULATION reversal at the close.** After a turbulent session down hard, the next days bounce often enough that a limit sell slightly above a close-entry fills with high probability. | Offline, daily bars, causal regime: QQQ after a ≤ −2% turbulent session, +1% limit fills next day 59%, within 5 days 84%, within 20 days 95% (+0.5%: 82 / 93 / 98%); TQQQ after ≤ −6%, +3%: 58 / 81 / 92%. Worst-decile 5-day adverse excursion −8% (QQQ), −23% (TQQQ). Next-day mean close-to-close +0.45% (QQQ) / +1.26% (TQQQ) — the short-term reversal premium of C-MR1, strongest when volatility is high. Engine test: exp8. |
 | L12 | **Filter calm RE-ENTRY with a bear-market condition** (price near its recent high, or above its long average). It removes the low-volatility stretches inside bear markets that L8 identified, without delaying the first exit. | exp5: Calmar 1.30 → 1.63–1.75, max DD 22.3% → 16.5%, 2022 −10.8% → −1.4% to +0.9%, CAGR −0.2 to −2.1pp. |
 | L13 | **Capitulation-close reversal is consistent but capacity-limited.** It cannot carry a book alone; it is what the book does *inside* a detected downturn, on top of the cash yield. | exp8: 94–100% of trades exit at target, 9–11 of 12 corrections positive, but 51–132 trades in ten years. |
+| L14 | **Never execute the regime exit at the flip session's open.** The flip follows a volatility spike, so that open is usually a panic gap that recovers intraday — the selling-side mirror of L11. Wait an hour, or sell at the close. | exp11: detection cost −8% to −10% → +1% to +3%; max DD 16.4% → 13.6%; Calmar 1.74 → 2.14. |
 | L10 | **Even sized properly, long-only intraday harvesting in turbulent regimes does not beat the downside drift.** The fewer lots the sleeve buys, the better it does in corrections. Target decay cannot help a lot that is under water — the no-loss guard (rightly) blocks it. | exp4: 48 sized QQQ harvest sleeves ($200–$500 lots, 30–100 cap, steps 0.2–0.4%, targets 0.4–1.5%, ± decay): alone, 1.5–4.0% CAGR, 0–4 of 12 corrections positive, mean −0.3% to −5.2%. |
 
 ## Architecture (current, evidence-backed)
@@ -90,6 +91,74 @@ close-reversal entry mode (buy only in the last minutes of a session down
 past a threshold, one lot per session, decided causally); all off by
 default, where it reproduces RegimeSleeveSizing exactly (tested).
 
+## Recommended configuration (deployable, one strategy on TQQQ)
+
+`research/strategies/ultimate_sizing.UltimateSizing`, chosen for
+robustness over the top cell (PBO, below):
+
+| Layer | Setting |
+|---|---|
+| Calm grid | the champion: `config/best_known_2026-08-24.yaml` (step 0.075%, target +30%, $ lots of 0.02% of capital) |
+| Regime | NATR(10) vs its 100-session median, lag 1, `regime_min_hold=5` |
+| Bear filter | `bear_dd=0.5, bear_window=250` (calm only within 50% of the 1-year high) |
+| Regime exit | `liquidate_minute=60` (an hour into the flip session) |
+| Turbulent | `turbulent_mode="reversal"`, `reversal_threshold=-0.09`, `reversal_target=0.06`, `reversal_lot_pct=0.2`, `reversal_max_lots=4`, last 10 minutes |
+
+Measured (engine, intrabar causal fills, historical cash yield,
+2016-12 → 2026-08): **29.7% CAGR, 13.7% max DD, Calmar 2.16, Sharpe
+1.66; every detected downturn positive (42/42).** By calendar year
+(return / intra-year max DD): 2017 +43.0 / 13.7 · 2018 **+32.7** / 13.7
+(TQQQ −19.6) · 2019 +93.2 / 8.3 · 2020 +65.3 / 13.1 · 2021 +16.4 / 9.1 ·
+2022 **−1.5 / 3.5** (TQQQ −79) · 2023 +25.5 / 3.1 · 2024 +15.8 / 3.7 ·
+2025 +16.6 / 3.7 · 2026 YTD +4.1 / 3.3.
+
+**Caveats, stated plainly:**
+
+* The deflated Sharpe ratio is 0.63–0.70 over 556 trials: the Sharpe
+  *uplift* is not significant at 95%. The robust gains are drawdown
+  (42% → 14%) and downturn behaviour.
+* PBO 0.76 within the 30-variant deployable family: the top variant is
+  not distinguishable from its siblings; every bear-filtered,
+  delayed-exit variant sits at Calmar 1.9–2.2.
+* The bear filter was found by studying 2022 and most of its benefit is
+  in that one episode. The rule form is a standard one (drawdown from the
+  high / long moving average), but on this data it rests on one bear
+  market. The delayed exit (all 47 flips) and the reversal sleeve (~55
+  trades, ~95% hit rate) are broad-based.
+* It does not transfer cleanly to SOXL (exp13): the edges are tuned to
+  Nasdaq-100 dynamics.
+* "Consistent gains in a downturn" means inside a *detected* downturn.
+  No causal volatility regime avoids the first leg of a correction; from
+  each QQQ peak to its trough the book still usually loses a little.
+
+## Validation (exp10 finalists)
+
+* **Every era profitable, every era's drawdown shallow** (best book):
+  2017–19 50.6% CAGR / 15.5% max DD; 2020–21 37.2% / 14.1%; 2022–23
+  15.7% / 12.9%; 2024–26 14.5% / 4.0%. The 1-year-filter variant made
+  12.2% through 2022–23 with a 3.8% max DD.
+* **Design class, year by year** (return / intra-year max DD):
+
+  | Year | Champion always-in | NATR regime, cash | Full design (E) | E, 1-yr filter |
+  |---|---|---|---|---|
+  | 2018 | −0.3 / 38.0 | +26.7 / 13.6 | **+30.8** / 15.5 | +30.8 / 15.5 |
+  | 2020 | +52.5 / 42.2 | +64.6 / 14.0 | +61.4 / 14.1 | +61.4 / 14.1 |
+  | 2022 | −25.0 / 26.2 | −10.8 / 22.2 | **−1.0** / 12.8 | −1.9 / **3.8** |
+  | 2023 | +20.8 / 6.2 | **+51.3** / 10.8 | +34.9 / 9.3 | +28.1 / 3.4 |
+
+  E has the best return/drawdown in 4 of 10 years; the always-in
+  champion wins only the pure bull years (2017, 2021). The cost of the
+  bear filter is a later re-entry into recoveries (2023).
+* **Deflated Sharpe ratio 0.69–0.75 over 424 trials** — the Sharpe
+  *uplift* over simpler books (1.46 → 1.56–1.63) is not significant at
+  95% once every trial is counted. The design's measured value is in
+  drawdown and downturn behaviour, not Sharpe.
+* **Probability of backtest overfitting 0.54 within the 72-book family**
+  — picking one variant over its near-identical siblings is noise. Every
+  bear-filtered variant sits at Calmar 1.75–1.91: the *design* matters,
+  the exact parameters do not, so the recommended configuration should be
+  chosen for simplicity and robustness, not for the top cell.
+
 ## Experiment log
 
 | Exp | Question | Result |
@@ -101,5 +170,10 @@ default, where it reproduces RegimeSleeveSizing exactly (tested).
 | 5 | Bear filter on calm re-entry (drawdown-from-high or SMA, ANDed with NATR calm; 15 filters). | **The first lever that changes downturns.** Cash book: no filter 29.0% / 22.3% DD / Calmar 1.30 / 2022 −10.8%; within 15% of the 20-session high 28.9% / 16.5% / **1.75** / −1.4%; within 50% of the 1-year high 28.1% / 16.5% / 1.70 / −2.0% (Sharpe 1.55; calm regime exits net **+$37k** vs −$109k); above the 200-day SMA 27.0% / 16.5% / 1.63 / **+0.9%**. Stepdown books do not improve: the wider "not calm" set lets the champion-shaped QQQ sleeve accumulate through bear-market calm stretches — the turbulent side must be cash or selective entries. |
 | 6 | Calm-sleeve shape: target 3–30% × step 0.075%/0.2% × lot cap 2,000/6,000 (24 shapes). | **Keep the champion's shape.** Smaller targets hold less inventory at peaks and soften correction windows (3%: mean −1.5% vs −3.6%, worst −9.0% vs −11.0%) but cut CAGR from 29% to 9–15%; no shape beats the +30% target's Calmar in the cash book. |
 | 7 | Capitulation-only turbulent sleeve (W-bottom entries) and gated harvest (noise / VWAP / throttle). | **First sleeve positive on average in corrections:** the bounded harvest shape ($200 lots, 100 cap, 0.8% target) behind the W-bottom gate ends 7/12 corrections positive alone, mean +0.18% — but trades rarely (1,854 buys) so it barely moves the book. W-bottom with the champion's large targets is worse (holds too long); noise / VWAP / throttle gates do not help. Capitulation entries + quick targets is the right shape; scale is the open question. |
+| 14 | **The deployable `UltimateSizing` with every lesson:** bear filter × delayed regime exit (+60 min, close) × cash or TQQQ reversal (30 runs). | **20-session filter, exit +60, reversal ≤ −9% / +6% / 20%: 30.3% CAGR, 13.7% max DD, Calmar 2.21**, Sharpe 1.60, 2022 −1.3%, 46/47 downturns positive. **1-year filter, exit +60: 29.7% / 13.7% / 2.16, Sharpe 1.66, 2022 −1.5% with a 3.5% intra-year max DD, 42/42 downturns positive.** Champion always-in (same fill model): 25.7% / 42.2% / 0.61. |
+| 13 | **Out-of-sample instrument:** the design, untouched, on SOXL (never used in design work) with SOXL's own champion grid and the regime computed from SOXL's own bars (9 runs). | **Transfers only weakly.** SOXL always-in champion (causal fills) 17.7% / 31.1% DD / Calmar 0.57; best Ultimate variant (1-year filter + reversal) 26.1% / 38.8% / 0.67 — more return, *deeper* drawdown. Cash-mode variants stay positive in all 66 detected downturns; the −9% reversal threshold is not extreme for SOXL (8–10 of 66 spells lose, up to −14%). The edges are tuned to Nasdaq-100 dynamics; SOXL's own NATR is noisier. |
+| 12 | The deployable `UltimateSizing` (one strategy, TQQQ) with the bear filters × TQQQ reversal settings, regime exit still at the open (52 runs). | 20-session filter + reversal ≤ −9% / +6% / 20% lots: **29.9% CAGR, 16.5% max DD, Calmar 1.81, 2022 −0.7%**, 46/47 downturns positive. With the 1-year or stacked filter every detected downturn is positive (42/42, 41/41; worst 0.00%). |
+| 11 | The detection cost: liquidate the calm sleeve at the open / +30 / +60 / midday / close of the flip session, all lots or the highest-cost 75 / 50 / 25%, under the reference and the 1-year-filter regimes, with the QQQ reversal sleeve (40 books). | **Selling later turns the detection cost positive.** 1-year filter: at the open 28.4% / 16.4% DD / Calmar 1.74 / detection −8.3%; at +60 min 29.0% / 13.6% / 2.13 / +2.1%; at the close **29.2% / 13.6% / 2.14 / +3.0%**, Sharpe 1.65, 42/42 detected downturns positive. Reference regime: Calmar 1.36 → 1.50 at +30 min, detection −10.0% → +0.7%. **Partial exits are worse** (75%: DD 18%; 25%: DD 42%) — sell everything, just not at the open. |
+| 10 | The combined design: 4 bear-filtered regimes × the champion calm sleeve × capitulation sleeves in turbulence (QQQ/TQQQ close-reversal, W-bottom harvest at 5–10× size), alone and stacked (72 books). | **Best so far: 29.6% CAGR, 15.5% max DD, Calmar 1.91, Sharpe 1.56, 2022 −1.0%** (filter: within 15% of the 20-session high; TQQQ reversal ≤ −5% / +3% / 10% lots + QQQ W-bottom harvest 2% lots / +1.5%). In-spell: 46/47 detected downturns positive, worst −0.8%. The 1-year-filter variant: Sharpe 1.63, 2022 −1.9% with a 3.8% intra-year max DD. Validation below. |
 | 9 | The deployable single-instrument `UltimateSizing` on TQQQ (calm: champion grid; turbulent: TQQQ close-reversal), one engine run with shared cash; 36 reversal settings + cash mode; internal regime vs injected map. | **Calmar 1.30 → 1.50 as one strategy:** session ≤ −9%, +6% target, 20% lots, cap 4: 30.0% CAGR, 20.0% max DD, 2022 −7.3% (cash mode: 29.0% / 22.3% / −10.8%). **The strategy's own bar-by-bar regime reproduces the injected-map run exactly** (identical CAGR, DD, every year). |
 | 8 | Close-reversal turbulent sleeve (`reversal_gate="close"`): one event lot per qualifying session, profit-only exits. 90 variants, QQQ and TQQQ. | **The first component consistently positive in downturns.** QQQ, session ≤ −3%, +0.5% target: 57 trades, all 57 exited at target; alone 10/12 corrections positive, worst −0.9%, 2022 +1.4%. +2% target: 48/51 at target, 11/12 positive, 2022 +2.1%. TQQQ ≤ −9%: 9/12. **Capacity-limited** (5–13 events a year): +0.1–0.3pp on the book. |
