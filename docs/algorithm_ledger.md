@@ -9,7 +9,8 @@ idea being re-researched.
 
 *Compiled 2026-10-02. Covers patches 0001–0006 on top of `7961b1b`. Section 8A (2026-10-03) adds the
 records of `docs/research/correction-strategies.md`; 🧪 entries there
-were built the same day (uncommitted).*
+were built the same day. Section 8B (2026-10-03) adds `research/catalog/`,
+code for every remaining entry, in-scope or not.*
 
 ---
 
@@ -35,6 +36,9 @@ were built the same day (uncommitted).*
 | ⏳ | Candidate — fits the constraints, not implemented |
 | ⛔ | Out of scope under the constraints above |
 | ❌ | Rejected on evidence or mechanism |
+
+The marks describe fit with the platform. Since section 8B, ⛔ and ❌
+entries also have reference code in `research/catalog/`, unwired.
 
 ### Two measurement caveats that apply to many entries
 
@@ -1055,6 +1059,72 @@ Named as searches to run next; the catalog did not verify them.
 | MacroHFT (KDD'24), IMM (IJCAI'24), LLM crash detection (arXiv 2410.17266) | Regime-aware RL and market making | listed in ihobbang250/Awesome-AI-in-Finance, not opened |
 | Cartea, Jaimungal & Penalva; Guéant market-liquidity books | Grid trading on equities | listed in awesome-systematic-trading |
 | Intraday periodicity (Heston, Korajczyk & Sadka); overnight-vs-intraday returns | Intraday mean reversion in stress | suggested search |
+
+---
+## 8B. The algorithm database (`research/catalog/`)
+
+Every entry above now has code (or a recorded reason for none), including
+the ⛔ and ❌ ones: `research/catalog/` holds the algorithms as their
+sources define them, shorts, stops, options and all. Nothing there is
+wired into the engine, the engine host or a harness, and nothing trades;
+the status marks in this ledger still describe **platform fit**, not
+whether code exists. Code that fits the platform stays where it was
+(`research/strategies/`, `research/ml/`, `research/optimization/`).
+
+`research/catalog/registry.py` maps every ledger ID to its
+implementations; `research/tests/test_catalog_registry.py` fails if a
+ledger ID is missing or duplicated, if a reference does not import, or if
+an entry has neither code nor a note. Tests are pinned to the sources:
+values printed in the source notebooks, the sources' own unit tests
+(czsc), textbook closed forms, brute force, or finite-difference gradient
+checks for every hand-written backward pass.
+
+| Module | Ledger entries | Sources transcribed |
+|---|---|---|
+| `je_suis_tm` | Q1–Q5, Q7–Q10, Q17 (as trades), Q2 | the quant-trading scripts |
+| `je_suis_tm_projects` | Q6, Q11, Q13, Q14, Q16 | Oil Money, Monte Carlo, Smart Farmers, Wisdom of Crowds notebooks; graph-theory portfolio notebook |
+| `options` | Q12, S1, C-RJ1 | Options Straddle script; ThetaGang `thetagang.toml`; Black-Scholes; GEX |
+| `trend_following` | S2, C-G5 (with stops), X7, C-RJ5, C-M2 | PyTrendFollow rules/utility; letianzj `turtle.py`, `ghost_trader.py`; Faith's Turtle rules; Moskowitz-Ooi-Pedersen; Zarattini & Aziz |
+| `czsc` | S5 | waditu/czsc Rust core (`analyze/utils.rs`, `mod.rs`, `bi.rs`, `zs.rs`) and its tests |
+| `crypto` | A7, C-RJ2 | blackbird `check_entry_exit.cpp`/`result.cpp`; maxme/bitcoin-arbitrage `arbitrer.py`; Bellman-Ford arbitrage |
+| `rl_agents` | A1, RL1/RL2, RL6, A2 (threshold) | huseinzol05 agents 5, 6, 7; FinRL `env_stocktrading.py`, `models.py`; GAE, PPO, TD3, SAC, DDPG rules |
+| `rl_papers` | C-RL5, C-RL4, A4/RL3 | Moody & Saffell 2001; Huang 2018; Jiang, Xu & Liang 2017 (EIIE) |
+| `forecasting` | C-RJ4, A8 | huseinzol05 `1.lstm.ipynb` and stacking; mlforecast-style lags; analogues; EW anomaly bands |
+| `leads` | the gap-analysis leads | OLMAR, PAMR, CPPI, Grossman-Zhou, HAR-RV, VIX/VIX3M, Hayashi-Yoshida lead-lag, intraday periodicity, Almgren-Chriss |
+| `excluded` | A6, X5, X6, X8, C-RJ3, C-RJ6 | jamesmawm IB `hft_model_1.py`; stock/bond mix; daily-reset inverse ETFs; martingale; creation/redemption |
+
+**Source quirks kept, with a switch to the corrected form where one is
+obvious** (each documented at its function):
+
+* letianzj `turtle.py` computes its "10-day low" exit as the **max of the
+  highs** (`textbook_exit=True` fixes it); `ghost_trader.py`'s long exit
+  can fire only when the close is the bar's low.
+* jamesmawm's IB model has `is_overbought`/`is_oversold` swapped against
+  their comments, so its BUY signal buys the spread when A is rich
+  (`fixed_labels=True`).
+* FinRL's validation Sharpe annualises with √4, and its adaptive
+  turbulence threshold is overwritten by the in-sample 99th percentile
+  (`adaptive=True` keeps the discarded branch).
+* PyTrendFollow normalises with full-sample statistics (its own
+  "lookahead bias" warning; `causal=True` uses its commented-out
+  expanding window). The huseinzol05 agents reward cash only, and the
+  LSTM notebook leaves dropout on at inference.
+* Smart Farmers' `compute_price` raises price with production, against
+  its own demand fit (`consistent=True`); Platt-Burges' per-item
+  variances collapse toward zero, so only the relative-change stop ends
+  EM.
+
+**Simplifications, stated in the modules:** the DRQN uses an Elman layer
+(position at the output) instead of an LSTM; EIIE's evaluator is linear,
+not a CNN; FinRL's SB3 networks are represented by their update rules and
+a linear A2C; the LSTM forecaster stands for its 17 sibling notebooks,
+which vary the cell, not the procedure.
+
+**No code, by design:** C-E4 (the catalog could not verify the method),
+C-RJ7 (LLM frameworks, not algorithms), C-RJ8 (no verifiable definition),
+and the MacroHFT/IMM/LLM-crash lead (never opened; its RL building blocks
+are in `rl_agents`/`rl_papers`). V20 maps to the V5 grid plus the
+inverse-ETF drag in `excluded.daily_reset_path`.
 
 ---
 ## 9. Engine and methodology findings
