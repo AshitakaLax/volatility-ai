@@ -327,16 +327,22 @@ def window(
 def warm_up_history(
     strategy_class: type, full: pd.DataFrame, frame: pd.DataFrame
 ) -> pd.DataFrame | None:
-    """Session OHLC for the bars the window cut off before its start, for a
-    strategy whose state needs that history (one defining warm_up --
+    """Session OHLCV for the bars the window cut off before its start, for
+    a strategy whose state needs that history (one defining warm_up --
     UltimateSizing's volatility regime carries no flag, so buys nothing,
-    for its first ~250 sessions). run_sweep hands it to each combination's
-    strategy before the first bar. None for every other strategy, and when
-    nothing precedes the window."""
+    for its first ~250 sessions; UltimateRspSizing's target needs ~300).
+    run_sweep hands it to each combination's strategy before the first
+    bar. None for every other strategy, and when nothing precedes the
+    window."""
     if frame.empty or not callable(getattr(strategy_class, "warm_up", None)):
         return None
     history = full[full.index < frame.index[0]]
-    return None if history.empty else daily_bars(history)
+    if history.empty:
+        return None
+    daily = daily_bars(history)
+    if "volume" in history.columns:
+        daily["volume"] = history["volume"].resample("1D").sum().reindex(daily.index)
+    return daily
 
 
 # DEFAULTS FOR THE STRATEGIES THAT CANNOT BE CONSTRUCTED WITHOUT THEM.
@@ -652,6 +658,19 @@ STRATEGY_DEFAULTS["ultimate"] = {
     "liquidate_minute": 60,
 }
 
+# ultimate_rsp: the recommended configuration of docs/research/ultimate-rsp.md
+# (config/ultimate_rsp.yaml), which is also the constructor's defaults --
+# listed so the form shows them as the strategy's primary fields.
+STRATEGY_DEFAULTS["ultimate_rsp"] = {
+    "pd_periods": "14,21,42",
+    "pd_lookbacks": "100,250",
+    "ad_params": "3/10,5/20,10/40",
+    "ad_lookbacks": "100,250",
+    "pd_weight": 0.5,
+    "execute_minute": 60,
+    "rebalance_band": 0.05,
+}
+
 # Strategies whose design includes an exit below cost basis, run with
 # execution.allow_signal_exit on. The flag is half of a two-part gate --
 # a loss needs it AND the strategy's lots_to_liquidate -- so it changes
@@ -659,8 +678,10 @@ STRATEGY_DEFAULTS["ultimate"] = {
 # (sell the calm-mode lots during the first turbulent session, L6) is the
 # step-down the whole design was measured with; without the flag those
 # lots ride the downturn and the run is a different, unresearched
-# strategy. Backtest only: this server never trades.
-SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset({"ultimate"})
+# strategy. UltimateRspSizing's only exit is one: it moves to a daily
+# exposure target by selling whole lots. Backtest only: this server never
+# trades.
+SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset({"ultimate", "ultimate_rsp"})
 
 
 def required_parameters(strategy_class: type) -> list[str]:
@@ -716,8 +737,10 @@ _PARAM_ENUMS: dict[str, list[str]] = {
 # research-lab injection of a precomputed {date: calm} map; a form has no
 # way to type one, and without it the strategy computes the same regime
 # from the bars (warmed with the history before the window -- see
-# warm_up_history).
-_HIDDEN_PARAMS: frozenset[str] = frozenset({"model_dir", "external_dir", "regime_by_date"})
+# warm_up_history). exposure_by_date is UltimateRspSizing's equivalent.
+_HIDDEN_PARAMS: frozenset[str] = frozenset(
+    {"model_dir", "external_dir", "regime_by_date", "exposure_by_date"}
+)
 
 # Shown but locked: the engine captures these at run time (the first
 # bar), so a value typed into a form would only be right for a
@@ -786,6 +809,16 @@ _GRID_TRIGGER: dict[str, dict[str, Any]] = {
         "default": "regime_switched",
         "controlled_by": None,
         "window_param": "lookback_days",
+        "window_default": None,
+    },
+    # Not a grid at all: the level is "buy now" on the one bar a session
+    # where the book is below its daily exposure target, unreachable on
+    # every other bar. No step, no reference price, no rolling window.
+    "ultimate_rsp": {
+        "methods": ["exposure_target"],
+        "default": "exposure_target",
+        "controlled_by": None,
+        "window_param": None,
         "window_default": None,
     },
 }

@@ -28,6 +28,7 @@ from research.strategies.size_calculators import (
     RsiMomentumSizing,
     SizingStrategy,
 )
+from research.strategies.ultimate_rsp_sizing import UltimateRspSizing
 from research.strategies.ultimate_sizing import UltimateSizing
 
 STRATEGIES: dict[str, type[SizingStrategy]] = {
@@ -53,6 +54,18 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     # on for this id; config/ultimate_tqqq.yaml sets it), and the
     # regime needs ~250 sessions of history (UltimateSizing.warm_up).
     "ultimate": UltimateSizing,
+    # Ultimate-RSP (docs/research/ultimate-rsp.md): not a grid. A daily
+    # exposure target for RSP from two uncorrelated vote families --
+    # PLUS_DM (upside volatility) and Chaikin ADOSC (money flow), each
+    # below its own trailing median, averaged over their parameters --
+    # reached once a session an hour after the open. Research-lab
+    # result on RSP 2017-2026: 11.2% CAGR at an 11.9% max drawdown
+    # against buy-and-hold's 12.0% at 39.1%; out of sample (2022-26)
+    # the family's Calmar held at ~0.9 against buy-and-hold's 0.40.
+    # Its exits are signal exits (server/backtest.py turns them on for
+    # this id), and its target needs ~300 sessions of history
+    # (UltimateRspSizing.warm_up). RSP only.
+    "ultimate_rsp": UltimateRspSizing,
     # Three ids, one class: MLReachabilitySizing takes `ticker` as a
     # constructor kwarg, and each id's STRATEGY_DEFAULTS entry
     # (server/backtest.py) supplies a different one. The sizing-model

@@ -21,6 +21,7 @@ const METHOD_LABEL: Record<TriggerMethod, string> = {
   local_reference: "Local reference (rolling high)",
   regime_widened: "Last buy price, regime-widened",
   regime_switched: "Local reference, regime-switched",
+  exposure_target: "Daily exposure target (no grid)",
 };
 const METHOD_HELP: Record<TriggerMethod, string> = {
   last_buy: "Buy when price falls one step below the last fill.",
@@ -30,6 +31,8 @@ const METHOD_HELP: Record<TriggerMethod, string> = {
     "Buy one step below the last fill, but widen that step (×4 by default) while the regime model reads crash — fewer, deeper buys that keep cash for lower levels.",
   regime_switched:
     "While the volatility regime reads calm, buy on a step-sized pullback from max(last fill, N-day high). While it reads turbulent there is no grid: only a capitulation-close buy near the end of a session that fell past the reversal threshold.",
+  exposure_target:
+    "No grid step: once a session, at the execution minute, the book buys up to (or sells down to) the fraction of equity its daily signal votes for. The grid step and profit target are not used for timing.",
 };
 
 interface Props {

@@ -41,6 +41,7 @@ describe("usesWindow", () => {
     expect(usesWindow("regime_switched")).toBe(true);
     expect(usesWindow("last_buy")).toBe(false);
     expect(usesWindow("regime_widened")).toBe(false);
+    expect(usesWindow("exposure_target")).toBe(false);
   });
 
   it("a locked regime_switched descriptor selects itself and keeps its window", () => {

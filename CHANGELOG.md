@@ -1,5 +1,38 @@
 # Changelog
 
+## `ultimate_rsp`: a timing book for RSP, not a grid
+
+`research/strategies/ultimate_rsp_sizing.UltimateRspSizing` (design,
+component review and evidence in `docs/research/ultimate-rsp.md`) is
+registered as `ultimate_rsp`, with `config/ultimate_rsp.yaml`. It is built
+from scratch for RSP, not derived from the Ultimate algorithm, because
+every grid this project measured on RSP lost to holding it, and every
+regime-gated grid realised its losses at the flips and then could not
+re-enter.
+
+It holds a daily target fraction of equity in RSP: the share of PLUS_DM
+and Chaikin ADOSC votes (each below its own trailing median, averaged
+over their parameters) that say "in". The target is decided at the close
+and reached an hour into the next session. Research-lab result,
+2017-2026: 11.2% CAGR at an 11.9% max drawdown, against buy-and-hold's
+12.0% at 39.1%. That meets plan.md's RSP bar: 27 points of drawdown for
+0.85 points of CAGR. Deflated Sharpe 0.88 over the ~1,400 configurations
+screened.
+
+**Its exits are signal exits by design**, so the server adds the id to
+`SIGNAL_EXIT_STRATEGIES`. A rebalance down sells whole lots at market,
+whatever their cost; there is no price stop and no profit-target
+harvest (the profit target is set out of reach). `warm_up_history` now
+carries volume, which the ADOSC votes need. The trigger method is a new
+locked `exposure_target`, because no grid step or reference price is
+involved.
+
+**No TA-Lib at run time.** The registry is loaded by `cli.py live`, which
+must start without requirements-indicators.txt, so the strategy updates
+PLUS_DM and ADOSC incrementally with TA-Lib's own recursions in numpy. A
+test pins them to TA-Lib, and another checks in a fresh interpreter that
+loading the registry imports neither TA-Lib nor polars.
+
 ## `ultimate`: the Ultimate algorithm, runnable from the server and a YAML
 
 `research/strategies/ultimate_sizing.UltimateSizing` (design and evidence
