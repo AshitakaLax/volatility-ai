@@ -1,6 +1,7 @@
 import { SweepControls } from "@/components/backtest/SweepControls";
 import { Checkbox, Input, Select } from "@/components/ui/primitives";
 import type { GridStepResult } from "@/lib/gridSteps";
+import { usesWindow } from "@/lib/gridTrigger";
 import type { SweepFieldState } from "@/lib/sweepStrategies";
 import { cn } from "@/lib/utils";
 import type { Trigger, TriggerMethod, ValidateError } from "@/types/backtest";
@@ -19,6 +20,7 @@ const METHOD_LABEL: Record<TriggerMethod, string> = {
   last_buy: "Last buy price",
   local_reference: "Local reference (rolling high)",
   regime_widened: "Last buy price, regime-widened",
+  regime_switched: "Local reference, regime-switched",
 };
 const METHOD_HELP: Record<TriggerMethod, string> = {
   last_buy: "Buy when price falls one step below the last fill.",
@@ -26,6 +28,8 @@ const METHOD_HELP: Record<TriggerMethod, string> = {
     "Buy on a step-sized pullback from max(last fill, N-day high) — re-fires on local dips, not only on a fresh low.",
   regime_widened:
     "Buy one step below the last fill, but widen that step (×4 by default) while the regime model reads crash — fewer, deeper buys that keep cash for lower levels.",
+  regime_switched:
+    "While the volatility regime reads calm, buy on a step-sized pullback from max(last fill, N-day high). While it reads turbulent there is no grid: only a capitulation-close buy near the end of a session that fell past the reversal threshold.",
 };
 
 interface Props {
@@ -66,7 +70,7 @@ export function GridStepPanel({
   disabled,
 }: Props) {
   const locked = trigger.methods.length === 1;
-  const showWindow = method === "local_reference" && trigger.window !== undefined;
+  const showWindow = usesWindow(method) && trigger.window !== undefined;
   const pct = (fraction: number) => `${Number((fraction * 100).toFixed(4))}%`;
 
   return (

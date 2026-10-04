@@ -1,5 +1,44 @@
 # Changelog
 
+## `ultimate`: the Ultimate algorithm, runnable from the server and a YAML
+
+`research/strategies/ultimate_sizing.UltimateSizing` (design and evidence
+in `docs/research/ultimate-algorithm.md`) is registered as `ultimate`,
+with the recommended configuration as its constructor defaults, as
+`STRATEGY_DEFAULTS["ultimate"]`, and as `config/ultimate_tqqq.yaml`.
+Three decisions came with it.
+
+**The server turns the signal exit on for this id.** Its regime exit sells
+the calm-mode lots during the first turbulent session, which can realise
+a loss, so it needs `execution.allow_signal_exit` -- and `RunRequest` has
+no field for it. Rather than add a form control whose only correct value
+for this strategy is "on", `SIGNAL_EXIT_STRATEGIES` names the ids whose
+design includes the exit and `build_config` sets the flag for them. It is
+half of a two-part gate (`decision_cycle.collect_liquidations` also needs
+the strategy's `lots_to_liquidate`), so it cannot change any other
+strategy's result.
+
+**`run_sweep` gained `warm_up_daily`.** The strategy's volatility regime
+needs ~250 completed sessions before it flags anything, and it buys
+nothing until then. The server windows the bars before simulating, so
+every server run would have spent its first year idle -- a window
+starting in January 2022 would have sat out the whole downturn the
+design exists for. A strategy that defines `warm_up(daily)` is now handed
+session OHLC for the bars before the window, and the server passes what
+its window cut off. Duck-typed like the `target_return` and `ticker`
+checks beside it; None (the default) calls nothing. A warmed row carries
+`warm_up_sessions`, which `split_row` hashes as a parameter, so a warmed
+and a cold run of the same window cannot collide in the warehouse. The
+live loop does not warm up yet: that needs regular-session daily bars
+from `engine/data`'s feed (see the design doc's "Not done yet").
+
+**`to_run_sweep_kwargs` no longer drops `allow_signal_exit` and
+`settlement_days`.** A YAML that set either was simulated without it by
+`cli.py backtest`/`search` (the algorithm ledger's V5 caveat records the
+same gap in `run_hf_sweep`). The only committed config that sets them
+(`paper_aggressive.yaml`) sets the defaults, so no recorded result
+changes.
+
 ## `cli.py submit`: hand any BacktestConfig sweep to the server's shard queue
 
 Getting a big COWZ sweep watchable in the browser across shards

@@ -580,8 +580,15 @@ export interface ParamSpec {
  *   local_reference  level = max(last_buy_price, rolling_high) x (1 - step)
  *   regime_widened   last_buy's formula with the STEP widened by a model
  *                    latch while a regime model reads crash. Always locked.
+ *   regime_switched  local_reference while a volatility regime reads calm;
+ *                    while it reads turbulent, no grid level -- only a
+ *                    capitulation-close reversal entry. Always locked.
  */
-export type TriggerMethod = "last_buy" | "local_reference" | "regime_widened";
+export type TriggerMethod =
+  | "last_buy"
+  | "local_reference"
+  | "regime_widened"
+  | "regime_switched";
 
 export interface Trigger {
   /** Display order; [0] is the default; a single entry is locked. */

@@ -21,14 +21,22 @@ bear_window, bear_sma) on CALM -- research/strategies/natr_regime.
 IncrementalNatrRegime, computed from the bars this strategy sees, so the
 strategy carries its own regime into the server and the live loop. A
 precomputed causal map can be injected instead (regime_by_date), which is
-how the research lab reproduces it.
+how the research lab reproduces it. The internal regime carries no flag
+for its first max(250, 5 * natr_period, natr_lookback) sessions, and the
+strategy buys nothing until it has one; warm_up(daily) seeds it from
+session history so a live loop need not wait a year.
+
+The constructor spells out every GatedLocalReferenceSizing parameter
+rather than taking **params, because the server builds its run form from
+inspect.signature and skips a **kwargs catch-all.
 
 --------------------------------------------------------------------
 EXITS AND THE ONE LOSS PATH
 
 Every lot exits at its target through the no-loss guard, except at
-`liquidate_minute` of the first session of a TURBULENT spell (default 0,
-the session's first bar; exp11 found later is better): there,
+`liquidate_minute` of the first session of a TURBULENT spell (default 60:
+an hour after the open; exp11 and exp18 found minutes 60-385 a plateau
+and the open the worst moment): there,
 lots_to_liquidate returns every CALM-mode lot (the step-down's regime
 exit, L6) -- the only sale that may be below cost, and only with
 execution.allow_signal_exit. Reversal lots are kept through the flip back
@@ -59,6 +67,7 @@ from research.strategies.harvest_sleeve_sizing import CloseReversalSignal
 from research.strategies.natr_regime import IncrementalNatrRegime
 
 CALM, TURBULENT = "calm", "turbulent"
+TURBULENT_MODES: tuple[str, ...] = ("reversal", "cash")
 
 
 class UltimateSizing(GatedLocalReferenceSizing):
@@ -66,26 +75,137 @@ class UltimateSizing(GatedLocalReferenceSizing):
 
     def __init__(
         self,
-        *,
+        per_lot_pct: float,
+        lookback_days: float,
+        bars_per_day: int,
+        event_day_boost_multiplier: float = 1.0,
+        earnings_day_boost_multiplier: float = 1.0,
+        vol_scale_exponent: float = 0.0,
+        vol_fast_days: float = 0.5,
+        vol_slow_days: float = 20.0,
+        vol_scale_min: float = 0.5,
+        vol_scale_max: float = 2.0,
+        time_of_day_exponent: float = 0.0,
+        vol_measure: str = "stdev",
+        volume_scale_exponent: float = 0.0,
+        trail_pct: float | None = None,
+        trail_min_profit_target: float = 0.001,
+        weighted_event_boost_multiplier: float = 1.0,
+        dd_throttle_start: float | None = None,
+        dd_throttle_full: float = 0.6,
+        dd_throttle_floor: float = 0.25,
+        implied_vol_exponent: float = 0.0,
+        implied_vol_scale_min: float = 0.5,
+        implied_vol_scale_max: float = 2.0,
+        breakdown_gate: str = "off",
+        breakdown_release: str = "reclaim",
+        dt_lookback_days: int = 5,
+        dt_k: float = 0.5,
+        orb_minutes: int = 30,
+        pattern_gate: str = "off",
+        pattern_candle_minutes: int = 30,
+        pattern_hold_candles: int = 4,
+        pattern_lower_shadow: float = 0.2,
+        pattern_body_size: float = 0.5,
+        pattern_body_lookback: int = 20,
+        momentum_gate: str = "off",
+        momentum_early_minutes: int = 30,
+        momentum_late_minutes: int = 30,
+        momentum_threshold: float = 0.0,
+        vol_target: float | None = None,
+        vol_target_days: int = 20,
+        vol_target_estimator: str = "yang_zhang",
+        vol_target_min: float = 0.25,
+        vol_target_max: float = 2.0,
+        bounce_gate: str = "off",
+        bounce_candle_minutes: int = 30,
+        bounce_window: int = 20,
+        bounce_k: float = 2.0,
+        bounce_hold_candles: int = 8,
+        bounce_max_span: int = 40,
+        bounce_tolerance: float = 0.01,
+        rsi_gate: str = "off",
+        rsi_candle_minutes: int = 30,
+        rsi_period: int = 14,
+        rsi_overbought: float = 70.0,
+        rsi_tolerance: float = 5.0,
+        rsi_hold_candles: int = 8,
+        # -- the Ultimate layer (defaults: the recommended configuration,
+        #    docs/research/ultimate-algorithm.md) -------------------------
         regime_by_date: Mapping[date, bool] | None = None,
         natr_period: int = 10,
         natr_lookback: int = 100,
         regime_min_hold: int = 5,
-        bear_dd: float | None = None,
-        bear_window: int = 60,
+        bear_dd: float | None = 0.5,
+        bear_window: int = 250,
         bear_sma: int | None = None,
         turbulent_mode: str = "reversal",
-        reversal_threshold: float = -0.06,
+        reversal_threshold: float = -0.09,
         reversal_minutes: int = 10,
         reversal_max_per_session: int = 1,
-        reversal_lot_pct: float = 0.10,
-        reversal_target: float = 0.03,
-        reversal_max_lots: int = 3,
+        reversal_lot_pct: float = 0.20,
+        reversal_target: float = 0.06,
+        reversal_max_lots: int = 4,
         liquidate_reversal_on_calm: bool = False,
-        liquidate_minute: int = 0,
-        **params,
+        liquidate_minute: int = 60,
     ) -> None:
-        super().__init__(**params)
+        super().__init__(
+            per_lot_pct=per_lot_pct,
+            lookback_days=lookback_days,
+            bars_per_day=bars_per_day,
+            event_day_boost_multiplier=event_day_boost_multiplier,
+            earnings_day_boost_multiplier=earnings_day_boost_multiplier,
+            vol_scale_exponent=vol_scale_exponent,
+            vol_fast_days=vol_fast_days,
+            vol_slow_days=vol_slow_days,
+            vol_scale_min=vol_scale_min,
+            vol_scale_max=vol_scale_max,
+            time_of_day_exponent=time_of_day_exponent,
+            vol_measure=vol_measure,
+            volume_scale_exponent=volume_scale_exponent,
+            trail_pct=trail_pct,
+            trail_min_profit_target=trail_min_profit_target,
+            weighted_event_boost_multiplier=weighted_event_boost_multiplier,
+            dd_throttle_start=dd_throttle_start,
+            dd_throttle_full=dd_throttle_full,
+            dd_throttle_floor=dd_throttle_floor,
+            implied_vol_exponent=implied_vol_exponent,
+            implied_vol_scale_min=implied_vol_scale_min,
+            implied_vol_scale_max=implied_vol_scale_max,
+            breakdown_gate=breakdown_gate,
+            breakdown_release=breakdown_release,
+            dt_lookback_days=dt_lookback_days,
+            dt_k=dt_k,
+            orb_minutes=orb_minutes,
+            pattern_gate=pattern_gate,
+            pattern_candle_minutes=pattern_candle_minutes,
+            pattern_hold_candles=pattern_hold_candles,
+            pattern_lower_shadow=pattern_lower_shadow,
+            pattern_body_size=pattern_body_size,
+            pattern_body_lookback=pattern_body_lookback,
+            momentum_gate=momentum_gate,
+            momentum_early_minutes=momentum_early_minutes,
+            momentum_late_minutes=momentum_late_minutes,
+            momentum_threshold=momentum_threshold,
+            vol_target=vol_target,
+            vol_target_days=vol_target_days,
+            vol_target_estimator=vol_target_estimator,
+            vol_target_min=vol_target_min,
+            vol_target_max=vol_target_max,
+            bounce_gate=bounce_gate,
+            bounce_candle_minutes=bounce_candle_minutes,
+            bounce_window=bounce_window,
+            bounce_k=bounce_k,
+            bounce_hold_candles=bounce_hold_candles,
+            bounce_max_span=bounce_max_span,
+            bounce_tolerance=bounce_tolerance,
+            rsi_gate=rsi_gate,
+            rsi_candle_minutes=rsi_candle_minutes,
+            rsi_period=rsi_period,
+            rsi_overbought=rsi_overbought,
+            rsi_tolerance=rsi_tolerance,
+            rsi_hold_candles=rsi_hold_candles,
+        )
         if not 0 <= liquidate_minute < 390:
             raise ConfigurationError(
                 f"liquidate_minute must be in [0, 390), got {liquidate_minute}"
@@ -93,9 +213,9 @@ class UltimateSizing(GatedLocalReferenceSizing):
         self.liquidate_minute = int(liquidate_minute)
         self._liq_pending_day: int | None = None
         self._liq_now = False
-        if turbulent_mode not in ("reversal", "cash"):
+        if turbulent_mode not in TURBULENT_MODES:
             raise ConfigurationError(
-                f"turbulent_mode must be 'reversal' or 'cash', got {turbulent_mode!r}"
+                f"turbulent_mode must be one of {TURBULENT_MODES}, got {turbulent_mode!r}"
             )
         if not 0 < reversal_lot_pct <= 1:
             raise ConfigurationError(f"reversal_lot_pct must be in (0, 1], got {reversal_lot_pct}")
@@ -136,6 +256,15 @@ class UltimateSizing(GatedLocalReferenceSizing):
         self._known_ids: set[str] = set()
         self.flips_to_turbulent = 0
         self.reversal_buys = 0
+
+    def warm_up(self, daily) -> int:
+        """Seed the internal regime from session history (daily_bars' shape)
+        before the first bar -- IncrementalNatrRegime.warm_up. A no-op with
+        an injected regime_by_date, which already covers its dates. Returns
+        the number of sessions consumed."""
+        if self._natr is None:
+            return 0
+        return self._natr.warm_up(daily)
 
     # ------------------------------------------------------------ per bar
 
@@ -273,4 +402,4 @@ class UltimateSizing(GatedLocalReferenceSizing):
         return out
 
 
-__all__ = ["CALM", "TURBULENT", "UltimateSizing"]
+__all__ = ["CALM", "TURBULENT", "TURBULENT_MODES", "UltimateSizing"]

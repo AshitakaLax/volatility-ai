@@ -49,6 +49,12 @@ class TestDescriptorShape:
         # Seeds itself from the required committed value: no seed sent.
         assert hf["window"] == {"param": "lookback_days"}
 
+        # Locked, with the calm-mode rolling-high window still editable.
+        assert describe_grid_trigger("ultimate") == {
+            "methods": ["regime_switched"],
+            "window": {"param": "lookback_days"},
+        }
+
         bayes = describe_grid_trigger("bayesian_dual_scale")
         assert bayes["methods"] == ["last_buy", "local_reference"]  # [0] = default
         assert bayes["control"] == "lookback_days"

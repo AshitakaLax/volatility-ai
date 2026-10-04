@@ -141,25 +141,65 @@ parameter on a plateau except two limits — keep the bear window long
   No causal volatility regime avoids the first leg of a correction; from
   each QQQ peak to its trough the book still usually loses a little.
 
-## Deployment notes (not yet done)
+## Integration (registered as `ultimate`)
 
+* **Registered** in `strategy_registry.py` as `ultimate`. The
+  constructor spells out every `GatedLocalReferenceSizing` argument (the
+  server builds its run form from `inspect.signature` and skips
+  `**kwargs`); tests pin that every parent argument is mirrored with the
+  same default and passed through. Its defaults are the recommended
+  configuration above.
+* **Server** (`server/backtest.py`): `STRATEGY_DEFAULTS["ultimate"]` is
+  the champion's full committed set plus the recommended Ultimate values;
+  `turbulent_mode` is a dropdown; `regime_by_date` is hidden; the grid
+  trigger is its own locked method, `regime_switched` (local_reference
+  over `lookback_days` while calm, only the reversal level while
+  turbulent), with the window still editable in the form.
+* **The regime exit is on for server runs.** `SIGNAL_EXIT_STRATEGIES`
+  makes `build_config` set `execution.allow_signal_exit` for this id;
+  without it the calm lots ride the downturn and the run is a different,
+  unresearched strategy. A loss needs the flag *and* `lots_to_liquidate`,
+  so the flag changes nothing for any other strategy.
+  `BacktestConfig.to_run_sweep_kwargs` also used to drop
+  `allow_signal_exit` (and `settlement_days`), so a YAML that set it ran
+  without it; both pass through now.
 * **Warm-up.** The internal regime flags nothing until
   max(250, 5 × natr_period, natr_lookback) sessions have completed, and
-  the strategy buys nothing while the regime is unknown. A fresh live
-  start would sit idle for about a year unless the loop replays history
-  through `record_tick` first, or a precomputed causal map is injected
-  (`regime_by_date`, refreshed after each close).
+  the strategy buys nothing while the regime is unknown.
+  `UltimateSizing.warm_up(daily)` (→ `IncrementalNatrRegime.warm_up`)
+  seeds it from session OHLC; tests show it gives the same flag on every
+  later bar as replaying the minute bars, including a partial last
+  session. `run_sweep(warm_up_daily=...)` hands that history to each
+  combination's strategy, and the server passes the sessions its
+  date window cut off, so a window starting in 2022 trades 2022 on the
+  full-history regime instead of sitting idle (tested: identical to
+  injecting the full-history causal map). The row records
+  `warm_up_sessions`, which keeps warmed and cold runs apart in the
+  warehouse identity.
+* **`config/ultimate_tqqq.yaml`** pins the recommended configuration
+  (intrabar causal fills, `allow_signal_exit: true`), and is tested equal
+  to the server defaults. A `cli.py backtest` of it covers the whole file
+  with no warm-up, like the research runs: the first ~250 sessions are
+  idle.
+
+### Not done yet
+
+* **Live warm-up.** `cli.py`'s `_run_trading_loop` constructs the
+  strategy with no history, so a live start would carry no regime flag,
+  and buy nothing, for about a year. The wiring is one call,
+  `strategy.warm_up(daily)` after construction, but it needs ~400
+  sessions of *regular-session* daily OHLC from the live market-data
+  feed (`engine/data/alpaca_market_data.py`). Vendor daily bars can
+  include extended hours, so building them from regular-session minute
+  bars is the safe source. The live loop already honours
+  `execution.allow_signal_exit` and per-lot retargeting
+  (`decision_cycle`), which this strategy needs.
 * **Other instruments** need the market's regime (L15), which a
-  single-symbol strategy cannot compute from its own bars: inject it.
-* **The regime exit needs `execution.allow_signal_exit: true`**;
-  without it the strategy stops buying on the flip but holds its calm
-  lots.
-* **Not registered.** `UltimateSizing` takes `**params` for the
-  inherited grid parameters; the server's run form and
-  `analyze_annual` read explicit signatures (see
-  `gated_local_reference_sizing.py`), so registration needs an explicit
-  constructor signature and the server enum/test updates that come with
-  it.
+  single-symbol strategy cannot compute from its own bars: inject it
+  (`regime_by_date`, research path only).
+* **Server runs are not the research runs.** `RunRequest` has no cost
+  model (server runs are zero-cost) or intrabar-fill field (server runs
+  use level fills; exp16: Calmar 2.05 against causal's 2.16).
 * **Cash yield** is the historical short rate in every result above;
   without it Calmar falls from 2.16 to 2.05 (exp16).
 

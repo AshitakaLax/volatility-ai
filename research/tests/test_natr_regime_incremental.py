@@ -92,3 +92,39 @@ def test_no_flag_before_the_warm_up():
 def test_bad_parameters(bad):
     with pytest.raises(ConfigurationError):
         IncrementalNatrRegime(**bad)
+
+
+@pytest.mark.parametrize("bear", [{}, {"bear_dd": 0.05, "bear_window": 30}])
+@pytest.mark.parametrize("partial", [False, True])
+def test_warm_up_from_session_bars_matches_replaying_the_minutes(bear, partial):
+    """warm_up(daily_bars(history)) then the live bars gives the same flag on
+    every live bar as observing every bar from the start -- including when
+    the history ends mid-session and the live feed extends that session."""
+    frame = _minutes()
+    cut = sorted({t.date() for t in frame.index})[300]
+    split = int((frame.index.date < cut).sum()) + (3 if partial else 0)
+    kw = {"period": 5, "lookback": 20, "min_hold": 3, **bear}
+    full, seeded = IncrementalNatrRegime(**kw), IncrementalNatrRegime(**kw)
+    history = frame.iloc[:split]
+    assert seeded.warm_up(daily_bars(history)) == len(set(history.index.date))
+    assert seeded.calm is not None  # flagged from the first live bar, no year-long wait
+    live_flags = []
+    for i, (ts, row) in enumerate(frame.iterrows()):
+        full.observe(ts, row["high"], row["low"], row["close"])
+        if i >= split:
+            seeded.observe(ts, row["high"], row["low"], row["close"])
+            assert seeded.calm == full.calm, ts
+            live_flags.append(seeded.calm)
+    assert 0 < sum(live_flags) < len(live_flags)  # both states occur after the cut
+
+
+def test_warm_up_rejects_unordered_or_overlapping_history():
+    daily = daily_bars(_minutes(sessions=30))
+    with pytest.raises(ConfigurationError):
+        IncrementalNatrRegime().warm_up(daily.iloc[::-1])
+    with pytest.raises(ConfigurationError):
+        IncrementalNatrRegime().warm_up(daily.drop(columns="low"))
+    reg = IncrementalNatrRegime()
+    reg.observe(daily.index[5] + pd.Timedelta(hours=15), 1.0, 1.0, 1.0)
+    with pytest.raises(ConfigurationError):
+        reg.warm_up(daily)  # history may not reach back into an observed session

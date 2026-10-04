@@ -1,18 +1,27 @@
 """research/strategies/ultimate_sizing.py -- calm is the champion sleeve
 exactly, turbulent buys only capitulation closes, the flip liquidates calm
-lots only, and the internal regime equals the injected causal map."""
+lots only, the internal regime equals the injected causal map, warm_up
+seeds that regime like the bars it replaces, and the explicit constructor
+mirrors GatedLocalReferenceSizing's so the server's run form sees it all."""
 
 from __future__ import annotations
+
+import inspect
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from engine.core.config import BacktestConfig
 from engine.core.exceptions import ConfigurationError
+from engine.core.market_context import MarketContext
 from research.optimization.optimization_controller import OptimizationController
+from research.strategies.gated_local_reference_sizing import GatedLocalReferenceSizing
 from research.strategies.natr_regime import calm_by_date, daily_bars, debounce
 from research.strategies.regime_sleeve_sizing import RegimeSleeveSizing
-from research.strategies.ultimate_sizing import UltimateSizing
+from research.strategies.strategy_registry import resolve_strategy
+from research.strategies.ultimate_sizing import CALM, TURBULENT, TURBULENT_MODES, UltimateSizing
 
 HF = {"per_lot_pct": 0.001, "lookback_days": 0.05, "bars_per_day": 20}
 OUTCOMES = ("Final Equity", "Realized PnL", "Trade Count", "Closed Trade Count", "Max Drawdown %")
@@ -38,7 +47,7 @@ def _sessions(n: int = 300, seed: int = 1) -> pd.DataFrame:
     )
 
 
-def _run(df, cls, params, target=0.01, full=False):
+def _run(df, cls, params, target=0.01, full=False, **sweep):
     return OptimizationController(historical_data=df).run_sweep(
         grid_steps=[0.002],
         profit_targets=[target],
@@ -48,6 +57,7 @@ def _run(df, cls, params, target=0.01, full=False):
         intrabar_fill="causal",
         allow_signal_exit=True,
         return_full_results=full,
+        **sweep,
     )
 
 
@@ -71,7 +81,13 @@ def test_internal_regime_equals_the_injected_causal_map():
     internal = _run(
         df,
         UltimateSizing,
-        {"natr_period": 5, "natr_lookback": 20, "regime_min_hold": 3, "reversal_threshold": -0.02},
+        {
+            "natr_period": 5,
+            "natr_lookback": 20,
+            "regime_min_hold": 3,
+            "bear_dd": None,  # the injected map is the unfiltered regime
+            "reversal_threshold": -0.02,
+        },
     ).iloc[0]
     for col in OUTCOMES:
         assert internal[col] == injected[col], col
@@ -158,3 +174,140 @@ def test_delayed_regime_exit_fires_at_the_chosen_minute_of_the_flip_session():
         d for d, prev in zip(sorted(reg)[1:], sorted(reg), strict=False) if reg[prev] and not reg[d]
     }
     assert set(sig["timestamp"].dt.date) <= flip_days
+
+
+def _modes(strategy: UltimateSizing, df: pd.DataFrame) -> list:
+    """Feed each bar to record_tick (as the decision cycle does first, every
+    bar) and collect the mode after it."""
+    out = []
+    for i, (ts, row) in enumerate(df.iterrows()):
+        strategy.record_tick(
+            MarketContext(
+                timestamp=ts,
+                open=row["open"],
+                high=row["high"],
+                low=row["low"],
+                close=row["close"],
+                cash=100_000.0,
+                equity=100_000.0,
+                peak_equity=100_000.0,
+                drawdown=0.0,
+                open_lot_count=0,
+                bar_index=i,
+                time_of_day_flag=ts.hour * 60 + ts.minute - (14 * 60 + 30),
+                volume=row["volume"],
+            )
+        )
+        out.append(strategy.mode)
+    return out
+
+
+def test_warm_up_gives_the_live_run_the_regime_it_would_have_had():
+    df = _sessions(300)
+    cut = sorted({t.date() for t in df.index})[260]
+    history, live = df[df.index.date < cut], df[df.index.date >= cut]
+    kw = {**HF, "natr_period": 5, "natr_lookback": 20, "regime_min_hold": 3, "bear_dd": None}
+    replayed = _modes(UltimateSizing(**kw), df)[len(history) :]
+    cold = _modes(UltimateSizing(**kw), live)
+    warm = UltimateSizing(**kw)
+    assert warm.warm_up(daily_bars(history)) == 260
+    seeded = _modes(warm, live)
+    assert seeded == replayed
+    assert {CALM, TURBULENT} <= set(seeded)
+    assert set(cold) == {None}  # without history: no flag, so no buys, for the whole run
+
+
+def test_warm_up_is_a_no_op_with_an_injected_regime():
+    df = _sessions(30)
+    calm = dict.fromkeys({t.date() for t in df.index}, True)
+    assert UltimateSizing(**HF, regime_by_date=calm).warm_up(daily_bars(df)) == 0
+
+
+def _parent_parameters() -> dict:
+    sig = inspect.signature(GatedLocalReferenceSizing.__init__)
+    return {name: p for name, p in sig.parameters.items() if name != "self"}
+
+
+def test_constructor_mirrors_every_gated_parameter_without_a_catch_all():
+    ours = inspect.signature(UltimateSizing.__init__).parameters
+    assert not any(p.kind is inspect.Parameter.VAR_KEYWORD for p in ours.values())
+    parents = _parent_parameters()
+    assert [name for name in ours if name != "self"][: len(parents)] == list(parents)
+    for name, parent in parents.items():
+        assert ours[name].default == parent.default, name
+        assert ours[name].kind is parent.kind, name
+
+
+def test_every_gated_parameter_is_passed_through(monkeypatch):
+    sentinels = {name: object() for name in _parent_parameters()}  # before the patch
+    seen: dict = {}
+    monkeypatch.setattr(GatedLocalReferenceSizing, "__init__", lambda self, **kw: seen.update(kw))
+    UltimateSizing(**sentinels)
+    assert seen.keys() == sentinels.keys()
+    assert all(seen[name] is value for name, value in sentinels.items())
+
+
+def test_a_sweep_handed_the_history_runs_the_window_on_the_full_history_regime():
+    """run_sweep(warm_up_daily=...) -- the server's path. A window too short
+    to warm the regime itself trades exactly as if the full-history causal
+    map had been injected, and records how many sessions warmed it; the
+    same window cold buys nothing."""
+    df = _sessions(300)
+    cut = sorted({t.date() for t in df.index})[260]
+    history, live = df[df.index.date < cut], df[df.index.date >= cut]
+    reg = debounce(calm_by_date(daily_bars(df), period=5, lookback=20, lag=1), 3)
+    regime = {"natr_period": 5, "natr_lookback": 20, "regime_min_hold": 3, "bear_dd": None}
+    injected = _run(live, UltimateSizing, {"regime_by_date": reg}).iloc[0]
+    warmed = _run(live, UltimateSizing, regime, warm_up_daily=daily_bars(history)).iloc[0]
+    cold = _run(live, UltimateSizing, regime).iloc[0]
+    assert injected["Trade Count"] > 0
+    for col in OUTCOMES:
+        assert warmed[col] == injected[col], col
+    assert warmed["warm_up_sessions"] == 260
+    assert cold["Trade Count"] == 0 and "warm_up_sessions" not in cold
+
+
+def test_a_sweep_refuses_warm_up_history_that_overlaps_the_run():
+    df = _sessions(30)
+    with pytest.raises(ConfigurationError):
+        _run(df, UltimateSizing, {}, warm_up_daily=daily_bars(df))
+
+
+def test_registered_with_server_defaults_and_choices_that_match_the_strategy():
+    from server.backtest import (
+        _HIDDEN_PARAMS,
+        _PARAM_ENUMS,
+        SIGNAL_EXIT_STRATEGIES,
+        STRATEGY_DEFAULTS,
+    )
+
+    assert resolve_strategy("ultimate") is UltimateSizing
+    assert _PARAM_ENUMS["turbulent_mode"] == list(TURBULENT_MODES)
+    assert "regime_by_date" in _HIDDEN_PARAMS
+    assert "ultimate" in SIGNAL_EXIT_STRATEGIES  # the regime exit is the design
+    committed = STRATEGY_DEFAULTS["ultimate"]
+    defaults = {
+        name: p.default
+        for name, p in inspect.signature(UltimateSizing.__init__).parameters.items()
+        if name in committed and p.default is not inspect.Parameter.empty
+    }
+    ultimate_layer = set(inspect.signature(UltimateSizing.__init__).parameters) - set(
+        _parent_parameters()
+    )
+    for name in ultimate_layer & set(committed):
+        assert committed[name] == defaults[name], name  # one recommended configuration
+    UltimateSizing(**committed)
+
+
+def test_the_pinned_config_is_the_server_default_with_the_signal_exit_on():
+    config = BacktestConfig.from_yaml(
+        Path(__file__).resolve().parents[2] / "config" / "ultimate_tqqq.yaml"
+    )
+    config.validate()
+    from server.backtest import STRATEGY_DEFAULTS
+
+    assert config.strategy.strategy_id == "ultimate"
+    assert dict(config.strategy.strategy_params) == STRATEGY_DEFAULTS["ultimate"]
+    kwargs = config.to_run_sweep_kwargs(UltimateSizing)
+    assert kwargs["allow_signal_exit"] is True  # the regime exit reaches the engine
+    assert kwargs["intrabar_fill"] == "causal"

@@ -60,6 +60,7 @@ from engine.core.exceptions import ConfigurationError
 from engine.warehouse.bars import available_tickers, load_frame
 from research.optimization.optimization_controller import OptimizationController
 from research.optimization.search_strategies import BayesianSearch, GridSearch, SearchStrategy
+from research.strategies.natr_regime import daily_bars
 from research.strategies.strategy_registry import STRATEGIES, resolve_strategy
 from server import contract, history, history_query
 from server.fills import MAX_LIMIT as FILLS_MAX_LIMIT
@@ -321,6 +322,21 @@ def window(
     if limit:
         frame = frame.tail(limit)
     return frame
+
+
+def warm_up_history(
+    strategy_class: type, full: pd.DataFrame, frame: pd.DataFrame
+) -> pd.DataFrame | None:
+    """Session OHLC for the bars the window cut off before its start, for a
+    strategy whose state needs that history (one defining warm_up --
+    UltimateSizing's volatility regime carries no flag, so buys nothing,
+    for its first ~250 sessions). run_sweep hands it to each combination's
+    strategy before the first bar. None for every other strategy, and when
+    nothing precedes the window."""
+    if frame.empty or not callable(getattr(strategy_class, "warm_up", None)):
+        return None
+    history = full[full.index < frame.index[0]]
+    return None if history.empty else daily_bars(history)
 
 
 # DEFAULTS FOR THE STRATEGIES THAT CANNOT BE CONSTRUCTED WITHOUT THEM.
@@ -603,6 +619,48 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
 # selecting it and changing nothing reproduces hf_local_reference. Derived
 # from that entry rather than copied, so the two cannot drift apart.
 STRATEGY_DEFAULTS["hf_entry_gated"] = dict(STRATEGY_DEFAULTS["hf_local_reference"])
+# ultimate: the recommended configuration of docs/research/ultimate-algorithm.md
+# (config/ultimate_tqqq.yaml) -- the champion's full committed set from
+# config/best_known_2026-08-24.yaml, which unlike the hf_local_reference
+# entry above includes the event / earnings boosts the research ran with,
+# plus the regime, bear filter, delayed exit and capitulation-reversal
+# values. The constructor defaults already equal the Ultimate values; they
+# are listed so the form shows them as the strategy's primary fields.
+STRATEGY_DEFAULTS["ultimate"] = {
+    "bars_per_day": 387,
+    "per_lot_pct": 0.0002,
+    "lookback_days": 0.02,
+    "event_day_boost_multiplier": 2.5,
+    "earnings_day_boost_multiplier": 1.5,
+    "vol_scale_exponent": -1.5,
+    "vol_fast_days": 0.25,
+    "vol_slow_days": 10.0,
+    "vol_scale_min": 0.25,
+    "vol_scale_max": 3.0,
+    "vol_measure": "stdev",
+    "volume_scale_exponent": -1.0,
+    "natr_period": 10,
+    "natr_lookback": 100,
+    "regime_min_hold": 5,
+    "bear_dd": 0.5,
+    "bear_window": 250,
+    "turbulent_mode": "reversal",
+    "reversal_threshold": -0.09,
+    "reversal_target": 0.06,
+    "reversal_lot_pct": 0.2,
+    "reversal_max_lots": 4,
+    "liquidate_minute": 60,
+}
+
+# Strategies whose design includes an exit below cost basis, run with
+# execution.allow_signal_exit on. The flag is half of a two-part gate --
+# a loss needs it AND the strategy's lots_to_liquidate -- so it changes
+# nothing for a strategy without the hook. UltimateSizing's regime exit
+# (sell the calm-mode lots during the first turbulent session, L6) is the
+# step-down the whole design was measured with; without the flag those
+# lots ride the downturn and the run is a different, unresearched
+# strategy. Backtest only: this server never trades.
+SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset({"ultimate"})
 
 
 def required_parameters(strategy_class: type) -> list[str]:
@@ -649,11 +707,17 @@ _PARAM_ENUMS: dict[str, list[str]] = {
         "garman_klass",
         "rogers_satchell",
     ],
+    # research/strategies/ultimate_sizing.TURBULENT_MODES (pinned there).
+    "turbulent_mode": ["reversal", "cash"],
 }
 
 # Filesystem wiring the engine supplies. Never shown, never sent -- the
-# constructor's own default is used.
-_HIDDEN_PARAMS: frozenset[str] = frozenset({"model_dir", "external_dir"})
+# constructor's own default is used. regime_by_date is UltimateSizing's
+# research-lab injection of a precomputed {date: calm} map; a form has no
+# way to type one, and without it the strategy computes the same regime
+# from the bars (warmed with the history before the window -- see
+# warm_up_history).
+_HIDDEN_PARAMS: frozenset[str] = frozenset({"model_dir", "external_dir", "regime_by_date"})
 
 # Shown but locked: the engine captures these at run time (the first
 # bar), so a value typed into a form would only be right for a
@@ -711,6 +775,18 @@ _GRID_TRIGGER: dict[str, dict[str, Any]] = {
         "controlled_by": "lookback_days",
         "window_param": "lookback_days",
         "window_default": 0.03,
+    },
+    # Calm: local_reference over lookback_days (from the rolling high
+    # alone on the first calm session after a turbulent spell). Turbulent:
+    # no grid level at all -- only the capitulation-close reversal level,
+    # or nothing in cash mode. Neither method above describes that, so it
+    # is its own locked method; lookback_days is still the calm window.
+    "ultimate": {
+        "methods": ["regime_switched"],
+        "default": "regime_switched",
+        "controlled_by": None,
+        "window_param": "lookback_days",
+        "window_default": None,
     },
 }
 # MLRegimeScaledSizing's level is last_buy's formula with the STEP
@@ -996,6 +1072,7 @@ def build_config(request: RunRequest) -> BacktestConfig:
                 "fill_model": request.fill,
                 "enforce_no_loss": request.no_loss,
                 "cash_yield_pct": request.cash_yield_pct,
+                "allow_signal_exit": request.model in SIGNAL_EXIT_STRATEGIES,
             },
             "search": {
                 "strategy": "bayesian" if request.bayes else "grid",
@@ -1452,8 +1529,10 @@ def run_backtest(
 
     for ticker in available:
         report(finished_units / total_units, f"running {ticker}")
-        frame = (bars.load_frame if bars is not None else load_frame)(ticker)
-        frame = window(frame, parsed.start, parsed.end, parsed.limit)
+        full = (bars.load_frame if bars is not None else load_frame)(ticker)
+        frame = window(full, parsed.start, parsed.end, parsed.limit)
+        warm_up_daily = warm_up_history(strategy_class, full, frame)
+        del full  # only the window and its warm-up summary outlive this
         if frame.empty:
             raise ValueError(
                 f"{ticker} has no bars between {parsed.start} and {parsed.end}. "
@@ -1461,6 +1540,7 @@ def run_backtest(
             )
 
         kwargs = config.to_run_sweep_kwargs(strategy_class)
+        kwargs["warm_up_daily"] = warm_up_daily
         # False, deliberately -- see _BestOnlySink for the crash this was.
         kwargs["return_full_results"] = False
         kwargs["symbol"] = ticker

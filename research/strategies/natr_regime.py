@@ -262,6 +262,40 @@ class IncrementalNatrRegime:
         self._l = min(self._l, low)
         self._c = close
 
+    def warm_up(self, daily: pd.DataFrame) -> int:
+        """Seed the regime from session OHLC -- daily_bars' shape: one row
+        per session, a datetime index, high/low/close columns -- instead of
+        replaying every minute bar. A live loop starts with no history and
+        would otherwise carry no flag for its first
+        max(250, 5 * period, lookback) sessions.
+
+        A session's contribution is only its high, low and close, so one
+        row per session lands exactly where that session's minute bars
+        would have (tested). The last row may be today's partial session:
+        later bars of the same date extend it. Call before observing any
+        bar; rows must be in strictly increasing date order. Returns the
+        number of rows consumed.
+        """
+        missing = {"high", "low", "close"} - set(daily.columns)
+        if missing:
+            raise ConfigurationError(f"daily bars are missing {sorted(missing)}")
+        days = [ts.date() for ts in daily.index]
+        if any(b <= a for a, b in pairwise(days)):
+            raise ConfigurationError("warm-up sessions must be in strictly increasing date order")
+        if days and self._day is not None and days[0] <= self._day:
+            raise ConfigurationError(
+                f"warm-up starts {days[0]}, not after the latest observed session {self._day}"
+            )
+        for ts, high, low, close in zip(
+            daily.index,
+            daily["high"].to_numpy(float),
+            daily["low"].to_numpy(float),
+            daily["close"].to_numpy(float),
+            strict=True,
+        ):
+            self.observe(ts, float(high), float(low), float(close))
+        return len(days)
+
     def _close_session(self) -> None:
         i = self._sessions  # index of the session just completed
         h, lo, c = self._h, self._l, self._c

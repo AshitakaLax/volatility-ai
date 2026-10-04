@@ -28,6 +28,7 @@ from research.strategies.size_calculators import (
     RsiMomentumSizing,
     SizingStrategy,
 )
+from research.strategies.ultimate_sizing import UltimateSizing
 
 STRATEGIES: dict[str, type[SizingStrategy]] = {
     "fixed": FixedPortfolioPercentage,
@@ -40,6 +41,18 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     # pinned by research/tests/test_gated_local_reference_sizing.py.
     # UNMEASURED: registered so config/probe_entry_gate_*.yaml can run.
     "hf_entry_gated": GatedLocalReferenceSizing,
+    # The Ultimate algorithm (docs/research/ultimate-algorithm.md): the
+    # champion grid while a causal NATR regime says calm, capitulation-
+    # close event lots while it says turbulent, and the calm lots sold an
+    # hour into the first turbulent session. Measured in the research lab
+    # on TQQQ only (2016-12 to 2026-08: 29.7% CAGR, 13.7% max DD against
+    # the champion's 25.7% / 42.2%), but its deflated Sharpe is not
+    # significant and its PBO is high -- see that document's caveats
+    # before a `live:` config. The regime exit is a sale below cost, so
+    # it needs execution.allow_signal_exit (server/backtest.py turns it
+    # on for this id; config/ultimate_tqqq.yaml sets it), and the
+    # regime needs ~250 sessions of history (UltimateSizing.warm_up).
+    "ultimate": UltimateSizing,
     # Three ids, one class: MLReachabilitySizing takes `ticker` as a
     # constructor kwarg, and each id's STRATEGY_DEFAULTS entry
     # (server/backtest.py) supplies a different one. The sizing-model
