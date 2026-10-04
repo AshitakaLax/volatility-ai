@@ -1,0 +1,52 @@
+# PROBE: shooting-star reversal gate (je-suis-tm/quant-trading #17), made
+# causal: the next-candle confirmation is waited for, and the "small
+# body" test uses a trailing mean of absolute bodies rather than the
+# original's full-sample signed mean. See entry_gates.is_shooting_star.
+# Once confirmed, buys stop for pattern_hold_candles candles or until a
+# bar opens above the star's high.
+#
+# 3 candle sizes x 3 holds = 9 combinations. Pattern shape parameters
+# (lower shadow 0.2, body 0.5, body lookback 20) are the original's /
+# defaults and held fixed -- sweep them only if a cell here earns it.
+#
+# Every champion parameter is pinned to config/best_known_2026-08-24.yaml
+# (strategy_params, grid, costs, risk, execution), so the ONLY difference
+# from that run is the gate. strategy_id is hf_entry_gated
+# (research/strategies/gated_local_reference_sizing.py), which with
+# both gates off is the champion exactly -- see
+# probe_entry_gate_control.yaml for the known-answer run.
+#
+# Ranked by Return/Drawdown (total return / max drawdown), the objective
+# for correction work. Read the year-by-year with
+#   python -m research.analysis.analyze_annual --cap 50 --top 3
+# -- the question is whether 2018 Q4, 2020 and 2022 improve, not only
+# the whole-period number.
+#
+# UNMEASURED as of this commit.
+strategy:
+  strategy_id: hf_entry_gated
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: 0.0002
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    pattern_gate: shooting_star
+    pattern_candle_minutes: [15, 30, 60]
+    pattern_hold_candles: [2, 4, 8]
+grid:
+  steps: [0.00075]
+  profit_targets: [0.3]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: Return/Drawdown, direction: maximize, seed: 42}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, enforce_no_loss: true}
+output: {return_full_results: false}

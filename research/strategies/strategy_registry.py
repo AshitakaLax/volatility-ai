@@ -20,6 +20,7 @@ from engine.core.exceptions import ConfigurationError
 from research.ml.reachability_sizing import MLReachabilitySizing
 from research.ml.regime_scaled_sizing import MLRegimeScaledSizing
 from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
+from research.strategies.gated_local_reference_sizing import GatedLocalReferenceSizing
 from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from research.strategies.size_calculators import (
     BellCurveProbabilitySizing,
@@ -34,6 +35,11 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     "rsi": RsiMomentumSizing,
     "bayesian_dual_scale": BayesianDualScaleSizing,
     "hf_local_reference": HighFrequencyLocalReferenceSizing,
+    # The champion plus entry-suppression gates (breakdown / shooting
+    # star). Both gates default "off", which is the champion exactly --
+    # pinned by research/tests/test_gated_local_reference_sizing.py.
+    # UNMEASURED: registered so config/probe_entry_gate_*.yaml can run.
+    "hf_entry_gated": GatedLocalReferenceSizing,
     # Three ids, one class: MLReachabilitySizing takes `ticker` as a
     # constructor kwarg, and each id's STRATEGY_DEFAULTS entry
     # (server/backtest.py) supplies a different one. The sizing-model

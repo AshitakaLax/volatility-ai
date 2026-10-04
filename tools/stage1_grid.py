@@ -68,12 +68,13 @@ from research.strategies.indicator_library import (
     signals,
     warmup_bars,
 )
+from research.strategies.natr_regime import apply_lag
 from tools.indicator_sweep import INSTRUMENTS, Journal, config_id
 from tools.probe_regime_integrated import annual_returns
 from tools.probe_stage3_engine import IndicatorRegime
 
 
-def candidates(symbol: str, max_flips: int, include_patterns: bool):
+def candidates(symbol: str, max_flips: int, include_patterns: bool, lag: int = 1):
     """Signals whose flip count is low enough to survive the engine.
 
     Counted on daily bars, which costs milliseconds, so the expensive
@@ -107,7 +108,9 @@ def candidates(symbol: str, max_flips: int, include_patterns: bool):
                         "variant": variant,
                         "flips": flips,
                         "in_market_pct": round(in_market, 2),
-                        "regime": {ts.date(): bool(v) for ts, v in mask.iloc[skip:].items()},
+                        "regime": apply_lag(
+                            {ts.date(): bool(v) for ts, v in mask.iloc[skip:].items()}, lag
+                        ),
                     }
                 )
     return out
@@ -156,6 +159,14 @@ def score(symbol: str, cand: dict, liquidate: bool, cfg, frame, target: float) -
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--config", default="config/paper_aggressive.yaml")
+    p.add_argument(
+        "--lag",
+        type=int,
+        choices=(0, 1),
+        default=1,
+        help="1 = regime flag applies to the NEXT session (causal). 0 reproduces plan.md's "
+        "engine stages, which applied each flag on its own session -- a one-day lookahead.",
+    )
     p.add_argument("--out", default="output/stage1_grid.jsonl")
     p.add_argument("--max-flips", type=int, default=120)
     p.add_argument("--target", type=float, default=0.04)
@@ -164,6 +175,12 @@ def main(argv=None) -> int:
     p.add_argument("--no-resume", dest="resume", action="store_false")
     p.set_defaults(resume=True)
     args = p.parse_args(argv)
+    print(
+        "regime lag:",
+        "1 (causal)"
+        if args.lag == 1
+        else "0 -- SAME-SESSION, the plan.md lookahead; comparison only",
+    )
 
     journal = Journal(args.out)
     done = journal.done_ids() if args.resume else set()
@@ -171,7 +188,7 @@ def main(argv=None) -> int:
 
     plan = []
     for symbol in args.instruments:
-        cands = candidates(symbol, args.max_flips, not args.no_patterns)
+        cands = candidates(symbol, args.max_flips, not args.no_patterns, lag=args.lag)
         print(f"[grid1] {symbol}: {len(cands)} signals under {args.max_flips} flips")
         for c in cands:
             for liquidate in (True, False):

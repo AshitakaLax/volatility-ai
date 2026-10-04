@@ -21,6 +21,7 @@ from collections.abc import Callable
 
 import pandas as pd
 
+from engine.core.config import INTRABAR_FILL_MODES
 from engine.core.exceptions import ConfigurationError, DataValidationError
 from engine.core.idempotency import ProcessedEventStore
 from engine.core.ledger import AssetLotLedger
@@ -219,6 +220,14 @@ def _validate_fill_model(fill_model: str, intrabar_priority: str) -> None:
         )
 
 
+def _validate_intrabar_fill(intrabar_fill: str) -> None:
+    """See engine.core.config.ExecutionConfig.intrabar_fill."""
+    if intrabar_fill not in INTRABAR_FILL_MODES:
+        raise ConfigurationError(
+            f"intrabar_fill must be one of {INTRABAR_FILL_MODES}, got {intrabar_fill!r}"
+        )
+
+
 def _strategy_name(strategy_class) -> str:
     """Human-readable name for whatever run_sweep was handed.
 
@@ -248,6 +257,7 @@ def _run_one_combination(
     allow_signal_exit: bool = False,
     settlement_days: int = 0,
     cash_yield_pct: float | None = 0.0,
+    intrabar_fill: str = "level",
 ):
     """
     Task 4.5. Module-level (not a method) so it, and everything passed
@@ -336,6 +346,7 @@ def _run_one_combination(
             settlement_days=settlement_days,
             intrabar_priority=intrabar_priority,
             cash_yield_pct=cash_yield_pct,
+            intrabar_fill=intrabar_fill,
         )
         # Strategy is identified by name rather than by the config's
         # strategy_id, because run_sweep takes a callable and never
@@ -362,6 +373,7 @@ def _run_one_combination(
             "allow_signal_exit": allow_signal_exit,
             "settlement_days": settlement_days,
             "cash_yield_pct": cash_yield_pct,
+            "intrabar_fill": intrabar_fill,
         }
         result_row = {
             "Grid Step": step,
@@ -388,6 +400,7 @@ def _run_one_combination(
             "allow_signal_exit": allow_signal_exit,
             "settlement_days": settlement_days,
             "cash_yield_pct": cash_yield_pct,
+            "intrabar_fill": intrabar_fill,
             "error": str(e),
         }, None
 
@@ -766,6 +779,7 @@ class OptimizationController:
         allow_signal_exit: bool = False,
         settlement_days: int = 0,
         cash_yield_pct: float | None = 0.0,
+        intrabar_fill: str = "level",
     ) -> SimulationResult:
         """
         Task 4.1. One isolated combination: fresh AssetLotLedger and
@@ -819,6 +833,11 @@ class OptimizationController:
         exists). Same contract and default as intraday_validation's.
         """
         _validate_fill_model(fill_model, intrabar_priority)
+        _validate_intrabar_fill(intrabar_fill)
+        if fill_model == "intrabar" and intrabar_fill == "causal":
+            # The level for bar t is compared with bar t's LOW below, so it
+            # may only use bars before t -- see ExecutionConfig.intrabar_fill.
+            strategy_instance.use_prior_bar_trigger(True)
         ledger = AssetLotLedger()
         # mode="SIMULATION" stays a bare string here (Task 4.3): a Mode
         # enum would live in src/order_management_system.py, which isn't
@@ -1020,9 +1039,17 @@ class OptimizationController:
             if liquidations:
                 condemned = {lot.order_id for lot in liquidations}
                 marketable = [lot for lot in marketable if lot.order_id not in condemned]
-            exits.extend(
-                (lot, lot.target_sell_price, SellReason.PROFIT_TARGET) for lot in marketable
-            )
+            if fill_model == "intrabar" and intrabar_fill in ("open_or_level", "causal"):
+                # The mirror of the buy side: a resting sell limit at the
+                # target fills at the OPEN when the bar opens at or above it.
+                exits.extend(
+                    (lot, max(lot.target_sell_price, row.open), SellReason.PROFIT_TARGET)
+                    for lot in marketable
+                )
+            else:
+                exits.extend(
+                    (lot, lot.target_sell_price, SellReason.PROFIT_TARGET) for lot in marketable
+                )
 
             for lot, sell_price, sell_reason in exits:
                 exec_res = oms.execute_sell(lot.symbol, lot.shares, sell_price)
@@ -1155,8 +1182,13 @@ class OptimizationController:
                     context, state.last_buy_price, step
                 )
                 buy_fill_price = trigger_level
+                if intrabar_fill in ("open_or_level", "causal"):
+                    # A resting buy limit at the level fills at the OPEN
+                    # when the bar opens at or below it -- book a price the
+                    # bar actually traded. See ExecutionConfig.intrabar_fill.
+                    buy_fill_price = min(trigger_level, row.open)
                 fill_context = dataclasses.replace(
-                    context, close=trigger_level, low=min(row.low, trigger_level)
+                    context, close=buy_fill_price, low=min(row.low, buy_fill_price)
                 )
                 decision = decision_cycle.evaluate_grid_decision(
                     strategy_instance,
@@ -1365,6 +1397,7 @@ class OptimizationController:
             "allow_signal_exit": allow_signal_exit,
             "settlement_days": settlement_days,
             "cash_yield_pct": cash_yield_pct,
+            "intrabar_fill": intrabar_fill,
             # Underscore-prefixed attributes are excluded deliberately.
             # The intent above is "the strategy's own constructor-derived
             # attributes"; a stateful strategy's rolling indicator state
@@ -1409,6 +1442,7 @@ class OptimizationController:
         allow_signal_exit: bool = False,
         settlement_days: int = 0,
         cash_yield_pct: float | None = 0.0,
+        intrabar_fill: str = "level",
         symbol: str = "TQQQ",
         initial_cash: float = 100_000.0,
         n_jobs: int = 1,
@@ -1537,6 +1571,7 @@ class OptimizationController:
         # before any work starts. _simulate_single validates them too,
         # for callers that reach it directly.
         _validate_fill_model(fill_model, intrabar_priority)
+        _validate_intrabar_fill(intrabar_fill)
         cost_model = cost_model if cost_model is not None else ZeroCostModel()
         risk_manager = risk_manager if risk_manager is not None else RiskManager()
         results = []
@@ -1615,6 +1650,7 @@ class OptimizationController:
                     allow_signal_exit,
                     settlement_days,
                     cash_yield_pct,
+                    intrabar_fill,
                 )
                 elapsed_ms = int((time.perf_counter() - started_at) * 1000)
                 resolved_search_strategy.report(suggestion, sim_result)
@@ -1668,6 +1704,7 @@ class OptimizationController:
                             allow_signal_exit,
                             settlement_days,
                             cash_yield_pct,
+                            intrabar_fill,
                         ): s
                         for s in batch
                     }

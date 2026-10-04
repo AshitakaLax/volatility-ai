@@ -117,6 +117,14 @@ def daily_vol(frame: pd.DataFrame) -> float:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--config", default="config/paper_aggressive.yaml")
+    p.add_argument(
+        "--lag",
+        type=int,
+        choices=(0, 1),
+        default=1,
+        help="1 = regime flag applies to the NEXT session (causal). 0 reproduces plan.md's "
+        "engine stages, which applied each flag on its own session -- a one-day lookahead.",
+    )
     p.add_argument("--out", default="output/stage4_leverage.jsonl")
     p.add_argument("--target", type=float, default=0.04)
     p.add_argument("--seeds", type=int, default=30)
@@ -124,6 +132,12 @@ def main(argv=None) -> int:
     p.add_argument("--no-resume", dest="resume", action="store_false")
     p.set_defaults(resume=True)
     args = p.parse_args(argv)
+    print(
+        "regime lag:",
+        "1 (causal)"
+        if args.lag == 1
+        else "0 -- SAME-SESSION, the plan.md lookahead; comparison only",
+    )
 
     journal = Journal(args.out)
     done = journal.done_ids() if args.resume else set()
@@ -170,7 +184,7 @@ def main(argv=None) -> int:
         # target, so each instrument carries its own null rather than
         # borrowing TQQQ's.
         regime, flips, in_market = daily_regime(
-            symbol, ind, OUTPUT, VARIANT, BEST, BEST_LOOKBACK, path=path
+            symbol, ind, OUTPUT, VARIANT, BEST, BEST_LOOKBACK, path=path, lag=args.lag
         )
         for seed in range(args.seeds):
             control = matched_random_regime(list(regime), in_market / 100, flips, seed)
@@ -195,7 +209,14 @@ def main(argv=None) -> int:
         try:
             if control is None:
                 regime, flips, in_market = daily_regime(
-                    symbol, ind, OUTPUT, VARIANT, params, lookback, path=CANDIDATES[symbol]
+                    symbol,
+                    ind,
+                    OUTPUT,
+                    VARIANT,
+                    params,
+                    lookback,
+                    path=CANDIDATES[symbol],
+                    lag=args.lag,
                 )
             else:
                 regime = control

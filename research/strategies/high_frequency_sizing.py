@@ -632,6 +632,7 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             self._fast_volume = RollingMean(fast_bars)
             self._slow_volume = RollingMean(slow_bars)
         self._rolling_high = RollingMax(bars_from_days(lookback_days, bars_per_day))
+        self._prior_rolling_high: float | None = None
         self._baseline_capital: float | None = None
         # None (the default) leaves exits exactly as they were: fixed at
         # entry from grid.profit_targets. Set it and each lot's target
@@ -686,6 +687,9 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         a triggered bar would make them functions of `step`."""
         if self._baseline_capital is None and context.equity > 0:
             self._baseline_capital = context.equity
+        # The high through the PREVIOUS bar, kept for intrabar_fill="causal"
+        # (see _trigger_rolling_high). Taken before this bar's close joins.
+        self._prior_rolling_high = self._rolling_high.value
         if context.price > 0:
             self._rolling_high.update(context.price)
             # A fabricated bar from resample_to_uniform_minutes (see
@@ -945,9 +949,18 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         so the intrabar fill model measures this strategy's real
         reference against the bar's low, instead of the base class's
         last_buy_price-only formula -- see SizingStrategy._grid_trigger_level."""
-        rolling_high = self._rolling_high.value
+        rolling_high = self._trigger_rolling_high()
         reference = last_buy_price if rolling_high is None else max(last_buy_price, rolling_high)
         return reference * (1.0 - step)
+
+    def _trigger_rolling_high(self) -> float | None:
+        """The rolling high the trigger level may use: through the current
+        bar normally, through the PREVIOUS bar once the engine has called
+        use_prior_bar_trigger (intrabar_fill="causal"). See
+        SizingStrategy.use_prior_bar_trigger for why."""
+        if self._trigger_from_prior_bars:
+            return self._prior_rolling_high
+        return self._rolling_high.value
 
     def calculate_trade_value(self, context: MarketContext) -> float:
         """A fixed dollar amount, invariant to current equity/drawdown

@@ -68,6 +68,7 @@ from research.strategies.indicator_library import (
     signals,
     warmup_bars,
 )
+from research.strategies.natr_regime import apply_lag
 from tools.indicator_sweep import (
     INSTRUMENTS,
     RETURN_FLOOR,
@@ -114,7 +115,9 @@ def leaders(path: str) -> list[dict]:
     ]
 
 
-def daily_regime(symbol, ind, output, variant, params, lookback, path: str | None = None):
+def daily_regime(
+    symbol, ind, output, variant, params, lookback, path: str | None = None, lag: int = 1
+):
     """The bull/bear flag per session date, from DAILY bars.
 
     Daily, not per-minute, for the reason probe_stage3_engine records: a
@@ -131,7 +134,7 @@ def daily_regime(symbol, ind, output, variant, params, lookback, path: str | Non
     flags = signals(values, ind, lookback=lookback)[variant]
     skip = max(warmup_bars(ind, **params), lookback)
     flags = flags.iloc[skip:]
-    regime = {ts.date(): bool(v) for ts, v in flags.items()}
+    regime = apply_lag({ts.date(): bool(v) for ts, v in flags.items()}, lag)
     numeric = flags.astype(float)
     flips = int((numeric.diff().abs() > 0).sum())
     return regime, flips, round(float(numeric.mean()) * 100, 2)
@@ -220,6 +223,14 @@ def report(path: str) -> None:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--config", default="config/paper_aggressive.yaml")
+    p.add_argument(
+        "--lag",
+        type=int,
+        choices=(0, 1),
+        default=1,
+        help="1 = regime flag applies to the NEXT session (causal). 0 reproduces plan.md's "
+        "engine stages, which applied each flag on its own session -- a one-day lookahead.",
+    )
     p.add_argument("--source", default="output/stage1_grid.jsonl")
     p.add_argument("--out", default="output/stage2_grid.jsonl")
     p.add_argument("--target", type=float, default=0.04)
@@ -227,6 +238,12 @@ def main(argv=None) -> int:
     p.add_argument("--no-resume", dest="resume", action="store_false")
     p.set_defaults(resume=True)
     args = p.parse_args(argv)
+    print(
+        "regime lag:",
+        "1 (causal)"
+        if args.lag == 1
+        else "0 -- SAME-SESSION, the plan.md lookahead; comparison only",
+    )
 
     if args.report_only:
         report(args.out)
@@ -265,7 +282,7 @@ def main(argv=None) -> int:
             ).set_index("timestamp")
         try:
             regime, flips, in_market = daily_regime(
-                symbol, ind, cand["output"], cand["variant"], params, lookback
+                symbol, ind, cand["output"], cand["variant"], params, lookback, lag=args.lag
             )
             m = score(regime, policy == "liquidate", cfg, frames[symbol], args.target)
             row = {

@@ -76,6 +76,7 @@ EXECUTION_FLAG_FIELDS = (
     "allow_signal_exit",
     "settlement_days",
     "cash_yield_pct",
+    "intrabar_fill",
 )
 
 

@@ -140,6 +140,10 @@ BASELINE: dict | None = {
     # below is unaffected. All eighteen previous values were re-derived
     # and confirmed byte-identical before this one key was appended.
     "cash_yield_pct": 0.0,
+    # Added with execution.intrabar_fill. This baseline runs
+    # fill_model="close", where the flag cannot act, and "level" is the
+    # default -- so it records the key and moves no value.
+    "intrabar_fill": "level",
     "Final Equity": 100099.81489816227,
     "Total Return %": 0.09981489816226485,
     "Realized PnL": 99.81489816224163,
