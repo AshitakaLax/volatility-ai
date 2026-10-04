@@ -42,6 +42,7 @@ lookahead and must never back a decision that will trade.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Mapping
 from datetime import date
 from itertools import pairwise
@@ -195,7 +196,119 @@ def count_flips(regime: dict[date, bool]) -> int:
     return sum(1 for a, b in pairwise(values) if a != b)
 
 
+class IncrementalNatrRegime:
+    """The same causal calm flag as calm_by_date(lag=1) + debounce, computed
+    bar by bar for a strategy that sees the run one bar at a time (the
+    server and the live loop cannot inject a precomputed map).
+
+    Feed every bar to `observe`; `calm` is the flag for the session the
+    latest bar belongs to (None until the warm-up has passed). Sessions are
+    calendar days of the bar timestamps, exactly as daily_bars buckets
+    them; NATR is Wilder's with TA-Lib seeding (wilder_natr); the threshold
+    is the median of the last `lookback` NATR values; the first
+    max(250, 5 * period, lookback) sessions carry no flag; each flag is the
+    previous session's reading (lag 1); `min_hold` debounces exactly like
+    debounce(). research/tests/test_natr_regime_incremental.py checks the
+    flags against calm_by_date + debounce date for date.
+
+    Two optional BEAR FILTERS (Ultimate algorithm, exp5), ANDed into the
+    raw flag before debouncing and also read at the previous session's
+    close: `bear_dd` -- calm only within that fraction of the highest close
+    of the last `bear_window` sessions; `bear_sma` -- calm only above that
+    many sessions' simple moving average of closes.
+    """
+
+    def __init__(
+        self,
+        period: int = 10,
+        lookback: int = 100,
+        min_hold: int = 1,
+        bear_dd: float | None = None,
+        bear_window: int = 60,
+        bear_sma: int | None = None,
+    ) -> None:
+        if period < 1 or lookback < 1:
+            raise ConfigurationError("period and lookback must be >= 1")
+        if bear_dd is not None and not 0 < bear_dd < 1:
+            raise ConfigurationError(f"bear_dd must be in (0, 1), got {bear_dd}")
+        if bear_window < 1 or (bear_sma is not None and bear_sma < 1):
+            raise ConfigurationError("bear_window and bear_sma must be >= 1")
+        self.period, self.lookback, self.min_hold = period, lookback, max(1, int(min_hold))
+        self.bear_dd, self.bear_window, self.bear_sma = bear_dd, bear_window, bear_sma
+        self._skip = max(_WARMUP_FLOOR, 5 * period, lookback)
+        self._day: date | None = None
+        self._o = self._h = self._l = self._c = None
+        self._sessions = 0  # completed sessions
+        self._prev_close: float | None = None
+        self._trs: list[float] = []
+        self._atr: float | None = None
+        self._natrs: deque = deque(maxlen=lookback)
+        self._closes: deque = deque(maxlen=max(bear_window, bear_sma or 1))
+        self._pending: bool | None = None  # raw flag for the next session
+        self._state: bool | None = None
+        self._held = 0
+        self.calm: bool | None = None
+
+    def observe(self, timestamp, high: float, low: float, close: float) -> None:
+        day = timestamp.date()
+        if day != self._day:
+            if self._day is not None:
+                self._close_session()
+                self._open_session()
+            self._day = day
+            self._h, self._l, self._c = high, low, close
+            return
+        self._h = max(self._h, high)
+        self._l = min(self._l, low)
+        self._c = close
+
+    def _close_session(self) -> None:
+        i = self._sessions  # index of the session just completed
+        h, lo, c = self._h, self._l, self._c
+        natr = None
+        if self._prev_close is not None:
+            pc = self._prev_close
+            tr = max(h - lo, abs(h - pc), abs(lo - pc))
+            if self._atr is None:
+                self._trs.append(tr)
+                if len(self._trs) == self.period:
+                    self._atr = sum(self._trs) / self.period
+                    natr = 100.0 * self._atr / c
+            else:
+                self._atr = (self._atr * (self.period - 1) + tr) / self.period
+                natr = 100.0 * self._atr / c
+        if natr is None:
+            self._natrs.clear()  # the rolling median needs `lookback` CONSECUTIVE values
+        else:
+            self._natrs.append(natr)
+        self._closes.append(c)
+        calm = False
+        if natr is not None and len(self._natrs) == self.lookback:
+            calm = natr < float(np.median(np.fromiter(self._natrs, float)))
+        if calm and self.bear_dd is not None:
+            recent = list(self._closes)[-self.bear_window :]
+            calm = c >= (1.0 - self.bear_dd) * max(recent)
+        if calm and self.bear_sma is not None:
+            recent = list(self._closes)[-self.bear_sma :]
+            calm = len(recent) == self.bear_sma and c > sum(recent) / self.bear_sma
+        self._pending = bool(calm) if i >= self._skip else None
+        self._prev_close = c
+        self._sessions += 1
+
+    def _open_session(self) -> None:
+        raw = self._pending
+        if raw is None:
+            self.calm = None
+            return
+        if self._state is None or (raw != self._state and self._held >= self.min_hold):
+            self._state, self._held = raw, 1
+        else:
+            self._held += 1
+        self.calm = self._state
+
+
 __all__ = [
+    "IncrementalNatrRegime",
     "apply_lag",
     "calm_by_date",
     "count_flips",
