@@ -22,7 +22,7 @@ It does not parse. No Fidelity-specific field names, no payload schema, no
 looks like, because at the time of writing NOBODY here knows what Fidelity
 actually transmits on submit -- whether an ID comes back over WebSocket,
 over XHR, or not at all. That question is settled empirically by running
-`fidelity_recon.py` and reading the dump, not by guessing in advance.
+`fidelity_gateway/recon.py` and reading the dump, not by guessing in advance.
 Writing a parser before seeing the data would be inventing a format.
 
 So this records, verbatim (modulo scrubbing, below), and stops there.
@@ -56,7 +56,7 @@ Request headers are never captured at all -- `Cookie` and `Authorization`
 live there and have no recon value.
 
 Even so: treat the dump as a secret. It is gitignored and dockerignored,
-and `fidelity_recon.py` writes it outside the repo by default.
+and `fidelity_gateway/recon.py` writes it outside the repo by default.
 """
 
 from __future__ import annotations
@@ -142,10 +142,20 @@ class CapturedResponse:
 class TrafficCapture:
     """Records WebSocket frames and HTTP response bodies from a Playwright page.
 
-    Attach BEFORE navigation. Playwright only delivers events for
-    activity that happens after a listener is registered, and
-    `FidelityAutomation.__init__` launches the browser without navigating
-    (`login()` is a separate call), so the hook point is:
+    Attach BEFORE the traffic you want. Playwright only delivers events
+    for activity that happens after a listener is registered. In the
+    mode that works today -- the user's own browser, attached over CDP
+    (recon.run_cdp_recon) -- that means every context, so tabs opened
+    later are captured too:
+
+        browser = playwright.chromium.connect_over_cdp(cdp_url)
+        capture = TrafficCapture()      # no password is ever seen here
+        for context in browser.contexts:
+            capture.attach_context(context)
+
+    The launched-browser flow (recon.run_recon, which Fidelity now
+    refuses) hooks in before login instead, because
+    `FidelityAutomation.__init__` launches without navigating:
 
         fid = FidelityAutomation(...)   # browser + page exist, nothing loaded
         capture = TrafficCapture(secret_values=[password, ...])

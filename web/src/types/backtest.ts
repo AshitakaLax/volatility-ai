@@ -583,12 +583,15 @@ export interface ParamSpec {
  *   regime_switched  local_reference while a volatility regime reads calm;
  *                    while it reads turbulent, no grid level -- only a
  *                    capitulation-close reversal entry. Always locked.
+ *   exposure_target  not a grid: buys once a session, at a set minute, up
+ *                    to a daily exposure target. Always locked.
  */
 export type TriggerMethod =
   | "last_buy"
   | "local_reference"
   | "regime_widened"
-  | "regime_switched";
+  | "regime_switched"
+  | "exposure_target";
 
 export interface Trigger {
   /** Display order; [0] is the default; a single entry is locked. */

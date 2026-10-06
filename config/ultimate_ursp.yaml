@@ -1,0 +1,63 @@
+# ULTIMATE-URSP, recommended configuration (docs/research/ultimate-ursp.md --
+# read its caveats before using this for anything but a backtest).
+#
+# A pinned single-point config, not a search space and not a deployment.
+#
+# URSP (ProShares Ultra S&P 500 Equal Weight, 2x daily) has traded only
+# since 2025-08-27, so the symbol below is the SIMULATED history built by
+# tools/simulate_ursp.py (2x RSP's daily total return, financed at fed
+# funds + a calibrated spread, less the 0.95% fee; spliced with the real
+# fund from its first session). To make it backtest-visible:
+#
+#   python tools/simulate_ursp.py --minutes
+#   python tools/build_warehouse.py --ingest URSP_SIM --csv data/simulated/URSP_simulated_1Min.csv
+#
+# The strategy: Ultimate-RSP's daily exposure book (6 PLUS_DM + 6 ADOSC
+# votes, each below its trailing median, averaged) times a graded bear gate
+# (full exposure within 25% of the 250-session high, none 55% below it,
+# linear in between), reached an hour into the session, rebalancing only
+# when the target is more than 20% of equity away (URSP is thinly traded).
+# Its sales are signal exits; the profit target is set out of reach.
+#
+# Research-lab result (intrabar causal fills, dynamic slippage, the
+# engine's cash yield; simulated URSP 2004-07 -> 2026-10):
+#
+#                          CAGR    max DD   Calmar   2008     2022
+#   this configuration     11.7%   28.0%    0.42    -19%     +10%
+#   buy and hold URSP      11.2%   88.5%    0.13    -72%     -29%
+#   buy and hold RSP       10.1%   59.9%    0.17    -40%     -12%
+#
+# Costs are the main risk: at 4x / 10x the model's costs the CAGR is 10.6% /
+# 8.1%. The deflated Sharpe is not significant (0.42 at N = 1,500); the
+# proven gain is the drawdown.
+#
+# Pinned to server/backtest.py's STRATEGY_DEFAULTS["ultimate_ursp"] by
+# research/tests/test_ultimate_ursp_sizing.py.
+strategy:
+  strategy_id: ultimate_ursp
+  strategy_params:
+    pd_periods: "14,21,42"
+    pd_lookbacks: "100,250"
+    ad_params: "3/10,5/20,10/40"
+    ad_lookbacks: "100,250"
+    pd_weight: 0.5
+    execute_minute: 60
+    rebalance_band: 0.20
+    bear_window: 250
+    bear_dd_start: 0.25
+    bear_dd_full: 0.55
+grid:
+  steps: [0.001]
+  profit_targets: [10.0]
+backtest: {symbol: URSP_SIM, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: Total Return %, direction: maximize, seed: 42}
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  intrabar_fill: causal
+  enforce_no_loss: true
+  allow_signal_exit: true
+output: {return_full_results: false}

@@ -12,10 +12,11 @@ use -- a ~$20 share, so a one-share order risks about twenty dollars.
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
-from engine.core.exceptions import ConfigurationError
+from engine.core.exceptions import ConfigurationError, PersistenceError
 from engine.core.retry_policy import AmbiguousSubmissionError
 from engine.execution.order_lifecycle import OrderState
 from fidelity_gateway.broker import FidelityBroker
@@ -33,6 +34,7 @@ from fidelity_gateway.tests.test_fidelity_broker import ACCOUNT, FakeSession
 SYMBOL = "CWH"
 PRICE = 20.00
 PREVIEW = "/ftgw/digital/trade-equity/previewSrvc"
+PENDING = "/ftgw/digital/activityapi/api/v1/transactions/pending"
 
 
 class SpyJournal:
@@ -49,7 +51,10 @@ class SpyJournal:
         return [{"decision_id": d, "conf_num": c, **x} for d, c, x in self.records]
 
 
-def _session(conf="2C50CWH1", place_conf=None, place_raises=None):
+def _session(conf="2C50CWH1", place_conf=None, place_raises=None, place_account=None):
+    placed = {"confNum": place_conf or conf}
+    if place_account is not None:
+        placed["acctNum"] = place_account
     return FakeSession(
         {
             "/ftgw/digital/trade-equity/getquote": {
@@ -57,11 +62,33 @@ def _session(conf="2C50CWH1", place_conf=None, place_raises=None):
             },
             PREVIEW: {"preview": {"orderConfirmDetail": {"confNum": conf}}},
             PLACE_PATH: (
-                _raise(place_raises)
-                if place_raises
-                else {"place": {"orderConfirmDetail": {"confNum": place_conf or conf}}}
+                _raise(place_raises) if place_raises else {"place": {"orderConfirmDetail": placed}}
             ),
-            "/ftgw/digital/activityapi/api/v1/transactions/pending": {"data": {"orders": []}},
+            PENDING: {"data": {"orders": []}},
+        }
+    )
+
+
+def _listing(*conf_nums):
+    """A session whose order list shows these confNums, working."""
+    return FakeSession(
+        {
+            PENDING: {
+                "data": {
+                    "orders": [
+                        {
+                            "orderNum": conf,
+                            "acctNum": ACCOUNT,
+                            "symbol": SYMBOL,
+                            "status": "Open",
+                            "cancelableInd": True,
+                        }
+                        for conf in conf_nums
+                    ]
+                }
+            },
+            "/ftgw/digital/trade-equity/positions": [],
+            "/ftgw/digital/trade-equity/balance": {},
         }
     )
 
@@ -248,6 +275,19 @@ def test_a_mismatched_confnum_is_ambiguous_rather_than_assumed():
         _broker(session).place(SYMBOL, "buy", 1, PRICE, "dec-1")
 
 
+def test_a_wrong_account_in_the_place_reply_is_ambiguous_not_a_plain_failure():
+    """Once placeOrder has returned, the order may be live -- in whichever
+    account Fidelity named. A plain ExecutionError reads as "it did not
+    happen", and the natural response to that is a retry: a second live
+    order."""
+    session = _session(place_account="111111111")
+    with pytest.raises(AmbiguousSubmissionError) as caught:
+        _broker(session).place(SYMBOL, "buy", 1, PRICE, "dec-1")
+    message = str(caught.value)
+    assert "2C50CWH1" in message and "DIFFERENT account" in message
+    assert "MAY ALREADY HAVE BEEN CARRIED OUT" in message
+
+
 def test_the_transport_is_the_last_line_and_it_holds():
     """Even correctly configured, a session without place permission
     cannot be talked into it."""
@@ -278,32 +318,117 @@ def test_a_missing_journal_file_reads_as_empty_not_an_error(tmp_path):
     assert FileConfNumJournal(str(tmp_path / "absent.jsonl")).read_all() == []
 
 
-def test_unresolved_orders_names_what_the_venue_never_received(tmp_path):
-    """After an ambiguous submit, this is the question that matters."""
-    path = tmp_path / "orders.jsonl"
-    journal = FileConfNumJournal(str(path))
-    journal.record("dec-1", "2C50LANDED", {"symbol": SYMBOL})
-    journal.record("dec-2", "2C50LOST", {"symbol": SYMBOL})
+def test_unresolved_orders_names_recent_orders_the_venue_does_not_list(tmp_path):
+    """After an ambiguous submit, this is the first question."""
+    journal = FileConfNumJournal(str(tmp_path / "orders.jsonl"))
+    journal.record("dec-1", "2C50LANDED", {"symbol": SYMBOL, "account": ACCOUNT})
+    journal.record("dec-2", "2C50LOST", {"symbol": SYMBOL, "account": ACCOUNT})
 
-    session = FakeSession(
-        {
-            "/ftgw/digital/activityapi/api/v1/transactions/pending": {
-                "data": {
-                    "orders": [
-                        {
-                            "orderNum": "2C50LANDED",
-                            "acctNum": ACCOUNT,
-                            "symbol": SYMBOL,
-                            "status": "Open",
-                            "cancelableInd": True,
-                        }
-                    ]
-                }
-            }
-        }
-    )
-    missing = unresolved_orders(journal, FidelityBroker(session, ACCOUNT, (ACCOUNT,)))
-    assert [x["decision_id"] for x in missing] == ["dec-2"]
+    broker = FidelityBroker(_listing("2C50LANDED"), ACCOUNT, (ACCOUNT,))
+    assert [x["decision_id"] for x in unresolved_orders(journal, broker)] == ["dec-2"]
+
+
+def test_unresolved_orders_leaves_out_entries_older_than_the_window(tmp_path):
+    """The order list holds working and recently completed orders, not a
+    history. Compared against the WHOLE journal, every order from an
+    earlier day was reported as never landed, whatever had happened to it."""
+    path = tmp_path / "orders.jsonl"
+    old = {
+        "ts": time.time() - 3 * 24 * 3600,
+        "decision_id": "dec-old",
+        "conf_num": "2C50OLD",
+        "account": ACCOUNT,
+    }
+    path.write_text(json.dumps(old) + "\n", encoding="utf-8")
+    journal = FileConfNumJournal(str(path))
+    journal.record("dec-new", "2C50NEW", {"account": ACCOUNT})
+
+    broker = FidelityBroker(_listing(), ACCOUNT, (ACCOUNT,))
+    assert [x["decision_id"] for x in unresolved_orders(journal, broker)] == ["dec-new"]
+    widened = unresolved_orders(journal, broker, since=0)
+    assert [x["decision_id"] for x in widened] == ["dec-old", "dec-new"]
+
+
+def test_unresolved_orders_skips_another_accounts_entries(tmp_path):
+    """The journal path can be shared, and another account's orders can
+    never appear in this account's list -- they would always read as
+    missing."""
+    journal = FileConfNumJournal(str(tmp_path / "orders.jsonl"))
+    journal.record("dec-x", "2C50ELSE", {"symbol": SYMBOL, "account": "111222333"})
+    broker = FidelityBroker(_listing(), ACCOUNT, (ACCOUNT,))
+    assert unresolved_orders(journal, broker) == []
+
+
+# ======================================================================
+# Restarts: the journal is read back
+# ======================================================================
+
+
+def test_a_restarted_broker_still_knows_the_orders_it_placed(tmp_path):
+    """THE RESTART PATH. decision_id -> confNum lives in memory, so before
+    the journal was read back every order placed before a restart came
+    back a stranger: get_order_by_client_id found nothing and snapshot()
+    keyed it by confNum."""
+    journal = FileConfNumJournal(str(tmp_path / "orders.jsonl"))
+    _broker(_session(), journal).place(SYMBOL, "buy", 1, PRICE, "dec-1")
+
+    restarted = _broker(_listing("2C50CWH1"), journal)
+    found = restarted.get_order_by_client_id("dec-1")
+    assert found is not None and found.id == "2C50CWH1"
+    assert found.state is OrderState.ACCEPTED
+    assert "dec-1" in restarted.snapshot().orders
+
+
+def test_a_decision_in_the_journal_is_never_placed_again(tmp_path):
+    """Fidelity has no client order ID to deduplicate on, so a second
+    place under the same decision_id would be a second live order -- and
+    after a restart only the journal remembers the first."""
+    journal = FileConfNumJournal(str(tmp_path / "orders.jsonl"))
+    _broker(_session(), journal).place(SYMBOL, "buy", 1, PRICE, "dec-1")
+
+    session = _session(conf="2C50CWH2")
+    with pytest.raises(ValueError, match="already has an order in the journal"):
+        _broker(session, journal).place(SYMBOL, "buy", 1, PRICE, "dec-1")
+    assert session.calls == [], "nothing may even be previewed for it"
+
+
+def test_the_same_decision_is_refused_within_one_process_too():
+    broker = _broker()
+    broker.place(SYMBOL, "buy", 1, PRICE, "dec-1")
+    with pytest.raises(ValueError, match="2C50CWH1"):
+        broker.place(SYMBOL, "buy", 1, PRICE, "dec-1")
+
+
+def test_another_accounts_journal_entries_are_not_claimed(tmp_path):
+    journal = FileConfNumJournal(str(tmp_path / "orders.jsonl"))
+    journal.record("dec-1", "2C50ELSE", {"symbol": SYMBOL, "account": "111222333"})
+    broker = _broker(_session(), journal)
+    assert broker.get_order_by_client_id("dec-1") is None
+    assert broker.place(SYMBOL, "buy", 1, PRICE, "dec-1").id == "2C50CWH1"
+
+
+def test_a_failed_journal_write_leaves_the_decision_free_to_retry():
+    """The decision is mapped only once the journal holds it. Mapped at
+    preview time instead, a disk-full error -- which stops the order
+    before anything is sent -- would also refuse the retry as a duplicate
+    of an order that never existed."""
+    broker = _broker(journal=SpyJournal(explode=True))
+    with pytest.raises(OSError):
+        broker.place(SYMBOL, "buy", 1, PRICE, "dec-1")
+    broker._journal = SpyJournal()
+    assert broker.place(SYMBOL, "buy", 1, PRICE, "dec-1").state is OrderState.SUBMITTED
+
+
+def test_an_unreadable_journal_line_is_named_not_skipped(tmp_path):
+    """Read on every construction now, so a line cut off mid-write must
+    say where it is -- and must stop placing, because a journal missing a
+    line can no longer vouch for which orders are live."""
+    path = tmp_path / "orders.jsonl"
+    FileConfNumJournal(str(path)).record("dec-1", "2C50CWH1", {"account": ACCOUNT})
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write('{"ts": 1, "decision_id": "dec-2", "conf')
+    with pytest.raises(PersistenceError, match="line 2"):
+        _broker(journal=FileConfNumJournal(str(path)))
 
 
 # ======================================================================
@@ -439,11 +564,11 @@ def test_a_transport_refusal_while_cancelling_is_not_reported_as_ambiguous():
 
 def test_cancelling_reads_the_account_back_out_of_the_reply():
     """The request naming the right account is not proof the venue
-    applied it."""
-    from engine.core.exceptions import ExecutionError
-
+    applied it -- and once cancelPlaceOrder has returned, a mismatch is
+    ambiguous, not a plain failure: the cancel may already have been
+    carried out somewhere."""
     session = _cancel_session(echo_account="111111111")
-    with pytest.raises(ExecutionError, match="DIFFERENT account"):
+    with pytest.raises(AmbiguousSubmissionError, match="DIFFERENT account"):
         _broker(session).cancel("2C50CWH1")
 
 

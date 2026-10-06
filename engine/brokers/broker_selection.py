@@ -29,17 +29,20 @@ attribute error.
 --------------------------------------------------------------------
 dry_run=False IS A HARD FAILURE, NOT A NO-OP
 
-`src/fidelity_broker.py` is preview-only by construction: it holds no
-place-order capability and the transport refuses one. A config setting
-`live.fidelity.dry_run = false` is therefore asking for something this
-code cannot do.
+The adapter this builds, `fidelity_gateway/broker.py`'s FidelityBroker,
+is preview-only by construction: it holds no place-order capability and
+the transport refuses one. A config setting `live.fidelity.dry_run =
+false` is therefore asking for something this path cannot do.
 
 Silently previewing anyway would be the worst outcome available -- the
 operator believes orders are being placed, the strategy believes its
 sells are resting, and the divergence is only discovered by looking at
-an account that never traded. So it raises. When a real placing adapter
-exists this check is what must be deliberately revisited, which is the
-point of putting it here rather than leaving the flag unread.
+an account that never traded. So it raises. The placing adapter
+(`fidelity_gateway/placing_broker.py`) exists, but it needs a symbol
+allowlist, a per-order ceiling and a durable journal that `live.fidelity`
+does not carry yet. Wiring it in is when this check must be deliberately
+revisited, which is the point of putting it here rather than leaving the
+flag unread.
 """
 
 from __future__ import annotations
@@ -76,7 +79,7 @@ def build_broker(
         if credentials is None:
             raise ConfigurationError(
                 "live.broker='alpaca' needs credentials. Load them with "
-                "src.secrets.load_live_credentials() and pass credentials=..."
+                "engine.core.secrets.load_live_credentials() and pass credentials=..."
             )
         from engine.brokers.alpaca_broker import AlpacaBroker
 
@@ -100,25 +103,36 @@ def _build_fidelity(config, session: Any):
         )
     if not settings.dry_run:
         raise ConfigurationError(
-            "live.fidelity.dry_run=false, but src/fidelity_broker.py is "
-            "PREVIEW-ONLY: it holds no place-order capability and the transport "
-            "refuses one. Refusing to start rather than previewing while the "
-            "config says orders are being placed -- an operator who believes "
-            "orders are live while nothing trades is the worst available "
-            "outcome. Set dry_run=true, or build a placing adapter first."
+            "live.fidelity.dry_run=false, but the adapter this builds "
+            "(fidelity_gateway/broker.py) is PREVIEW-ONLY: it holds no place-order "
+            "capability and the transport refuses one. The placing adapter, "
+            "fidelity_gateway/placing_broker.py, is not wired into this path -- it "
+            "needs a symbol allowlist, a per-order ceiling and a journal that "
+            "live.fidelity does not carry yet. Refusing to start rather than "
+            "previewing while the config says orders are being placed -- an "
+            "operator who believes orders are live while nothing trades is the "
+            "worst available outcome. Set dry_run=true."
         )
     if session is None:
         raise ConfigurationError(
             "live.broker='fidelity' needs an authenticated FidelitySession, not "
             "credentials. Fidelity refuses a Playwright-launched browser, so the "
             "session must come from a browser a human has logged into -- attach "
-            "over CDP (see fidelity_recon.py --cdp-url) and pass "
-            "fidelity_session=..."
+            "over CDP (fidelity_gateway/place_test_order.py's attach() shows how) "
+            "and pass fidelity_session=..."
         )
     if settings.account is None:
         raise ConfigurationError(
             "live.fidelity.account is not set. It must name the exact account "
             "to trade, and that account must also appear in allowed_accounts."
+        )
+    if settings.account_name is None:
+        raise ConfigurationError(
+            "live.fidelity.account_name is not set. Fidelity's order list "
+            "(transactions/pending) refuses an account filter without the "
+            "account's display name -- 400 'filter.accounts.0.acctName should not "
+            "be empty' -- so the adapter could not read its own orders back. Set "
+            "it to the name Fidelity shows for the account, e.g. 'Traditional IRA'."
         )
 
     from fidelity_gateway.broker import FidelityBroker
@@ -136,4 +150,5 @@ def _build_fidelity(config, session: Any):
         settings.account,
         settings.allowed_accounts,
         symbol=config.backtest.symbol,
+        account_name=settings.account_name,
     )

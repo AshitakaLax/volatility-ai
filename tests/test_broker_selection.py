@@ -39,7 +39,13 @@ def _config(broker="alpaca", fidelity=None, paper=True):
     )
 
 
-FIDELITY_OK = {"allowed_accounts": [ACCOUNT], "account": ACCOUNT, "dry_run": True}
+FIDELITY_OK = {
+    "allowed_accounts": [ACCOUNT],
+    "account": ACCOUNT,
+    "account_name": "Traditional IRA",
+    "dry_run": True,
+}
+PENDING = "/ftgw/digital/activityapi/api/v1/transactions/pending"
 
 
 # --- venue selection ---------------------------------------------------
@@ -90,6 +96,23 @@ def test_fidelity_without_a_named_account_refuses():
         build_broker(_config("fidelity", settings), fidelity_session=FakeSession())
 
 
+def test_fidelity_without_an_account_name_refuses():
+    """transactions/pending answers 400 "filter.accounts.0.acctName should
+    not be empty" without it, so a broker built without one could preview
+    orders and then never read them back."""
+    settings = dict(FIDELITY_OK, account_name=None)
+    with pytest.raises(ConfigurationError, match="account_name is not set"):
+        build_broker(_config("fidelity", settings), fidelity_session=FakeSession())
+
+
+def test_the_account_name_reaches_the_order_list_filter():
+    session = FakeSession({PENDING: {"data": {"orders": []}}})
+    broker = build_broker(_config("fidelity", FIDELITY_OK), fidelity_session=session)
+    broker._orders()
+    payload = next(p for path, p in session.calls if path == PENDING)
+    assert payload["filter"]["accounts"][0]["acctName"] == "Traditional IRA"
+
+
 # --- dry_run=False is a hard failure -----------------------------------
 
 
@@ -118,7 +141,7 @@ def test_dry_run_false_is_refused_before_a_session_is_even_required():
 
 
 def test_an_account_outside_the_allowlist_is_still_refused_through_this_path():
-    settings = {"allowed_accounts": [ACCOUNT], "account": "999999999", "dry_run": True}
+    settings = dict(FIDELITY_OK, account="999999999")
     with pytest.raises(ConfigurationError, match="allowed_accounts"):
         build_broker(_config("fidelity", settings), fidelity_session=FakeSession())
 

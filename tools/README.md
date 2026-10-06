@@ -83,6 +83,7 @@ the same machinery — see `cli.py backup --help` / `cli.py restore --help`.
 | `build_earnings_calendar.py` | `data/earnings_releases_derived.csv`. **Load-bearing for a fresh checkout** — `data/` is git-ignored, so this is absent after a clone and `engine/data/event_calendar.py` needs it. Makes network requests; slow. |
 | `pull_extended_history.py` | Extended-hours minute datasets under `data/`, year by year. |
 | `export_strategy_curves.py` | One JSON blob of every strategy measured here, for the dashboard and the artifact. |
+| `simulate_ursp.py` | `data/simulated/URSP_simulated_daily.csv` (and, with `--minutes`, warehouse-format `URSP_simulated_1Min.csv`): a simulated URSP (2× daily S&P 500 Equal Weight) from RSP since 2003 — 2× RSP's total return less financing (fed funds + a spread calibrated to the real fund) and the 0.95% fee — spliced with the real fund from 2025-08-27. Makes network requests (Yahoo, FRED). See `docs/research/ultimate-ursp.md`. |
 | `build_warehouse.py` | `warehouse/` — two DuckDB catalogs plus ZSTD Parquet lakes for bars (`ticker/year`), macro series (`provider/series_key`) and trade executions (`simulation_id`). Needs `requirements-warehouse.txt`; prints an install hint and exits 2 without it, so a core-only checkout is unaffected. See below. |
 
 ### The warehouse

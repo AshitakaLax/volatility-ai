@@ -62,6 +62,7 @@ class FakePage:
         self.handlers = {}
         self.evaluated = []
         self.goto_urls = []
+        self.waits = []
         self._result = result or {"status": 200, "url": SIGNED_IN, "body": "{}"}
         self._raises = raises
 
@@ -83,6 +84,30 @@ class FakePage:
 
     def wait_for_load_state(self, *a, **k):
         pass
+
+    def wait_for_timeout(self, ms):
+        self.waits.append(ms)
+
+
+class QueueingPage(FakePage):
+    """Delivers requests the way Playwright's sync API does: only while a
+    Playwright call is in flight. FakePage hands each request straight to
+    the handlers, which no real page does -- so it could not tell a wait
+    that lets events through from one that starves them."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.queued = []
+
+    def emit_request(self, headers, url=TRADE_URL):
+        self.queued.append(FakeRequest(headers, url))
+
+    def wait_for_timeout(self, ms):
+        super().wait_for_timeout(ms)
+        while self.queued:
+            request = self.queued.pop(0)
+            for handler in self.handlers.get("request", []):
+                handler(request)
 
 
 ACTIVITY_HEADERS = {
@@ -189,6 +214,33 @@ def test_wait_for_credentials_times_out_with_an_actionable_message():
     session.attach()
     with pytest.raises(FidelitySessionError, match="prime"):
         session.wait_for_credentials(timeout_seconds=0.2)
+
+
+def test_waiting_for_credentials_lets_the_page_deliver_its_requests():
+    """Playwright's sync API dispatches page events only inside a
+    Playwright call. A wait built on time.sleep never lets the request it
+    is waiting for reach _on_request, and times out beside a perfectly
+    good session."""
+    page = QueueingPage()
+    session = FidelitySession(page)
+    session.attach()
+    page.emit_request(AUTH_HEADERS, TRADE_URL)  # made by the page, not yet delivered
+    assert session.has_credentials is False
+
+    session.wait_for_credentials(timeout_seconds=2.0)
+    assert session.has_credentials is True
+    assert page.waits, "never yielded to Playwright"
+
+
+def test_a_page_closed_while_waiting_reads_as_gone_not_as_a_timeout():
+    class ClosedPage(FakePage):
+        def wait_for_timeout(self, ms):
+            raise RuntimeError("Target page, context or browser has been closed")
+
+    session = FidelitySession(ClosedPage())
+    session.attach()
+    with pytest.raises(FidelitySessionExpired, match="page is gone"):
+        session.wait_for_credentials(timeout_seconds=2.0)
 
 
 def test_prime_navigates_to_traderplus_to_provoke_a_request():

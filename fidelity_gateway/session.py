@@ -299,6 +299,12 @@ class FidelitySession:
         Better than issuing a call that would fail with an opaque 403:
         the reason we cannot proceed yet is "no token seen", and that is
         what the error should say.
+
+        WAITS WITH page.wait_for_timeout, NEVER time.sleep. Playwright's
+        sync API delivers page events only while a Playwright call is in
+        flight. A loop that slept between checks would starve _on_request
+        of the very request it is waiting for, and time out beside a
+        perfectly good session.
         """
         if not self._attached:
             raise ConfigurationError(
@@ -306,10 +312,16 @@ class FidelitySession:
                 "is watching the page's requests yet."
             )
         deadline = time.monotonic() + timeout_seconds
-        while time.monotonic() < deadline:
-            if self.has_credentials:
-                return
-            time.sleep(0.5)
+        while not self.has_credentials:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                self._page.wait_for_timeout(min(0.5, remaining) * 1000)
+            except Exception as exc:
+                raise FidelitySessionExpired(f"The page is gone: {exc}") from exc
+        if self.has_credentials:
+            return
         raise FidelitySessionError(
             f"No authenticated request observed within {timeout_seconds:.0f}s, so no "
             "x-csrf-token could be captured. The page may be idle -- call prime(), "
@@ -370,9 +382,10 @@ class FidelitySession:
         if path not in READ_ONLY_ENDPOINTS and path not in ORDER_ENDPOINTS:
             raise ConfigurationError(
                 f"{path} is not a known Fidelity endpoint. Add it to "
-                "READ_ONLY_ENDPOINTS or ORDER_ENDPOINTS in src/fidelity_session.py "
-                "after confirming from a capture what it does -- an allowlist that "
-                "silently accepts anything is not an allowlist."
+                "READ_ONLY_ENDPOINTS, PREVIEW_ENDPOINTS or PLACE_ENDPOINTS in "
+                "fidelity_gateway/session.py after confirming from a capture what "
+                "it does -- an allowlist that silently accepts anything is not an "
+                "allowlist."
             )
         if not self.has_credentials:
             raise FidelitySessionError(

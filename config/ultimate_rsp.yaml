@@ -1,0 +1,57 @@
+# ULTIMATE-RSP, recommended configuration (docs/research/ultimate-rsp.md --
+# read its caveats before using this for anything but a backtest).
+#
+# A pinned single-point config, not a search space and not a deployment:
+# there is no `live:` section.
+#
+# Not a grid. A daily exposure target for RSP, reached once a session an
+# hour after the open:
+#
+#   target = 1/2 x (share of 6 PLUS_DM votes) + 1/2 x (share of 6 ADOSC votes)
+#
+# PLUS_DM(14/21/42) and Chaikin ADOSC(3/10, 5/20, 10/40), each voting "in"
+# while below its own trailing 100- or 250-session median, from data
+# through the previous close. Whole lots are bought up to the target and
+# sold down to it; those sales are signal exits (execution.allow_signal_exit),
+# the only path that may realise a loss. The grid step is not used for
+# timing, and the profit target is set out of reach: the book holds.
+#
+# Research-lab result (intrabar causal fills, dynamic slippage, the
+# engine's historical cash yield; RSP 2017-01 to 2026-08):
+#
+#                          CAGR    max DD   Calmar   2018    2020    2022
+#   this configuration     11.2%   11.9%    0.94     -1.2%   12.6%   10.2%
+#   buy and hold           12.0%   39.1%    0.31     -7.8%   12.6%  -11.6%
+#
+# Both halves agree (2017-21 11.6% / 11.8%; 2022-26 10.7% / 11.3%), as does
+# the record without Feb-Jun 2020 (10.9% / 11.3%). Chosen as the parameter
+# ensemble rather than its best member because the best member could not
+# be told apart from the rest out of sample.
+#
+# Pinned to server/backtest.py's STRATEGY_DEFAULTS["ultimate_rsp"] by
+# research/tests/test_ultimate_rsp_sizing.py.
+strategy:
+  strategy_id: ultimate_rsp
+  strategy_params:
+    pd_periods: "14,21,42"
+    pd_lookbacks: "100,250"
+    ad_params: "3/10,5/20,10/40"
+    ad_lookbacks: "100,250"
+    pd_weight: 0.5
+    execute_minute: 60
+    rebalance_band: 0.05
+grid:
+  steps: [0.001]
+  profit_targets: [10.0]
+backtest: {symbol: RSP, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: Total Return %, direction: maximize, seed: 42}
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  intrabar_fill: causal
+  enforce_no_loss: true
+  allow_signal_exit: true
+output: {return_full_results: false}

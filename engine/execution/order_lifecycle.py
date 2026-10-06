@@ -139,7 +139,7 @@ def map_broker_status(broker_status) -> OrderState:
     raw = getattr(broker_status, "value", broker_status)
 
     # IDEMPOTENT ON ITS OWN OUTPUT. An adapter that already speaks
-    # canonical states -- src/fidelity_broker.FidelityOrder.status does,
+    # canonical states -- fidelity_gateway.broker.FidelityOrder.status does,
     # because Fidelity's own status field is prose with the fill price
     # interpolated into it -- hands this a value it produced.
     #

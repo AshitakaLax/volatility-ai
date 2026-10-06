@@ -445,11 +445,19 @@ class FidelityConfig:
     dry_run controls whether the browser stops at the order preview.
     A Fidelity account has no paper mode, so dry_run is the only thing
     standing between a preview and a real order.
+
+    account_name is the account's display name as Fidelity lists it
+    ("Traditional IRA"). The order list (transactions/pending) refuses an
+    account filter without it -- 400 "filter.accounts.0.acctName should
+    not be empty" -- so a broker built without it cannot read its own
+    orders back. It identifies nothing on its own; account is still the
+    only thing matched against the allowlist.
     """
 
     allowed_accounts: tuple = ()
     account: str | None = None
     dry_run: bool = True
+    account_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -614,6 +622,7 @@ class BacktestConfig:
                 allowed_accounts=_as_account_tuple(fidelity_data.get("allowed_accounts", ())),
                 account=fidelity_data.get("account"),
                 dry_run=bool(fidelity_data.get("dry_run", True)),
+                account_name=fidelity_data.get("account_name"),
             )
         live = LiveConfig(
             enabled=live_data.get("enabled", False),
@@ -774,6 +783,14 @@ class BacktestConfig:
                     f"allowed_accounts={list(self.live.fidelity.allowed_accounts)!r}. "
                     "Exact match is required -- never a substring or a nickname."
                 )
+            account_name = self.live.fidelity.account_name
+            if account_name is not None and (
+                not isinstance(account_name, str) or not account_name.strip()
+            ):
+                raise ConfigurationError(
+                    "live.fidelity.account_name must be the account's display name as "
+                    f"Fidelity lists it, e.g. 'Traditional IRA'; got {account_name!r}."
+                )
 
     def to_dict(self) -> dict:
         """Inverse of from_dict() -- round-trips through the same nested
@@ -848,6 +865,7 @@ class BacktestConfig:
                             "allowed_accounts": list(self.live.fidelity.allowed_accounts),
                             "account": self.live.fidelity.account,
                             "dry_run": self.live.fidelity.dry_run,
+                            "account_name": self.live.fidelity.account_name,
                         }
                     }
                     if self.live.fidelity is not None

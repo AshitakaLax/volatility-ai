@@ -16,7 +16,7 @@ These runs are long, this box has had a memory incident from overlapping
 sweeps, and a run that loses hours to a crash gets abandoned rather than
 restarted. So every completed configuration is appended to a JSONL file
 and fsynced before the next one starts -- the same discipline as
-FileConfNumJournal in src/fidelity_placing_broker.py, and for the same
+FileConfNumJournal in fidelity_gateway/placing_broker.py, and for the same
 reason: a buffered handle is exactly how a journal loses its last entry.
 
 --resume is the DEFAULT. The key is a hash of (instrument, role,

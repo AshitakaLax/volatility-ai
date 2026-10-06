@@ -49,6 +49,9 @@ class TestDescriptorShape:
         # Seeds itself from the required committed value: no seed sent.
         assert hf["window"] == {"param": "lookback_days"}
 
+        # Not a grid: locked, with no window to edit.
+        assert describe_grid_trigger("ultimate_rsp") == {"methods": ["exposure_target"]}
+
         # Locked, with the calm-mode rolling-high window still editable.
         assert describe_grid_trigger("ultimate") == {
             "methods": ["regime_switched"],

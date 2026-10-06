@@ -1,4 +1,4 @@
-"""Safety tests for fidelity_recon.py -- the step-1 reconnaissance harness.
+"""Safety tests for fidelity_gateway/recon.py -- the step-1 reconnaissance harness.
 
 Nothing here touches a browser, a network, or a real account. A fake
 `fidelity` module is injected into sys.modules so that `run_recon`'s
@@ -25,7 +25,9 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
@@ -51,6 +53,9 @@ class FakePage:
         # Snapshot of how much had happened at the moment capture
         # attached, so a test can prove ordering rather than infer it.
         self.attached_after_gotos: int | None = None
+        # Every wait_for_timeout, in milliseconds -- the call that lets
+        # Playwright's sync API deliver events, which time.sleep does not.
+        self.waits: list[float] = []
 
     @property
     def url(self) -> str:
@@ -66,6 +71,7 @@ class FakePage:
 
     def wait_for_timeout(self, ms):
         self.settle_ms = ms
+        self.waits.append(ms)
 
     def on(self, event, handler):
         if self.attached_after_gotos is None:
@@ -688,6 +694,30 @@ def test_an_interstitial_is_not_mistaken_for_a_completed_login():
         )
 
 
+def test_the_wait_lets_playwright_deliver_the_navigation_it_watches_for():
+    """A real page's URL changes only when Playwright delivers the
+    navigation event, and the sync API delivers events only inside a
+    Playwright call -- never during time.sleep. The URL-sequence fake
+    above changes on every read, so it could not tell the two apart;
+    this one changes only when the wait yields to Playwright."""
+
+    class EventDrivenPage(FakePage):
+        def __init__(self):
+            super().__init__()
+            self.url_sequence = [SIGNIN]
+
+        def wait_for_timeout(self, ms):
+            super().wait_for_timeout(ms)
+            self.url_sequence = [SIGNED_IN]  # the navigation, delivered
+
+    page = EventDrivenPage()
+    found = fidelity_recon._wait_for_manual_login(
+        FakeContext(page), timeout_seconds=2.0, poll_seconds=0.05
+    )
+    assert found is page
+    assert page.waits, "never yielded to Playwright"
+
+
 def test_the_login_url_matches_the_librarys_own():
     """Derived from fidelity.py's login(), not guessed. If upstream moves
     it, this is the single place to correct."""
@@ -880,3 +910,50 @@ def test_a_browser_with_no_contexts_is_reported_clearly(monkeypatch, tmp_path):
     _install_fake_playwright(monkeypatch, FakePlaywright(browser=FakeCDPBrowser()))
     with pytest.raises(ConfigurationError, match="no contexts"):
         fidelity_recon.run_cdp_recon(_cdp_args(tmp_path))
+
+
+def _forbid_sleep(monkeypatch):
+    """Swap recon's `time` for one whose sleep fails the test. Scoped to
+    the module under test, so nothing else that sleeps is affected."""
+
+    def _starves(_seconds):
+        raise AssertionError("time.sleep starves Playwright's event dispatch")
+
+    monkeypatch.setattr(
+        fidelity_recon, "time", SimpleNamespace(monotonic=time.monotonic, sleep=_starves)
+    )
+
+
+def test_the_capture_loop_waits_through_playwright(monkeypatch, tmp_path):
+    """The sync API delivers requests, responses and frames only while a
+    Playwright call is in flight. A capture loop that time.sleeps between
+    progress checks starves the very listeners it attached."""
+    page = FakePage()
+    _install_fake_playwright(monkeypatch, FakePlaywright(browser=FakeCDPBrowser(FakeContext(page))))
+    _forbid_sleep(monkeypatch)
+
+    assert fidelity_recon.run_cdp_recon(_cdp_args(tmp_path, capture_seconds=0.05)) == 0
+    assert page.waits, "the capture loop never yielded to Playwright"
+    assert max(page.waits) <= 2000
+
+
+def test_the_capture_stops_once_every_tab_is_closed(monkeypatch, tmp_path):
+    """A closed tab leaves context.pages only when Playwright delivers
+    the close event -- inside the wait. Sleeping instead, the loop would
+    record a browser with no tabs until its timer ran out."""
+    context = FakeContext()
+
+    class ClosingPage(FakePage):
+        def wait_for_timeout(self, ms):
+            super().wait_for_timeout(ms)
+            context.pages.remove(self)  # the human closed it mid-wait
+
+    page = ClosingPage()
+    context.pages.append(page)
+    _install_fake_playwright(monkeypatch, FakePlaywright(browser=FakeCDPBrowser(context)))
+    _forbid_sleep(monkeypatch)
+
+    started = time.monotonic()
+    assert fidelity_recon.run_cdp_recon(_cdp_args(tmp_path, capture_seconds=6.0)) == 0
+    assert time.monotonic() - started < 4.0, "kept recording after every tab closed"
+    assert page.waits == [2000.0]

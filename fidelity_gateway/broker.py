@@ -2,9 +2,10 @@
 Fidelity broker adapter -- PREVIEW ONLY. This module cannot place an order.
 
 Step 4 of the Fidelity plan. Satisfies the same de facto interface
-src/alpaca_broker.py does (submit_buy, submit_sell,
-get_order_by_client_id, snapshot, ping) so src/live_trading_loop.py and
-src/reconciliation.py work against either venue without edits.
+engine/brokers/alpaca_broker.py does (submit_buy, submit_sell,
+get_order_by_client_id, snapshot, ping) so
+engine/trading/live_trading_loop.py and engine/execution/reconciliation.py
+work against either venue without edits.
 
 --------------------------------------------------------------------
 WHY THIS IS BUILT ON THE JSON API AND NOT ON fidelity-api
@@ -14,7 +15,7 @@ That assumption is dead: Fidelity refuses a Playwright-LAUNCHED browser
 outright (Akamai Bot Manager, visible in a capture as sensor POSTs), so
 the library's own entry point cannot reach the site. What does work is
 attaching to the user's OWN already-authenticated browser over CDP and
-issuing the same JSON calls the page issues -- src/fidelity_session.py.
+issuing the same JSON calls the page issues -- fidelity_gateway/session.py.
 
 That turned out to be strictly better anyway. Reconnaissance showed the
 JSON layer carries everything the DOM does and more:
@@ -33,8 +34,8 @@ HOW "CANNOT PLACE AN ORDER" IS ENFORCED
 
 Not by this class remembering not to call placeOrder. By the transport:
 a preview-only session is constructed with allow_preview_endpoints=True
-and allow_order_endpoints left False, and
-src/fidelity_session.post_json REFUSES /placeOrder and /cancelPlaceOrder
+and allow_order_endpoints left False, and FidelitySession.post_json
+(fidelity_gateway/session.py) REFUSES /placeOrder and /cancelPlaceOrder
 outright at that setting. Even a bug in this file cannot submit.
 
 Two further layers, so the guarantee does not rest on one mechanism:
@@ -127,9 +128,9 @@ class FidelityOrder:
     """The attributes live_trading_loop and reconciliation actually read.
 
     A plain object rather than a dict because callers do `order.id` and
-    `.filled_qty` -- see src/fill_accounting.py and
-    src/duplicate_order_guard.py. `state` is an OrderState so nothing
-    downstream has to re-map a venue-specific string.
+    `.filled_qty` -- see engine/execution/fill_accounting.py and
+    engine/trading/duplicate_order_guard.py. `state` is an OrderState so
+    nothing downstream has to re-map a venue-specific string.
     """
 
     id: str
@@ -289,6 +290,11 @@ class FidelityBroker:
             )
         return account
 
+    @property
+    def account(self) -> str:
+        """The one account this adapter acts on, already allowlist-checked."""
+        return self._account
+
     # -- the LiveBroker surface ----------------------------------------
 
     def ping(self) -> None:
@@ -339,9 +345,10 @@ class FidelityBroker:
     ) -> FidelityOrder:
         """PREVIEW a limit sell of qty shares at target_price. Submits nothing.
 
-        Callers must have cleared this through src/no_loss_guard.validate_sell
-        first; this does not re-check, matching AlpacaBroker's contract that
-        the guard lives in exactly one place.
+        Callers must have cleared this through
+        engine/trading/no_loss_guard.validate_sell first; this does not
+        re-check, matching AlpacaBroker's contract that the guard lives in
+        exactly one place.
         """
         if qty <= 0:
             raise ValueError(f"qty must be positive, got {qty}")
@@ -493,7 +500,7 @@ class FidelityBroker:
         return None
 
     def snapshot(self) -> BrokerSnapshot:
-        """Current broker truth, shaped for src/reconciliation.Reconciler.
+        """Current broker truth, shaped for engine/execution/reconciliation.Reconciler.
 
         Orders are keyed by OUR client_order_id where the local map knows
         one, and by Fidelity's confNum otherwise. An order placed by hand

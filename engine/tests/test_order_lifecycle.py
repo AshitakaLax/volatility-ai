@@ -313,7 +313,7 @@ def test_submitted_at_is_recorded_once_not_overwritten():
 # --- idempotence on canonical states ---
 #
 # An adapter that already speaks canonical states hands this function a
-# value it produced. src/fidelity_broker.FidelityOrder.status does,
+# value it produced. fidelity_gateway.broker.FidelityOrder.status does,
 # because Fidelity's own status field is prose with the fill price
 # interpolated into it ("Filled at $69.335").
 

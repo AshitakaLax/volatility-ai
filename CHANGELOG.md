@@ -1,5 +1,68 @@
 # Changelog
 
+## `ultimate_ursp` and a simulated URSP history
+
+URSP (ProShares Ultra S&P 500 Equal Weight, 2x daily) has traded only since
+2025-08-27, so `tools/simulate_ursp.py` builds its history from RSP (2003
+on). Each session is 2x RSP's total return, less financing on the borrowed
+1x (fed funds plus a spread calibrated so the simulated return over the
+real fund's first 278 sessions equals its actual return: 2.09%/yr) and the
+0.95% fee. Intraday prices follow the same daily-reset rule. The series is
+spliced with the real fund, and minute bars are drawn from same-day RSP
+minutes where the warehouse has them. Two bad RSP prints (the 2010 Flash
+Crash low, a 2007 stray high) are clipped first; doubled, the Flash Crash
+print made the fund's price negative.
+
+`research/strategies/ultimate_ursp_sizing.UltimateUrspSizing`, registered as
+`ultimate_ursp` (design and evidence in `docs/research/ultimate-ursp.md`),
+is Ultimate-RSP's daily exposure book times a GRADED bear gate. Exposure
+scales from full at a 25% drawdown from the 250-session high to none at
+55%. The book rebalances only when the target is more than 20% of equity
+away, because URSP is thin. On the simulated 2004-2026 URSP: 11.7% CAGR at
+a 28% max drawdown, against buy-and-hold URSP's 11.2% at 88.5% (2008: -16%
+against -72%).
+
+**Why the gate, and why graded.** Ultimate-RSP's record (2017-2026) holds
+no prolonged bear market. On the longer simulated history its votes stayed
+in through much of 2008, and the 2x fund fell 66%. A single drawdown
+threshold fixed that but was a spike (0.15-0.49 across neighbouring
+settings, because 2008 is one event). A linear ramp is a ridge (0.30-0.41
+across 30 settings). The deflated Sharpe is not significant (0.42); the
+proven gain is the drawdown.
+
+## `ultimate_rsp`: a timing book for RSP, not a grid
+
+`research/strategies/ultimate_rsp_sizing.UltimateRspSizing` (design,
+component review and evidence in `docs/research/ultimate-rsp.md`) is
+registered as `ultimate_rsp`, with `config/ultimate_rsp.yaml`. It is built
+from scratch for RSP, not derived from the Ultimate algorithm, because
+every grid this project measured on RSP lost to holding it, and every
+regime-gated grid realised its losses at the flips and then could not
+re-enter.
+
+It holds a daily target fraction of equity in RSP: the share of PLUS_DM
+and Chaikin ADOSC votes (each below its own trailing median, averaged
+over their parameters) that say "in". The target is decided at the close
+and reached an hour into the next session. Research-lab result,
+2017-2026: 11.2% CAGR at an 11.9% max drawdown, against buy-and-hold's
+12.0% at 39.1%. That meets plan.md's RSP bar: 27 points of drawdown for
+0.85 points of CAGR. Deflated Sharpe 0.88 over the ~1,400 configurations
+screened.
+
+**Its exits are signal exits by design**, so the server adds the id to
+`SIGNAL_EXIT_STRATEGIES`. A rebalance down sells whole lots at market,
+whatever their cost; there is no price stop and no profit-target
+harvest (the profit target is set out of reach). `warm_up_history` now
+carries volume, which the ADOSC votes need. The trigger method is a new
+locked `exposure_target`, because no grid step or reference price is
+involved.
+
+**No TA-Lib at run time.** The registry is loaded by `cli.py live`, which
+must start without requirements-indicators.txt, so the strategy updates
+PLUS_DM and ADOSC incrementally with TA-Lib's own recursions in numpy. A
+test pins them to TA-Lib, and another checks in a fresh interpreter that
+loading the registry imports neither TA-Lib nor polars.
+
 ## `ultimate`: the Ultimate algorithm, runnable from the server and a YAML
 
 `research/strategies/ultimate_sizing.UltimateSizing` (design and evidence

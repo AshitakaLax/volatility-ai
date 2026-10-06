@@ -41,9 +41,11 @@ RECOVERY
 
 Every confNum is journalled BEFORE the order is committed, so a timeout
 is recoverable rather than ambiguous. If this script dies mid-place, run
-it again with --check-only: it re-reads the journal, asks the venue what
-it actually has, and names any order that never landed. Do not resubmit
-before doing that.
+it again with --check-only: it re-reads the last day of the journal,
+asks the venue what it actually has, and names any recorded order the
+venue's order list does not show. Look those up in Activity & Orders
+before resubmitting anything -- an order missing from that list may
+have filled, been cancelled or expired, not only never arrived.
 
 Usage:
     # 1. start a debuggable browser and log into Fidelity BY HAND
@@ -51,25 +53,29 @@ Usage:
         --remote-debugging-port=9222 --user-data-dir="C:\\Users\\%USERNAME%\\edge-debug-profile"
 
     # 2. see what it would do -- places nothing
-    python fidelity_place_test_order.py --account <number> --dry-run
+    python -m fidelity_gateway.place_test_order --account <number> --dry-run
 
     # 3. actually place it
-    python fidelity_place_test_order.py --account <number> \\
+    python -m fidelity_gateway.place_test_order --account <number> \\
         --i-understand-this-places-a-real-order
 
     # after any failure, before doing anything else
-    python fidelity_place_test_order.py --account <number> --check-only
+    python -m fidelity_gateway.place_test_order --account <number> --check-only
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import time
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
-from engine.core.exceptions import ConfigurationError
-from fidelity_gateway.broker import FidelityBroker
+from engine.core.exceptions import ConfigurationError, PersistenceError
+from fidelity_gateway.broker import FidelityBroker, derive_order_state
 from fidelity_gateway.placing_broker import (
+    RECENT_WINDOW_SECONDS,
     FidelityPlacingBroker,
     FileConfNumJournal,
     unresolved_orders,
@@ -78,6 +84,18 @@ from fidelity_gateway.session import FidelitySession, FidelitySessionError
 
 CONFIRM_PHRASE = "PLACE THE ORDER"
 DEFAULT_JOURNAL = Path.home() / ".fidelity_recon" / "placed_orders.jsonl"
+
+
+def new_decision_id(symbol: str) -> str:
+    """A decision_id no other test order will ever share.
+
+    The first version derived it from the symbol and the quoted price, so
+    two test orders at the same price wrote the same id to the journal --
+    which now refuses a decision it already holds, as it must: Fidelity
+    has no client order ID to deduplicate on.
+    """
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return f"testorder-{symbol}-{stamp}-{uuid.uuid4().hex[:6]}"
 
 
 def parse_args(argv=None):
@@ -178,23 +196,42 @@ def attach(cdp_url: str):
 
 
 def _report(broker: FidelityBroker, journal: FileConfNumJournal) -> int:
-    """The recovery path, also run after every place."""
-    entries = journal.read_all()
+    """The recovery path, also run after every place and cancel.
+
+    Covers this account's journal entries from the last day only -- the
+    venue's order list holds working and recently completed orders, so an
+    older entry would read as missing whatever happened to it.
+    """
+    cutoff = time.time() - RECENT_WINDOW_SECONDS
+    mine = [e for e in journal.read_all() if str(e.get("account")) == broker.account]
+    recent = [e for e in mine if float(e.get("ts", 0.0)) >= cutoff]
     orders = {str(o.get("orderNum")): o for o in broker._orders()}
-    print(f"\njournal: {len(entries)} recorded intent(s); venue reports {len(orders)} order(s)")
-    for entry in entries:
-        found = orders.get(entry["conf_num"])
-        state = "NOT AT VENUE" if found is None else str(found.get("status"))
+    print(
+        f"\njournal: {len(recent)} order(s) recorded for ...{broker.account[-4:]} in the "
+        f"last 24h; the venue lists {len(orders)} order(s)"
+    )
+    for entry in recent:
+        found = orders.get(str(entry["conf_num"]))
+        state = (
+            "NOT IN THE VENUE'S LIST"
+            if found is None
+            else f"{derive_order_state(found)} ({found.get('status')})"
+        )
         print(
             f"  {entry['conf_num']:>10}  {entry.get('side', '?'):>4} "
             f"{entry.get('qty', '?')} {entry.get('symbol', '?'):<6} -> {state}"
         )
-    missing = unresolved_orders(journal, broker)
+    older = len(mine) - len(recent)
+    if older:
+        noun = "entry" if older == 1 else "entries"
+        print(f"  ({older} older journal {noun} not checked: the list only covers recent orders.)")
+    missing = unresolved_orders(journal, broker, since=cutoff)
     if missing:
         print(
-            f"\n  {len(missing)} journalled order(s) the venue does not report.\n"
-            "  Those never landed. Anything NOT listed here DID land, whatever the\n"
-            "  submitting call appeared to do."
+            f"\n  {len(missing)} recorded order(s) are not in the venue's order list.\n"
+            "  That does NOT mean they never reached Fidelity: an order that filled,\n"
+            "  was cancelled or expired can be missing from it too. Look each confNum\n"
+            "  up in Activity & Orders before placing anything again."
         )
     return 0
 
@@ -306,8 +343,7 @@ def main(argv=None) -> int:
             max_order_value=args.max_order_value,
             journal=journal,
         )
-        decision_id = f"testorder-{args.symbol}-{int(price * 100)}"
-        order = broker.place(args.symbol, "buy", args.quantity, limit, decision_id)
+        order = broker.place(args.symbol, "buy", args.quantity, limit, new_decision_id(args.symbol))
 
         print(f"\nPLACED. confNum {order.id}, state {order.state}.")
         print("Reading it back out of the venue's own order list ...")
@@ -341,7 +377,7 @@ def _cli(argv=None) -> int:
             file=sys.stderr,
         )
         return 3
-    except ConfigurationError as exc:
+    except (ConfigurationError, PersistenceError) as exc:
         print(f"\n{exc}\n", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

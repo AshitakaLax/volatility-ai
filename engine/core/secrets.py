@@ -148,7 +148,7 @@ class FidelityCredentials:
     def secret_values(self) -> list[str]:
         """The raw strings, for literal scrubbing of captured traffic.
 
-        src/fidelity_capture.py replaces any occurrence of these in a
+        fidelity_gateway/capture.py replaces any occurrence of these in a
         recorded payload before storing it -- the login POST body carries
         the password verbatim, and no key-name heuristic catches that
         reliably across an unknown form encoding. Exact-match scrubbing
