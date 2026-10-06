@@ -30,6 +30,7 @@ from research.strategies.size_calculators import (
 )
 from research.strategies.ultimate_rsp_sizing import UltimateRspSizing
 from research.strategies.ultimate_sizing import UltimateSizing
+from research.strategies.ultimate_ursp_sizing import UltimateUrspSizing
 
 STRATEGIES: dict[str, type[SizingStrategy]] = {
     "fixed": FixedPortfolioPercentage,
@@ -66,6 +67,14 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     # this id), and its target needs ~300 sessions of history
     # (UltimateRspSizing.warm_up). RSP only.
     "ultimate_rsp": UltimateRspSizing,
+    # Ultimate-URSP (docs/research/ultimate-ursp.md): Ultimate-RSP's daily
+    # exposure book with a graded bear gate (out once the fund is 55% below
+    # its one-year high, linear from 25%) and a 20% rebalance band, for
+    # URSP (2x daily S&P 500 Equal Weight). Measured on a simulated URSP
+    # 2004-2026 (tools/simulate_ursp.py): 11.7% CAGR at a 28% max DD
+    # against buy-and-hold URSP's 11.2% at 88.5%. Signal exits on (server);
+    # ~300 sessions of history (warm_up). URSP only.
+    "ultimate_ursp": UltimateUrspSizing,
     # Three ids, one class: MLReachabilitySizing takes `ticker` as a
     # constructor kwarg, and each id's STRATEGY_DEFAULTS entry
     # (server/backtest.py) supplies a different one. The sizing-model

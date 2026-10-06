@@ -671,6 +671,16 @@ STRATEGY_DEFAULTS["ultimate_rsp"] = {
     "rebalance_band": 0.05,
 }
 
+# ultimate_ursp: the recommended configuration of docs/research/ultimate-ursp.md
+# (config/ultimate_ursp.yaml), also the constructor's defaults.
+STRATEGY_DEFAULTS["ultimate_ursp"] = {
+    **STRATEGY_DEFAULTS["ultimate_rsp"],
+    "rebalance_band": 0.20,
+    "bear_window": 250,
+    "bear_dd_start": 0.25,
+    "bear_dd_full": 0.55,
+}
+
 # Strategies whose design includes an exit below cost basis, run with
 # execution.allow_signal_exit on. The flag is half of a two-part gate --
 # a loss needs it AND the strategy's lots_to_liquidate -- so it changes
@@ -679,9 +689,9 @@ STRATEGY_DEFAULTS["ultimate_rsp"] = {
 # step-down the whole design was measured with; without the flag those
 # lots ride the downturn and the run is a different, unresearched
 # strategy. UltimateRspSizing's only exit is one: it moves to a daily
-# exposure target by selling whole lots. Backtest only: this server never
+# exposure target by selling whole lots -- and so is UltimateUrspSizing's. Backtest only: this server never
 # trades.
-SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset({"ultimate", "ultimate_rsp"})
+SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset({"ultimate", "ultimate_rsp", "ultimate_ursp"})
 
 
 def required_parameters(strategy_class: type) -> list[str]:
@@ -815,6 +825,14 @@ _GRID_TRIGGER: dict[str, dict[str, Any]] = {
     # where the book is below its daily exposure target, unreachable on
     # every other bar. No step, no reference price, no rolling window.
     "ultimate_rsp": {
+        "methods": ["exposure_target"],
+        "default": "exposure_target",
+        "controlled_by": None,
+        "window_param": None,
+        "window_default": None,
+    },
+    # Ultimate-RSP's book with a bear gate on its target: same trigger.
+    "ultimate_ursp": {
         "methods": ["exposure_target"],
         "default": "exposure_target",
         "controlled_by": None,
