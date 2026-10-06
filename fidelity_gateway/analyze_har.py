@@ -2,8 +2,8 @@
 """
 Answer the Fidelity reconnaissance questions from a Firefox DevTools HAR.
 
-WHY THIS EXISTS. The Playwright-driven recon harness (fidelity_recon.py)
-cannot get past Fidelity's sign-in: a fresh automated browser with no
+WHY THIS EXISTS. The Playwright-driven recon harness (recon.py), in its
+launched-browser modes, cannot get past Fidelity's sign-in: a fresh automated browser with no
 cookies and no history is refused with "Sorry, we can't complete this
 action right now." The same human logs in fine in their ordinary
 Firefox. So the traffic is observable -- just not from a browser we
@@ -15,7 +15,7 @@ COMPLETE record than the Playwright capture would have: it is the real
 session, in the real browser, with the real profile.
 
 This reads that export and answers the same three questions
-fidelity_recon.py's summary does:
+recon.py's summary does:
 
   1. Does an order submission round-trip an order/confirmation ID?
   2. Is there an orders-list endpoint the Orders/Positions page calls?
@@ -30,7 +30,7 @@ HOW TO PRODUCE THE INPUT
      (https://digital.fidelity.com/ftgw/digital/traderplus), the
      Orders/Activity page, Positions.
   5. Right-click anywhere in the request list -> "Save All As HAR".
-  6. Run:  python analyze_har.py --input <that-file>.har
+  6. Run:  python -m fidelity_gateway.analyze_har --input <that-file>.har
 
 WEBSOCKET FRAMES: it depends on the browser, and the difference matters.
 
@@ -357,7 +357,7 @@ def report(result: dict, args: argparse.Namespace) -> None:
             "  finding, which is a mistake this project has already made once.\n"
             "  It is also only meaningful if you exercised a page that opens one:\n"
             "  a quote stream usually starts on a trade ticket, not a summary.\n"
-            "  Settle it with fidelity_recon.py --cdp-url, which registers\n"
+            "  Settle it with python -m fidelity_gateway.recon --cdp-url, which registers\n"
             "  page.on('websocket') and records frames directly."
         )
 

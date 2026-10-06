@@ -7,7 +7,7 @@ venue. Everything else is a simulation, a preview, or a read.
 --------------------------------------------------------------------
 WHY IT IS A SEPARATE MODULE AND NOT A FLAG
 
-`src/fidelity_broker.py` is preview-only, and three tests assert that:
+`fidelity_gateway/broker.py` is preview-only, and three tests assert that:
 no string constant names a place endpoint, no endpoint constant resolves
 to one, and the transport refuses those paths at its preview-only
 setting. Adding a `can_place=True` switch there would have falsified all
@@ -53,6 +53,14 @@ So a place with no journal is refused. Not because journalling is tidy,
 but because without it this adapter would be no safer than the DOM
 scraping it replaced.
 
+The journal is also READ BACK at construction. The decision_id ->
+confNum map that get_order_by_client_id and snapshot() key on is held in
+memory, so without that a restart would turn every order this adapter
+had placed into an unrecognised one, at exactly the moment
+reconciliation needs to know them. The same read lets place() refuse a
+decision_id the journal already holds: Fidelity has no client order ID
+to deduplicate on, so this adapter has to.
+
 --------------------------------------------------------------------
 WHAT HAPPENS WHEN placeOrder FAILS
 
@@ -65,9 +73,10 @@ submission goes to reconciliation, never back through submission.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Protocol
 
-from engine.core.exceptions import ConfigurationError
+from engine.core.exceptions import ConfigurationError, ExecutionError, PersistenceError
 from engine.core.retry_policy import AmbiguousSubmissionError
 from engine.execution.order_lifecycle import OrderState
 from fidelity_gateway.broker import FidelityBroker, FidelityOrder, _find_first
@@ -86,11 +95,21 @@ CANCEL_PLACE_PATH = "/ftgw/digital/trade-equity/cancelPlaceOrder"
 assert CANCEL_PLACE_PATH in PLACE_ENDPOINTS, "cancelling must sit behind the order gate"
 
 
+#: How far back unresolved_orders looks by default. Every ticket this
+#: package builds is a DAY order (tifCode "D"), so an order journalled
+#: before then has long since filled, been cancelled or expired.
+RECENT_WINDOW_SECONDS = 24 * 60 * 60
+
+
 class ConfNumJournal(Protocol):
     """Durable record of a confNum, written before the order is committed."""
 
     def record(self, decision_id: str, conf_num: str, detail: dict) -> None:
         """Persist the mapping. MUST be durable before returning."""
+        ...
+
+    def read_all(self) -> list[dict]:
+        """Every recorded entry, oldest first. Read back at construction."""
         ...
 
 
@@ -116,7 +135,7 @@ class FidelityPlacingBroker(FidelityBroker):
                 "FidelityPlacingBroker PLACES REAL ORDERS WITH REAL MONEY. Construct "
                 "it with confirm_live_orders=True to say so deliberately, at a call "
                 "site a human can see. If you did not mean to place orders, use "
-                "src.fidelity_broker.FidelityBroker, which cannot."
+                "fidelity_gateway.broker.FidelityBroker, which cannot."
             )
         if not allowed_symbols:
             raise ConfigurationError(
@@ -142,12 +161,41 @@ class FidelityPlacingBroker(FidelityBroker):
         self._allowed_symbols = tuple(str(sym).upper() for sym in allowed_symbols)
         self._max_order_value = float(max_order_value)
         self._journal = journal
+        self._rehydrate()
         logger.warning(
             "LIVE ORDER PLACEMENT ENABLED for account ...%s, symbols %s, ceiling $%.2f per order.",
             str(account)[-4:],
             ",".join(self._allowed_symbols),
             self._max_order_value,
         )
+
+    def _rehydrate(self) -> None:
+        """Seed decision_id -> confNum from the journal. THE RESTART PATH.
+
+        The map is what get_order_by_client_id and snapshot() resolve our
+        decision_ids through, and it lives in memory. The journal already
+        holds every mapping, made durable before each commit -- reading
+        it back is what lets a restarted process recognise the orders it
+        placed rather than seeing each one as a stranger.
+
+        This account's entries only. The journal path can be shared, and
+        another account's orders are not this adapter's to claim.
+        """
+        for entry in self._journal.read_all():
+            if str(entry.get("account")) != self._account:
+                continue
+            decision, conf = str(entry["decision_id"]), str(entry["conf_num"])
+            earlier = self._decision_to_conf.get(decision)
+            if earlier is not None and earlier != conf:
+                logger.warning(
+                    "Journal maps decision %s to two confNums (%s, then %s); keeping the "
+                    "later. %s will show up in snapshots under its confNum.",
+                    decision,
+                    earlier,
+                    conf,
+                    earlier,
+                )
+            self._decision_to_conf[decision] = conf
 
     # -- gates ----------------------------------------------------------
 
@@ -215,10 +263,25 @@ class FidelityPlacingBroker(FidelityBroker):
             raise ValueError(f"limit_price must be positive, got {limit_price}")
         symbol = self._check_symbol(symbol)
         self._check_value(side, qty, limit_price)
+        # Fidelity has no client order ID to deduplicate on, so a second
+        # place under the same decision_id would be a second live order.
+        # The map holds every journalled decision, including the ones
+        # placed before a restart.
+        earlier = self._decision_to_conf.get(decision_id)
+        if earlier is not None:
+            raise ValueError(
+                f"decision {decision_id!r} already has an order in the journal "
+                f"(confNum {earlier}). Refusing to place it again -- Fidelity cannot "
+                "deduplicate, so that would be a second order. If its outcome is "
+                f"unknown, look {earlier} up in Activity & Orders; a new order needs "
+                "a new decision_id."
+            )
 
-        # 1. PREVIEW. Commits nothing, and mints the identifier.
-        previewed = self._preview(symbol, side, qty, limit_price, decision_id)
-        conf = previewed.id
+        # 1. PREVIEW. Commits nothing, and mints the identifier. Previewed
+        #    without the decision_id so the map is written only once the
+        #    journal holds the mapping: a failed journal write must not
+        #    leave a record of an order that was never sent.
+        conf = self._preview(symbol, side, qty, limit_price, None).id
         ticket = self.build_ticket(symbol, side, qty, limit_price)
 
         # 2. JOURNAL, before anything is committed.
@@ -233,6 +296,7 @@ class FidelityPlacingBroker(FidelityBroker):
                 "account": self._account,
             },
         )
+        self._decision_to_conf[decision_id] = conf
 
         # 3. COMMIT. Same ticket, plus the confNum the preview minted.
         logger.warning(
@@ -276,7 +340,9 @@ class FidelityPlacingBroker(FidelityBroker):
                 f"{conf!r}. Refusing to assume which order is live -- reconcile "
                 "both before placing anything further."
             )
-        self._assert_echoed_account(response, self._account)
+        self._assert_committed_account(
+            response, self._account, f"placeOrder for confNum {conf} (decision {decision_id})"
+        )
 
         logger.warning("ORDER PLACED: confNum %s (decision %s)", conf, decision_id)
         return FidelityOrder(
@@ -330,9 +396,28 @@ class FidelityPlacingBroker(FidelityBroker):
                 f"may still be WORKING. Do not assume it is gone -- query "
                 f"transactions/pending for {conf_num}."
             ) from exc
-        self._assert_echoed_account(response, account)
+        self._assert_committed_account(response, account, f"cancelPlaceOrder for {conf_num}")
         logger.warning("CANCEL ACCEPTED for order %s", conf_num)
         return response if isinstance(response, dict) else {"response": response}
+
+    def _assert_committed_account(self, response: Any, expected: str, what: str) -> None:
+        """The account readback, for the reply to a COMMIT.
+
+        Once placeOrder or cancelPlaceOrder has returned, a mismatched
+        account is not an ordinary failure: the instruction may already
+        have been carried out, against whichever account Fidelity named.
+        An ExecutionError reads as "it did not happen", and the natural
+        response to that is to try again -- a second live order.
+        AmbiguousSubmissionError sends it to reconciliation instead.
+        """
+        try:
+            self._assert_echoed_account(response, expected)
+        except ExecutionError as exc:
+            raise AmbiguousSubmissionError(
+                f"{what} returned, but {exc} It MAY ALREADY HAVE BEEN CARRIED OUT, "
+                "possibly in that other account. Do not repeat it -- check Activity & "
+                "Orders in every account before doing anything further."
+            ) from exc
 
     # -- the LiveBroker surface, now actually submitting ----------------
 
@@ -397,7 +482,6 @@ class FileConfNumJournal:
     def record(self, decision_id: str, conf_num: str, detail: dict) -> None:
         import json
         import os
-        import time
 
         line = json.dumps(
             {"ts": time.time(), "decision_id": decision_id, "conf_num": conf_num, **detail},
@@ -409,26 +493,65 @@ class FileConfNumJournal:
             os.fsync(handle.fileno())
 
     def read_all(self) -> list[dict]:
-        """Every journalled order, for recovery after an ambiguous submit."""
+        """Every journalled order, for recovery after an ambiguous submit.
+
+        Read on every FidelityPlacingBroker construction, so an unreadable
+        line is reported by number rather than as a bare JSONDecodeError
+        -- and refused rather than skipped: a journal that has lost a line
+        can no longer vouch for which orders are live.
+        """
         import json
         import os
 
         if not os.path.exists(self._path):
             return []
+        entries = []
         with open(self._path, encoding="utf-8") as handle:
-            return [json.loads(line) for line in handle if line.strip()]
+            for number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError as exc:
+                    raise PersistenceError(
+                        f"{self._path} line {number} is not valid JSON ({exc}); the "
+                        "write may have been cut off. Check that order at Fidelity and "
+                        "repair the line before placing anything: until then this "
+                        "journal cannot say which orders are live."
+                    ) from exc
+        return entries
 
 
-def unresolved_orders(journal: FileConfNumJournal, broker: FidelityBroker) -> list[dict]:
-    """Journalled orders the venue does not report. THE RECOVERY PATH.
+def unresolved_orders(
+    journal: ConfNumJournal,
+    broker: FidelityBroker,
+    *,
+    since: float | None = None,
+) -> list[dict]:
+    """Recent journalled orders the venue's order list does not show.
 
-    After an AmbiguousSubmissionError this is the question that matters:
-    of the orders we recorded an intent to place, which does the venue
-    not know about? Those never landed. Everything else did, whatever the
-    submission call appeared to do.
+    After an AmbiguousSubmissionError this is the first question: of the
+    orders we recorded an intent to place, which can the venue not show
+    us? Those are the ones a human has to look up.
 
-    Returns the journal entries with no matching order at the venue, so
-    an operator sees intents rather than a bare count.
+    Only entries for this broker's account, recorded at or after `since`
+    (epoch seconds; default: the last 24 hours). transactions/pending
+    lists working and recently completed orders, not a full history, so
+    comparing the WHOLE journal against it reported every older order as
+    missing -- and another account's orders can never appear in it.
+
+    ABSENCE IS NOT PROOF THE ORDER NEVER LANDED. An order can drop off
+    that list by filling, being cancelled or expiring, as well as by
+    never arriving. A returned entry means "look this confNum up in
+    Activity & Orders before placing anything again" -- never "safe to
+    resubmit".
     """
-    live = {str(order.get("orderNum")) for order in broker._orders()}
-    return [entry for entry in journal.read_all() if entry["conf_num"] not in live]
+    cutoff = time.time() - RECENT_WINDOW_SECONDS if since is None else float(since)
+    listed = {str(order.get("orderNum")) for order in broker._orders()}
+    return [
+        entry
+        for entry in journal.read_all()
+        if str(entry.get("account")) == broker.account
+        and float(entry.get("ts", 0.0)) >= cutoff
+        and str(entry["conf_num"]) not in listed
+    ]

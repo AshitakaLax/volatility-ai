@@ -7,19 +7,30 @@ directory** and you have the whole integration in front of you without
 the backtesting engine, the sweep machinery, or the web stack.
 
 ```bash
-pip install -r ../requirements-fidelity.txt   # playwright, fidelity-api, pyotp
-python -m playwright install chromium
+pip install -r ../requirements-fidelity.txt   # playwright; fidelity-api + pyotp only for recon's legacy modes
+```
+
+The working path never logs in: it attaches over CDP to a Chromium
+browser you started with `--remote-debugging-port=9222` (and its own
+`--user-data-dir`) and signed into by hand. Only `recon.py`'s legacy
+launched-browser modes log in, and Fidelity refuses those. Run the
+scripts as modules from the repo root:
+
+```bash
+python -m fidelity_gateway.place_test_order --account <number> --check-only
+python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <number> \
+    --i-understand-this-logs-into-my-real-brokerage-account
 ```
 
 | File | Does |
 |---|---|
-| `session.py` | Log in (incl. TOTP) and hold the authenticated browser session. Owns `PLACE_ENDPOINTS`. |
-| `broker.py` | **Read-only** adapter: positions, orders, balances. Implements the same `LiveBroker` shape `engine/brokers/alpaca_broker.py` does. |
-| `placing_broker.py` | The **write** path, deliberately a separate class so a read-only caller cannot reach it by accident. |
+| `session.py` | Issues every JSON call with `fetch()` inside the page you are signed into, replaying the auth headers it sniffs per backend. Owns the read-only / preview / place endpoint allowlists that gate every request. Never logs in. |
+| `broker.py` | **Preview-only** adapter: quotes, previews (which mint a confNum and commit nothing), orders, positions, settled cash. The same `LiveBroker` shape as `engine/brokers/alpaca_broker.py`; its `submit_*` methods stop at the preview. |
+| `placing_broker.py` | The **write** path: places and cancels real orders behind five explicit gates, journals each confNum before committing, and reads the journal back at construction. A separate class so a preview caller cannot reach it by accident. |
 | `capture.py` | Records the browser's own JSON traffic to a HAR-like capture. |
-| `analyze_har.py` | Reads a capture; `--redact` scrubs one before it leaves the machine. |
-| `recon.py` | Attaches to a live browser and reconciles Fidelity's positions against the local ledger. |
-| `place_test_order.py` | Places one small order through the gated adapter — the manual end-to-end check. |
+| `analyze_har.py` | Reads a DevTools HAR export; `--redact` scrubs one before it leaves the machine. |
+| `recon.py` | Reconnaissance, not reconciliation: with `--cdp-url`, records your browser's traffic while you use it. Its launched-browser modes are kept for the record; Fidelity refuses them. |
+| `place_test_order.py` | Places one small order through the gated adapter — the manual end-to-end check. `--check-only` is the recovery report. |
 | `tests/` | This section's own suite. `test_broker_selection.py`/`test_broker_contract.py` (the engine↔fidelity_gateway seam) live in the ROOT `tests/` instead — see `tests/CLAUDE.md`. |
 
 ## `fidelity` (the PyPI package) is not this package
@@ -52,7 +63,7 @@ engine.execution.reconciliation     BrokerSnapshot
 ```
 
 Nothing here imports the backtest engine, the strategies, the server or
-the warehouse — and nothing in `src/` imports this at module scope.
+the warehouse — and nothing in `engine/` imports this at module scope.
 `engine/brokers/broker_selection.py` is the one caller, and it imports the
 concrete broker **inside** `build_broker()`, so choosing a broker never
 drags Playwright into a process that only wanted Alpaca. Keep it that

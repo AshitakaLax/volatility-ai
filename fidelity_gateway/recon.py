@@ -57,15 +57,28 @@ Read it, extract what you need, delete it.
 
 USAGE
 -----
-    pip install -r requirements-fidelity.txt
-    playwright install firefox
+The mode that works today attaches to a Chromium browser YOU started and
+logged into by hand -- Fidelity refuses a Playwright-launched one (see
+run_cdp_recon). It reads no credentials and needs no browser download:
 
+    pip install -r requirements-fidelity.txt
+    & "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" \\
+        --remote-debugging-port=9222 --user-data-dir="C:\\Users\\%USERNAME%\\edge-debug-profile"
+    # log into Fidelity in that window, then:
+    python -m fidelity_gateway.recon --cdp-url http://localhost:9222 \\
+        --account <number> --i-understand-this-logs-into-my-real-brokerage-account
+
+The launched-browser modes (credentials from the environment, or
+--manual-login) are kept for the record; Fidelity now refuses them at
+sign-in:
+
+    playwright install firefox
     export FIDELITY_USERNAME=... FIDELITY_PASSWORD=... FIDELITY_TOTP_SECRET=...
-    python fidelity_recon.py --account Z12345678 --symbol TQQQ --quantity 1 \\
+    python -m fidelity_gateway.recon --account Z12345678 --symbol TQQQ --quantity 1 \\
         --i-understand-this-logs-into-my-real-brokerage-account
 
-Run it non-headless the first time (`--no-headless`) so you can watch what
-it does and abandon the ticket yourself if anything looks wrong.
+Run those non-headless the first time (`--no-headless`) so you can watch
+what they do and abandon the ticket yourself if anything looks wrong.
 """
 
 from __future__ import annotations
@@ -291,6 +304,31 @@ def _context_pages(context) -> list:
         return []
 
 
+def _pump(pages: list, seconds: float) -> None:
+    """Wait `seconds` while Playwright delivers events.
+
+    Playwright's sync API dispatches events -- requests, responses,
+    WebSocket frames, new tabs, URL changes, closed tabs -- only while a
+    Playwright call is in flight. time.sleep blocks that dispatch: a
+    capture that sleeps records nothing until it stops, a URL being
+    polled never changes, and a closed tab never leaves `context.pages`.
+    page.wait_for_timeout waits AND dispatches.
+
+    Every page shares one connection, so any open page will do; one that
+    closed mid-wait raises, and the next is tried. Only when none can
+    wait does this fall back to sleeping, to keep the caller's loop from
+    spinning -- and the failed calls dispatched the close events, so the
+    caller's next look at the pages sees them gone.
+    """
+    for page in pages:
+        try:
+            page.wait_for_timeout(seconds * 1000)
+            return
+        except Exception:
+            continue
+    time.sleep(seconds)
+
+
 def _wait_for_manual_login(context, timeout_seconds: float, poll_seconds: float = 2.0):
     """Wait until the human has logged in, watching EVERY page.
 
@@ -309,7 +347,9 @@ def _wait_for_manual_login(context, timeout_seconds: float, poll_seconds: float 
     Detection is by URL rather than by prompting on stdin: this script
     is routinely run through wrappers that attach stdin to the null
     device, where input() would raise EOFError instantly. Watching pages
-    needs no stdin.
+    needs no stdin. The wait between looks goes through _pump, because
+    a page's URL and the context's page list only change when Playwright
+    is allowed to deliver the events that change them.
 
     A URL check is still a heuristic, so it is not the only guard --
     _assert_account_allowed runs straight afterwards and fails loudly if
@@ -352,7 +392,7 @@ def _wait_for_manual_login(context, timeout_seconds: float, poll_seconds: float 
                     page.wait_for_load_state("load")
                 print(f"[recon] login detected on {current}", file=sys.stderr, flush=True)
                 return page
-        time.sleep(poll_seconds)
+        _pump(pages, min(poll_seconds, max(0.0, deadline - time.monotonic())))
     seen = ", ".join(sorted(reported)) or "(no pages seen)"
     raise ConfigurationError(
         f"Timed out after {timeout_seconds:.0f}s waiting for a manual login. "
@@ -457,7 +497,13 @@ def run_cdp_recon(args: argparse.Namespace) -> int:
         deadline = time.monotonic() + args.capture_seconds
         last_report = 0.0
         while time.monotonic() < deadline:
-            time.sleep(2.0)
+            pages = [page for ctx in browser.contexts for page in _context_pages(ctx)]
+            if not pages:
+                print("[recon] every tab was closed; stopping early.", file=sys.stderr)
+                break
+            # Through Playwright, never time.sleep -- see _pump. Sleeping
+            # here would starve the capture of the very events it records.
+            _pump(pages, min(2.0, max(0.0, deadline - time.monotonic())))
             # Surface progress, so a silent run is distinguishable from a
             # stalled one without waiting out the whole timer.
             elapsed = args.capture_seconds - (deadline - time.monotonic())
@@ -471,10 +517,6 @@ def run_cdp_recon(args: argparse.Namespace) -> int:
                     flush=True,
                 )
                 last_report = elapsed
-            still_open = any(_context_pages(ctx) for ctx in browser.contexts)
-            if not still_open:
-                print("[recon] every tab was closed; stopping early.", file=sys.stderr)
-                break
     finally:
         try:
             _write_dump(capture, dump_path)

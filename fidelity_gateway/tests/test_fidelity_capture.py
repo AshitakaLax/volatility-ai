@@ -1,4 +1,4 @@
-"""Unit tests for src/fidelity_capture.py.
+"""Unit tests for fidelity_gateway/capture.py.
 
 Everything here runs with no browser, no network, and no credentials --
 the module never imports playwright and is duck-typed on the page object,

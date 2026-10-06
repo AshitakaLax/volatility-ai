@@ -9,7 +9,9 @@ end to end -- a test that placed an order would place an order.
 
 from __future__ import annotations
 
+import inspect
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -95,6 +97,8 @@ def test_the_confirmation_phrase_is_not_a_bare_yes():
 
 
 class _Broker:
+    account = ACCOUNT
+
     def __init__(self, orders):
         self._rows = orders
 
@@ -102,31 +106,91 @@ class _Broker:
         return self._rows
 
 
-def test_the_report_names_orders_the_venue_never_received(tmp_path, capsys):
-    path = tmp_path / "j.jsonl"
-    journal = FileConfNumJournal(str(path))
-    journal.record("d1", "2C50LANDED", {"symbol": "CWH", "side": "buy", "qty": 1.0})
-    journal.record("d2", "2C50LOST", {"symbol": "CWH", "side": "buy", "qty": 1.0})
+def _journal(tmp_path, *entries):
+    journal = FileConfNumJournal(str(tmp_path / "j.jsonl"))
+    for decision, conf in entries:
+        journal.record(
+            decision, conf, {"symbol": "CWH", "side": "buy", "qty": 1.0, "account": ACCOUNT}
+        )
+    return journal
 
-    broker = _Broker([{"orderNum": "2C50LANDED", "status": "Open"}])
+
+def test_the_report_flags_recent_orders_missing_from_the_venues_list(tmp_path, capsys):
+    journal = _journal(tmp_path, ("d1", "2C50LANDED"), ("d2", "2C50LOST"))
+    broker = _Broker([{"orderNum": "2C50LANDED", "status": "Open", "cancelableInd": True}])
     script._report(broker, journal)
     out = capsys.readouterr().out
-    assert "2C50LANDED" in out and "Open" in out
-    assert "2C50LOST" in out and "NOT AT VENUE" in out
-    assert "never landed" in out
+    assert "2C50LANDED" in out and "ACCEPTED (Open)" in out
+    assert "2C50LOST" in out and "NOT IN THE VENUE'S LIST" in out
+    assert "does NOT mean they never reached Fidelity" in out
 
 
-def test_the_report_is_quiet_when_everything_landed(tmp_path, capsys):
-    path = tmp_path / "j.jsonl"
-    journal = FileConfNumJournal(str(path))
-    journal.record("d1", "2C50OK", {"symbol": "CWH", "side": "buy", "qty": 1.0})
-    script._report(_Broker([{"orderNum": "2C50OK", "status": "Open"}]), journal)
-    assert "never landed" not in capsys.readouterr().out
+def test_the_report_never_tells_anyone_a_missing_order_never_landed(tmp_path, capsys):
+    """The first version said "Those never landed. Anything NOT listed
+    here DID land" -- an invitation to resubmit an order that may have
+    filled an hour earlier and simply left the list."""
+    script._report(_Broker([]), _journal(tmp_path, ("d1", "2C50GONE")))
+    out = capsys.readouterr().out
+    assert "never landed" not in out
+    assert "DID land" not in out
+
+
+def test_the_report_is_quiet_when_everything_is_listed(tmp_path, capsys):
+    script._report(
+        _Broker([{"orderNum": "2C50OK", "status": "Open"}]), _journal(tmp_path, ("d1", "2C50OK"))
+    )
+    assert "not in the venue's order list" not in capsys.readouterr().out
 
 
 def test_the_report_handles_an_empty_journal(tmp_path, capsys):
     script._report(_Broker([]), FileConfNumJournal(str(tmp_path / "absent.jsonl")))
-    assert "0 recorded intent" in capsys.readouterr().out
+    assert "0 order(s) recorded" in capsys.readouterr().out
+
+
+def test_the_report_leaves_older_entries_out_and_says_so(tmp_path, capsys):
+    """An order from an earlier day has filled, been cancelled or expired
+    by now -- every ticket here is a DAY order -- so checking it against
+    today's list could only ever report it missing."""
+    path = tmp_path / "j.jsonl"
+    old = {
+        "ts": time.time() - 3 * 24 * 3600,
+        "decision_id": "d0",
+        "conf_num": "2C50OLD",
+        "account": ACCOUNT,
+        "symbol": "CWH",
+    }
+    path.write_text(json.dumps(old) + "\n", encoding="utf-8")
+    script._report(_Broker([]), FileConfNumJournal(str(path)))
+    out = capsys.readouterr().out
+    assert "2C50OLD" not in out
+    assert "1 older journal entry not checked" in out
+    assert "not in the venue's order list" not in out
+
+
+def test_another_accounts_journal_entries_stay_out_of_the_report(tmp_path, capsys):
+    journal = FileConfNumJournal(str(tmp_path / "j.jsonl"))
+    journal.record("d1", "2C50ELSE", {"symbol": "CWH", "account": "111222333"})
+    script._report(_Broker([]), journal)
+    out = capsys.readouterr().out
+    assert "2C50ELSE" not in out and "0 order(s) recorded" in out
+
+
+# --- decision ids --------------------------------------------------------
+
+
+def test_every_test_order_gets_its_own_decision_id():
+    """The first version derived it from the symbol and the quoted price,
+    so two test orders at the same price shared one -- and the placing
+    adapter now refuses a decision_id its journal already holds."""
+    ids = {script.new_decision_id("CWH") for _ in range(50)}
+    assert len(ids) == 50
+    assert all(i.startswith("testorder-CWH-") for i in ids)
+
+
+def test_main_places_under_a_fresh_decision_id():
+    source = inspect.getsource(script.main)
+    assert "new_decision_id(args.symbol)" in source
+    assert "int(price * 100)" not in source
 
 
 # --- the journal is durable -------------------------------------------

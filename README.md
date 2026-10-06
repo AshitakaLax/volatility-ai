@@ -1061,11 +1061,11 @@ volatility-ai/
 ├── research/analysis/analyze_annual.py          # annualized regime breakdown vs. buy-and-hold
 ├── resample_uniform.py        # re-grid minute bars onto a uniform index
 ├── fidelity_gateway/          # the Playwright/HTTP route into Fidelity -- see its own CLAUDE.md
-│   ├── session.py             #   log in, hold the authenticated browser session
-│   ├── broker.py              #   read-only adapter (positions, orders)
+│   ├── session.py             #   JSON calls from inside a browser you signed into (CDP)
+│   ├── broker.py              #   preview-only adapter (quotes, previews, orders, positions)
 │   ├── placing_broker.py      #   the gated write path
 │   ├── capture.py / analyze_har.py  # capture and inspect Fidelity's own JSON API
-│   ├── recon.py               #   attach to a live browser and reconcile
+│   ├── recon.py               #   reconnaissance: record a live browser's traffic
 │   └── place_test_order.py
 ├── run_*_chain.sh             # sequential sweep + analyze_annual wrappers
 ├── Dockerfile

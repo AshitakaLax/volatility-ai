@@ -235,6 +235,36 @@ def test_dry_run_is_a_real_bool_not_a_truthy_string():
     assert config.live.fidelity.dry_run is True
 
 
+# -- account_name ------------------------------------------------------
+
+
+def test_account_name_is_read_from_the_section():
+    """transactions/pending refuses an account filter without the display
+    name, so the broker the engine builds has to be given one."""
+    config = _build(
+        {
+            "broker": "fidelity",
+            "fidelity": {"allowed_accounts": ["Z12345678"], "account_name": "Traditional IRA"},
+        }
+    )
+    assert config.live.fidelity.account_name == "Traditional IRA"
+
+
+def test_account_name_is_optional_in_the_section_itself():
+    """build_broker is where it becomes required -- a config that never
+    builds a Fidelity broker has no use for it."""
+    config = _build({"broker": "fidelity", "fidelity": {"allowed_accounts": ["Z1"]}})
+    assert config.live.fidelity.account_name is None
+
+
+@pytest.mark.parametrize("bad", ["", "   ", 7])
+def test_a_blank_or_non_string_account_name_is_rejected(bad):
+    with pytest.raises(ConfigurationError, match="account_name"):
+        _build(
+            {"broker": "fidelity", "fidelity": {"allowed_accounts": ["Z1"], "account_name": bad}}
+        )
+
+
 # -- immutability and round-tripping -----------------------------------
 
 
@@ -263,6 +293,7 @@ def test_a_fidelity_config_round_trips_through_to_dict():
             "allowed_accounts": ["Z12345678", "Z87654321"],
             "account": "Z12345678",
             "dry_run": False,
+            "account_name": "Traditional IRA",
         },
     }
     original = _build(live)
