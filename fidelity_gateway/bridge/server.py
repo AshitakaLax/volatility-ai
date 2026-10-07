@@ -38,6 +38,7 @@ from typing import Any
 from engine.core.exceptions import BrokerUnavailableError, ConfigurationError
 from fidelity_gateway.bridge.ip_policy import AddressPolicy
 from fidelity_gateway.bridge.keys import BridgeApiKey
+from fidelity_gateway.bridge.order_reports import OrderReports
 from fidelity_gateway.bridge.protocol import (
     BRIDGE_PATH,
     MAX_PAYLOAD_LENGTH,
@@ -147,6 +148,7 @@ class BridgeServer:
         extension_origin: str | None = None,
         handshake_timeout: float = HANDSHAKE_TIMEOUT_SECONDS,
         log: Callable[[str], None] | None = None,
+        order_reports: OrderReports | None = None,
     ) -> None:
         if not isinstance(api_key, BridgeApiKey):
             raise ConfigurationError("BridgeServer needs a BridgeApiKey (see bridge/keys.py).")
@@ -157,6 +159,9 @@ class BridgeServer:
         self._extension_origin = extension_origin
         self._handshake_timeout = handshake_timeout
         self._log = log or (lambda _message: None)
+        self._order_reports = (
+            order_reports if order_reports is not None else OrderReports(log=self._log)
+        )
         self._lock = threading.Lock()
         self._session: _Session | None = None
         self._connected = threading.Event()
@@ -229,6 +234,12 @@ class BridgeServer:
         -- or None before it has said. It tells the engine the moment its
         trading switch changes, so this is never staler than a click."""
         return dict(self._permissions) if self._permissions is not None else None
+
+    @property
+    def order_reports(self) -> OrderReports:
+        """What the extension has said became of the orders it sent --
+        its confirmations (order_reports.py)."""
+        return self._order_reports
 
     def wait_for_extension(self, timeout: float) -> bool:
         return self._connected.wait(timeout)
@@ -333,6 +344,10 @@ class BridgeServer:
                 waiting[1].put(message)
         elif kind == "event" and message.get("event") == "permissions":
             self._note_permissions(message.get("data"))
+        elif kind == "event" and message.get("event") == "order":
+            self._order_reports.note(message.get("data"))
+        elif kind == "event" and message.get("event") == "orders":
+            self._order_reports.note_all(message.get("data"))
         elif kind == "event":
             self._push_event(str(message.get("event")), message.get("data"))
         elif kind == "ping":

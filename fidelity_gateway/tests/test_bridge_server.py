@@ -433,3 +433,84 @@ def test_a_malformed_permissions_event_is_ignored(server):
     assert extension.receive() == {"type": "pong", "id": "sync"}
     assert server.permissions is None
     extension.close()
+
+
+# -- the extension's order reports -------------------------------------------
+
+ORDER_REPORT = {
+    "id": "2026-10-07T14:00:00.000Z#1",
+    "confNum": "2C50H6WV",
+    "symbol": "TQQQ",
+    "side": "buy",
+    "qty": 1,
+    "limitPrice": 69.3,
+    "state": "filled",
+    "filledQty": 1,
+    "avgPrice": 69.25,
+    "attempts": 1,
+    "placedAt": "2026-10-07T14:00:00.000Z",
+    "updatedAt": "2026-10-07T14:03:00.000Z",
+    "detail": "",
+}
+
+
+def _sync(extension) -> None:
+    """Everything sent before this has been handled once the pong is back:
+    the server handles one connection's frames in order."""
+    extension.send({"type": "ping", "id": "sync"})
+    assert extension.receive() == {"type": "pong", "id": "sync"}
+
+
+def test_an_order_report_is_kept_logged_and_not_a_page_event(server):
+    extension = _connected(server)
+    extension.send({"type": "event", "event": "order", "data": ORDER_REPORT})
+    _sync(extension)
+    report = server.order_reports.for_conf_num("2C50H6WV")
+    assert report is not None and report.state == "filled" and report.avg_price == 69.25
+    assert any("the extension confirms order 2C50H6WV FILLED" in line for line in server.logs)
+    assert server.next_event(0) is None, "reports are the server's, not the page's"
+    extension.close()
+
+
+def test_the_order_log_sent_on_connecting_is_taken_whole(server):
+    extension = _connected(server)
+    assert not server.order_reports.wait_for_log(0)
+    older = {**ORDER_REPORT, "id": "r0", "confNum": "2C50AAAA", "state": "cancelled"}
+    extension.send({"type": "event", "event": "orders", "data": {"orders": [ORDER_REPORT, older]}})
+    _sync(extension)
+    assert server.order_reports.wait_for_log(0)
+    assert [r.conf_num for r in server.order_reports.recent()] == ["2C50H6WV", "2C50AAAA"]
+    extension.close()
+
+
+def test_a_malformed_order_report_is_ignored_and_the_line_stays_up(server):
+    extension = _connected(server)
+    extension.send({"type": "event", "event": "order", "data": {"state": "filled"}})
+    extension.send({"type": "event", "event": "orders", "data": "everything"})
+    _sync(extension)
+    assert server.order_reports.recent() == []
+    assert server.connected
+    extension.close()
+
+
+def test_reports_go_where_the_caller_says(tmp_path):
+    from fidelity_gateway.bridge.order_reports import OrderReports
+
+    reports = OrderReports(path=tmp_path / "reports.jsonl")
+    bridge = BridgeServer(
+        BridgeApiKey(API_KEY),
+        host="127.0.0.1",
+        port=0,
+        policy=AddressPolicy(["127.0.0.1"]),
+        order_reports=reports,
+    )
+    bridge.start()
+    try:
+        assert bridge.order_reports is reports
+        extension = _connected(bridge)
+        extension.send({"type": "event", "event": "order", "data": ORDER_REPORT})
+        _sync(extension)
+        assert '"state": "filled"' in (tmp_path / "reports.jsonl").read_text(encoding="utf-8")
+        extension.close()
+    finally:
+        bridge.stop()

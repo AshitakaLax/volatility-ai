@@ -167,6 +167,37 @@ def test_the_report_leaves_older_entries_out_and_says_so(tmp_path, capsys):
     assert "not in the venue's order list" not in out
 
 
+def test_through_the_bridge_the_report_shows_what_the_extension_saw(tmp_path, capsys):
+    """After a timeout the extension may have seen Fidelity's reply that
+    never made it back -- the second witness the recovery path wants."""
+    from fidelity_gateway.bridge.order_reports import OrderReports
+
+    reports = OrderReports()
+    report = {
+        "id": "r1",
+        "confNum": "2C50LOST",
+        "symbol": "CWH",
+        "side": "buy",
+        "qty": 1,
+        "limitPrice": 16.0,
+        "state": "submitted",
+    }
+    reports.note_all({"orders": [report]})
+    journal = _journal(tmp_path, ("d1", "2C50LANDED"), ("d2", "2C50LOST"))
+    broker = _Broker([{"orderNum": "2C50LANDED", "status": "Open", "cancelableInd": True}])
+    script._report(broker, journal, reports)
+    lines = capsys.readouterr().out.splitlines()
+    lost = next(line for line in lines if "2C50LOST" in line)
+    landed = next(line for line in lines if "2C50LANDED" in line)
+    assert "NOT IN THE VENUE'S LIST" in lost and "[the extension saw: submitted]" in lost
+    assert "the extension saw" not in landed, "it never reported that one"
+
+
+def test_a_debugging_port_handle_has_no_reports_and_the_report_does_without(tmp_path, capsys):
+    script._report(_Broker([]), _journal(tmp_path, ("d1", "2C50GONE")), None)
+    assert "the extension saw" not in capsys.readouterr().out
+
+
 def test_another_accounts_journal_entries_stay_out_of_the_report(tmp_path, capsys):
     journal = FileConfNumJournal(str(tmp_path / "j.jsonl"))
     journal.record("d1", "2C50ELSE", {"symbol": "CWH", "account": "111222333"})

@@ -1,11 +1,12 @@
 """The engine against the REAL extension.
 
 Everything else in the bridge suite tests one side at a time. This runs
-the extension's own JavaScript (its BridgeClient and command handler,
-from the fidelity-bridge-chrome-extension submodule) in Node, against a
-live BridgeServer, and drives it through FidelitySession -- so a mismatch
-in the handshake, the sealing, the message shapes or the error codes
-fails here even if both sides' own tests pass.
+the extension's own JavaScript (its whole background, from the
+fidelity-bridge-chrome-extension submodule) in Node, against a live
+BridgeServer, and drives it through FidelitySession and the placing
+broker -- so a mismatch in the handshake, the sealing, the message
+shapes, the error codes or the order reports fails here even if both
+sides' own tests pass.
 
 Skipped when Node or the submodule is missing (CI checks out neither).
 Also here: the endpoint allowlists in the two repositories must name the
@@ -27,10 +28,12 @@ from pathlib import Path
 import pytest
 
 from engine.core.exceptions import BrokerUnavailableError
+from engine.execution.order_lifecycle import OrderState
 from fidelity_gateway.bridge.ip_policy import AddressPolicy
 from fidelity_gateway.bridge.keys import API_KEY_ENV_VAR, BridgeApiKey
 from fidelity_gateway.bridge.page import BridgePage
 from fidelity_gateway.bridge.server import BridgeRefusal, BridgeServer
+from fidelity_gateway.placing_broker import FidelityPlacingBroker, FileConfNumJournal
 from fidelity_gateway.session import (
     _SNIFFED_HEADERS,
     PLACE_ENDPOINTS,
@@ -54,6 +57,7 @@ needs_node = pytest.mark.skipif(
 
 PENDING = "/ftgw/digital/activityapi/api/v1/transactions/pending"
 PLACE = "/ftgw/digital/trade-equity/placeOrder"
+ACCOUNT = "999888777"
 
 
 class Extension:
@@ -73,16 +77,19 @@ class Extension:
             text=True,
         )
         self.statuses: queue.Queue = queue.Queue()
+        self.toasts: queue.Queue = queue.Queue()
         self.output: list[str] = []
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self) -> None:
         # Read everything, so a chatty process can never fill the pipe and
-        # stall; keep non-status lines for the failure message.
+        # stall; keep every line for the failure message.
         for line in self.process.stdout:
             self.output.append(line.rstrip())
             if line.startswith('{"status"'):
                 self.statuses.put(json.loads(line)["status"])
+            elif line.startswith('{"toast"'):
+                self.toasts.put(json.loads(line)["toast"])
 
     def wait_for_state(self, state: str, timeout: float = 15.0) -> dict:
         deadline = time.monotonic() + timeout
@@ -228,6 +235,76 @@ def test_the_extension_refuses_an_engine_address_it_does_not_allow(make_server, 
     assert "not in the allowed addresses" in status["detail"]
     time.sleep(0.5)
     assert not server.connected
+
+
+@needs_node
+def test_the_real_extension_sends_its_order_log_on_connecting(make_server, extensions):
+    server = make_server()
+    extensions(server)
+    assert server.wait_for_extension(15)
+    assert server.order_reports.wait_for_log(15), "no order log came"
+    assert server.order_reports.recent() == []
+
+
+@needs_node
+def test_an_order_through_the_real_extension_is_confirmed_back_to_the_engine(
+    make_server, extensions, tmp_path, caplog
+):
+    """The whole loop: the engine places, the extension relays it and
+    reports Fidelity's acceptance, the engine polls, and the extension's
+    report of the fill is there -- and agrees -- by the time the poll
+    returns. With toasts on, the fill also opens one."""
+    server = make_server()
+    extension = extensions(server, settings={"allowPlace": True, "showToasts": True})
+    assert server.wait_for_extension(15)
+    session = _session(server, allow_preview_endpoints=True, allow_order_endpoints=True)
+    broker = FidelityPlacingBroker(
+        session,
+        ACCOUNT,
+        (ACCOUNT,),
+        account_name="Traditional IRA",
+        confirm_live_orders=True,
+        allowed_symbols=("TQQQ",),
+        max_order_value=1_000.0,
+        journal=FileConfNumJournal(str(tmp_path / "orders.jsonl")),
+        order_reports=server.order_reports,
+    )
+
+    order = broker.place("TQQQ", "buy", 2, 70.12, "dec-interop-1")
+    accepted = server.order_reports.for_conf_num(order.id)
+    assert accepted is not None, "the report is sent ahead of the reply it came from"
+    assert (accepted.state, accepted.summary) == ("submitted", "BUY 2 TQQQ @ $70.12")
+
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        found = broker.get_order_by_client_id("dec-interop-1")
+    assert found.state is OrderState.FILLED
+    filled = server.order_reports.for_conf_num(order.id)
+    assert (filled.state, filled.filled_qty, filled.avg_price) == ("filled", 2.0, 70.12)
+    assert any(
+        "ORDER COMPLETE" in record.message
+        and "confirmed by the browser extension" in record.message
+        for record in caplog.records
+    )
+    assert not [record for record in caplog.records if record.levelname == "ERROR"]
+
+    toast = extension.toasts.get(timeout=10)
+    assert toast["type"] == "popup" and toast["focused"] is False
+    assert toast["url"].endswith("/src/ui/toast.html")
+
+
+@needs_node
+def test_an_order_the_real_extension_refuses_is_reported_as_refused(make_server, extensions):
+    server = make_server()
+    extensions(server)
+    assert server.wait_for_extension(15)
+    session = _session(server, allow_order_endpoints=True)
+    ticket = {"orderDetails": {"symbol": "TQQQ", "orderAction": "B", "qty": 1, "limitPrice": 69.3}}
+    with pytest.raises(BridgeRefusal):
+        session.post_json(PLACE, ticket)
+    refused = server.order_reports.recent()[0]
+    assert refused.state == "blocked"
+    assert refused.summary == "BUY 1 TQQQ @ $69.30"
+    assert "switched off" in refused.detail
 
 
 # -- the two allowlists name the same endpoints ------------------------------

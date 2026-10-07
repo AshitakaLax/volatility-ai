@@ -3,9 +3,11 @@ python -m fidelity_gateway.bridge keygen | serve | check
 
   keygen   Create the API key: append FIDELITY_BRIDGE_API_KEY to .env and
            print it once, for pasting into the extension's welcome form.
-  serve    Run the bridge until Ctrl-C, reporting connections.
-  check    Read-only end-to-end proof: wait for the extension, then read
-           the account's orders, positions and settled cash through it.
+  serve    Run the bridge until Ctrl-C, reporting connections and the
+           extension's order confirmations.
+  check    Read-only end-to-end proof: wait for the extension, show what
+           it reports about its recent orders, then read the account's
+           orders, positions and settled cash through it.
 
 Nothing here can place an order. `check` builds a read-only session, so
 the engine-side transport refuses previews and orders before the
@@ -30,8 +32,11 @@ from fidelity_gateway.bridge.keys import (
     load_api_key,
     write_api_key,
 )
+from fidelity_gateway.bridge.order_reports import OrderReports
 from fidelity_gateway.bridge.server import DEFAULT_HOST, DEFAULT_PORT, BridgeError, BridgeServer
 from fidelity_gateway.session import FidelitySession, FidelitySessionError
+
+ORDER_LOG_WAIT_SECONDS = 5.0
 
 
 def _stderr(message: str) -> None:
@@ -149,12 +154,24 @@ def run_check(args: argparse.Namespace) -> int:
         block=args.block_client,
         env_file=args.env_file,
         wait_seconds=args.wait,
+        # Quiet: the summary below says it once, rather than a log line
+        # per order as the extension's log arrives.
+        order_reports=OrderReports(),
     )
     try:
         status = server.request("status", {}, timeout=15)
         tab = (status.get("fidelityTab") or {}).get("url") or "none open"
         print(f"extension {status.get('extensionVersion', '?')}; Fidelity tab: {tab}")
         print(f"extension permissions: {status.get('permissions')}")
+        # The extension sends its order log once it has connected.
+        if not server.order_reports.wait_for_log(ORDER_LOG_WAIT_SECONDS):
+            print("orders the extension reports: it sent no order log (an older version?)")
+        else:
+            reports = server.order_reports.recent(3)
+            print("orders the extension reports:" + ("" if reports else " none yet"))
+            for report in reports:
+                conf = f"  confNum {report.conf_num}" if report.conf_num else ""
+                print(f"  {report.summary:<28} {report.state}{conf}")
 
         # Read-only on purpose: neither previews nor orders are allowed
         # through this session, whatever the extension would permit.

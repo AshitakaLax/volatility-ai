@@ -22,6 +22,11 @@ What the config decides, and nothing else:
 The extension's trading switch is a lock on top that this code cannot
 open: with it off, every order is refused before it reaches Fidelity,
 and the loop waits rather than stopping.
+
+The extension also reports back what became of every order it sent --
+accepted, filled, rejected, refused. Those reports are appended to
+fidelity_order_reports.jsonl beside the state database, and the broker
+checks its own reading of each fill against them (bridge/order_reports.py).
 """
 
 from __future__ import annotations
@@ -34,9 +39,11 @@ from typing import Any
 
 from engine.brokers.broker_selection import build_broker
 from fidelity_gateway.bridge import open_bridge
+from fidelity_gateway.bridge.order_reports import OrderReports
 from fidelity_gateway.session import FidelitySession, FidelitySessionError
 
 JOURNAL_FILENAME = "fidelity_orders.jsonl"
+REPORTS_FILENAME = "fidelity_order_reports.jsonl"
 CREDENTIALS_WAIT_SECONDS = 10.0
 PRIMED_CREDENTIALS_WAIT_SECONDS = 60.0
 
@@ -53,6 +60,7 @@ class FidelityLiveConnection:
     session: FidelitySession
     server: Any
     journal_path: Path | None
+    reports_path: Path | None = None
 
     def close(self) -> None:
         """Stop the bridge. The browser and its Fidelity session are the
@@ -63,6 +71,11 @@ class FidelityLiveConnection:
 def default_journal_path(state_db: str | Path) -> Path:
     """Beside the live state database, so the two travel together."""
     return Path(state_db).with_name(JOURNAL_FILENAME)
+
+
+def default_reports_path(state_db: str | Path) -> Path:
+    """The extension's order reports, beside the state database too."""
+    return Path(state_db).with_name(REPORTS_FILENAME)
 
 
 def connect_live(
@@ -82,6 +95,12 @@ def connect_live(
     settings = config.live.fidelity
     bridge = settings.bridge
     places_orders = not settings.dry_run
+    # Made before the bridge starts: the extension sends its whole order
+    # log the moment it connects, and what the file already holds is not
+    # logged or written again.
+    reports_path = default_reports_path(state_db)
+    reports_path.parent.mkdir(parents=True, exist_ok=True)
+    order_reports = OrderReports(path=reports_path, log=log)
     server, page = bridge_opener(
         host=bridge.host,
         port=bridge.port,
@@ -90,6 +109,7 @@ def connect_live(
         env_file=env_file,
         wait_seconds=float(bridge.connect_timeout_seconds),
         log=log,
+        order_reports=order_reports,
     )
     try:
         session = FidelitySession(
@@ -112,6 +132,7 @@ def connect_live(
             config,
             fidelity_session=session,
             fidelity_journal_path=str(journal) if journal else None,
+            fidelity_order_reports=order_reports,
         )
         broker.ping()
     except BaseException:
@@ -121,7 +142,12 @@ def connect_live(
         "[fidelity] connected through the extension: "
         + ("PLACING REAL ORDERS" if places_orders else "preview only, no orders")
         + (f"; journal {journal}" if journal else "")
+        + f"; the extension's order reports go to {reports_path}"
     )
     return FidelityLiveConnection(
-        broker=broker, session=session, server=server, journal_path=journal
+        broker=broker,
+        session=session,
+        server=server,
+        journal_path=journal,
+        reports_path=reports_path,
     )

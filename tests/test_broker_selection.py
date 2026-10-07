@@ -144,6 +144,31 @@ def test_dry_run_false_builds_the_placing_adapter(tmp_path):
     assert broker._journal._path == str(journal)
 
 
+def test_the_extensions_order_reports_reach_either_adapter(tmp_path):
+    """The browser extension's confirmations: something the adapter checks
+    its own readings against, handed through unchanged."""
+    reports = object()
+    preview = build_broker(
+        _config("fidelity", FIDELITY_OK),
+        fidelity_session=FakeSession(),
+        fidelity_order_reports=reports,
+    )
+    live = build_broker(
+        _config("fidelity", FIDELITY_LIVE, paper=False),
+        fidelity_session=OrderSession(),
+        fidelity_journal_path=str(tmp_path / "orders.jsonl"),
+        fidelity_order_reports=reports,
+    )
+    assert preview._order_reports is reports
+    assert live._order_reports is reports
+    assert (
+        build_broker(
+            _config("fidelity", FIDELITY_OK), fidelity_session=FakeSession()
+        )._order_reports
+        is None
+    )
+
+
 def test_the_config_journal_path_is_used_when_none_is_passed(tmp_path):
     settings = dict(FIDELITY_LIVE, journal_path=str(tmp_path / "from-config.jsonl"))
     broker = build_broker(

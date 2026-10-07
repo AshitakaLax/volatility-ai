@@ -72,6 +72,7 @@ def build_broker(
     credentials: Any = None,
     fidelity_session: Any = None,
     fidelity_journal_path: str | None = None,
+    fidelity_order_reports: Any = None,
     **alpaca_kwargs: Any,
 ) -> Any:
     """Construct the broker `config.live.broker` names.
@@ -80,6 +81,11 @@ def build_broker(
     deployment must not need a browser automation stack installed, and a
     Fidelity-only one must not need alpaca-py -- the same reasoning that
     made `retry_policy.classify_error`'s alpaca import optional.
+
+    `fidelity_order_reports` is the browser extension's confirmations,
+    which the Fidelity adapter checks its own order readings against
+    (fidelity_gateway/bridge/order_reports.py). Optional, and never a
+    source of fills.
     """
     broker = getattr(config.live, "broker", "alpaca")
     if broker not in SUPPORTED_BROKERS:
@@ -101,10 +107,12 @@ def build_broker(
         alpaca_kwargs.setdefault("extended_hours", config.live.extended_hours)
         return AlpacaBroker(credentials, paper=config.live.paper_trading, **alpaca_kwargs)
 
-    return _build_fidelity(config, fidelity_session, fidelity_journal_path)
+    return _build_fidelity(config, fidelity_session, fidelity_journal_path, fidelity_order_reports)
 
 
-def _build_fidelity(config, session: Any, journal_path: str | None = None):
+def _build_fidelity(
+    config, session: Any, journal_path: str | None = None, order_reports: Any = None
+):
     settings = getattr(config.live, "fidelity", None)
     if settings is None:
         raise ConfigurationError(
@@ -149,6 +157,7 @@ def _build_fidelity(config, session: Any, journal_path: str | None = None):
         "symbol": config.backtest.symbol,
         "account_name": settings.account_name,
         "position_scope": (config.backtest.symbol,),
+        "order_reports": order_reports,
     }
 
     if settings.dry_run:

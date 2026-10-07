@@ -84,6 +84,7 @@ from fidelity_gateway.session import FidelitySession, FidelitySessionError
 
 CONFIRM_PHRASE = "PLACE THE ORDER"
 DEFAULT_JOURNAL = Path.home() / ".fidelity_recon" / "placed_orders.jsonl"
+EXTENSION_LOG_WAIT_SECONDS = 5.0
 
 
 def new_decision_id(symbol: str) -> str:
@@ -226,17 +227,24 @@ def connect(args):
     return attach(args.cdp_url)
 
 
-def _report(broker: FidelityBroker, journal: FileConfNumJournal) -> int:
+def _report(broker: FidelityBroker, journal: FileConfNumJournal, reports=None) -> int:
     """The recovery path, also run after every place and cancel.
 
     Covers this account's journal entries from the last day only -- the
     venue's order list holds working and recently completed orders, so an
     older entry would read as missing whatever happened to it.
+
+    Through the bridge, `reports` is the extension's order log, and each
+    entry also shows what the browser saw become of it. That is the
+    second witness worth having after a timeout: the extension may have
+    seen Fidelity's reply that never made it back here.
     """
     cutoff = time.time() - RECENT_WINDOW_SECONDS
     mine = [e for e in journal.read_all() if str(e.get("account")) == broker.account]
     recent = [e for e in mine if float(e.get("ts", 0.0)) >= cutoff]
     orders = {str(o.get("orderNum")): o for o in broker._orders()}
+    if reports is not None:
+        reports.wait_for_log(EXTENSION_LOG_WAIT_SECONDS)
     print(
         f"\njournal: {len(recent)} order(s) recorded for ...{broker.account[-4:]} in the "
         f"last 24h; the venue lists {len(orders)} order(s)"
@@ -248,9 +256,11 @@ def _report(broker: FidelityBroker, journal: FileConfNumJournal) -> int:
             if found is None
             else f"{derive_order_state(found)} ({found.get('status')})"
         )
+        witness = reports.for_conf_num(str(entry["conf_num"])) if reports is not None else None
+        seen = f"  [the extension saw: {witness.state}]" if witness is not None else ""
         print(
             f"  {entry['conf_num']:>10}  {entry.get('side', '?'):>4} "
-            f"{entry.get('qty', '?')} {entry.get('symbol', '?'):<6} -> {state}"
+            f"{entry.get('qty', '?')} {entry.get('symbol', '?'):<6} -> {state}{seen}"
         )
     older = len(mine) - len(recent)
     if older:
@@ -273,6 +283,8 @@ def main(argv=None) -> int:
     Path(args.journal).parent.mkdir(parents=True, exist_ok=True)
 
     handle, page = connect(args)
+    # Through the bridge, the extension's own record of its orders.
+    reports = getattr(handle, "order_reports", None)
     try:
         # allow_order_endpoints is granted ONLY when a real place is
         # intended. In every other mode the transport itself refuses
@@ -298,6 +310,7 @@ def main(argv=None) -> int:
                     session, args.account, (args.account,), account_name=args.account_name
                 ),
                 journal,
+                reports,
             )
 
         if args.cancel:
@@ -326,7 +339,7 @@ def main(argv=None) -> int:
             print(f"\nCancelling {args.cancel} ...")
             canceller.cancel(args.cancel)
             print("Cancel accepted. Reading the venue's order list back ...")
-            return _report(canceller, journal)
+            return _report(canceller, journal, reports)
 
         quote_broker = FidelityBroker(
             session, args.account, (args.account,), account_name=args.account_name
@@ -378,7 +391,7 @@ def main(argv=None) -> int:
 
         print(f"\nPLACED. confNum {order.id}, state {order.state}.")
         print("Reading it back out of the venue's own order list ...")
-        _report(broker, journal)
+        _report(broker, journal, reports)
         print(
             "\nIt is a DAY order resting well below the market, so it should expire\n"
             "at the close. Cancel it in the browser if you would rather not wait."

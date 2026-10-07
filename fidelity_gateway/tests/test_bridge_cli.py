@@ -100,3 +100,65 @@ def test_check_reports_a_missing_extension_without_a_traceback(monkeypatch, caps
     monkeypatch.setenv(API_KEY_ENV_VAR, API_KEY)
     assert cli.main(["check", "--account", "999888777", "--port", "0", "--wait", "0.2"]) == 2
     assert "did not connect" in capsys.readouterr().err
+
+
+def _fake_open_bridge(reports_sent):
+    """open_bridge, standing in: a stub extension that already sent its
+    order log (or not) and answers status and reads."""
+    from fidelity_gateway.bridge.page import BridgePage
+    from fidelity_gateway.tests.test_bridge_page import TRADE_URL, StubServer
+
+    def answer(command, args):
+        if command == "status":
+            return {
+                "extensionVersion": "0.2.0",
+                "fidelityTab": {"url": TRADE_URL},
+                "permissions": {"preview": False, "place": False},
+            }
+        return {"status": 200, "url": "", "body": "{}"}
+
+    def open_bridge(**kwargs):
+        server = StubServer(answer)
+        server.order_reports = kwargs["order_reports"]
+        if reports_sent is not None:
+            server.order_reports.note_all({"orders": reports_sent})
+        server.stop = lambda: None
+        server.push("request", {"url": TRADE_URL, "headers": {"x-csrf-token": "T"}})
+        return server, BridgePage(server, settle_seconds=0)
+
+    return open_bridge
+
+
+def test_check_shows_what_the_extension_reports_about_its_orders(monkeypatch, capsys):
+    report = {
+        "id": "r1",
+        "confNum": "2C50H6WV",
+        "symbol": "TQQQ",
+        "side": "buy",
+        "qty": 1,
+        "limitPrice": 69.3,
+        "state": "filled",
+        "filledQty": 1,
+        "avgPrice": 69.25,
+    }
+    monkeypatch.setattr(cli, "open_bridge", _fake_open_bridge([report]))
+    assert cli.main(["check", "--account", "999888777"]) == 0
+    captured = capsys.readouterr()
+    assert "orders the extension reports:" in captured.out
+    line = next(line for line in captured.out.splitlines() if "2C50H6WV" in line)
+    assert "BUY 1 TQQQ @ $69.30" in line and "filled" in line
+    assert "The bridge works end to end." in captured.out
+    assert "[bridge]" not in captured.err, "said once, in the summary, not per order"
+
+
+def test_check_says_when_the_extension_sent_no_order_log(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ORDER_LOG_WAIT_SECONDS", 0.01)
+    monkeypatch.setattr(cli, "open_bridge", _fake_open_bridge(None))
+    assert cli.main(["check", "--account", "999888777"]) == 0
+    assert "sent no order log (an older version?)" in capsys.readouterr().out
+
+
+def test_check_says_when_there_are_no_orders_yet(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "open_bridge", _fake_open_bridge([]))
+    assert cli.main(["check", "--account", "999888777"]) == 0
+    assert "orders the extension reports: none yet" in capsys.readouterr().out

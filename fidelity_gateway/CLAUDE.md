@@ -39,7 +39,7 @@ python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <numb
 | `analyze_har.py` | Reads a DevTools HAR export; `--redact` scrubs one before it leaves the machine. |
 | `recon.py` | Reconnaissance, not reconciliation: with `--cdp-url`, records your browser's traffic while you use it. Its launched-browser modes are kept for the record; Fidelity refuses them. |
 | `place_test_order.py` | Places one small order through the gated adapter — the manual end-to-end check. `--check-only` is the recovery report; `--bridge` goes through the extension instead of a debugging port. |
-| `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| check`. |
+| `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), `OrderReports` (the extension's order confirmations), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| check`. |
 | `tests/` | This section's own suite. `test_broker_selection.py`/`test_broker_contract.py` (the engine↔fidelity_gateway seam) live in the ROOT `tests/` instead — see `tests/CLAUDE.md`. |
 
 ## The browser-extension bridge
@@ -72,11 +72,27 @@ implement.
   that might have reached Fidelity is a `BridgeError`. `FidelitySession`
   passes `ConfigurationError` through unwrapped, so the placing broker
   calls only the second kind ambiguous.
+- **Order reports: the extension's confirmations.** The extension reads
+  each order it sent off the replies it relays (its own transcription of
+  `derive_order_state`) and pushes every change back as an `order` event:
+  accepted, working, partly filled, filled, cancelled, rejected, refused,
+  or unknown. On connecting it resends its whole log (`orders`), so a
+  reply the engine stopped waiting for still arrives.
+  `bridge/order_reports.py` checks, keeps, logs and optionally files
+  them. Each report is sent before the response that caused it, so a
+  request returns with its report already in.
+- **A report is a witness, never an instruction.**
+  `FidelityBroker.get_order_by_client_id` compares its own reading
+  against the report. Agreement on a fill logs "ORDER COMPLETE ...
+  confirmed by the browser extension", and a disagreement logs an error
+  with both readings. Fills still come only from the engine's own
+  reading, and nothing places, cancels or books because of a report.
 - **Tests.** The protocol and address-policy tests reproduce the
   extension's shared vectors (`tests/vectors/`).
-  `test_bridge_extension.py` runs the extension's real JavaScript under
-  Node against a live `BridgeServer`; it skips when Node or the submodule
-  is missing.
+  `test_bridge_extension.py` runs the extension's real background
+  (`background-core.js`, with its own browser fakes and a small fake
+  Fidelity that fills orders) under Node against a live `BridgeServer`.
+  It skips when Node or the submodule is missing.
 
 ## Live trading through the bridge
 
@@ -89,7 +105,11 @@ implement.
 
 Prices and the market clock still come from Alpaca (a clock-only,
 paper-endpoint connection). `config/fidelity_live.yaml.example` is the
-template.
+template. The extension's order reports are appended to
+`fidelity_order_reports.jsonl` beside the state database, which is read
+back on start so a resent log is not news twice. After an ambiguous
+submission, check that file and `place_test_order --check-only --bridge`,
+which prints what the extension saw for each journalled order.
 
 - **Real orders need it all stated** in the config:
   - `dry_run: false`

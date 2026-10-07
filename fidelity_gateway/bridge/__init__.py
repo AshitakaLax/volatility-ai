@@ -29,6 +29,7 @@ from pathlib import Path
 from engine.core.exceptions import ConfigurationError
 from fidelity_gateway.bridge.ip_policy import AddressPolicy
 from fidelity_gateway.bridge.keys import API_KEY_ENV_VAR, BridgeApiKey, load_api_key
+from fidelity_gateway.bridge.order_reports import OrderReport, OrderReports
 from fidelity_gateway.bridge.page import BridgePage
 from fidelity_gateway.bridge.server import (
     DEFAULT_HOST,
@@ -53,6 +54,8 @@ __all__ = [
     "BridgeRefusal",
     "BridgeServer",
     "BridgeUnavailable",
+    "OrderReport",
+    "OrderReports",
     "load_api_key",
     "open_bridge",
 ]
@@ -71,15 +74,20 @@ def open_bridge(
     env_file: Path | None = None,
     wait_seconds: float = 60.0,
     log: Callable[[str], None] = _stderr,
+    order_reports: OrderReports | None = None,
 ) -> tuple[BridgeServer, BridgePage]:
     """Start the bridge, wait for the extension, and return (server, page).
 
     Call server.stop() when done. Raises ConfigurationError -- with what
     to check -- if the key is missing or the extension does not connect.
+    `order_reports` receives the extension's order confirmations; pass
+    one with a path to keep them on disk (server.order_reports either way).
     """
     key = load_api_key(env_file=env_file)
     policy = AddressPolicy.from_entries(allow, block)
-    server = BridgeServer(key, host=host, port=port, policy=policy, log=log)
+    server = BridgeServer(
+        key, host=host, port=port, policy=policy, log=log, order_reports=order_reports
+    )
     server.start()
     log(f"[bridge] listening on {server.url}; waiting up to {wait_seconds:.0f}s for the extension")
     if not server.wait_for_extension(wait_seconds):

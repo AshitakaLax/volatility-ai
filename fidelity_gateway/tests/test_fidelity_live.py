@@ -16,6 +16,7 @@ import pytest
 
 import fidelity_gateway.live as live
 from engine.core.config import BacktestConfig
+from fidelity_gateway.bridge.order_reports import OrderReports
 from fidelity_gateway.bridge.page import BridgePage
 from fidelity_gateway.broker import FidelityBroker
 from fidelity_gateway.placing_broker import FidelityPlacingBroker
@@ -127,6 +128,23 @@ def test_the_bridge_settings_reach_the_bridge(tmp_path):
     assert tuple(bridge.kwargs["allow"]) == ("127.0.0.1",)
     assert tuple(bridge.kwargs["block"]) == ()
     assert bridge.kwargs["wait_seconds"] == 120.0
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_the_extensions_order_reports_are_kept_beside_the_state_database(tmp_path, dry_run):
+    bridge = FakeBridge()
+    connection = live.connect_live(
+        _config(dry_run=dry_run),
+        state_db=tmp_path / "state" / "ledger.db",
+        bridge_opener=bridge,
+        log=lambda _m: None,
+    )
+    reports = bridge.kwargs["order_reports"]
+    assert isinstance(reports, OrderReports)
+    assert reports.path == tmp_path / "state" / "fidelity_order_reports.jsonl"
+    assert connection.reports_path == reports.path
+    # ...and the broker checks its own readings against the same reports.
+    assert connection.broker._order_reports is reports
 
 
 def test_a_configured_journal_path_wins(tmp_path):

@@ -743,3 +743,108 @@ def test_without_a_scope_the_snapshot_reports_everything():
     snapshot = FidelityBroker(_scoped_session(), ACCOUNT, (ACCOUNT,)).snapshot()
     assert snapshot.positions == {"TQQQ": 3.0, "VTI": 40.0}
     assert {"2C50H6WV", "2C5OTHER", "2C5NOSYM"} <= set(snapshot.orders)
+
+
+# ======================================================================
+# The browser extension's confirmation of an order
+# ======================================================================
+
+
+class _Reports:
+    """The one method the adapter uses of bridge/order_reports.py's store."""
+
+    def __init__(self, *reports):
+        self.reports = {report.conf_num: report for report in reports}
+
+    def for_conf_num(self, conf_num):
+        return self.reports.get(conf_num)
+
+
+def _report(state, conf_num="2C50H6WV", filled_qty=1.0, avg_price=69.35):
+    from fidelity_gateway.bridge.order_reports import OrderReport
+
+    return OrderReport(
+        id="r1",
+        conf_num=conf_num,
+        symbol="TQQQ",
+        side="sell",
+        qty=1.0,
+        limit_price=69.3,
+        state=state,
+        filled_qty=filled_qty,
+        avg_price=avg_price,
+        attempts=1,
+        placed_at="",
+        updated_at="",
+        detail="",
+    )
+
+
+def _tracked(order, reports=None):
+    """An adapter that previewed `order`'s confNum as decision dec-1."""
+    session = FakeSession({PENDING_PATH: _pending([order])})
+    broker = FidelityBroker(session, ACCOUNT, (ACCOUNT,), order_reports=reports)
+    broker._decision_to_conf["dec-1"] = order["orderNum"]
+    return broker
+
+
+def test_a_fill_the_extension_agrees_on_is_confirmed_once(caplog):
+    broker = _tracked(FILLED, _Reports(_report("filled")))
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        assert broker.get_order_by_client_id("dec-1").state is OrderState.FILLED
+        broker.get_order_by_client_id("dec-1")
+    confirmations = [r.message for r in caplog.records if "ORDER COMPLETE" in r.message]
+    assert len(confirmations) == 1, "said once, not on every poll"
+    assert "2C50H6WV" in confirmations[0] and "dec-1" in confirmations[0]
+    assert "confirmed by the browser extension" in confirmations[0]
+
+
+def test_a_disagreement_is_an_error_naming_both_readings_and_the_engines_is_used(caplog):
+    broker = _tracked(FILLED, _Reports(_report("working", filled_qty=0.0)))
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        found = broker.get_order_by_client_id("dec-1")
+    assert found.state is OrderState.FILLED
+    assert found.filled_qty == 1
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert "working" in errors[0].message and "filled" in errors[0].message
+    assert not any("ORDER COMPLETE" in r.message for r in caplog.records)
+
+
+def test_a_different_filled_quantity_is_a_disagreement_too(caplog):
+    broker = _tracked(FILLED, _Reports(_report("filled", filled_qty=2.0)))
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        broker.get_order_by_client_id("dec-1")
+    assert [r.levelname for r in caplog.records].count("ERROR") == 1
+
+
+def test_agreement_short_of_a_fill_is_quiet(caplog):
+    broker = _tracked(WORKING, _Reports(_report("working", conf_num="2C50H81C", filled_qty=0.0)))
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        assert broker.get_order_by_client_id("dec-1").state is OrderState.ACCEPTED
+    assert caplog.records == []
+
+
+def test_nothing_to_compare_is_quiet(caplog):
+    cases = [
+        _tracked(FILLED),  # no extension in the path at all
+        _tracked(FILLED, _Reports()),  # the extension never saw this order
+        _tracked(FILLED, _Reports(_report("submitted"))),  # its own step, not a reading
+        _tracked(FILLED, _Reports(_report("blocked"))),
+    ]
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        for broker in cases:
+            assert broker.get_order_by_client_id("dec-1").state is OrderState.FILLED
+    assert caplog.records == []
+
+
+def test_an_order_the_engine_reads_as_unknown_is_not_compared(caplog):
+    contradiction = {**WORKING, "cancelableInd": False, "status": "Open"}
+    broker = _tracked(
+        contradiction, _Reports(_report("working", conf_num="2C50H81C", filled_qty=0))
+    )
+    with caplog.at_level("ERROR", logger="Optimizer"):
+        assert broker.get_order_by_client_id("dec-1").state is OrderState.UNKNOWN
+    assert caplog.records == [], (
+        "the extension keeps a last known state; UNKNOWN is expected to differ"
+    )
