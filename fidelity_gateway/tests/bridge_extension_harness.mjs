@@ -20,7 +20,8 @@
 //
 // Prints one JSON line per status change, {"status": {"state", "detail"}};
 // one per toast window opened, {"toast": {...}}; one per badge,
-// {"badge": {"text", "title"}}; and one per call made, {"call": {...}}.
+// {"badge": {"text", "title"}}; one per call made, {"call": {...}}; and
+// one whenever the versions the popup would show change, {"versions": {...}}.
 
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -113,7 +114,13 @@ const ask = (message) =>
   });
 const calls = JSON.parse(process.env.BRIDGE_TEST_CALLS || "[]");
 let lastStatus = "";
+let lastVersions = "";
 const watcher = setInterval(async () => {
+  const versions = JSON.stringify({ versions: background.statusSnapshot().versions });
+  if (versions !== lastVersions) {
+    lastVersions = versions;
+    console.log(versions);
+  }
   const status = background.client?.status;
   const line = JSON.stringify({ status });
   if (!status || line === lastStatus) return;

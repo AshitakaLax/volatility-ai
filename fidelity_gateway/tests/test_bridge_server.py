@@ -626,3 +626,58 @@ def test_a_call_with_no_id_is_dropped_and_the_line_stays_up(server):
     _sync(extension)
     assert server.connected
     extension.close()
+
+
+# -- the extension versions this engine expects --------------------------------
+
+
+def _versioned_server(logs, versions):
+    bridge = BridgeServer(
+        BridgeApiKey(API_KEY),
+        host="127.0.0.1",
+        port=0,
+        policy=AddressPolicy(["127.0.0.1"]),
+        log=logs.append,
+        extension_versions=versions,
+    )
+    bridge.start()
+    return bridge
+
+
+def test_every_extension_is_told_which_versions_the_engine_expects():
+    logs: list[str] = []
+    bridge = _versioned_server(logs, {"minimum": "0.3.0", "latest": "0.4.0"})
+    try:
+        extension = FakeExtension(bridge.url, version="0.4.0")
+        assert extension.handshake()["type"] == "welcome"
+        assert extension.versions == {
+            "type": "versions",
+            "extension": {"minimum": "0.3.0", "latest": "0.4.0"},
+        }
+        assert bridge.extension_versions == {"minimum": "0.3.0", "latest": "0.4.0"}
+        assert not any("update" in line or "older" in line for line in logs)
+        extension.close()
+    finally:
+        bridge.stop()
+
+
+def test_an_older_extension_is_named_in_the_log_with_what_to_do():
+    logs: list[str] = []
+    bridge = _versioned_server(logs, {"minimum": "0.3.0", "latest": "0.4.0"})
+    try:
+        behind = FakeExtension(bridge.url, version="0.3.0")
+        behind.handshake()
+        assert _wait_until(lambda: any("0.4.0 is checked out" in line for line in logs))
+        behind.close()
+        ancient = FakeExtension(bridge.url, version="0.2.0")
+        ancient.handshake()
+        assert _wait_until(lambda: any("older than 0.3.0" in line for line in logs))
+        ancient.close()
+    finally:
+        bridge.stop()
+
+
+def test_by_default_the_expected_versions_come_from_this_checkout(server):
+    from fidelity_gateway.bridge.versions import expected_extension_versions
+
+    assert server.extension_versions == expected_extension_versions()

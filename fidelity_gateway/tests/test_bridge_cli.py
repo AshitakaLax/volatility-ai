@@ -8,6 +8,7 @@ path is the one the extension interop test covers.
 
 from __future__ import annotations
 
+import subprocess
 import threading
 import time
 
@@ -102,7 +103,7 @@ def test_check_reports_a_missing_extension_without_a_traceback(monkeypatch, caps
     assert "did not connect" in capsys.readouterr().err
 
 
-def _fake_open_bridge(reports_sent):
+def _fake_open_bridge(reports_sent, *, version="0.4.0", latest="0.4.0"):
     """open_bridge, standing in: a stub extension that already sent its
     order log (or not) and answers status and reads."""
     from fidelity_gateway.bridge.page import BridgePage
@@ -119,6 +120,8 @@ def _fake_open_bridge(reports_sent):
 
     def open_bridge(**kwargs):
         server = StubServer(answer)
+        server.extension = {"name": "fidelity-bridge-extension", "version": version}
+        server.extension_versions = {"minimum": "0.3.0", "latest": latest}
         server.order_reports = kwargs["order_reports"]
         if reports_sent is not None:
             server.order_reports.note_all({"orders": reports_sent})
@@ -162,3 +165,71 @@ def test_check_says_when_there_are_no_orders_yet(monkeypatch, capsys):
     monkeypatch.setattr(cli, "open_bridge", _fake_open_bridge([]))
     assert cli.main(["check", "--account", "999888777"]) == 0
     assert "orders the extension reports: none yet" in capsys.readouterr().out
+
+
+def test_check_says_when_the_extension_needs_building_and_reloading(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "open_bridge", _fake_open_bridge([], version="0.3.0", latest="0.4.0"))
+    assert cli.main(["check", "--account", "999888777"]) == 0
+    out = capsys.readouterr().out
+    assert "update: 0.4.0 is checked out beside the engine" in out
+
+
+def test_check_says_nothing_about_an_up_to_date_extension(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "open_bridge", _fake_open_bridge([]))
+    assert cli.main(["check", "--account", "999888777"]) == 0
+    assert "update:" not in capsys.readouterr().out
+
+
+# -- build-extension -----------------------------------------------------------
+
+
+def _extension_source(tmp_path):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "build.mjs").write_text("// stand-in", encoding="utf-8")
+    return tmp_path
+
+
+def test_build_extension_runs_the_extensions_own_build(tmp_path, monkeypatch, capsys):
+    root = _extension_source(tmp_path)
+    ran = {}
+
+    def run(command, **kwargs):
+        ran["command"], ran["cwd"] = command, kwargs["cwd"]
+        return subprocess.CompletedProcess(
+            command, 0, stdout="Built Fidelity Bridge 0.4.0 -> x\n", stderr=""
+        )
+
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    args = cli.parse_args(["build-extension", "--node", "node-22"])
+    assert cli.run_build_extension(args, root=root) == 0
+    assert ran["command"] == ["node-22", str(root / "scripts" / "build.mjs")]
+    assert ran["cwd"] == root
+    out = capsys.readouterr().out
+    assert "Built Fidelity Bridge 0.4.0" in out and "Reload now" in out
+
+
+def test_build_extension_says_what_is_missing(tmp_path, monkeypatch, capsys):
+    args = cli.parse_args(["build-extension"])
+    assert cli.run_build_extension(args, root=tmp_path / "absent") == 2
+    assert "git submodule update --init" in capsys.readouterr().err
+
+    root = _extension_source(tmp_path)
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: None)
+    assert cli.run_build_extension(args, root=root) == 2
+    assert "Node 22" in capsys.readouterr().err
+
+
+def test_a_failed_build_is_reported_not_hidden(tmp_path, monkeypatch, capsys):
+    root = _extension_source(tmp_path)
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda command, **_kw: subprocess.CompletedProcess(
+            command, 1, stdout="", stderr="manifest.json names x"
+        ),
+    )
+    assert (
+        cli.run_build_extension(cli.parse_args(["build-extension", "--node", "node"]), root=root)
+        == 2
+    )
+    assert "manifest.json names x" in capsys.readouterr().err

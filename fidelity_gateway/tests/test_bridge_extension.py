@@ -88,6 +88,7 @@ class Extension:
         self.toasts: queue.Queue = queue.Queue()
         self.badges: queue.Queue = queue.Queue()
         self.calls: queue.Queue = queue.Queue()
+        self.versions: queue.Queue = queue.Queue()
         self.output: list[str] = []
         threading.Thread(target=self._read, daemon=True).start()
 
@@ -104,6 +105,8 @@ class Extension:
                 self.badges.put(json.loads(line)["badge"])
             elif line.startswith('{"call"'):
                 self.calls.put(json.loads(line)["call"])
+            elif line.startswith('{"versions"'):
+                self.versions.put(json.loads(line)["versions"])
 
     def wait_for_state(self, state: str, timeout: float = 15.0) -> dict:
         deadline = time.monotonic() + timeout
@@ -142,9 +145,13 @@ def make_server():
     pytest.importorskip("websockets")
     servers: list[BridgeServer] = []
 
-    def make(allowed=("127.0.0.1",)) -> BridgeServer:
+    def make(allowed=("127.0.0.1",), extension_versions=None) -> BridgeServer:
         server = BridgeServer(
-            BridgeApiKey(API_KEY), host="127.0.0.1", port=0, policy=AddressPolicy(allowed)
+            BridgeApiKey(API_KEY),
+            host="127.0.0.1",
+            port=0,
+            policy=AddressPolicy(allowed),
+            extension_versions=extension_versions,
         )
         server.start()
         servers.append(server)
@@ -408,6 +415,25 @@ def test_the_real_extensions_algorithm_calls_reach_the_engine(make_server, exten
     }
     assert unknown["answer"]["error"]["code"] == "unknown_method", "not registered by this engine"
     assert received == [("describe", {}), ("set", {"strategy_id": "fixed", "step": 5})]
+
+
+@needs_node
+def test_the_real_extension_hears_which_versions_the_engine_expects(make_server, extensions):
+    """The versions every connecting extension is sent, as its popup will
+    show them -- here, a newer one checked out beside the engine."""
+    server = make_server(extension_versions={"minimum": "0.3.0", "latest": "9.9.9"})
+    extension = extensions(server)
+    assert server.wait_for_extension(15)
+    deadline = time.monotonic() + 15
+    seen = None
+    while time.monotonic() < deadline:
+        try:
+            seen = extension.versions.get(timeout=0.2)
+        except queue.Empty:
+            continue
+        if seen.get("latest") == "9.9.9":
+            break
+    assert seen == {"loaded": "interop", "minimum": "0.3.0", "latest": "9.9.9"}
 
 
 # -- the two allowlists name the same endpoints ------------------------------

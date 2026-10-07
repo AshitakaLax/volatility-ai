@@ -18,11 +18,13 @@ Any failure closes the connection without acting on what it carried.
 One extension at a time. A second one that authenticates replaces the
 first, which is what a browser restart looks like from here.
 
-Beyond relaying requests, the server carries two things the other way:
-the engine's STATUS (what it is doing, for the extension's popup), sent
-on every connect and whenever it changes; and CALLS the extension makes
--- the algorithm editor's -- answered by handlers the engine registers.
-A call the engine did not register is refused.
+Beyond relaying requests, the server carries three things the other
+way: the VERSIONS of the extension this engine expects (versions.py),
+sent on every connect; the engine's STATUS (what it is doing, for the
+extension's popup), sent on every connect and whenever it changes; and
+CALLS the extension makes -- the algorithm editor's -- answered by
+handlers the engine registers. A call the engine did not register is
+refused.
 
 The websockets package is imported inside start(), not at module scope,
 for the same reason recon.py defers Playwright: importing
@@ -58,6 +60,7 @@ from fidelity_gateway.bridge.protocol import (
     proofs_match,
     session_key,
 )
+from fidelity_gateway.bridge.versions import expected_extension_versions, version_advice
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -155,6 +158,7 @@ class BridgeServer:
         handshake_timeout: float = HANDSHAKE_TIMEOUT_SECONDS,
         log: Callable[[str], None] | None = None,
         order_reports: OrderReports | None = None,
+        extension_versions: dict | None = None,
     ) -> None:
         if not isinstance(api_key, BridgeApiKey):
             raise ConfigurationError("BridgeServer needs a BridgeApiKey (see bridge/keys.py).")
@@ -167,6 +171,13 @@ class BridgeServer:
         self._log = log or (lambda _message: None)
         self._order_reports = (
             order_reports if order_reports is not None else OrderReports(log=self._log)
+        )
+        # {"minimum", "latest"}: what every connecting extension is told,
+        # and checked against.
+        self._extension_versions = (
+            dict(extension_versions)
+            if extension_versions is not None
+            else expected_extension_versions()
         )
         self._lock = threading.Lock()
         self._session: _Session | None = None
@@ -242,6 +253,11 @@ class BridgeServer:
         -- or None before it has said. It tells the engine the moment its
         trading switch changes, so this is never staler than a click."""
         return dict(self._permissions) if self._permissions is not None else None
+
+    @property
+    def extension_versions(self) -> dict:
+        """{"minimum", "latest"}: the extension versions this engine expects."""
+        return dict(self._extension_versions)
 
     @property
     def engine_status(self) -> dict | None:
@@ -361,6 +377,11 @@ class BridgeServer:
         self._connected.set()
         version = session.client.get("version", "?")
         self._log(f"[bridge] extension {version} connected from {peer}")
+        advice = version_advice(session.client.get("version"), self._extension_versions)
+        if advice:
+            self._log(f"[bridge] extension {version}: {advice}")
+        with contextlib.suppress(Exception):
+            session.send({"type": "versions", "extension": dict(self._extension_versions)})
         self._send_status(session)
         return session
 

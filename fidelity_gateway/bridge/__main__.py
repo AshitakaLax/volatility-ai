@@ -1,5 +1,5 @@
 """
-python -m fidelity_gateway.bridge keygen | serve | check
+python -m fidelity_gateway.bridge keygen | serve | check | build-extension
 
   keygen   Create the API key: append FIDELITY_BRIDGE_API_KEY to .env and
            print it once, for pasting into the extension's welcome form.
@@ -8,6 +8,9 @@ python -m fidelity_gateway.bridge keygen | serve | check
   check    Read-only end-to-end proof: wait for the extension, show what
            it reports about its recent orders, then read the account's
            orders, positions and settled cash through it.
+  build-extension
+           Build the extension from its submodule into the folder the
+           browser loads it from; its popup then offers Reload now.
 
 Nothing here can place an order. `check` builds a read-only session, so
 the engine-side transport refuses previews and orders before the
@@ -18,6 +21,8 @@ even asked.
 from __future__ import annotations
 
 import argparse
+import shutil
+import subprocess
 import sys
 import threading
 from datetime import UTC, datetime
@@ -35,6 +40,7 @@ from fidelity_gateway.bridge.keys import (
 )
 from fidelity_gateway.bridge.order_reports import OrderReports
 from fidelity_gateway.bridge.server import DEFAULT_HOST, DEFAULT_PORT, BridgeError, BridgeServer
+from fidelity_gateway.bridge.versions import EXTENSION_ROOT, version_advice
 from fidelity_gateway.session import FidelitySession, FidelitySessionError
 
 ORDER_LOG_WAIT_SECONDS = 5.0
@@ -114,6 +120,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     check.add_argument(
         "--wait", type=float, default=120.0, help="Seconds to wait for the extension."
     )
+
+    build = commands.add_parser(
+        "build-extension",
+        help="Build the extension from its submodule, for the browser to reload.",
+    )
+    build.add_argument("--node", default=None, help="The node to run. Default: node on PATH.")
     return parser.parse_args(argv)
 
 
@@ -177,6 +189,9 @@ def run_check(args: argparse.Namespace) -> int:
         status = server.request("status", {}, timeout=15)
         tab = (status.get("fidelityTab") or {}).get("url") or "none open"
         print(f"extension {status.get('extensionVersion', '?')}; Fidelity tab: {tab}")
+        advice = version_advice(server.extension.get("version"), server.extension_versions)
+        if advice:
+            print(f"  update: {advice}")
         print(f"extension permissions: {status.get('permissions')}")
         # The extension sends its order log once it has connected.
         if not server.order_reports.wait_for_log(ORDER_LOG_WAIT_SECONDS):
@@ -216,9 +231,44 @@ def run_check(args: argparse.Namespace) -> int:
         server.stop()
 
 
+def run_build_extension(args: argparse.Namespace, root: Path = EXTENSION_ROOT) -> int:
+    """`npm run build` in the submodule, from the engine's side: the
+    extension's scripts/build.mjs writes dist/fidelity-bridge, the folder
+    the browser loads. The popup then sees the newer build on disk and
+    offers Reload now -- no visit to the extensions page."""
+    script = root / "scripts" / "build.mjs"
+    if not script.is_file():
+        _stderr(
+            f"The extension's source is not checked out at {root}. Run: git submodule update --init"
+        )
+        return 2
+    node = args.node or shutil.which("node")
+    if not node:
+        _stderr("Building the extension needs Node 22 or later on PATH: https://nodejs.org")
+        return 2
+    result = subprocess.run(
+        [node, str(script)], cwd=root, capture_output=True, text=True, timeout=120, check=False
+    )
+    if result.returncode != 0:
+        _stderr((result.stderr or result.stdout).strip() or f"node exited with {result.returncode}")
+        return 2
+    print(result.stdout.strip())
+    print(
+        "\nOpen the extension's popup and press Reload now to use it -- or Reload on "
+        "edge://extensions. Load it from the same folder as before: its settings belong to "
+        "that folder."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    runners = {"keygen": run_keygen, "serve": run_serve, "check": run_check}
+    runners = {
+        "keygen": run_keygen,
+        "serve": run_serve,
+        "check": run_check,
+        "build-extension": run_build_extension,
+    }
     try:
         return runners[args.command](args)
     except (ConfigurationError, FidelitySessionError, BridgeError) as exc:

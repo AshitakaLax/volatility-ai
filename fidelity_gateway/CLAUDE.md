@@ -25,6 +25,7 @@ refuses those. Run the scripts as modules from the repo root:
 
 ```bash
 python -m fidelity_gateway.bridge check --account <number> --account-name "<name>"
+python -m fidelity_gateway.bridge build-extension   # after a pull: then Reload now in the popup
 python -m fidelity_gateway.place_test_order --account <number> --check-only [--bridge]
 python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <number> \
     --i-understand-this-logs-into-my-real-brokerage-account
@@ -87,6 +88,13 @@ implement.
   merges fields into it. The extension shows it in its popup and badge,
   logs it, and toasts a halt. `cli.py live` reports each tick through
   `LiveTradingLoop`'s `tick_listener`.
+- **Versions.** Every connecting extension is sent the versions this
+  engine expects (`bridge/versions.py`): `MINIMUM_EXTENSION_VERSION`,
+  and the one checked out in the submodule. The server logs when the
+  one connecting is older, and its popup says what to do.
+  `python -m fidelity_gateway.bridge build-extension` builds the
+  submodule into the folder the browser loads; the popup then offers
+  **Reload now**.
 - **Calls from the extension** reach handlers the engine registers with
   `register_call` (each on its own thread). `ConfigurationError` comes
   back as `invalid`, `PermissionError` as `not_allowed`, an unregistered

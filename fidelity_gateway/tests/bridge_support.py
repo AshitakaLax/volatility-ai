@@ -34,10 +34,18 @@ VECTORS = EXTENSION_ROOT / "tests" / "vectors"
 class FakeExtension:
     """Connects to a BridgeServer the way the extension does."""
 
-    def __init__(self, url: str, api_key: str = API_KEY, *, origin: str | None = None) -> None:
+    def __init__(
+        self,
+        url: str,
+        api_key: str = API_KEY,
+        *,
+        origin: str | None = None,
+        version: str | None = "9.9.9",
+    ) -> None:
         from websockets.sync.client import connect
 
         self.api_key = api_key
+        self.version = version
         self.ws = connect(url, origin=origin, proxy=None, open_timeout=5)
         self.channel: Channel | None = None
         self._thread: threading.Thread | None = None
@@ -56,7 +64,8 @@ class FakeExtension:
                     "protocol": PROTOCOL,
                     "nonce": self.nonce,
                     "proof": proof or extension_proof(self.api_key, self.engine_nonce, self.nonce),
-                    "client": {"name": "fake-extension", "version": "9.9.9"},
+                    "client": {"name": "fake-extension"}
+                    | ({"version": self.version} if self.version is not None else {}),
                 }
             )
         )
@@ -69,6 +78,10 @@ class FakeExtension:
                 sender="ext",
                 peer="engine",
             )
+            # The engine's first sealed message: the extension versions it
+            # expects. Kept for the tests that look at it.
+            self.versions = self.receive()
+            assert self.versions["type"] == "versions", self.versions
         return reply
 
     def send(self, message: dict) -> None:
