@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import sys
 import threading
+from datetime import UTC, datetime
 from pathlib import Path
 
 from engine.core.exceptions import ConfigurationError
@@ -41,6 +42,16 @@ ORDER_LOG_WAIT_SECONDS = 5.0
 
 def _stderr(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
+
+
+def _status(mode: str, state: str, detail: str) -> dict:
+    """What the extension's popup shows for a bridge with no trading loop."""
+    return {
+        "mode": mode,
+        "state": state,
+        "detail": detail,
+        "updatedAt": datetime.now(UTC).isoformat(),
+    }
 
 
 def _server_flags(parser: argparse.ArgumentParser) -> None:
@@ -126,6 +137,9 @@ def run_serve(args: argparse.Namespace, stop: threading.Event | None = None) -> 
         args.allow_client or DEFAULT_ALLOWED_CLIENTS, args.block_client
     )
     server = BridgeServer(key, host=args.host, port=args.port, policy=policy, log=_stderr)
+    server.set_engine_status(
+        _status("bridge", "running", "the bridge alone, with no trading loop behind it")
+    )
     server.start()
     _stderr(
         f"[bridge] listening on {server.url} (allowed clients: {', '.join(policy.allowed)}). "
@@ -159,6 +173,7 @@ def run_check(args: argparse.Namespace) -> int:
         order_reports=OrderReports(),
     )
     try:
+        server.set_engine_status(_status("check", "running", "checking the connection, read-only"))
         status = server.request("status", {}, timeout=15)
         tab = (status.get("fidelityTab") or {}).get("url") or "none open"
         print(f"extension {status.get('extensionVersion', '?')}; Fidelity tab: {tab}")
@@ -195,6 +210,7 @@ def run_check(args: argparse.Namespace) -> int:
         print(f"positions: {positions or 'none'}")
         print(f"settled cash: {'unknown' if cash is None else f'${cash:,.2f}'}")
         print("\nThe bridge works end to end.")
+        server.set_engine_status(_status("check", "stopped", "the check finished: it works"))
         return 0
     finally:
         server.stop()

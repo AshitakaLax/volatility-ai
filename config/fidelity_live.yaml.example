@@ -61,3 +61,8 @@ live:
       port: 8765
       allowed_clients: ["127.0.0.1", "::1"]   # ...and then name that machine's IP here
       connect_timeout_seconds: 120
+      # true lets the extension's Algorithm page change the strategy, its
+      # parameters, live.step and live.profit_target of this running
+      # deployment -- kept beside --state-db as algorithm.json, applied at
+      # the next tick. Nothing else (account, symbol, limits) can change.
+      allow_algorithm_changes: false

@@ -514,3 +514,115 @@ def test_reports_go_where_the_caller_says(tmp_path):
         extension.close()
     finally:
         bridge.stop()
+
+
+# -- the engine's status, sent to the extension ------------------------------
+
+
+def test_the_engine_status_is_sent_on_connecting_and_on_change(server):
+    status = {"mode": "live", "state": "running", "symbol": "TQQQ"}
+    server.set_engine_status(status)
+    extension = _connected(server)
+    assert extension.receive() == {"type": "status", "engine": status}
+
+    server.set_engine_status(status)  # unchanged: not sent again
+    server.set_engine_status({**status, "state": "paused"})
+    assert extension.receive() == {"type": "status", "engine": {**status, "state": "paused"}}
+    _sync(extension)
+    assert server.engine_status == {**status, "state": "paused"}
+    extension.close()
+
+
+def test_no_status_set_means_none_is_sent(server):
+    extension = _connected(server)
+    _sync(extension)  # the pong is the first thing back
+    assert server.engine_status is None
+    extension.close()
+
+
+# -- calls from the extension -----------------------------------------------
+
+
+def _call(extension, method, args=None, call_id="c1"):
+    extension.send({"type": "call", "id": call_id, "method": method, "args": args or {}})
+    return extension.receive()
+
+
+def test_a_registered_call_is_answered_with_its_result(server):
+    seen = []
+
+    def describe(args):
+        seen.append(args)
+        return {"strategy": "fixed"}
+
+    server.register_call("algorithm.describe", describe)
+    extension = _connected(server)
+    reply = _call(extension, "algorithm.describe", {"verbose": True})
+    assert reply == {"type": "result", "id": "c1", "ok": True, "result": {"strategy": "fixed"}}
+    assert seen == [{"verbose": True}]
+    extension.close()
+
+
+def test_an_unregistered_call_is_refused(server):
+    extension = _connected(server)
+    reply = _call(extension, "algorithm.set")
+    assert reply["ok"] is False and reply["error"]["code"] == "unknown_method"
+    extension.close()
+
+
+def test_refusals_and_failures_come_back_as_codes(server):
+    from engine.core.exceptions import ConfigurationError
+
+    def invalid(_args):
+        raise ConfigurationError("profit_target must be positive")
+
+    def not_allowed(_args):
+        raise PermissionError("this deployment does not allow it")
+
+    def broken(_args):
+        raise RuntimeError("disk full")
+
+    server.register_call("invalid", invalid)
+    server.register_call("not_allowed", not_allowed)
+    server.register_call("broken", broken)
+    extension = _connected(server)
+    assert _call(extension, "invalid")["error"] == {
+        "code": "invalid",
+        "message": "profit_target must be positive",
+    }
+    assert _call(extension, "not_allowed")["error"]["code"] == "not_allowed"
+    failed = _call(extension, "broken")["error"]
+    assert failed == {"code": "internal_error", "message": "RuntimeError: disk full"}
+    assert any("broken failed" in line for line in server.logs)
+    extension.close()
+
+
+def test_a_slow_call_does_not_hold_up_the_connection(server):
+    release = threading.Event()
+
+    def slow(_args):
+        release.wait(5)
+        return {"done": True}
+
+    server.register_call("slow", slow)
+    extension = _connected(server)
+    extension.send({"type": "call", "id": "slow-1", "method": "slow", "args": {}})
+    _sync(extension)  # the ping is answered while the call is still running
+    release.set()
+    assert extension.receive() == {
+        "type": "result",
+        "id": "slow-1",
+        "ok": True,
+        "result": {"done": True},
+    }
+    extension.close()
+
+
+def test_a_call_with_no_id_is_dropped_and_the_line_stays_up(server):
+    server.register_call("algorithm.describe", lambda _args: {})
+    extension = _connected(server)
+    extension.send({"type": "call", "method": "algorithm.describe", "args": {}})
+    extension.send({"type": "call", "id": "", "method": "algorithm.describe"})
+    _sync(extension)
+    assert server.connected
+    extension.close()

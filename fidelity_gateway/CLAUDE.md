@@ -81,6 +81,17 @@ implement.
   `bridge/order_reports.py` checks, keeps, logs and optionally files
   them. Each report is sent before the response that caused it, so a
   request returns with its report already in.
+- **The engine's status goes the other way.** `BridgeServer.set_engine_status`
+  sends what the engine is doing (mode, state and why, algorithm, last
+  tick) on every connect and change; `FidelityLiveConnection.report`
+  merges fields into it. The extension shows it in its popup and badge,
+  logs it, and toasts a halt. `cli.py live` reports each tick through
+  `LiveTradingLoop`'s `tick_listener`.
+- **Calls from the extension** reach handlers the engine registers with
+  `register_call` (each on its own thread). `ConfigurationError` comes
+  back as `invalid`, `PermissionError` as `not_allowed`, an unregistered
+  method as `unknown_method`. The only ones today are the algorithm
+  editor's (`research/strategies/live_algorithm.py`).
 - **A report is a witness, never an instruction.**
   `FidelityBroker.get_order_by_client_id` compares its own reading
   against the report. Agreement on a fill logs "ORDER COMPLETE ...
@@ -111,6 +122,13 @@ back on start so a resent log is not news twice. After an ambiguous
 submission, check that file and `place_test_order --check-only --bridge`,
 which prints what the extension saw for each journalled order.
 
+- **The algorithm can be changed from the extension** -- strategy, its
+  parameters, `live.step`, `live.profit_target`, nothing else -- only
+  when `live.fidelity.bridge.allow_algorithm_changes` is true. A change
+  is validated the way a start-up is (`AlgorithmControl`), kept as
+  `algorithm.json` beside the state database and laid over the YAML at
+  every start (one that does not validate stops the start), and applied
+  at the next tick: `cli.py` rebuilds the loop from its durable state.
 - **Real orders need it all stated** in the config:
   - `dry_run: false`
   - `paper_trading: false`

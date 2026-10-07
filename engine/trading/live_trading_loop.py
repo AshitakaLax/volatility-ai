@@ -82,6 +82,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -285,8 +286,14 @@ class LiveTradingLoop:
         tick_validator: TickValidator | None = None,
         deployment_id: str = "default",
         sleep=time.sleep,
+        tick_listener: Callable[[dict], None] | None = None,
     ) -> None:
         """Assemble the loop and load durable state.
+
+        tick_listener, if given, is told what each tick of run_forever
+        did -- {"at", "reason", ...} -- so whatever supervises the loop
+        can show that it is alive and why it is or is not trading. Its
+        failures are logged and never reach the loop.
 
         Refuses to construct on a config that does not name a single
         live step and profit_target. Those are validated here rather
@@ -347,6 +354,7 @@ class LiveTradingLoop:
                     "implied_vol_change stays 0.0."
                 )
         self._sleep = sleep
+        self._tick_listener = tick_listener
         self._stop_requested = False
         # Why the broker could not be reached, while it cannot; None when
         # it can. Readable by whatever supervises the loop.
@@ -634,6 +642,7 @@ class LiveTradingLoop:
                         f"sells={outcome.sells_submitted} buys={outcome.buys_submitted} "
                         f"cash={self.state.cash:.2f} open_lots={len(self.ledger.open_lots)}"
                     )
+                self._report_tick(outcome.reason, acted=outcome.acted, price=outcome.price)
             except BrokerUnavailableError as exc:
                 # NOTHING WAS SENT: the broker could not take the request
                 # -- its session signed out, its connection dropped, or
@@ -644,6 +653,7 @@ class LiveTradingLoop:
                 # end, which it did not reach.
                 self.persist_state()
                 self._note_broker_unavailable(exc)
+                self._report_tick("broker_unavailable", acted=False, detail=str(exc))
             except AmbiguousSubmissionError:
                 # It is unknown whether an order reached the broker.
                 # Halting and stopping is the only safe response --
@@ -660,6 +670,16 @@ class LiveTradingLoop:
                 break
             self._sleep(interval)
         return ticks
+
+    def _report_tick(self, reason: str, **fields) -> None:
+        """Tell the tick listener what this tick did. A listener that
+        fails is logged, never allowed to stop the loop."""
+        if self._tick_listener is None:
+            return
+        try:
+            self._tick_listener({"at": datetime.now(UTC).isoformat(), "reason": reason, **fields})
+        except Exception as exc:
+            logger.warning(f"Tick listener failed (ignored): {type(exc).__name__}: {exc}")
 
     def _note_broker_unavailable(self, exc: BrokerUnavailableError) -> None:
         """Log an unreachable broker without flooding the log: when it

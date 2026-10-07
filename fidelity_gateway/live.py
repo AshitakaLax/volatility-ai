@@ -32,8 +32,10 @@ checks its own reading of each fill against them (bridge/order_reports.py).
 from __future__ import annotations
 
 import sys
+import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +63,30 @@ class FidelityLiveConnection:
     server: Any
     journal_path: Path | None
     reports_path: Path | None = None
+    status: dict = field(default_factory=dict)
+    _lock: Any = field(default_factory=threading.Lock, repr=False, compare=False)
+
+    def report(self, **fields: Any) -> None:
+        """Tell the extension what the engine is doing -- the Engine line
+        of its popup: mode, state ("starting", "running", "paused",
+        "halted", "stopped"), why, the algorithm, the last tick. Merged
+        into what was said before; a field given as None is dropped.
+
+        Called from the loop's thread (each tick) and the bridge's (an
+        algorithm change), so one at a time: each status is sent whole,
+        and never overtaken by an older one."""
+        with self._lock:
+            for name, value in fields.items():
+                if value is None:
+                    self.status.pop(name, None)
+                else:
+                    self.status[name] = value
+            self.status["updatedAt"] = datetime.now(UTC).isoformat()
+            self.server.set_engine_status(dict(self.status))
+
+    def register_call(self, method: str, handler: Any) -> None:
+        """Let the extension call `method` (BridgeServer.register_call)."""
+        self.server.register_call(method, handler)
 
     def close(self) -> None:
         """Stop the bridge. The browser and its Fidelity session are the
@@ -144,10 +170,17 @@ def connect_live(
         + (f"; journal {journal}" if journal else "")
         + f"; the extension's order reports go to {reports_path}"
     )
-    return FidelityLiveConnection(
+    connection = FidelityLiveConnection(
         broker=broker,
         session=session,
         server=server,
         journal_path=journal,
         reports_path=reports_path,
     )
+    connection.report(
+        mode="live" if places_orders else "preview",
+        state="starting",
+        detail="reconciling with Fidelity",
+        symbol=config.backtest.symbol,
+    )
+    return connection

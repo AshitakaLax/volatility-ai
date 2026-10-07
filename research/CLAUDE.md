@@ -8,7 +8,7 @@ live loop, the queue, or the web stack.
 
 | Package | Key modules | Owns |
 |---|---|---|
-| `strategies/` | `size_calculators.py`, `high_frequency_sizing.py`, `bayesian_sizing_calculators.py`, `sizing_indicators.py`, `indicator_library.py`, `strategy_registry.py` | every concrete `SizingStrategy`, plus the registry mapping `strategy_id` → class |
+| `strategies/` | `size_calculators.py`, `high_frequency_sizing.py`, `bayesian_sizing_calculators.py`, `sizing_indicators.py`, `indicator_library.py`, `strategy_registry.py`, `param_schema.py`, `live_algorithm.py` | every concrete `SizingStrategy`, plus the registry mapping `strategy_id` → class; each strategy's parameter schema and committed defaults (shared by the backtest form and the live algorithm editor); and the live deployment's algorithm as the browser extension changes it |
 | `optimization/` | `optimization_controller.py`, `search_strategies.py`, `walk_forward.py`, `monte_carlo.py`, `intraday_validation.py`, `trailing_target.py` | sweep orchestration (`_simulate_single` runs one combo), grid/Bayesian/random search, out-of-sample validation |
 | `analysis/` | `performance_analyzer.py`, `analyze_annual.py` | result metrics, annualized vs. buy-and-hold |
 | `ml/` | `features.py`, `labels.py`, `rolling.py`, `live_features.py`, `reachability_sizing.py`, `regime_scaled_sizing.py`, `qlib_regime.py`, `sources.py` | the learned-sizing research line — read-only research, not a trading input by default |

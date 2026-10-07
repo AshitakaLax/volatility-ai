@@ -23,7 +23,7 @@ from engine.tests.test_live_trading_loop import FakeBroker, FakeMarketData
 ACCOUNT = "999888777"
 
 
-def _write_config(tmp_path, *, dry_run: bool):
+def _write_config(tmp_path, *, dry_run: bool, allow_algorithm_changes: bool = False):
     data = {
         "strategy": {"strategy_id": "fixed", "strategy_params": {"allocation_pct": 0.05}},
         "grid": {"steps": [0.01], "profit_targets": [0.005]},
@@ -42,6 +42,7 @@ def _write_config(tmp_path, *, dry_run: bool):
                 "dry_run": dry_run,
                 "allowed_symbols": ["TQQQ"],
                 "max_order_value": 2_000.0,
+                "bridge": {"allow_algorithm_changes": allow_algorithm_changes},
             },
         },
     }
@@ -81,12 +82,20 @@ def cli():
 @pytest.fixture
 def fake_connection(monkeypatch):
     """Replaces connect_live: records the call and whether close() ran."""
-    calls = {"connected": 0, "closed": 0, "state_db": None}
+    calls = {"connected": 0, "closed": 0, "state_db": None, "statuses": [], "handlers": {}}
     holder = {"broker": FidelityLikeBroker()}
 
     class Connection:
         def __init__(self, broker):
             self.broker = broker
+            self.status = {}
+
+        def report(self, **fields):
+            self.status.update({k: v for k, v in fields.items() if v is not None})
+            calls["statuses"].append(dict(self.status))
+
+        def register_call(self, method, handler):
+            calls["handlers"][method] = handler
 
         def close(self):
             calls["closed"] += 1
@@ -233,3 +242,184 @@ def test_every_way_out_releases_the_state_lock(cli, tmp_path, fake_connection):
     fake_connection["holder"]["broker"] = FidelityLikeBroker(snapshot=RuntimeError("down"))
     assert cli.cmd_live(_args(config, tmp_path, check_only=True)) == 1
     assert _lock_is_free(tmp_path)
+
+
+# -- what the extension is told, and the algorithm it can change --------------
+
+
+def _alpaca_prices(monkeypatch, cli, market):
+    monkeypatch.setenv("APCA_API_KEY_ID", "k")
+    monkeypatch.setenv("APCA_API_SECRET_KEY", "s")
+    monkeypatch.setattr("engine.data.alpaca_market_data.AlpacaMarketData", lambda **_kw: market)
+    monkeypatch.setattr(cli, "_alpaca_clock_client", lambda: object())
+
+
+def _no_sleep(monkeypatch):
+    """The loop's poll interval, skipped: these tests run several ticks."""
+    import engine.trading.live_trading_loop as module
+
+    original = module.LiveTradingLoop.__init__
+
+    def init(self, *args, **kwargs):
+        kwargs["sleep"] = lambda _seconds: None
+        original(self, *args, **kwargs)
+
+    monkeypatch.setattr(module.LiveTradingLoop, "__init__", init)
+
+
+def test_the_extension_is_told_the_loop_runs_ticks_and_stops(
+    cli, tmp_path, monkeypatch, fake_connection
+):
+    market = FakeMarketData()
+    market.push(100.0)
+    _alpaca_prices(monkeypatch, cli, market)
+    config = _write_config(tmp_path, dry_run=False)
+    assert cli.cmd_live(_args(config, tmp_path, max_ticks=1)) == 0
+    statuses = fake_connection["statuses"]
+    started = next(s for s in statuses if s.get("detail") == "trading loop started")
+    assert started["state"] == "running"
+    assert (started["strategy"], started["step"], started["profitTarget"]) == ("fixed", 0.01, 0.005)
+    assert started["algorithm"] == {"source": "config", "editable": False, "pending": False}
+    assert started["pollSeconds"] == 1.0
+    ticked = next(s for s in statuses if "lastTickAt" in s)
+    assert ticked["detail"] == "trading"
+    assert statuses[-1]["state"] == "stopped"
+
+
+def test_a_start_that_does_not_reach_ready_is_reported_halted(cli, tmp_path, fake_connection):
+    fake_connection["holder"]["broker"] = FidelityLikeBroker(snapshot=RuntimeError("down"))
+    config = _write_config(tmp_path, dry_run=False)
+    assert cli.cmd_live(_args(config, tmp_path, check_only=True)) == 1
+    last = fake_connection["statuses"][-1]
+    assert last["state"] == "halted" and "RECONCILIATION_REQUIRED" in last["detail"]
+
+
+def test_a_check_is_reported_as_one(cli, tmp_path, fake_connection):
+    config = _write_config(tmp_path, dry_run=True)
+    assert cli.cmd_live(_args(config, tmp_path, check_only=True)) == 0
+    assert fake_connection["statuses"][-1] == {
+        "mode": "check",
+        "state": "stopped",
+        "detail": "the check reached READY",
+    }
+    assert set(fake_connection["handlers"]) == {"algorithm.describe"}, "a check only shows it"
+
+
+def test_a_running_loop_offers_the_algorithm_calls(cli, tmp_path, monkeypatch, fake_connection):
+    market = FakeMarketData()
+    market.push(100.0)
+    _alpaca_prices(monkeypatch, cli, market)
+    config = _write_config(tmp_path, dry_run=False)
+    assert cli.cmd_live(_args(config, tmp_path, max_ticks=1)) == 0
+    handlers = fake_connection["handlers"]
+    assert set(handlers) == {"algorithm.describe", "algorithm.set", "algorithm.reset"}
+    assert handlers["algorithm.describe"]({})["editable"] is False
+    with pytest.raises(PermissionError):
+        handlers["algorithm.set"]({})
+
+
+def _override(tmp_path, **fields):
+    import json
+
+    data = {
+        "strategy_id": "fixed",
+        "strategy_params": {"allocation_pct": 0.08},
+        "step": 0.02,
+        "profit_target": 0.01,
+        **fields,
+    }
+    path = tmp_path / "state" / "algorithm.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+def test_an_override_the_deployment_allows_is_traded_from_the_start(
+    cli, tmp_path, monkeypatch, capsys, fake_connection
+):
+    _override(tmp_path)
+    market = FakeMarketData()
+    market.push(100.0)
+    _alpaca_prices(monkeypatch, cli, market)
+    config = _write_config(tmp_path, dry_run=False, allow_algorithm_changes=True)
+    assert cli.cmd_live(_args(config, tmp_path, max_ticks=1)) == 0
+    assert "Trading the algorithm set from the browser extension" in capsys.readouterr().out
+    started = next(
+        s for s in fake_connection["statuses"] if s.get("detail") == "trading loop started"
+    )
+    assert (started["step"], started["profitTarget"]) == (0.02, 0.01)
+    assert started["algorithm"]["source"] == "extension"
+
+
+def test_an_override_the_deployment_does_not_allow_is_ignored_and_said_so(
+    cli, tmp_path, monkeypatch, capsys, fake_connection
+):
+    _override(tmp_path)
+    market = FakeMarketData()
+    market.push(100.0)
+    _alpaca_prices(monkeypatch, cli, market)
+    config = _write_config(tmp_path, dry_run=False)
+    assert cli.cmd_live(_args(config, tmp_path, max_ticks=1)) == 0
+    assert "Ignoring" in capsys.readouterr().err
+    started = next(
+        s for s in fake_connection["statuses"] if s.get("detail") == "trading loop started"
+    )
+    assert started["step"] == 0.01
+
+
+def test_an_override_that_does_not_validate_stops_the_start(cli, tmp_path, capsys, fake_connection):
+    _override(tmp_path, step=7)
+    config = _write_config(tmp_path, dry_run=False, allow_algorithm_changes=True)
+    assert cli.cmd_live(_args(config, tmp_path, max_ticks=1)) == 2
+    assert "Invalid algorithm override" in capsys.readouterr().err
+    assert fake_connection["connected"] == 0, "refused before anything opened"
+
+
+def test_a_change_from_the_extension_switches_the_loop_at_the_next_tick(
+    cli, tmp_path, monkeypatch, capsys, fake_connection
+):
+    """The whole path: the extension's call is accepted, the loop finishes
+    its tick, persists, and is built again from the same store with the
+    new algorithm -- and the extension is told at each step."""
+    _no_sleep(monkeypatch)
+    market = FakeMarketData()
+    market.push(100.0)
+    ticks = {"n": 0}
+    latest_bar = market.latest_bar
+
+    def bar_then_change(symbol):
+        ticks["n"] += 1
+        if ticks["n"] == 1:
+            fake_connection["handlers"]["algorithm.set"](
+                {
+                    "strategy_id": "fixed",
+                    "strategy_params": {"allocation_pct": 0.08},
+                    "step": 0.02,
+                    "profit_target": 0.01,
+                }
+            )
+        return latest_bar(symbol)
+
+    market.latest_bar = bar_then_change
+    _alpaca_prices(monkeypatch, cli, market)
+    config = _write_config(tmp_path, dry_run=False, allow_algorithm_changes=True)
+    assert cli.cmd_live(_args(config, tmp_path, max_ticks=3)) == 0
+
+    out = capsys.readouterr().out
+    assert "Algorithm changed: strategy=fixed step=0.02 profit_target=0.01" in out
+    assert "Trading loop stopped after 3 tick(s)." in out
+    details = [s.get("detail") for s in fake_connection["statuses"]]
+    assert "switching to the new algorithm at the next tick" in details
+    switched = next(
+        s for s in fake_connection["statuses"] if s.get("detail") == "now trading the new algorithm"
+    )
+    assert (switched["step"], switched["profitTarget"]) == (0.02, 0.01)
+    assert switched["algorithm"] == {"source": "extension", "editable": True, "pending": False}
+    # The store describes the loop that ran last.
+    import json
+
+    from engine.core.persistence import LedgerStore
+
+    store = LedgerStore(str(tmp_path / "state" / "ledger.db"))
+    assert json.loads(store.get_meta("live.parameters"))["step"] == 0.02
+    store.close()

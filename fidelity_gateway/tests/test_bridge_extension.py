@@ -63,11 +63,19 @@ ACCOUNT = "999888777"
 class Extension:
     """The harness process, with its status lines collected."""
 
-    def __init__(self, server: BridgeServer, *, key: str = API_KEY, settings: dict | None = None):
+    def __init__(
+        self,
+        server: BridgeServer,
+        *,
+        key: str = API_KEY,
+        settings: dict | None = None,
+        calls: list | None = None,
+    ):
         env = {
             **os.environ,
             API_KEY_ENV_VAR: key,
             "BRIDGE_TEST_SETTINGS": json.dumps(settings or {}),
+            "BRIDGE_TEST_CALLS": json.dumps(calls or []),
         }
         self.process = subprocess.Popen(
             [NODE, str(HARNESS), str(EXTENSION_ROOT), "127.0.0.1", str(server.port)],
@@ -78,6 +86,8 @@ class Extension:
         )
         self.statuses: queue.Queue = queue.Queue()
         self.toasts: queue.Queue = queue.Queue()
+        self.badges: queue.Queue = queue.Queue()
+        self.calls: queue.Queue = queue.Queue()
         self.output: list[str] = []
         threading.Thread(target=self._read, daemon=True).start()
 
@@ -90,6 +100,10 @@ class Extension:
                 self.statuses.put(json.loads(line)["status"])
             elif line.startswith('{"toast"'):
                 self.toasts.put(json.loads(line)["toast"])
+            elif line.startswith('{"badge"'):
+                self.badges.put(json.loads(line)["badge"])
+            elif line.startswith('{"call"'):
+                self.calls.put(json.loads(line)["call"])
 
     def wait_for_state(self, state: str, timeout: float = 15.0) -> dict:
         deadline = time.monotonic() + timeout
@@ -102,6 +116,18 @@ class Extension:
                 return status
         output = "\n".join(self.output)
         raise AssertionError(f"the extension never reached {state!r}. Its output:\n{output}")
+
+    def wait_for_badge(self, words: str, timeout: float = 15.0) -> dict:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                badge = self.badges.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            if words in badge["title"]:
+                return badge
+        output = "\n".join(self.output)
+        raise AssertionError(f"no badge said {words!r}. The extension's output:\n{output}")
 
     def stop(self) -> None:
         self.process.terminate()
@@ -178,7 +204,7 @@ def test_the_extensions_order_lock_holds_even_when_the_engine_allows_orders(
     extensions(server)
     assert server.wait_for_extension(15)
     session = _session(server, allow_order_endpoints=True)
-    with pytest.raises(BridgeRefusal, match="REAL ORDER") as caught:
+    with pytest.raises(BridgeRefusal, match="Trading is off") as caught:
         session.post_json(PLACE, {"orderDetails": {}})
     assert caught.value.code == "blocked_endpoint"
     # Trading off is a pause, not a failure: the live loop waits it out.
@@ -304,7 +330,84 @@ def test_an_order_the_real_extension_refuses_is_reported_as_refused(make_server,
     refused = server.order_reports.recent()[0]
     assert refused.state == "blocked"
     assert refused.summary == "BUY 1 TQQQ @ $69.30"
-    assert "switched off" in refused.detail
+    assert refused.detail.startswith(
+        "Trading is off in Fidelity Bridge, so this order was not sent."
+    )
+
+
+@needs_node
+def test_the_real_extension_shows_what_the_engine_says_it_is_doing(make_server, extensions):
+    """The engine's status, through the sealed channel, into the
+    extension's monitor -- which sets the toolbar badge from it."""
+    server = make_server()
+    server.set_engine_status({"mode": "live", "state": "running", "symbol": "TQQQ"})
+    extension = extensions(server)
+    assert server.wait_for_extension(15)
+    assert extension.wait_for_badge("connected")["text"] == "ON"
+    server.set_engine_status(
+        {
+            "mode": "live",
+            "state": "paused",
+            "symbol": "TQQQ",
+            "detail": "Trading is off in Fidelity Bridge",
+        }
+    )
+    paused = extension.wait_for_badge("paused")
+    assert paused["text"] == "!"
+    assert "Trading is off in Fidelity Bridge" in paused["title"]
+    server.set_engine_status(
+        {
+            "mode": "live",
+            "state": "halted",
+            "symbol": "TQQQ",
+            "detail": "AmbiguousSubmissionError: may be live",
+        }
+    )
+    assert "halted: AmbiguousSubmissionError" in extension.wait_for_badge("halted")["title"]
+
+
+@needs_node
+def test_the_real_extensions_algorithm_calls_reach_the_engine(make_server, extensions):
+    """The algorithm editor's calls, made the way its page makes them, to
+    handlers the engine registered -- and the engine's refusal back."""
+    from engine.core.exceptions import ConfigurationError
+
+    server = make_server()
+    received = []
+
+    def describe(args):
+        received.append(("describe", args))
+        return {"editable": True, "current": {"strategy_id": "fixed"}}
+
+    def change(args):
+        received.append(("set", args))
+        raise ConfigurationError("step must be a fraction of the price between 0 and 1")
+
+    server.register_call("algorithm.describe", describe)
+    server.register_call("algorithm.set", change)
+    extension = extensions(
+        server,
+        calls=[
+            {"method": "algorithm.describe", "args": {}},
+            {"method": "algorithm.set", "args": {"strategy_id": "fixed", "step": 5}},
+            {"method": "algorithm.reset", "args": {}},
+        ],
+    )
+    assert server.wait_for_extension(15)
+    described, refused, unknown = (extension.calls.get(timeout=15) for _ in range(3))
+    assert described["answer"] == {
+        "ok": True,
+        "result": {"editable": True, "current": {"strategy_id": "fixed"}},
+    }
+    assert refused["answer"] == {
+        "ok": False,
+        "error": {
+            "code": "invalid",
+            "message": "step must be a fraction of the price between 0 and 1",
+        },
+    }
+    assert unknown["answer"]["error"]["code"] == "unknown_method", "not registered by this engine"
+    assert received == [("describe", {}), ("set", {"strategy_id": "fixed", "step": 5})]
 
 
 # -- the two allowlists name the same endpoints ------------------------------

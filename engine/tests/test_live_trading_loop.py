@@ -623,6 +623,51 @@ def test_an_ambiguous_submission_still_halts_and_stops(store):
     assert loop.circuit_breaker.allows_new_buys is False
 
 
+def test_a_tick_listener_hears_every_tick_and_why(store):
+    """What a supervisor shows the operator: alive, and why it is or is
+    not trading -- including a tick the broker could not take."""
+
+    class SwitchedOff(FakeBroker):
+        refusals = 1
+
+        def submit_buy(self, *args, **kwargs):
+            if self.refusals:
+                self.refusals -= 1
+                raise BrokerUnavailableError("trading is switched off in the extension")
+            return super().submit_buy(*args, **kwargs)
+
+    heard: list[dict] = []
+    market = FakeMarketData()
+    market.push(100.0)
+    loop = _paced_loop(store, SwitchedOff(), market, [(1, 98.0), (2, 96.0)])
+    loop._tick_listener = heard.append
+    loop.run_forever(max_ticks=3)
+
+    assert [tick["reason"] for tick in heard] == ["ok", "broker_unavailable", "ok"]
+    assert heard[0]["acted"] is True and heard[0]["price"] == 100.0
+    assert heard[1]["detail"] == "trading is switched off in the extension"
+    assert all(datetime.fromisoformat(tick["at"]).tzinfo is not None for tick in heard)
+
+
+def test_a_closed_market_is_heard_as_such(store):
+    heard: list[dict] = []
+    loop = make_loop(store, market=FakeMarketData(is_open=False), tick_listener=heard.append)
+    loop.run_forever(max_ticks=2)
+    assert [(tick["reason"], tick["acted"]) for tick in heard] == [("market_closed", False)] * 2
+
+
+def test_a_failing_tick_listener_never_stops_the_loop(store, caplog):
+    def broken(_tick):
+        raise RuntimeError("the bridge went away")
+
+    market = FakeMarketData()
+    market.push(100.0)
+    loop = make_loop(store, market=market, tick_listener=broken)
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        assert loop.run_forever(max_ticks=2) == 2
+    assert any("Tick listener failed" in record.getMessage() for record in caplog.records)
+
+
 def test_an_unreachable_broker_is_logged_without_flooding(store, caplog):
     loop = make_loop(store)
     with caplog.at_level("WARNING", logger="Optimizer"):

@@ -49,6 +49,16 @@ class StubServer:
         self.calls.append((command, args, timeout))
         return self.answer(command, args)
 
+    # What connect_live and cli.py tell the extension, recorded.
+    statuses: list
+    registered: dict
+
+    def set_engine_status(self, status):
+        self.__dict__.setdefault("statuses", []).append(dict(status))
+
+    def register_call(self, method, handler):
+        self.__dict__.setdefault("registered", {})[method] = handler
+
 
 def _fetch_args(path=PENDING, payload=None, headers=None, timeout_ms=30_000):
     return [path, payload or {}, headers or {"accept": "application/json"}, timeout_ms]

@@ -450,6 +450,9 @@ def _parse_bridge(data: dict) -> FidelityBridgeConfig:
         connect_timeout_seconds=data.get(
             "connect_timeout_seconds", defaults.connect_timeout_seconds
         ),
+        allow_algorithm_changes=data.get(
+            "allow_algorithm_changes", defaults.allow_algorithm_changes
+        ),
     )
 
 
@@ -468,6 +471,12 @@ class FidelityBridgeConfig:
     allowed_clients: tuple = ("127.0.0.1", "::1")
     blocked_clients: tuple = ()
     connect_timeout_seconds: float = 120.0
+    # Whether the extension may change the trading algorithm -- strategy,
+    # its parameters, live.step and live.profit_target -- of a running
+    # deployment. Off unless this file says so: what real capital trades
+    # is decided here, and a browser may change it only when the file
+    # that describes the deployment grants that.
+    allow_algorithm_changes: bool = False
 
 
 @dataclass(frozen=True)
@@ -938,6 +947,11 @@ class BacktestConfig:
                 "live.fidelity.bridge.connect_timeout_seconds must be a positive number of "
                 f"seconds, got {timeout!r}"
             )
+        if not isinstance(bridge.allow_algorithm_changes, bool):
+            raise ConfigurationError(
+                "live.fidelity.bridge.allow_algorithm_changes must be true or false, got "
+                f"{bridge.allow_algorithm_changes!r}"
+            )
 
     def to_dict(self) -> dict:
         """Inverse of from_dict() -- round-trips through the same nested
@@ -1023,6 +1037,9 @@ class BacktestConfig:
                                 "blocked_clients": list(self.live.fidelity.bridge.blocked_clients),
                                 "connect_timeout_seconds": (
                                     self.live.fidelity.bridge.connect_timeout_seconds
+                                ),
+                                "allow_algorithm_changes": (
+                                    self.live.fidelity.bridge.allow_algorithm_changes
                                 ),
                             },
                         }

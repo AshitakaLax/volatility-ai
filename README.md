@@ -454,6 +454,8 @@ strategies observe the market.
 | `research/strategies/sizing_indicators.py` | Incremental rolling max / Wilder RSI, shared by strategies |
 | `research/strategies/bayesian_sizing_calculators.py` | `BayesianDualScaleSizing` (dual-timescale Beta posterior) |
 | `research/strategies/strategy_registry.py` | `strategy_id` -> sizing-strategy class |
+| `research/strategies/param_schema.py` | Each strategy's parameter schema and committed defaults (the backtest form, the live algorithm editor) |
+| `research/strategies/live_algorithm.py` | A live Fidelity deployment's algorithm, as the browser extension shows and (when allowed) changes it |
 | `engine/brokers/alpaca_broker.py` | The `LiveBroker` implementation — order submission, lookup, snapshot |
 | `engine/data/alpaca_market_data.py` | Latest bar and market clock |
 | `engine/trading/live_trading_loop.py` | The tick loop: fills, harvest, buy, persist, shutdown |

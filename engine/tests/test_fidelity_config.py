@@ -301,6 +301,7 @@ def test_the_bridge_defaults_to_this_computer_only():
     assert bridge.allowed_clients == ("127.0.0.1", "::1")
     assert bridge.blocked_clients == ()
     assert bridge.connect_timeout_seconds == 120.0
+    assert bridge.allow_algorithm_changes is False, "the file must grant it, never the default"
 
 
 def test_the_bridge_section_is_read():
@@ -312,12 +313,14 @@ def test_the_bridge_section_is_read():
                 "allowed_clients": ["172.16.0.50"],
                 "blocked_clients": ["172.16.0.99"],
                 "connect_timeout_seconds": 30,
+                "allow_algorithm_changes": True,
             }
         )
     ).live.fidelity.bridge
     assert bridge.host == "0.0.0.0" and bridge.port == 9000
     assert bridge.allowed_clients == ("172.16.0.50",)
     assert bridge.blocked_clients == ("172.16.0.99",)
+    assert bridge.allow_algorithm_changes is True
 
 
 @pytest.mark.parametrize(
@@ -331,6 +334,8 @@ def test_the_bridge_section_is_read():
         ({"allowed_clients": ["127.0.0.1", " "]}, "blank"),
         ({"allowed_clients": "127.0.0.1"}, "LIST"),
         ({"connect_timeout_seconds": 0}, "connect_timeout_seconds"),
+        ({"allow_algorithm_changes": "yes"}, "allow_algorithm_changes"),
+        ({"allow_algorithm_changes": 1}, "allow_algorithm_changes"),
     ],
 )
 def test_bad_bridge_settings_are_refused(bridge, match):
@@ -414,7 +419,12 @@ def test_a_fidelity_config_round_trips_through_to_dict():
             "allowed_symbols": ["TQQQ"],
             "max_order_value": 750.0,
             "journal_path": "state/fidelity_orders.jsonl",
-            "bridge": {"host": "0.0.0.0", "port": 9001, "allowed_clients": ["172.16.0.50"]},
+            "bridge": {
+                "host": "0.0.0.0",
+                "port": 9001,
+                "allowed_clients": ["172.16.0.50"],
+                "allow_algorithm_changes": True,
+            },
         },
     }
     original = _build(live)

@@ -18,6 +18,12 @@ Any failure closes the connection without acting on what it carried.
 One extension at a time. A second one that authenticates replaces the
 first, which is what a browser restart looks like from here.
 
+Beyond relaying requests, the server carries two things the other way:
+the engine's STATUS (what it is doing, for the extension's popup), sent
+on every connect and whenever it changes; and CALLS the extension makes
+-- the algorithm editor's -- answered by handlers the engine registers.
+A call the engine did not register is refused.
+
 The websockets package is imported inside start(), not at module scope,
 for the same reason recon.py defers Playwright: importing
 fidelity_gateway must stay cheap and must work where the optional
@@ -168,6 +174,8 @@ class BridgeServer:
         self._pending: dict[str, tuple[_Session, queue.Queue]] = {}
         self._events: queue.Queue = queue.Queue(maxsize=EVENT_BACKLOG)
         self._permissions: dict | None = None
+        self._engine_status: dict | None = None
+        self._calls: dict[str, Callable[[dict], dict]] = {}
         self._server: Any = None
         self._thread: threading.Thread | None = None
 
@@ -234,6 +242,32 @@ class BridgeServer:
         -- or None before it has said. It tells the engine the moment its
         trading switch changes, so this is never staler than a click."""
         return dict(self._permissions) if self._permissions is not None else None
+
+    @property
+    def engine_status(self) -> dict | None:
+        """What the engine last said about itself, or None."""
+        status = self._engine_status
+        return dict(status) if status is not None else None
+
+    def set_engine_status(self, status: dict) -> None:
+        """Tell the extension what the engine is doing -- now, if one is
+        connected, and on connecting otherwise. An unchanged status is
+        not sent again."""
+        with self._lock:
+            if status == self._engine_status:
+                return
+            self._engine_status = dict(status)
+            session = self._session
+        if session is not None:
+            self._send_status(session)
+
+    def register_call(self, method: str, handler: Callable[[dict], dict]) -> None:
+        """Let the extension call `method`. The handler gets the call's
+        arguments and returns a dict. It refuses with ConfigurationError
+        (code "invalid") or PermissionError ("not_allowed"); anything
+        else it raises is reported as "internal_error". It runs on its
+        own thread, so a slow one never holds up the connection."""
+        self._calls[str(method)] = handler
 
     @property
     def order_reports(self) -> OrderReports:
@@ -327,6 +361,7 @@ class BridgeServer:
         self._connected.set()
         version = session.client.get("version", "?")
         self._log(f"[bridge] extension {version} connected from {peer}")
+        self._send_status(session)
         return session
 
     def _on_frame(self, session: _Session, frame: Any) -> bool:
@@ -350,9 +385,75 @@ class BridgeServer:
             self._order_reports.note_all(message.get("data"))
         elif kind == "event":
             self._push_event(str(message.get("event")), message.get("data"))
+        elif kind == "call":
+            self._start_call(session, message)
         elif kind == "ping":
             session.send({"type": "pong", "id": message.get("id")})
         return True
+
+    # -- the engine's status, and the extension's calls -----------------------
+
+    def _send_status(self, session: _Session) -> None:
+        status = self._engine_status
+        if status is None:
+            return
+        with contextlib.suppress(Exception):
+            session.send({"type": "status", "engine": status})
+
+    def _start_call(self, session: _Session, message: dict) -> None:
+        call_id = message.get("id")
+        if not isinstance(call_id, str) or not call_id or len(call_id) > 100:
+            return  # nothing to address an answer to
+        method = message.get("method")
+        args = message.get("args") if isinstance(message.get("args"), dict) else {}
+        handler = self._calls.get(method) if isinstance(method, str) else None
+        if handler is None:
+            self._answer(
+                session,
+                call_id,
+                error={
+                    "code": "unknown_method",
+                    "message": f"This engine does not offer {method!r}.",
+                },
+            )
+            return
+        threading.Thread(
+            target=self._run_call,
+            args=(session, call_id, method, handler, args),
+            name=f"fidelity-bridge-call-{method}",
+            daemon=True,
+        ).start()
+
+    def _run_call(
+        self, session: _Session, call_id: str, method: str, handler: Callable, args: dict
+    ) -> None:
+        try:
+            result = handler(args)
+        except ConfigurationError as exc:
+            self._answer(session, call_id, error={"code": "invalid", "message": str(exc)})
+        except PermissionError as exc:
+            self._answer(session, call_id, error={"code": "not_allowed", "message": str(exc)})
+        except Exception as exc:
+            self._log(f"[bridge] {method} failed: {type(exc).__name__}: {exc}")
+            self._answer(
+                session,
+                call_id,
+                error={"code": "internal_error", "message": f"{type(exc).__name__}: {exc}"},
+            )
+        else:
+            self._answer(session, call_id, result=result if isinstance(result, dict) else {})
+
+    @staticmethod
+    def _answer(
+        session: _Session, call_id: str, *, result: dict | None = None, error: dict | None = None
+    ) -> None:
+        reply = {"type": "result", "id": call_id, "ok": error is None}
+        if error is None:
+            reply["result"] = result or {}
+        else:
+            reply["error"] = error
+        with contextlib.suppress(Exception):
+            session.send(reply)
 
     def _note_permissions(self, data: Any) -> None:
         """Record what the extension allows, and say so when it changes:

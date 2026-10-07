@@ -15,9 +15,12 @@
 //   node bridge_extension_harness.mjs <extension root> <host> <port>
 //   env FIDELITY_BRIDGE_API_KEY   the key (never on the command line)
 //   env BRIDGE_TEST_SETTINGS      JSON overrides for the extension settings
+//   env BRIDGE_TEST_CALLS         JSON list of {method, args}: the algorithm
+//                                 editor's calls, made once connected
 //
-// Prints one JSON line per status change, {"status": {"state", "detail"}},
-// and one per toast window opened, {"toast": {...}}.
+// Prints one JSON line per status change, {"status": {"state", "detail"}};
+// one per toast window opened, {"toast": {...}}; one per badge,
+// {"badge": {"text", "title"}}; and one per call made, {"call": {...}}.
 
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -26,7 +29,7 @@ const [, , extensionRoot, host, port] = process.argv;
 const load = (...parts) => import(pathToFileURL(join(extensionRoot, ...parts)).href);
 
 const { createBackground } = await load("src", "lib", "background-core.js");
-const { fakeChrome } = await load("tests", "helpers", "fakes.js");
+const { EXTENSION_ID, fakeChrome } = await load("tests", "helpers", "fakes.js");
 
 const settings = {
   schemaVersion: 1,
@@ -84,14 +87,13 @@ chrome.scripting.executeScript = async ({ args: [path, body, headers] }) => {
   return [{ result: { status: 200, url: `https://digital.fidelity.com${path}`, body: JSON.stringify(reply) } }];
 };
 
-// Report what the test waits on: every status (each one sets the badge)
-// and every toast window.
+// Report what the test waits on: every badge and every toast window,
+// and -- watched below -- every change of the connection's state.
 let background = null;
-const setBadgeText = chrome.action.setBadgeText.bind(chrome.action);
-chrome.action.setBadgeText = async (details) => {
-  const status = background?.client?.status;
-  if (status) console.log(JSON.stringify({ status }));
-  return setBadgeText(details);
+const setTitle = chrome.action.setTitle.bind(chrome.action);
+chrome.action.setTitle = async (details) => {
+  console.log(JSON.stringify({ badge: { text: chrome.action.badge.text, title: details.title } }));
+  return setTitle(details);
 };
 const createWindow = chrome.windows.create.bind(chrome.windows);
 chrome.windows.create = async (props) => {
@@ -100,6 +102,29 @@ chrome.windows.create = async (props) => {
 };
 
 background = createBackground({ chrome, WebSocketImpl: WebSocket, version: "interop" });
+
+// The algorithm editor's calls, as its page makes them: a message from
+// one of the extension's own pages, answered by the background.
+const page = { id: EXTENSION_ID, url: `chrome-extension://${EXTENSION_ID}/src/ui/algorithm.html` };
+const ask = (message) =>
+  new Promise((resolve) => {
+    const [keepOpen] = chrome.runtime.onMessage.fire(message, page, resolve);
+    if (!keepOpen) resolve(undefined);
+  });
+const calls = JSON.parse(process.env.BRIDGE_TEST_CALLS || "[]");
+let lastStatus = "";
+const watcher = setInterval(async () => {
+  const status = background.client?.status;
+  const line = JSON.stringify({ status });
+  if (!status || line === lastStatus) return;
+  lastStatus = line;
+  console.log(line);
+  if (status.state === "ready" && calls.length) {
+    for (const { method, args } of calls.splice(0)) {
+      console.log(JSON.stringify({ call: { method, answer: await ask({ type: "engineCall", method, args }) } }));
+    }
+  }
+}, 10);
 
 // What a real page would have shown the extension by now: its own
 // requests, carrying each backend's auth headers. The extension replays
@@ -122,6 +147,7 @@ chrome.webRequest.onSendHeaders.fire({
 
 // Never outlive the test that started it.
 setTimeout(() => {
+  clearInterval(watcher);
   background.client?.stop();
   process.exit(0);
 }, 60_000);
