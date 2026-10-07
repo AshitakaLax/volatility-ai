@@ -19,7 +19,8 @@ of the others to keep the context small.
 |---|---|---|---|
 | `engine/` | [engine/CLAUDE.md](engine/CLAUDE.md) | the trading kernel: decision cycle, no-loss guard, OMS, ledger, warehouse, brokers, config | ~15k lines |
 | `research/` | [research/CLAUDE.md](research/CLAUDE.md) | algorithm development: strategies, sweep/search, metrics, ML | ~12k lines |
-| `fidelity_gateway/` | [fidelity_gateway/CLAUDE.md](fidelity_gateway/CLAUDE.md) | the Playwright/HTTP route into Fidelity: session, capture, recon, the gated place path | ~4k lines |
+| `fidelity_gateway/` | [fidelity_gateway/CLAUDE.md](fidelity_gateway/CLAUDE.md) | the route into Fidelity: session, the browser-extension bridge, capture, recon, the gated place path | ~5k lines |
+| `fidelity-bridge-chrome-extension/` | its own README | **git submodule** (a separate repo): the Fidelity Bridge browser extension the bridge talks to. JavaScript, no dependencies, `npm test` | ~2k lines |
 | `server/` | [server/CLAUDE.md](server/CLAUDE.md) | FastAPI backend: routes, durable queue, shards, history | ~6k lines |
 | `web/` | [web/CLAUDE.md](web/CLAUDE.md) | React/TS frontend | ~17k lines |
 | `tools/` | [tools/README.md](tools/README.md) | ops scripts, data prep, research probes — nothing in `engine/` or `research/` imports these | ~13k lines |

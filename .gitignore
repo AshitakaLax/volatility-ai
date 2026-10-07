@@ -113,3 +113,8 @@ logs/
 # same reason /warehouse/ is -- a bare `backups/` would also match any
 # nested directory that happened to be named that.
 /backups/
+
+# Filled-in Fidelity configs name a real brokerage account, and this
+# repository is public. Commit only the .example templates.
+config/fidelity_local.yaml
+config/fidelity_live.yaml

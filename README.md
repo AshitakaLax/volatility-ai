@@ -1066,7 +1066,9 @@ volatility-ai/
 │   ├── placing_broker.py      #   the gated write path
 │   ├── capture.py / analyze_har.py  # capture and inspect Fidelity's own JSON API
 │   ├── recon.py               #   reconnaissance: record a live browser's traffic
+│   ├── bridge/                #   the browser-extension route (no debugging port)
 │   └── place_test_order.py
+├── fidelity-bridge-chrome-extension/  # git submodule: the Fidelity Bridge extension
 ├── run_*_chain.sh             # sequential sweep + analyze_annual wrappers
 ├── Dockerfile
 ├── docker-compose.yml         # test/backtest/live + staging/production

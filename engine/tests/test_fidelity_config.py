@@ -212,14 +212,130 @@ def test_dry_run_defaults_to_true():
     assert config.live.fidelity.dry_run is True
 
 
+LIVE_FIDELITY = {
+    "broker": "fidelity",
+    "paper_trading": False,
+    "fidelity": {
+        "allowed_accounts": ["Z12345678"],
+        "account": "Z12345678",
+        "account_name": "Traditional IRA",
+        "dry_run": False,
+        "allowed_symbols": ["TQQQ"],
+        "max_order_value": 500.0,
+    },
+}
+
+
+def _live(**fidelity_overrides) -> dict:
+    return {**LIVE_FIDELITY, "fidelity": {**LIVE_FIDELITY["fidelity"], **fidelity_overrides}}
+
+
 def test_dry_run_can_be_disabled_explicitly():
-    config = _build(
-        {
-            "broker": "fidelity",
-            "fidelity": {"allowed_accounts": ["Z12345678"], "dry_run": False},
-        }
-    )
+    config = _build(LIVE_FIDELITY)
     assert config.live.fidelity.dry_run is False
+    assert config.live.fidelity.allowed_symbols == ("TQQQ",)
+    assert config.live.fidelity.max_order_value == 500.0
+
+
+# -- placing real orders: every condition stated, none inferred ----------
+
+
+def test_real_orders_with_paper_trading_on_are_refused():
+    """A Fidelity account has no paper mode: the file must say it trades
+    real money, not merely stop saying it doesn't."""
+    with pytest.raises(ConfigurationError, match="no paper mode"):
+        _build({**LIVE_FIDELITY, "paper_trading": True})
+
+
+def test_real_orders_need_the_traded_symbol_in_allowed_symbols():
+    with pytest.raises(ConfigurationError, match="does not include TQQQ"):
+        _build(_live(allowed_symbols=["SQQQ"]))
+    with pytest.raises(ConfigurationError, match="does not include TQQQ"):
+        _build(_live(allowed_symbols=[]))
+
+
+def test_real_orders_need_a_positive_per_order_ceiling():
+    for ceiling in (0, 0.0):
+        with pytest.raises(ConfigurationError, match="positive dollar ceiling"):
+            _build(_live(max_order_value=ceiling))
+
+
+@pytest.mark.parametrize("bad", ["500", -1, True, None])
+def test_a_ceiling_must_be_a_dollar_amount(bad):
+    with pytest.raises(ConfigurationError, match="max_order_value"):
+        _build(_live(max_order_value=bad))
+
+
+@pytest.mark.parametrize("missing", ["account", "account_name"])
+def test_real_orders_need_the_account_and_its_name(missing):
+    with pytest.raises(ConfigurationError, match="account"):
+        _build(_live(**{missing: None}))
+
+
+def test_symbols_are_upper_cased_and_a_bare_string_is_refused():
+    assert _build(_live(allowed_symbols=["tqqq"])).live.fidelity.allowed_symbols == ("TQQQ",)
+    with pytest.raises(ConfigurationError, match="LIST"):
+        _build(_live(allowed_symbols="TQQQ"))
+
+
+def test_previews_need_none_of_the_placing_settings():
+    config = _build(
+        {"broker": "fidelity", "fidelity": {"allowed_accounts": ["Z12345678"], "dry_run": True}}
+    )
+    assert config.live.fidelity.max_order_value == 0.0
+    assert config.live.fidelity.allowed_symbols == ()
+
+
+def test_a_journal_path_must_be_a_path():
+    assert _build(_live(journal_path="state/j.jsonl")).live.fidelity.journal_path == "state/j.jsonl"
+    with pytest.raises(ConfigurationError, match="journal_path"):
+        _build(_live(journal_path="  "))
+
+
+# -- the bridge ------------------------------------------------------------
+
+
+def test_the_bridge_defaults_to_this_computer_only():
+    bridge = _build(LIVE_FIDELITY).live.fidelity.bridge
+    assert (bridge.host, bridge.port) == ("127.0.0.1", 8765)
+    assert bridge.allowed_clients == ("127.0.0.1", "::1")
+    assert bridge.blocked_clients == ()
+    assert bridge.connect_timeout_seconds == 120.0
+
+
+def test_the_bridge_section_is_read():
+    bridge = _build(
+        _live(
+            bridge={
+                "host": "0.0.0.0",
+                "port": 9000,
+                "allowed_clients": ["172.16.0.50"],
+                "blocked_clients": ["172.16.0.99"],
+                "connect_timeout_seconds": 30,
+            }
+        )
+    ).live.fidelity.bridge
+    assert bridge.host == "0.0.0.0" and bridge.port == 9000
+    assert bridge.allowed_clients == ("172.16.0.50",)
+    assert bridge.blocked_clients == ("172.16.0.99",)
+
+
+@pytest.mark.parametrize(
+    "bridge,match",
+    [
+        ({"port": 0}, "port"),
+        ({"port": 70000}, "port"),
+        ({"port": "8765"}, "port"),
+        ({"host": ""}, "host"),
+        ({"allowed_clients": []}, "allows no browser"),
+        ({"allowed_clients": ["127.0.0.1", " "]}, "blank"),
+        ({"allowed_clients": "127.0.0.1"}, "LIST"),
+        ({"connect_timeout_seconds": 0}, "connect_timeout_seconds"),
+    ],
+)
+def test_bad_bridge_settings_are_refused(bridge, match):
+    with pytest.raises(ConfigurationError, match=match):
+        _build(_live(bridge=bridge))
 
 
 def test_dry_run_is_a_real_bool_not_a_truthy_string():
@@ -289,11 +405,16 @@ def test_the_fidelity_config_is_frozen():
 def test_a_fidelity_config_round_trips_through_to_dict():
     live = {
         "broker": "fidelity",
+        "paper_trading": False,
         "fidelity": {
             "allowed_accounts": ["Z12345678", "Z87654321"],
             "account": "Z12345678",
             "dry_run": False,
             "account_name": "Traditional IRA",
+            "allowed_symbols": ["TQQQ"],
+            "max_order_value": 750.0,
+            "journal_path": "state/fidelity_orders.jsonl",
+            "bridge": {"host": "0.0.0.0", "port": 9001, "allowed_clients": ["172.16.0.50"]},
         },
     }
     original = _build(live)

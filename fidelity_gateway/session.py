@@ -83,7 +83,7 @@ import json
 import time
 from typing import Any
 
-from engine.core.exceptions import ConfigurationError
+from engine.core.exceptions import BrokerUnavailableError, ConfigurationError
 
 FIDELITY_ORIGIN = "https://digital.fidelity.com"
 
@@ -182,9 +182,45 @@ def service_of(path_or_url: str) -> str:
 _SIGNIN_MARKER = "/prgw/digital/signin"
 _AUTHENTICATED_MARKER = "/ftgw/digital/"
 
+# The one script post_json runs in the page. A module constant so the
+# browser-extension bridge (fidelity_gateway/bridge/page.py) can recognise
+# it and refuse any other: the extension runs a fixed copy of this fetch
+# and takes only its arguments, never a script.
+#
+# Executed in the PAGE, so the browser attaches cookies and the request
+# is same-origin. credentials:"same-origin" is explicit rather than
+# relying on the fetch default, which has changed across specification
+# revisions.
+FETCH_SCRIPT = """
+async ([path, payload, headers, timeoutMs]) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(path, {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify(payload),
+            credentials: "same-origin",
+            signal: controller.signal,
+        });
+        const text = await response.text();
+        return {status: response.status, url: response.url, body: text};
+    } finally {
+        clearTimeout(timer);
+    }
+}
+"""
 
-class FidelitySessionError(RuntimeError):
-    """Base for session problems that are not configuration mistakes."""
+
+class FidelitySessionError(BrokerUnavailableError, RuntimeError):
+    """Base for session problems that are not configuration mistakes.
+
+    A BrokerUnavailableError, so the live loop waits it out -- skips the
+    tick, tries the next -- instead of stopping. That is only right
+    because nothing reaches this type from a placed order: the placing
+    broker turns ANY failure of placeOrder into AmbiguousSubmissionError,
+    which halts.
+    """
 
 
 class FidelitySessionExpired(FidelitySessionError):
@@ -220,6 +256,16 @@ class FidelitySession:
         # service -> {header: value}. Never a flat dict again.
         self._headers: dict[str, dict[str, str]] = {}
         self._attached = False
+
+    @property
+    def allows_orders(self) -> bool:
+        """Whether this session may place and cancel real orders."""
+        return self._allow_order_endpoints
+
+    @property
+    def allows_previews(self) -> bool:
+        """Whether this session may preview orders (placing implies it)."""
+        return self._allow_preview_endpoints
 
     # -- credential sniffing -------------------------------------------
 
@@ -404,31 +450,17 @@ class FidelitySession:
             "content-type": "application/json",
             **self.headers_for(path),
         }
-        # Executed in the PAGE, so the browser attaches cookies and the
-        # request is same-origin. credentials:"same-origin" is explicit
-        # rather than relying on the fetch default, which has changed
-        # across specification revisions.
-        script = """
-        async ([path, payload, headers, timeoutMs]) => {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), timeoutMs);
-            try {
-                const response = await fetch(path, {
-                    method: "POST",
-                    headers: headers,
-                    body: JSON.stringify(payload),
-                    credentials: "same-origin",
-                    signal: controller.signal,
-                });
-                const text = await response.text();
-                return {status: response.status, url: response.url, body: text};
-            } finally {
-                clearTimeout(timer);
-            }
-        }
-        """
         try:
-            result = self._page.evaluate(script, [path, payload, headers, self._request_timeout_ms])
+            result = self._page.evaluate(
+                FETCH_SCRIPT, [path, payload, headers, self._request_timeout_ms]
+            )
+        except ConfigurationError:
+            # Refused BEFORE anything was sent -- the browser extension's
+            # own endpoint gate, or no Fidelity tab to send from. Passed
+            # through unwrapped so a caller can tell "never sent" from
+            # "might have been": the placing broker treats only the
+            # second as an ambiguous submission.
+            raise
         except Exception as exc:
             raise FidelitySessionError(f"POST {path} failed in the page: {exc}") from exc
 

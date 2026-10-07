@@ -13,8 +13,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from engine.core.config import BacktestConfig
-from engine.core.exceptions import ConfigurationError, DataValidationError
+from engine.core.exceptions import BrokerUnavailableError, ConfigurationError, DataValidationError
 from engine.core.persistence import LedgerStore
+from engine.core.retry_policy import AmbiguousSubmissionError
 from engine.data.alpaca_market_data import LiveBar
 from engine.trading.live_trading_loop import LiveTradingLoop
 from research.strategies.size_calculators import FixedPortfolioPercentage
@@ -532,6 +533,109 @@ def test_run_forever_honors_max_ticks(store):
     market = FakeMarketData()
     market.push(100.0)
     assert make_loop(store, market=market).run_forever(max_ticks=3) == 3
+
+
+# --- an unreachable broker is waited out; an ambiguous order is not ---
+
+
+def _paced_loop(store, broker, market, prices):
+    """A loop whose sleep pushes the next bar, so run_forever sees a
+    market that moves between ticks. Returns the loop."""
+    upcoming = iter(prices)
+
+    def next_bar(_seconds):
+        step = next(upcoming, None)
+        if step is not None:
+            minute, price = step
+            market.push(price, ts=BASE_TS + timedelta(minutes=minute))
+
+    return LiveTradingLoop(
+        config=make_config(),
+        strategy=FixedPortfolioPercentage(allocation_pct=0.05),
+        broker=broker,
+        market_data=market,
+        store=store,
+        sleep=next_bar,
+    )
+
+
+def test_an_unavailable_broker_skips_the_tick_and_the_loop_carries_on(store):
+    """Trading switched off in the browser extension, the session signed
+    out, the connection dropped: none of it is a reason to stop, and the
+    first order after it clears goes through."""
+
+    class SwitchedOff(FakeBroker):
+        refusals = 1
+
+        def submit_buy(self, *args, **kwargs):
+            if self.refusals:
+                self.refusals -= 1
+                raise BrokerUnavailableError("trading is switched off in the extension")
+            return super().submit_buy(*args, **kwargs)
+
+    broker = SwitchedOff()
+    market = FakeMarketData()
+    market.push(100.0)
+    loop = _paced_loop(store, broker, market, [(1, 98.0), (2, 96.0)])
+
+    assert loop.run_forever(max_ticks=3) == 3, "the refused tick did not stop the loop"
+    assert len(broker.buys) == 1, "the buy after the switch came back on went through"
+    assert loop.broker_unavailable is None, "cleared once a tick succeeded"
+
+
+def test_a_tick_cut_short_still_persists_what_it_applied(store):
+    """A fill applied early in a tick that then cannot reach the broker
+    must not wait for the tick's end, which it never reaches."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    market.push(100.0)
+    loop = make_loop(store, broker, market)
+    loop.run_once()  # reference price 100
+    market.push(98.0, ts=BASE_TS + timedelta(minutes=1))
+    loop.run_once()  # a buy is submitted
+    _, _value, cid = broker.buys[0]
+    broker.fill(cid, qty=10.0, price=98.0)
+
+    def unreachable(*_args, **_kwargs):
+        raise BrokerUnavailableError("the browser extension is not connected")
+
+    broker.submit_buy = unreachable  # the NEXT order cannot be sent
+    market.push(95.0, ts=BASE_TS + timedelta(minutes=2))
+    loop._sleep = lambda _seconds: None
+    loop.run_forever(max_ticks=1)
+
+    assert loop.broker_unavailable == "the browser extension is not connected"
+    assert float(store.get_meta("live.cash")) == pytest.approx(100_000.0 - 980.0)
+
+
+def test_an_ambiguous_submission_still_halts_and_stops(store):
+    """The one failure that is NOT waited out: an order that may be live."""
+
+    class LostOrder(FakeBroker):
+        def submit_buy(self, *args, **kwargs):
+            raise AmbiguousSubmissionError("placeOrder timed out; the order MAY BE LIVE")
+
+    market = FakeMarketData()
+    market.push(100.0)
+    loop = _paced_loop(store, LostOrder(), market, [(1, 98.0)])
+    with pytest.raises(AmbiguousSubmissionError):
+        loop.run_forever(max_ticks=5)
+    assert loop.circuit_breaker.allows_new_buys is False
+
+
+def test_an_unreachable_broker_is_logged_without_flooding(store, caplog):
+    loop = make_loop(store)
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        for _ in range(31):
+            loop._note_broker_unavailable(BrokerUnavailableError("signed out"))
+        loop._note_broker_unavailable(BrokerUnavailableError("tab closed"))
+        loop._note_broker_available()
+        loop._note_broker_available()
+    lines = [record.getMessage() for record in caplog.records]
+    assert sum("signed out" in line for line in lines) == 2, "the first, then every 30th"
+    assert sum("tab closed" in line for line in lines) == 1, "a new reason is always said"
+    assert sum("available again" in line for line in lines) == 1
+    assert loop.broker_unavailable is None
 
 
 def test_in_flight_settled_reports_outstanding_orders(store):

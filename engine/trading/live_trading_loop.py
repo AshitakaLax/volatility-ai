@@ -86,7 +86,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from engine.core.config import BacktestConfig
-from engine.core.exceptions import ConfigurationError, PersistenceError
+from engine.core.exceptions import BrokerUnavailableError, ConfigurationError, PersistenceError
 from engine.core.idempotency import compute_decision_id
 from engine.core.market_context import MarketContext
 from engine.core.retry_policy import AmbiguousSubmissionError
@@ -348,6 +348,10 @@ class LiveTradingLoop:
                 )
         self._sleep = sleep
         self._stop_requested = False
+        # Why the broker could not be reached, while it cannot; None when
+        # it can. Readable by whatever supervises the loop.
+        self.broker_unavailable: str | None = None
+        self._unavailable_ticks = 0
 
         self.risk_manager = risk_manager or RiskManager(
             max_concurrent_lots=config.risk.max_concurrent_lots,
@@ -624,11 +628,22 @@ class LiveTradingLoop:
             try:
                 outcome = self.run_once()
                 if outcome.acted:
+                    self._note_broker_available()
                     logger.info(
                         f"tick price={outcome.price} fills={outcome.fills_applied} "
                         f"sells={outcome.sells_submitted} buys={outcome.buys_submitted} "
                         f"cash={self.state.cash:.2f} open_lots={len(self.ledger.open_lots)}"
                     )
+            except BrokerUnavailableError as exc:
+                # NOTHING WAS SENT: the broker could not take the request
+                # -- its session signed out, its connection dropped, or
+                # trading was switched off on its side. Not a reason to
+                # stop: skip the rest of this tick and try again on the
+                # next. Whatever the tick already applied (a confirmed
+                # fill, say) is persisted now rather than at the tick's
+                # end, which it did not reach.
+                self.persist_state()
+                self._note_broker_unavailable(exc)
             except AmbiguousSubmissionError:
                 # It is unknown whether an order reached the broker.
                 # Halting and stopping is the only safe response --
@@ -645,6 +660,29 @@ class LiveTradingLoop:
                 break
             self._sleep(interval)
         return ticks
+
+    def _note_broker_unavailable(self, exc: BrokerUnavailableError) -> None:
+        """Log an unreachable broker without flooding the log: when it
+        starts, when the reason changes, and every 30 ticks while it
+        lasts."""
+        detail = str(exc)
+        self._unavailable_ticks += 1
+        if detail != self.broker_unavailable or self._unavailable_ticks % 30 == 0:
+            logger.warning(
+                f"Broker unavailable ({self._unavailable_ticks} tick(s) in a row) -- skipping "
+                f"and trying again next tick: {detail}"
+            )
+        self.broker_unavailable = detail
+
+    def _note_broker_available(self) -> None:
+        if self.broker_unavailable is None:
+            return
+        logger.warning(
+            f"Broker available again after {self._unavailable_ticks} skipped tick(s); "
+            "trading resumes."
+        )
+        self.broker_unavailable = None
+        self._unavailable_ticks = 0
 
     # --- fills ---
 

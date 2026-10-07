@@ -63,3 +63,7 @@ output/
 # context. dist/ is excluded for the same reason: the image builds it.
 web/node_modules/
 web/dist/
+
+# The Fidelity Bridge browser extension (a git submodule). It runs in the
+# user's browser, never in an image.
+fidelity-bridge-chrome-extension/

@@ -14,6 +14,7 @@ from engine.core.config import BacktestConfig
 from engine.core.exceptions import ConfigurationError
 from engine.core.secrets import LiveCredentials
 from fidelity_gateway.broker import FidelityBroker
+from fidelity_gateway.placing_broker import FidelityPlacingBroker
 from fidelity_gateway.tests.test_fidelity_broker import ACCOUNT, FakeSession
 
 CREDS = LiveCredentials(api_key_id="PKTEST", api_secret_key="secret")
@@ -113,28 +114,106 @@ def test_the_account_name_reaches_the_order_list_filter():
     assert payload["filter"]["accounts"][0]["acctName"] == "Traditional IRA"
 
 
-# --- dry_run=False is a hard failure -----------------------------------
+# --- dry_run decides the adapter, and nothing falls back -----------------
+
+FIDELITY_LIVE = dict(FIDELITY_OK, dry_run=False, allowed_symbols=["TQQQ"], max_order_value=500.0)
 
 
-def test_dry_run_false_refuses_to_start_rather_than_previewing_silently():
-    """THE IMPORTANT ONE.
+class OrderSession(FakeSession):
+    """A session built to allow order endpoints, as connect_live builds it."""
 
-    The adapter is preview-only. A config claiming otherwise must fail
-    loudly: an operator who believes orders are live while nothing
-    trades is the worst outcome available, worse than not starting.
-    """
-    settings = dict(FIDELITY_OK, dry_run=False)
-    with pytest.raises(ConfigurationError, match="PREVIEW-ONLY"):
-        build_broker(_config("fidelity", settings), fidelity_session=FakeSession())
+    allows_orders = True
 
 
-def test_dry_run_false_is_refused_before_a_session_is_even_required():
-    """Checked ahead of the session check on purpose: 'you asked for
-    something impossible' is more useful than 'you forgot a session',
-    and fixing the second would still leave the first."""
-    settings = dict(FIDELITY_OK, dry_run=False)
-    with pytest.raises(ConfigurationError, match="PREVIEW-ONLY"):
-        build_broker(_config("fidelity", settings), fidelity_session=None)
+def test_dry_run_true_builds_the_preview_only_adapter():
+    broker = build_broker(_config("fidelity", FIDELITY_OK), fidelity_session=FakeSession())
+    assert isinstance(broker, FidelityBroker)
+    assert not isinstance(broker, FidelityPlacingBroker)
+
+
+def test_dry_run_false_builds_the_placing_adapter(tmp_path):
+    journal = tmp_path / "orders.jsonl"
+    broker = build_broker(
+        _config("fidelity", FIDELITY_LIVE, paper=False),
+        fidelity_session=OrderSession(),
+        fidelity_journal_path=str(journal),
+    )
+    assert isinstance(broker, FidelityPlacingBroker)
+    assert broker._allowed_symbols == ("TQQQ",)
+    assert broker._max_order_value == 500.0
+    assert broker._journal._path == str(journal)
+
+
+def test_the_config_journal_path_is_used_when_none_is_passed(tmp_path):
+    settings = dict(FIDELITY_LIVE, journal_path=str(tmp_path / "from-config.jsonl"))
+    broker = build_broker(
+        _config("fidelity", settings, paper=False), fidelity_session=OrderSession()
+    )
+    assert broker._journal._path.endswith("from-config.jsonl")
+
+
+def test_real_orders_with_paper_trading_on_are_refused(tmp_path):
+    """A Fidelity account has no paper mode. A file that says paper while
+    placing real orders is a contradiction to stop on, not to resolve."""
+    with pytest.raises(ConfigurationError, match="no paper mode"):
+        build_broker(
+            _config("fidelity", FIDELITY_LIVE, paper=True),
+            fidelity_session=OrderSession(),
+            fidelity_journal_path=str(tmp_path / "j.jsonl"),
+        )
+
+
+def test_real_orders_over_a_session_that_cannot_place_are_refused(tmp_path):
+    """Silently previewing while the config says orders are placed is the
+    worst outcome available -- so the session must agree with the file."""
+    with pytest.raises(ConfigurationError, match="transport would refuse every order"):
+        build_broker(
+            _config("fidelity", FIDELITY_LIVE, paper=False),
+            fidelity_session=FakeSession(),
+            fidelity_journal_path=str(tmp_path / "j.jsonl"),
+        )
+
+
+def test_real_orders_need_a_journal():
+    with pytest.raises(ConfigurationError, match="journal"):
+        build_broker(
+            _config("fidelity", FIDELITY_LIVE, paper=False), fidelity_session=OrderSession()
+        )
+
+
+def test_the_snapshot_is_scoped_to_the_traded_symbol():
+    """A shared account's other holdings must not stop the loop starting,
+    and its other orders must not either."""
+    session = FakeSession(
+        {
+            PENDING: {
+                "data": {
+                    "orders": [
+                        {
+                            "orderNum": "A1",
+                            "acctNum": ACCOUNT,
+                            "symbol": "TQQQ",
+                            "cancelableInd": True,
+                        },
+                        {
+                            "orderNum": "B2",
+                            "acctNum": ACCOUNT,
+                            "symbol": "VTI",
+                            "cancelableInd": True,
+                        },
+                    ]
+                }
+            },
+            "/ftgw/digital/trade-equity/positions": [
+                {"symbol": "TQQQ", "quantity": 3.0},
+                {"symbol": "VTI", "quantity": 40.0},
+            ],
+            "/ftgw/digital/trade-equity/balance": {},
+        }
+    )
+    snapshot = build_broker(_config("fidelity", FIDELITY_OK), fidelity_session=session).snapshot()
+    assert snapshot.positions == {"TQQQ": 3.0}
+    assert set(snapshot.orders) == {"A1"}
 
 
 # --- the account rule lives in exactly one place -----------------------

@@ -688,3 +688,58 @@ def test_a_bare_account_number_is_not_what_this_endpoint_takes():
     session = FakeSession({PENDING_PATH: _pending([])})
     FidelityBroker(session, ACCOUNT, (ACCOUNT,), account_name="Traditional IRA")._orders()
     assert set(_account_filter(session)) > {"acctNum"}
+
+
+# --- what the live loop needs ------------------------------------------------
+
+
+def test_limit_prices_round_in_the_safe_direction():
+    """A buy rounds down (its fill becomes the cost basis); a sell rounds
+    up (it has cleared the no-loss guard). Nearest could cross either."""
+    broker = _broker(FakeSession())
+    assert broker.build_ticket("TQQQ", "buy", 1, 69.537)["limitPrice"] == 69.53
+    assert broker.build_ticket("TQQQ", "sell", 1, 69.531)["limitPrice"] == 69.54
+    assert broker.build_ticket("TQQQ", "buy", 1, 70.0)["limitPrice"] == 70.0
+    assert broker.build_ticket("TQQQ", "sell", 1, 70.0)["limitPrice"] == 70.0
+
+
+def _scoped_session():
+    return FakeSession(
+        {
+            PENDING_PATH: _pending(
+                [
+                    FILLED,
+                    dict(WORKING, orderNum="2C5OTHER", symbol="VTI"),
+                    {"orderNum": "2C5NOSYM", "acctNum": ACCOUNT, "cancelableInd": True},
+                ]
+            ),
+            "/ftgw/digital/trade-equity/positions": [
+                SPAXX_ROW,
+                {"symbol": "TQQQ", "quantity": 3.0},
+                {"symbol": "VTI", "quantity": 40.0},
+            ],
+            "/ftgw/digital/trade-equity/balance": {},
+        }
+    )
+
+
+def test_a_snapshot_scope_reports_only_its_symbols():
+    """A shared account's other holdings would otherwise stop the live
+    loop at startup: reconciliation refuses positions it has no lot for."""
+    broker = FidelityBroker(_scoped_session(), ACCOUNT, (ACCOUNT,), position_scope=("tqqq",))
+    snapshot = broker.snapshot()
+    assert snapshot.positions == {"TQQQ": 3.0}
+    assert "2C5OTHER" not in snapshot.orders
+
+
+def test_an_order_naming_no_symbol_stays_in_a_scoped_snapshot():
+    """It cannot be shown to be out of scope, so hiding it would be the
+    unsafe direction."""
+    broker = FidelityBroker(_scoped_session(), ACCOUNT, (ACCOUNT,), position_scope=("TQQQ",))
+    assert set(broker.snapshot().orders) == {"2C50H6WV", "2C5NOSYM"}
+
+
+def test_without_a_scope_the_snapshot_reports_everything():
+    snapshot = FidelityBroker(_scoped_session(), ACCOUNT, (ACCOUNT,)).snapshot()
+    assert snapshot.positions == {"TQQQ": 3.0, "VTI": 40.0}
+    assert {"2C50H6WV", "2C5OTHER", "2C5NOSYM"} <= set(snapshot.orders)

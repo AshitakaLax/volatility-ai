@@ -1,0 +1,63 @@
+# Fidelity deployment: REAL money, traded by the engine with no one in the
+# loop, through the Fidelity Bridge browser extension.
+#
+# Copy to config/fidelity_live.yaml -- git-ignored, because it names your
+# account and this repository is public -- and fill in the account fields.
+#
+#   1. python -m fidelity_gateway.bridge keygen
+#        writes FIDELITY_BRIDGE_API_KEY to .env and prints it once.
+#   2. Load the extension (fidelity-bridge-chrome-extension/), paste the key
+#      and 127.0.0.1 into its welcome form, and sign into Fidelity there.
+#   3. python cli.py live --config config/fidelity_live.yaml \
+#          --state-db state/fidelity_ledger.db --check-only
+#        connects, reconciles against the account, and stops at READY.
+#   4. Turn on "Allow trading" in the extension's toolbar popup, then run
+#      the same command without --check-only.
+#
+# Turning "Allow trading" off at any time pauses the engine's orders --
+# it keeps reading and applying fills, and every order is refused in the
+# browser -- and turning it back on resumes them. Nothing to restart.
+#
+# Prices and the market clock come from Alpaca: APCA_API_KEY_ID and
+# APCA_API_SECRET_KEY for an Alpaca PAPER account must be in the
+# environment. That connection is never handed an order.
+#
+# The account may hold other investments: this deployment reconciles only
+# backtest.symbol. Do not also hold that symbol by hand in the same
+# account -- nothing could tell those shares from the deployment's.
+strategy:
+  strategy_id: fixed
+  strategy_params:
+    allocation_pct: 0.05
+grid:
+  steps: [0.01]
+  profit_targets: [0.005]
+backtest:
+  symbol: TQQQ
+  # The budget this deployment trades, not the account balance. Size it so
+  # allocation_pct of it buys at least one whole share: Fidelity orders are
+  # whole shares, and a buy worth less than one share stops the loop.
+  initial_cash: 5000.0
+execution:
+  # T+1: proceeds in a cash IRA cannot be spent until they settle.
+  settlement_days: 1
+live:
+  enabled: true
+  paper_trading: false
+  step: 0.01
+  profit_target: 0.005
+  poll_interval_seconds: 60
+  broker: fidelity
+  fidelity:
+    allowed_accounts: ["YOUR-FULL-ACCOUNT-NUMBER"]
+    account: "YOUR-FULL-ACCOUNT-NUMBER"
+    account_name: "Traditional IRA"   # exactly as Fidelity lists the account
+    dry_run: false                    # false = REAL orders
+    allowed_symbols: [TQQQ]           # must include backtest.symbol
+    max_order_value: 500.0            # per BUY; a larger buy is refused, never trimmed
+    # journal_path: state/fidelity_orders.jsonl   # default: beside --state-db
+    bridge:
+      host: 127.0.0.1                 # 0.0.0.0 only if the browser is on another machine...
+      port: 8765
+      allowed_clients: ["127.0.0.1", "::1"]   # ...and then name that machine's IP here
+      connect_timeout_seconds: 120

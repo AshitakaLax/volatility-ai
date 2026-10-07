@@ -128,6 +128,22 @@ def parse_args(argv=None):
         help="Hard per-order dollar ceiling (default: 50).",
     )
     parser.add_argument("--cdp-url", default="http://localhost:9222")
+    parser.add_argument(
+        "--bridge",
+        action="store_true",
+        help="Reach Fidelity through the Fidelity Bridge browser extension instead of a "
+        "remote-debugging port. Runs the bridge itself; placing also needs 'Allow placing "
+        "and cancelling REAL orders' switched on in the extension.",
+    )
+    parser.add_argument("--bridge-host", default="127.0.0.1", help="With --bridge: listen address.")
+    parser.add_argument("--bridge-port", type=int, default=8765, help="With --bridge: port.")
+    parser.add_argument(
+        "--allow-client",
+        action="append",
+        default=None,
+        metavar="IP_OR_CIDR",
+        help="With --bridge: a browser address that may connect (default: this computer).",
+    )
     parser.add_argument("--journal", default=str(DEFAULT_JOURNAL))
     parser.add_argument(
         "--dry-run",
@@ -195,6 +211,21 @@ def attach(cdp_url: str):
     return playwright, fidelity[0]
 
 
+def connect(args):
+    """(handle, page): the bridge or a debugging-port attach. Either
+    handle has stop(), which releases the connection and never closes
+    the user's browser."""
+    if args.bridge:
+        from fidelity_gateway.bridge import DEFAULT_ALLOWED_CLIENTS, open_bridge
+
+        return open_bridge(
+            host=args.bridge_host,
+            port=args.bridge_port,
+            allow=args.allow_client or DEFAULT_ALLOWED_CLIENTS,
+        )
+    return attach(args.cdp_url)
+
+
 def _report(broker: FidelityBroker, journal: FileConfNumJournal) -> int:
     """The recovery path, also run after every place and cancel.
 
@@ -241,7 +272,7 @@ def main(argv=None) -> int:
     journal = FileConfNumJournal(args.journal)
     Path(args.journal).parent.mkdir(parents=True, exist_ok=True)
 
-    playwright, page = attach(args.cdp_url)
+    handle, page = connect(args)
     try:
         # allow_order_endpoints is granted ONLY when a real place is
         # intended. In every other mode the transport itself refuses
@@ -354,7 +385,7 @@ def main(argv=None) -> int:
         )
         return 0
     finally:
-        playwright.stop()
+        handle.stop()
 
 
 def _cli(argv=None) -> int:

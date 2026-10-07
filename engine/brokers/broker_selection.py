@@ -27,22 +27,31 @@ named, and says which is missing rather than failing later with an
 attribute error.
 
 --------------------------------------------------------------------
-dry_run=False IS A HARD FAILURE, NOT A NO-OP
+dry_run DECIDES WHICH FIDELITY ADAPTER, AND NOTHING IS INFERRED
 
-The adapter this builds, `fidelity_gateway/broker.py`'s FidelityBroker,
-is preview-only by construction: it holds no place-order capability and
-the transport refuses one. A config setting `live.fidelity.dry_run =
-false` is therefore asking for something this path cannot do.
+  dry_run: true   fidelity_gateway/broker.py's FidelityBroker: preview
+                  only. It holds no place-order capability and the
+                  transport refuses one.
+  dry_run: false  fidelity_gateway/placing_broker.py's
+                  FidelityPlacingBroker: REAL orders. Built only when
+                  every one of these holds, each checked here rather than
+                  assumed:
+                    * live.paper_trading is false -- the file must say it
+                      trades real money, not merely stop saying it doesn't;
+                    * the session was built to allow order endpoints, so
+                      the transport agrees with the config;
+                    * live.fidelity names allowed_symbols and a positive
+                      max_order_value (config validation), and a journal
+                      path is known.
+                  The extension in the user's browser is a further lock
+                  this code cannot open: its trading switch refuses every
+                  order until the user turns it on.
 
-Silently previewing anyway would be the worst outcome available -- the
-operator believes orders are being placed, the strategy believes its
-sells are resting, and the divergence is only discovered by looking at
-an account that never traded. So it raises. The placing adapter
-(`fidelity_gateway/placing_broker.py`) exists, but it needs a symbol
-allowlist, a per-order ceiling and a durable journal that `live.fidelity`
-does not carry yet. Wiring it in is when this check must be deliberately
-revisited, which is the point of putting it here rather than leaving the
-flag unread.
+Silently previewing while the config says orders are being placed would
+be the worst outcome available -- the operator believes orders are
+live, the strategy believes its sells are resting, and nothing trades.
+So nothing here falls back from one adapter to the other; a missing
+condition raises.
 """
 
 from __future__ import annotations
@@ -62,6 +71,7 @@ def build_broker(
     *,
     credentials: Any = None,
     fidelity_session: Any = None,
+    fidelity_journal_path: str | None = None,
     **alpaca_kwargs: Any,
 ) -> Any:
     """Construct the broker `config.live.broker` names.
@@ -91,35 +101,29 @@ def build_broker(
         alpaca_kwargs.setdefault("extended_hours", config.live.extended_hours)
         return AlpacaBroker(credentials, paper=config.live.paper_trading, **alpaca_kwargs)
 
-    return _build_fidelity(config, fidelity_session)
+    return _build_fidelity(config, fidelity_session, fidelity_journal_path)
 
 
-def _build_fidelity(config, session: Any):
+def _build_fidelity(config, session: Any, journal_path: str | None = None):
     settings = getattr(config.live, "fidelity", None)
     if settings is None:
         raise ConfigurationError(
             "live.broker='fidelity' requires a live.fidelity section naming "
             "allowed_accounts and the account to trade."
         )
-    if not settings.dry_run:
+    if not settings.dry_run and config.live.paper_trading:
         raise ConfigurationError(
-            "live.fidelity.dry_run=false, but the adapter this builds "
-            "(fidelity_gateway/broker.py) is PREVIEW-ONLY: it holds no place-order "
-            "capability and the transport refuses one. The placing adapter, "
-            "fidelity_gateway/placing_broker.py, is not wired into this path -- it "
-            "needs a symbol allowlist, a per-order ceiling and a journal that "
-            "live.fidelity does not carry yet. Refusing to start rather than "
-            "previewing while the config says orders are being placed -- an "
-            "operator who believes orders are live while nothing trades is the "
-            "worst available outcome. Set dry_run=true."
+            "live.fidelity.dry_run=false places REAL orders, but live.paper_trading is "
+            "true. A Fidelity account has no paper mode; set paper_trading: false so the "
+            "config says what it does."
         )
     if session is None:
         raise ConfigurationError(
             "live.broker='fidelity' needs an authenticated FidelitySession, not "
             "credentials. Fidelity refuses a Playwright-launched browser, so the "
-            "session must come from a browser a human has logged into -- attach "
-            "over CDP (fidelity_gateway/place_test_order.py's attach() shows how) "
-            "and pass fidelity_session=..."
+            "session must come from a browser a human has logged into -- through the "
+            "Fidelity Bridge extension (fidelity_gateway/bridge/) -- and be passed as "
+            "fidelity_session=..."
         )
     if settings.account is None:
         raise ConfigurationError(
@@ -135,20 +139,57 @@ def _build_fidelity(config, session: Any):
             "it to the name Fidelity shows for the account, e.g. 'Traditional IRA'."
         )
 
-    from fidelity_gateway.broker import FidelityBroker
-
-    logger.warning(
-        "Building the Fidelity adapter in PREVIEW-ONLY mode. It can price, "
-        "enumerate and reconcile orders, and it cannot place one."
-    )
-    # allowed_accounts is passed through unchanged; FidelityBroker does the
+    # allowed_accounts is passed through unchanged; the adapter does the
     # exact-match check itself and re-checks on every call. Validating it
     # here as well would put the account rule in two places, which is how
-    # they drift.
-    return FidelityBroker(
+    # they drift. The snapshot is scoped to the traded symbol: the account
+    # may hold other investments, and reconciliation would otherwise
+    # refuse to start over every one of them.
+    common = {
+        "symbol": config.backtest.symbol,
+        "account_name": settings.account_name,
+        "position_scope": (config.backtest.symbol,),
+    }
+
+    if settings.dry_run:
+        from fidelity_gateway.broker import FidelityBroker
+
+        logger.warning(
+            "Building the Fidelity adapter in PREVIEW-ONLY mode. It can price, "
+            "enumerate and reconcile orders, and it cannot place one."
+        )
+        return FidelityBroker(session, settings.account, settings.allowed_accounts, **common)
+
+    if not getattr(session, "allows_orders", False):
+        raise ConfigurationError(
+            "live.fidelity.dry_run=false, but the FidelitySession was built read-only or "
+            "preview-only, so its transport would refuse every order. Build it with "
+            "allow_order_endpoints=True -- the config and the transport must agree."
+        )
+    path = journal_path or settings.journal_path
+    if not path:
+        raise ConfigurationError(
+            "Placing real orders needs a journal for each order's confirmation number, "
+            "written before the order is committed. Set live.fidelity.journal_path or pass "
+            "fidelity_journal_path=..."
+        )
+
+    from fidelity_gateway.placing_broker import FidelityPlacingBroker, FileConfNumJournal
+
+    logger.warning(
+        "Building the Fidelity adapter in LIVE mode: it PLACES REAL ORDERS in account "
+        f"...{str(settings.account)[-4:]}, symbols {list(settings.allowed_symbols)}, "
+        f"at most ${float(settings.max_order_value):,.2f} per buy."
+    )
+    # confirm_live_orders=True stands for live.fidelity.dry_run: false --
+    # the deliberate, committed act this branch is reached by.
+    return FidelityPlacingBroker(
         session,
         settings.account,
         settings.allowed_accounts,
-        symbol=config.backtest.symbol,
-        account_name=settings.account_name,
+        confirm_live_orders=True,
+        allowed_symbols=settings.allowed_symbols,
+        max_order_value=float(settings.max_order_value),
+        journal=FileConfNumJournal(str(path)),
+        **common,
     )

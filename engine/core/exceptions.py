@@ -50,3 +50,18 @@ class ReconciliationError(TradingSystemError):
 class PersistenceError(TradingSystemError):
     """Durable state fails to save, load, or stays inconsistent
     across a restart."""
+
+
+class BrokerUnavailableError(TradingSystemError):
+    """The broker cannot take requests right now, and nothing was sent.
+
+    Distinct from every other failure because the right response is
+    different: wait and try again, rather than halt for a human. The
+    browser holding the broker session closed or signed out, its
+    connection dropped, or trading was switched off on the broker side.
+    None of those means local state is wrong, and each clears on its own.
+
+    The live loop skips a tick that raises this and tries again on the
+    next. It must NEVER be raised for an order whose outcome is unknown:
+    that is AmbiguousSubmissionError, which halts.
+    """

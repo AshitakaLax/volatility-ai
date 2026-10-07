@@ -12,6 +12,12 @@ kinds live side by side — check which one before editing:
 `fidelity_local.yaml.example` is a template for local Fidelity-broker
 credentials — copy, don't edit in place, and never commit the real one.
 
+`fidelity_live.yaml.example` is the deployment template for trading a
+Fidelity account through the Fidelity Bridge extension (`live.broker:
+fidelity`, real orders). Copy it to `fidelity_live.yaml`, which is
+git-ignored because it names your account; its header walks through
+setup. `tests/test_cli_live_fidelity.py` keeps the template valid.
+
 ## Naming tells you the axis under test
 
 `probe_*.yaml` files are **controlled, single-variable probes** — e.g.

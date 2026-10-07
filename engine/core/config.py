@@ -422,6 +422,54 @@ def _as_account_tuple(value) -> tuple:
         ) from exc
 
 
+def _as_string_tuple(value, name: str) -> tuple:
+    """A list of strings as a tuple, refusing a bare string for the
+    reason _as_account_tuple gives: "TQQQ" would otherwise become four
+    one-letter entries."""
+    if isinstance(value, str):
+        raise ConfigurationError(f"{name} must be a LIST, not a bare string (got {value!r}).")
+    try:
+        return tuple(str(item) for item in value)
+    except TypeError as exc:
+        raise ConfigurationError(f"{name} must be a list, got {type(value).__name__}") from exc
+
+
+def _parse_bridge(data: dict) -> FidelityBridgeConfig:
+    defaults = FidelityBridgeConfig()
+    return FidelityBridgeConfig(
+        host=data.get("host", defaults.host),
+        port=data.get("port", defaults.port),
+        allowed_clients=_as_string_tuple(
+            data.get("allowed_clients", defaults.allowed_clients),
+            "live.fidelity.bridge.allowed_clients",
+        ),
+        blocked_clients=_as_string_tuple(
+            data.get("blocked_clients", defaults.blocked_clients),
+            "live.fidelity.bridge.blocked_clients",
+        ),
+        connect_timeout_seconds=data.get(
+            "connect_timeout_seconds", defaults.connect_timeout_seconds
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class FidelityBridgeConfig:
+    """Where the engine listens for the Fidelity Bridge extension.
+
+    The defaults accept a browser on this computer only. A browser on
+    another machine needs host 0.0.0.0 (or this machine's address) AND
+    its own address in allowed_clients; the extension, for its part, only
+    connects to engine addresses on ITS allowed list.
+    """
+
+    host: str = "127.0.0.1"
+    port: int = 8765
+    allowed_clients: tuple = ("127.0.0.1", "::1")
+    blocked_clients: tuple = ()
+    connect_timeout_seconds: float = 120.0
+
+
 @dataclass(frozen=True)
 class FidelityConfig:
     """Fidelity-venue settings. Only meaningful when live.broker == "fidelity".
@@ -452,12 +500,33 @@ class FidelityConfig:
     not be empty" -- so a broker built without it cannot read its own
     orders back. It identifies nothing on its own; account is still the
     only thing matched against the allowlist.
+
+    PLACING REAL ORDERS (dry_run: false) needs three more, each a
+    deliberate statement in a committed file rather than something
+    inferred:
+
+      allowed_symbols   the exact tickers this deployment may trade; it
+                        must include backtest.symbol.
+      max_order_value   a hard dollar ceiling per BUY. A buy above it is
+                        refused, never trimmed -- an order this size is a
+                        bug to surface. Sells are not capped: a ceiling
+                        must never trap a position it cannot exit.
+      journal_path      where each order's confirmation number is made
+                        durable before the order is committed. Defaults
+                        to beside the live state database.
+
+    bridge says where the engine listens for the Fidelity Bridge browser
+    extension, and which browser addresses may connect.
     """
 
     allowed_accounts: tuple = ()
     account: str | None = None
     dry_run: bool = True
     account_name: str | None = None
+    allowed_symbols: tuple = ()
+    max_order_value: float = 0.0
+    journal_path: str | None = None
+    bridge: FidelityBridgeConfig = field(default_factory=FidelityBridgeConfig)
 
 
 @dataclass(frozen=True)
@@ -623,6 +692,17 @@ class BacktestConfig:
                 account=fidelity_data.get("account"),
                 dry_run=bool(fidelity_data.get("dry_run", True)),
                 account_name=fidelity_data.get("account_name"),
+                allowed_symbols=tuple(
+                    symbol.upper()
+                    for symbol in _as_string_tuple(
+                        fidelity_data.get("allowed_symbols", ()), "live.fidelity.allowed_symbols"
+                    )
+                ),
+                # Kept as given, not coerced: validate() names a bad value
+                # rather than float() raising on it here.
+                max_order_value=fidelity_data.get("max_order_value", 0.0),
+                journal_path=fidelity_data.get("journal_path"),
+                bridge=_parse_bridge(fidelity_data.get("bridge") or {}),
             )
         live = LiveConfig(
             enabled=live_data.get("enabled", False),
@@ -791,6 +871,73 @@ class BacktestConfig:
                     "live.fidelity.account_name must be the account's display name as "
                     f"Fidelity lists it, e.g. 'Traditional IRA'; got {account_name!r}."
                 )
+            self._validate_fidelity_placing(self.live.fidelity)
+            self._validate_fidelity_bridge(self.live.fidelity.bridge)
+
+    def _validate_fidelity_placing(self, fidelity: FidelityConfig) -> None:
+        """The settings real orders need, and the ones they contradict."""
+        for symbol in fidelity.allowed_symbols:
+            if not symbol.strip():
+                raise ConfigurationError("live.fidelity.allowed_symbols contains a blank entry")
+        value = fidelity.max_order_value
+        if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+            raise ConfigurationError(
+                f"live.fidelity.max_order_value must be a dollar amount, got {value!r}"
+            )
+        if fidelity.journal_path is not None and (
+            not isinstance(fidelity.journal_path, str) or not fidelity.journal_path.strip()
+        ):
+            raise ConfigurationError("live.fidelity.journal_path must be a file path")
+
+        if self.live.broker != "fidelity" or fidelity.dry_run:
+            return
+        # dry_run: false -- this deployment places REAL orders.
+        if self.live.paper_trading:
+            raise ConfigurationError(
+                "live.fidelity.dry_run is false, so this deployment places REAL orders at "
+                "Fidelity, but live.paper_trading is true. A Fidelity account has no paper "
+                "mode; set paper_trading: false so the file says what it does."
+            )
+        if fidelity.account is None or fidelity.account_name is None:
+            raise ConfigurationError(
+                "Placing real orders needs live.fidelity.account and live.fidelity.account_name."
+            )
+        if self.backtest.symbol.upper() not in fidelity.allowed_symbols:
+            raise ConfigurationError(
+                f"live.fidelity.allowed_symbols={list(fidelity.allowed_symbols)} does not include "
+                f"{self.backtest.symbol}, the symbol this deployment trades. Name it there: the "
+                "list is the deliberate statement of what real money may buy."
+            )
+        if not value > 0:
+            raise ConfigurationError(
+                "live.fidelity.max_order_value must be a positive dollar ceiling per buy when "
+                "placing real orders. It is the last thing standing between a sizing bug and "
+                "an order the account cannot afford."
+            )
+
+    @staticmethod
+    def _validate_fidelity_bridge(bridge: FidelityBridgeConfig) -> None:
+        if not isinstance(bridge.host, str) or not bridge.host.strip():
+            raise ConfigurationError("live.fidelity.bridge.host must be an address to listen on")
+        port = bridge.port
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise ConfigurationError(
+                f"live.fidelity.bridge.port must be a whole number from 1 to 65535, got {port!r}"
+            )
+        if not bridge.allowed_clients:
+            raise ConfigurationError(
+                "live.fidelity.bridge.allowed_clients must not be empty: an empty list allows "
+                "no browser at all, never every browser."
+            )
+        for entry in (*bridge.allowed_clients, *bridge.blocked_clients):
+            if not entry.strip():
+                raise ConfigurationError("live.fidelity.bridge has a blank client address")
+        timeout = bridge.connect_timeout_seconds
+        if isinstance(timeout, bool) or not isinstance(timeout, int | float) or timeout <= 0:
+            raise ConfigurationError(
+                "live.fidelity.bridge.connect_timeout_seconds must be a positive number of "
+                f"seconds, got {timeout!r}"
+            )
 
     def to_dict(self) -> dict:
         """Inverse of from_dict() -- round-trips through the same nested
@@ -866,6 +1013,18 @@ class BacktestConfig:
                             "account": self.live.fidelity.account,
                             "dry_run": self.live.fidelity.dry_run,
                             "account_name": self.live.fidelity.account_name,
+                            "allowed_symbols": list(self.live.fidelity.allowed_symbols),
+                            "max_order_value": self.live.fidelity.max_order_value,
+                            "journal_path": self.live.fidelity.journal_path,
+                            "bridge": {
+                                "host": self.live.fidelity.bridge.host,
+                                "port": self.live.fidelity.bridge.port,
+                                "allowed_clients": list(self.live.fidelity.bridge.allowed_clients),
+                                "blocked_clients": list(self.live.fidelity.bridge.blocked_clients),
+                                "connect_timeout_seconds": (
+                                    self.live.fidelity.bridge.connect_timeout_seconds
+                                ),
+                            },
                         }
                     }
                     if self.live.fidelity is not None

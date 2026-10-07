@@ -53,13 +53,16 @@ do today:
 Kept as one file rather than three, so the Dockerfile has exactly one
 ENTRYPOINT and "run everything" is genuinely one image.
 
-On `live`: src/alpaca_broker.py implements the LiveBroker protocol
-against a real Alpaca account, so `live` now genuinely connects,
-verifies credentials against an authenticated endpoint, and
-reconciles persisted local state against the broker before reaching
-READY. Whether it talks to the paper or the real-capital endpoint is
-decided by `live.paper_trading` in the config file -- a committed,
-reviewable value rather than a shell flag.
+On `live`: the broker is whichever `live.broker` names. For Alpaca,
+engine/brokers/alpaca_broker.py connects, verifies credentials against
+an authenticated endpoint, and reconciles persisted local state against
+the broker before reaching READY; whether it talks to the paper or the
+real-capital endpoint is decided by `live.paper_trading` in the config
+file -- a committed, reviewable value rather than a shell flag. For
+Fidelity, fidelity_gateway/live.py reaches the account through the
+Fidelity Bridge extension in the user's signed-in browser, and
+`live.fidelity.dry_run: false` is what makes it place real orders;
+prices and the market clock still come from Alpaca.
 
 Once READY, `live` enters src/live_trading_loop.py's tick loop and
 runs until SIGTERM/SIGINT, then shuts down through the Task 7.12
@@ -781,7 +784,7 @@ def cmd_search(args: argparse.Namespace) -> int:
 
 
 def cmd_live(args: argparse.Namespace) -> int:
-    """Connect to Alpaca and run the startup lifecycle to READY."""
+    """Connect to the configured broker and run the startup lifecycle to READY."""
     from engine.brokers.alpaca_broker import AlpacaBroker
     from engine.core.config import BacktestConfig
     from engine.core.exceptions import ConfigurationError
@@ -812,6 +815,20 @@ def cmd_live(args: argparse.Namespace) -> int:
         known = ", ".join(sorted(registry))
         print(
             f"Unknown strategy_id {config.strategy.strategy_id!r}. Known: {known}", file=sys.stderr
+        )
+        return 2
+
+    fidelity = config.live.broker == "fidelity"
+    if fidelity and config.live.fidelity.dry_run and not args.check_only:
+        # A preview never becomes an order, so it never fills: the loop
+        # would track every one of them forever and never trade. Refused
+        # here rather than discovered as a book of phantom orders.
+        print(
+            "live.fidelity.dry_run is true: Fidelity orders would only be previewed, and a "
+            "preview never fills, so the trading loop would track phantom orders forever. "
+            "Use --check-only to test the connection, or set dry_run: false (with "
+            "paper_trading: false) to trade.",
+            file=sys.stderr,
         )
         return 2
 
@@ -855,6 +872,16 @@ def cmd_live(args: argparse.Namespace) -> int:
     connected: dict = {}
 
     def _connect_broker():
+        if fidelity:
+            # Through the Fidelity Bridge extension in the user's own
+            # browser: starts the bridge, waits for the extension, builds
+            # the session and the broker the config asks for.
+            from fidelity_gateway.live import connect_live
+
+            connection = connect_live(config, state_db=db_path)
+            connected["broker"] = connection.broker
+            connected["close"] = connection.close
+            return
         broker = AlpacaBroker.from_mode(mode, load_live_credentials())
         # ping() rather than a bare construction: TradingClient does no
         # I/O in its constructor, so a bad key would otherwise pass
@@ -862,37 +889,58 @@ def cmd_live(args: argparse.Namespace) -> int:
         broker.ping()
         connected["broker"] = broker
 
-    final_state = lifecycle.start(
-        connect_broker=_connect_broker,
-        broker_snapshot_provider=lambda: connected["broker"].snapshot(),
-    )
-
-    print(f"Runtime state: {final_state.value}")
-    print(f"Mode: {mode.value}")
-    if final_state.value != "READY":
-        store.close()
-        lock.release()
-        print(
-            "Did not reach READY. The state above names the stage that stopped startup; "
-            "RECONCILIATION_REQUIRED means local and broker state disagree and a human "
-            "must resolve it before trading resumes."
-        )
-        return 1
-
-    print("READY -- broker connected and local state reconciles with the broker.")
-    if args.check_only:
-        store.close()
-        lock.release()
-        return 0
-
     try:
+        final_state = lifecycle.start(
+            connect_broker=_connect_broker,
+            broker_snapshot_provider=lambda: connected["broker"].snapshot(),
+        )
+
+        print(f"Runtime state: {final_state.value}")
+        print(f"Mode: {mode.value}")
+        if final_state.value != "READY":
+            store.close()
+            print(
+                "Did not reach READY. The state above names the stage that stopped startup; "
+                "RECONCILIATION_REQUIRED means local and broker state disagree and a human "
+                "must resolve it before trading resumes."
+            )
+            return 1
+
+        print("READY -- broker connected and local state reconciles with the broker.")
+        if args.check_only:
+            store.close()
+            return 0
+
         return _run_trading_loop(
             args, config, connected["broker"], store, circuit_breaker, lifecycle
         )
     finally:
         # finally, not after the return: a loop that raises must not
-        # leave a lock naming a live PID that is about to not exist.
+        # leave a lock naming a live PID that is about to not exist, nor
+        # a bridge listening for a browser no loop will answer.
+        if "close" in connected:
+            connected["close"]()
         lock.release()
+
+
+def _alpaca_clock_client():
+    """An Alpaca connection used ONLY for the market clock and data.
+
+    A Fidelity deployment still reads prices and market hours from
+    Alpaca -- the venue that trades and the feed that prices are separate
+    connections. This one points at Alpaca's PAPER endpoint, the safe
+    direction: it is never handed an order, and should it ever be, no
+    real money is behind it. Needs APCA_API_KEY_ID / APCA_API_SECRET_KEY
+    for a paper account.
+    """
+    from engine.brokers.alpaca_broker import _require_alpaca
+    from engine.core.secrets import load_live_credentials
+
+    credentials = load_live_credentials()
+    _, trading_client_class, *_ = _require_alpaca()
+    return trading_client_class(
+        api_key=credentials.api_key_id, secret_key=credentials.api_secret_key, paper=True
+    )
 
 
 def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -> int:
@@ -947,8 +995,9 @@ def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -
         feed=config.live.feed,
         # The clock is a trading-API endpoint, so it comes from the
         # connection the broker already authenticated rather than a
-        # second one.
-        trading_client=broker.trading_client,
+        # second one -- when the broker IS Alpaca. A Fidelity deployment
+        # has no Alpaca broker, so it opens a clock-only connection.
+        trading_client=getattr(broker, "trading_client", None) or _alpaca_clock_client(),
         credentials=load_live_credentials(),
     )
 
@@ -1730,7 +1779,11 @@ def main() -> int:
     )
     p_submit.set_defaults(func=cmd_submit)
 
-    p_live = sub.add_parser("live", help="Connect to Alpaca and run the startup lifecycle")
+    p_live = sub.add_parser(
+        "live",
+        help="Connect to the configured broker (Alpaca, or Fidelity through the browser "
+        "extension) and run the startup lifecycle",
+    )
     p_live.add_argument("--config", required=True, help="Path to a BacktestConfig YAML file")
     p_live.add_argument(
         "--state-db",

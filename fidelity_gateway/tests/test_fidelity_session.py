@@ -506,3 +506,27 @@ def test_third_party_requests_are_not_sniffed():
 )
 def test_the_backend_is_read_off_the_path(path, expected):
     assert service_of(path) == expected
+
+
+# --- what the live loop needs ------------------------------------------------
+
+
+def test_session_failures_are_waited_out_by_the_live_loop():
+    """An expired session or a dropped transport clears without anyone
+    touching the engine, so the loop skips the tick rather than stopping.
+    Still a RuntimeError, for callers that already catch one."""
+    from engine.core.exceptions import BrokerUnavailableError
+
+    assert issubclass(FidelitySessionError, BrokerUnavailableError)
+    assert issubclass(FidelitySessionExpired, BrokerUnavailableError)
+    assert issubclass(FidelitySessionError, RuntimeError)
+    assert not issubclass(FidelitySessionError, ConfigurationError)
+
+
+def test_a_session_says_what_it_may_do():
+    read_only = FidelitySession(FakePage())
+    assert (read_only.allows_previews, read_only.allows_orders) == (False, False)
+    previews = FidelitySession(FakePage(), allow_preview_endpoints=True)
+    assert (previews.allows_previews, previews.allows_orders) == (True, False)
+    orders = FidelitySession(FakePage(), allow_order_endpoints=True)
+    assert (orders.allows_previews, orders.allows_orders) == (True, True)
