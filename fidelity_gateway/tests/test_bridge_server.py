@@ -369,7 +369,7 @@ def test_no_extension_is_a_refusal_the_live_loop_waits_out(server):
     assert isinstance(caught.value, ConfigurationError), "and an order refused so is not ambiguous"
 
 
-@pytest.mark.parametrize("code", ["no_fidelity_tab", "blocked_endpoint"])
+@pytest.mark.parametrize("code", ["no_fidelity_tab", "blocked_endpoint", "reloading"])
 def test_refusals_that_clear_on_their_own_are_unavailable(server, code):
     from engine.core.exceptions import BrokerUnavailableError
 

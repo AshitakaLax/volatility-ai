@@ -106,8 +106,16 @@ implement.
   confirmed by the browser extension", and a disagreement logs an error
   with both readings. Fills still come only from the engine's own
   reading, and nothing places, cancels or books because of a report.
+- **A reload never drops a request.** When the extension is about to
+  reload (an update) or reconnect (new settings) it refuses what arrives
+  with code `reloading` -- before anything is sent, so the engine waits it
+  out (`UNAVAILABLE_CODES`) -- and a reload is not even accepted while a
+  request is running. A test pins that the code the extension sends is one
+  the engine waits out.
 - **Tests.** The protocol and address-policy tests reproduce the
-  extension's shared vectors (`tests/vectors/`).
+  extension's shared vectors (`tests/vectors/`). The extension's own
+  `npm run smoke` drives its pages in a real browser against a stand-in
+  for this engine (run it from the submodule after a change to either).
   `test_bridge_extension.py` runs the extension's real background
   (`background-core.js`, with its own browser fakes and a small fake
   Fidelity that fills orders) under Node against a live `BridgeServer`.
@@ -150,7 +158,7 @@ which prints what the extension saw for each journalled order.
   so the loop would track phantom orders forever.
 - **Waits versus halts.** `FidelitySessionError` (signed out, transport
   down) and `BridgeUnavailable` (no extension, no Fidelity tab, trading
-  switched off) are `BrokerUnavailableError`. The loop skips that tick,
+  switched off, the extension reloading) are `BrokerUnavailableError`. The loop skips that tick,
   persists what it had applied, and tries again. Only
   `AmbiguousSubmissionError` halts.
 - **The snapshot is scoped to `backtest.symbol`.** The account may hold

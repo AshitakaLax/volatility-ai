@@ -77,15 +77,18 @@ PRE_SEND_CODES = frozenset(
         "bad_request",
         "unknown_command",
         "no_fidelity_tab",
+        "reloading",
     }
 )
 
 # The refusals that mean "not now" rather than "never": no extension
-# connected, no Fidelity tab open, or the extension's own switch says no
-# (trading turned off in its settings). Nothing was sent, and each
-# clears without anyone touching the engine -- so these are also
-# BrokerUnavailableError, which the live loop waits out.
-UNAVAILABLE_CODES = frozenset({"not_connected", "no_fidelity_tab", "blocked_endpoint"})
+# connected, no Fidelity tab open, the extension's own switch says no
+# (trading turned off in its settings), or the extension is reloading or
+# reconnecting on purpose (an update, new settings) and answers anything
+# that arrives meanwhile with a refusal instead of dropping it. Nothing was
+# sent, and each clears without anyone touching the engine -- so these are
+# also BrokerUnavailableError, which the live loop waits out.
+UNAVAILABLE_CODES = frozenset({"not_connected", "no_fidelity_tab", "blocked_endpoint", "reloading"})
 
 _WEB_ORIGINS = ("http://", "https://")
 

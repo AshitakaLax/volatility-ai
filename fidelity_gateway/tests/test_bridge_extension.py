@@ -32,7 +32,12 @@ from engine.execution.order_lifecycle import OrderState
 from fidelity_gateway.bridge.ip_policy import AddressPolicy
 from fidelity_gateway.bridge.keys import API_KEY_ENV_VAR, BridgeApiKey
 from fidelity_gateway.bridge.page import BridgePage
-from fidelity_gateway.bridge.server import BridgeRefusal, BridgeServer
+from fidelity_gateway.bridge.server import (
+    PRE_SEND_CODES,
+    UNAVAILABLE_CODES,
+    BridgeRefusal,
+    BridgeServer,
+)
 from fidelity_gateway.placing_broker import FidelityPlacingBroker, FileConfNumJournal
 from fidelity_gateway.session import (
     _SNIFFED_HEADERS,
@@ -434,6 +439,20 @@ def test_the_real_extension_hears_which_versions_the_engine_expects(make_server,
         if seen.get("latest") == "9.9.9":
             break
     assert seen == {"loaded": "interop", "minimum": "0.3.0", "latest": "9.9.9"}
+
+
+@needs_extension
+def test_the_refusal_the_extension_sends_while_reloading_is_one_the_engine_waits_out():
+    """A reload that arrives mid-conversation must not halt the engine: the
+    extension answers what reaches it meanwhile with a refusal, and that
+    refusal has to be one the engine treats as "nothing was sent, try again"
+    -- or an order refused so would be taken for one of unknown outcome."""
+    source = (EXTENSION_ROOT / "src" / "lib" / "bridge-client.js").read_text(encoding="utf-8")
+    match = re.search(r'export const RELOADING_CODE = "([a-z_]+)"', source)
+    assert match, "RELOADING_CODE not found in bridge-client.js"
+    code = match.group(1)
+    assert code in PRE_SEND_CODES, "it is a refusal made before anything is sent"
+    assert code in UNAVAILABLE_CODES, "and one the live loop waits out instead of stopping"
 
 
 # -- the two allowlists name the same endpoints ------------------------------
