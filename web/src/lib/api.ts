@@ -29,7 +29,18 @@ import type {
   Validation,
 } from "@/types/backtest";
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
-import type { Activity, LiveState, Rsi } from "@/types/telemetry";
+import type {
+  AlgorithmView,
+  ChangeCheck,
+  ChangeRequest,
+  CommandRequest,
+  CommandRow,
+  DeploymentDetail,
+  DeploymentSummary,
+  QueuedCommand,
+  TraderFill,
+} from "@/types/control";
+import type { Activity, Rsi } from "@/types/telemetry";
 import type { SystemStatus, WarehouseStatus } from "@/types/warehouse";
 
 export class ApiError extends Error {
@@ -77,12 +88,12 @@ const query = (params: Record<string, string | number | null | undefined>) =>
 
 /**
  * What the server may do, and which build it is. `caps` is read from the
- * server rather than compiled in, so the Command Center renders what THIS
- * deployment says. Liquidation and live parameter overrides are never
- * listed, by design (server/control.py).
+ * server rather than compiled in. `control` is the Live page's commands
+ * (server/live_control.py); what each deployment takes is its own config's
+ * live.control. Liquidation is never listed, by design.
  */
 export interface Health {
-  caps: ("live" | "halt" | "backtest" | "ml")[];
+  caps: ("live" | "control" | "backtest" | "ml")[];
   /** Where sweeps run; null when this server runs them itself. */
   upstream: string | null;
   build: {
@@ -90,6 +101,9 @@ export interface Health {
     branch: string | null;
     /** null means "could not tell", which is different from false. */
     dirty: boolean | null;
+    /** A fingerprint of the code this process runs -- the same one a trader
+     * reports (engine/core/build_info.py), so the two can be compared. */
+    code?: string | null;
     uptime_s: number;
     python: string;
     pid: number;
@@ -212,15 +226,34 @@ export const api = {
     }
   },
 
-  // -- Live (read-only, plus the one halt) ---------------------------------
+  // -- Live: deployments by id (read-only) and their commands ---------------
 
-  /** Ledger store paths; see types/telemetry.ts describeStore. */
-  stores: () => request<string[]>("/api/live/stores"),
+  /** Every deployment in config/deployments.yaml, for the strip. */
+  deployments: () => request<DeploymentSummary[]>("/api/live/deployments"),
 
-  liveState: (path: string) => request<LiveState>(`/api/live/state?${query({ path })}`),
+  /** One deployment: its summary, its ledger's LiveState, its commands. */
+  deployment: (id: string) =>
+    request<DeploymentDetail>(`/api/live/deployments/${encodeURIComponent(id)}`),
 
-  activity: (path: string, limit = 200) =>
-    request<Activity[]>(`/api/live/activity?${query({ path, limit })}`),
+  /** The ledger's revision log, newest first. */
+  activity: (id: string, limit = 200) =>
+    request<Activity[]>(
+      `/api/live/deployments/${encodeURIComponent(id)}/activity?${query({ limit })}`,
+    ),
+
+  /** The minute bars the deployment's trader traded on -- its own feed,
+   * not the warehouse's -- for the last `sessions` sessions. */
+  deploymentBars: (id: string, sessions = 2) =>
+    request<Bars>(
+      `/api/live/deployments/${encodeURIComponent(id)}/bars?${query({ sessions })}`,
+    ),
+
+  /** Every fill the trader booked in the last `sessions` sessions, oldest
+   * first, each sale with what it fetched against what its lot cost. */
+  deploymentFills: (id: string, sessions = 1) =>
+    request<TraderFill[]>(
+      `/api/live/deployments/${encodeURIComponent(id)}/fills?${query({ sessions })}`,
+    ),
 
   liveBars: (symbol: string, limit = 780) =>
     request<Bars>(`/api/live/bars?${query({ symbol, limit })}`),
@@ -228,8 +261,26 @@ export const api = {
   indicators: (symbol: string, period = 14) =>
     request<Rsi>(`/api/live/indicators?${query({ symbol, period })}`),
 
-  /** Blocks new buys; answers with the store's state read back. */
-  halt: (path: string, reason: string) => post<LiveState>("/api/live/halt", { path, reason }),
+  /** Queue a command for the deployment's trader (server/live_control.py).
+   * Accepted is not applied: the returned command's status says when. */
+  sendCommand: (id: string, body: CommandRequest) =>
+    post<QueuedCommand>(`/api/live/deployments/${encodeURIComponent(id)}/commands`, body),
+
+  /** What the deployment trades, its profiles and every strategy's live
+   * capability here. */
+  algorithm: (id: string) =>
+    request<AlgorithmView>(`/api/live/deployments/${encodeURIComponent(id)}/algorithm`),
+
+  /** Dry-run a switch: the trader's reasons to refuse it, or its impact. */
+  checkAlgorithm: (id: string, body: ChangeRequest) =>
+    post<ChangeCheck>(`/api/live/deployments/${encodeURIComponent(id)}/algorithm/check`, body),
+
+  /** Withdraw a queued command; 409 once its trader has taken it. */
+  cancelCommand: (id: string, commandId: string, operator: string) =>
+    post<CommandRow>(
+      `/api/live/deployments/${encodeURIComponent(id)}/commands/${encodeURIComponent(commandId)}/cancel`,
+      { operator },
+    ),
 
   // -- ML research (read-only; see server/ml_insights.py) ------------------
 

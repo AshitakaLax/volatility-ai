@@ -88,6 +88,13 @@ implement.
   merges fields into it. The extension shows it in its popup and badge,
   logs it, and toasts a halt. `cli.py live` reports each tick through
   `LiveTradingLoop`'s `tick_listener`.
+- **And the extension's state goes to the Live page.**
+  `BridgeServer.connection_report` (connected and since when, last heard
+  from, the client address, its version against the expected ones, its
+  switches -- "place" is "Allow trading" -- and the bridge URL; never the
+  key) reaches the trader's status file through `cli.py`'s
+  `_fidelity_status`, with the account as a one-way tag and its display
+  name. The page shows it in its own Fidelity section.
 - **Versions.** Every connecting extension is sent the versions this
   engine expects (`bridge/versions.py`): `MINIMUM_EXTENSION_VERSION`,
   and the one checked out in the submodule. The server logs when the

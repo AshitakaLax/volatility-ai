@@ -111,14 +111,3 @@ export interface ConnectionHealth {
   /** Round-trip of the last heartbeat, ms. */
   latencyMs: number | null;
 }
-
-/** A store path's picker label and paper badge. A NAMING CONVENTION, not
- * a fact about the account -- the store does not record it -- so nothing
- * may gate a decision on `paper`. */
-export function describeStore(path: string): { path: string; label: string; paper: boolean } {
-  return {
-    path,
-    label: path.split(/[\\/]/).pop() ?? path,
-    paper: path.toLowerCase().includes("paper"),
-  };
-}

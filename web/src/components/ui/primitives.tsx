@@ -173,10 +173,13 @@ export function Dialog({
   title,
   onClose,
   children,
+  className,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** Overrides the panel's width (max-w-sm) and the like. */
+  className?: string;
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -192,7 +195,10 @@ export function Dialog({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-lg border border-border bg-card text-card-foreground shadow-lg"
+        className={cn(
+          "w-full max-w-sm rounded-lg border border-border bg-card text-card-foreground shadow-lg",
+          className,
+        )}
         role="dialog"
         aria-modal="true"
         aria-label={title}

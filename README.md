@@ -108,8 +108,10 @@ flag *and* a strategy hook.
   lockout windows per shard. `cli.py submit` queues any sweep YAML.
 - **React web UI** — parameter form, active runs and shard panel, run
   history, result view (price chart with fills, trade log, sweep heatmap,
-  fund comparison), live command center (deployment health, order ledger,
-  algorithm status), and an ML insights tab.
+  fund comparison), live deployment control (every deployment's state;
+  pause/resume buys, wind down, disable/enable, switch/revert/re-warm the
+  algorithm, a fresh paper ledger -- each a command its trader applies),
+  an ML insights tab, and a Warehouse tab.
 
 ### Fidelity route (`fidelity_gateway/`)
 - **Browser-extension bridge** — the Fidelity Bridge extension (submodule

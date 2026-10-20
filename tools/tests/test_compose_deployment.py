@@ -55,6 +55,7 @@ def test_up_starts_what_must_keep_running_and_nothing_else(compose):
     assert _services(compose) == {"web", "paper-ultimate", "backup"}
     assert _services(compose, profile="champion") == {"paper"}
     assert _services(compose, profile="production") == {"live"}
+    assert _services(compose, profile="fidelity") == {"fidelity"}
     assert _services(compose, profile="tools") == {
         "test",
         "preflight",
@@ -97,6 +98,61 @@ def test_the_ui_sees_the_backups_without_being_able_to_touch_them(compose):
     assert mount.removesuffix(":ro") in backup
 
 
+def test_the_live_page_controls_each_trader_through_its_own_directory(compose):
+    """config/deployments.yaml is the page's map of the deployments, in the
+    web container's paths. Each entry must be the service it names: its
+    config, its ledger (read-only in `web`), and a control volume the trader
+    mounts as its own and `web` mounts read-write -- the only thing `web`
+    writes beside a trading loop. The image must have every mount point, or
+    the volume comes up owned by root."""
+    registry = yaml.safe_load((ROOT / "config" / "deployments.yaml").read_text())["deployments"]
+    assert set(registry) == {"paper-ultimate", "paper", "live", "fidelity"}
+    web = compose["services"]["web"]
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    for deployment_id, entry in registry.items():
+        service = compose["services"][entry["service"]]
+        environment = service["environment"]
+        assert "/app/" + entry["config"] == environment["VAI_CONFIG"], deployment_id
+
+        ledger = _state_volume(service)
+        (seen,) = [m for m in web["volumes"] if m.startswith(f"{ledger}:")]
+        assert seen.endswith(":ro"), seen
+        assert (
+            entry["state_db"] == seen.split(":")[1] + "/" + Path(environment["VAI_STATE_DB"]).name
+        )
+
+        assert environment["VAI_CONTROL_DIR"] == "/app/control"
+        (own,) = [m for m in service["volumes"] if m.endswith(":/app/control")]
+        volume = own.split(":")[0]
+        assert volume in compose["volumes"], f"{volume} must be a named volume"
+        assert f"{volume}:{entry['control_dir']}" in web["volumes"], deployment_id
+        assert entry["control_dir"] in dockerfile, f"no mount point for {entry['control_dir']}"
+    assert "/app/control " in dockerfile
+
+
+def test_fidelity_runs_only_by_name_on_this_hosts_network_with_its_own_ledger(compose):
+    """Real money through the browser extension. Host networking, so the
+    bridge's allow list sees the browser's real address; its own ledger and
+    control volumes, backed up like the others; its config (it names the
+    account) read from the host, never baked into the image."""
+    services = compose["services"]
+    fidelity = services["fidelity"]
+    assert fidelity["profiles"] == ["fidelity"]
+    assert fidelity["network_mode"] == "host"
+    assert "ports" not in fidelity
+    assert fidelity["restart"] == "unless-stopped" and fidelity["oom_score_adj"] < 0
+    ledger = _state_volume(fidelity)
+    assert ledger == "state_fidelity" and ledger in compose["volumes"]
+    others = {_state_volume(services[name]) for name in TRADERS}
+    assert ledger not in others, "never another deployment's ledger"
+    assert "./config:/app/config:ro" in fidelity["volumes"]
+    assert any(
+        m.startswith(f"{ledger}:") and m.endswith(":ro") for m in services["backup"]["volumes"]
+    )
+    dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    assert "config/fidelity_live.yaml" in dockerignore, "the account stays out of the image"
+
+
 def test_the_ui_is_published_on_loopback_unless_asked(compose):
     """It has no authentication and serves balances, cost bases and the halt."""
     (port,) = compose["services"]["web"]["ports"]
@@ -121,7 +177,11 @@ def test_the_scripts_and_configs_compose_names_exist(compose):
                 assert (ROOT / part.removeprefix("/app/")).exists(), f"{name}: {part}"
         config = service.get("environment", {}).get("VAI_CONFIG")
         if config:
-            assert (ROOT / config.removeprefix("/app/")).exists(), f"{name}: {config}"
+            path = ROOT / config.removeprefix("/app/")
+            # A config that names an account is git-ignored; its template
+            # is what the repository carries (config/fidelity_live.yaml).
+            template = path.with_name(path.name + ".example")
+            assert path.exists() or template.exists(), f"{name}: {config}"
 
 
 def test_every_trading_config_builds_for_live(compose):

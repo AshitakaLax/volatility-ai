@@ -423,3 +423,27 @@ def test_a_change_from_the_extension_switches_the_loop_at_the_next_tick(
     store = LedgerStore(str(tmp_path / "state" / "ledger.db"))
     assert json.loads(store.get_meta("live.parameters"))["step"] == 0.02
     store.close()
+
+
+def test_a_fidelity_trader_reports_its_extension_and_tags_its_own_account(cli, tmp_path):
+    """What the Live page's Fidelity section shows. Its Alpaca key reads
+    prices and the clock only, so tagging its status with that key's account
+    would tie it to whichever paper trader shares the key -- and the page
+    refuses to enable two deployments on one account."""
+    from engine.core.config import BacktestConfig
+
+    config = BacktestConfig.from_yaml(str(_write_config(tmp_path, dry_run=False)))
+
+    class Connection:
+        def connection_report(self):
+            return {"connected": True, "mode": "live"}
+
+    status = cli._fidelity_status(config, Connection())
+    assert status["account"].startswith("fidelity-") and ACCOUNT not in status["account"]
+    assert status["fidelity"] == {
+        "connected": True,
+        "mode": "live",
+        "account_name": "Traditional IRA",
+        "max_order_value": 2000.0,
+    }
+    assert cli._fidelity_status(config, None) == {}, "nothing without a bridge"

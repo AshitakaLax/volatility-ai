@@ -88,6 +88,13 @@ class FidelityLiveConnection:
         """Let the extension call `method` (BridgeServer.register_call)."""
         self.server.register_call(method, handler)
 
+    def connection_report(self) -> dict:
+        """The extension's connection (BridgeServer.connection_report) and
+        whether this engine places real orders ("live") or only previews --
+        what the Live page shows in its Fidelity section."""
+        report = getattr(self.server, "connection_report", None)
+        return {**(report() if callable(report) else {}), "mode": self.status.get("mode")}
+
     def close(self) -> None:
         """Stop the bridge. The browser and its Fidelity session are the
         user's, and stay as they are."""

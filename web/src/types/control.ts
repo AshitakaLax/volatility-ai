@@ -1,0 +1,386 @@
+/**
+ * The Live page's deployments and commands, mirrored by hand from
+ * server/live.py (deployment_summary, run_state) and server/live_control.py.
+ *
+ * A deployment is named by id (config/deployments.yaml), never by path. Its
+ * STATUS is what its trader last reported through its control directory --
+ * stale reports read as "not_running" rather than as what they last said --
+ * and its LEDGER is read mode=ro. A command is an intent the trader applies
+ * between ticks or between sessions; its own `status` says when it has.
+ */
+import type { Param, ParamValue } from "@/types/backtest";
+import type { LiveState } from "@/types/telemetry";
+
+/** What a deployment's trader is doing, as one chip. */
+export type RunState =
+  | "trading"
+  | "buys_paused"
+  | "winding_down"
+  | "waiting_for_open"
+  | "closed"
+  | "disabled"
+  | "starting"
+  | "restarting"
+  | "stopping"
+  | "stopped"
+  | "recovery_required"
+  | "not_running";
+
+/** What the Live page may ask of this deployment: its config's
+ * live.control, with the real-money rules applied. */
+export interface Caps {
+  /** Always: it only ever reduces exposure. */
+  pause_buys: true;
+  resume_buys: boolean;
+  enable_disable: boolean;
+  algorithm_changes: boolean;
+  profiles_only: boolean;
+  ledger_reset: boolean;
+}
+
+export type Broker = "alpaca" | "fidelity";
+
+/** A strategy's own diagnostics() -- flat, plain values. Ultimate's carry its
+ * regime: ultimate_mode, ultimate_exit_active, regime_since, regime_natr,
+ * regime_median, regime_reading, regime_earliest_change, ... */
+export type Diagnostics = Record<string, string | number | boolean | null>;
+
+/** What the loop will do next, written after every tick. */
+export interface Decision {
+  /** The tick's price. */
+  price: number;
+  /** A buy triggers at or below this; null when the strategy buys at no price now. */
+  buy_level: number | null;
+  /** The price its grid measures from (the last buy, or the session's start). */
+  reference: number | null;
+  /** What stops a buy, in the loop's words; null when nothing does. */
+  blocked: string | null;
+  strategy: Diagnostics | null;
+}
+
+/** While an override trades, the CONFIG FILE's algorithm fed the same bars:
+ * what switching back would do now. */
+export interface ShadowState {
+  strategy: Diagnostics | null;
+  /** Lots its own exit would sell on this bar. */
+  would_sell: number;
+  would_sell_cost: number;
+}
+
+/** Which code a process runs (engine/core/build_info.py). */
+export interface BuildInfo {
+  /** From VAI_BUILD_COMMIT, when the image was built with one. */
+  commit: string | null;
+  /** A fingerprint of the source: equal exactly when the code is. */
+  code: string | null;
+  python: string;
+  pid: number;
+  started_at: string;
+}
+
+/** The Fidelity Bridge extension's side of a Fidelity deployment. */
+export interface FidelityConnection {
+  connected: boolean;
+  since: string | null;
+  last_heard: string | null;
+  disconnected_at: string | null;
+  /** The browser's address, as the bridge saw it. */
+  client: string | null;
+  version: string | null;
+  versions: { minimum?: string | null; latest?: string | null };
+  /** What to do about an old extension, or null. */
+  advice: string | null;
+  /** The extension's switches; "place" is its "Allow trading". null before it says. */
+  permissions: { preview: boolean; place: boolean } | null;
+  url: string | null;
+  /** "live" places real orders; "preview" stops at Fidelity's preview. */
+  mode: "live" | "preview" | null;
+  account_name: string | null;
+  max_order_value: number | null;
+}
+
+export interface TraderStatus {
+  state: RunState;
+  detail: string | null;
+  process: "loop" | "supervisor" | null;
+  next_open: string | null;
+  last_tick_at: string | null;
+  open_lots: number | null;
+  open_orders: number | null;
+  algorithm: {
+    strategy_id: string;
+    step: number | null;
+    profit_target: number | null;
+    override?: AlgorithmOverride | null;
+  } | null;
+  updated_at: string | null;
+  heartbeat_seconds: number | null;
+  /** A one-way tag of the account it trades -- never the key or number. */
+  account: string | null;
+  cash?: number | null;
+  breaker?: { state: string; reason: string | null } | null;
+  now?: Decision | null;
+  shadow?: ShadowState | null;
+  build?: BuildInfo | null;
+  broker?: Broker | null;
+  /** Why the venue cannot be reached right now; null when it can. */
+  broker_unavailable?: string | null;
+  fidelity?: FidelityConnection | null;
+  /** True when no report arrived in three heartbeats: state is then "not_running". */
+  stale: boolean;
+}
+
+/** The algorithm a deployment trades, for its card: the trader's own report
+ * while it reports, otherwise what its next session will trade. */
+export interface AlgorithmInForce {
+  strategy_id: string;
+  /** null when the trader's report names a strategy the files do not. */
+  strategy_params: Record<string, ParamValue> | null;
+  step: number | null;
+  profit_target: number | null;
+  source: "config" | "web" | "extension";
+  profile: string | null;
+  /** The committed profile's label when it is one. */
+  label: string | null;
+  changed_by: string | null;
+  changed_at: string | null;
+  reason: string | null;
+  /** True for the trader's own report. */
+  reported: boolean;
+  config_file: Algorithm;
+}
+
+/** One fill the trader booked (its fill journal). */
+export interface TraderFill {
+  /** Epoch seconds. */
+  t: number;
+  side: "buy" | "sell";
+  lot: string;
+  qty: number;
+  price: number;
+  /** A buy: what it cost, and the target its lot carries. */
+  value?: number;
+  target?: number;
+  /** A sale: why (profit_target or signal_exit), what it fetched net,
+   * what its lot cost, and the difference. */
+  reason?: string;
+  proceeds?: number;
+  cost?: number;
+  pnl?: number;
+}
+
+/** Whether sessions should run. Enabled unless an operator said otherwise. */
+export interface Desired {
+  enabled: boolean;
+  /** Buys paused; trading stops by itself once nothing is open. */
+  wind_down: boolean;
+  by: string | null;
+  reason: string | null;
+  at: string | null;
+}
+
+/** The ledger's own figures, read mode=ro. `exists: false` with `error` for
+ * a deployment that has never run -- a normal state, not a failure. */
+export interface LedgerSummary {
+  exists: boolean;
+  error?: string;
+  /** Non-null exactly when halted: the reason is the flag. */
+  halt?: string | null;
+  open_lots?: number;
+  cash?: number | null;
+  last_px?: number | null;
+  last_tick?: string | null;
+}
+
+/** GET /api/live/deployments, one per deployment. Everything after `error`
+ * is absent when the deployment's config does not load -- or does not exist
+ * yet (`setup` then says what to do). */
+export interface DeploymentSummary {
+  id: string;
+  label: string;
+  /** The compose service that runs it -- named when it is not running. */
+  service: string | null;
+  /** The venue: Alpaca's API, or Fidelity through the browser extension. */
+  broker: Broker;
+  error: string | null;
+  /** Set when the deployment is registered but its config does not exist. */
+  setup?: string;
+  /** From the deployment's config (live.paper_trading), not a file name. */
+  paper?: boolean;
+  symbol?: string;
+  /** The CONFIG FILE's algorithm; `algorithm` is the one in force. */
+  strategy_id?: string;
+  step?: number | null;
+  profit_target?: number | null;
+  algorithm?: AlgorithmInForce;
+  /** False when the registry names no control directory for it. */
+  controllable?: boolean;
+  caps?: Caps;
+  status?: TraderStatus;
+  desired?: Desired;
+  ledger?: LedgerSummary;
+  /** Commands queued and not yet taken by the trader. */
+  pending?: number;
+}
+
+export type CommandType =
+  | "pause_buys"
+  | "resume_buys"
+  | "disable"
+  | "enable"
+  | "switch_algorithm"
+  | "revert_algorithm"
+  | "rewarm"
+  | "reset_paper_ledger";
+
+export type CommandStatus =
+  | "queued"
+  | "applying"
+  | "applied"
+  | "rejected"
+  | "superseded"
+  | "expired"
+  | "cancelled";
+
+export type Timing = "now" | "next_session" | "when_flat";
+
+/** One command and what came of it, newest first in a deployment's log. */
+export interface CommandRow {
+  id: string;
+  type: CommandType;
+  args: Record<string, unknown>;
+  timing: Timing;
+  reason: string;
+  operator: string;
+  client: string | null;
+  created_at: string;
+  expires_at: string;
+  idempotency_key: string | null;
+  seq: number;
+  status: CommandStatus;
+  /** The trader's own words on what it did, or why it refused. */
+  detail: string;
+  finished_at: string | null;
+}
+
+/** GET /api/live/deployments/{id}. */
+export interface DeploymentDetail extends DeploymentSummary {
+  /** null until the deployment's ledger exists. */
+  state: LiveState | null;
+  commands: CommandRow[];
+}
+
+/** POST /api/live/deployments/{id}/commands. */
+export interface CommandRequest {
+  type: CommandType;
+  args?: Record<string, unknown>;
+  timing?: Timing;
+  /** 3-500 characters: shown to whoever finds the deployment in this state. */
+  reason: string;
+  operator: string;
+  idempotency_key?: string;
+  /** The deployment's id typed back, for a command with large consequences. */
+  confirm?: string;
+}
+
+export interface QueuedCommand {
+  command: CommandRow;
+  /** False when an idempotency key matched an earlier command. */
+  new: boolean;
+  /** Set when the trader is not running: it applies when it next starts. */
+  warning: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* The algorithm (GET .../algorithm, POST .../algorithm/check)         */
+/* ------------------------------------------------------------------ */
+
+/** What a deployment trades: research/strategies/live_algorithm.py's four
+ * fields. Not the symbol, account, risk limits or broker -- those stay in
+ * the deployment's file. */
+export interface Algorithm {
+  strategy_id: string;
+  strategy_params: Record<string, ParamValue>;
+  step: number | null;
+  profit_target: number | null;
+}
+
+/** Who changed it from the config file's, how and when. */
+export interface AlgorithmOverride {
+  channel: "web" | "extension";
+  changedAt: string | null;
+  changedBy: string | null;
+  reason: string | null;
+  profile: string | null;
+}
+
+/** A committed profile (config/live_profiles/), and whether THIS deployment
+ * may switch to it. */
+export interface ProfileRow extends Algorithm {
+  id: string;
+  label: string;
+  symbols: string[];
+  evidence: Record<string, unknown>;
+  /** Carries a passing paper promotion: what real money needs. */
+  promoted: boolean;
+  usable: boolean;
+  why: string | null;
+}
+
+/** A strategy, its parameter schema, and whether it can trade live HERE
+ * (its own live rules against this deployment's settings). */
+export interface StrategyRow {
+  id: string;
+  params: Param[];
+  live_capable: boolean;
+  why: string | null;
+}
+
+export interface AlgorithmView {
+  editable: boolean;
+  /** Real money: committed profiles only. */
+  profiles_only: boolean;
+  paper: boolean;
+  symbol: string;
+  /** What is in force: the override if any, else the config file's. */
+  current: Algorithm;
+  config_file: Algorithm;
+  source: "config" | "web" | "extension";
+  override: AlgorithmOverride | null;
+  /** What the running loop reports trading; null when none runs. */
+  live: { strategy_id: string; step: number | null; profit_target: number | null } | null;
+  /** Written but not yet traded: the loop switches at its next tick. */
+  pending: boolean;
+  profiles: ProfileRow[];
+  strategies: StrategyRow[];
+}
+
+/** What a switch does to the open book. Lots keep the targets they were
+ * bought at; what can change for them is whether a signal exit applies. */
+export interface Impact {
+  open_lots: number;
+  cost: number;
+  lots_at_new_target: number;
+  signal_exit_before: boolean;
+  signal_exit_after: boolean;
+  notes: string[];
+}
+
+export interface ChangeCheck {
+  ok: boolean;
+  errors: string[];
+  change?: Algorithm;
+  current?: Algorithm;
+  impact?: Impact;
+  /** Why the id must be typed back to send it, or null. */
+  typed?: string | null;
+}
+
+/** A switch to check or send: a committed profile, or (paper) the change. */
+export interface ChangeRequest {
+  profile_id?: string;
+  strategy_id?: string;
+  strategy_params?: Record<string, ParamValue>;
+  step?: number;
+  profit_target?: number;
+}

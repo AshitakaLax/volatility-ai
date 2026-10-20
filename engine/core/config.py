@@ -24,7 +24,7 @@ YAML-only schema, per this task's explicit instruction.
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from engine.core.exceptions import ConfigurationError
@@ -434,6 +434,20 @@ def _as_string_tuple(value, name: str) -> tuple:
         raise ConfigurationError(f"{name} must be a list, got {type(value).__name__}") from exc
 
 
+def _parse_control(data: dict) -> LiveControlConfig:
+    """live.control. Kept as given rather than coerced with bool(): the
+    string "false" is truthy, and a grant read the wrong way round is the
+    one mistake this section must not make -- validate() names it."""
+    if not isinstance(data, dict):
+        raise ConfigurationError(f"live.control must be a mapping, got {data!r}")
+    unknown = set(data) - set(_CONTROL_FIELDS)
+    if unknown:
+        raise ConfigurationError(
+            f"live.control has no setting(s) {sorted(unknown)}; known: {list(_CONTROL_FIELDS)}"
+        )
+    return LiveControlConfig(**data)
+
+
 def _parse_bridge(data: dict) -> FidelityBridgeConfig:
     defaults = FidelityBridgeConfig()
     return FidelityBridgeConfig(
@@ -539,6 +553,46 @@ class FidelityConfig:
 
 
 @dataclass(frozen=True)
+class LiveControlConfig:
+    """What the web UI may do to this deployment (server/live_control.py).
+
+    Pausing new buys has no switch: it only ever reduces exposure, so it is
+    always allowed. Everything else is off unless this file grants it --
+    whether a deployment trades, and what, is decided in a reviewable file,
+    and a browser may change it only when that file says so. The browser
+    extension keeps its own grant, live.fidelity.bridge.allow_algorithm_changes.
+
+    A real-money deployment (paper_trading: false) never resets its ledger,
+    and switches algorithms only between committed profiles -- see
+    effective(), which every reader of these flags goes through.
+    """
+
+    resume_buys: bool = False
+    enable_disable: bool = False
+    algorithm_changes: bool = False
+    profiles_only: bool = False
+    ledger_reset: bool = False
+
+    def effective(self, paper_trading: bool) -> LiveControlConfig:
+        """These grants with the real-money rules applied."""
+        if paper_trading:
+            return self
+        return replace(self, profiles_only=True, ledger_reset=False)
+
+    def to_dict(self) -> dict:
+        return {
+            "resume_buys": self.resume_buys,
+            "enable_disable": self.enable_disable,
+            "algorithm_changes": self.algorithm_changes,
+            "profiles_only": self.profiles_only,
+            "ledger_reset": self.ledger_reset,
+        }
+
+
+_CONTROL_FIELDS = tuple(LiveControlConfig().to_dict())
+
+
+@dataclass(frozen=True)
 class LiveConfig:
     """Live-trading switches.
 
@@ -591,6 +645,8 @@ class LiveConfig:
     # fill it arbitrarily far away. The fill is the market's price, not
     # the limit. Harvests at a lot's own target are unaffected.
     exit_limit_buffer: float = 0.005
+    # What the web UI may change on this deployment; see LiveControlConfig.
+    control: LiveControlConfig = field(default_factory=LiveControlConfig)
 
 
 @dataclass(frozen=True)
@@ -733,6 +789,7 @@ class BacktestConfig:
             poll_interval_seconds=live_data.get("poll_interval_seconds", 60.0),
             max_sells_per_tick=live_data.get("max_sells_per_tick", 25),
             exit_limit_buffer=float(live_data.get("exit_limit_buffer", 0.005)),
+            control=_parse_control(live_data.get("control") or {}),
         )
 
         return cls(
@@ -838,6 +895,11 @@ class BacktestConfig:
                 f"live.exit_limit_buffer must be in [0, 0.1) -- a fraction of the price "
                 f"(0.005 is 0.5%), got {self.live.exit_limit_buffer}"
             )
+        for name, value in self.live.control.to_dict().items():
+            if not isinstance(value, bool):
+                raise ConfigurationError(
+                    f"live.control.{name} must be true or false, got {value!r}"
+                )
         validate_one_of(self.live.broker, ("alpaca", "fidelity"), "live.broker")
 
         # The feed whitelist is ALPACA's -- "iex"/"sip" are names of
@@ -1066,6 +1128,11 @@ class BacktestConfig:
                 "poll_interval_seconds": self.live.poll_interval_seconds,
                 "max_sells_per_tick": self.live.max_sells_per_tick,
                 "exit_limit_buffer": self.live.exit_limit_buffer,
+                **(
+                    {"control": self.live.control.to_dict()}
+                    if self.live.control != LiveControlConfig()
+                    else {}
+                ),
             },
         }
 

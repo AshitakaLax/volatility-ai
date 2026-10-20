@@ -35,6 +35,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from engine.core import build_info
+
 # When this process started. Module import time is close enough to
 # "deployed at" for a status card, and it needs no state.
 STARTED_AT = time.time()
@@ -101,7 +103,12 @@ def describe() -> dict[str, Any]:
     status = _git("status", "--porcelain")
     return {
         "build": {
-            "commit": _git("rev-parse", "--short", "HEAD"),
+            # The image has no .git: there the commit is VAI_BUILD_COMMIT, when
+            # it was built with one (engine/core/build_info.py).
+            "commit": _git("rev-parse", "--short", "HEAD") or build_info.identity()["commit"],
+            # The same fingerprint a trader reports, so the Live page can tell
+            # whether the two run the same code.
+            "code": build_info.code_fingerprint(),
             "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
             # None means "could not tell", which is different from False.
             # A card that showed a clean checkmark because git was missing

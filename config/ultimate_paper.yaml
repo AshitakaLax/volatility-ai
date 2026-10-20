@@ -91,3 +91,11 @@ live:
   # regime exit is one order however many lots it closes.
   max_sells_per_tick: 25
   exit_limit_buffer: 0.005
+  # What the Live page may change here (LiveControlConfig in
+  # engine/core/config.py); pausing new buys is always allowed. A paper
+  # account, so everything.
+  control:
+    resume_buys: true
+    enable_disable: true
+    algorithm_changes: true
+    ledger_reset: true

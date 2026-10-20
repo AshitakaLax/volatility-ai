@@ -1050,6 +1050,32 @@ def _algorithm_status(config, algorithm) -> dict:
     return status
 
 
+def _fidelity_status(config, connection) -> dict:
+    """A Fidelity deployment's part of its trader's status: the browser
+    extension's connection (fidelity_gateway.live), and the account it
+    trades as a one-way tag. The Alpaca key such a deployment holds reads
+    prices and the clock only, so the Alpaca account tag LoopControl writes
+    would tie it to whichever paper trader shares that key -- and the Live
+    page refuses to enable two deployments on one account. Nothing for an
+    Alpaca deployment."""
+    if connection is None or config.live.broker != "fidelity":
+        return {}
+    import hashlib
+
+    settings = config.live.fidelity
+    account = settings.account or ""
+    return {
+        "account": "fidelity-" + hashlib.sha256(account.encode()).hexdigest()[:12],
+        "fidelity": {
+            **connection.connection_report(),
+            # The account's display name ("Traditional IRA"): identifies
+            # nothing on its own (FidelityConfig), unlike its number.
+            "account_name": settings.account_name,
+            "max_order_value": settings.max_order_value,
+        },
+    }
+
+
 def _control_inbox(args):
     """The Live page's command inbox for this deployment, or None. A check
     run (--check-only) answers none: it trades nothing to apply them to."""
@@ -1086,6 +1112,7 @@ def _run_trading_loop(
     """
     import signal
 
+    from engine.core.build_info import identity
     from engine.core.secrets import load_live_credentials
     from engine.data.alpaca_market_data import AlpacaMarketData
     from engine.data.historical_data import AlpacaHistoricalData
@@ -1094,6 +1121,7 @@ def _run_trading_loop(
     from research.strategies.live_algorithm import build_strategy
 
     registry = _load_strategy_registry()
+    process_build = identity()  # this process's code, for the Live page's Deployment card
     # Built first, so a strategy that refuses its parameters -- or a
     # target_return that does not match the live.profit_target this
     # deployment trades (build_strategy's cross-check, the same one
@@ -1106,8 +1134,13 @@ def _run_trading_loop(
             connection.report(**fields)
 
     control = None  # the Live page's commands; built once the loop exists
+    recorded = {"t": None}  # the last bar written to the bar journal
 
     def on_tick(tick: dict) -> None:
+        bar = current["loop"].last_bar
+        if inbox is not None and bar is not None and bar["t"] != recorded["t"]:
+            inbox.record_bars([bar])
+            recorded["t"] = bar["t"]
         if control is not None:
             # On the loop's own thread, between ticks: a pause lands before
             # the next buy decision, through the breaker the loop reads.
@@ -1144,6 +1177,27 @@ def _run_trading_loop(
         AlpacaHistoricalData(credentials=load_live_credentials()), feed=config.live.feed
     )
 
+    def shadow_for(cfg):
+        """While an override trades in place of the config file's algorithm,
+        that algorithm too -- fed the same bars, trading nothing -- so the
+        Live page can say what switching back would do now. None otherwise,
+        and None (with a note) if it cannot be built: never a reason not to
+        trade."""
+        if algorithm is None or inbox is None:
+            return None
+        try:
+            base = algorithm.config_file_config()
+            if algorithm.algorithm_of(base.to_dict()) == algorithm.algorithm_of(cfg.to_dict()):
+                return None
+            return build_strategy(base, registry)
+        except Exception as e:
+            print(f"Not shadowing the config file's algorithm: {e}", file=sys.stderr)
+            return None
+
+    def on_fill(fill: dict) -> None:
+        if inbox is not None:
+            inbox.record_fill(fill)
+
     def build(cfg, built_strategy):
         loop = LiveTradingLoop(
             config=cfg,
@@ -1154,7 +1208,13 @@ def _run_trading_loop(
             circuit_breaker=circuit_breaker,
             tick_listener=on_tick,
             history_provider=history,
+            shadow=shadow_for(cfg),
+            fill_listener=on_fill,
         )
+        if inbox is not None and loop.recent_bars:
+            # The sessions before this one, for the Live page's chart: the
+            # feed this loop trades on, not the warehouse's.
+            inbox.record_bars(loop.recent_bars, keep_past=True)
         if loop.replayed_bars:
             mode = getattr(built_strategy, "mode", None)
             print(
@@ -1212,6 +1272,17 @@ def _run_trading_loop(
                     "profit_target": current["config"].live.profit_target,
                     "override": algorithm.override_info() if algorithm is not None else None,
                 },
+                # What the loop will do next and why, and -- while an
+                # override trades -- what switching back would do now.
+                "now": current["loop"].decision,
+                "shadow": current["loop"].shadow_state,
+                "build": process_build,
+                "broker": config.live.broker,
+                # Why the broker cannot be reached right now, while it cannot
+                # (a Fidelity session signed out, the extension's trading
+                # switch off, Alpaca down); None when it can.
+                "broker_unavailable": current["loop"].broker_unavailable,
+                **_fidelity_status(config, connection),
             },
         )
         # Before the first tick, so a pause queued during startup is in force

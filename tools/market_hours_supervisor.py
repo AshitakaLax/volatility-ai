@@ -67,6 +67,12 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from engine.core.config import BacktestConfig
+from engine.trading.control_inbox import ControlInbox
+from engine.trading.operator_control import (
+    STARTUP_ALLOWANCE_SECONDS,
+    SupervisorControl,
+    reset_paper_ledger_handler,
+)
 
 # Start trading a little after the bell. The first minutes of the
 # session are the most volatile of the day (src/intraday_profile.py
@@ -99,6 +105,20 @@ def parse_args(argv=None):
         help="Give up waiting for an open rather than sleeping indefinitely.",
     )
     p.add_argument("--dry-run", action="store_true", help="Report the plan and exit.")
+    p.add_argument(
+        "--control-dir",
+        default=os.environ.get("VAI_CONTROL_DIR"),
+        help="This deployment's control directory: the Live page's commands "
+        "(engine/trading/control_inbox.py). Defaults to $VAI_CONTROL_DIR; without "
+        "one, nothing can pause, disable or switch this deployment from the page.",
+    )
+    p.add_argument(
+        "--linger",
+        type=float,
+        default=0.0,
+        help="Seconds to keep answering the Live page's commands after the session "
+        "(or on a day with none) before exiting: the wait between sessions.",
+    )
     return p.parse_args(argv)
 
 
@@ -115,6 +135,26 @@ def clock(paper: bool):
     if not (key and secret):
         raise SystemExit("APCA_API_KEY_ID / APCA_API_SECRET_KEY are not set.")
     return TradingClient(key, secret, paper=paper).get_clock()
+
+
+def broker_book(paper: bool) -> dict:
+    """The Alpaca account's open positions and orders and its cash -- what a
+    fresh paper ledger must agree with (the Live page's reset)."""
+    from alpaca.trading.client import TradingClient
+    from alpaca.trading.enums import QueryOrderStatus
+    from alpaca.trading.requests import GetOrdersRequest
+
+    key, secret = os.environ.get("APCA_API_KEY_ID"), os.environ.get("APCA_API_SECRET_KEY")
+    if not (key and secret):
+        raise RuntimeError("APCA_API_KEY_ID / APCA_API_SECRET_KEY are not set.")
+    client = TradingClient(key, secret, paper=paper)
+    return {
+        "positions": len(client.get_all_positions()),
+        "open_orders": len(
+            client.get_orders(filter=GetOrdersRequest(status=QueryOrderStatus.OPEN))
+        ),
+        "cash": float(client.get_account().cash),
+    }
 
 
 def extended_window(paper: bool):
@@ -174,8 +214,11 @@ def _stop(process: subprocess.Popen) -> None:
         process.kill()
 
 
-def run_session(args, ticks: int, deadline: float) -> int:
-    """Run the loop until it exits or the session deadline passes."""
+def run_session(args, ticks: int, deadline: float, control=None) -> int:
+    """Run the loop until it exits or the session deadline passes.
+
+    While it runs, the LOOP answers the Live page's commands, between its
+    ticks; this process does not touch the control directory meanwhile."""
     command = [
         sys.executable,
         "cli.py",
@@ -187,6 +230,14 @@ def run_session(args, ticks: int, deadline: float) -> int:
         "--max-ticks",
         str(ticks),
     ]
+    if args.control_dir:
+        command += ["--control-dir", args.control_dir]
+    if control is not None:
+        control.report(
+            "starting",
+            "launching the trading loop",
+            heartbeat_seconds=STARTUP_ALLOWANCE_SECONDS,
+        )
     creation = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     log(f"starting: {' '.join(command[1:])}")
     process = subprocess.Popen(command, cwd=str(_REPO_ROOT), creationflags=creation)
@@ -203,6 +254,107 @@ def run_session(args, ticks: int, deadline: float) -> int:
         log("interrupted -- stopping the loop")
         _stop(process)
         raise
+
+
+def _control_for(args) -> SupervisorControl | None:
+    """The Live page's commands while no loop runs -- including algorithm
+    switches, which write the override the next launch trades
+    (research/strategies/live_algorithm.py), exactly as a loop would."""
+    if not args.control_dir:
+        return None
+    inbox = ControlInbox(args.control_dir)
+    extra = None
+    try:
+        from research.strategies.live_algorithm import AlgorithmControl, algorithm_handlers
+        from research.strategies.strategy_registry import STRATEGIES
+
+        config = BacktestConfig.from_yaml(args.config)
+        config.validate()
+        grants = config.live.control.effective(config.live.paper_trading)
+        algorithm = AlgorithmControl(
+            config,
+            state_db=args.state_db,
+            registry=STRATEGIES,
+            allowed=False,
+            web_allowed=grants.algorithm_changes,
+            profiles_only=grants.profiles_only,
+            config_path=args.config,
+            log=log,
+        )
+        extra = algorithm_handlers(
+            algorithm, symbol=config.backtest.symbol, paper=config.live.paper_trading
+        )
+        extra["reset_paper_ledger"] = reset_paper_ledger_handler(
+            inbox,
+            state_db=args.state_db,
+            paper=config.live.paper_trading,
+            broker_book=lambda: broker_book(config.live.paper_trading),
+        )
+    except Exception as exc:
+        # The session still runs; only the page's algorithm commands are
+        # refused (as "cannot be applied by this trader") until it loads.
+        log(f"algorithm commands unavailable: {type(exc).__name__}: {exc}")
+    return SupervisorControl(inbox, state_db=args.state_db, extra=extra)
+
+
+def _wait(control, seconds: float, *, state: str, detail: str = "", **fields) -> None:
+    """Sleep -- answering the Live page's commands meanwhile, if there is a
+    control directory, instead of being deaf for the whole wait."""
+    if control is None:
+        time.sleep(max(0.0, seconds))
+        return
+    control.serve(seconds, state=state, detail=detail, **fields)
+
+
+def _hold_while_disabled(control, deadline: float) -> bool:
+    """True to go ahead and trade; False if the deployment stayed disabled
+    until `deadline` (the session's end)."""
+    if control is None:
+        return True
+    control.poll()
+    if control.enabled():
+        return True
+    log("disabled from the Live page -- holding until enabled or the session ends")
+    return control.serve(
+        deadline - time.time(),
+        state="disabled",
+        detail="no session starts until enabled",
+        until=control.enabled,
+    )
+
+
+def _run_until(args, poll: float, deadline: float, control, label: str) -> int:
+    """Run the loop until `deadline`, restarting it if it dies -- but not
+    counting a stop the Live page asked for as a crash: a disabled
+    deployment waits to be enabled instead."""
+    attempts = 0
+    while True:
+        if not _hold_while_disabled(control, deadline):
+            log(f"{label} over (disabled)")
+            return 0
+        remaining = deadline - time.time()
+        if remaining <= poll:
+            log(f"{label} over")
+            return 0
+        code = run_session(args, max(1, int(remaining // poll)), deadline, control)
+        remaining = deadline - time.time()
+        if remaining <= poll:
+            log(f"{label} over")
+            return 0
+        if control is not None and not control.enabled():
+            continue  # the page disabled it (or it wound down): hold above
+        attempts += 1
+        log(
+            f"loop exited with {code} and {remaining / 60:.0f} min left "
+            f"(attempt {attempts}/{args.max_restarts})"
+        )
+        if attempts >= args.max_restarts:
+            log(
+                f"{args.max_restarts} restarts in one session -- stopping rather than "
+                "looping. Something is wrong that a restart is not fixing."
+            )
+            return 1
+        _wait(control, 10.0, state="restarting", detail=f"the loop exited with {code}")
 
 
 def _main_extended(args, config, poll: float) -> int:
@@ -228,7 +380,13 @@ def _main_extended(args, config, poll: float) -> int:
         if args.dry_run:
             log("--dry-run: would wait, then trade the extended session.")
             return 0
-        time.sleep(max(0.0, wait) + args.open_delay)
+        _wait(
+            _control,
+            wait + args.open_delay,
+            state="waiting_for_open",
+            detail=f"pre-market opens {start:%H:%M} ET",
+            next_open=start.isoformat(),
+        )
         now, start, end = extended_window(config.live.paper_trading)
 
     seconds_left = (end - now).total_seconds() - args.close_margin
@@ -245,20 +403,7 @@ def _main_extended(args, config, poll: float) -> int:
         log("--dry-run: would run the loop now.")
         return 0
 
-    deadline = time.time() + seconds_left
-    for attempt in range(1, args.max_restarts + 1):
-        code = run_session(args, ticks, deadline)
-        remaining = deadline - time.time()
-        if remaining <= poll:
-            log("extended session over")
-            return 0
-        log(
-            f"loop exited with {code} and {remaining / 60:.0f} min left "
-            f"(restart {attempt}/{args.max_restarts})"
-        )
-        ticks = max(1, int(remaining // poll))
-    log("restart budget exhausted")
-    return 1
+    return _run_until(args, poll, time.time() + seconds_left, _control, "extended session")
 
 
 def _interrupt(signum, _frame) -> None:
@@ -268,9 +413,33 @@ def _interrupt(signum, _frame) -> None:
     raise KeyboardInterrupt
 
 
+# This run's control directory, if any: set by main() for the waits above.
+_control: SupervisorControl | None = None
+
+
 def main(argv=None) -> int:
+    """One session (or none, on a day without one), then -- with --linger --
+    the wait before the next, answering the Live page throughout."""
+    global _control
     args = parse_args(argv)
     signal.signal(signal.SIGTERM, _interrupt)
+    _control = _control_for(args)
+    if _control is not None:
+        _control.poll()  # commands queued while nothing was running
+    code = _session(args)
+    if args.linger > 0 and not args.dry_run:
+        if _control is None:
+            time.sleep(args.linger)
+        else:
+            _control.serve(
+                args.linger,
+                state="closed" if _control.enabled() else "disabled",
+                detail="between sessions",
+            )
+    return code
+
+
+def _session(args) -> int:
     config = BacktestConfig.from_yaml(args.config)
     config.validate()
     poll = float(config.live.poll_interval_seconds or 60.0)
@@ -292,7 +461,13 @@ def main(argv=None) -> int:
         if args.dry_run:
             log("--dry-run: would wait, then trade until the close.")
             return 0
-        time.sleep(max(0.0, wait) + args.open_delay)
+        _wait(
+            _control,
+            wait + args.open_delay,
+            state="waiting_for_open",
+            detail=f"opens {now.next_open:%Y-%m-%d %H:%M} ET",
+            next_open=now.next_open.isoformat(),
+        )
         now = clock(config.live.paper_trading)
 
     seconds_left = (now.next_close - now.timestamp).total_seconds() - args.close_margin
@@ -309,30 +484,7 @@ def main(argv=None) -> int:
         log("--dry-run: would run the loop now.")
         return 0
 
-    deadline = time.time() + seconds_left
-    for attempt in range(1, args.max_restarts + 1):
-        code = run_session(args, ticks, deadline)
-        if time.time() >= deadline:
-            log("session over")
-            return 0
-        remaining = deadline - time.time()
-        if remaining <= poll:
-            log("session over")
-            return 0
-        log(
-            f"loop exited with {code} and {remaining / 60:.0f} min left "
-            f"(attempt {attempt}/{args.max_restarts})"
-        )
-        if attempt == args.max_restarts:
-            log(
-                f"{args.max_restarts} restarts in one session -- stopping rather than "
-                "looping. Something is wrong that a restart is not fixing."
-            )
-            return 1
-        # Recompute ticks so a restart does not run past the close.
-        ticks = max(1, int(remaining // poll))
-        time.sleep(10.0)
-    return 0
+    return _run_until(args, poll, time.time() + seconds_left, _control, "session")
 
 
 if __name__ == "__main__":

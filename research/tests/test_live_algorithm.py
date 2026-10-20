@@ -361,3 +361,150 @@ def test_a_hand_edited_override_is_held_to_the_same_rules(tmp_path):
         with pytest.raises(ConfigurationError, match=match) as caught:
             control.effective_config()
         assert str(control.path) in str(caught.value)
+
+
+# -- the Live page's channel (live.control.algorithm_changes) ---------------------
+
+
+def _command(type_="switch_algorithm", **args):
+    from engine.trading.control_inbox import Command
+
+    return Command.new(type_, reason="from the page", operator="tester", args=args, now=1e9)
+
+
+@pytest.fixture
+def profiles(tmp_path, monkeypatch):
+    """One profile for TQQQ, one for another fund, and one with a passing
+    paper promotion -- in a directory of their own."""
+    directory = tmp_path / "profiles"
+    directory.mkdir()
+    for profile_id, symbols, promoted in (
+        ("fixed-tqqq", ["TQQQ"], False),
+        ("fixed-rsp", ["RSP"], False),
+        ("fixed-promoted", ["TQQQ"], True),
+    ):
+        lines = [
+            f"id: {profile_id}",
+            f"label: {profile_id}",
+            f"symbols: {symbols}",
+            "strategy_id: fixed",
+            "strategy_params: {allocation_pct: 0.07}",
+            "step: 0.02",
+            "profit_target: 0.01",
+        ]
+        if promoted:
+            (directory / "promotion.json").write_text(json.dumps({"passed": True}))
+            lines.append("evidence: {promotion: promotion.json}")
+        (directory / f"{profile_id}.yaml").write_text("\n".join(lines) + "\n")
+    monkeypatch.setenv("VAI_LIVE_PROFILES", str(directory))
+    return directory
+
+
+def _handlers(control, *, paper=True, rewarm=None):
+    from research.strategies.live_algorithm import algorithm_handlers
+
+    return algorithm_handlers(control, symbol="TQQQ", paper=paper, on_rewarm=rewarm)
+
+
+def test_the_page_needs_its_own_grant(tmp_path):
+    control = _control(tmp_path, allowed=True)  # the extension's grant only
+    with pytest.raises(PermissionError, match=r"live\.control\.algorithm_changes"):
+        control.set(_change(), channel="web")
+    control = _control(tmp_path, allowed=False, web_allowed=True)
+    control.set(_change(), channel="web", provenance={"changedBy": "tester"})
+    assert control.effective_config().live.step == 0.02
+    assert control.override_info()["channel"] == "web"
+    assert control.override_info()["changedBy"] == "tester"
+
+
+def test_a_switch_to_a_profile_is_applied_and_reloads(tmp_path, profiles):
+    from engine.trading.operator_control import CommandRejected
+
+    control = _control(tmp_path, allowed=False, web_allowed=True)
+    reloads = []
+    control.on_apply = lambda: reloads.append(1)
+    handlers = _handlers(control)
+    detail = handlers["switch_algorithm"](_command(profile_id="fixed-tqqq"))
+    assert "profile fixed-tqqq" in detail and reloads == [1]
+    assert control.override_info()["profile"] == "fixed-tqqq"
+    assert control.effective_config().strategy.strategy_params == {"allocation_pct": 0.07}
+
+    with pytest.raises(CommandRejected, match="researched on RSP"):
+        handlers["switch_algorithm"](_command(profile_id="fixed-rsp"))
+    with pytest.raises(CommandRejected, match="No algorithm profile"):
+        handlers["switch_algorithm"](_command(profile_id="nope"))
+
+
+def test_custom_changes_are_paper_only(tmp_path, profiles):
+    from engine.trading.operator_control import CommandRejected
+
+    control = _control(tmp_path, allowed=False, web_allowed=True)
+    assert "switching to fixed" in _handlers(control)["switch_algorithm"](_command(**_change()))
+    with pytest.raises(CommandRejected, match="only to committed profiles"):
+        _handlers(control, paper=False)["switch_algorithm"](_command(**_change()))
+    strict = _control(tmp_path, allowed=False, web_allowed=True, profiles_only=True)
+    with pytest.raises(CommandRejected, match="only to committed profiles"):
+        _handlers(strict)["switch_algorithm"](_command(**_change()))
+
+
+def test_real_money_takes_only_a_promoted_profile(tmp_path, profiles):
+    from engine.trading.operator_control import CommandRejected
+
+    control = _control(tmp_path, allowed=False, web_allowed=True, profiles_only=True)
+    handlers = _handlers(control, paper=False)
+    with pytest.raises(CommandRejected, match="passing paper promotion"):
+        handlers["switch_algorithm"](_command(profile_id="fixed-tqqq"))
+    assert "profile fixed-promoted" in handlers["switch_algorithm"](
+        _command(profile_id="fixed-promoted")
+    )
+
+
+def test_a_bad_change_is_rejected_with_the_reason(tmp_path, profiles):
+    from engine.trading.operator_control import CommandRejected
+
+    control = _control(tmp_path, allowed=False, web_allowed=True)
+    with pytest.raises(CommandRejected, match="between 0 and 1"):
+        _handlers(control)["switch_algorithm"](_command(**_change(profit_target=5)))
+    assert control.override_info() is None
+
+
+def test_revert_and_rewarm(tmp_path, profiles):
+    control = _control(tmp_path, allowed=False, web_allowed=True)
+    rewarmed = []
+    handlers = _handlers(control, rewarm=lambda: rewarmed.append(1))
+    assert handlers["revert_algorithm"](_command("revert_algorithm")).startswith("already")
+    handlers["switch_algorithm"](_command(profile_id="fixed-tqqq"))
+    assert handlers["revert_algorithm"](_command("revert_algorithm")).startswith("back to")
+    assert control.override_info() is None
+    handlers["rewarm"](_command("rewarm"))
+    assert rewarmed == [1]
+    assert "rewarm" not in _handlers(control)
+
+
+def test_a_check_writes_nothing(tmp_path):
+    control = _control(tmp_path, allowed=False, web_allowed=True)
+    change, config = control.check(_change())
+    assert change["step"] == 0.02 and config.live.profit_target == 0.01
+    assert not control.path.exists()
+
+
+def test_live_capability_is_judged_against_this_deployment(tmp_path):
+    regular = _control(tmp_path, allowed=False, base=_base(execution={"allow_signal_exit": True}))
+    assert regular.live_capable("ultimate") == (True, None)
+    capable, why = _control(tmp_path, allowed=False).live_capable("ultimate")
+    assert not capable and "allow_signal_exit" in why
+
+
+def test_the_impact_of_a_switch_on_the_book():
+    from research.strategies.live_algorithm import impact
+
+    lots = [{"px": 50.0, "qty": 2.0, "target": 0.3}, {"px": 40.0, "qty": 1.0, "target": 0.06}]
+    result = impact(
+        {"strategy_id": "ultimate", "profit_target": 0.3},
+        {"strategy_id": "fixed", "profit_target": 0.3},
+        lots,
+    )
+    assert result["open_lots"] == 2 and result["cost"] == 140.0
+    assert result["lots_at_new_target"] == 1
+    assert result["signal_exit_before"] and not result["signal_exit_after"]
+    assert any("regime exit stops" in note for note in result["notes"])

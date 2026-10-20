@@ -82,7 +82,8 @@ def called_names(tree: ast.Module) -> set[str]:
 
 ALL_MODULES = (
     "live.py",
-    "control.py",
+    "live_control.py",
+    "live_registry.py",
     "backtest.py",
     "jobs.py",
     "app.py",
@@ -132,40 +133,79 @@ class TestLiveIsReadOnly:
         """A direct sqlite3 connection would sidestep mode=ro."""
         assert "sqlite3" not in imported_modules(module_ast("live.py"))
 
+    @pytest.mark.parametrize("name", ["live.py", "live_registry.py"])
+    def test_it_reads_the_control_directory_and_never_writes_it(self, name: str):
+        """It shows what the trader reports and what was asked of it; the
+        queueing is live_control.py's, the rest the trader's."""
+        called = called_names(module_ast(name))
+        assert not called & (QUEUE_CALLS | WRITE_CALLS), (
+            f"server/{name} calls {sorted(called & (QUEUE_CALLS | WRITE_CALLS))}"
+        )
 
-class TestControlIsNarrow:
-    """server/control.py is the ONE write, and only that one."""
 
-    def test_it_reaches_the_circuit_breaker(self):
-        """A negative test suite that never checks the positive case
-        would pass on an empty file."""
-        tree = module_ast("control.py")
-        assert "CircuitBreaker" in imported_modules(tree)
-        assert "halt_for_reconciliation" in called_names(tree)
+# What could change a ledger, a breaker or a file. The control module may
+# only QUEUE commands (ControlInbox.enqueue / cancel); the trader applies them.
+WRITE_CALLS = {
+    "open",
+    "write_text",
+    "write_bytes",
+    "unlink",
+    "rename",
+    "replace",
+    "set_meta",
+    "halt_by_operator",
+    "manual_reset",
+    "halt_for_reconciliation",
+}
+# The inbox's own writers. Reading modules may not call them at all.
+QUEUE_CALLS = {"enqueue", "cancel", "claim", "record", "set_desired", "write_status"}
 
-    def test_it_exposes_exactly_one_route(self):
-        """A second endpoint here is a second write, and would need its
-        own justification. Counting them makes that a decision rather
-        than a drift."""
-        routes = [
-            node
-            for node in ast.walk(module_ast("control.py"))
-            for decorator in getattr(node, "decorator_list", [])
-            if isinstance(node, ast.FunctionDef)
-            and isinstance(decorator, ast.Call)
-            and isinstance(decorator.func, ast.Attribute)
-            and isinstance(decorator.func.value, ast.Name)
-            and decorator.func.value.id == "router"
-        ]
-        assert len(routes) == 1, f"control.py exposes {[r.name for r in routes]}"
 
-    def test_it_names_no_liquidation_endpoint(self):
-        """`liquidate_all` was requested and refused: the trading loop
-        has no code path that sells for any reason but a met profit
-        target, and adding one would mean forced selling at a loss."""
-        source = (SERVER / "control.py").read_text(encoding="utf-8")
-        assert "def liquidate" not in source
-        assert '"/liquidate' not in source
+class TestLiveControlOnlyQueues:
+    """server/live_control.py changes nothing itself: it queues commands that
+    the deployment's trader -- the only writer of its ledger -- applies."""
+
+    def test_it_reaches_no_ledger_breaker_or_shell(self):
+        imported = imported_modules(module_ast("live_control.py"))
+        assert not imported & {"LedgerStore", "CircuitBreaker", "sqlite3", "subprocess"}, imported
+
+    def test_it_writes_only_through_the_inbox(self):
+        called = called_names(module_ast("live_control.py"))
+        assert not called & WRITE_CALLS, f"live_control.py calls {sorted(called & WRITE_CALLS)}"
+        # The positive case: a negative test alone would pass on an empty file.
+        assert {"enqueue", "cancel"} <= called
+
+    def test_it_never_changes_an_algorithm_itself(self):
+        """It reads the algorithm and dry-runs a change (AlgorithmControl.
+        check); writing the override is the trader's, when it applies the
+        command."""
+        attribute_calls = {
+            node.func.attr
+            for node in ast.walk(module_ast("live_control.py"))
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+        assert not attribute_calls & {"set", "reset", "mark_live"}, attribute_calls
+
+    def test_there_is_no_liquidation_command(self):
+        """`liquidate_all` was requested once and refused: the loop sells a
+        lot only at its target under the no-loss guard (or by the Ultimate
+        regime exit), and a forced, loss-realising sell is not a button."""
+        import typing
+
+        from engine.trading.control_inbox import COMMAND_TYPES
+        from server.live_control import CommandRequest
+
+        accepted = typing.get_args(CommandRequest.model_fields["type"].annotation)
+        for name in (*accepted, *COMMAND_TYPES):
+            assert "liquidat" not in name and "sell" not in name, name
+
+    def test_every_post_route_has_the_cross_site_guard(self):
+        from server.live_control import router, same_origin
+
+        for route in router.routes:
+            if "POST" in getattr(route, "methods", ()):
+                guards = [dependency.call for dependency in route.dependant.dependencies]
+                assert same_origin in guards, route.path
 
 
 class TestBacktestTouchesNoLiveState:
@@ -315,7 +355,7 @@ class TestAppDefaults:
 
         # An API route that needs arguments still reaches its own
         # validation rather than being handed HTML.
-        assert client.get("/api/live/state").status_code == 422
+        assert client.get("/api/live/indicators").status_code == 422
 
         # And an API path that does not exist is a JSON 404 on every
         # method -- never 405, and never the HTML shell.
@@ -339,7 +379,7 @@ class TestAppDefaults:
         from server.app import health
 
         caps = health()["caps"]
-        assert "halt" in caps
+        assert "control" in caps
         assert "liquidate" not in caps
         assert "parameter_override" not in caps
 

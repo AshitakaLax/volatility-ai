@@ -4,6 +4,7 @@ import { BacktestChart } from "@/components/backtest/BacktestChart";
 import { ConfigurationList } from "@/components/backtest/ConfigurationList";
 import { FilterPanel } from "@/components/backtest/FilterPanel";
 import { FundComparison } from "@/components/backtest/FundComparison";
+import { ProfileProposal } from "@/components/backtest/ProfileProposal";
 import { RiskRewardMetrics } from "@/components/backtest/RiskRewardMetrics";
 import { SweepMatrix } from "@/components/backtest/SweepMatrix";
 import { SweepSummary } from "@/components/backtest/SweepSummary";
@@ -246,6 +247,11 @@ export function BacktestResult({
 
   return (
     <>
+      {selectedConfig && selected ? (
+        <div className="flex justify-end">
+          <ProfileProposal report={report} ticker={selected} cell={selectedConfig} />
+        </div>
+      ) : null}
       {selectedConfig ? (
         <RiskRewardMetrics
           metrics={selectedConfig.m}

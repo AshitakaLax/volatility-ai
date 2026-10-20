@@ -1,5 +1,135 @@
 # Changelog
 
+## Live page: what a deployment trades and is doing, and a Fidelity section
+
+**The Ultimate paper trader looked broken for two sessions, and nothing on
+the page could say why.** Its NATR regime turned turbulent on 2026-10-19
+(TQQQ fell 19% from Oct 6 to Oct 16), so by design it made no grid buys --
+but that reading lived only in the trader's log. The page also misled in
+smaller ways:
+- **The deployment cards showed the config file's algorithm,** not the one
+  trading, so a switch from the page was invisible on them.
+- **The Deployment card's build and process were the web server's,** not the
+  trader's, and inside the image (no `.git`) the commit read "--" anyway.
+- **The "live" chart drew warehouse bars**, which lag a running deployment
+  by days (TQQQ's ended Oct 8), and its RSI came from a bar file.
+- **No trades were shown:** the ledger keeps lots but never what a sale
+  fetched, and the activity log route had no reader.
+
+**The trader now says what it is doing** (`engine/trading/live_trading_loop.py`,
+through its status file):
+- **Every tick:** the price its next buy triggers at -- the strategy's own
+  `_grid_trigger_level`, the one definition the buy uses -- or what blocks
+  one (a pause, a strategy buying at no price, no buying power, the lot
+  cap), with the strategy's `diagnostics()`. Ultimate's now carry its
+  regime: since when, the NATR against its median at the last close, and
+  the first session it may change (`IncrementalNatrRegime.describe`).
+- **While an override trades,** the config file's algorithm runs beside it
+  as a shadow -- the same bars, trading nothing -- and reports what
+  switching back would do now. Reverting to Ultimate during a turbulent
+  spell would market-sell every lot it did not buy as a reversal lot (its
+  exit stays active for the whole spell); the page says so before the
+  revert is sent.
+- **Its journals,** in its control directory: the minute bars it traded on
+  (the last sessions of its replayed history included) and every fill it
+  booked, each sale with what it fetched against what its lot cost.
+- **Its build:** a fingerprint of the code it loaded and, when the image was
+  built with `VAI_BUILD_COMMIT`, the commit (`engine/core/build_info.py`).
+  `/api/health` reports the same fingerprint, so the page can tell whether
+  the trader and the web server run the same code.
+
+**The page** (`web/src/components/live/`): an overview of the fund, its
+price, the book and today's trades, with the "doing now" line; one
+Algorithm card (a readable name, the grid in words, every parameter against
+the config file's, the profit-target check); the chart from the trader's own
+bars with its fills and the next-buy price; a trades list; the ledger's
+activity; and the trader's own build on the Deployment card.
+
+**Alpaca and Fidelity are separate sections.** A Fidelity deployment's card
+and panel show the browser extension's side of the bridge
+(`BridgeServer.connection_report`): connected or not and since when, when it
+was last heard from, its version against the expected ones, "Allow trading"
+and previews, the account's display name and the per-buy cap. Its status is
+tagged with a hash of the Fidelity account, not the Alpaca key it reads
+prices with, so it no longer looks like a second loop on a paper trader's
+account. A deployment can be registered before its config exists
+(`broker:` in `config/deployments.yaml`); the page then says how to set it
+up.
+
+**The Fidelity engine is a compose service now,** `fidelity` (profile
+`fidelity`, started only by name), so the page sees it like the paper
+traders: its own ledger and control volumes (`state_fidelity`,
+`control_fidelity`; the backup service archives the ledger), on the host's
+network so the bridge listens on this server and checks the browser's real
+address. Its config is read from the host and kept out of the image
+(`.dockerignore`), since it names the account. Setup: docs/DEPLOY.md,
+"Fidelity".
+
+## Live deployment control
+
+**The Live page's emergency halt did not work, in two ways.**
+- **In the compose deployment it failed outright.** `server/control.py`
+  opened the ledger writable, but `web` mounts the ledgers read-only.
+- **Where the write did succeed, a running loop ignored it.** The loop reads
+  the halt once, at startup, so it kept buying while the page said
+  "halted".
+
+There was also no way to clear a halt from the page, to stop or start a
+deployment, or to change an Alpaca deployment's algorithm. Every live route
+took a file path from the browser; the halt would open any writable file
+as a SQLite ledger.
+
+**Commands now go to the trading process, and it applies them.**
+- The server queues a command as a file in the deployment's control volume
+  (`engine/trading/control_inbox.py`).
+- The trader applies it (`engine/trading/operator_control.py`) through the
+  circuit breaker, algorithm and loop it trades with:
+  - while trading, the loop applies it between ticks, so a pause lands
+    before the next buy decision;
+  - between sessions, the supervisor applies it within 15 s, under the
+    ledger's own lock.
+- Every command is answered (applied, rejected with the reason, superseded,
+  expired, cancelled), and the directory is the audit trail. The trader
+  stays the only writer of its ledger.
+
+**What the page offers:**
+- **Every deployment, by id** (`config/deployments.yaml`), with the state
+  its trader reports. A report that stops arriving reads "Not running".
+- **Buying:** pause and resume. Resuming can re-base the drawdown, so a
+  drawdown halt does not trip again on the next tick.
+- **Trading on or off:** wind down (pause buys, stop once flat), disable,
+  enable.
+- **The algorithm:** switch, revert to the config file's, and re-warm. A
+  switch goes through the extension's validation, override file and
+  rebuild, which `AlgorithmControl` now offers to every broker with one
+  grant per channel. It takes effect at the next tick, at the next session,
+  or once the book is flat. A dry-run check shows what it would do to the
+  open lots.
+- **A fresh paper ledger:** the old one is archived, not deleted. Only while
+  disabled, on paper, with the Alpaca account flat.
+- **Profiles:** committed algorithms in `config/live_profiles/`. A backtest
+  result can propose one ("Copy as live profile"); `config/` stays
+  read-only to the server, so a commit decides.
+
+**Safety:**
+- **The config decides what the page may do.** Each deployment's
+  `live.control` grants it, and pausing is always allowed.
+- **Real money is narrower.** It takes only profiles with a passing paper
+  promotion, switches at most once a day, needs the id typed back for
+  everything but a pause, and never resets its ledger.
+- **One account, one loop.** Two deployments reporting the same account tag
+  (a one-way hash of the key id) cannot both be enabled from the page.
+- **No liquidation command.** There is none, and the capability tests hold
+  the control module to queueing only.
+- **No login, by the operator's choice.** A cross-site guard refuses
+  requests from other sites' pages, and every command records who sent it
+  and from where.
+
+**Fixed while there:**
+- The target warning now compares against the deployment's own config.
+  Ultimate's 30% calm-lot target is intended.
+- `/bars` and `/indicators` no longer take a directory from the browser.
+
 ## The Warehouse tab
 
 **A tab for what the warehouse holds and the state of the machine filling

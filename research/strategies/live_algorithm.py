@@ -15,10 +15,14 @@ file.
 --------------------------------------------------------------------
 WHO DECIDES THAT IT CAN CHANGE AT ALL
 
-The deployment's own file, `live.fidelity.bridge.allow_algorithm_changes`.
-Without it the extension can look and every change is refused: what real
-capital trades is decided in a reviewable file, and a browser may change
-it only when that file says so.
+The deployment's own file, once per channel: the browser extension by
+`live.fidelity.bridge.allow_algorithm_changes`, the Live page (its commands,
+applied by the trader -- engine/trading/operator_control.py) by
+`live.control.algorithm_changes`. Without the grant a channel can look and
+every change is refused: what real capital trades is decided in a reviewable
+file, and a browser may change it only when that file says so. A real-money
+deployment takes only committed profiles from the page
+(research/strategies/live_profiles.py; LiveControlConfig.effective).
 
 --------------------------------------------------------------------
 WHERE A CHANGE IS KEPT
@@ -222,12 +226,15 @@ def _param_value(spec: dict, value: Any) -> Any:
 
 
 class AlgorithmControl:
-    """The extension's view of the live algorithm, and the one way it changes.
+    """The live algorithm as a browser sees it, and the one way it changes.
 
     `base` is the deployment's YAML (as a validated BacktestConfig);
-    `allowed` is its allow_algorithm_changes. `on_apply`, set by whatever
-    runs the loop, is told when the algorithm to trade has changed; the
-    runner then rebuilds from `effective_config()`.
+    `allowed` is the extension's grant (live.fidelity.bridge.
+    allow_algorithm_changes), `web_allowed` the Live page's
+    (live.control.algorithm_changes), `profiles_only` whether the page may
+    send only committed profiles. `on_apply`, set by whatever runs the loop,
+    is told when the algorithm to trade has changed; the runner then
+    rebuilds from `effective_config()`.
     """
 
     def __init__(
@@ -237,6 +244,8 @@ class AlgorithmControl:
         state_db: str | Path,
         registry: dict[str, type],
         allowed: bool,
+        web_allowed: bool = False,
+        profiles_only: bool = False,
         config_path: str | Path | None = None,
         log: Callable[[str], None] | None = None,
         now: Callable[[], float] = time.time,
@@ -245,6 +254,8 @@ class AlgorithmControl:
         self._path = override_path(state_db)
         self._registry = registry
         self._allowed = bool(allowed)
+        self._web_allowed = bool(web_allowed)
+        self.profiles_only = bool(profiles_only)
         self._config_path = (
             str(config_path) if config_path is not None else "the deployment's config"
         )
@@ -256,7 +267,18 @@ class AlgorithmControl:
 
     @property
     def allowed(self) -> bool:
+        """The extension's grant."""
         return self._allowed
+
+    @property
+    def web_allowed(self) -> bool:
+        """The Live page's grant."""
+        return self._web_allowed
+
+    @property
+    def _applies_override(self) -> bool:
+        """An override is traded when any channel that could write one may."""
+        return self._allowed or self._web_allowed
 
     @property
     def path(self) -> Path:
@@ -292,7 +314,7 @@ class AlgorithmControl:
         return config
 
     def _effective_data(self) -> dict:
-        override = self.read_override() if self._allowed else None
+        override = self.read_override() if self._applies_override else None
         if override is None:
             return copy.deepcopy(self._base)
         # Held to exactly the rules a change from the extension is: the
@@ -305,7 +327,67 @@ class AlgorithmControl:
 
     def ignored_override(self) -> bool:
         """An override on disk that this deployment does not allow, and so ignores."""
-        return not self._allowed and self._path.exists()
+        return not self._applies_override and self._path.exists()
+
+    def current(self) -> dict:
+        """The algorithm traded now: the override when one applies, else the YAML's."""
+        return self._algorithm_of(self._effective_data())
+
+    def config_file_algorithm(self) -> dict:
+        return self._algorithm_of(self._base)
+
+    def config_file_config(self) -> BacktestConfig:
+        """The deployment's YAML with no override laid over it: what a revert
+        would trade. Validated."""
+        config = BacktestConfig.from_dict(copy.deepcopy(self._base))
+        config.validate()
+        return config
+
+    def override_info(self) -> dict | None:
+        """Who changed it, how and when -- None when the YAML's is traded."""
+        override = self.read_override() if self._applies_override else None
+        if override is None:
+            return None
+        return {
+            "channel": override.get("channel", "extension"),
+            "changedAt": override.get("changedAt"),
+            "changedBy": override.get("changedBy"),
+            "reason": override.get("reason"),
+            "profile": override.get("profile"),
+        }
+
+    def check(self, args: dict) -> tuple[dict, BacktestConfig]:
+        """A proposed change, parsed and validated exactly as set() would --
+        but nothing written. Returns (the change as it would be kept, the
+        config it would trade). Raises ConfigurationError."""
+        change = self._parse(args)
+        return change, self._validated(change)
+
+    def live_capable(self, strategy_id: str) -> tuple[bool, str | None]:
+        """Whether `strategy_id` could trade live on THIS deployment at all,
+        and why not: its own live rules (check_live_support) against the
+        deployment's settings, with its committed defaults. A strategy that
+        only wants parameters filled in counts as capable."""
+        from research.strategies.param_schema import STRATEGY_DEFAULTS
+
+        strategy_class = self._registry.get(strategy_id)
+        if strategy_class is None:
+            return False, f"unknown strategy {strategy_id!r}"
+        data = copy.deepcopy(self._base)
+        data["strategy"] = {
+            "strategy_id": strategy_id,
+            "strategy_params": dict(STRATEGY_DEFAULTS.get(strategy_id, {})),
+        }
+        try:
+            config = BacktestConfig.from_dict(data)
+            strategy = strategy_class(**config.strategy.strategy_params)
+        except Exception:
+            return True, None  # it needs parameters chosen, not a different deployment
+        try:
+            check_live_support(config, strategy)
+        except ConfigurationError as exc:
+            return False, str(exc)
+        return True, None
 
     def mark_live(self, config: BacktestConfig) -> None:
         """Called by the runner once a loop trades `config`."""
@@ -356,18 +438,26 @@ class AlgorithmControl:
             "strategies": strategies,
         }
 
-    def set(self, args: dict) -> dict:
+    def set(
+        self, args: dict, *, channel: str = "extension", provenance: dict | None = None
+    ) -> dict:
         """algorithm.set: validate a new algorithm, keep it, and have the
-        running loop switch to it at its next tick."""
-        self._require_allowed()
+        running loop switch to it at its next tick. `provenance` (who, why,
+        which profile) is kept beside it, for the page to show."""
+        self._require_allowed(channel)
         change = self._parse(args)
         with self._lock:
             config = self._validated(change)
             self._write(
-                {**change, "changedAt": datetime.fromtimestamp(self._now(), UTC).isoformat()}
+                {
+                    **change,
+                    **(provenance or {}),
+                    "channel": channel,
+                    "changedAt": datetime.fromtimestamp(self._now(), UTC).isoformat(),
+                }
             )
         self._log(
-            f"[algorithm] changed from the extension: {change['strategy_id']} "
+            f"[algorithm] changed from the {channel}: {change['strategy_id']} "
             f"step={change['step']} profit_target={change['profit_target']} "
             f"params={json.dumps(change['strategy_params'], sort_keys=True)} -- "
             "the loop switches at its next tick"
@@ -376,27 +466,35 @@ class AlgorithmControl:
         return {
             "applied": True,
             "current": self._algorithm_of(config.to_dict()),
-            "source": "extension",
+            "source": channel,
         }
 
-    def reset(self, _args: dict | None = None) -> dict:
+    def reset(self, _args: dict | None = None, *, channel: str = "extension") -> dict:
         """algorithm.reset: back to the config file's algorithm."""
-        self._require_allowed()
+        self._require_allowed(channel)
         with self._lock:
             existed = self._path.exists()
             if existed:
                 self._path.unlink()
         if existed:
+            who = "browser extension" if channel == "extension" else "Live page"
             self._log(
-                "[algorithm] the extension's change was reverted: back to the config "
-                "file's algorithm at the next tick"
+                f"[algorithm] reverted from the {who}: back to the config file's algorithm "
+                "at the next tick"
             )
             self._notify()
         return {"applied": existed, "current": self._algorithm_of(self._base), "source": "config"}
 
     # -- the pieces -------------------------------------------------------------
 
-    def _require_allowed(self) -> None:
+    def _require_allowed(self, channel: str = "extension") -> None:
+        if channel == "web":
+            if not self._web_allowed:
+                raise PermissionError(
+                    "This deployment does not take algorithm changes from the Live page "
+                    f"(live.control.algorithm_changes in {self._config_path})."
+                )
+            return
         if not self._allowed:
             raise PermissionError(
                 "This deployment does not take algorithm changes from the browser "
@@ -488,6 +586,10 @@ class AlgorithmControl:
             callback()
 
     @staticmethod
+    def algorithm_of(data: dict) -> dict:
+        return AlgorithmControl._algorithm_of(data)
+
+    @staticmethod
     def _algorithm_of(data: dict) -> dict:
         strategy = data.get("strategy") or {}
         live = data.get("live") or {}
@@ -497,3 +599,137 @@ class AlgorithmControl:
             "step": live.get("step"),
             "profit_target": live.get("profit_target"),
         }
+
+
+def impact(current: dict, change: dict, lots: list[dict]) -> dict:
+    """What a switch from `current` to `change` does to the open book.
+
+    `lots` are the ledger's open lots ({"px", "qty", "target"} as server/
+    live.py's state_payload serves them). Every lot keeps the target it was
+    bought at -- registered at the buy, never moved by a switch -- so only
+    NEW lots use the new grid. What a switch can change for the old ones is
+    whether a signal exit (the Ultimate family's regime exit) still applies.
+    """
+    from research.strategies.strategy_registry import SIGNAL_EXIT_STRATEGIES
+
+    count = len(lots)
+    target = change.get("profit_target")
+    exit_before = current.get("strategy_id") in SIGNAL_EXIT_STRATEGIES
+    exit_after = change.get("strategy_id") in SIGNAL_EXIT_STRATEGIES
+    notes = []
+    if count:
+        notes.append(
+            f"{count} open lot{'' if count == 1 else 's'} carry over with the targets they were "
+            "bought at; only new lots use the new step and target."
+        )
+    if exit_before and not exit_after:
+        notes.append(
+            f"The regime exit stops: lots opened under {current.get('strategy_id')} then exit "
+            "only at their own targets, through any downturn."
+        )
+    if exit_after and not exit_before and count:
+        notes.append(
+            f"{change.get('strategy_id')}'s regime exit will apply to the lots already open, "
+            "including ones bought by the old algorithm."
+        )
+    if change.get("strategy_id") != current.get("strategy_id"):
+        notes.append("The new strategy starts from replayed history, as every session does.")
+    return {
+        "open_lots": count,
+        "cost": round(sum(float(lot["px"]) * float(lot["qty"]) for lot in lots), 2),
+        "lots_at_new_target": sum(
+            1
+            for lot in lots
+            if target is not None and math.isclose(float(lot["target"]), float(target))
+        ),
+        "signal_exit_before": exit_before,
+        "signal_exit_after": exit_after,
+        "notes": notes,
+    }
+
+
+def _describe_change(change: dict) -> str:
+    return (
+        f"{change['strategy_id']} (step {change['step']:.4%}, target {change['profit_target']:.4%})"
+    )
+
+
+def algorithm_handlers(
+    control: AlgorithmControl,
+    *,
+    symbol: str,
+    paper: bool,
+    on_rewarm: Callable[[], None] | None = None,
+) -> dict[str, Callable[[Any], str]]:
+    """The Live page's algorithm commands, for the trader's ControlApplier
+    (engine/trading/operator_control.py): switch, revert and -- where a loop
+    runs -- re-warm.
+
+    Applied through `control` exactly as the extension's changes are: the
+    same validation, the same override file, the same rebuild at the next
+    tick (`on_apply`). A switch names a committed profile
+    (research/strategies/live_profiles.py) or, on paper only, the change
+    itself; a real-money deployment takes only a profile with a passing
+    paper promotion.
+    """
+    from engine.trading.operator_control import CommandRejected
+    from research.strategies import live_profiles
+
+    def switch(command) -> str:
+        args = command.args
+        provenance = {"changedBy": command.operator, "reason": command.reason}
+        profile_id = args.get("profile_id")
+        if profile_id:
+            try:
+                profile = live_profiles.get(str(profile_id))
+            except ConfigurationError as exc:
+                raise CommandRejected(str(exc)) from exc
+            if not profile.fits(symbol):
+                raise CommandRejected(
+                    f"profile {profile.id} was researched on {', '.join(profile.symbols)}, "
+                    f"not {symbol}"
+                )
+            if not paper and not profile.promoted():
+                raise CommandRejected(
+                    f"real money takes only a profile with a passing paper promotion, and "
+                    f"{profile.id} names none"
+                )
+            change = profile.change()
+            provenance["profile"] = profile.id
+        elif control.profiles_only or not paper:
+            raise CommandRejected("this deployment switches only to committed profiles")
+        else:
+            change = {
+                key: args.get(key)
+                for key in ("strategy_id", "strategy_params", "step", "profit_target")
+            }
+        try:
+            result = control.set(change, channel="web", provenance=provenance)
+        except (ConfigurationError, PermissionError) as exc:
+            raise CommandRejected(str(exc)) from exc
+        what = _describe_change(result["current"])
+        return f"switching to {what}" + (
+            f" (profile {provenance['profile']})" if "profile" in provenance else ""
+        )
+
+    def revert(_command) -> str:
+        try:
+            result = control.reset(channel="web")
+        except PermissionError as exc:
+            raise CommandRejected(str(exc)) from exc
+        if not result["applied"]:
+            return "already trading the config file's algorithm"
+        return f"back to the config file's algorithm: {_describe_change(result['current'])}"
+
+    handlers: dict[str, Callable[[Any], str]] = {
+        "switch_algorithm": switch,
+        "revert_algorithm": revert,
+    }
+    if on_rewarm is not None:
+
+        def rewarm(_command) -> str:
+            on_rewarm()
+            return "rebuilding the strategy from replayed history after this tick"
+
+        handlers["rewarm"] = rewarm
+    return handlers

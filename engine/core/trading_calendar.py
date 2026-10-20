@@ -137,6 +137,17 @@ def previous_session(day: date) -> date:
     return day
 
 
+def next_session(day: date, n: int = 1) -> date:
+    """The `n`-th session strictly after `day`: n=1 is the next one."""
+    if n < 1:
+        raise ValueError(f"n must be >= 1, got {n}")
+    for _ in range(n):
+        day += timedelta(days=1)
+        while not is_session(day):
+            day += timedelta(days=1)
+    return day
+
+
 def sessions_between(after: date, through: date) -> list[date]:
     """Every session strictly after `after`, up to and including `through`."""
     sessions = []
@@ -166,6 +177,7 @@ __all__ = [
     "holidays",
     "is_session",
     "last_completed_session",
+    "next_session",
     "previous_session",
     "sessions_between",
 ]

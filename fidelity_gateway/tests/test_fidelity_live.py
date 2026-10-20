@@ -193,3 +193,16 @@ def test_a_config_the_broker_refuses_stops_the_bridge_too(tmp_path):
 
 def test_the_default_journal_sits_beside_the_state_database():
     assert live.default_journal_path("state/ledger.db") == Path("state/fidelity_orders.jsonl")
+
+
+def test_the_connection_report_adds_whether_it_places_real_orders(tmp_path):
+    connection = live.connect_live(
+        _config(dry_run=False),
+        state_db=tmp_path / "ledger.db",
+        bridge_opener=FakeBridge(),
+        log=lambda _m: None,
+    )
+    connection.server.connection_report = lambda: {"connected": True, "version": "1.4.0"}
+    assert connection.connection_report() == {"connected": True, "version": "1.4.0", "mode": "live"}
+    del connection.server.connection_report  # a bridge without one still says its mode
+    assert connection.connection_report() == {"mode": "live"}

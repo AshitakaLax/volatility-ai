@@ -7,7 +7,27 @@ kinds live side by side — check which one before editing:
 |---|---|---|---|
 | **Sweep** | `search_hf_*.yaml`, `sweep_5y*.yaml`, `probe_*.yaml`, `lotcap_test_*.yaml` | false/absent | a `grid`/`bayesian`/`random` search space for `research/run_hf_sweep.py` or `python cli.py search`/`backtest` |
 | **Pinned champion** | `best_known_2026-08-24.yaml`, `ultimate_tqqq.yaml`, `soxl_champion.yaml` | false | a single-point config reproducing one specific best-known result — not a search space, don't add a grid to it |
-| **Deployment** | `paper_aggressive.yaml`, `ultimate_paper.yaml`, `production.yaml`, `staging.yaml`, `staging_hf_local_reference.yaml` | **true** | drives `python cli.py live` and the compose trading services: `paper` → `paper_aggressive.yaml` (`.env`), `paper-ultimate` → `ultimate_paper.yaml` (`.env.ultimate`), `live` → `production.yaml` (`.env.production` + a passing `PromotionEvaluation`). Each must pass `live_algorithm.build_strategy`'s live rules (`tools/tests/test_compose_deployment.py`). Never sweep configs. |
+| **Deployment** | `paper_aggressive.yaml`, `ultimate_paper.yaml`, `production.yaml`, `staging.yaml`, `staging_hf_local_reference.yaml` | **true** | drives `python cli.py live` and the compose trading services: `paper` → `paper_aggressive.yaml` (`.env`), `paper-ultimate` → `ultimate_paper.yaml` (`.env.ultimate`), `live` → `production.yaml` (`.env.production` + a passing `PromotionEvaluation`), `fidelity` → `fidelity_live.yaml` (copied from its `.example`; git-ignored and kept out of the image, it names the account; real money through the browser extension). Each must pass `live_algorithm.build_strategy`'s live rules (`tools/tests/test_compose_deployment.py`). Never sweep configs. |
+
+Two more things live here that are not `BacktestConfig`s:
+
+- `deployments.yaml` — the Live page's map of the deployments
+  (`server/live_registry.py`): each one's config, ledger and control
+  directory **as the `web` container sees them**, and -- for one whose
+  config does not exist yet -- its `broker` (`alpaca` or `fidelity`), so the
+  page can place it in its section and say how to set it up.
+  `tools/tests/test_compose_deployment.py` holds it to `docker-compose.yml`.
+- `live_profiles/<id>.yaml` — the committed algorithms a deployment may
+  switch to from the Live page (`research/strategies/live_profiles.py`):
+  strategy, parameters, step and target, with the evidence behind them.
+  Real money takes only a profile whose `evidence.promotion` names a
+  passing paper promotion. `research/tests/test_live_profiles.py` requires
+  every profile to trade on some deployment it fits.
+
+What the Live page may do to a deployment is that deployment's own
+`live.control` (`LiveControlConfig`): pausing buys is always allowed;
+`resume_buys`, `enable_disable`, `algorithm_changes` and `ledger_reset` are
+off unless granted, and real money is profiles-only with no ledger reset.
 
 `fidelity_local.yaml.example` is a template for local Fidelity-broker
 credentials — copy, don't edit in place, and never commit the real one.

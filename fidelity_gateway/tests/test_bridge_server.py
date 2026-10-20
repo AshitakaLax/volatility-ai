@@ -681,3 +681,31 @@ def test_by_default_the_expected_versions_come_from_this_checkout(server):
     from fidelity_gateway.bridge.versions import expected_extension_versions
 
     assert server.extension_versions == expected_extension_versions()
+
+
+# -- the connection report: what the Live page shows of the extension ----------
+
+
+def test_the_connection_report_follows_the_extension_in_and_out(server):
+    before = server.connection_report()
+    assert before["connected"] is False
+    assert before["since"] is None and before["client"] is None and before["version"] is None
+    assert before["url"] == server.url and before["permissions"] is None
+
+    extension = _connected(server)
+    extension.send(
+        {"type": "event", "event": "permissions", "data": {"preview": True, "place": False}}
+    )
+    assert _wait_until(lambda: server.permissions is not None)
+    report = server.connection_report()
+    assert report["connected"] is True and report["client"] == "127.0.0.1"
+    assert report["version"] == "9.9.9" and report["since"] and report["last_heard"]
+    assert report["permissions"] == {"preview": True, "place": False}
+    assert report["versions"] == server.extension_versions
+    assert API_KEY not in json.dumps(report), "never the key"
+
+    extension.close()
+    assert _wait_until(lambda: not server.connected)
+    after = server.connection_report()
+    assert after["connected"] is False and after["client"] is None
+    assert after["disconnected_at"] is not None and after["since"] is None

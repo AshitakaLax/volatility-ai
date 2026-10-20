@@ -21,11 +21,15 @@ src/
 ├── components/
 │   ├── backtest/          # ParameterForm/ActiveRuns/ShardPanel/RunHistory live on "backtest"; BacktestResult
 │   │                      #   (chart, trade log, sweep matrix, fund comparison) is the "result" tab
-│   ├── live/               # CommandCenter, DeploymentHealth, LiveOrderLedger, AlgorithmStatus
+│   ├── live/               # LiveTab: DeploymentStrip (Alpaca and Fidelity sections), OverviewCard (fund,
+│   │                      #   book, today's trades, what the trader will do next), FidelityPanel (the
+│   │                      #   browser extension), ControlBar (commands -> server/live_control.py),
+│   │                      #   AlgorithmPanel, LivePriceChart (the TRADER's bars + its fills), TradesCard,
+│   │                      #   LiveOrderLedger, CommandLog, DeploymentHealth (trader's build), ActivityCard
 │   ├── ml/                 # ModelInsights — reads server/ml_insights.py's read-only artifacts
 │   ├── warehouse/          # WarehouseTab (polls server/warehouse_status.py): funds, sweeps, storage, server
 │   └── ui/primitives.tsx  # shadcn/ui-style primitives
-├── hooks/                  # useBacktestRun, useLiveState, usePriceBars, useWebSocket, usePolled
+├── hooks/                  # useBacktestRun, useLiveState, useDeploymentFills, usePriceBars, useWebSocket, usePolled
 ├── lib/api.ts               # typed fetch wrappers — see below
 ├── lib/filters.ts, utils.ts # + their own .test.ts (vitest)
 └── types/                   # backtest.ts, ml.ts, telemetry.ts, warehouse.ts — the contract with server/

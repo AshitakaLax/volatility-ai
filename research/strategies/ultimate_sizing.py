@@ -80,6 +80,7 @@ from math import isclose
 
 from engine.core.exceptions import ConfigurationError
 from engine.core.market_context import MarketContext
+from engine.core.trading_calendar import next_session
 from research.strategies.gated_local_reference_sizing import (
     NO_BUY_LEVEL,
     GatedLocalReferenceSizing,
@@ -470,6 +471,26 @@ class UltimateSizing(GatedLocalReferenceSizing):
             ultimate_reversal_tagged=len(self._reversal_ids),
             ultimate_exit_active=self._exit_active,
         )
+        if self._natr is not None:
+            # Why the mode is what it is, and when it may change: what the
+            # Live page shows beside a deployment that is not buying.
+            regime = self._natr.describe()
+            session, ahead, reading = (
+                regime["session"],
+                regime["sessions_until_change"],
+                regime["reading"],
+            )
+            out.update(
+                regime_since=regime["since"].isoformat() if regime["since"] else None,
+                regime_natr=regime["natr"],
+                regime_median=regime["median"],
+                regime_reading=None if reading is None else (CALM if reading else TURBULENT),
+                regime_held=regime["held"],
+                regime_min_hold=regime["min_hold"],
+                regime_earliest_change=(
+                    next_session(session, ahead).isoformat() if session and ahead else None
+                ),
+            )
         return out
 
 

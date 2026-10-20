@@ -453,6 +453,96 @@ def test_run_trading_loop_drives_ticks_and_shuts_down_cleanly(tmp_path, monkeypa
     assert rc == 0
 
 
+def _loop_rig(tmp_path, monkeypatch, prices):
+    """cli._run_trading_loop's collaborators, with a market that steps
+    through `prices` one tick at a time, and a control directory."""
+    import importlib
+    from datetime import UTC, datetime
+
+    from engine.core.persistence import LedgerStore
+    from engine.tests.test_live_trading_loop import FakeBroker, FakeMarketData
+    from engine.trading.control_inbox import ControlInbox
+    from engine.trading.risk_manager import CircuitBreaker
+    from engine.trading.runtime_lifecycle import RuntimeLifecycle
+
+    cli = importlib.import_module("cli")
+    monkeypatch.setenv("APCA_API_KEY_ID", "k")
+    monkeypatch.setenv("APCA_API_SECRET_KEY", "s")
+
+    class SteppingMarket(FakeMarketData):
+        def latest_bar(self, symbol):
+            bar = super().latest_bar(symbol)
+            if len(self._bars) > 1:
+                self._bars.pop(0)
+            return bar
+
+    market = SteppingMarket()
+    for minute, price in enumerate(prices):
+        market.push(price, ts=datetime(2026, 3, 2, 15, minute, tzinfo=UTC))
+    monkeypatch.setattr(
+        "engine.data.alpaca_market_data.AlpacaMarketData", lambda *a, **kw: market, raising=True
+    )
+    store = LedgerStore(str(tmp_path / "ledger.db"))
+    breaker = CircuitBreaker(store=store)
+    lifecycle = RuntimeLifecycle(store=store, circuit_breaker=breaker)
+    broker = FakeBroker()
+    broker.trading_client = object()
+    return cli, store, breaker, lifecycle, broker, ControlInbox(tmp_path / "control")
+
+
+def test_a_pause_from_the_live_page_stops_the_next_buy(tmp_path, monkeypatch):
+    """The seam that used to be missing: a halt written into the ledger was
+    read once at startup, so a running loop kept buying. Now the loop
+    applies the page's command itself, before its first tick."""
+    from engine.tests.test_live_trading_loop import make_config
+    from engine.trading.control_inbox import Command
+
+    cli, store, breaker, lifecycle, broker, inbox = _loop_rig(
+        tmp_path, monkeypatch, [100.0, 98.0, 96.0]
+    )
+    queued, _ = inbox.enqueue(Command.new("pause_buys", reason="from the page", operator="op"))
+
+    class Args:
+        max_ticks = 3
+
+    rc = cli._run_trading_loop(
+        Args(), make_config(), broker, store, breaker, lifecycle, inbox=inbox
+    )
+    assert rc == 0
+    assert broker.buys == [], "two drops of 2% would each have bought"
+    assert inbox.result(queued.id)["status"] == "applied"
+    assert inbox.status()["state"] == "stopped"
+
+
+def test_a_disable_from_the_live_page_stops_the_loop(tmp_path, monkeypatch):
+    """Asked mid-session: the loop finishes the tick in flight, then stops."""
+    import engine.trading.live_trading_loop as live_trading_loop
+    from engine.tests.test_live_trading_loop import make_config
+    from engine.trading.control_inbox import Command
+
+    cli, store, breaker, lifecycle, broker, inbox = _loop_rig(tmp_path, monkeypatch, [100.0])
+    ticks = []
+    original = live_trading_loop.LiveTradingLoop.run_once
+
+    def counted(self):
+        ticks.append(1)
+        if len(ticks) == 1:  # the operator presses Disable during the first tick
+            inbox.enqueue(Command.new("disable", reason="from the page", operator="op"))
+        return original(self)
+
+    monkeypatch.setattr(live_trading_loop.LiveTradingLoop, "run_once", counted)
+
+    class Args:
+        max_ticks = 50
+
+    rc = cli._run_trading_loop(
+        Args(), make_config(), broker, store, breaker, lifecycle, inbox=inbox
+    )
+    assert rc == 0 and len(ticks) == 1, "stopped after the tick in flight"
+    assert inbox.desired()["enabled"] is False
+    assert inbox.status()["detail"] == "disabled by op"
+
+
 def _bayesian_live_config(target_return, profit_target, **strategy_extra):
     from engine.core.config import BacktestConfig
 

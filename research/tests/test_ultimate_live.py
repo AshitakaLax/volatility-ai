@@ -228,3 +228,30 @@ def test_the_live_loop_exits_the_whole_calm_book_in_one_order(tmp_path):
         "the reversal lot is kept"
     )
     store.close()
+
+
+def test_its_diagnostics_say_why_it_is_not_grid_buying_and_until_when():
+    """The Live page's "why is it not buying": the mode, since when, the
+    readings behind it, and the first session it may change."""
+    from engine.core.trading_calendar import next_session
+
+    df = _sessions(300)
+    flip = _flip_day(df)
+    strategy = UltimateSizing(**HF, **REGIME)
+    _feed(strategy, df[df.index.date <= flip])
+    diag = strategy.diagnostics()
+    assert diag["ultimate_mode"] == TURBULENT
+    assert diag["regime_since"] == flip.isoformat()
+    assert diag["regime_held"] == 1 and diag["regime_min_hold"] == 3
+    assert diag["regime_reading"] == TURBULENT
+    assert diag["regime_natr"] > diag["regime_median"]
+    # Held one session of a minimum three: the third session after this one.
+    assert diag["regime_earliest_change"] == next_session(flip, 3).isoformat()
+    assert diag["ultimate_exit_active"] is True
+
+
+def test_an_injected_regime_reports_no_readings_it_does_not_have():
+    from datetime import date
+
+    strategy = UltimateSizing(**HF, regime_by_date={date(2026, 1, 2): True})
+    assert "regime_since" not in strategy.diagnostics()

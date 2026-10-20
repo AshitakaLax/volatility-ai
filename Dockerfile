@@ -77,8 +77,10 @@ COPY --from=web /web/dist ./web/dist
 # and one first mounted at a path the image lacks comes up root-owned --
 # a ledger the trading loop could then not write.
 RUN useradd --create-home --uid 1000 runner \
-    && mkdir -p /app/state /app/state-ultimate /app/state-production \
+    && mkdir -p /app/state /app/state-ultimate /app/state-production /app/state-fidelity \
         /app/data /app/config /app/output /app/warehouse /app/backups \
+        /app/control /app/controls/paper-ultimate /app/controls/paper /app/controls/live \
+        /app/controls/fidelity \
     && chown -R runner:runner /app
 USER runner
 
@@ -115,3 +117,9 @@ USER runner
 # The deployed image, and the default target -- the last stage is what a
 # bare `docker build .` produces: the app without qlib.
 FROM base AS app
+# Which commit it was built from, when the build says so (docker-compose.yml
+# passes VAI_BUILD_COMMIT through): the image has no .git, and the Live page's
+# Deployment card shows this beside the code's fingerprint
+# (engine/core/build_info.py). Last, so a new commit rebuilds one layer.
+ARG VAI_BUILD_COMMIT=
+ENV VAI_BUILD_COMMIT=${VAI_BUILD_COMMIT}

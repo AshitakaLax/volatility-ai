@@ -12,6 +12,8 @@ a test suite is not the place to spend that.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
@@ -28,64 +30,93 @@ def client():
 
 
 @pytest.fixture
-def store(tmp_path):
-    """A real ledger store with one open lot."""
+def store(tmp_path, monkeypatch):
+    """A real ledger store, registered as the deployment `test-paper`
+    (server/live_registry.py) -- the routes name deployments, not paths."""
     path = str(tmp_path / "paper_ledger.db")
     store = LedgerStore(path)
     store.set_meta("live.cash", "50000.0")
     store.set_meta("live.peak_equity", "60000.0")
+    registry = tmp_path / "deployments.yaml"
+    registry.write_text(
+        "deployments:\n"
+        "  test-paper:\n"
+        "    label: Test (paper)\n"
+        "    config: config/paper_aggressive.yaml\n"
+        f"    state_db: {path}\n"
+        f"    control_dir: {tmp_path / 'control'}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("VAI_DEPLOYMENTS", str(registry))
     yield path
     store.close()
+
+
+def state_of(client, deployment="test-paper"):
+    response = client.get(f"/api/live/deployments/{deployment}")
+    assert response.status_code == 200, response.text
+    return response.json()["state"]
 
 
 class TestHealth:
     def test_it_reports_what_it_can_and_cannot_do(self, client):
         body = client.get("/api/health").json()
-        assert "halt" in body["caps"]
-        # Never listed, by design -- see server/control.py.
+        assert "control" in body["caps"]
+        # Never listed, by design -- there is no such command.
         assert "liquidate" not in body["caps"]
         assert "parameter_override" not in body["caps"]
 
 
 class TestLiveReads:
     def test_state_comes_back_for_a_real_store(self, client, store):
-        body = client.get("/api/live/state", params={"path": store}).json()
+        body = state_of(client)
         assert body["cash"] == pytest.approx(50000.0)
         assert body["peak_equity"] == pytest.approx(60000.0)
         assert body["halt"] is None
         assert body["lots"] == []
-        assert "path" not in body  # the caller named the store
+        assert "path" not in body
 
-    def test_a_missing_store_is_a_404_not_a_500(self, client, tmp_path):
-        response = client.get("/api/live/state", params={"path": str(tmp_path / "nope.db")})
-        assert response.status_code == 404
+    def test_a_deployment_without_a_ledger_yet_has_no_state(self, client, store, tmp_path):
+        Path(store).unlink()
+        assert state_of(client) is None
 
-    def test_a_file_that_is_not_a_store_is_a_404(self, client, tmp_path):
-        junk = tmp_path / "junk.db"
-        junk.write_text("this is not a database", encoding="utf-8")
-        assert client.get("/api/live/state", params={"path": str(junk)}).status_code == 404
+    def test_an_unknown_deployment_is_a_404(self, client, store):
+        assert client.get("/api/live/deployments/nope").status_code == 404
+
+    def test_no_route_takes_a_path_any_more(self, client, store):
+        """A browser named a file and the server opened it; the halt would
+        open any writable path as a SQLite ledger."""
+        assert client.get("/api/live/state", params={"path": store}).status_code == 404
+        assert client.get("/api/live/stores").status_code == 404
+        assert client.post("/api/live/halt", json={"path": store, "reason": "x"}).status_code == 404
 
     def test_activity_returns_the_revision_log(self, client, store):
-        body = client.get("/api/live/activity", params={"path": store, "limit": 10}).json()
+        body = client.get("/api/live/deployments/test-paper/activity", params={"limit": 10}).json()
         assert isinstance(body, list)
 
     def test_bars_for_an_unknown_symbol_are_a_404(self, client):
         response = client.get("/api/live/bars", params={"symbol": "NOTATICKER"})
         assert response.status_code == 404
 
+    def test_the_deployment_list_says_what_each_is(self, client, store):
+        (summary,) = client.get("/api/live/deployments").json()
+        assert summary["id"] == "test-paper" and summary["paper"] is True
+        assert summary["caps"]["pause_buys"] is True
+        assert summary["status"]["state"] == "not_running", "no trader has reported"
+        assert summary["desired"]["enabled"] is True
+        assert summary["ledger"]["cash"] == pytest.approx(50000.0)
+
 
 class TestLiveParametersAndIndicators:
     def test_a_store_with_no_parameters_reports_an_empty_dict(self, client, store):
         """Absent is normal for a store written before the loop recorded
         them -- the UI shows "unknown", not zeros."""
-        assert client.get("/api/live/state", params={"path": store}).json()["params"] == {}
+        assert state_of(client)["params"] == {}
 
     def test_parameters_written_by_the_loop_come_back(self, client, store):
         """This is the field that would have made the 30%-instead-of-0.3%
         profit target visible without diffing a config against a ledger."""
         import json as json_
-
-        from engine.core.persistence import LedgerStore
 
         writer = LedgerStore(store)
         writer.set_meta(
@@ -94,22 +125,18 @@ class TestLiveParametersAndIndicators:
         )
         writer.close()
 
-        body = client.get("/api/live/state", params={"path": store}).json()
+        body = state_of(client)
         assert body["params"]["profit_target"] == pytest.approx(0.003)
         assert body["params"]["symbol"] == "TQQQ"
 
     def test_malformed_parameters_do_not_break_the_whole_state(self, client, store):
         """A dashboard that will not load because one metadata row is
         malformed is worse than one that says the config is unknown."""
-        from engine.core.persistence import LedgerStore
-
         writer = LedgerStore(store)
         writer.set_meta("live.parameters", "{not json")
         writer.close()
 
-        body = client.get("/api/live/state", params={"path": store})
-        assert body.status_code == 200
-        assert body.json()["params"] == {}
+        assert state_of(client)["params"] == {}
 
     def test_rsi_uses_the_same_class_the_strategy_trades_on(self, client):
         """A second implementation would be free to disagree with the one
@@ -132,46 +159,6 @@ class TestLiveParametersAndIndicators:
 
     def test_indicators_for_an_unknown_symbol_are_a_404(self, client):
         assert client.get("/api/live/indicators", params={"symbol": "NOPE"}).status_code == 404
-
-
-class TestHalt:
-    def test_it_halts_and_reads_the_state_back(self, client, store):
-        body = client.post(
-            "/api/live/halt", json={"path": store, "reason": "operator stopped it"}
-        ).json()
-        # The whole LiveState, read back -- the reason IS the halt flag.
-        assert "operator" in body["halt"]
-        assert body["cash"] == pytest.approx(50000.0)
-
-    def test_the_halt_is_visible_to_the_read_path(self, client, store):
-        """Two different modules and two different connections must agree
-        about whether this deployment is halted."""
-        client.post("/api/live/halt", json={"path": store, "reason": "checking readback"})
-        assert client.get("/api/live/state", params={"path": store}).json()["halt"]
-
-    def test_halting_twice_is_not_an_error(self, client, store):
-        """An operator hitting the button twice under stress should not
-        get an exception for it."""
-        for _ in range(2):
-            response = client.post("/api/live/halt", json={"path": store, "reason": "again"})
-            assert response.status_code == 200
-
-    def test_an_empty_reason_is_rejected(self, client, store):
-        """The reason is shown to the next operator, who may be the same
-        person three weeks later."""
-        response = client.post("/api/live/halt", json={"path": store, "reason": ""})
-        assert response.status_code == 422
-
-    def test_a_bad_path_is_a_400_not_a_stack_trace(self, client, tmp_path):
-        junk = tmp_path / "junk.db"
-        junk.write_text("not a database", encoding="utf-8")
-        response = client.post("/api/live/halt", json={"path": str(junk), "reason": "nope"})
-        assert response.status_code == 400
-        assert "Could not halt" in response.json()["detail"]
-
-    def test_there_is_no_liquidate_endpoint(self, client, store):
-        """Requested, and refused with a reason."""
-        assert client.post("/api/live/liquidate", json={"path": store}).status_code == 404
 
 
 class TestDeployment:
@@ -1952,3 +1939,125 @@ class TestBayesianSearch:
             },
         ).json()
         assert bayesian["errors"] == []
+
+
+class TestWhatTheTraderReports:
+    """The Live page's view of what a deployment trades and is doing: the
+    algorithm in force (not only the config file's), the trader's own report,
+    its bar and fill journals, and a registered deployment not set up yet."""
+
+    def _inbox(self, tmp_path):
+        from engine.trading.control_inbox import ControlInbox
+
+        return ControlInbox(tmp_path / "control")
+
+    def _summary(self, client):
+        (summary,) = client.get("/api/live/deployments").json()
+        return summary
+
+    def test_the_config_files_algorithm_when_nothing_overrides_it(self, client, store):
+        summary = self._summary(client)
+        assert summary["broker"] == "alpaca"
+        algorithm = summary["algorithm"]
+        assert algorithm["source"] == "config" and algorithm["reported"] is False
+        assert algorithm["strategy_id"] == summary["strategy_id"]
+        assert algorithm["config_file"]["strategy_id"] == summary["strategy_id"]
+
+    def test_an_override_beside_the_ledger_is_the_algorithm_in_force(self, client, store, tmp_path):
+        import json
+
+        (tmp_path / "algorithm.json").write_text(
+            json.dumps(
+                {
+                    "strategy_id": "ultimate",
+                    "strategy_params": {},
+                    "step": 0.00075,
+                    "profit_target": 0.3,
+                    "channel": "web",
+                    "profile": "ultimate-tqqq",
+                    "changedBy": "ops",
+                    "changedAt": "2026-10-20T15:55:12+00:00",
+                    "reason": "testing",
+                }
+            ),
+            encoding="utf-8",
+        )
+        algorithm = self._summary(client)["algorithm"]
+        assert (algorithm["strategy_id"], algorithm["source"]) == ("ultimate", "web")
+        assert algorithm["profile"] == "ultimate-tqqq"
+        assert algorithm["label"].startswith("Ultimate, TQQQ"), "the profile's own label"
+        assert algorithm["changed_by"] == "ops" and algorithm["reason"] == "testing"
+
+    def test_the_traders_own_report_wins_while_it_reports(self, client, store, tmp_path):
+        self._inbox(tmp_path).write_status(
+            state="trading",
+            process="loop",
+            heartbeat_seconds=60.0,
+            algorithm={"strategy_id": "ultimate", "step": 0.00075, "profit_target": 0.3},
+            now={
+                "price": 70.0,
+                "buy_level": None,
+                "reference": 70.0,
+                "blocked": "x",
+                "strategy": None,
+            },
+            shadow=None,
+            build={
+                "commit": None,
+                "code": "abc123abc123",
+                "python": "3.12",
+                "pid": 7,
+                "started_at": "",
+            },
+            broker="alpaca",
+            broker_unavailable=None,
+        )
+        summary = self._summary(client)
+        assert summary["algorithm"]["strategy_id"] == "ultimate"
+        assert summary["algorithm"]["reported"] is True
+        assert summary["algorithm"]["strategy_params"] is None, "the report names none"
+        status = summary["status"]
+        assert status["now"]["blocked"] == "x" and status["build"]["code"] == "abc123abc123"
+        assert status["broker"] == "alpaca"
+
+    def test_the_traders_bars_and_fills_come_from_its_journals(self, client, store, tmp_path):
+        import time
+
+        inbox = self._inbox(tmp_path)
+        now = int(time.time())
+        inbox.record_bars([{"t": now - 60, "o": 1.0, "h": 2.0, "l": 0.5, "c": 1.5, "v": 9.0}])
+        inbox.record_fill({"t": now, "side": "buy", "lot": "a", "qty": 1.0, "price": 1.5})
+        bars = client.get("/api/live/deployments/test-paper/bars").json()
+        assert bars["bars"] == [[now - 60, 1.0, 2.0, 0.5, 1.5, 9.0]]
+        assert bars["source"] == "the trader's own feed"
+        (fill,) = client.get("/api/live/deployments/test-paper/fills").json()
+        assert fill["side"] == "buy" and fill["price"] == 1.5
+        too_many = client.get("/api/live/deployments/test-paper/bars", params={"sessions": 99})
+        assert too_many.status_code == 422
+
+    def test_a_deployment_registered_before_it_is_set_up_says_how(
+        self, client, monkeypatch, tmp_path
+    ):
+        (tmp_path / "fidelity_live.yaml.example").write_text("# template\n", encoding="utf-8")
+        registry = tmp_path / "deployments.yaml"
+        registry.write_text(
+            "deployments:\n"
+            "  fidelity:\n"
+            "    label: Fidelity (real money)\n"
+            "    broker: fidelity\n"
+            f"    config: {tmp_path / 'fidelity_live.yaml'}\n"
+            f"    state_db: {tmp_path / 'fidelity_ledger.db'}\n"
+            f"    control_dir: {tmp_path / 'control-fidelity'}\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("VAI_DEPLOYMENTS", str(registry))
+        (summary,) = client.get("/api/live/deployments").json()
+        assert summary["broker"] == "fidelity" and summary["error"] is None
+        assert "does not exist yet" in summary["setup"]
+        assert "fidelity_live.yaml.example" in summary["setup"]
+        assert client.get("/api/live/deployments/fidelity").status_code == 200
+        queued = client.post(
+            "/api/live/deployments/fidelity/commands",
+            json={"type": "pause_buys", "reason": "test", "operator": "ops"},
+        )
+        assert queued.status_code == 409, "nothing to queue for until it is set up"

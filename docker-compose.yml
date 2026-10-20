@@ -36,7 +36,13 @@
 # exposing the UI to the LAN, operations.
 
 x-app: &app
-  build: .
+  build:
+    context: .
+    # Which commit the image holds, for the Live page's Deployment card (the
+    # image has no .git): VAI_BUILD_COMMIT=$(git rev-parse --short HEAD)
+    # docker compose build. Unset, the card shows the code's fingerprint only.
+    args:
+      VAI_BUILD_COMMIT: ${VAI_BUILD_COMMIT:-}
   image: volatility-ai:local
   logging:
     driver: json-file
@@ -92,6 +98,15 @@ services:
       # The ledgers, READ-ONLY: belt to server/live.py's mode=ro braces.
       - state:/app/state:ro
       - state_ultimate:/app/state-ultimate:ro
+      - state_production:/app/state-production:ro
+      - state_fidelity:/app/state-fidelity:ro
+      # Each deployment's control directory: the Live page queues commands
+      # here and its trader applies them (config/deployments.yaml). The only
+      # thing `web` writes beside a trading loop -- never a ledger.
+      - control_ultimate:/app/controls/paper-ultimate
+      - control_champion:/app/controls/paper
+      - control_production:/app/controls/live
+      - control_fidelity:/app/controls/fidelity
       # The backup service's archives, READ-ONLY: the Warehouse tab reports
       # the newest one's age.
       - ${VAI_BACKUP_DIR:-/workspace/backups}:/app/backups:ro
@@ -116,13 +131,16 @@ services:
       VAI_CONFIG: /app/config/paper_aggressive.yaml
       VAI_STATE_DB: /app/state/paper_ledger.db
       # Between sessions: a weekend costs a handful of wakeups, and a
-      # same-day restart rejoins within 15 minutes.
+      # same-day restart rejoins within 15 minutes. The Live page's
+      # commands are answered throughout (the supervisor's --linger).
       VAI_IDLE_SECONDS: "900"
+      VAI_CONTROL_DIR: /app/control
     volumes:
       - ./config:/app/config:ro
       # The event and earnings calendars the backtests read.
       - ./data:/app/data:ro
       - state:/app/state
+      - control_champion:/app/control
 
   # The Ultimate algorithm in paper (config/ultimate_paper.yaml): its own
   # paper account -- keys in .env.ultimate -- and its own ledger, never the
@@ -138,10 +156,12 @@ services:
       VAI_CONFIG: /app/config/ultimate_paper.yaml
       VAI_STATE_DB: /app/state/paper_ultimate_ledger.db
       VAI_IDLE_SECONDS: "900"
+      VAI_CONTROL_DIR: /app/control
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data:ro
       - state_ultimate:/app/state
+      - control_ultimate:/app/control
 
   # REAL MONEY: config/production.yaml with the live account's keys.
   # Mode.LIVE will not construct without a passing paper record.
@@ -156,10 +176,45 @@ services:
       VAI_CONFIG: /app/config/production.yaml
       VAI_STATE_DB: /app/state/ledger.db
       VAI_IDLE_SECONDS: "900"
+      VAI_CONTROL_DIR: /app/control
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data:ro
       - state_production:/app/state
+      - control_production:/app/control
+
+  # REAL MONEY in a Fidelity account, placed through the Fidelity Bridge
+  # browser extension (fidelity_gateway/). Started only by name:
+  #     docker compose --profile fidelity up -d fidelity
+  # First (docs/DEPLOY.md, "Fidelity"): config/fidelity_live.yaml from its
+  # .example -- git-ignored and kept out of the image, it names the account
+  # -- with live.fidelity.bridge.host 0.0.0.0 and the browser's machine in
+  # allowed_clients; FIDELITY_BRIDGE_API_KEY in .env (`python -m
+  # fidelity_gateway.bridge keygen` writes it there); and the extension
+  # pointed at this server. Its Alpaca keys read prices and the clock only:
+  # that connection is never handed an order.
+  #
+  # HOST NETWORKING, so the bridge listens on this server's own address and
+  # sees the browser's real address for its allow list -- through a
+  # published port it would see Docker's gateway instead.
+  fidelity:
+    <<: *trader
+    profiles: [fidelity]
+    network_mode: host
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *env
+      VAI_CONFIG: /app/config/fidelity_live.yaml
+      VAI_STATE_DB: /app/state/fidelity_ledger.db
+      VAI_IDLE_SECONDS: "900"
+      VAI_CONTROL_DIR: /app/control
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data:ro
+      - state_fidelity:/app/state
+      - control_fidelity:/app/control
 
   # Daily at VAI_BACKUP_AT: every ledger and the warehouse catalogs into
   # VAI_BACKUP_DIR (default /workspace/backups, this host's separate backup
@@ -182,6 +237,7 @@ services:
       - state:/app/state:ro
       - state_ultimate:/app/state-ultimate:ro
       - state_production:/app/state-production:ro
+      - state_fidelity:/app/state-fidelity:ro
       - ./warehouse:/app/warehouse:ro
       - ${VAI_BACKUP_DIR:-/workspace/backups}:/app/backups
     restart: unless-stopped
@@ -283,3 +339,10 @@ volumes:
   state:
   state_ultimate:
   state_production:
+  state_fidelity:
+  # Each deployment's Live-page commands, results and status: the audit
+  # trail of who paused, resumed, disabled or switched what, and why.
+  control_ultimate:
+  control_champion:
+  control_production:
+  control_fidelity:

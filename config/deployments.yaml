@@ -1,0 +1,49 @@
+# The live deployments the Live page shows and controls (server/live_registry.py).
+#
+# Paths are as the WEB container sees them -- docker-compose.yml's `web`
+# mounts; a relative path is from the repository root. The browser names a
+# deployment by its id here and by nothing else.
+#
+#   config       the deployment's own config: paper or real money
+#                (live.paper_trading), and what the page may do to it
+#                (live.control)
+#   state_db     its ledger, mounted read-only in `web`
+#   control_dir  where the page queues commands for its trader, a volume the
+#                trader mounts at /app/control ($VAI_CONTROL_DIR)
+#   service      the compose service that runs it, named on the page when
+#                it is not running (the page cannot start a container)
+#   broker       alpaca (the default) or fidelity: the page's section for a
+#                deployment whose config does not exist yet
+
+deployments:
+  paper-ultimate:
+    label: Ultimate (paper)
+    service: paper-ultimate
+    config: config/ultimate_paper.yaml
+    state_db: /app/state-ultimate/paper_ultimate_ledger.db
+    control_dir: /app/controls/paper-ultimate
+
+  paper:
+    label: Champion grid (paper)
+    service: paper
+    config: config/paper_aggressive.yaml
+    state_db: /app/state/paper_ledger.db
+    control_dir: /app/controls/paper
+
+  live:
+    label: Production (real money)
+    service: live
+    config: config/production.yaml
+    state_db: /app/state-production/ledger.db
+    control_dir: /app/controls/live
+
+  # Real money through the Fidelity Bridge browser extension. Its config is
+  # git-ignored (it names the account), so until it exists the page shows how
+  # to set it up -- `broker` says which section it belongs in meanwhile.
+  fidelity:
+    label: Fidelity (real money)
+    service: fidelity
+    broker: fidelity
+    config: config/fidelity_live.yaml
+    state_db: /app/state-fidelity/fidelity_ledger.db
+    control_dir: /app/controls/fidelity

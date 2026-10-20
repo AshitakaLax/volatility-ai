@@ -99,3 +99,12 @@ def _eastern(*args) -> datetime:
 )
 def test_last_completed_session(now, expected):
     assert last_completed_session(now) == expected
+
+
+def test_next_session_skips_weekends_and_holidays():
+    from engine.core.trading_calendar import next_session
+
+    assert next_session(date(2026, 10, 20)) == date(2026, 10, 21)
+    assert next_session(date(2026, 10, 23)) == date(2026, 10, 26), "Friday to Monday"
+    assert next_session(date(2026, 10, 20), 4) == date(2026, 10, 26)
+    assert next_session(date(2026, 11, 25)) == date(2026, 11, 27), "past Thanksgiving"

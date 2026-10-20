@@ -84,12 +84,32 @@ why each choice there) through record_tick before the first tick, then
 resume(open_lots) with the durable book -- the state a restart loses that
 no bar can rebuild. A strategy that wants history and gets no source is
 refused rather than started blind.
+--------------------------------------------------------------------
+WHAT IT SAYS ABOUT ITSELF, for whoever watches it (the Live page, through
+the trader's status file -- engine/trading/operator_control.py):
+
+  decision      after every tick: the price a buy triggers at (None when
+                the strategy will buy at no price right now), the reference
+                it measures from, what blocks a buy, and the strategy's own
+                diagnostics() -- Ultimate's regime among them.
+  shadow        the CONFIG FILE's algorithm while an override trades in its
+                place: fed the same bars, trading nothing, so a reader can
+                see what switching back would do now (which lots its exit
+                would sell) before doing it.
+  recent_bars   the last sessions of the replayed history; last_bar each
+                tick's bar -- the feed the loop actually traded on.
+  fills         every fill as it is booked, to fill_listener: the ledger
+                keeps lots, never what a sale fetched.
+
+None of it feeds back into a decision, and none of it may stop a tick: a
+report that fails is dropped.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -112,10 +132,14 @@ from engine.execution.fill_accounting import FillTracker, extract_alpaca_fill
 from engine.execution.order_lifecycle import TERMINAL_STATES, map_broker_status
 from engine.trading import decision_cycle
 from engine.trading.duplicate_order_guard import DuplicateOrderGuard
+from engine.trading.live_history import EASTERN, last_sessions
 from engine.trading.no_loss_guard import NoLossViolation, SellReason, validate_sell
 from engine.trading.risk_manager import CircuitBreaker, RiskManager
 
 logger = logging.getLogger("Optimizer")
+
+# Completed sessions of the replayed history kept for a reader's chart.
+RECENT_SESSIONS = 5
 
 
 def _floor_shares(qty: float) -> float:
@@ -140,6 +164,82 @@ _META_PEAK_EQUITY = "live.peak_equity"
 _META_LAST_TICK = "live.last_tick"
 _META_OPEN_ORDERS = "live.open_orders"
 _META_PARAMETERS = "live.parameters"
+
+
+def seed_fresh_ledger(store, cash: float) -> None:
+    """A new ledger's starting book: the broker's cash, and drawdown measured
+    from the first tick (the Live page's "fresh paper ledger" --
+    engine/trading/operator_control.py). Without the cash the loop would
+    start from the config's initial_cash, which a reset paper account need
+    not hold."""
+    store.set_meta(_META_CASH, str(float(cash)))
+    reset_drawdown_baseline(store)
+
+
+def reset_drawdown_baseline(store) -> None:
+    """Make the next run measure drawdown from its first tick's equity
+    (LiveTradingLoop.reset_drawdown_baseline, for a store no loop holds --
+    the supervisor applying an operator's resume between sessions)."""
+    store.set_meta(_META_PEAK_EQUITY, "0.0")
+
+
+def _history_sessions(strategy) -> int:
+    wanted = getattr(strategy, "live_history_sessions", None)
+    return int(wanted()) if callable(wanted) else 0
+
+
+def _diagnostics(strategy) -> dict | None:
+    """A strategy's own diagnostics(), as plain JSON values; None when it
+    offers none or they fail. Outside the SizingStrategy contract (as in
+    regime_scaled_sizing.py), so asked for, never required."""
+    report = getattr(strategy, "diagnostics", None)
+    if not callable(report):
+        return None
+    try:
+        raw = dict(report() or {})
+    except Exception as exc:
+        logger.warning(f"{type(strategy).__name__}.diagnostics() failed: {exc}")
+        return None
+    plain = {}
+    for key, value in raw.items():
+        value = value.item() if hasattr(value, "item") else value  # numpy scalars
+        if isinstance(value, float) and not math.isfinite(value):
+            value = None
+        if value is None or isinstance(value, bool | int | float | str):
+            plain[str(key)] = value
+    return plain
+
+
+def _buy_level(strategy, context: MarketContext, last_buy_price, step: float) -> float | None:
+    """The price at or below which `strategy` buys on this bar -- its own
+    _grid_trigger_level, the one definition the buy decision uses -- or None
+    when it would buy at no price (NO_BUY_LEVEL) or cannot say."""
+    if last_buy_price is None:
+        return None
+    try:
+        level = float(strategy._grid_trigger_level(context, last_buy_price, step))
+    except Exception:
+        return None
+    return level if math.isfinite(level) and level > 0 else None
+
+
+def _bar_rows(frame) -> list[dict]:
+    """Minute bars as the trader's bar journal keeps them."""
+    if frame is None or len(frame) == 0:
+        return []
+    columns = [frame[name].to_numpy(float) for name in ("open", "high", "low", "close")]
+    volume = frame["volume"].to_numpy(float) if "volume" in frame.columns else [0.0] * len(frame)
+    return [
+        {
+            "t": int(ts.timestamp()),
+            "o": float(columns[0][i]),
+            "h": float(columns[1][i]),
+            "l": float(columns[2][i]),
+            "c": float(columns[3][i]),
+            "v": float(volume[i]),
+        }
+        for i, ts in enumerate(frame.index)
+    ]
 
 
 @dataclass
@@ -327,6 +427,8 @@ class LiveTradingLoop:
         sleep=time.sleep,
         tick_listener: Callable[[dict], None] | None = None,
         history_provider: Callable[[str, int], object] | None = None,
+        shadow=None,
+        fill_listener: Callable[[dict], None] | None = None,
     ) -> None:
         """Assemble the loop and load durable state.
 
@@ -334,6 +436,11 @@ class LiveTradingLoop:
         did -- {"at", "reason", ...} -- so whatever supervises the loop
         can show that it is alive and why it is or is not trading. Its
         failures are logged and never reach the loop.
+
+        fill_listener, likewise, is told every fill as it is booked --
+        {"t", "side", "lot", "qty", "price", ...}. shadow is a second
+        strategy fed every bar and asked what it would do, trading nothing
+        (module docstring, WHAT IT SAYS ABOUT ITSELF).
 
         history_provider(symbol, sessions) returns that many sessions of
         regular-hours minute bars (a DataFrame: UTC index, open/high/low/
@@ -400,6 +507,13 @@ class LiveTradingLoop:
                 )
         self._sleep = sleep
         self._tick_listener = tick_listener
+        self._fill_listener = fill_listener
+        self.shadow = shadow
+        # What the loop says about itself after each tick (module docstring).
+        self.decision: dict | None = None
+        self.shadow_state: dict | None = None
+        self.last_bar: dict | None = None
+        self.recent_bars: list[dict] = []
         self._stop_requested = False
         # Why the broker could not be reached, while it cannot; None when
         # it can. Readable by whatever supervises the loop.
@@ -440,26 +554,71 @@ class LiveTradingLoop:
 
     def _prepare_strategy(self, history_provider) -> int:
         """Replay the history the strategy asks for, then hand it the
-        durable book. Returns the number of bars replayed."""
-        wanted = getattr(self.strategy, "live_history_sessions", None)
-        sessions = int(wanted()) if callable(wanted) else 0
+        durable book. Returns the number of bars replayed.
+
+        The shadow, if any, gets the same treatment from the same fetch --
+        the larger of the two asks -- each replaying only the sessions it
+        wants. A shadow that cannot be prepared is dropped, never a reason
+        not to trade."""
+        sessions = _history_sessions(self.strategy)
+        shadow_sessions = _history_sessions(self.shadow) if self.shadow is not None else 0
+        if sessions > 0 and history_provider is None:
+            raise ConfigurationError(
+                f"{type(self.strategy).__name__} needs {sessions} sessions of history "
+                "before its first live tick, and no history source was given. Without "
+                "it the strategy starts each session cold -- not the strategy that was "
+                "backtested."
+            )
         replayed = 0
-        if sessions > 0:
-            if history_provider is None:
-                raise ConfigurationError(
-                    f"{type(self.strategy).__name__} needs {sessions} sessions of history "
-                    "before its first live tick, and no history source was given. Without "
-                    "it the strategy starts each session cold -- not the strategy that was "
-                    "backtested."
-                )
-            replayed = self.replay_history(history_provider(self.symbol, sessions))
-        resume = getattr(self.strategy, "resume", None)
-        if callable(resume):
-            resume(list(self.ledger.open_lots))
+        fetch = max(sessions, shadow_sessions) if history_provider is not None else 0
+        if fetch > 0:
+            bars = history_provider(self.symbol, fetch)
+            today = datetime.now(UTC).astimezone(EASTERN).date()
+
+            def tail(wanted: int):
+                # The provider returned the larger ask; the smaller takes its
+                # own last sessions of it (all of it, if they cannot be told).
+                if wanted >= fetch:
+                    return bars
+                try:
+                    return last_sessions(bars, wanted, today)
+                except (AttributeError, TypeError):
+                    return bars
+
+            if sessions > 0:
+                replayed = self.replay_history(tail(sessions))
+            if shadow_sessions > 0:
+                try:
+                    self.replay_history(tail(shadow_sessions), strategy=self.shadow)
+                except Exception as exc:
+                    self._drop_shadow(exc)
+            try:
+                self.recent_bars = _bar_rows(last_sessions(bars, RECENT_SESSIONS, today))
+            except Exception as exc:  # for a reader's chart only
+                logger.warning(f"No recent bars kept for the chart: {exc}")
+        for strategy in (self.strategy, self.shadow):
+            resume = getattr(strategy, "resume", None)
+            if callable(resume):
+                try:
+                    resume(list(self.ledger.open_lots))
+                except Exception as exc:
+                    if strategy is self.strategy:
+                        raise
+                    self._drop_shadow(exc)
         return replayed
 
-    def replay_history(self, bars) -> int:
-        """Feed past bars to the strategy's record_tick, oldest first.
+    def _drop_shadow(self, exc: Exception) -> None:
+        if self.shadow is not None:
+            logger.warning(
+                f"Dropped the shadow {type(self.shadow).__name__} ({type(exc).__name__}: {exc}); "
+                "trading is unaffected."
+            )
+        self.shadow = None
+        self.shadow_state = None
+
+    def replay_history(self, bars, strategy=None) -> int:
+        """Feed past bars to the strategy's record_tick (or `strategy`'s),
+        oldest first.
 
         Each context carries the bar's own market fields and a NEUTRAL
         portfolio -- no cash, no equity, no drawdown -- with the book's
@@ -490,7 +649,7 @@ class LiveTradingLoop:
                 drawdown=0.0,
                 open_lot_count=open_lot_count,
             )
-            decision_cycle.record_tick(self.strategy, context)
+            decision_cycle.record_tick(strategy or self.strategy, context)
         return len(bars)
 
     def _restore_settlement(self, raw: str | None) -> None:
@@ -626,6 +785,19 @@ class LiveTradingLoop:
         """Whether a stop has been requested."""
         return self._stop_requested
 
+    def reset_drawdown_baseline(self) -> None:
+        """Measure drawdown from the next tick's equity again, not from the
+        old peak -- an operator resuming buys after a drawdown halt, who
+        would otherwise see it trip again on the next tick. Zero is enough:
+        _build_context raises the peak to the tick's equity before it
+        measures. Strategies that size on drawdown see it reset too."""
+        self.state.peak_equity = 0.0
+        reset_drawdown_baseline(self.store)
+
+    def is_flat(self) -> bool:
+        """No open lots and nothing awaiting a fill."""
+        return not self.ledger.open_lots and self.in_flight_settled()
+
     # --- the tick ---
 
     def _session_is_open(self) -> bool:
@@ -699,9 +871,22 @@ class LiveTradingLoop:
         context = self._build_context(bar, price)
         self.state.last_tick_price = float(price)
         self.state.last_tick_at = bar.timestamp.isoformat()
+        self.last_bar = {
+            "t": int(bar.timestamp.timestamp()),
+            "o": float(bar.open),
+            "h": float(bar.high),
+            "l": float(bar.low),
+            "c": float(bar.close),
+            "v": float(getattr(bar, "volume", 0.0) or 0.0),
+        }
 
         # Phase 1, unconditionally and before any harvest.
         decision_cycle.record_tick(self.strategy, context)
+        if self.shadow is not None:
+            try:
+                decision_cycle.record_tick(self.shadow, context)
+            except Exception as exc:
+                self._drop_shadow(exc)
 
         sells = self._harvest(context)
 
@@ -712,6 +897,7 @@ class LiveTradingLoop:
             context.drawdown, self.risk_manager.halt_new_buys_if_drawdown_exceeds
         )
         buys = self._maybe_buy(context) if self.circuit_breaker.allows_new_buys else 0
+        self._describe(context)
 
         self.state.prev_close = price
         self.persist_state()
@@ -772,6 +958,60 @@ class LiveTradingLoop:
                 break
             self._sleep(interval)
         return ticks
+
+    def _describe(self, context: MarketContext) -> None:
+        """This tick's `decision` and `shadow_state` (module docstring, WHAT
+        IT SAYS ABOUT ITSELF). Never raises: a report is not a reason to stop
+        a tick."""
+        try:
+            level = _buy_level(self.strategy, context, self.state.last_buy_price, self.step)
+            cap = getattr(self.risk_manager, "max_concurrent_lots", None)
+            if not self.circuit_breaker.allows_new_buys:
+                blocked = f"buys paused: {self.circuit_breaker.reason}"
+            elif level is None:
+                blocked = "the strategy buys at no price right now"
+            elif self.state.buying_power <= 0:
+                blocked = "no buying power left"
+            elif cap is not None and len(self.ledger.open_lots) >= cap:
+                blocked = f"at its limit of {cap} open lots"
+            else:
+                blocked = None
+            self.decision = {
+                "price": float(context.price),
+                "buy_level": level,
+                "reference": self.state.last_buy_price,
+                "blocked": blocked,
+                "strategy": _diagnostics(self.strategy),
+            }
+        except Exception as exc:
+            logger.warning(f"No decision report this tick: {type(exc).__name__}: {exc}")
+            self.decision = None
+        if self.shadow is None:
+            self.shadow_state = None
+            return
+        try:
+            # What switching back would do to the book now: the lots the
+            # shadow's own exit would sell on this bar.
+            lots = list(self.ledger.open_lots)
+            liquidate = getattr(self.shadow, "lots_to_liquidate", None)
+            selling = list(liquidate(lots, context)) if callable(liquidate) else []
+            self.shadow_state = {
+                "strategy": _diagnostics(self.shadow),
+                "would_sell": len(selling),
+                "would_sell_cost": round(sum(lot.buy_price * lot.shares for lot in selling), 2),
+            }
+        except Exception as exc:
+            self._drop_shadow(exc)
+
+    def _report_fill(self, **fields) -> None:
+        """Tell the fill listener about a booked fill. A listener that fails
+        is logged, never allowed to stop the loop."""
+        if self._fill_listener is None:
+            return
+        try:
+            self._fill_listener({"t": datetime.now(UTC).timestamp(), **fields})
+        except Exception as exc:
+            logger.warning(f"Fill listener failed (ignored): {type(exc).__name__}: {exc}")
 
     def _report_tick(self, reason: str, **fields) -> None:
         """Tell the tick listener what this tick did. A listener that
@@ -874,6 +1114,14 @@ class LiveTradingLoop:
             f"BUY filled: {delta.qty} @ {delta.avg_price} (${delta.notional:.2f}) -> lot "
             f"{lot_order_id!r}; cash={self.state.cash:.2f}"
         )
+        self._report_fill(
+            side="buy",
+            lot=lot_order_id,
+            qty=float(delta.qty),
+            price=float(delta.avg_price),
+            value=float(delta.notional),
+            target=float(tracked.profit_target),
+        )
 
     def _apply_exit_fill(self, tracked: _TrackedOrder, delta) -> None:
         """Allocate one signal-exit fill increment across the lots it sold,
@@ -900,10 +1148,12 @@ class LiveTradingLoop:
                 )
             except NoLossViolation:
                 continue  # logged by the guard; left visible for reconciliation
+            cost = lot.buy_price * qty
             self.state.credit_sale(economics.net_sell_proceeds, self.settlement_days)
             self.ledger.close_lot(lot, sell_qty=qty, execution_price=delta.avg_price)
             self.store.sync_lot(self.ledger, lot)
             remaining -= qty
+            self._report_sale(tracked, lot_id, qty, delta.avg_price, economics, cost)
         logger.info(
             f"EXIT filled: {delta.qty} @ {delta.avg_price} across "
             f"{len(tracked.exit_lot_ids)} lot(s); cash={self.state.cash:.2f}"
@@ -952,12 +1202,29 @@ class LiveTradingLoop:
             # reconcilable rather than quietly realizing a loss.
             return
 
+        cost = lot.buy_price * delta.qty
         self.state.credit_sale(economics.net_sell_proceeds, self.settlement_days)
         self.ledger.close_lot(lot, sell_qty=delta.qty, execution_price=delta.avg_price)
         self.store.sync_lot(self.ledger, lot)
         logger.info(
             f"SELL filled: {delta.qty} @ {delta.avg_price} "
             f"(net ${economics.net_sell_proceeds:.2f}); cash={self.state.cash:.2f}"
+        )
+        self._report_sale(tracked, lot.order_id, delta.qty, delta.avg_price, economics, cost)
+
+    def _report_sale(self, tracked, lot_id, qty, price, economics, cost) -> None:
+        """A booked sale, with what it fetched against what the lot cost --
+        the figure the ledger cannot give (it stores no sale price)."""
+        proceeds = float(economics.net_sell_proceeds)
+        self._report_fill(
+            side="sell",
+            reason=str(tracked.sell_reason),
+            lot=lot_id,
+            qty=float(qty),
+            price=float(price),
+            proceeds=proceeds,
+            cost=float(cost),
+            pnl=proceeds - float(cost),
         )
 
     # --- context ---

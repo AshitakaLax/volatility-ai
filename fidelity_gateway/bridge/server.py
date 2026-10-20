@@ -38,8 +38,10 @@ import contextlib
 import json
 import queue
 import threading
+import time
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any
 
@@ -192,6 +194,12 @@ class BridgeServer:
         self._calls: dict[str, Callable[[dict], dict]] = {}
         self._server: Any = None
         self._thread: threading.Thread | None = None
+        # For connection_report(): when the extension connected, was last
+        # heard from, and last went away (epoch seconds).
+        self._clock = time.time
+        self._connected_at: float | None = None
+        self._heard_at: float | None = None
+        self._disconnected_at: float | None = None
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -267,6 +275,32 @@ class BridgeServer:
         """What the engine last said about itself, or None."""
         status = self._engine_status
         return dict(status) if status is not None else None
+
+    def connection_report(self) -> dict:
+        """The extension's side of the bridge, for whoever watches the engine
+        (the Live page, through the trader's status file): connected or not,
+        since when, when it was last heard from, which version against the
+        ones this engine expects, and what its switches allow -- "place" is
+        its "Allow trading". Never the API key."""
+
+        def iso(seconds: float | None) -> str | None:
+            return datetime.fromtimestamp(seconds, UTC).isoformat() if seconds else None
+
+        session = self._session
+        connected = session is not None and self.connected
+        version = session.client.get("version") if connected else None
+        return {
+            "connected": connected,
+            "since": iso(self._connected_at) if connected else None,
+            "last_heard": iso(self._heard_at),
+            "disconnected_at": None if connected else iso(self._disconnected_at),
+            "client": session.peer if connected else None,
+            "version": version,
+            "versions": self.extension_versions,
+            "advice": version_advice(version, self._extension_versions) if version else None,
+            "permissions": self.permissions,
+            "url": self.url,
+        }
 
     def set_engine_status(self, status: dict) -> None:
         """Tell the extension what the engine is doing -- now, if one is
@@ -373,6 +407,7 @@ class BridgeServer:
         session = _Session(connection, channel, peer, auth.get("client"))
         with self._lock:
             previous, self._session = self._session, session
+            self._connected_at = self._heard_at = self._clock()
         if previous is not None:
             self._log("[bridge] a new extension connection replaces the old one")
             with contextlib.suppress(Exception):
@@ -395,6 +430,7 @@ class BridgeServer:
         except (ProtocolError, ValueError, TypeError) as exc:
             self._log(f"[bridge] dropped the extension: {exc}")
             return False
+        self._heard_at = self._clock()
         kind = message.get("type")
         if kind == "response":
             with self._lock:
@@ -512,6 +548,7 @@ class BridgeServer:
             if self._session is session:
                 self._session = None
                 self._connected.clear()
+                self._disconnected_at = self._clock()
             abandoned = [key for key, (owner, _) in self._pending.items() if owner is session]
             waiters = [self._pending.pop(key)[1] for key in abandoned]
         for waiter in waiters:

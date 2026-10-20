@@ -261,11 +261,11 @@ class TestItCannotTouchTheTradingLoop:
     def test_live_state_is_readable_without_being_written(self, client):
         """Read-only by construction on the server; asserted here as the
         behaviour a reader depends on."""
-        stores = client.get("/api/live/stores").json()
-        assert stores, "the Pi reports no ledger stores"
-        state = client.get("/api/live/state", params={"path": stores[0]})
-        assert state.status_code == 200
-        assert "lots" in state.json()
+        deployments = client.get("/api/live/deployments").json()
+        assert deployments, "the host reports no live deployments"
+        detail = client.get(f"/api/live/deployments/{deployments[0]['id']}")
+        assert detail.status_code == 200
+        assert "commands" in detail.json()
 
 
 class TestTheBrowserActuallyRendersIt:

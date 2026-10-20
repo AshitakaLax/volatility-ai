@@ -96,9 +96,14 @@ rm /tmp/paper_ledger.db
 ## 4. Build, verify, start
 
 ```bash
-docker compose build
+VAI_BUILD_COMMIT=$(git rev-parse --short HEAD) docker compose build
 docker compose run --rm preflight
 ```
+
+`VAI_BUILD_COMMIT` is optional: it records the commit in the image, which has
+no `.git`, for the Live page's Deployment card. Without it the card still
+shows a fingerprint of the code and whether the trader and the web server
+run the same one.
 
 Every line must be `ok`. The ones worth reading:
 
@@ -151,17 +156,47 @@ mid-session. See `engine/trading/live_history.py`.
 ## 5. The UI
 
 `http://127.0.0.1:8000`: Backtesting, Run History, Live, Model research,
-Warehouse. The Live tab lists both paper ledgers, mounted read-only. The
-Warehouse tab shows what the warehouse holds (each fund's bars and how many
-sessions behind they are, the sweeps and simulations recorded, sizes on disk)
-and the machine's state (load, CPU temperatures, memory, disks, the queue's
-remaining work and its ETA, the newest backup).
+Warehouse. The Warehouse tab shows what the warehouse holds (each fund's bars
+and how many sessions behind they are, the sweeps and simulations recorded,
+sizes on disk) and the machine's state (load, CPU temperatures, memory,
+disks, the queue's remaining work and its ETA, the newest backup).
 
-**There is no authentication.** The live routes show balances, positions
-and cost bases, and the halt (which blocks new buys; open lots keep
-exiting) is reachable by anyone who can reach the port. That is why it is
-published on loopback. To reach it from another machine on a trusted LAN,
-for a phone or another machine's `cli.py shard`:
+### The Live tab: every deployment, and its controls
+
+The deployments are `config/deployments.yaml`'s (ids, configs, ledgers,
+control directories as `web` sees them). Each shows the state its trader
+reports -- Trading, Buys paused, Winding down, Waiting for open, Disabled,
+Not running -- and offers:
+
+| Control | What happens | The deployment's config must grant |
+|---|---|---|
+| Pause buys | no new buys from the next tick; open lots keep exiting | (always allowed) |
+| Resume buys | clears a halt, optionally re-basing the drawdown | `live.control.resume_buys` |
+| Wind down | pauses buys; trading stops by itself once nothing is open | `live.control.enable_disable` |
+| Disable / Enable | no session starts until enabled (open lots get NO exits meanwhile) | `live.control.enable_disable` |
+| Switch / Revert / Re-warm | the algorithm, from a committed profile (`config/live_profiles/`) or, on paper, validated parameters; at the next tick, the next session, or once flat | `live.control.algorithm_changes` |
+| Fresh paper ledger | archives the ledger, starts a new one with the account's cash -- disabled, paper, and a flat Alpaca account only | `live.control.ledger_reset` |
+
+**Nothing on the page changes a deployment directly.** It queues a command
+in the deployment's control volume (`control_ultimate`, `control_champion`,
+`control_production`); the trader applies it -- between ticks while
+trading, within 15 seconds between sessions -- and the command log says when
+and what came of it. The trader stays the only writer of its ledger. Real
+money takes only promoted profiles, needs the deployment's id typed back for
+everything but a pause, switches at most once a day, and never resets its
+ledger. There is no liquidation command.
+
+The page cannot start a stopped container (that would need the Docker
+socket, which is root on the host); a deployment whose trader is not
+running says so and names its service.
+
+**There is no authentication**, by the operator's choice for a trusted LAN.
+The live routes show balances, positions and cost bases, and anyone who can
+reach the port can use the controls above. A page on another site, open in
+your browser, cannot (cross-site requests are refused), and every command
+records the name typed with it and the address it came from. That is why
+it is published on loopback by default. To reach it from another machine on
+a trusted LAN, for a phone or another machine's `cli.py shard`:
 
 ```bash
 VAI_WEB_BIND=0.0.0.0 docker compose up -d web
@@ -245,7 +280,7 @@ with them every open lot. There is no other copy except these backups.
 ```bash
 docker compose logs -f paper                       # follow the loop
 docker compose run --rm preflight --skip-network   # the ledger, without stopping anything
-git pull && docker compose up -d --build           # update
+git pull && VAI_BUILD_COMMIT=$(git rev-parse --short HEAD) docker compose up -d --build   # update
 docker compose stop paper                          # stop trading; the ledger stays
 docker compose run --rm test -q                    # the suite, inside the image
 docker compose run --rm fetch-data --symbol TQQQ --days 30
@@ -266,6 +301,32 @@ keys in `.env.production`. `Mode.LIVE` will not construct without
 `config/production.yaml` is still a placeholder (`fixed`, 5% lots). Write
 the real deployment config from the paper config that earned its
 promotion, then read `docs/PRE_PRODUCTION_CHECKLIST.md`.
+
+### Fidelity
+
+`fidelity` (profile `fidelity`) trades a Fidelity account through the
+Fidelity Bridge browser extension (`fidelity_gateway/`): every order goes
+from this server over the extension into the signed-in Fidelity tab. It
+runs on the host's network, so the bridge listens on this server's address
+and checks the browser's real address against its allow list.
+
+1. `python -m fidelity_gateway.bridge keygen` -- writes
+   `FIDELITY_BRIDGE_API_KEY` to `.env` and prints it once.
+2. Copy `config/fidelity_live.yaml.example` to `config/fidelity_live.yaml`
+   (git-ignored, and kept out of the image: it names the account). Set
+   `live.fidelity.bridge.host: 0.0.0.0` and put the browser's machine in
+   `allowed_clients`.
+3. In that browser: load the extension, paste the key, add this server to
+   its allowed engines, sign into Fidelity. Leave "Allow trading" off.
+4. `docker compose --profile fidelity up -d fidelity`. The Live page's
+   Fidelity section shows the engine and the extension's connection; once
+   it reads connected, turn "Allow trading" on. Off again pauses every
+   order without stopping the engine.
+
+The Alpaca keys in `.env` give it prices and the market clock only; that
+connection is never handed an order. Its ledger and control folder are the
+`state_fidelity` and `control_fidelity` volumes, and the backup service
+archives the ledger with the others.
 
 ---
 

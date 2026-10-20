@@ -69,14 +69,21 @@ run() {
     return "$code"
 }
 
+# The wait between sessions happens INSIDE the supervisor (--linger), so the
+# Live page's commands -- pause, disable, switch -- are answered during it,
+# with $VAI_CONTROL_DIR naming where they arrive. Only a failed run waits out
+# here, so a supervisor that cannot start does not spin.
 while [ -z "$stopping" ]; do
     echo "[loop] === starting session at $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
     run python tools/market_hours_supervisor.py \
         --config "${CONFIG}" \
-        --state-db "${STATE_DB}"
+        --state-db "${STATE_DB}" \
+        --linger "${IDLE_SECONDS}"
     code=$?
     [ -n "$stopping" ] && break
-    echo "[loop] supervisor exited with ${code}; sleeping ${IDLE_SECONDS}s"
-    run sleep "${IDLE_SECONDS}"
+    if [ "$code" -ne 0 ]; then
+        echo "[loop] supervisor exited with ${code}; sleeping ${IDLE_SECONDS}s"
+        run sleep "${IDLE_SECONDS}"
+    fi
 done
 echo "[loop] stopped"
