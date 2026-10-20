@@ -1,6 +1,6 @@
 # Intraday Strategies for Market Corrections — Source Mining & Algorithm Catalog
 
-Oct 3, 2026 · @ashitakalax
+Oct 3, 2026
 
 ## Scope and constraints
 
