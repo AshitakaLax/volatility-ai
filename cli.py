@@ -841,35 +841,44 @@ def cmd_live(args: argparse.Namespace) -> int:
     # anything opens. One that does not validate stops the start -- trading
     # the YAML's algorithm while the operator believes theirs is live would
     # be the worse failure. See research/strategies/live_algorithm.py.
-    algorithm = None
-    if fidelity:
-        from research.strategies.live_algorithm import AlgorithmControl
+    #
+    # And the algorithm set from the Live page (live.control.algorithm_changes):
+    # the same override, written by this deployment's own trader when it
+    # applies the page's command -- engine/trading/operator_control.py.
+    from research.strategies.live_algorithm import AlgorithmControl
 
-        algorithm = AlgorithmControl(
-            config,
-            state_db=db_path,
-            registry=registry,
-            allowed=config.live.fidelity.bridge.allow_algorithm_changes,
-            config_path=config_path,
-            log=lambda message: print(message, file=sys.stderr, flush=True),
+    grants = config.live.control.effective(config.live.paper_trading)
+    algorithm = AlgorithmControl(
+        config,
+        state_db=db_path,
+        registry=registry,
+        allowed=bool(fidelity and config.live.fidelity.bridge.allow_algorithm_changes),
+        web_allowed=grants.algorithm_changes,
+        profiles_only=grants.profiles_only,
+        config_path=config_path,
+        log=lambda message: print(message, file=sys.stderr, flush=True),
+    )
+    if algorithm.ignored_override():
+        print(
+            f"Ignoring {algorithm.path}: neither live.fidelity.bridge.allow_algorithm_changes "
+            "nor live.control.algorithm_changes is on, so the config file's algorithm is traded.",
+            file=sys.stderr,
         )
-        if algorithm.ignored_override():
-            print(
-                f"Ignoring {algorithm.path}: live.fidelity.bridge.allow_algorithm_changes is "
-                "off, so the config file's algorithm is traded.",
-                file=sys.stderr,
-            )
-        try:
-            config = algorithm.effective_config()
-        except ConfigurationError as e:
-            print(f"Invalid algorithm override: {e}", file=sys.stderr)
-            return 2
-        if algorithm.allowed and algorithm.path.exists():
-            print(
-                f"Trading the algorithm set from the browser extension ({algorithm.path}): "
-                f"strategy={config.strategy.strategy_id} step={config.live.step} "
-                f"profit_target={config.live.profit_target}"
-            )
+    try:
+        config = algorithm.effective_config()
+    except ConfigurationError as e:
+        print(f"Invalid algorithm override: {e}", file=sys.stderr)
+        return 2
+    override = algorithm.override_info()
+    if override is not None:
+        source = {"extension": "browser extension", "web": "Live page"}.get(
+            override["channel"], override["channel"]
+        )
+        print(
+            f"Trading the algorithm set from the {source} ({algorithm.path}): "
+            f"strategy={config.strategy.strategy_id} step={config.live.step} "
+            f"profit_target={config.live.profit_target}"
+        )
 
     # ONE LOOP PER STORE. Two live loops against the same state store
     # submit duplicate orders, and DuplicateOrderGuard cannot catch it:
@@ -937,7 +946,15 @@ def cmd_live(args: argparse.Namespace) -> int:
         print(f"Runtime state: {final_state.value}")
         print(f"Mode: {mode.value}")
         connection = connected.get("connection")
+        inbox = _control_inbox(args)
         if final_state.value != "READY":
+            if inbox is not None:
+                inbox.write_status(
+                    state="recovery_required",
+                    detail=f"startup stopped at {final_state.value}; see the engine's log",
+                    process="loop",
+                    heartbeat_seconds=600.0,
+                )
             store.close()
             print(
                 "Did not reach READY. The state above names the stage that stopped startup; "
@@ -967,6 +984,7 @@ def cmd_live(args: argparse.Namespace) -> int:
             lifecycle,
             connection=connection,
             algorithm=algorithm,
+            inbox=inbox,
         )
     finally:
         # finally, not after the return: a loop that raises must not
@@ -1032,8 +1050,27 @@ def _algorithm_status(config, algorithm) -> dict:
     return status
 
 
+def _control_inbox(args):
+    """The Live page's command inbox for this deployment, or None. A check
+    run (--check-only) answers none: it trades nothing to apply them to."""
+    if not getattr(args, "control_dir", None) or args.check_only:
+        return None
+    from engine.trading.control_inbox import ControlInbox
+
+    return ControlInbox(args.control_dir)
+
+
 def _run_trading_loop(
-    args, config, broker, store, circuit_breaker, lifecycle, *, connection=None, algorithm=None
+    args,
+    config,
+    broker,
+    store,
+    circuit_breaker,
+    lifecycle,
+    *,
+    connection=None,
+    algorithm=None,
+    inbox=None,
 ) -> int:
     """Run the tick loop until a signal stops it, then shut down cleanly.
 
@@ -1068,7 +1105,13 @@ def _run_trading_loop(
         if connection is not None:
             connection.report(**fields)
 
+    control = None  # the Live page's commands; built once the loop exists
+
     def on_tick(tick: dict) -> None:
+        if control is not None:
+            # On the loop's own thread, between ticks: a pause lands before
+            # the next buy decision, through the breaker the loop reads.
+            control.tick()
         if tick.get("reason") == "broker_unavailable":
             report(
                 state="paused",
@@ -1130,6 +1173,50 @@ def _run_trading_loop(
         store.close()
         return 1
     current = {"loop": first, "config": config, "reload": False, "stop": False}
+
+    if inbox is not None:
+        from engine.trading.operator_control import LoopControl
+        from research.strategies.live_algorithm import algorithm_handlers
+
+        def _stop_for_operator(why: str) -> None:
+            print(f"Stopping: {why} -- finishing the current tick.", file=sys.stderr)
+            current["stop"] = True
+            current["loop"].request_stop()
+
+        def _rewarm() -> None:
+            # The same rebuild an algorithm change triggers, with the same
+            # config: the strategy is constructed again and history replayed.
+            current["reload"] = True
+            current["loop"].request_stop()
+
+        control = LoopControl(
+            inbox,
+            breaker=circuit_breaker,
+            loop=lambda: current["loop"],
+            stop=_stop_for_operator,
+            heartbeat_seconds=float(config.live.poll_interval_seconds),
+            extra=(
+                algorithm_handlers(
+                    algorithm,
+                    symbol=config.backtest.symbol,
+                    paper=config.live.paper_trading,
+                    on_rewarm=_rewarm,
+                )
+                if algorithm is not None
+                else None
+            ),
+            status_fields=lambda: {
+                "algorithm": {
+                    "strategy_id": current["config"].strategy.strategy_id,
+                    "step": current["config"].live.step,
+                    "profit_target": current["config"].live.profit_target,
+                    "override": algorithm.override_info() if algorithm is not None else None,
+                },
+            },
+        )
+        # Before the first tick, so a pause queued during startup is in force
+        # before any buy decision.
+        control.tick()
 
     # SIGTERM is how `docker stop` asks a container to exit, so handling
     # it is what makes restart:unless-stopped safe: the loop finishes
@@ -1225,6 +1312,13 @@ def _run_trading_loop(
         close_connections=store.close,
     )
     print(f"Shutdown state: {final.value}")
+    if inbox is not None:
+        inbox.write_status(
+            state="stopped" if final.value == "STOPPED" else "recovery_required",
+            detail=aborted or (control.stopping if control else None) or "the session ended",
+            process="loop",
+            heartbeat_seconds=60.0,
+        )
     if final.value != "STOPPED":
         # RECONCILIATION_REQUIRED here means in-flight orders did not
         # settle in the bounded window; the next startup must reconcile.
@@ -1989,6 +2083,13 @@ def main() -> int:
         type=int,
         default=None,
         help="Stop after N ticks instead of running until signalled",
+    )
+    p_live.add_argument(
+        "--control-dir",
+        default=os.environ.get("VAI_CONTROL_DIR"),
+        help="This deployment's control directory, where the Live page's commands "
+        "(pause, resume, disable, switch) arrive; applied between ticks. "
+        "Defaults to $VAI_CONTROL_DIR.",
     )
     p_live.set_defaults(func=cmd_live)
 
