@@ -90,7 +90,7 @@ sys.path.insert(0, str(REPO_ROOT))
 # --remote-host or $VAI_BACKUP_REMOTE; tools/backup_databases.py (which
 # these two commands delegate to) deliberately has no default of its own,
 # but a CLI meant to be run without flags needs one.
-DEFAULT_PI_REMOTE = "ashitakalax@172.16.0.137"
+DEFAULT_PI_REMOTE = os.environ.get("VAI_DEFAULT_PI_REMOTE", "user@host")
 
 # `test`'s default targets. The suite is split so each project directory
 # (a session root -- see CLAUDE.md's "Project directories" table) carries
