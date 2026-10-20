@@ -36,6 +36,8 @@ set -u
 CONFIG="${VAI_CONFIG:-/app/config/paper_aggressive.yaml}"
 STATE_DB="${VAI_STATE_DB:-/app/state/paper_ledger.db}"
 IDLE_SECONDS="${VAI_IDLE_SECONDS:-900}"
+# How often a missing config, or one a session failed on, is looked at again.
+CONFIG_POLL_SECONDS="${VAI_CONFIG_POLL_SECONDS:-30}"
 
 echo "[loop] config=${CONFIG}"
 echo "[loop] state=${STATE_DB}"
@@ -69,11 +71,54 @@ run() {
     return "$code"
 }
 
+# What the config holds, cheaply compared: its checksum, or "missing".
+config_stamp() {
+    cksum "${CONFIG}" 2>/dev/null || echo missing
+}
+
+# WHY IT WAITS FOR A MISSING CONFIG
+#
+# A deployment can be started before its config is written. The Fidelity
+# one's names the account, so it is never committed; it is written by hand
+# on the host. The supervisor used to fail on the missing file with a
+# traceback every IDLE_SECONDS, which reads like a container restarting
+# over and over. So the loop says once what it is waiting for, and starts
+# as soon as the file is there: config/ is the host's directory, mounted
+# in, so the file appears in here the moment it is saved.
+wait_for_config() {
+    [ -f "${CONFIG}" ] && return 0
+    echo "[loop] ${CONFIG} does not exist yet; waiting for it (looking every ${CONFIG_POLL_SECONDS}s)."
+    echo "[loop] Write it on the host: docs/DEPLOY.md says what goes in it."
+    while [ -z "$stopping" ] && [ ! -f "${CONFIG}" ]; do
+        run sleep "${CONFIG_POLL_SECONDS}"
+    done
+    [ -z "$stopping" ] && echo "[loop] ${CONFIG} is there; starting."
+    return 0
+}
+
+# After a failed session: wait IDLE_SECONDS, but go again as soon as the
+# config changes. A config being written for the first time fails on its
+# mistakes, and the fix should not then wait a quarter of an hour.
+wait_after_failure() {
+    stamp=$(config_stamp)
+    deadline=$(($(date +%s) + IDLE_SECONDS))
+    while [ -z "$stopping" ] && [ "$(date +%s)" -lt "$deadline" ]; do
+        run sleep "${CONFIG_POLL_SECONDS}"
+        if [ "$(config_stamp)" != "$stamp" ]; then
+            echo "[loop] ${CONFIG} changed; trying again now"
+            return 0
+        fi
+    done
+    return 0
+}
+
 # The wait between sessions happens INSIDE the supervisor (--linger), so the
 # Live page's commands -- pause, disable, switch -- are answered during it,
 # with $VAI_CONTROL_DIR naming where they arrive. Only a failed run waits out
-# here, so a supervisor that cannot start does not spin.
+# here (wait_after_failure), so a supervisor that cannot start does not spin.
 while [ -z "$stopping" ]; do
+    wait_for_config
+    [ -n "$stopping" ] && break
     echo "[loop] === starting session at $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
     run python tools/market_hours_supervisor.py \
         --config "${CONFIG}" \
@@ -82,8 +127,8 @@ while [ -z "$stopping" ]; do
     code=$?
     [ -n "$stopping" ] && break
     if [ "$code" -ne 0 ]; then
-        echo "[loop] supervisor exited with ${code}; sleeping ${IDLE_SECONDS}s"
-        run sleep "${IDLE_SECONDS}"
+        echo "[loop] supervisor exited with ${code}; trying again in ${IDLE_SECONDS}s, or as soon as ${CONFIG} changes"
+        wait_after_failure
     fi
 done
 echo "[loop] stopped"

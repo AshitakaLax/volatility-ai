@@ -54,9 +54,11 @@ export function FidelityPanel({ deployment }: { deployment: DeploymentSummary })
                 in that browser. Leave "Allow trading" off for now.
               </li>
               <li>
-                <code>docker compose --profile fidelity up -d fidelity</code>, then check here that
-                the extension shows connected before turning "Allow trading" on.
+                <code>docker compose --profile fidelity up -d fidelity</code>. The engine, and the
+                bridge with it, runs from the open to the close; to check the setup sooner, run its{" "}
+                <code>--check-only</code> between sessions (docs/DEPLOY.md, "Fidelity").
               </li>
+              <li>Once this shows the extension connected, turn "Allow trading" on.</li>
             </ol>
           </div>
         ) : (

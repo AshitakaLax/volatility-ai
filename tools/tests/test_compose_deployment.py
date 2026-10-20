@@ -253,10 +253,14 @@ def test_the_deployment_guide_leads_with_stopping_the_other_host():
     assert guide.index("Stop every other host") < guide.index("docker compose up")
 
 
-# -- docker stop, end to end, with a stand-in supervisor --------------------
+# -- the session loop end to end, with a stand-in supervisor ----------------
 
+# Each start is a line in $MARKERS/runs. The first $FAIL_FIRST starts exit 1
+# at once; any other runs until SIGTERM, which it takes gracefully.
 _STUB = """#!/bin/sh
 [ "$1" = "-c" ] && exit 0
+echo run >> "$MARKERS/runs"
+[ "$(grep -c . "$MARKERS/runs")" -le "${FAIL_FIRST:-0}" ] && exit 1
 echo started > "$MARKERS/started"
 trap 'echo graceful > "$MARKERS/stopped"; exit 0' TERM
 while :; do sleep 0.05; done
@@ -272,30 +276,90 @@ def _wait_for(path: Path, seconds: float = 10.0) -> bool:
     return False
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals and /bin/sh")
-def test_docker_stop_reaches_the_supervisor_as_a_graceful_stop(tmp_path):
-    """docker stop signals PID 1, the shell; a shell forwards nothing by
-    itself, so the trading loop used to be killed mid-tick when the grace
-    period ran out."""
+def _start_loop(tmp_path: Path, **env: str) -> tuple[subprocess.Popen, Path]:
+    """The real session loop, with the stub as its `python`. Returns the
+    process and the directory the stub leaves its markers in."""
     bin_dir, markers = tmp_path / "bin", tmp_path / "markers"
     bin_dir.mkdir()
     markers.mkdir()
     stub = bin_dir / "python"
     stub.write_text(_STUB)
     stub.chmod(0o755)
-    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "MARKERS": str(markers)}
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "MARKERS": str(markers),
+        "VAI_CONFIG_POLL_SECONDS": "0.05",
+        **env,
+    }
     loop = subprocess.Popen(
         ["/bin/sh", str(LOOP)], cwd=ROOT, env=env, stdout=subprocess.PIPE, text=True
     )
+    return loop, markers
+
+
+def _stop(loop: subprocess.Popen) -> str:
+    """docker stop: SIGTERM to the shell. Returns everything it printed."""
+    loop.send_signal(signal.SIGTERM)
+    out, _ = loop.communicate(timeout=10)
+    return out
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals and /bin/sh")
+def test_docker_stop_reaches_the_supervisor_as_a_graceful_stop(tmp_path):
+    """docker stop signals PID 1, the shell; a shell forwards nothing by
+    itself, so the trading loop used to be killed mid-tick when the grace
+    period ran out."""
+    config = tmp_path / "config.yaml"
+    config.write_text("live: {}\n")
+    loop, markers = _start_loop(tmp_path, VAI_CONFIG=str(config))
     try:
         assert _wait_for(markers / "started"), "the supervisor never started"
-        loop.send_signal(signal.SIGTERM)
-        out, _ = loop.communicate(timeout=10)
+        out = _stop(loop)
     finally:
         loop.kill()
     assert (markers / "stopped").read_text().strip() == "graceful"
     assert loop.returncode == 0
     assert "[loop] stop requested" in out and out.rstrip().endswith("[loop] stopped")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals and /bin/sh")
+def test_a_config_that_does_not_exist_yet_is_waited_for(tmp_path):
+    """The Fidelity service can be started before its config is written (it
+    names the account, so it is never committed). That used to fail a session
+    with a traceback every VAI_IDLE_SECONDS; the loop now says once what it
+    is waiting for, and starts when the file appears."""
+    config = tmp_path / "fidelity_live.yaml"
+    loop, markers = _start_loop(tmp_path, VAI_CONFIG=str(config))
+    try:
+        assert not _wait_for(markers / "runs", 0.5), "the supervisor ran without its config"
+        config.write_text("live: {}\n")
+        assert _wait_for(markers / "started"), "it never started once the config was there"
+        out = _stop(loop)
+    finally:
+        loop.kill()
+    assert out.count("does not exist yet") == 1, out
+    assert loop.returncode == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals and /bin/sh")
+def test_a_failed_session_is_tried_again_as_soon_as_the_config_changes(tmp_path):
+    """A config being written for the first time fails on its mistakes, and
+    the fix should not wait out VAI_IDLE_SECONDS to be tried."""
+    config = tmp_path / "fidelity_live.yaml"
+    config.write_text("live: {broker: fidelity}\n")
+    loop, markers = _start_loop(
+        tmp_path, VAI_CONFIG=str(config), VAI_IDLE_SECONDS="3600", FAIL_FIRST="1"
+    )
+    try:
+        assert _wait_for(markers / "runs"), "the supervisor never started"
+        assert not _wait_for(markers / "started", 0.5), "it tried again with nothing changed"
+        config.write_text("live: {broker: fidelity, enabled: true}\n")
+        assert _wait_for(markers / "started"), "the changed config was never tried"
+        out = _stop(loop)
+    finally:
+        loop.kill()
+    assert "supervisor exited with 1" in out and "changed; trying again" in out, out
 
 
 def test_sigterm_takes_the_supervisors_ctrl_c_path():

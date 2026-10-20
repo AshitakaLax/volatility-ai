@@ -313,15 +313,31 @@ and checks the browser's real address against its allow list.
 1. `python -m fidelity_gateway.bridge keygen` -- writes
    `FIDELITY_BRIDGE_API_KEY` to `.env` and prints it once.
 2. Copy `config/fidelity_live.yaml.example` to `config/fidelity_live.yaml`
-   (git-ignored, and kept out of the image: it names the account). Set
-   `live.fidelity.bridge.host: 0.0.0.0` and put the browser's machine in
-   `allowed_clients`.
+   (git-ignored, and kept out of the image: it names the account). Fill in
+   the account fields, set `live.fidelity.bridge.host: 0.0.0.0`, and put
+   the browser's machine in `allowed_clients`.
 3. In that browser: load the extension, paste the key, add this server to
    its allowed engines, sign into Fidelity. Leave "Allow trading" off.
-4. `docker compose --profile fidelity up -d fidelity`. The Live page's
-   Fidelity section shows the engine and the extension's connection; once
-   it reads connected, turn "Allow trading" on. Off again pauses every
-   order without stopping the engine.
+4. `docker compose --profile fidelity up -d fidelity`. The engine, and the
+   bridge with it, runs from the open to the close: the extension connects
+   at the open and shows the engine as not running between sessions. To
+   check the setup before then, run the engine's check between sessions
+   (during one, the engine holds the bridge's port). It connects,
+   reconciles against the account and stops at READY, placing nothing:
+
+   ```bash
+   docker compose --profile fidelity run --rm --entrypoint python fidelity \
+     cli.py live --config /app/config/fidelity_live.yaml \
+     --state-db /app/state/fidelity_ledger.db --check-only
+   ```
+
+5. Once the Live page's Fidelity section reads connected, turn "Allow
+   trading" on. Off again pauses every order without stopping the engine.
+
+Started before its config exists, the service waits for the file, says so
+once in its log (`docker compose logs fidelity`), and starts when the file
+appears. A session that fails on a mistake in the config is tried again as
+soon as the file changes, not after `VAI_IDLE_SECONDS`.
 
 The Alpaca keys in `.env` give it prices and the market clock only; that
 connection is never handed an order. Its ledger and control folder are the

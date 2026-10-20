@@ -65,6 +65,17 @@ address. Its config is read from the host and kept out of the image
 (`.dockerignore`), since it names the account. Setup: docs/DEPLOY.md,
 "Fidelity".
 
+**Started before its config exists, the service waits for it**
+(`tools/docker_session_loop.sh`). The first start, before anyone had
+written `config/fidelity_live.yaml`, failed a session with a traceback
+every 15 minutes, which looked like a container restarting over and over.
+The loop now:
+- says once what it is waiting for, and starts as soon as the file
+  appears;
+- after a session fails, tries again as soon as the config changes, so
+  fixing a mistake in a new config is not followed by a quarter-hour
+  wait.
+
 ## Live deployment control
 
 **The Live page's emergency halt did not work, in two ways.**
