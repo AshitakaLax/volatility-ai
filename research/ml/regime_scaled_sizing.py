@@ -63,7 +63,7 @@ rounding difference.
 The widening itself is a step function, not a curve, and that is a
 statement about the evidence rather than a simplification. This
 project's own measured model quality is weak -- held-out AUCs of
-0.57-0.60 for the reachability line, and ml_plan.md is explicit that
+0.57-0.60 for the reachability line, and docs/ml_plan.md is explicit that
 "absolute AUCs of 0.52-0.63 are weak in any case, and none of this has
 yet been connected to money". reachability_sizing.py declined a
 cleverer calibration curve on exactly that basis. A model that
@@ -128,7 +128,7 @@ moving-block-bootstrap significance test at all. Results:
         SQQQ post-cutoff, so this reads as the fund itself having been
         a structural loser in that window.
 
-ml_plan.md's bar -- "a model must beat hf_local_reference" -- is
+docs/ml_plan.md's bar -- "a model must beat hf_local_reference" -- is
 therefore MEASURED and NOT MET on both funds tested, not merely
 untested. The other five funds have no sweep at all: their crash
 classifiers did not clear significance, so searching their thresholds
@@ -246,8 +246,8 @@ SIGNIFICANT". A wider label search (5 horizons x 9 thresholds x
 vol-block on/off, 90 candidates per fund) asked whether a DIFFERENT
 label than the one originally calibrated might carry a real signal
 using only data already on disk -- no new fetch, since this
-workstation holds no Alpaca credentials at all (they moved to the Pi
-with live trading; see docs/DEPLOY_RASPBERRY_PI.md) and COWZ cannot
+workstation held no Alpaca credentials at all (they had moved to the
+Raspberry Pi with live trading) and COWZ cannot
 have pre-2016-12-19 data regardless of credentials (fund inception).
 
 One candidate looked promising on a first pass -- RSP at
@@ -455,7 +455,7 @@ class MLRegimeScaledSizing(_BaselineScaledStrategy):
         # argument above is still checked here, at construction. What
         # moves is only the disk read, and the place a live deployment
         # should catch a missing artifact is tools/preflight.py, which
-        # docs/DEPLOY_RASPBERRY_PI.md already requires to be all-`ok`
+        # docs/DEPLOY.md already requires to be all-`ok`
         # before trading -- call ensure_model_available() from there.
         self._source_kwargs = {
             "model_dir": Path(model_dir),

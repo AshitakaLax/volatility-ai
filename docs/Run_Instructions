@@ -322,9 +322,9 @@ Things worth knowing before running this:
     halt, not a reconciliation failure.
 
 Operational scripts (`tools/market_hours_supervisor.py`,
-`install_paper_service.ps1`, `docker_session_loop.sh`) and the
-Raspberry Pi deployment are covered in `tools/README.md` and
-`docs/DEPLOY_RASPBERRY_PI.md`. Alpaca credentials are in
+`docker_session_loop.sh`, `docker_backup_loop.sh`) and the
+single-host Docker Compose deployment are covered in `tools/README.md`
+and `docs/DEPLOY.md`. Alpaca credentials are in
 `docs/ALPACA_SETUP.md`; the pre-production gate is
 `docs/PRE_PRODUCTION_CHECKLIST.md`.
 

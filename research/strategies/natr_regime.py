@@ -249,6 +249,15 @@ class IncrementalNatrRegime:
         self._held = 0
         self.calm: bool | None = None
 
+    @property
+    def history_sessions(self) -> int:
+        """Sessions before the raw flag is the one any longer history would
+        give: the flagless warm-up, and the bear filter's window of closes.
+        The debounced flag can still differ until it next holds min_hold
+        sessions in a row."""
+        bear = self.bear_window if self.bear_dd is not None else 0
+        return max(self._skip, bear, self.bear_sma or 0)
+
     def observe(self, timestamp, high: float, low: float, close: float) -> None:
         day = timestamp.date()
         if day != self._day:

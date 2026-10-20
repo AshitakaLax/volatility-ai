@@ -1,4 +1,4 @@
-import { Activity, ArrowRight, BarChart3, FlaskConical, LineChart } from "lucide-react";
+import { Activity, ArrowRight, BarChart3, Database, FlaskConical, LineChart } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ActiveRuns } from "@/components/backtest/ActiveRuns";
@@ -12,6 +12,7 @@ import { DeploymentHealth } from "@/components/live/DeploymentHealth";
 import { LiveOrderLedger } from "@/components/live/LiveOrderLedger";
 import { LivePriceChart } from "@/components/live/LivePriceChart";
 import { ModelInsights } from "@/components/ml/ModelInsights";
+import { WarehouseTab } from "@/components/warehouse/WarehouseTab";
 import { Button, Card, CardContent } from "@/components/ui/primitives";
 import { useBacktestRun } from "@/hooks/useBacktestRun";
 import { useLiveState } from "@/hooks/useLiveState";
@@ -33,7 +34,7 @@ import { DEFAULT_FILTERS, type ExecutionFilters, type Report } from "@/types/bac
  * is no run, so the page is useful before the API is up, which is also
  * how it was developed.
  */
-type Tab = "backtest" | "result" | "live" | "ml";
+type Tab = "backtest" | "result" | "live" | "ml" | "warehouse";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("backtest");
@@ -113,6 +114,7 @@ export default function App() {
                 { id: "result", label: "Backtest result", icon: BarChart3 },
                 { id: "live", label: "Live", icon: Activity },
                 { id: "ml", label: "Model research", icon: FlaskConical },
+                { id: "warehouse", label: "Warehouse", icon: Database },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -176,6 +178,8 @@ export default function App() {
           </>
         ) : tab === "ml" ? (
           <ModelInsights />
+        ) : tab === "warehouse" ? (
+          <WarehouseTab />
         ) : tab === "result" ? (
           <BacktestResult
             report={report}

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -u
 
-VENV="C:/workspace/volatility-ai/.venv/Scripts/python.exe"
+cd "$(dirname "$0")/../.."
+VENV="${PY:-.venv/bin/python}"
 DATA="data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 LOG="output/4strategy_retry_$(date +%Y%m%d_%H%M).log"
 

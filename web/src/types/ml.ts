@@ -3,7 +3,7 @@
  *
  * THIS IS A RESEARCH VIEW. Nothing typed here is a trading signal: no
  * sizing strategy reads any of it, and none of it is in a position to
- * become one by a UI change alone. See ml_plan.md, "Phase ML-0" for what
+ * become one by a UI change alone. See docs/ml_plan.md, "Phase ML-0" for what
  * has actually been measured, and how weak most of it still is.
  */
 

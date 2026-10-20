@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pandas as pd
 import pytest
 
 from engine.core.config import BacktestConfig
@@ -44,6 +45,7 @@ class FakeBroker:
         self.buys = []
         self.buy_limits = []
         self.sells = []
+        self.cancels = []
         self.orders = {}
         self._seq = 0
 
@@ -64,6 +66,11 @@ class FakeBroker:
 
     def get_order_by_client_id(self, client_order_id):
         return self.orders.get(client_order_id)
+
+    def cancel_order(self, client_order_id):
+        """Records the request; the test decides when the venue confirms it."""
+        self.cancels.append(client_order_id)
+        return client_order_id in self.orders
 
     def fill(self, client_order_id, qty, price, status="filled"):
         """Drive a cumulative fill update, the way Alpaca reports them."""
@@ -779,7 +786,8 @@ def test_a_signal_exit_is_submitted_at_the_market_not_the_lot_target(store):
     symbol, qty, price, _cid = broker.sells[0]
     assert symbol == "TQQQ"
     assert qty == lot.shares
-    assert price == 90.0, "priced at the current bar, not the lot's target"
+    buffer = loop.config.live.exit_limit_buffer
+    assert price == pytest.approx(90.0 * (1 - buffer)), "through the current bar, not the target"
     assert price < lot.target_sell_price
 
 
@@ -1006,3 +1014,205 @@ def test_a_data_source_that_cannot_answer_the_extended_question_is_refused(store
     loop.extended_hours = True
     with pytest.raises(ConfigurationError, match="is_open_extended"):
         loop.run_once()
+
+
+# --- history before the first tick ---
+#
+# The supervisor starts a process per session, so every strategy began each
+# morning with its windows empty: the champion sized the open as if nothing
+# had come before it, and Ultimate could not see its own regime flip.
+
+
+class _WantsHistory(FixedPortfolioPercentage):
+    """Asks for `sessions` of history and records what it was shown."""
+
+    def __init__(self, *args, sessions=3, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sessions = sessions
+        self.seen = []
+        self.resumed = None
+
+    def live_history_sessions(self):
+        return self.sessions
+
+    def record_tick(self, context):
+        self.seen.append(context)
+
+    def resume(self, open_lots):
+        self.resumed = (len(self.seen), [lot.order_id for lot in open_lots])
+
+
+def _history(n=3):
+    """n minute bars from 09:30 ET on the session before BASE_TS's."""
+    index = pd.date_range("2026-02-27 14:30", periods=n, freq="1min", tz="UTC", name="timestamp")
+    closes = [99.0 + i for i in range(n)]
+    return pd.DataFrame(
+        {"open": closes, "high": closes, "low": closes, "close": closes, "volume": 500.0},
+        index=index,
+    )
+
+
+def test_history_is_replayed_through_record_tick_before_the_first_tick(store):
+    asked = []
+
+    def provider(symbol, sessions):
+        asked.append((symbol, sessions))
+        return _history()
+
+    strategy = _WantsHistory(allocation_pct=0.05, sessions=7)
+    loop = make_loop(store, strategy=strategy, history_provider=provider)
+
+    assert asked == [("TQQQ", 7)]
+    assert loop.replayed_bars == 3
+    assert [c.close for c in strategy.seen] == [99.0, 100.0, 101.0], "oldest first"
+    assert [c.time_of_day_flag for c in strategy.seen] == [0, 1, 2]
+    assert all(c.volume == 500.0 for c in strategy.seen)
+    assert strategy.resumed == (3, []), "resume comes after the replay"
+
+
+def test_the_replay_moves_market_state_only(store):
+    """No cash, no equity: nothing a strategy captures from the portfolio
+    (the champion's lot baseline) may come from a bar it never traded."""
+    strategy = _WantsHistory(allocation_pct=0.05)
+    loop = make_loop(store, strategy=strategy, history_provider=lambda s, n: _history())
+    assert all(c.cash == c.equity == c.peak_equity == c.drawdown == 0.0 for c in strategy.seen)
+    assert loop.state.cash == 100_000.0 and store.get_meta("live.cash") is None
+
+
+def test_the_champion_takes_its_lot_size_from_the_first_live_tick_not_the_replay(store):
+    from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+
+    champion = HighFrequencyLocalReferenceSizing(
+        per_lot_pct=0.001, lookback_days=0.05, bars_per_day=20, vol_scale_exponent=-1.5
+    )
+    market = FakeMarketData()
+    loop = make_loop(
+        store, market=market, strategy=champion, history_provider=lambda s, n: _history()
+    )
+    assert loop.replayed_bars == 3 and champion._baseline_capital is None
+    market.push(100.0)
+    loop.run_once()
+    assert champion._baseline_capital == 100_000.0
+
+
+def test_resume_is_handed_the_durable_book(store):
+    broker, market = FakeBroker(), FakeMarketData()
+    first = _loop_with_an_open_lot(store, broker, market)
+    (lot,) = first.ledger.open_lots
+    strategy = _WantsHistory(allocation_pct=0.05)
+    make_loop(store, broker, market, strategy=strategy, history_provider=lambda s, n: _history())
+    assert strategy.resumed == (3, [lot.order_id])
+    assert all(c.open_lot_count == 1 for c in strategy.seen), "no replayed bar looks like a buy"
+
+
+def test_a_strategy_wanting_history_is_refused_without_a_source(store):
+    with pytest.raises(ConfigurationError, match="history"):
+        make_loop(store, strategy=_WantsHistory(allocation_pct=0.05))
+
+
+def test_a_strategy_wanting_none_is_never_asked(store):
+    def provider(symbol, sessions):
+        raise AssertionError("asked for history it did not want")
+
+    assert make_loop(store, history_provider=provider).replayed_bars == 0
+
+
+# --- a signal exit is one order, however many lots it closes ---
+#
+# It was an order per lot, at most max_sells_per_tick a tick: a calm book of
+# thousands of lots took an hour to leave where the backtest sells it on one
+# bar.
+
+
+def _book(store, *lots):
+    """Seed the durable book: (order_id, buy_price, shares) per lot."""
+    from engine.core.ledger import AssetLotLedger
+
+    ledger = AssetLotLedger()
+    for order_id, price, shares in lots:
+        store.record_open_lot(ledger.register_buy(order_id, "TQQQ", price, shares, 0.005))
+
+
+def _exit_loop(store, broker, market, *lots, max_sells_per_tick=1):
+    _book(store, *lots)
+    config = make_config(max_sells_per_tick=max_sells_per_tick)
+    object.__setattr__(config.execution, "allow_signal_exit", True)
+    return make_loop(
+        store, broker, market, config=config, strategy=_LiquidatesBelow(allocation_pct=0.05)
+    )
+
+
+BOOK = (("a", 98.0, 1.25), ("b", 97.0, 2.5), ("c", 96.0, 0.333333333))
+
+
+def test_every_condemned_lot_leaves_in_one_order(store):
+    broker, market = FakeBroker(), FakeMarketData()
+    loop = _exit_loop(store, broker, market, *BOOK)
+    market.push(90.0)
+    outcome = loop.run_once()
+
+    assert outcome.sells_submitted == 1 and len(broker.sells) == 1
+    _symbol, qty, price, cid = broker.sells[0]
+    assert qty == pytest.approx(1.25 + 2.5 + 0.333333333)
+    assert price == pytest.approx(90.0 * (1 - loop.config.live.exit_limit_buffer))
+    assert loop.state.open_orders[cid].exit_lot_ids == ("a", "b", "c")
+    assert loop.state.sells_in_flight == {"a", "b", "c"}
+
+
+def test_one_exit_fill_closes_its_lots_oldest_first(store):
+    broker, market = FakeBroker(), FakeMarketData()
+    loop = _exit_loop(store, broker, market, *BOOK)
+    market.push(90.0)
+    loop.run_once()
+    _, qty, _, cid = broker.sells[0]
+    cash = loop.state.cash
+
+    broker.fill(cid, qty=2.0, price=89.9, status="partially_filled")
+    market.push(90.0, ts=BASE_TS + timedelta(seconds=30))
+    loop.run_once()
+    open_shares = {lot.order_id: lot.shares for lot in loop.ledger.open_lots}
+    assert open_shares == {"b": pytest.approx(1.75), "c": pytest.approx(0.333333333)}
+
+    broker.fill(cid, qty=qty, price=89.9)
+    market.push(90.0, ts=BASE_TS + timedelta(seconds=40))
+    loop.run_once()
+    assert loop.ledger.open_lots == [], "the loss is booked, as a signal exit's may be"
+    assert loop.state.cash == pytest.approx(cash + qty * 89.9)
+    assert loop.state.sells_in_flight == set()
+
+
+def test_an_exit_still_resting_a_bar_later_is_cancelled_and_offered_again(store):
+    broker, market = FakeBroker(), FakeMarketData()
+    loop = _exit_loop(store, broker, market, *BOOK)
+    market.push(90.0)
+    loop.run_once()
+    first = broker.sells[0][3]
+
+    market.push(88.0, ts=BASE_TS + timedelta(minutes=1))
+    loop.run_once()
+    assert broker.cancels == [first], "the market moved through the limit"
+    assert len(broker.sells) == 1, "nothing new while the first may still fill"
+
+    broker.fill(first, qty=1.25, price=89.6, status="canceled")  # part filled first
+    market.push(87.0, ts=BASE_TS + timedelta(minutes=2))
+    loop.run_once()
+    assert len(broker.sells) == 2
+    _, qty, price, second = broker.sells[1]
+    assert qty == pytest.approx(2.5 + 0.333333333), "only what is left"
+    assert price == pytest.approx(87.0 * (1 - loop.config.live.exit_limit_buffer))
+    assert loop.state.open_orders[second].exit_lot_ids == ("b", "c")
+
+
+def test_an_exit_in_flight_survives_a_restart(store):
+    broker, market = FakeBroker(), FakeMarketData()
+    loop = _exit_loop(store, broker, market, *BOOK)
+    market.push(90.0)
+    loop.run_once()
+    cid = broker.sells[0][3]
+
+    restarted = make_loop(store, broker, market, config=loop.config, strategy=loop.strategy)
+    assert restarted.state.sells_in_flight == {"a", "b", "c"}
+    assert restarted.state.open_orders[cid].exit_lot_ids == ("a", "b", "c")
+    market.push(89.0, ts=BASE_TS + timedelta(minutes=1))
+    restarted.run_once()
+    assert len(broker.sells) == 1, "never a second order for lots already being sold"

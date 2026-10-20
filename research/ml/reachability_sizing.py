@@ -58,7 +58,7 @@ inference-time win available (predict(..., num_threads=1,
 validate_features=False), worth ~25% of the model-call cost) was
 judged worthwhile; rewriting IncrementalBarFeatures for raw throughput
 was not, given the measured signal it feeds is itself weak -- see
-ml_plan.md's own AUC numbers before spending more effort on speed than
+docs/ml_plan.md's own AUC numbers before spending more effort on speed than
 the thing being sped up currently earns.
 
 --------------------------------------------------------------------

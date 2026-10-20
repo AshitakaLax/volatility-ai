@@ -2,31 +2,30 @@
 
 Grid-based volatility-harvesting strategy for leveraged ETFs (primarily
 TQQQ): buy on configurable price-drop steps, harvest each lot at its own
-profit target, never sell below cost basis. `README.md` is the full,
-detailed reference (architecture, config schema, safety invariants,
-statistical validation, promotion path, troubleshooting) — read it before
-touching anything load-bearing. This file is a condensed map plus the
-gotchas README doesn't (yet) have.
+profit target, never sell below cost basis. `README.md` is the full
+reference (architecture, config schema, safety invariants, validation,
+promotion path, troubleshooting) — read it before touching anything
+load-bearing. This file is the condensed map plus the rules. `AGENTS.md`
+is a symlink to it, so every agent tool reads the same text.
 
 ## Project directories (each is a session root)
 
-The repo is split so a session can be opened in one directory and see
-only what that job needs. Open the **root** for cross-cutting work (the
-UI↔backend contract, deployment, a change that spans layers); open one
-of the others to keep the context small.
+Open the **root** for cross-cutting work (the UI↔backend contract,
+deployment, a change that spans layers); open one of the others to keep
+the context small.
 
-| Session root | Nested CLAUDE.md | Scope | Size |
-|---|---|---|---|
-| `engine/` | [engine/CLAUDE.md](engine/CLAUDE.md) | the trading kernel: decision cycle, no-loss guard, OMS, ledger, warehouse, brokers, config | ~15k lines |
-| `research/` | [research/CLAUDE.md](research/CLAUDE.md) | algorithm development: strategies, sweep/search, metrics, ML | ~12k lines |
-| `fidelity_gateway/` | [fidelity_gateway/CLAUDE.md](fidelity_gateway/CLAUDE.md) | the route into Fidelity: session, the browser-extension bridge, capture, recon, the gated place path | ~5k lines |
-| `fidelity-bridge-chrome-extension/` | its own README | **git submodule** (a separate repo): the Fidelity Bridge browser extension the bridge talks to. JavaScript, no dependencies, `npm test` | ~2k lines |
-| `server/` | [server/CLAUDE.md](server/CLAUDE.md) | FastAPI backend: routes, durable queue, shards, history | ~6k lines |
-| `web/` | [web/CLAUDE.md](web/CLAUDE.md) | React/TS frontend | ~17k lines |
-| `tools/` | [tools/README.md](tools/README.md) | ops scripts, data prep, research probes — nothing in `engine/` or `research/` imports these | ~13k lines |
-| `config/` | [config/CLAUDE.md](config/CLAUDE.md) | sweep configs vs. `live:`-enabled deployment configs | |
-| `tests/` | [tests/CLAUDE.md](tests/CLAUDE.md) | unit / integration / e2e / fixtures | ~33k lines |
-| `cli.py` (root) | | single entrypoint: `test \| backtest \| search \| submit \| live \| serve \| shard \| backup \| restore \| fetch-data`, the Docker `ENTRYPOINT` | |
+| Session root | Guide | Scope |
+|---|---|---|
+| `engine/` | [engine/CLAUDE.md](engine/CLAUDE.md) | trading kernel: decision cycle, no-loss guard, OMS, ledger, warehouse, brokers, config |
+| `research/` | [research/CLAUDE.md](research/CLAUDE.md) | strategies, sweep/search, metrics, ML |
+| `fidelity_gateway/` | [fidelity_gateway/CLAUDE.md](fidelity_gateway/CLAUDE.md) | the route into Fidelity: session, extension bridge, capture, recon, gated placing |
+| `fidelity-bridge-chrome-extension/` | its own README | **git submodule** (separate repo): the browser extension the bridge talks to; `npm test` |
+| `server/` | [server/CLAUDE.md](server/CLAUDE.md) | FastAPI backend: routes, durable queue, shards, history |
+| `web/` | [web/CLAUDE.md](web/CLAUDE.md) | React/TS frontend |
+| `tools/` | [tools/README.md](tools/README.md) | ops scripts, data prep, probes — nothing in `engine/` or `research/` imports these |
+| `config/` | [config/CLAUDE.md](config/CLAUDE.md) | sweep configs vs. `live:`-enabled deployment configs |
+| `tests/` | [tests/CLAUDE.md](tests/CLAUDE.md) | unit / integration / e2e / fixtures |
+| `cli.py` | | single entrypoint and Docker `ENTRYPOINT`: `test \| backtest \| search \| submit \| live \| serve \| shard \| backup \| restore \| fetch-data` |
 
 ## The dependency direction, which the split depends on
 
@@ -37,46 +36,83 @@ web/  ──HTTP──>  server/  ──>  research/  ──>  engine/  <── 
 ```
 
 **`engine/` never imports `research/`.** The engine calls a strategy only
-through the `SizingStrategy` port in `engine/core/sizing.py`; every
-concrete algorithm is an adapter behind it, and
+through the `SizingStrategy` port in `engine/core/sizing.py`;
 `research/strategies/strategy_registry.py` is the only module that knows
-the concrete set exists. If an engine module seems to need something
-from `research/`, move the shared thing down into `engine/core/` instead
-of adding the import — that is exactly how `market_context.py` and the
-`SizingStrategy` ABC ended up there.
-
-`engine/core` imports no other engine package at import time. Verify any
-claim here rather than trusting it:
+the concrete set exists. If an engine module seems to need something from
+`research/`, move the shared thing down into `engine/core/` instead.
+`engine/core` imports no other engine package at import time. Verify:
 
 ```bash
-python -c "import sys,engine.core.config; print(sorted(m for m in sys.modules if m.startswith(('engine.','research.'))))"
+.venv/bin/python -c "import sys,engine.core.config; print(sorted(m for m in sys.modules if m.startswith(('engine.','research.'))))"
 ```
 
 ## The one invariant that matters most
 
 `engine/trading/no_loss_guard.py` is the **single** place a sell is checked
-against its cost basis. It never sells for less than
-`allocated_cost_basis - 1e-8` (accounting for costs). Any change that
-touches sell logic should route through this module, not reimplement the
-comparison — a test scans the codebase for a reintroduced duplicate.
+against its cost basis (`net_proceeds >= allocated_cost_basis - 1e-8`).
+Route any sell-logic change through it; a test scans `engine/` and
+`research/` for a reintroduced duplicate. The only sale that may realise a
+loss is a strategy's `lots_to_liquidate` **and** `execution.allow_signal_exit`
+together (the Ultimate family's regime exit).
+
+## Rules
+
+- **Config is frozen and validated up front.** `BacktestConfig` is built
+  by `from_dict`/`from_yaml`; `live.step`/`live.profit_target` are never
+  defaulted from `grid.*` — the loop refuses to start without them.
+- **`record_tick` fires every bar, `calculate_trade_value` only on a
+  trigger.** Stateful strategies accumulate in `record_tick`.
+- **Live starts every session cold.** The supervisor runs a process per
+  session; a strategy whose state spans sessions answers
+  `live_history_sessions()` (replayed through `record_tick` first) and, for
+  per-lot state, `resume(open_lots)`. `live_algorithm.build_strategy`
+  refuses a live config that is not the researched strategy (no
+  `allow_signal_exit` for `ultimate*`, extended hours for a regular-session one).
+- **Causal transforms only.** `research/ml/` rolls a trailing window then
+  shifts; `warehouse/queries.py` shifts macro series by `lag_days` before
+  the ASOF join.
+- **Warehouse is an optional dependency.** Only `engine/warehouse/` imports
+  duckdb/polars; `bars.py` is the only read path a simulation uses. A
+  result sink must never raise and never retain a `SimulationResult`
+  (~35 MB each — that has OOM'd a machine).
+- **The server is loopback-only with no auth.** Binding `0.0.0.0` or
+  widening CORS is a deliberate security decision. `server/live.py` and
+  `deployment.py` are read-only — an AST test enforces it.
+- **The UI↔server contract is hand-mirrored** (`server/contract.py` ↔
+  `web/src/types/*.ts`), deliberately with no shared-contracts folder;
+  change both or flag both. The shard wire protocol gates on the git
+  commit: server and `cli.py shard` machines deploy together.
+- **Never rename `fidelity_gateway/` to `fidelity/`** — it would shadow
+  the `fidelity-api` package. Importing `fidelity_gateway` must not pull
+  in playwright (test-enforced).
+- **Tests never sleep** — inject clocks. Root `conftest.py` points
+  `VAI_QUEUE_DIR`/`VAI_RUN_HISTORY_DIR` at temp dirs.
+- **`tools/` paths are cited in ~130 places** (`README.md`, `plan.md`,
+  `docs/`): grep before moving one.
+- **Rank sweeps by `Total Return %` or Calmar, not `Capital Velocity
+  Index`** — it saturates at 1.0 on long datasets.
+- **`research/run_hf_sweep.py` never threads `allow_signal_exit` or cash
+  yield**, so it cannot run the `ultimate*` strategies as researched; use
+  `OptimizationController.run_sweep` with those set.
 
 ## Commands
 
 ```bash
-python cli.py test -q                 # full suite (905+ tests)
-python cli.py backtest --config C --data D --output O
-ruff format . && ruff check --fix .   # formatting + lint (pyproject.toml: line-length 100)
+.venv/bin/python cli.py test -q                 # full suite (~4,000 tests)
+.venv/bin/python cli.py backtest --config C --output O   # bars from the warehouse by backtest.symbol
+.venv/bin/python cli.py serve                   # API on 127.0.0.1:8000
+.venv/bin/python tools/build_warehouse.py --ingest TQQQ  # CSV in data/ → Parquet lake
+.venv/bin/ruff format . && .venv/bin/ruff check --fix .   # line-length 100
+cd web && npm run dev                           # Vite on 127.0.0.1:5173, /api proxied to :8000
+docker compose up -d --build                    # web (UI+engine, 127.0.0.1:8000), paper loop, daily backup -- docs/DEPLOY.md
 ```
-
-See README.md's [Testing](README.md#testing), [Configuration](README.md#configuration)
-and [Safety invariants](README.md#safety-invariants) sections for depth.
 
 ## Docs index
 
-- `README.md` — the full reference, kept current for *concepts and config*,
-  stale for *some file paths* (see drift note above)
-- `CHANGELOG.md` — why decisions were made, including resolved spec
-  contradictions; read before changing anything load-bearing
+- `README.md` — the full reference for concepts, config and operations
+- `CHANGELOG.md` — why decisions were made; read before changing anything load-bearing
 - `plan.md` — the staged indicator sweep and each stage's result
-- `docs/` — Alpaca setup, Raspberry Pi deployment, pre-production checklist
-- `tools/README.md` — the ops/data-prep/research script map
+- `docs/` — Alpaca setup, the Docker Compose deployment (`DEPLOY.md`), pre-production checklist,
+  `Run_Instructions` (a walkthrough whose code blocks the tests execute),
+  `ml_plan.md`, the algorithm ledger and `docs/research/` design logs
+- `docs/history/` — finished plans kept for the record (web UI build, old quick start)

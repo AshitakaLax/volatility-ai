@@ -17,6 +17,7 @@ for the `test` subcommand rather than routing it through argparse.
 """
 
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -25,6 +26,12 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# `git check-ignore` needs a checkout. The image has neither git nor .git
+# (both stay out of it), and `docker compose run --rm test` runs there.
+needs_git_checkout = pytest.mark.skipif(
+    not (REPO_ROOT / ".git").exists() or shutil.which("git") is None,
+    reason="needs a git checkout",
+)
 CLI = REPO_ROOT / "cli.py"
 
 
@@ -622,6 +629,7 @@ def test_fetch_data_rejects_an_unknown_timeframe(tmp_path):
     assert "1Day" in result.stderr, "the error should list the valid timeframes"
 
 
+@needs_git_checkout
 def test_the_data_directory_is_git_ignored():
     """Downloads are tens of MB and must never be committable.
 
@@ -676,6 +684,7 @@ FIDELITY_ARTIFACTS = (
 )
 
 
+@needs_git_checkout
 def test_fidelity_session_artifacts_are_git_ignored():
     """fidelity-api writes credential-equivalent files into the working
     directory by default. The real fix is save_state=False and an

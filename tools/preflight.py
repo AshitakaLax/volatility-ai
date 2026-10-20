@@ -103,7 +103,64 @@ def check_config(report: Report, path: str):
         "live.extended_hours",
         "on, 04:00-20:00 ET" if getattr(live, "extended_hours", False) else "off, 09:30-16:00 ET",
     )
+    check_strategy(report, config)
     return config
+
+
+def check_strategy(report: Report, config) -> None:
+    """The live rules a strategy must meet (live_algorithm.build_strategy):
+    its signal exit enabled when its design has one, regular hours when it
+    is built on them -- refused at start-up, so better refused here."""
+    from research.strategies.live_algorithm import build_strategy
+    from research.strategies.strategy_registry import STRATEGIES
+
+    try:
+        strategy = build_strategy(config, STRATEGIES)
+    except Exception as exc:
+        report.add(FAIL, "strategy (live)", str(exc))
+        return
+    sessions = getattr(strategy, "live_history_sessions", lambda: 0)()
+    detail = config.strategy.strategy_id
+    if sessions:
+        detail += f", replays {sessions} sessions of history before its first tick"
+    if config.execution.allow_signal_exit:
+        detail += "; signal exits ON (may sell below cost)"
+    report.add(PASS, "strategy (live)", detail)
+
+
+def check_history(report: Report, config) -> None:
+    """The history the loop replays at start-up, fetched exactly as it will
+    be. A strategy that needs it refuses to start without it."""
+    from research.strategies.live_algorithm import build_strategy
+    from research.strategies.strategy_registry import STRATEGIES
+
+    try:
+        strategy = build_strategy(config, STRATEGIES)
+    except Exception:
+        return  # already reported by check_strategy
+    sessions = getattr(strategy, "live_history_sessions", lambda: 0)()
+    if not sessions:
+        report.add(PASS, "start-up history", "not needed by this strategy")
+        return
+
+    from engine.core.secrets import load_live_credentials
+    from engine.data.historical_data import AlpacaHistoricalData
+    from engine.trading.live_history import EASTERN, AlpacaSessionHistory
+
+    try:
+        history = AlpacaSessionHistory(
+            AlpacaHistoricalData(credentials=load_live_credentials()), feed=config.live.feed
+        )
+        bars = history(config.backtest.symbol, sessions)
+        days = sorted(set(bars.index.tz_convert(EASTERN).date))
+        report.add(
+            PASS if len(days) >= sessions else WARN,
+            "start-up history",
+            f"{len(bars):,} bars, {len(days)} sessions ({days[0]} to {days[-1]}); "
+            f"the strategy asks for {sessions}",
+        )
+    except Exception as exc:
+        report.add(FAIL, "start-up history", f"{type(exc).__name__}: {exc}")
 
 
 def check_credentials(report: Report) -> bool:
@@ -273,8 +330,13 @@ def check_not_already_running(report: Report, db_path: str) -> None:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Check a machine before it trades.")
-    parser.add_argument("--config", default="config/paper_aggressive.yaml")
-    parser.add_argument("--state-db", default="paper_ledger.db")
+    # Defaults from the variables a trading container already sets
+    # (docker-compose.yml), so `docker compose run --rm preflight --skip-network`
+    # checks that service's own config and ledger.
+    parser.add_argument(
+        "--config", default=os.environ.get("VAI_CONFIG", "config/paper_aggressive.yaml")
+    )
+    parser.add_argument("--state-db", default=os.environ.get("VAI_STATE_DB", "paper_ledger.db"))
     parser.add_argument(
         "--skip-network",
         action="store_true",
@@ -290,6 +352,7 @@ def main(argv=None) -> int:
         check_broker(report, config)
         check_extended_clock(report, config)
         check_market_data(report, config)
+        check_history(report, config)
     check_state_store(report, args.state_db)
     check_not_already_running(report, args.state_db)
     return report.render()

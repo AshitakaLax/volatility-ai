@@ -101,6 +101,59 @@ def check_target_return(config: BacktestConfig, strategy: Any) -> None:
         )
 
 
+def check_live_support(config: BacktestConfig, strategy: Any) -> None:
+    """Refuse a live deployment that would trade something other than what
+    was researched, rather than discover it from the ledger.
+
+      * A strategy whose design includes a signal exit (the Ultimate
+        family's regime exit) without execution.allow_signal_exit: its
+        calm lots would ride every downturn the exit exists to step out of.
+        The flag stays this deployment file's decision -- the second key of
+        the two-key gate -- so it is required here, never switched on.
+      * A strategy with session-history state (warm_up) the live loop
+        cannot rebuild (no live_history_sessions): it would start every
+        session blind.
+      * A regular-session strategy under live.extended_hours: pre-market
+        ticks would widen its sessions' ranges, and after-hours crosses
+        UTC midnight in winter.
+      * A live.profit_target equal to the strategy's reversal_target: a
+        restart tells reversal lots from calm lots by their target.
+    """
+    from research.strategies.strategy_registry import SIGNAL_EXIT_STRATEGIES
+
+    strategy_id = config.strategy.strategy_id
+    if strategy_id in SIGNAL_EXIT_STRATEGIES and not config.execution.allow_signal_exit:
+        raise ConfigurationError(
+            f"{strategy_id} was researched with its signal exit (for ultimate, the regime "
+            "exit that sells the calm lots in the first turbulent session). Without it the "
+            "lots ride the downturn -- a different, unresearched strategy. Set "
+            "execution.allow_signal_exit: true in this deployment's config to trade it."
+        )
+    if callable(getattr(strategy, "warm_up", None)) and not callable(
+        getattr(strategy, "live_history_sessions", None)
+    ):
+        raise ConfigurationError(
+            f"{strategy_id} needs session history the live loop cannot rebuild for it yet; "
+            "it would start every session blind. It is backtest-only."
+        )
+    if getattr(strategy, "regular_session_only", False) and config.live.extended_hours:
+        raise ConfigurationError(
+            f"{strategy_id} is built from regular-session bars; live.extended_hours would fold "
+            "pre-market and after-hours ticks into its sessions. Set extended_hours: false."
+        )
+    reversal_target = getattr(strategy, "reversal_target", None)
+    if (
+        reversal_target is not None
+        and config.live.profit_target is not None
+        and math.isclose(reversal_target, config.live.profit_target)
+    ):
+        raise ConfigurationError(
+            f"live.profit_target equals {strategy_id}'s reversal_target ({reversal_target}): "
+            "after a restart its reversal lots could not be told from its calm lots, which "
+            "the regime exit treats differently. Use different values."
+        )
+
+
 def build_strategy(config: BacktestConfig, registry: dict[str, type]) -> Any:
     """The strategy a config names, constructed and cross-checked -- or a
     ConfigurationError saying why not. What the live loop is built with,
@@ -115,6 +168,7 @@ def build_strategy(config: BacktestConfig, registry: dict[str, type]) -> Any:
     except (TypeError, ValueError) as exc:
         raise ConfigurationError(f"{strategy_id} refused these parameters: {exc}") from exc
     check_target_return(config, strategy)
+    check_live_support(config, strategy)
     return strategy
 
 

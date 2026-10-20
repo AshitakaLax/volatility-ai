@@ -33,10 +33,9 @@ documentation that makes them findable.
 | `preflight.py` | Verify a machine can actually run the live loop, **before** it trades. |
 | `market_hours_supervisor.py` | Run the live loop for one trading session, then exit. |
 | `adopt_broker_position.py` | Write an existing broker position into the local ledger so startup can reconcile. |
-| `install_paper_service.ps1` | Register the paper supervisor as a daily Windows scheduled task. |
-| `run_paper_session.cmd` | The task's entry point on Windows. |
-| `docker_session_loop.sh` | The same session loop inside the Raspberry Pi container. |
-| `backup_databases.py` | Snapshot every local database (SQLite ledger + `warehouse/*.duckdb`), archive it under `backups/`, scp it to the Pi, and (`--restore`) pull one back down and write it into place. `--install-daily` schedules the backup half. See below. |
+| `docker_session_loop.sh` | The trading containers' entrypoint (`docker-compose.yml`): one supervised session, a wait, the next; passes `docker stop` on as a graceful stop. |
+| `docker_backup_loop.sh` | The `backup` container's entrypoint: `backup_databases.py` daily at `VAI_BACKUP_AT`, over every ledger it finds and the warehouse catalogs. |
+| `backup_databases.py` | Snapshot every local database (SQLite ledger + `warehouse/*.duckdb`), archive it under `/workspace/backups` (`$VAI_BACKUP_DIR`; `backups/` where that disk is absent), optionally scp it off the machine, and (`--restore`) pull one back down and write it into place. The compose `backup` service schedules it; `--install-daily` is the cron alternative. See below. |
 
 ### Database backups and restores
 

@@ -23,8 +23,9 @@ strategy carries its own regime into the server and the live loop. A
 precomputed causal map can be injected instead (regime_by_date), which is
 how the research lab reproduces it. The internal regime carries no flag
 for its first max(250, 5 * natr_period, natr_lookback) sessions, and the
-strategy buys nothing until it has one; warm_up(daily) seeds it from
-session history so a live loop need not wait a year.
+strategy buys nothing until it has one; warm_up(daily) seeds it from the
+sessions before a backtest window, and a live loop replays bars instead
+(LIVE, below).
 
 The constructor spells out every GatedLocalReferenceSizing parameter
 rather than taking **params, because the server builds its run form from
@@ -42,6 +43,25 @@ exit, L6) -- the only sale that may be below cost, and only with
 execution.allow_signal_exit. Reversal lots are kept through the flip back
 to calm unless liquidate_reversal_on_calm.
 
+A backtest sells every condemned lot on that one bar. A live loop sends
+at most live.max_sells_per_tick orders a tick, and a limit at the market
+can go unfilled, so calm lots still open after the exit has fired are
+offered again on every later bar of the spell from liquidate_minute on.
+In a backtest that finds none, so its results are unchanged.
+
+--------------------------------------------------------------------
+LIVE: HISTORY, THEN THE BOOK
+
+A live process starts each session cold. LiveTradingLoop replays
+live_history_sessions() sessions of bars through record_tick first, which
+rebuilds the regime, the mode as of the last bar (so today's flip is seen
+and its exit fires), the previous close the reversal signal measures from,
+and the champion's windows. resume(open_lots) then rebuilds what no bar
+carries: which open lots are reversal lots, read from the target this
+strategy gave them. Regular-session bars only (regular_session_only): an
+extended-hours tick would fold into a session's range, and after-hours
+crosses UTC midnight in winter.
+
 --------------------------------------------------------------------
 LOT TAGGING, CHEAPLY
 
@@ -56,6 +76,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date
+from math import isclose
 
 from engine.core.exceptions import ConfigurationError
 from engine.core.market_context import MarketContext
@@ -72,6 +93,13 @@ TURBULENT_MODES: tuple[str, ...] = ("reversal", "cash")
 
 class UltimateSizing(GatedLocalReferenceSizing):
     """Calm: the champion. Turbulent: capitulation-close event lots. See module docstring."""
+
+    # Its sessions are regular-hours sessions (module docstring, LIVE);
+    # research/strategies/live_algorithm.py refuses extended_hours for it.
+    regular_session_only = True
+    # Completed sessions past the regime's own history_sessions, so the
+    # debounced flag has settled where a run started years earlier would be.
+    _REGIME_SETTLE_SESSIONS = 150
 
     def __init__(
         self,
@@ -213,6 +241,8 @@ class UltimateSizing(GatedLocalReferenceSizing):
         self.liquidate_minute = int(liquidate_minute)
         self._liq_pending_day: int | None = None
         self._liq_now = False
+        self._exit_active = False  # the regime exit has fired in this turbulent spell
+        self._exit_due = False
         if turbulent_mode not in TURBULENT_MODES:
             raise ConfigurationError(
                 f"turbulent_mode must be one of {TURBULENT_MODES}, got {turbulent_mode!r}"
@@ -266,6 +296,39 @@ class UltimateSizing(GatedLocalReferenceSizing):
             return 0
         return self._natr.warm_up(daily)
 
+    def live_history_sessions(self) -> int:
+        """The champion's windows, and the regime's history: it carries no
+        flag for its first ~250 sessions and its bear filter reads
+        bear_window closes. See the module docstring, LIVE."""
+        sessions = super().live_history_sessions()
+        if self._natr is not None:
+            regime = self._natr.history_sessions + self._REGIME_SETTLE_SESSIONS
+            sessions = max(sessions, regime)
+        return sessions
+
+    def resume(self, open_lots) -> None:
+        """Rebuild the lot state a restart loses, from the book itself.
+        LiveTradingLoop calls this once, after replaying history (which
+        never shows a buy) and before the first tick.
+
+        Every open lot is already known, so the first retargeting walk does
+        not classify the whole book by whatever mode happens to be current.
+        A lot whose target is reversal_target is a reversal lot: this
+        strategy gave it that target the bar after it bought it (and
+        live_algorithm refuses a live.profit_target equal to it, which would
+        make the two kinds indistinguishable). The grid measures from the
+        latest fill, as a run that has bought since its last calm re-entry
+        does."""
+        lots = list(open_lots)
+        self._known_ids = {lot.order_id for lot in lots}
+        self._reversal_ids = {
+            lot.order_id
+            for lot in lots
+            if isclose(lot.profit_target, self.reversal_target, rel_tol=1e-9, abs_tol=1e-12)
+        }
+        self._lots_prev = len(lots)
+        self._fresh = False
+
     # ------------------------------------------------------------ per bar
 
     def record_tick(self, context: MarketContext) -> None:
@@ -311,6 +374,13 @@ class UltimateSizing(GatedLocalReferenceSizing):
             if carried or minute >= self.liquidate_minute or minute == 389:
                 self._liq_now = True
                 self._liq_pending_day = None
+        # Calm lots the exit has not sold yet are offered again on later bars
+        # of the spell (module docstring, EXITS); a backtest has none left.
+        if self._liq_now:
+            self._exit_active = True
+        elif self.mode != TURBULENT:
+            self._exit_active = False
+        self._exit_due = self._liq_now or (self._exit_active and minute >= self.liquidate_minute)
         self._reversal.observe(
             context, self._new_lot and self.mode == TURBULENT, self._trigger_from_prior_bars
         )
@@ -384,7 +454,7 @@ class UltimateSizing(GatedLocalReferenceSizing):
         self._reversal_ids &= keep
 
     def lots_to_liquidate(self, open_lots, context: MarketContext) -> list:
-        if self._liq_now:
+        if self._exit_due:
             return [lot for lot in open_lots if lot.order_id not in self._reversal_ids]
         if self._flip_to_calm and self.liquidate_reversal_on_calm:
             return [lot for lot in open_lots if lot.order_id in self._reversal_ids]
@@ -398,6 +468,7 @@ class UltimateSizing(GatedLocalReferenceSizing):
             ultimate_reversal_signals=self._reversal.signals,
             ultimate_reversal_buys=self.reversal_buys,
             ultimate_reversal_tagged=len(self._reversal_ids),
+            ultimate_exit_active=self._exit_active,
         )
         return out
 

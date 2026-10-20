@@ -129,6 +129,22 @@ DEFAULT_DB_CANDIDATES = (
 )
 
 SQLITE_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
+
+# This host's backup disk (/dev/sdb1, mounted at /workspace): archives land
+# there when it exists, off the disk that holds the databases themselves.
+WORKSPACE_BACKUPS = Path("/workspace/backups")
+
+
+def default_backup_dir() -> Path:
+    """Where archives are written unless told otherwise: $VAI_BACKUP_DIR,
+    else /workspace/backups when that directory exists, else backups/ in
+    the checkout. The compose `backup` service mounts the same directory."""
+    configured = os.environ.get("VAI_BACKUP_DIR")
+    if configured:
+        return Path(configured)
+    return WORKSPACE_BACKUPS if WORKSPACE_BACKUPS.is_dir() else _REPO_ROOT / "backups"
+
+
 DUCKDB_SUFFIXES = {".duckdb"}
 
 
@@ -725,8 +741,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=_REPO_ROOT / "backups",
-        help="where local archives are written (default: backups/)",
+        default=None,
+        help="where local archives are written (default: $VAI_BACKUP_DIR, else "
+        "/workspace/backups if it exists, else backups/)",
     )
     parser.add_argument(
         "--keep",
@@ -792,6 +809,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.out_dir is None:
+        args.out_dir = default_backup_dir()
 
     if args.restore is not None:
         return restore_flow(args)

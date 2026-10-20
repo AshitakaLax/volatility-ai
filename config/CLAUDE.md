@@ -6,8 +6,8 @@ kinds live side by side — check which one before editing:
 | Kind | Examples | `live.enabled` | Purpose |
 |---|---|---|---|
 | **Sweep** | `search_hf_*.yaml`, `sweep_5y*.yaml`, `probe_*.yaml`, `lotcap_test_*.yaml` | false/absent | a `grid`/`bayesian`/`random` search space for `research/run_hf_sweep.py` or `python cli.py search`/`backtest` |
-| **Pinned champion** | `best_known_2026-08-24.yaml`, `paper_aggressive.yaml`, `soxl_champion.yaml` | false | a single-point config reproducing one specific best-known result — not a search space, don't add a grid to it |
-| **Deployment** | `staging.yaml`, `production.yaml`, `staging_hf_local_reference.yaml` | **true** | drives `python cli.py live` / the `live-staging` / `live-production` containers. `staging.yaml` → paper credentials, `production.yaml` → live credentials + a passing `PromotionEvaluation`. These are never sweep configs. |
+| **Pinned champion** | `best_known_2026-08-24.yaml`, `ultimate_tqqq.yaml`, `soxl_champion.yaml` | false | a single-point config reproducing one specific best-known result — not a search space, don't add a grid to it |
+| **Deployment** | `paper_aggressive.yaml`, `ultimate_paper.yaml`, `production.yaml`, `staging.yaml`, `staging_hf_local_reference.yaml` | **true** | drives `python cli.py live` and the compose trading services: `paper` → `paper_aggressive.yaml` (`.env`), `paper-ultimate` → `ultimate_paper.yaml` (`.env.ultimate`), `live` → `production.yaml` (`.env.production` + a passing `PromotionEvaluation`). Each must pass `live_algorithm.build_strategy`'s live rules (`tools/tests/test_compose_deployment.py`). Never sweep configs. |
 
 `fidelity_local.yaml.example` is a template for local Fidelity-broker
 credentials — copy, don't edit in place, and never commit the real one.
@@ -28,7 +28,7 @@ its specific rationale before assuming what it isolates.
 
 ## Reproducing a result
 
-README's [Simulations run to date](../README.md#simulations-run-to-date)
+[`docs/sweeps.md`'s Simulations run to date](../docs/sweeps.md#simulations-run-to-date)
 table is the authoritative reproduction index: every config that has
 actually been swept, the question it answered, the exact command, and
 where its output CSV lives (or the commit it was recorded in, if the CSV

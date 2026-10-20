@@ -4,9 +4,9 @@ Task 6.1 acceptance tests.
 Acceptance criteria:
 1. Constructing BacktestConfig programmatically and via YAML with
    equivalent values produces equal configs.
-2. Every parameter mentioned in Run_Instructions actually exists on
+2. Every parameter mentioned in docs/Run_Instructions actually exists on
    run_sweep (or BacktestConfig) at doc-writing time -- covered here
-   for the config side; Run_Instructions itself is checked by actually
+   for the config side; docs/Run_Instructions itself is checked by actually
    running it (see test_task_1_1_run_instructions.py's pattern, reused
    for the Task 6.1 rewrite).
 3. A minimal config (only required fields) still runs end to end using

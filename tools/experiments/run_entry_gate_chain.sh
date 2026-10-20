@@ -7,16 +7,15 @@
 # Uses `python -m` from the repo root, which works without PYTHONPATH --
 # invoking research/run_hf_sweep.py by path does not.
 #
-#   bash run_entry_gate_chain.sh             # all five probes
-#   PY=.venv/bin/python bash run_entry_gate_chain.sh
-#   N_JOBS=2 bash run_entry_gate_chain.sh
-#   FILL=causal bash run_entry_gate_chain.sh          # see execution.intrabar_fill
+#   bash tools/experiments/run_entry_gate_chain.sh             # all five probes
+#   PY=.venv/bin/python bash tools/experiments/run_entry_gate_chain.sh
+#   N_JOBS=2 bash tools/experiments/run_entry_gate_chain.sh
+#   FILL=causal bash tools/experiments/run_entry_gate_chain.sh          # see execution.intrabar_fill
 set -u
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/../.."
 
 if [ -z "${PY:-}" ]; then
-    if [ -x .venv/Scripts/python.exe ]; then PY=.venv/Scripts/python.exe
-    elif [ -x .venv/bin/python ]; then PY=.venv/bin/python
+    if [ -x .venv/bin/python ]; then PY=.venv/bin/python
     else PY=python; fi
 fi
 N_JOBS="${N_JOBS:-4}"

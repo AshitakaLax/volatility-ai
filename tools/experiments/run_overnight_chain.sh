@@ -16,7 +16,8 @@
 #   5. volume-inclusive parameter sweep           (truncatable)
 set -u
 
-VENV="C:/workspace/volatility-ai/.venv/Scripts/python.exe"
+cd "$(dirname "$0")/../.."
+VENV="${PY:-.venv/bin/python}"
 LOG="output/overnight_$(date +%Y%m%d_%H%M).log"
 IN_FLIGHT="$1"   # task output file of the sweep already running
 
@@ -32,23 +33,23 @@ done
 say "in-flight sweep done (or timed out); starting chain"
 
 say "STEP 1/5 annual breakdown of current best configurations"
-"$VENV" analyze_annual.py --top 3 >>"$LOG" 2>&1
+"$VENV" -m research.analysis.analyze_annual --top 3 >>"$LOG" 2>&1
 
 say "STEP 2/5 wide profit targets, exhaustive grid, guard ON"
-"$VENV" run_hf_sweep.py --config config/search_hf_wide_targets.yaml \
+"$VENV" -m research.run_hf_sweep --config config/search_hf_wide_targets.yaml \
     --search grid --n-jobs 4 \
     --output output/search_hf_wide_targets.csv >>"$LOG" 2>&1
 
 say "STEP 3/5 wide profit targets, exhaustive grid, guard OFF"
-"$VENV" run_hf_sweep.py --config config/search_hf_wide_targets_noguard.yaml \
+"$VENV" -m research.run_hf_sweep --config config/search_hf_wide_targets_noguard.yaml \
     --search grid --n-jobs 4 \
     --output output/search_hf_wide_targets_noguard.csv >>"$LOG" 2>&1
 
 say "STEP 4/5 annual breakdown, re-run now that steps 2-3 have landed"
-"$VENV" analyze_annual.py --top 3 >>"$LOG" 2>&1
+"$VENV" -m research.analysis.analyze_annual --top 3 >>"$LOG" 2>&1
 
 say "STEP 5/5 volume-inclusive sweep"
-"$VENV" run_hf_sweep.py --config config/search_hf_volume_sweep.yaml \
+"$VENV" -m research.run_hf_sweep --config config/search_hf_volume_sweep.yaml \
     --search random --trials 220 --n-jobs 4 --max-drawdown 55 \
     --output output/search_hf_volume_sweep.csv >>"$LOG" 2>&1
 

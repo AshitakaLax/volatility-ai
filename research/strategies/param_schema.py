@@ -64,7 +64,7 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     # No committed config for these three -- there is no production
     # deployment of this strategy yet, only tools/train_ml_model.py's
     # own measured held-out AUC (RSP 0.60, COWZ 0.57, SPYD 0.57;
-    # ml_plan.md, "Phase ML-0"). `ticker` is what makes these three
+    # docs/ml_plan.md, "Phase ML-0"). `ticker` is what makes these three
     # entries distinct rather than duplicates: MLReachabilitySizing
     # takes one shared class and a ticker kwarg, and the sizing-model
     # dropdown has no per-run field editor (it submits exactly a
@@ -88,7 +88,7 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     #       tools/probe_downturn_tactics.py's escalating dip book used,
     #       against a 1% base step.
     #   regime_enter/exit 0.65/0.45  a wide band, because the models
-    #       these read are weak (ml_plan.md: AUC 0.52-0.63) and a narrow
+    #       these read are weak (docs/ml_plan.md: AUC 0.52-0.63) and a narrow
     #       band on a weak score is just flapping.
     #   vol_reference 0.45  roughly where an annualized 20-day realized
     #       vol sits near the 75th percentile that
@@ -119,7 +119,7 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
     # 0.058-0.394 -- a 0.28-wide band, third widest here, so a threshold
     # sweep has room to differentiate rather than collapsing the way
     # COWZ's 0.008-wide range does); vol_reference is the fwdvol head's
-    # p75. NOT yet swept -- ml_plan.md's bar (beat hf_local_reference)
+    # p75. NOT yet swept -- docs/ml_plan.md's bar (beat hf_local_reference)
     # is untested for this fund.
     "ml_regime_xbi": {
         "max_trade_pct": 0.05,
@@ -154,17 +154,20 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
         "regime_floor": 0.25,
         "vol_reference": 0.218,
     },
-    # RSP: -5% over 20 sessions, 46tr/10te episodes, held-out AUC 0.5369.
-    # Thresholds are p90/p50 of THIS model's own output (range
-    # 0.057-0.601); vol_reference is the fwdvol head's p75.
+    # RSP: -5% over 20 sessions, 46tr/12te episodes. Retrained 2026-10-19
+    # with --use-qlib (DDG-DA-style drift weights): held-out AUC 0.5803,
+    # against 0.5160 for the same data unweighted. The weighting compresses
+    # the output to a few levels (0.221-0.248), so the thresholds are this
+    # model's own p90/p50 and would be meaningless on the earlier one;
+    # vol_reference is the fwdvol head's p75.
     "ml_regime_rsp": {
         "max_trade_pct": 0.05,
         "ticker": "RSP",
         "crash_step_multiplier": 4.0,
-        "regime_enter_threshold": 0.4180,
-        "regime_exit_threshold": 0.2286,
+        "regime_enter_threshold": 0.2381,
+        "regime_exit_threshold": 0.2293,
         "regime_floor": 0.25,
-        "vol_reference": 0.172,
+        "vol_reference": 0.1607,
     },
     # SOXL: -30% over 20 sessions, 43tr/17te episodes, held-out AUC 0.7559
     # -- one of exactly two funds (with SQQQ, below) whose crash
@@ -277,24 +280,20 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
         "regime_floor": 0.25,
         "vol_reference": 0.181,
     },
-    # UNVALIDATED PLACEHOLDER, AND CURRENTLY INFEASIBLE TO FIX. No
-    # model exists at data/ml/models/URSP_regime_*; selecting this id
-    # fails at ensure_model_available() with a clear ConfigurationError
-    # naming that, per research/ml/regime_scaled_sizing.py's own lazy-load
-    # design. Not just untrained: Alpaca's own history for URSP starts
-    # 2025-08-27 (~260 sessions total, confirmed by fetching it), well
-    # under the 250 TRAIN sessions alone every other fund's model
-    # needed before any held-out test window -- there is currently not
-    # enough history to train one, not merely a step skipped. Revisit
-    # once the symbol has accumulated several more years.
+    # URSP: trained on URSP_SIM, its ten-year history (tools/simulate_ursp.py:
+    # simulated from RSP before the fund's 2025-08-27 launch, the fund after)
+    # -- the fund's own ~290 sessions are too few to train on. -10% over 20
+    # sessions, 136tr/13te episodes, --use-qlib, held-out AUC 0.6215.
+    # Thresholds are this model's own p90/p50; vol_reference its fwdvol p75.
+    # Its ticker is URSP_SIM, the series it runs on in the warehouse.
     "ml_regime_ursp": {
         "max_trade_pct": 0.05,
-        "ticker": "URSP",
+        "ticker": "URSP_SIM",
         "crash_step_multiplier": 4.0,
-        "regime_enter_threshold": 0.30,
-        "regime_exit_threshold": 0.20,
+        "regime_enter_threshold": 0.2425,
+        "regime_exit_threshold": 0.2226,
         "regime_floor": 0.25,
-        "vol_reference": 0.55,
+        "vol_reference": 0.3032,
     },
 }
 # hf_entry_gated: the champion's committed values with both gates off, so

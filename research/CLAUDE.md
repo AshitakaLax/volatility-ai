@@ -35,7 +35,10 @@ Subclass `SizingStrategy` (import it from `strategies.size_calculators`,
 which re-exports the port) and register it in
 `strategies/strategy_registry.py`. `BacktestConfig` stores `strategy_id`
 as an opaque string and never resolves one itself, so nothing else needs
-editing — `resolve_strategy` is the single mapping.
+editing — `resolve_strategy` is the single mapping. To trade it live, give
+it `live_history_sessions()` if its state spans sessions (the live loop
+replays that much history before each session) and `resume(open_lots)` if
+it keeps per-lot state; see `ultimate_sizing.py`.
 
 ## Two rules the engine enforces on you
 

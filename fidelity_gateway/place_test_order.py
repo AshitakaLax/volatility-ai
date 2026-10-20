@@ -49,8 +49,8 @@ have filled, been cancelled or expired, not only never arrived.
 
 Usage:
     # 1. start a debuggable browser and log into Fidelity BY HAND
-    & "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" \\
-        --remote-debugging-port=9222 --user-data-dir="C:\\Users\\%USERNAME%\\edge-debug-profile"
+    google-chrome --remote-debugging-port=9222 \\
+        --user-data-dir="$HOME/.cache/fidelity-debug-profile"   # or microsoft-edge / chromium
 
     # 2. see what it would do -- places nothing
     python -m fidelity_gateway.place_test_order --account <number> --dry-run
@@ -190,10 +190,9 @@ def attach(cdp_url: str):
         playwright.stop()
         raise ConfigurationError(
             f"Could not attach to a browser at {cdp_url}: {exc}\n\n"
-            "Start Edge with remote debugging FIRST, on a SEPARATE profile:\n"
-            '    & "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" '
-            '--remote-debugging-port=9222 --user-data-dir="C:\\Users\\%USERNAME%'
-            '\\edge-debug-profile"\n\n'
+            "Start Chrome or Edge with remote debugging FIRST, on a SEPARATE profile:\n"
+            "    google-chrome --remote-debugging-port=9222 "
+            '--user-data-dir="$HOME/.cache/fidelity-debug-profile"\n\n'
             "--user-data-dir is required: current Edge and Chrome refuse to enable "
             "remote debugging on the default profile."
         ) from exc

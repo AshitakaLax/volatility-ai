@@ -38,10 +38,61 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+class _ReadWriteLock:
+    """Many readers or one writer, within this process.
+
+    DuckDB refuses a second connection to a file this process already
+    holds in another mode -- a read-only open while a read-write one is
+    up, or an ATTACH of sim_results.duckdb while another connection has it
+    attached ("Unique file handle conflict", measured). The server both
+    reads bars for every backtest and records every finished configuration,
+    on different threads, so it takes this around each: reads stay
+    concurrent, and a write waits for the reads in flight and holds new
+    ones off only for its own few seconds.
+    """
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._readers = 0
+        self._writing = False
+
+    @contextmanager
+    def reading(self) -> Iterator[None]:
+        with self._condition:
+            self._condition.wait_for(lambda: not self._writing)
+            self._readers += 1
+        try:
+            yield
+        finally:
+            with self._condition:
+                self._readers -= 1
+                self._condition.notify_all()
+
+    @contextmanager
+    def writing(self) -> Iterator[None]:
+        with self._condition:
+            self._condition.wait_for(lambda: not self._writing and self._readers == 0)
+            self._writing = True
+        try:
+            yield
+        finally:
+            with self._condition:
+                self._writing = False
+                self._condition.notify_all()
+
+
+# This process's warehouse connections: bars.py reads under reading(),
+# result_writer.BatchedResultWriter writes under writing().
+WAREHOUSE_LOCK = _ReadWriteLock()
 
 # Fraction of system RAM DuckDB may use. Not 1.0: the sweep engine
 # itself holds the bar DataFrame plus one blotter per in-flight
@@ -124,8 +175,14 @@ def open_warehouse(
     root = Path(root)
     if not read_only:
         root.mkdir(parents=True, exist_ok=True)
+    elif (root / MARKET_DATA_DB).exists():
+        _migrate_absolute_views(root)
 
     con = duckdb.connect(str(root / MARKET_DATA_DB), read_only=read_only)
+    # The lake views read RELATIVE globs (schema.ohlcv_view_ddl), resolved
+    # here: the same catalog then works wherever the warehouse is mounted
+    # -- the host's checkout and /app/warehouse in a container at once.
+    con.execute(f"SET file_search_path = '{_sql_path(root.resolve())}'")
 
     # Qualified as a raw literal rather than a parameter: ATTACH does
     # not accept a prepared-statement placeholder for the path.
@@ -147,6 +204,10 @@ def open_warehouse(
         # Large COPY statements do not need to preserve row order, and
         # not preserving it lets DuckDB parallelize the write.
         con.execute("SET preserve_insertion_order = false")
+        if _has_absolute_views(con):
+            from engine.warehouse.schema import refresh_views
+
+            refresh_views(con, root)
 
     logger.info(
         f"Warehouse open at {root} (threads={resolved_threads}, "
@@ -155,8 +216,68 @@ def open_warehouse(
     return con
 
 
+_LAKE_VIEWS = {"ohlcv": OHLCV_DIR, "external": EXTERNAL_DIR, "trade_executions": EXECUTIONS_DIR}
+
+
+def _has_absolute_views(con: Any) -> bool:
+    """True if a persisted lake view still reads an ABSOLUTE path.
+
+    Views created before they became relative stored their read_parquet
+    glob as an absolute path, fixed when created. A warehouse moved to
+    another directory or machine (it moved from C:/workspace/... on Windows
+    to Linux) kept pointing at the old location: every query failed, and
+    bars.load_frame -- which must never raise -- read that as "no data".
+    """
+    views = con.execute(
+        "SELECT view_name, sql FROM duckdb_views() WHERE NOT internal AND view_name IN "
+        "('ohlcv', 'external', 'trade_executions')"
+    ).fetchall()
+    return any(f"'{_LAKE_VIEWS[name]}/**/*.parquet'" not in sql for name, sql in views)
+
+
+def _migrate_absolute_views(root: Path) -> None:
+    """Rewrite an older warehouse's absolute views as relative ones, once,
+    before a read-only open.
+
+    A read-only connection cannot rewrite them, so this opens read-write
+    briefly: afterwards the check finds nothing to do, wherever the
+    warehouse is later moved or mounted. If the file is locked by a writer
+    (or not writable), the read-only open proceeds and the warning names
+    the fix.
+    """
+    import duckdb
+
+    try:
+        con = duckdb.connect(str(root / MARKET_DATA_DB), read_only=True)
+        try:
+            sim_path = _sql_path(root / SIM_RESULTS_DB)
+            con.execute(f"ATTACH IF NOT EXISTS '{sim_path}' AS sim (READ_ONLY)")
+            stale = _has_absolute_views(con)
+        finally:
+            con.close()
+        if stale:
+            open_warehouse(root).close()  # read-write: rewrites the views
+            logger.info(f"Warehouse views at {root} rewritten with relative paths")
+    except Exception as e:
+        if "lock" in str(e).lower():
+            # Another process is writing, so nothing could be checked: the
+            # caller's own open waits it out, and the next open checks again.
+            # Not a sign the views are stale, and not worth a warning.
+            logger.debug(f"Warehouse at {root} busy; view check skipped ({e})")
+            return
+        logger.warning(
+            f"Warehouse at {root} has views with absolute paths and they could not be "
+            f"rewritten ({e}). Run `python tools/build_warehouse.py --init` once."
+        )
+
+
+def _sql_path(path: Path) -> str:
+    return str(path).replace("'", "''")
+
+
 def lake_path(root: str | Path, subdir: str) -> str:
-    """A Parquet lake directory as a forward-slashed absolute string.
+    """A Parquet lake directory as a forward-slashed absolute string, for
+    writes (ingest, the executions sink). The views read relative globs.
 
     DuckDB's glob syntax treats backslash as an escape character, so a
     Windows path interpolated raw into read_parquet('...') silently

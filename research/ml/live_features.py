@@ -18,7 +18,7 @@ walk-forward check at all -- the volatility block alone accounts for
 consistent across all 5 folds on that fund. Rates, labour, fx and
 curve were inconsistent-to-negative. Carrying 58 more columns of
 per-bar as-of lookups into a hot path for features the data does not
-support would be cost without benefit; see ml_plan.md, "Ablation by
+support would be cost without benefit; see docs/ml_plan.md, "Ablation by
 block" for the full table.
 
 --------------------------------------------------------------------

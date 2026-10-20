@@ -194,11 +194,22 @@ class DuckDBResultSink:
         base_parameters: dict[str, Any],
         broker_id: str,
         dataset_version: str,
+        sweep_id: str | None = None,
     ) -> str:
-        self._sweep_id = uuid.uuid4().hex
+        """Start recording into a sweep. A given `sweep_id` that already
+        exists is continued rather than inserted again -- how a writer that
+        reconnects for every batch, or a resumed run, keeps one sweep row."""
+        self._sweep_id = sweep_id or uuid.uuid4().hex
         self._broker_id = broker_id
         self._dataset_version = dataset_version
         self._con.execute("USE sim")
+        if (
+            sweep_id is not None
+            and self._con.execute(
+                "SELECT 1 FROM sweeps WHERE sweep_id = ? LIMIT 1", [sweep_id]
+            ).fetchone()
+        ):
+            return self._sweep_id
         self._con.execute(
             """INSERT INTO sweeps
                (sweep_id, algorithm, base_parameters, broker_id, dataset_version, code_commit)
@@ -262,15 +273,7 @@ class DuckDBResultSink:
         # blotter to write below.
         succeeded = error_text is None
 
-        phash = parameter_hash(
-            strategy_id=str(row.get("Strategy", "unknown")),
-            strategy_params=_jsonable(params),
-            grid_step=float(row["Grid Step"]),
-            profit_target=float(row["Profit Target"]),
-            dataset_version=self._dataset_version,
-            broker_id=self._broker_id,
-            execution=_jsonable(execution),
-        )
+        phash = self._parameter_hash(row)
         simulation_id = phash[:16]
 
         self._con.execute("USE sim")
@@ -325,6 +328,22 @@ class DuckDBResultSink:
                 self._write_executions(simulation_id, sim_result)
         else:
             self._failed += 1
+
+    def _parameter_hash(self, row: dict[str, Any]) -> str:
+        params, execution, _ = split_row(row)
+        return parameter_hash(
+            strategy_id=str(row.get("Strategy", "unknown")),
+            strategy_params=_jsonable(params),
+            grid_step=float(row["Grid Step"]),
+            profit_target=float(row["Profit Target"]),
+            dataset_version=self._dataset_version,
+            broker_id=self._broker_id,
+            execution=_jsonable(execution),
+        )
+
+    def simulation_id(self, row: dict[str, Any]) -> str:
+        """The id record() files `row` under -- for attach_execution."""
+        return self._parameter_hash(row)[:16]
 
     def attach_execution(self, simulation_id: str, sim_result: Any) -> bool:
         """Backfill a blotter for an already-recorded simulation whose row

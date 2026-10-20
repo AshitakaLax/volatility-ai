@@ -548,6 +548,33 @@ class AlpacaBroker:
 
         return retry_call(_lookup, self._retry_config, after_submission=False)
 
+    def cancel_order(self, client_order_id: str) -> bool:
+        """Ask the venue to cancel one of our orders, by client_order_id.
+
+        For a signal exit left resting when the market moved through its
+        limit: the loop cancels it, and once the venue reports it terminal
+        -- any part that filled first applied as usual -- offers what is
+        left at the new price. False when there is nothing to cancel (an
+        unknown order, or one already filled or cancelled: Alpaca answers
+        404/422). Safe to retry: cancelling twice is still one cancel, and
+        the next poll reports the order's real state either way.
+        """
+        APIError, *_ = _require_alpaca()
+        order = self.get_order_by_client_id(client_order_id)
+        if order is None:
+            return False
+
+        def _cancel() -> bool:
+            try:
+                self._client.cancel_order_by_id(order.id)
+                return True
+            except APIError as e:
+                if getattr(e, "status_code", None) in (404, 422):
+                    return False
+                raise
+
+        return retry_call(_cancel, self._retry_config, after_submission=False)
+
     def snapshot(self) -> BrokerSnapshot:
         """Current broker truth, shaped for src/reconciliation.Reconciler.
 

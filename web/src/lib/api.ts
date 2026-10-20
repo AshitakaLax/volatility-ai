@@ -30,6 +30,7 @@ import type {
 } from "@/types/backtest";
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
 import type { Activity, LiveState, Rsi } from "@/types/telemetry";
+import type { SystemStatus, WarehouseStatus } from "@/types/warehouse";
 
 export class ApiError extends Error {
   constructor(
@@ -243,6 +244,15 @@ export const api = {
   mlEvaluation: (label: string) => request<ByTicker<Eval>>(`/api/ml/evaluation?${query({ label })}`),
 
   mlAblation: (label: string) => request<ByTicker<Ablation>>(`/api/ml/ablation?${query({ label })}`),
+
+  // -- The Warehouse tab (read-only; see server/warehouse_status.py) --------
+
+  /** Funds and their freshness, sweeps and simulations, storage. Cached
+   * server-side: polling it is cheap. */
+  warehouse: () => request<WarehouseStatus>("/api/backtest/warehouse"),
+
+  /** The machine and the queue, read fresh on every call. */
+  system: () => request<SystemStatus>("/api/backtest/system"),
 
   /**
    * The static export, for looking at a run without the server running.

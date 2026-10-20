@@ -237,6 +237,8 @@ class GatedLocalReferenceSizing(HighFrequencyLocalReferenceSizing):
         self.vol_target_max = float(vol_target_max)
         # Built (so validated) even when off, like the gates.
         self._session_vol = SessionVolatility(vol_target_estimator, vol_target_days)
+        self._session_vol_days = int(vol_target_days)
+        self._dt_lookback_days = int(dt_lookback_days)
         self.bounce = BollingerWGate(
             bounce_gate,
             candle_minutes=bounce_candle_minutes,
@@ -272,6 +274,18 @@ class GatedLocalReferenceSizing(HighFrequencyLocalReferenceSizing):
             self._entry_suppressed = any(gate.suppressed for gate in self._gates)
         if self.vol_target is not None:
             self._session_vol.observe(context)
+
+    def live_history_sessions(self) -> int:
+        """The parent's, or more when the session-volatility target or an
+        entry gate is on: the target reads vol_target_days completed
+        sessions, and the gates' widest window is the breakdown gate's
+        dt_lookback_days."""
+        sessions = super().live_history_sessions()
+        if self.vol_target is not None:
+            sessions = max(sessions, self._session_vol_days + 2)
+        if self._gates:
+            sessions = max(sessions, self._dt_lookback_days + 2, 5)
+        return sessions
 
     @property
     def entry_suppressed(self) -> bool:

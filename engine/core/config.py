@@ -81,7 +81,7 @@ class StrategyConfig:
     This docstring previously said no registry existed and told the
     caller to map it themselves. That stopped being true when
     strategy_registry.py was added -- whose own docstring names this
-    comment and Run_Instructions as the two hand-maintained copies it
+    comment and docs/Run_Instructions as the two hand-maintained copies it
     replaced. Opaque-at-parse-time and no-registry-anywhere are
     different claims, and only the first one was ever the design.
 
@@ -581,8 +581,16 @@ class LiveConfig:
     poll_interval_seconds: float = 60.0
     # Bounds one tick's harvest work. A tick that tried to place an
     # unbounded number of sell orders could stall past the next tick;
-    # the remainder is simply picked up on the following pass.
+    # the remainder is simply picked up on the following pass. A signal
+    # exit is ONE order however many lots it closes, so it counts once.
     max_sells_per_tick: int = 25
+    # How far through the market a signal exit's limit is placed: the
+    # bar's price x (1 - this). A limit AT the last trade often rests
+    # (the bid is usually a tick below it), and a resting exit is the one
+    # outcome an exit must not have; still a limit, so a thin book cannot
+    # fill it arbitrarily far away. The fill is the market's price, not
+    # the limit. Harvests at a lot's own target are unaffected.
+    exit_limit_buffer: float = 0.005
 
 
 @dataclass(frozen=True)
@@ -724,6 +732,7 @@ class BacktestConfig:
             feed=live_data.get("feed", "iex"),
             poll_interval_seconds=live_data.get("poll_interval_seconds", 60.0),
             max_sells_per_tick=live_data.get("max_sells_per_tick", 25),
+            exit_limit_buffer=float(live_data.get("exit_limit_buffer", 0.005)),
         )
 
         return cls(
@@ -824,6 +833,11 @@ class BacktestConfig:
             validate_positive(self.live.profit_target, "live.profit_target")
         validate_positive(self.live.poll_interval_seconds, "live.poll_interval_seconds")
         validate_positive_int(self.live.max_sells_per_tick, "live.max_sells_per_tick")
+        if not 0.0 <= self.live.exit_limit_buffer < 0.1:
+            raise ConfigurationError(
+                f"live.exit_limit_buffer must be in [0, 0.1) -- a fraction of the price "
+                f"(0.005 is 0.5%), got {self.live.exit_limit_buffer}"
+            )
         validate_one_of(self.live.broker, ("alpaca", "fidelity"), "live.broker")
 
         # The feed whitelist is ALPACA's -- "iex"/"sip" are names of
@@ -1051,6 +1065,7 @@ class BacktestConfig:
                 "extended_hours": self.live.extended_hours,
                 "poll_interval_seconds": self.live.poll_interval_seconds,
                 "max_sells_per_tick": self.live.max_sells_per_tick,
+                "exit_limit_buffer": self.live.exit_limit_buffer,
             },
         }
 

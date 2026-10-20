@@ -67,6 +67,11 @@ KNOWN_DATA = {
     # research/ml/regime_scaled_sizing.py's module docstring and
     # ml_regime_ursp's own STRATEGY_DEFAULTS comment below.
     "URSP": "data/URSP_1Min_sip_all_rth_2016-01-01_2026-09-11.csv",
+    # URSP's history for research: simulated from RSP (2x the daily index
+    # return, less financing and fees) before the fund's 2025-08-27 launch,
+    # the real fund after. tools/simulate_ursp.py builds it; ingest with
+    # `tools/build_warehouse.py --ingest URSP_SIM --csv <this file>`.
+    "URSP_SIM": "data/simulated/URSP_simulated_1Min.csv",
     # SPDR S&P Biotech -- fetched to fill the volatility gap every other
     # fund here leaves open. The seven funds above cluster at either
     # ~20% annualized vol (RSP/SPYD/COWZ/QQQ, 3-10 deep-drawdown

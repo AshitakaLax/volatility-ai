@@ -91,6 +91,7 @@ ALL_MODULES = (
     "ml_upstream.py",
     "shards.py",
     "shard_client.py",
+    "warehouse_status.py",
 )
 
 
@@ -341,3 +342,50 @@ class TestAppDefaults:
         assert "halt" in caps
         assert "liquidate" not in caps
         assert "parameter_override" not in caps
+
+
+class TestWarehouseStatusIsReadOnly:
+    """server/warehouse_status.py reports on the warehouse, the machine and
+    the queue; it changes none of them."""
+
+    def test_it_exposes_only_get_routes(self):
+        source = (SERVER / "warehouse_status.py").read_text(encoding="utf-8")
+        for verb in ("router.post", "router.put", "router.delete", "router.patch", "api_route"):
+            assert verb not in source, f"warehouse_status.py defines a {verb} route"
+
+    def test_it_cannot_open_the_warehouse_for_writing(self):
+        """Reads go through engine/warehouse/inventory.py's read-only open.
+        Anything that opens or writes the warehouse itself would sidestep it."""
+        tree = module_ast("warehouse_status.py")
+        reached = imported_modules(tree) | called_names(tree)
+        assert not reached & {
+            "duckdb",
+            "open_warehouse",
+            "BatchedResultWriter",
+            "DuckDBResultSink",
+            "ingest",
+            "initialize",
+        }, f"warehouse_status.py reaches {sorted(reached)}"
+
+    def test_it_reaches_no_store_breaker_or_shell(self):
+        imported = imported_modules(module_ast("warehouse_status.py"))
+        assert not imported & {"LedgerStore", "CircuitBreaker", "sqlite3", "subprocess"}
+
+    def test_it_changes_nothing_in_the_queue(self):
+        """It reads the queue's runs and shards -- never a control."""
+        called = called_names(module_ast("warehouse_status.py"))
+        assert not called & {
+            "submit",
+            "pause",
+            "resume",
+            "cancel",
+            "move",
+            "run_next",
+            "pause_all",
+            "resume_all",
+            "pause_shard",
+            "resume_shard",
+            "forget_shard",
+            "set_shard_schedule",
+            "set_shards_paused",
+        }

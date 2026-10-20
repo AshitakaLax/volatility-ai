@@ -20,7 +20,17 @@
 # notices -- tomorrow's session is still worth running. The exit code is
 # logged and the loop continues. `restart: unless-stopped` in compose
 # then covers only the cases this script cannot: the container being
-# killed, the daemon restarting, the Pi rebooting.
+# killed, the daemon restarting, the host rebooting.
+#
+# HOW `docker stop` REACHES THE TRADING LOOP
+#
+# docker stop signals PID 1 -- this shell -- and a shell forwards nothing
+# by itself, so the loop used to be killed mid-tick when the grace period
+# ran out. The trap below passes SIGTERM to the supervisor, which stops
+# the trading loop the way it does at the close (it finishes its tick and
+# settles what is in flight), then exits. The children run in the
+# background so the trap can fire while they do; compose's
+# stop_grace_period leaves the settle window room.
 set -u
 
 CONFIG="${VAI_CONFIG:-/app/config/paper_aggressive.yaml}"
@@ -41,12 +51,32 @@ python -c "from zoneinfo import ZoneInfo; ZoneInfo('America/New_York')" || {
     exit 1
 }
 
-while true; do
+stopping=""
+child=""
+trap 'stopping=1; echo "[loop] stop requested"; [ -n "$child" ] && kill -TERM "$child" 2>/dev/null' TERM INT
+
+# Run "$@" in the background and wait for it, through any trapped signal.
+run() {
+    "$@" &
+    child=$!
+    wait "$child"
+    code=$?
+    while kill -0 "$child" 2>/dev/null; do
+        wait "$child"
+        code=$?
+    done
+    child=""
+    return "$code"
+}
+
+while [ -z "$stopping" ]; do
     echo "[loop] === starting session at $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
-    python tools/market_hours_supervisor.py \
+    run python tools/market_hours_supervisor.py \
         --config "${CONFIG}" \
         --state-db "${STATE_DB}"
     code=$?
+    [ -n "$stopping" ] && break
     echo "[loop] supervisor exited with ${code}; sleeping ${IDLE_SECONDS}s"
-    sleep "${IDLE_SECONDS}"
+    run sleep "${IDLE_SECONDS}"
 done
+echo "[loop] stopped"

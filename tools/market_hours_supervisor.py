@@ -261,8 +261,16 @@ def _main_extended(args, config, poll: float) -> int:
     return 1
 
 
+def _interrupt(signum, _frame) -> None:
+    """SIGTERM -- how `docker stop` (via tools/docker_session_loop.sh) and
+    systemd ask for a stop -- takes the same path as Ctrl-C: run_session
+    stops the trading loop gracefully, and a wait for the open just ends."""
+    raise KeyboardInterrupt
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
+    signal.signal(signal.SIGTERM, _interrupt)
     config = BacktestConfig.from_yaml(args.config)
     config.validate()
     poll = float(config.live.poll_interval_seconds or 60.0)
@@ -328,4 +336,8 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        log("stopped")
+        raise SystemExit(130) from None

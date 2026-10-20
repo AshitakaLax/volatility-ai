@@ -54,6 +54,7 @@ from server import (
     ml_upstream,
     shards,
     upstream,
+    warehouse_status,
 )
 
 
@@ -122,6 +123,8 @@ else:
     # Remote shards (server/shards.py) work the same queue, so they belong
     # to whichever host runs it -- and are forwarded with it otherwise.
     app.include_router(shards.router)
+    # The Warehouse tab: the warehouse and the queue live here too.
+    app.include_router(warehouse_status.router)
 
 # THE ML RESEARCH ROUTES FOLLOW THE SAME SPLIT, FOR THE SAME REASON.
 #

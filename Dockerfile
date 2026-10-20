@@ -39,17 +39,24 @@ FROM python:3.12-slim AS base
 # neither is present, and ZoneInfo("America/New_York") raises at import
 # -- which on a Pi surfaces as a container exiting instantly with a
 # traceback that no market-hours logic ever reached.
+# libgomp1 is LightGBM's OpenMP runtime (the ML sizing strategies);
+# openssh-client lets the backup service copy an archive off the machine.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential tzdata \
+    && apt-get install -y --no-install-recommends build-essential tzdata libgomp1 openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Dependencies installed before source code, so an unchanged
 # requirements.txt keeps this layer cached across ordinary code edits.
-COPY requirements.txt requirements-web.txt ./
+# The warehouse (DuckDB) and ML sets are here because this image is also
+# the backtest engine: every backtest reads its bars from the warehouse,
+# and the UI offers the ML sizing strategies. The trading loops import
+# neither. Fidelity (Playwright) and qlib stay out -- see their files.
+COPY requirements.txt requirements-web.txt requirements-warehouse.txt requirements-ml.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt -r requirements-web.txt
+    && pip install --no-cache-dir -r requirements.txt -r requirements-web.txt \
+        -r requirements-warehouse.txt -r requirements-ml.txt
 
 # Now the actual project. .dockerignore keeps .git, __pycache__, and
 # the various tool caches out of the build context and image.
@@ -64,8 +71,14 @@ COPY --from=web /web/dist ./web/dist
 
 # Runs as a non-root user -- nothing here needs root, and the container
 # may hold live Alpaca credentials in its environment at runtime.
+#
+# Every mount point docker-compose.yml uses exists here, owned by runner:
+# a named volume takes its owner from the first container that mounts it,
+# and one first mounted at a path the image lacks comes up root-owned --
+# a ledger the trading loop could then not write.
 RUN useradd --create-home --uid 1000 runner \
-    && mkdir -p /app/state /app/data /app/config /app/output \
+    && mkdir -p /app/state /app/state-ultimate /app/state-production \
+        /app/data /app/config /app/output /app/warehouse /app/backups \
     && chown -R runner:runner /app
 USER runner
 
@@ -78,3 +91,27 @@ ENTRYPOINT ["python", "cli.py"]
 # No subcommand by default: `docker run <image>` alone prints usage
 # rather than silently doing nothing or guessing what to run.
 CMD ["--help"]
+
+
+# --------------------------------------------------------------------
+# The research image: the app plus qlib (requirements-qlib.txt's pyqlib)
+# for the training tools that may use it -- tools/train_qlib_regime.py
+# --use-qlib. Its own target, never the deployed one: ~200 packages
+# (mlflow, cvxpy, gym, ...) that the trading loops and the server never
+# import. pyqlib publishes nothing for Python 3.14, which is why this is
+# an image and not the workstation's .venv. rdagent, the file's other
+# entry, is an LLM agent loop and is not installed.
+#
+#     docker compose run --rm research tools/train_qlib_regime.py ...
+FROM base AS research
+USER root
+# qlib's concept-drift modules (qlib.contrib.meta, what --use-qlib checks
+# for) import torch, which pyqlib does not declare. The CPU build is enough.
+RUN pip install --no-cache-dir "pyqlib>=0.9.6" \
+    && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+USER runner
+
+
+# The deployed image, and the default target -- the last stage is what a
+# bare `docker build .` produces: the app without qlib.
+FROM base AS app

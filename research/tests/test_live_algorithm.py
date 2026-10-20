@@ -26,13 +26,14 @@ from research.strategies.live_algorithm import (
 from research.strategies.strategy_registry import STRATEGIES
 
 
-def _base(**strategy) -> BacktestConfig:
+def _base(execution=None, **strategy) -> BacktestConfig:
     return BacktestConfig.from_dict(
         {
             "strategy": strategy
             or {"strategy_id": "fixed", "strategy_params": {"allocation_pct": 0.05}},
             "grid": {"steps": [0.01], "profit_targets": [0.005]},
             "backtest": {"symbol": "TQQQ", "initial_cash": 10_000.0},
+            "execution": execution or {},
             "live": {"enabled": True, "step": 0.01, "profit_target": 0.005},
         }
     )
@@ -242,19 +243,20 @@ def test_a_target_return_follows_the_profit_target(tmp_path):
 
 def test_wiring_the_config_file_supplies_is_kept_for_the_same_strategy(tmp_path):
     base = _base(
-        strategy_id="ultimate_rsp",
-        strategy_params={"exposure_by_date": None, **_ultimate_rsp_params()},
+        execution={"allow_signal_exit": True},
+        strategy_id="ultimate",
+        strategy_params={"regime_by_date": None, **_ultimate_params()},
     )
     control = _control(tmp_path, base=base)
-    control.set(_change(strategy_id="ultimate_rsp", strategy_params=_ultimate_rsp_params()))
+    control.set(_change(strategy_id="ultimate", strategy_params=_ultimate_params()))
     stored = json.loads(control.path.read_text(encoding="utf-8"))
-    assert "exposure_by_date" in stored["strategy_params"]
+    assert "regime_by_date" in stored["strategy_params"]
 
 
-def _ultimate_rsp_params() -> dict:
+def _ultimate_params() -> dict:
     from research.strategies.param_schema import STRATEGY_DEFAULTS
 
-    return dict(STRATEGY_DEFAULTS["ultimate_rsp"])
+    return dict(STRATEGY_DEFAULTS["ultimate"])
 
 
 def test_a_strategy_that_refuses_its_parameters_refuses_the_change(tmp_path):

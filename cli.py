@@ -85,8 +85,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 
-# `backup`/`restore`'s default push/pull target -- the Raspberry Pi this
-# project deploys to (see docs/DEPLOY_RASPBERRY_PI.md). Overridable with
+# `backup`/`restore`'s default push/pull target -- the Raspberry Pi, which
+# kept the off-machine copies (docs/DEPLOY.md, Backups). Overridable with
 # --remote-host or $VAI_BACKUP_REMOTE; tools/backup_databases.py (which
 # these two commands delegate to) deliberately has no default of its own,
 # but a CLI meant to be run without flags needs one.
@@ -112,7 +112,7 @@ TEST_ROOTS = (
 )
 
 # strategy_id -> class. BacktestConfig only stores the id as a string
-# (Task 6.1); this is the same manual mapping Run_Instructions
+# (Task 6.1); this is the same manual mapping docs/Run_Instructions
 # documents, since the codebase has no id-to-class registry.
 STRATEGY_REGISTRY = {}
 
@@ -1051,6 +1051,8 @@ def _run_trading_loop(
 
     from engine.core.secrets import load_live_credentials
     from engine.data.alpaca_market_data import AlpacaMarketData
+    from engine.data.historical_data import AlpacaHistoricalData
+    from engine.trading.live_history import AlpacaSessionHistory
     from engine.trading.live_trading_loop import LiveTradingLoop
     from research.strategies.live_algorithm import build_strategy
 
@@ -1091,8 +1093,16 @@ def _run_trading_loop(
         credentials=load_live_credentials(),
     )
 
+    # The sessions a strategy's state spans, replayed before its first tick
+    # (engine/trading/live_history.py): the supervisor starts a process per
+    # session, which otherwise began every morning cold. Same feed as the
+    # ticks, so the two agree.
+    history = AlpacaSessionHistory(
+        AlpacaHistoricalData(credentials=load_live_credentials()), feed=config.live.feed
+    )
+
     def build(cfg, built_strategy):
-        return LiveTradingLoop(
+        loop = LiveTradingLoop(
             config=cfg,
             strategy=built_strategy,
             broker=broker,
@@ -1100,9 +1110,26 @@ def _run_trading_loop(
             store=store,
             circuit_breaker=circuit_breaker,
             tick_listener=on_tick,
+            history_provider=history,
         )
+        if loop.replayed_bars:
+            mode = getattr(built_strategy, "mode", None)
+            print(
+                f"History: {loop.replayed_bars:,} bars replayed before the first tick"
+                + (f"; regime {mode}" if mode else "")
+            )
+        return loop
 
-    current = {"loop": build(config, strategy), "config": config, "reload": False, "stop": False}
+    try:
+        first = build(config, strategy)
+    except Exception as e:
+        # Before any tick, so nothing is in flight: refuse rather than trade
+        # a strategy that starts blind. The supervisor tries again.
+        print(f"Could not prepare the strategy: {type(e).__name__}: {e}", file=sys.stderr)
+        report(state="halted", detail=f"could not prepare the strategy: {e}")
+        store.close()
+        return 1
+    current = {"loop": first, "config": config, "reload": False, "stop": False}
 
     # SIGTERM is how `docker stop` asks a container to exit, so handling
     # it is what makes restart:unless-stopped safe: the loop finishes
@@ -1226,7 +1253,15 @@ def cmd_backup(args: argparse.Namespace) -> int:
     import tempfile
 
     from engine.warehouse.connection import MARKET_DATA_DB, SIM_RESULTS_DB
-    from tools.backup_databases import build_archive, prune_local, push_to_remote, snapshot_all
+    from tools.backup_databases import (
+        build_archive,
+        default_backup_dir,
+        prune_local,
+        push_to_remote,
+        snapshot_all,
+    )
+
+    out_dir = Path(args.out_dir) if args.out_dir else default_backup_dir()
 
     warehouse_dir = Path(args.warehouse)
     databases = [
@@ -1257,9 +1292,9 @@ def cmd_backup(args: argparse.Namespace) -> int:
         if not entries:
             print("Nothing was snapshotted successfully.", file=sys.stderr)
             return 1
-        archive = build_archive(workdir, entries, extra_paths, Path(args.out_dir))
+        archive = build_archive(workdir, entries, extra_paths, out_dir)
 
-    prune_local(Path(args.out_dir), args.keep)
+    prune_local(out_dir, args.keep)
 
     pushed = False
     if args.local_only:
@@ -1971,9 +2006,10 @@ def main() -> int:
     )
     p_backup.add_argument(
         "--out-dir",
-        default="backups",
+        default=None,
         metavar="DIR",
-        help="Where local archives are written (default: backups/)",
+        help="Where local archives are written (default: $VAI_BACKUP_DIR, else "
+        "/workspace/backups if it exists, else backups/)",
     )
     p_backup.add_argument(
         "--keep",

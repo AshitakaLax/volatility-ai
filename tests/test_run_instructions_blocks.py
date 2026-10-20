@@ -1,4 +1,4 @@
-"""Run_Instructions' examples must actually run, and name real parameters.
+"""docs/Run_Instructions' examples must actually run, and name real parameters.
 
 This replaces test_task_1_1_run_instructions.py and
 test_task_6_1_config_run_instructions.py, which asserted the same
@@ -33,15 +33,15 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RUN_INSTRUCTIONS = REPO_ROOT / "Run_Instructions"
+RUN_INSTRUCTIONS = REPO_ROOT / "docs/Run_Instructions"
 
 
 def block(name: str) -> str:
     """The contents of one named block, or a failure naming it."""
     text = RUN_INSTRUCTIONS.read_text(encoding="utf-8")
     begin, end = f"--- BEGIN {name} ---", f"--- END {name} ---"
-    assert begin in text, f"Run_Instructions has no {begin!r}"
-    assert end in text, f"Run_Instructions has no {end!r}"
+    assert begin in text, f"docs/Run_Instructions has no {begin!r}"
+    assert end in text, f"docs/Run_Instructions has no {end!r}"
     return text.split(begin, 1)[1].split(end, 1)[0].strip()
 
 
@@ -162,7 +162,7 @@ def test_every_documented_run_sweep_kwarg_is_real():
 
 def test_the_example_uses_the_real_constructor_keyword():
     """Guards the drift this file was originally written to catch:
-    Run_Instructions once documented `allocations`, which has never
+    docs/Run_Instructions once documented `allocations`, which has never
     been a parameter of anything."""
     from research.strategies.size_calculators import FixedPortfolioPercentage
 
@@ -174,7 +174,7 @@ def test_the_example_uses_the_real_constructor_keyword():
 
 
 def test_the_registry_is_used_rather_than_a_hand_written_mapping():
-    """Run_Instructions used to tell readers to hand-write a
+    """docs/Run_Instructions used to tell readers to hand-write a
     strategy_id-to-class dict, and src/strategy_registry.py's docstring
     names this file as one of the two copies it exists to remove."""
     script = block("example-config.py")

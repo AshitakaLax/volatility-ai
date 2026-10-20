@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import os
 import re
@@ -71,7 +72,14 @@ from research.strategies.param_schema import _wire_param as _wire_param
 from research.strategies.param_schema import _wire_type as _wire_type
 from research.strategies.param_schema import describe_params as describe_params
 from research.strategies.param_schema import required_parameters as required_parameters
-from research.strategies.strategy_registry import STRATEGIES, resolve_strategy
+
+# SIGNAL_EXIT_STRATEGIES: run with execution.allow_signal_exit on (see
+# build_config). Backtest only: this server never trades.
+from research.strategies.strategy_registry import (
+    SIGNAL_EXIT_STRATEGIES,
+    STRATEGIES,
+    resolve_strategy,
+)
 from server import contract, history, history_query
 from server.fills import MAX_LIMIT as FILLS_MAX_LIMIT
 from server.fills import FundFills, strip_report
@@ -87,6 +95,7 @@ from server.jobs import (
 from tools.export_ui_data import KNOWN_DATA, equity_series, executions, fund_metrics
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
+logger = logging.getLogger(__name__)
 
 # How long a websocket waits for a job to change before sending a
 # heartbeat. Short enough that a browser tab does not decide the
@@ -278,6 +287,11 @@ class RunRequest(BaseModel):
     # configuration gains nothing from a process pool and pays the cost
     # of pickling the frame to a worker.
     jobs: int | None = Field(default=None, ge=1, le=64)
+    # THIS MACHINE ONLY. A remote shard never claims a run that sets it; the
+    # run waits for this server's own worker (server/jobs.py). For a sweep
+    # whose results must come from this machine's cores and land in its
+    # warehouse.
+    local_only: bool = False
 
     # HOW THE COMBINATION SPACE IS EXPLORED, not how big it is -- that is
     # still every enabled per-field "Sweep" checkbox (lib/sweepStrategies.ts
@@ -353,19 +367,6 @@ def warm_up_history(
     if "volume" in history.columns:
         daily["volume"] = history["volume"].resample("1D").sum().reindex(daily.index)
     return daily
-
-
-# Strategies whose design includes an exit below cost basis, run with
-# execution.allow_signal_exit on. The flag is half of a two-part gate --
-# a loss needs it AND the strategy's lots_to_liquidate -- so it changes
-# nothing for a strategy without the hook. UltimateSizing's regime exit
-# (sell the calm-mode lots during the first turbulent session, L6) is the
-# step-down the whole design was measured with; without the flag those
-# lots ride the downturn and the run is a different, unresearched
-# strategy. UltimateRspSizing's only exit is one: it moves to a daily
-# exposure target by selling whole lots -- and so is UltimateUrspSizing's. Backtest only: this server never
-# trades.
-SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset({"ultimate", "ultimate_rsp", "ultimate_ursp"})
 
 
 # -- Grid-step TRIGGER method, per strategy ----------------------------
@@ -903,12 +904,16 @@ class _BestOnlySink:
         rank_by: str,
         tie_break_by: str | None,
         on_row: Callable[[dict[str, Any]], None] | None,
+        warehouse: Any = None,
     ) -> None:
         self.rows: list[dict[str, Any]] = []
         self._first_index = first_index
         self._rank_by = rank_by
         self._tie_break_by = tie_break_by
         self._on_row = on_row
+        # A result_writer.BatchedResultWriter, or None: every row also goes
+        # to the warehouse, in batches (_warehouse_writer).
+        self._warehouse = warehouse
         self.best_index: int | None = None
         self.best_result = None
         self._best_key: tuple | None = None
@@ -918,6 +923,8 @@ class _BestOnlySink:
         self.rows.append(row)
         if self._on_row is not None:
             self._on_row(row)
+        if self._warehouse is not None:
+            self._warehouse.add(row, elapsed_ms)
         if sim_result is None:
             return
         key = _rank_key(row, self._rank_by, self._tie_break_by)
@@ -937,6 +944,77 @@ class BarSource(Protocol):
     def available_tickers(self) -> set[str]: ...
 
     def load_frame(self, ticker: str) -> pd.DataFrame: ...
+
+
+def _warehouse_writer(config, name: str | None, ticker: str, control: RunControl | None):
+    """Where one ticker's configurations are recorded in the warehouse, or None.
+
+    Every configuration of every run on this server lands in
+    sim_results.duckdb (sim.simulations: parameters, metrics; the best one's
+    trade log in the executions lake), one sweep row per run and ticker, so
+    `server-<run id>-<ticker>` finds a Run History entry's rows there and a
+    resumed run continues the same sweep. Batched and never held open
+    (engine/warehouse/result_writer.py), because this process reads bars
+    from the same files. VAI_RECORD_WAREHOUSE=0 turns it off.
+    """
+    if os.environ.get("VAI_RECORD_WAREHOUSE", "1") == "0":
+        return None
+    try:
+        import duckdb  # noqa: F401
+        import polars  # noqa: F401
+    except ImportError:
+        return None
+    from engine.warehouse.bars import fingerprint, warehouse_root
+    from engine.warehouse.result_writer import BatchedResultWriter
+
+    run_id = getattr(control, "run_id", None) or uuid.uuid4().hex[:12]
+    recorded = config.to_dict()
+    # The config's symbol is the request's default, not the fund this sweep
+    # ran on -- every RSP sweep was once recorded as TQQQ.
+    recorded["backtest"] = {**recorded.get("backtest", {}), "symbol": ticker}
+    return BatchedResultWriter(
+        warehouse_root(),
+        sweep_id=f"server-{run_id}-{ticker}",
+        algorithm=config.search.strategy,
+        base_parameters={
+            **recorded,
+            "server_run": {"run_id": run_id, "ticker": ticker, "name": name},
+        },
+        cost_config=config.costs,
+        dataset_version=fingerprint(ticker) or "unknown",
+        # Each write locks other processes out of the warehouse for a second
+        # or two; at most every two minutes keeps that rare.
+        flush_rows=500,
+        flush_seconds=120.0,
+    )
+
+
+def _sweep_size(parsed: RunRequest, config: BacktestConfig) -> tuple[int, int]:
+    """(the grid's combinations, the configurations one ticker evaluates).
+
+    What one ticker evaluates is, for a Bayesian run, the trial budget, not
+    the size of the space -- measuring progress against the space left a
+    200-trial search over 11,520 combinations topping out at 1.7%.
+    """
+    strategy_params_grid = expand_strategy_params(config.strategy.strategy_params)
+    combinations = (
+        len(config.grid.steps) * len(config.grid.profit_targets) * len(strategy_params_grid)
+    )
+    trials = parsed.bayes.trials if parsed.bayes else None
+    bayesian = config.search.strategy == "bayesian"
+    return combinations, (trials if bayesian and trials else combinations)
+
+
+def request_configurations(request: dict[str, Any]) -> int | None:
+    """The configurations a submitted run evaluates across its tickers,
+    counted as run_backtest counts them -- so the work a status page says is
+    left in the queue cannot drift from what the queue will run. None for a
+    request that no longer validates (it fails as soon as it starts)."""
+    try:
+        parsed = RunRequest(**request)
+        return _sweep_size(parsed, build_config(parsed))[1] * len(parsed.tickers)
+    except Exception:
+        return None
 
 
 def run_backtest(
@@ -983,17 +1061,8 @@ def run_backtest(
     # that the page has not crashed. The engine now reports each
     # combination as it finishes, so the fraction below is real work
     # done across every ticker in the request.
-    strategy_params_grid = expand_strategy_params(config.strategy.strategy_params)
-    combinations = (
-        len(config.grid.steps) * len(config.grid.profit_targets) * len(strategy_params_grid)
-    )
-    bayesian = config.search.strategy == "bayesian"
-    # What one ticker will actually evaluate. For a Bayesian run that is
-    # the trial budget, not the size of the space -- measuring progress
-    # against the space left a 200-trial search over 11,520 combinations
-    # topping out at 1.7%.
+    combinations, per_ticker = _sweep_size(parsed, config)
     trials = parsed.bayes.trials if parsed.bayes else None
-    per_ticker = trials if bayesian and trials else combinations
     total_units = max(1, per_ticker * len(available))
     finished_units = 0
     should_stop = control.should_stop if control is not None else (lambda: False)
@@ -1102,6 +1171,12 @@ def run_backtest(
         kwargs["n_jobs"] = jobs
         controller = OptimizationController(historical_data=frame)
         search = _ResumableSearch(inner, skip, should_stop)
+        # This machine's warehouse only: a remote shard (`bars` given) has
+        # its own, and its rows reach this server's checkpoint instead.
+        writer = _warehouse_writer(config, parsed.name, ticker, control) if bars is None else None
+        if writer is not None:
+            for row in prior:  # a resumed run's earlier rows; duplicates are skipped
+                writer.add(row)
         sink = _BestOnlySink(
             first_index=len(prior),
             rank_by=rank_by,
@@ -1111,6 +1186,7 @@ def run_backtest(
                 if control is not None
                 else None
             ),
+            warehouse=writer,
         )
         if prior:
             report(
@@ -1146,6 +1222,10 @@ def run_backtest(
                 # run_sweep had no rows to rank by. Anything else is real.
                 if not search.stopped:
                     raise
+            finally:
+                # A stopped or failed run keeps what it finished.
+                if writer is not None:
+                    writer.flush()
 
         rows = prior + sink.rows
         if search.stopped and len(rows) < expected:
@@ -1190,6 +1270,9 @@ def run_backtest(
             )
             _, full = controller.run_sweep(**single)
             result = full[0]
+        if writer is not None:
+            stats = writer.finish(best, result)
+            logger.info(f"{ticker}: warehouse sweep {writer.sweep_id} {stats}")
         sink.best_result = None
         funds[ticker] = {
             # EVERY configuration, ranked -- metrics only. cells[0] IS the

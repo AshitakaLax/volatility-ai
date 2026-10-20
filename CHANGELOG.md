@@ -1,5 +1,216 @@
 # Changelog
 
+## The Warehouse tab
+
+**A tab for what the warehouse holds and the state of the machine filling
+it.** Until now the only way to see it was ad-hoc SQL through
+`docker exec`. The tab has five parts:
+- **Funds:** bars, span, sessions, duplicates and size, and how far behind
+  each fund is.
+- **Results:** the sweeps and simulations recorded, the activity per hour,
+  and the best found per fund and strategy.
+- **Storage:** catalogs, lakes, the reference tables and free disk.
+- **Server:** load, CPU temperatures against the CPU's own limits, and
+  memory. It also shows thermal throttling since boot, but only outside a
+  container: Docker hides those counters, while the temperatures stay
+  visible.
+- **Queue and backups:** the work left in the queue and its ETA, the
+  shards, and the newest backup.
+
+The server side is two GET routes (`server/warehouse_status.py`), held
+read-only by `test_server_capability.py`.
+
+**"Up to date" needed a trading calendar**, and the project had none. The
+supervisor asks Alpaca, and the web server holds no keys.
+`engine/core/trading_calendar.py` encodes the NYSE holidays, each moved the
+way the exchange moves it, plus the one-off closures since 2001. It counts
+exactly the 2,707 sessions RSP holds from 2016-01-04 to 2026-10-08. Early
+closes are not modelled. "Bars to add" is the sessions missing times each
+fund's own median bars per session over its last 20. A flat 390 would be
+wrong twice over: SQQQ keeps extended hours (~940 a session), and some
+minutes of thin funds never print. A last session fetched before it closed
+counts as missing its afternoon.
+
+**The bar scan is cached until an ingest.** One pass over 9.7M bars takes
+3.3 s while a sweep has every core. Its answer can only change when the
+lake's files do, so it is recomputed only then. Results and storage refresh
+every 30 s. Every read goes through `bars.py`'s read-only open under the
+writer lock, with 4 DuckDB threads.
+
+**Fixed while there:**
+- A server sweep recorded the request's default symbol as its
+  `backtest.symbol`, so every RSP sweep claimed to be TQQQ. It now records
+  the fund. Older rows still resolve through `server_run.ticker`.
+- A read-only open that found a writer holding the lock warned that the
+  warehouse "has views with absolute paths". It now waits the lock out
+  quietly, as the open after it already did.
+- `web` mounts the backup directory read-only, for the backups tile.
+
+## One-order exits, brute-force sweeps into the warehouse, and qlib
+
+**A signal exit is one order.** Ultimate's regime exit sent an order per lot,
+at most `max_sells_per_tick` a minute, so a calm book of thousands of lots
+took an hour to leave where the backtest sells it on one bar. It now sends
+one limit order for every condemned lot. The limit sits `live.exit_limit_buffer`
+(0.5%) through the bar's price, because a limit at the last trade often rests
+a tick above the bid. The fill is allocated back to the lots oldest first,
+each through the no-loss guard. An exit still resting on a later bar is
+cancelled (`AlpacaBroker.cancel_order`), and what is left is offered again at
+the new price. The order and its lots survive a restart.
+
+**Every configuration a server run finishes is in the warehouse.** Server
+runs kept their configurations only in Run History. They now also land in
+`sim_results.duckdb`, one sweep per run and fund (`server-<run id>-<fund>`),
+with the best configuration's trade log. The server also reads bars from the
+same files, and DuckDB refuses a second connection in another mode, so a
+sink held open for a sweep would have failed every bar read. Instead,
+`engine/warehouse/result_writer.py` writes in batches of up to 500 rows or
+2 minutes, never holding the warehouse open, under a reader/writer lock.
+Other processes' reads wait out a write instead of answering "no data".
+`VAI_RECORD_WAREHOUSE=0` turns recording off, and the test suite does: a
+first run wrote 33 test rows into the real warehouse (removed).
+
+**`local_only` runs** are never claimed by a remote shard.
+
+**Sweeps keep every worker busy.** `run_sweep`'s parallel path ran batches
+of `n_jobs` and waited for each batch's slowest member before starting the
+next. Measured on a 64-thread sweep, those tails left 35% of the machine
+idle. It is a rolling window now: a finished combination's slot is refilled
+at once.
+
+**`tools/sweep_brute_force.py`** queues every strategy that can trade a fund
+as local-only server runs. It generalises `tools/sweep_rsp_all.py`, keeping
+its spaces over each strategy's committed defaults. `URSP_SIM`, the
+ten-year URSP history (`tools/simulate_ursp.py`: simulated before the fund's
+2025-08-27 launch, the fund after), is ingested and listed in the UI. The
+first campaign covers RSP and URSP_SIM: 110 runs, 138,564 configurations.
+
+**Deployment.** `.env` and `.env.ultimate` held the same Alpaca key, so the
+champion's `paper` service is behind a `champion` profile and `paper-ultimate`
+is the default trader. Backups go to `/workspace/backups`, a separate disk
+(`$VAI_BACKUP_DIR`, the same default for `cli.py backup`).
+
+**qlib, and the ML strategies on both funds.** qlib lives in a `research`
+image target (`docker compose run --rm research ...`), because pyqlib
+publishes nothing for the workstation's Python 3.14. The image is pyqlib
+0.9.7, plus CPU torch, which qlib's concept-drift modules import without
+declaring. With it, `tools/train_qlib_regime.py --use-qlib` trained two
+regime models:
+- RSP: held-out AUC 0.580, against 0.516 for the same data unweighted.
+- URSP_SIM: AUC 0.622.
+
+`tools/train_ml_model.py` trained RSP's reachability model (AUC 0.607).
+The drift weighting compresses a regime model's output to a few levels.
+So `ml_regime_rsp`'s committed thresholds now come from its new model, and
+`ml_regime_ursp`, a placeholder with no model before, runs on URSP_SIM. The
+sweep reads each model's own quantiles for its thresholds. All three joined
+the brute-force campaign.
+
+## Ultimate goes to paper, and one compose file runs everything
+
+**The live loop gives a strategy the history its state spans.** The
+market-hours supervisor starts a process per session, so every strategy
+began each morning cold. The champion's 10-session volatility and volume
+windows were empty: it measured the open's volatility against the open
+alone and never sized it down, at the moment the backtest sizes down
+hardest. Ultimate's regime carried no flag for ~250 sessions, so it never
+bought. Even seeded, Ultimate started each session with no mode, so the
+flip to turbulent (its regime exit's only trigger) was never seen and the
+calm book would have ridden every downturn; its reversal signal had no
+previous close either. `LiveTradingLoop` now replays
+`live_history_sessions()` sessions of regular-hours minute bars through
+`record_tick` before the first tick (`engine/trading/live_history.py`:
+the loop's own feed, adjusted like the warehouse, today's session so far
+included), with a neutral portfolio so nothing is taken from equity.
+Then `resume(open_lots)` rebuilds what no bar carries: Ultimate re-tags
+its reversal lots by their target. A strategy that wants history and
+gets none is refused. Against Alpaca: 400 sessions, 145,206 bars, fetched
+in 13 s and replayed in 3 s.
+
+**Ultimate's regime exit finishes live.** It fired for one bar. A backtest
+sells every condemned lot on that bar, but live sends at most
+`max_sells_per_tick` orders a tick, and a limit at the market can go
+unfilled, so a book larger than 25 lots was never fully exited. Calm lots
+left after the exit are now offered on every later bar of the spell from
+`liquidate_minute`. Backtests are unchanged: the full-history Ultimate run
+is identical in all 61 result columns.
+
+**A live deployment must be the researched strategy.**
+`live_algorithm.build_strategy`, at start-up and in the extension's
+algorithm editor, refuses:
+- an `ultimate*` strategy without `execution.allow_signal_exit`. It must
+  be set in the deployment file, never switched on by the code, so the
+  second key of the two-key gate stays a reviewed decision;
+- a `regular_session_only` strategy with `extended_hours`;
+- a `live.profit_target` equal to `reversal_target`;
+- `ultimate_rsp`/`ultimate_ursp`, which have no live history support yet.
+
+`SIGNAL_EXIT_STRATEGIES` moved to the registry, so the server and the live
+path share it. Preflight reports these rules and fetches the start-up
+history. `config/ultimate_paper.yaml` is the paper deployment.
+
+**One compose file.** `docker-compose.yml` replaces itself and
+`docker-compose.pi.yml`:
+- `web`: the UI, the API and the backtest engine, published on loopback;
+- `paper`: the Pi's loop;
+- `backup`: daily, into `./backups`;
+- behind profiles: Ultimate in paper, real money, and one-off tools.
+
+Each trading service has its own env file and named volume. `docker stop`
+now reaches the trading loop as a graceful stop: the shell at PID 1
+forwarded nothing, so the loop was killed mid-tick when the grace period
+ran out. `tools/install_services.sh` and `tools/sync_to_pi.sh` are gone,
+and `docs/DEPLOY.md` replaces `docs/DEPLOY_RASPBERRY_PI.md`.
+
+**The Docker build context is an allowlist.** The denylist had let three
+Fidelity `.har` captures (authenticated brokerage traffic), `server.log`,
+the warehouse and agent directories into every image through `COPY . .`.
+
+**The warehouse's views read relative paths**, resolved through DuckDB's
+`file_search_path` on every connection. The host and the engine container
+share one catalog without rewriting it, and an older warehouse's absolute
+views are rewritten once.
+
+## The move from Windows to Linux, and a shorter root
+
+The repository moved to a Linux workstation. What broke, and the fixes:
+
+- **The warehouse read as empty.** Its DuckDB views store an absolute
+  `read_parquet` path (`C:/workspace/...`), and `bars.load_frame` turns a
+  failed query into "no data" by design, so every backtest, the server and
+  nine tests saw no bars, with no error. The views are relative now (see
+  above), and `load_frame` logs the failure it absorbs.
+- **Windows-only service scripts** (`.cmd`/`.ps1` scheduled tasks) are
+  replaced by the compose deployment (above): credentials stay in `.env`,
+  and the supervisor reads the market calendar.
+- **Hard-coded Windows paths** in the chain scripts, two probes and the
+  Fidelity launch hints now use repo-relative paths and Linux commands. The
+  chain scripts also called `run_hf_sweep.py`/`analyze_annual.py` at their
+  pre-`research/` locations; they run as modules now.
+- **CI ran a fraction of the suite.** `pytest tests/` predates the split of
+  the suite into each directory's `tests/`, so it covered only the root
+  part. CI runs `cli.py test` with every dependency set.
+- **Tests that were wrong, not code:** the Pi deployment tests still
+  expected the Streamlit `dashboard` service removed in 3e7857d; the run
+  resume test compared a warehouse-backed server run against a CSV that
+  had since fallen behind the warehouse; the shard-link test's fake asked
+  to stop once where the real server asks on every sync, a race that
+  Windows' coarse timers hid.
+- **Optuna is capped below 5.** Its default TPE sampler converges
+  differently (the decomposition test plateaus at 50%), and every recorded
+  Bayesian sweep was produced on 4.x.
+
+Root documents were consolidated: the finished web-UI plan and ledger and
+the old quick start moved to `docs/history/`; `Run_Instructions` (whose
+code blocks the tests execute) and `ml_plan.md` moved to `docs/`; the
+sweep-running guide and the simulation record moved from the README to
+`docs/sweeps.md`; the chain scripts moved to `tools/experiments/`. Every
+`AGENTS.md` is now a symlink to the guide beside it, so agent tools read
+one maintained text instead of a September snapshot. The README was
+rewritten around a feature list and Linux setup, and corrected where it
+had drifted (it still said four strategies existed, denied the registry,
+and said there was no CI).
+
 ## `ultimate_ursp` and a simulated URSP history
 
 URSP (ProShares Ultra S&P 500 Equal Weight, 2x daily) has traded only since

@@ -471,7 +471,7 @@ def main() -> int:
 
     print(
         "\nHeld-out metrics only say the model ranks better than chance on unseen sessions. "
-        "ml_plan.md's bar is P&L: run this through a sweep against hf_local_reference on the "
+        "docs/ml_plan.md's bar is P&L: run this through a sweep against hf_local_reference on the "
         f"post-{args.cutoff} range before treating it as anything more."
     )
     return 0

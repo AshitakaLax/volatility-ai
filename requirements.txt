@@ -28,7 +28,12 @@ tzdata>=2026.1
 # search_strategy="grid" (the default) needs none of this. Without it,
 # BayesianSearch(...) raises a clear ConfigurationError rather than
 # failing at import time or silently falling back to grid search.
-optuna>=4.9.0
+#
+# Capped below 5: Optuna 5's default TPESampler converges differently (it
+# plateaus at ~50% on research/tests/test_bayesian_search_decomposition.py's
+# synthetic objective where 4.x clears it), and every recorded Bayesian
+# sweep was produced on 4.x. Lift the cap only after re-validating.
+optuna>=4.9.0,<5
 
 # Optional: only required for live trading against Alpaca (Phase 7).
 # Backtesting needs none of this. src/fill_accounting.py's core

@@ -8,9 +8,9 @@ sizing strategy reads it, no live loop imports it, and it cannot
 become one by mistake: it only formats artifacts that
 tools/fetch_market_inputs.py, tools/build_ml_dataset.py,
 tools/evaluate_ml_features.py and tools/ablate_ml_features.py already
-wrote to disk. ml_plan.md's own sequencing puts a model on the sizing
+wrote to disk. docs/ml_plan.md's own sequencing puts a model on the sizing
 path behind Phase 1 baselines and pre-registered evaluation; nothing
-here jumps that queue. See ml_plan.md, "Phase ML-0" for what has
+here jumps that queue. See docs/ml_plan.md, "Phase ML-0" for what has
 actually been measured, and how weak most of it still is.
 
 --------------------------------------------------------------------

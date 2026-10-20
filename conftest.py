@@ -25,6 +25,12 @@ of their own; that overrides this for the test and restores it after.
   VAI_RUN_HISTORY_DIR  server/history.py archives completed runs here.
                        Left at its default, every test run that completes
                        would land in the operator's Run History.
+  VAI_RECORD_WAREHOUSE off: server/backtest.py records every configuration
+                       of a run in the warehouse, and several server tests
+                       run against the REAL one's bars -- they would write
+                       their configurations into its sim_results.duckdb.
+                       Tests of the recording turn it on against a
+                       warehouse of their own.
 """
 
 from __future__ import annotations
@@ -37,3 +43,4 @@ _ROOT = tempfile.mkdtemp(prefix="vai-tests-")
 # directories must not quietly turn the test run back into a live one.
 os.environ["VAI_QUEUE_DIR"] = os.path.join(_ROOT, "queue")
 os.environ["VAI_RUN_HISTORY_DIR"] = os.path.join(_ROOT, "runs")
+os.environ["VAI_RECORD_WAREHOUSE"] = "0"
