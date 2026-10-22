@@ -1,5 +1,25 @@
 # Changelog
 
+## Fix: the RSP regime sweeps, and a run with failed configurations
+
+**Both RSP `ml_regime_rsp` sweeps of the 2026-10 campaign failed at 100%.**
+- **The thresholds:** `tools/sweep_brute_force.py` took them at the
+  model's own quantiles and rounded to the nearest 4 places. This model's
+  scores sit on three exact levels; its latch enters at `score >= enter`
+  and leaves at `score <= exit`.
+  - Rounded up, the p99 entry (0.247875 to 0.2479) sat above every score,
+    and MLRegimeScaledSizing refused it. That was half of each sweep, 1,296
+    configurations.
+  - The p90 entry (0.238054 to 0.2381) sat above its own level, so it
+    latched only at the top one.
+  - The URSP_SIM sweep completed, but with the same skew.
+  - Entry levels now round down and the exit rounds up, so each threshold
+    fires at the level it was taken from.
+- **The crash:** the refused rows' metrics are all NaN, and `fund_metrics`
+  called `int()` on one, failing both runs after every configuration had
+  finished. A failed configuration is now left out of the report's cells
+  and logged, and a missing count reads as zero.
+
 ## Fix: a Fidelity trader's status reaches the Live page
 
 **A Fidelity loop never reported to the Live page.** Its status named the

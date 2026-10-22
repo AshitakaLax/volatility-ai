@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -131,6 +132,17 @@ def executions(blotter: pd.DataFrame) -> list[dict]:
     return out
 
 
+def _count(value) -> int:
+    """A count, read as zero when it is missing -- None, or the NaN a
+    summary frame holds for a row without that column -- as fund_metrics
+    reads every missing figure. int(NaN) raises."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0
+    return int(number) if math.isfinite(number) else 0
+
+
 def fund_metrics(metrics: dict) -> dict:
     """The engine's metrics dict as a Metrics object.
 
@@ -146,7 +158,7 @@ def fund_metrics(metrics: dict) -> dict:
         "sortino_ratio": round(float(metrics.get("Sortino", 0.0)), 4),
         "profit_factor": round(float(metrics.get("Profit Factor", 0.0)), 4),
         "win_rate_pct": round(float(metrics.get("Win Rate %", 0.0)), 4),
-        "max_consecutive_losses": int(metrics.get("Max Consecutive Losses", 0)),
+        "max_consecutive_losses": _count(metrics.get("Max Consecutive Losses", 0)),
         "stuck_capital_value": round(float(metrics.get("Stuck Capital Value", 0.0)), 2),
         "capital_velocity_index": round(float(metrics.get("Capital Velocity Index", 0.0)), 4),
         "harvest_to_stuck_ratio": round(float(metrics.get("Harvest to Stuck Ratio", 0.0)), 4),
@@ -163,10 +175,10 @@ def fund_metrics(metrics: dict) -> dict:
             float(metrics.get("Return/Drawdown", 0.0)),
             4,
         ),
-        "total_trades": int(metrics.get("Trade Count", 0)),
-        "closed_trades": int(metrics.get("Closed Trade Count", 0)),
-        "open_trades": int(metrics.get("Open Trade Count", 0)),
-        "signal_exits": int(metrics.get("Signal Exit Count", 0)),
+        "total_trades": _count(metrics.get("Trade Count", 0)),
+        "closed_trades": _count(metrics.get("Closed Trade Count", 0)),
+        "open_trades": _count(metrics.get("Open Trade Count", 0)),
+        "signal_exits": _count(metrics.get("Signal Exit Count", 0)),
         "final_equity": round(float(metrics.get("Final Equity", 0.0)), 2),
         # THE BAR THAT MATTERS: buying this fund at the window's first
         # close and never selling. Absent (0.0) only for a result

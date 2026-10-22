@@ -63,6 +63,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import urllib.error
@@ -284,14 +285,33 @@ def _quantiles(fund: str, head: str) -> dict[str, float]:
     return json.loads(sidecar.read_text(encoding="utf-8"))["score_quantiles"]
 
 
+def _at_most(value: float) -> float:
+    """`value` to 4 places, rounded DOWN. The latch enters at
+    `score >= enter`, and this model's scores sit on a few exact levels,
+    so an entry rounded up past its level never fires at it. Rounded to
+    the nearest, RSP's p90 level (0.238054) became 0.2381, which fired only
+    at the top level. Its p99 (0.247875) became 0.2479, above every score;
+    MLRegimeScaledSizing refuses that, and every configuration at it
+    failed (2026-10-21)."""
+    return math.floor(round(value * 10_000, 6)) / 10_000
+
+
+def _at_least(value: float) -> float:
+    """`value` to 4 places, rounded UP: the latch leaves at
+    `score <= exit`, so an exit rounded down past its level never fires
+    at it."""
+    return math.ceil(round(value * 10_000, 6)) / 10_000
+
+
 def _regime_space(fund: str) -> dict[str, Any]:
     """MLRegimeScaledSizing's thresholds come from ITS model's own output:
     a calibrated classifier on a ~18% base rate never emits a high number,
     and a threshold above its p99 never fires (and is refused). Entry at the
-    model's distinct upper levels, exit at its median."""
+    model's distinct upper levels, exit at its median -- each rounded
+    toward the side where that level still fires."""
     crash, fwdvol = _quantiles(fund, "crash"), _quantiles(fund, "fwdvol")
-    exit_at = round(crash["p50"], 4)
-    enter = sorted({round(crash[q], 4) for q in ("p75", "p90", "p99")} - {exit_at})
+    exit_at = _at_least(crash["p50"])
+    enter = sorted({_at_most(crash[q]) for q in ("p75", "p90", "p99")} - {exit_at})
     return {
         "ticker": [fund],
         "max_trade_pct": [0.02, 0.05, 0.08],

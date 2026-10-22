@@ -800,6 +800,15 @@ def _native(value: Any) -> Any:
     return value.item() if hasattr(value, "item") else value
 
 
+def _failed(row: Any) -> bool:
+    """A configuration run_sweep could not evaluate: its row holds what it
+    was asked to run and an `error`, and no metrics. In a summary frame the
+    other rows hold NaN in that column, and NaN is truthy -- hence the type
+    check rather than a bare truth test."""
+    error = row.get("error")
+    return isinstance(error, str) and bool(error)
+
+
 def _combination_key(grid_step: Any, profit_target: Any, params: dict[str, Any]) -> str:
     """One configuration's identity, stable across a JSON round trip.
 
@@ -1242,6 +1251,12 @@ def run_backtest(
                 )
         order = sorted(range(len(rows)), key=lambda i: _rank_key(rows[i], rank_by, tie_break_by))
         summary = pd.DataFrame([rows[i] for i in order])
+        failed = [row for row in rows if _failed(row)]
+        if failed:
+            logger.warning(
+                f"{ticker}: {len(failed)} of {len(rows)} configurations failed and are left "
+                f"out of the report; the first: {failed[0]['error']}"
+            )
 
         # The best configuration by the engine's own default ranking -- the
         # row the UI is not re-ranking by a metric of its own invention.
@@ -1282,6 +1297,12 @@ def run_backtest(
             # rather than those being sent twice. Carrying each cell's
             # fills as well would multiply the payload by the size of the
             # grid to draw a heatmap that needs one number per cell.
+            #
+            # A configuration that FAILED ran nothing, so it is left out
+            # (logged above). Listed, its zeros would rank a refused
+            # configuration beside real results -- and its NaN counts once
+            # crashed fund_metrics, failing a run whose every other
+            # configuration had finished (2026-10-21).
             "cells": [
                 {
                     "grid": float(row["Grid Step"]),
@@ -1295,6 +1316,7 @@ def run_backtest(
                     "m": fund_metrics(dict(row)),
                 }
                 for _, row in summary.iterrows()
+                if not _failed(row)
             ],
             "fills": executions(result.trade_blotter),
             "equity": equity_series(result.equity_curve),
