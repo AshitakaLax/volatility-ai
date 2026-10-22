@@ -1052,20 +1052,13 @@ def _algorithm_status(config, algorithm) -> dict:
 
 def _fidelity_status(config, connection) -> dict:
     """A Fidelity deployment's part of its trader's status: the browser
-    extension's connection (fidelity_gateway.live), and the account it
-    trades as a one-way tag. The Alpaca key such a deployment holds reads
-    prices and the clock only, so the Alpaca account tag LoopControl writes
-    would tie it to whichever paper trader shares that key -- and the Live
-    page refuses to enable two deployments on one account. Nothing for an
-    Alpaca deployment."""
+    extension's connection (fidelity_gateway.live). The account it trades
+    is LoopControl's own field (operator_control.account_tag). Nothing for
+    an Alpaca deployment."""
     if connection is None or config.live.broker != "fidelity":
         return {}
-    import hashlib
-
     settings = config.live.fidelity
-    account = settings.account or ""
     return {
-        "account": "fidelity-" + hashlib.sha256(account.encode()).hexdigest()[:12],
         "fidelity": {
             **connection.connection_report(),
             # The account's display name ("Traditional IRA"): identifies
@@ -1235,7 +1228,7 @@ def _run_trading_loop(
     current = {"loop": first, "config": config, "reload": False, "stop": False}
 
     if inbox is not None:
-        from engine.trading.operator_control import LoopControl
+        from engine.trading.operator_control import LoopControl, account_tag
         from research.strategies.live_algorithm import algorithm_handlers
 
         def _stop_for_operator(why: str) -> None:
@@ -1284,6 +1277,7 @@ def _run_trading_loop(
                 "broker_unavailable": current["loop"].broker_unavailable,
                 **_fidelity_status(config, connection),
             },
+            account=lambda: account_tag(config.live),
         )
         # Before the first tick, so a pause queued during startup is in force
         # before any buy decision.

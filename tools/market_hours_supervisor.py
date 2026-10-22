@@ -60,6 +60,7 @@ import subprocess
 import sys
 import time
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -71,6 +72,8 @@ from engine.trading.control_inbox import ControlInbox
 from engine.trading.operator_control import (
     STARTUP_ALLOWANCE_SECONDS,
     SupervisorControl,
+    account_fingerprint,
+    account_tag,
     reset_paper_ledger_handler,
 )
 
@@ -264,12 +267,16 @@ def _control_for(args) -> SupervisorControl | None:
         return None
     inbox = ControlInbox(args.control_dir)
     extra = None
+    account = account_fingerprint
     try:
         from research.strategies.live_algorithm import AlgorithmControl, algorithm_handlers
         from research.strategies.strategy_registry import STRATEGIES
 
         config = BacktestConfig.from_yaml(args.config)
         config.validate()
+        # The account its status names, as the loop's does: a Fidelity
+        # deployment's own, not the Alpaca key it reads prices with.
+        account = partial(account_tag, config.live)
         grants = config.live.control.effective(config.live.paper_trading)
         algorithm = AlgorithmControl(
             config,
@@ -294,7 +301,7 @@ def _control_for(args) -> SupervisorControl | None:
         # The session still runs; only the page's algorithm commands are
         # refused (as "cannot be applied by this trader") until it loads.
         log(f"algorithm commands unavailable: {type(exc).__name__}: {exc}")
-    return SupervisorControl(inbox, state_db=args.state_db, extra=extra)
+    return SupervisorControl(inbox, state_db=args.state_db, extra=extra, account=account)
 
 
 def _wait(control, seconds: float, *, state: str, detail: str = "", **fields) -> None:

@@ -1,5 +1,24 @@
 # Changelog
 
+## Fix: a Fidelity trader's status reaches the Live page
+
+**A Fidelity loop never reported to the Live page.** Its status named the
+account twice -- the Alpaca key's tag, which `LoopControl` always wrote, and
+the Fidelity account's, from `cli.py`'s `_fidelity_status` -- so every
+write raised a `TypeError`, caught as "Operator control failed this tick;
+trading continues". The page kept the supervisor's "starting" and, 30
+minutes into a session, called a loop that was trading "not running". The
+supervisor's own reports carried the Alpaca key's tag, the same one the
+paper trader sharing that key reports, so the page took the two for one
+account and would refuse to enable either beside the other.
+
+**One function now decides the tag,** `operator_control.account_tag`: a
+Fidelity deployment's is "fidelity-" and a hash of its account, any other's
+the Alpaca key's. The loop and the supervisor (from the config it already
+loads) both report it. `tests/test_cli_live_fidelity.py` now runs a
+Fidelity loop with a control directory -- the way the supervisor runs it,
+and the path no test had taken.
+
 ## Live page: what a deployment trades and is doing, and a Fidelity section
 
 **The Ultimate paper trader looked broken for two sessions, and nothing on

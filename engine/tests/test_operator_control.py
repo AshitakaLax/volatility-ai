@@ -323,6 +323,29 @@ class TestLoopControl:
         rig.tick(100.0)
         assert rig.tick(98.0) == 1
 
+    def test_the_status_names_the_account_it_is_given(self, rig, inbox, monkeypatch):
+        """cli.py gives a Fidelity loop its own account's tag (account_tag)
+        beside the Fidelity fields of its status; without one, the Alpaca
+        key's."""
+        from engine.trading.operator_control import account_fingerprint
+
+        monkeypatch.setenv("APCA_API_KEY_ID", "PKTESTKEY")
+        rig.tick(100.0)
+        assert inbox.status()["account"] == account_fingerprint()
+        rig.control = LoopControl(
+            inbox,
+            breaker=rig.breaker,
+            loop=lambda: rig.loop,
+            stop=rig.stopped.append,
+            heartbeat_seconds=60.0,
+            status_fields=lambda: {"broker": "fidelity", "fidelity": {"connected": True}},
+            account=lambda: "fidelity-0123456789ab",
+        )
+        rig.tick(100.0)
+        status = inbox.status()
+        assert (status["state"], status["account"]) == ("trading", "fidelity-0123456789ab")
+        assert status["fidelity"] == {"connected": True}
+
 
 # --------------------------------------------------------------------
 # The supervisor's side, between sessions
@@ -472,6 +495,22 @@ def test_the_account_tag_is_one_way_and_reported(monkeypatch, inbox, ledger):
     assert inbox.status()["account"] == tag
     monkeypatch.delenv("APCA_API_KEY_ID")
     assert account_fingerprint() is None
+
+
+def test_a_fidelity_deployment_is_tagged_by_its_own_account(monkeypatch, inbox, ledger):
+    """Its Alpaca key reads prices and the clock only: tagged by that key, it
+    would share a tag with the paper trader holding the same key, and the
+    Live page would refuse to enable either beside the other."""
+    from engine.core.config import FidelityConfig, LiveConfig
+    from engine.trading.operator_control import account_fingerprint, account_tag
+
+    monkeypatch.setenv("APCA_API_KEY_ID", "PKTESTKEY")
+    assert account_tag(LiveConfig()) == account_fingerprint()
+    tag = account_tag(LiveConfig(broker="fidelity", fidelity=FidelityConfig(account="999888777")))
+    assert tag.startswith("fidelity-") and len(tag) == len("fidelity-") + 12
+    assert "999888777" not in tag and tag != account_fingerprint()
+    supervisor(inbox, ledger, sleep=lambda s: None, account=lambda: tag).report("closed")
+    assert inbox.status()["account"] == tag
 
 
 # --------------------------------------------------------------------

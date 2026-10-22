@@ -140,3 +140,57 @@ def test_the_child_is_told_where_commands_arrive(monkeypatch, tmp_path):
     supervisor.run_session(run_args, 5, float("inf"))
     command = seen["command"]
     assert command[command.index("--control-dir") + 1] == str(tmp_path / "control")
+
+
+def test_a_fidelity_supervisor_names_its_own_account(monkeypatch, tmp_path):
+    """While it waits for the open, as the loop does while it trades: the
+    Fidelity account it trades, not the Alpaca key it reads prices with --
+    which the paper trader beside it may share. A config that does not load
+    leaves the key's tag."""
+    import yaml
+
+    from engine.trading.operator_control import account_fingerprint
+
+    monkeypatch.setenv("APCA_API_KEY_ID", "PKTESTKEY")
+    monkeypatch.setattr(supervisor, "log", lambda _message: None)
+    config = tmp_path / "fidelity_live.yaml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "strategy": {"strategy_id": "fixed", "strategy_params": {"allocation_pct": 0.05}},
+                "grid": {"steps": [0.01], "profit_targets": [0.005]},
+                "backtest": {"symbol": "TQQQ", "initial_cash": 10_000.0},
+                "live": {
+                    "enabled": True,
+                    "paper_trading": False,
+                    "step": 0.01,
+                    "profit_target": 0.005,
+                    "broker": "fidelity",
+                    "fidelity": {
+                        "allowed_accounts": ["999888777"],
+                        "account": "999888777",
+                        "account_name": "Traditional IRA",
+                        "dry_run": False,
+                        "allowed_symbols": ["TQQQ"],
+                        "max_order_value": 2_000.0,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    ledger = str(tmp_path / "ledger.db")
+    LedgerStore(ledger).close()
+
+    def reported(config_path) -> str | None:
+        control = supervisor._control_for(
+            SimpleNamespace(
+                control_dir=str(tmp_path / "control"), config=str(config_path), state_db=ledger
+            )
+        )
+        control.report("waiting_for_open")
+        return control.inbox.status()["account"]
+
+    tag = reported(config)
+    assert tag.startswith("fidelity-") and "999888777" not in tag
+    assert reported(tmp_path / "missing.yaml") == account_fingerprint()

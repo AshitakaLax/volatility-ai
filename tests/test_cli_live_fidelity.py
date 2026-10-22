@@ -51,12 +51,13 @@ def _write_config(tmp_path, *, dry_run: bool, allow_algorithm_changes: bool = Fa
     return path
 
 
-def _args(config, tmp_path, *, check_only=False, max_ticks=None):
+def _args(config, tmp_path, *, check_only=False, max_ticks=None, control_dir=None):
     return argparse.Namespace(
         config=str(config),
         state_db=str(tmp_path / "state" / "ledger.db"),
         check_only=check_only,
         max_ticks=max_ticks,
+        control_dir=control_dir,
     )
 
 
@@ -96,6 +97,9 @@ def fake_connection(monkeypatch):
 
         def register_call(self, method, handler):
             calls["handlers"][method] = handler
+
+        def connection_report(self):
+            return {"connected": True, "mode": "live"}
 
         def close(self):
             calls["closed"] += 1
@@ -431,6 +435,7 @@ def test_a_fidelity_trader_reports_its_extension_and_tags_its_own_account(cli, t
     would tie it to whichever paper trader shares the key -- and the page
     refuses to enable two deployments on one account."""
     from engine.core.config import BacktestConfig
+    from engine.trading.operator_control import account_tag
 
     config = BacktestConfig.from_yaml(str(_write_config(tmp_path, dry_run=False)))
 
@@ -438,12 +443,47 @@ def test_a_fidelity_trader_reports_its_extension_and_tags_its_own_account(cli, t
         def connection_report(self):
             return {"connected": True, "mode": "live"}
 
-    status = cli._fidelity_status(config, Connection())
-    assert status["account"].startswith("fidelity-") and ACCOUNT not in status["account"]
-    assert status["fidelity"] == {
-        "connected": True,
-        "mode": "live",
-        "account_name": "Traditional IRA",
-        "max_order_value": 2000.0,
+    tag = account_tag(config.live)
+    assert tag.startswith("fidelity-") and ACCOUNT not in tag
+    assert cli._fidelity_status(config, Connection()) == {
+        "fidelity": {
+            "connected": True,
+            "mode": "live",
+            "account_name": "Traditional IRA",
+            "max_order_value": 2000.0,
+        }
     }
     assert cli._fidelity_status(config, None) == {}, "nothing without a bridge"
+
+
+def test_a_fidelity_loop_reports_to_the_live_page_while_it_trades(
+    cli, tmp_path, monkeypatch, fake_connection
+):
+    """With a control directory, as the supervisor runs it. Its status once
+    named the account twice -- the Alpaca key's tag and its own -- so every
+    write failed, and the page called a loop that was trading "not running"."""
+    from engine.core.config import BacktestConfig
+    from engine.trading.control_inbox import ControlInbox
+    from engine.trading.operator_control import account_fingerprint, account_tag
+
+    written = []
+    write_status = ControlInbox.write_status
+
+    def recording(self, **fields):
+        written.append(fields)
+        return write_status(self, **fields)
+
+    monkeypatch.setattr(ControlInbox, "write_status", recording)
+    market = FakeMarketData()
+    market.push(100.0)
+    _alpaca_prices(monkeypatch, cli, market)
+    config = _write_config(tmp_path, dry_run=False)
+    control_dir = str(tmp_path / "control")
+    assert cli.cmd_live(_args(config, tmp_path, max_ticks=1, control_dir=control_dir)) == 0
+
+    trading = [s for s in written if s["process"] == "loop" and s["state"] == "trading"]
+    assert trading, "the loop reported nothing while it traded"
+    tag = account_tag(BacktestConfig.from_yaml(str(config)).live)
+    assert trading[-1]["account"] == tag
+    assert tag != account_fingerprint(), "not the Alpaca key it reads prices with"
+    assert trading[-1]["fidelity"]["account_name"] == "Traditional IRA"

@@ -65,6 +65,19 @@ def account_fingerprint() -> str | None:
     return hashlib.sha256(key.encode()).hexdigest()[:12] if key else None
 
 
+def account_tag(live) -> str | None:
+    """The account tag a trader of this LiveConfig reports. A Fidelity
+    deployment's Alpaca key reads prices and the clock only, so that key's
+    tag would tie it to whichever paper trader shares the key -- and the
+    Live page would refuse to enable the two together. It is tagged by the
+    Fidelity account it trades instead: "fidelity-" and the first 12 hex
+    digits of SHA-256 over the number, never the number."""
+    if live.broker != "fidelity":
+        return account_fingerprint()
+    account = (live.fidelity.account if live.fidelity is not None else None) or ""
+    return "fidelity-" + hashlib.sha256(account.encode()).hexdigest()[:12]
+
+
 class ControlApplier:
     """Claims queued commands in order and applies them through `handlers`.
 
@@ -167,7 +180,8 @@ class LoopControl:
     `loop()` returns the loop currently trading (cli.py rebuilds it when the
     algorithm changes); `stop(reason)` asks it to stop after this tick.
     `extra` adds handlers -- the algorithm commands, which cli.py builds
-    from research/strategies/live_algorithm.py.
+    from research/strategies/live_algorithm.py. `account()` is the tag its
+    status carries for the account it trades (account_tag).
     """
 
     def __init__(
@@ -180,6 +194,7 @@ class LoopControl:
         heartbeat_seconds: float,
         extra: dict[str, Handler] | None = None,
         status_fields: Callable[[], dict] | None = None,
+        account: Callable[[], str | None] = account_fingerprint,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.inbox = inbox
@@ -188,6 +203,7 @@ class LoopControl:
         self._stop = stop
         self._heartbeat = heartbeat_seconds
         self._status_fields = status_fields or (lambda: {})
+        self._account = account
         self.stopping: str | None = None
         handlers: dict[str, Handler] = {
             "pause_buys": lambda c: _pause(self.breaker, c),
@@ -296,7 +312,7 @@ class LoopControl:
             open_orders=len(loop.state.open_orders),
             cash=loop.state.cash,
             breaker={"state": self.breaker.state.value, "reason": self.breaker.reason},
-            account=account_fingerprint(),
+            account=self._account(),
             **self._status_fields(),
         )
 
@@ -311,12 +327,14 @@ class SupervisorControl:
         *,
         state_db: str,
         extra: dict[str, Handler] | None = None,
+        account: Callable[[], str | None] = account_fingerprint,
         clock: Callable[[], float] = time.time,
         sleep: Callable[[float], None] = time.sleep,
         slice_seconds: float = SUPERVISOR_SLICE_SECONDS,
     ) -> None:
         self.inbox = inbox
         self.state_db = state_db
+        self._account = account
         self._clock = clock
         self._sleep = sleep
         self.slice_seconds = slice_seconds
@@ -430,7 +448,7 @@ class SupervisorControl:
             detail=detail,
             process="supervisor",
             heartbeat_seconds=fields.pop("heartbeat_seconds", self.slice_seconds),
-            account=account_fingerprint(),
+            account=self._account(),
             **fields,
         )
 
