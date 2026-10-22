@@ -159,15 +159,24 @@ def test_a_live_ultimate_is_built_with_its_exit_on():
         ({"execution": {"allow_signal_exit": False}}, "allow_signal_exit"),
         ({"live": {"extended_hours": True}}, "extended_hours"),
         ({"live": {"profit_target": 0.06}}, "reversal_target"),
-        (
-            {"strategy": {"strategy_id": "ultimate_rsp", "strategy_params": {}}},
-            "backtest-only",
-        ),
     ],
 )
 def test_a_live_deployment_that_is_not_the_researched_strategy_is_refused(overrides, match):
     with pytest.raises(ConfigurationError, match=match):
         build_strategy(_config(**overrides), STRATEGIES)
+
+
+def test_a_strategy_whose_history_the_loop_cannot_rebuild_is_refused():
+    """Session state (warm_up) with no live replay (live_history_sessions)
+    would start every session blind."""
+    from research.strategies.live_algorithm import check_live_support
+
+    class SessionStateOnly:
+        def warm_up(self, daily) -> int:
+            return 0
+
+    with pytest.raises(ConfigurationError, match="backtest-only"):
+        check_live_support(_config(), SessionStateOnly())
 
 
 def test_the_paper_deployment_config_builds():
@@ -255,3 +264,101 @@ def test_an_injected_regime_reports_no_readings_it_does_not_have():
 
     strategy = UltimateSizing(**HF, regime_by_date={date(2026, 1, 2): True})
     assert "regime_since" not in strategy.diagnostics()
+
+
+# -- ultimate_rsp: a daily exposure book, live ----------------------------------
+
+# config/fidelity_live.yaml's ultimate_rsp (2026-10-22): the campaign's best
+# Calmar on RSP.
+DEPLOYED_RSP = {
+    "pd_periods": "21,42,63",
+    "pd_lookbacks": "50,100",
+    "ad_params": "3/10,5/20,10/40",
+    "ad_lookbacks": "100,250",
+    "pd_weight": 0.75,
+    "execute_minute": 60,
+    "rebalance_band": 0.1,
+}
+
+
+def _rsp_config(**overrides) -> BacktestConfig:
+    data = {
+        "strategy": {"strategy_id": "ultimate_rsp", "strategy_params": dict(DEPLOYED_RSP)},
+        "grid": {"steps": [0.001], "profit_targets": [10.0]},
+        "backtest": {"symbol": "RSP", "initial_cash": 25_000.0},
+        "execution": {"allow_signal_exit": True, "settlement_days": 1},
+        "live": {"enabled": True, "step": 0.001, "profit_target": 10.0},
+    }
+    for section, values in overrides.items():
+        data[section] = {**data.get(section, {}), **values}
+    return BacktestConfig.from_dict(data)
+
+
+def test_a_live_ultimate_rsp_is_built_with_its_exit_on():
+    from research.strategies.ultimate_rsp_sizing import UltimateRspSizing
+
+    strategy = build_strategy(_rsp_config(), STRATEGIES)
+    assert isinstance(strategy, UltimateRspSizing)
+    assert strategy.live_history_sessions() == (40 - 1 + 250) + 150
+
+
+@pytest.mark.parametrize(
+    "overrides, match",
+    [
+        ({"execution": {"allow_signal_exit": False}}, "allow_signal_exit"),
+        ({"live": {"extended_hours": True}}, "extended_hours"),
+    ],
+)
+def test_a_live_ultimate_rsp_without_what_it_was_researched_with_is_refused(overrides, match):
+    with pytest.raises(ConfigurationError, match=match):
+        build_strategy(_rsp_config(**overrides), STRATEGIES)
+
+
+def test_the_live_loop_replays_its_history_then_moves_to_the_target_once(tmp_path):
+    """Through the real loop: the history replayed with no replayed bar
+    trading, nothing before execute_minute, then ONE buy of target x equity
+    -- and no second rebalance that session."""
+    from research.strategies.ultimate_rsp_sizing import UltimateRspSizing
+    from research.tests.test_ultimate_rsp_sizing import SMALL as RSP_SMALL
+    from research.tests.test_ultimate_rsp_sizing import _daily as rsp_daily
+    from research.tests.test_ultimate_rsp_sizing import _sessions as rsp_sessions
+
+    config = _rsp_config(strategy={"strategy_params": dict(RSP_SMALL)})
+    strategy = build_strategy(config, STRATEGIES)
+    history = rsp_sessions(strategy.live_history_sessions())
+    live_day = pd.bdate_range(history.index[-1].date(), periods=2)[-1].date()
+    open_ = pd.Timestamp(f"{live_day} 09:31", tz="America/New_York").tz_convert("UTC")
+    # The target the first live session trades: every replayed session's votes.
+    reference = UltimateRspSizing(**RSP_SMALL)._signal
+    reference.warm_up(rsp_daily(history))
+    reference.observe(open_, 100.0, 100.0, 100.0, 0.0)
+    want = reference.target
+    assert want > strategy.rebalance_band, "this history must call for a rebalance"
+
+    store = LedgerStore(str(tmp_path / "ledger.db"))
+    broker, market = FakeBroker(), FakeMarketData()
+    loop = LiveTradingLoop(
+        config=config,
+        strategy=strategy,
+        broker=broker,
+        market_data=market,
+        store=store,
+        sleep=lambda _: None,
+        history_provider=lambda symbol, sessions: history,
+    )
+    assert loop.replayed_bars == len(history)
+    assert broker.buys == [] and broker.sells == [], "no replayed bar trades"
+
+    def tick(at):
+        market._bars.append(LiveBar(at.to_pydatetime(), 100.0, 100.0, 100.0, 100.0, 1_000.0))
+        loop.run_once()
+
+    tick(open_)
+    assert broker.buys == [], "it waits for execute_minute"
+    tick(open_ + pd.Timedelta(minutes=59))  # 10:30 ET, minute 60
+    assert len(broker.buys) == 1
+    _symbol, value, _cid = broker.buys[0]
+    assert value == pytest.approx(min(want, 1.0 - strategy.cash_buffer) * 25_000.0)
+    tick(open_ + pd.Timedelta(minutes=60))
+    assert len(broker.buys) == 1, "once a session"
+    store.close()

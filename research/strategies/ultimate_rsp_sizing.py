@@ -48,6 +48,18 @@ which should be set out of reach (the book is meant to hold, not harvest).
 Injected exposure: `exposure_by_date` replaces the computed target with a
 precomputed causal {date: fraction} map -- how the research lab reproduces
 it and checks the incremental computation against the vectorised one.
+
+--------------------------------------------------------------------
+LIVE
+
+A live deployment starts a fresh process every session, so the votes'
+history is replayed first: live_history_sessions() asks LiveTradingLoop for
+enough sessions that every vote is defined (RspTimingSignal.history_sessions),
+and 150 more for the indicators' seeds to settle. The replay hands the
+strategy no equity, so no replayed bar rebalances. The replay's last session
+then decides the first live one, as the close of D decides D+1 in a backtest.
+A process restarted after execute_minute replays the morning too, and does
+not rebalance a second time that session.
 """
 
 from __future__ import annotations
@@ -180,6 +192,15 @@ class RspTimingSignal:
         self.target: float | None = None
         self.votes: dict[str, bool] = {}
 
+    @property
+    def history_sessions(self) -> int:
+        """Closed sessions before every vote is defined. A PLUS_DM value
+        exists from session p - 1 and an ADOSC from slow - 1 (TA-Lib's own
+        starts), and a vote then needs `lb` of them (_below_median)."""
+        plus_dm = max(self.pd_periods) - 1 + max(self.pd_lookbacks)
+        adosc = max(slow for _fast, slow in self.ad_params) - 1 + max(self.ad_lookbacks)
+        return max(plus_dm, adosc)
+
     def observe(self, timestamp, high: float, low: float, close: float, volume: float) -> None:
         day = timestamp.date()
         if day != self._day:
@@ -257,6 +278,14 @@ class RspTimingSignal:
 class UltimateRspSizing(SizingStrategy):
     """A daily-timed exposure book: see the module docstring."""
 
+    # Its votes are built from regular-session bars: an extended-hours tick
+    # would fold into a session's range and volume.
+    regular_session_only = True
+    # Sessions replayed past the votes' own minimum, so PLUS_DM's smoothing
+    # and ADOSC's averages have settled from their seeds to where a run
+    # started years earlier has them (as ultimate's regime settles).
+    _SIGNAL_SETTLE_SESSIONS = 150
+
     def __init__(
         self,
         pd_periods: str = "14,21,42",
@@ -308,6 +337,14 @@ class UltimateRspSizing(SizingStrategy):
         if self._signal is None:
             return 0
         return self._signal.warm_up(daily)
+
+    def live_history_sessions(self) -> int:
+        """Sessions of regular-hours minute bars a live loop replays through
+        record_tick before its first tick: every vote defined, and settled.
+        None with an injected exposure map, which already covers its dates."""
+        if self._signal is None:
+            return 0
+        return self._signal.history_sessions + self._SIGNAL_SETTLE_SESSIONS
 
     # ------------------------------------------------------------ per bar
 

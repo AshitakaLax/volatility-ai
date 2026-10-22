@@ -1,5 +1,22 @@
 # Changelog
 
+## Ultimate-RSP can trade live
+
+**`ultimate_rsp` was backtest-only.** It seeds its votes from session
+history (`warm_up`). The live loop starts a fresh process every session and
+could not rebuild that, so `live_algorithm.check_live_support` refused it.
+- **It now answers `live_history_sessions()`:** every vote's history plus
+  150 sessions for PLUS_DM's and ADOSC's seeds to settle, replayed through
+  `record_tick` like the Ultimate's regime. A PLUS_DM value exists from
+  session p - 1 and an ADOSC from slow - 1, and a vote then needs `lb` of
+  them. The replay hands it no equity, so no replayed bar rebalances.
+- **It is regular-session-only**, as the Ultimate is.
+- **`ultimate_ursp` inherits it**, and counts its bear window when that is
+  the longer history.
+- **On the live feed:** from a cold start on IEX minute bars, its target
+  matched the SIP backtest's on 65% of sessions over 2025-07..2026-10,
+  with a mean difference of 0.025 of equity and 123 rebalances against 117.
+
 ## Fix: the RSP regime sweeps, and a run with failed configurations
 
 **Both RSP `ml_regime_rsp` sweeps of the 2026-10 campaign failed at 100%.**

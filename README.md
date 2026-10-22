@@ -524,9 +524,12 @@ queue), `logs/`, `state/`, `*.db` ledgers, and Fidelity capture artifacts.
 4. **Ultimate live is paper-ready, not yet promotion-ready.** The live
    loop replays its history, refuses it without `allow_signal_exit` or with
    extended hours, and exits the calm book in one order. But the regime is
-   computed on IEX ranges, not the SIP tape it was researched on; lots are
-   sized from each session's starting equity rather than fixed starting
-   capital; and `ultimate_rsp` / `ultimate_ursp` remain backtest-only.
+   computed on IEX ranges, not the SIP tape it was researched on; and lots
+   are sized from each session's starting equity rather than fixed starting
+   capital. `ultimate_rsp` and `ultimate_ursp` replay their votes' history
+   the same way; on IEX, a cold-started `ultimate_rsp` target matched the
+   SIP backtest's on 65% of sessions over 2025-07..2026-10 (mean difference
+   0.025 of equity).
 5. **`research/run_hf_sweep.py` cannot run the `ultimate*` strategies as
    researched** — it never threads `allow_signal_exit` or cash yield. Use
    `run_sweep` or `cli.py backtest` with those set.
