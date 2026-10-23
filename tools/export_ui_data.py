@@ -84,6 +84,13 @@ KNOWN_DATA = {
     # pure market beta, so its episodes are largely INDEPENDENT of the
     # 2018/2020/2022 events every other fund here shares.
     "XBI": "data/XBI_1Min_sip_all_rth_2016-01-01_2026-09-11.csv",
+    # Broad index funds, decades old, kept WITH pre- and after-market bars.
+    # Downloaded straight into the warehouse by tools/refresh_warehouse.py,
+    # which keeps every fund here current; no file in data/ is ever written
+    # for them, and these names are only where `cli.py fetch-data` would put one.
+    "SPY": "data/SPY_1Min_sip_all_ext.csv",  # S&P 500
+    "IWM": "data/IWM_1Min_sip_all_ext.csv",  # Russell 2000 small caps
+    "EEM": "data/EEM_1Min_sip_all_ext.csv",  # MSCI Emerging Markets
 }
 
 

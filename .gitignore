@@ -118,3 +118,6 @@ logs/
 # repository is public. Commit only the .example templates.
 config/fidelity_local.yaml
 config/fidelity_live.yaml
+
+.omo
+server.log

@@ -350,7 +350,9 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     df, dataset_version = _load_warehouse_bars(config.backtest.symbol)
     if df is None:
         return 2
-    df = _apply_backtest_window(df, config)
+    from research.strategies.strategy_registry import session_bars
+
+    df = _apply_backtest_window(session_bars(strategy_class, df), config)
 
     from research.optimization.optimization_controller import OptimizationController
 

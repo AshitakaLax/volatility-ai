@@ -132,6 +132,21 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
 SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset({"ultimate", "ultimate_rsp", "ultimate_ursp"})
 
 
+def session_bars(strategy_class: type, bars):
+    """The bars a backtest of `strategy_class` should see: all of them, or
+    only the regular session's for a strategy built on those
+    (`regular_session_only`: the Ultimate family). From a fund kept with
+    extended hours (SQQQ, SPY, IWM, EEM) a pre-market or after-hours bar
+    would fold into the session's range and shift its minutes; live,
+    live_algorithm.check_live_support refuses the same mix."""
+    if not getattr(strategy_class, "regular_session_only", False) or bars.empty:
+        return bars
+    from engine.data.historical_data import filter_regular_trading_hours
+
+    kept, _ = filter_regular_trading_hours(bars)
+    return kept
+
+
 def resolve_strategy(strategy_id: str) -> type[SizingStrategy]:
     """Look up a strategy class, or fail naming the valid options.
 

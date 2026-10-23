@@ -8,6 +8,7 @@ One host runs everything that has to stay up, from one file,
 | `web` | the UI, its API and the backtest engine | `http://127.0.0.1:8000` |
 | `paper-ultimate` | the Ultimate algorithm in paper, its own account and ledger | Alpaca paper |
 | `backup` | every ledger and the warehouse catalogs, daily | `/workspace/backups` |
+| `market-data` | every tracked fund's bars into the warehouse, daily | Alpaca market data |
 | `paper` | *profile `champion`*: the champion grid, `config/paper_aggressive.yaml` | Alpaca paper, no port |
 | `live` | *profile `production`*: **real money**, `config/production.yaml` | Alpaca live |
 | `test`, `preflight`, `fetch-data`, `ingest`, `backtest` | *profile `tools`*: one-offs for `docker compose run --rm` | |
@@ -118,7 +119,7 @@ Every line must be `ok`. The ones worth reading:
 Then:
 
 ```bash
-docker compose up -d                 # web, paper, backup
+docker compose up -d                 # web, paper-ultimate, backup, market-data
 docker compose ps
 docker compose logs -f paper
 ```
@@ -273,6 +274,39 @@ writing, and renames what it replaces rather than deleting it.
 `docker compose down` keeps the volumes. **`down -v` deletes them**, and
 with them every open lot. There is no other copy except these backups.
 
+### Market data, daily
+
+`market-data` keeps every fund the Warehouse tab lists current
+(`tools/refresh_warehouse.py`). It runs once at start and then daily at
+`VAI_REFRESH_AT` (20:30 Eastern, after the extended session and SIP's
+15-minute delay). A run that failed is tried again hourly. For each fund:
+
+- **The oldest stored session is asked for again.** Adjusted prices are
+  rescaled backwards by every dividend and split, so that session moves when
+  one has happened. The fund's whole history is then downloaded again and
+  swapped in at once; appending would leave a fake step where the old bars
+  meet the new. It refuses if the download lacks a session the warehouse
+  holds, and keeps the previous copy in `warehouse/staging/previous/`.
+- **Otherwise the new sessions are added.** The last three stored ones are
+  fetched again with them, to catch the tape's late corrections.
+- **A fund the warehouse lacks** is downloaded from its start.
+
+It writes the Parquet files directly and never opens the catalogs, so a
+running sweep is never in its way, and each fund's year is replaced in one
+rename, so a backtest never reads half of one. It uses `.env`'s keys for
+market data only, about one request a second: the traders share that key.
+
+```bash
+docker compose logs market-data                         # what each run did
+docker compose run --rm market-data --dry-run           # what it would do now
+docker compose run --rm market-data --fund SPY          # one fund, now
+docker compose run --rm market-data --redownload RSP    # a fund's whole history again
+docker compose run --rm market-data --list              # the funds, and how each is kept
+```
+
+A new fund is added in two places: `FUNDS` in `tools/refresh_warehouse.py`
+and `KNOWN_DATA` in `tools/export_ui_data.py` (a test holds them equal).
+
 ---
 
 ## 8. Operations
@@ -283,8 +317,7 @@ docker compose run --rm preflight --skip-network   # the ledger, without stoppin
 git pull && VAI_BUILD_COMMIT=$(git rev-parse --short HEAD) docker compose up -d --build   # update
 docker compose stop paper                          # stop trading; the ledger stays
 docker compose run --rm test -q                    # the suite, inside the image
-docker compose run --rm fetch-data --symbol TQQQ --days 30
-docker compose run --rm ingest --ingest TQQQ       # then backtests see the new bars
+docker compose run --rm market-data --fund TQQQ    # bars through the last session, now
 ```
 
 The warehouse is shared with the host. Its views store relative paths,

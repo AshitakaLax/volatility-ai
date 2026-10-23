@@ -193,11 +193,13 @@ def splice(
 # ------------------------------------------------------------ minute bars
 
 
-def rsp_minute_library() -> dict:
-    """RSP sessions from the warehouse as (n, 390) arrays (gaps filled flat)."""
-    from engine.warehouse.bars import load_frame
+def rsp_minute_library(m: pd.DataFrame | None = None) -> dict:
+    """RSP sessions as (n, 390) arrays (gaps filled flat): `m`, RSP's minute
+    bars, else the warehouse's."""
+    if m is None:
+        from engine.warehouse.bars import load_frame
 
-    m = load_frame("RSP")
+        m = load_frame("RSP")
     et = m.index.tz_convert("America/New_York")
     minute = (et.hour * 60 + et.minute) - 570
     keep = (minute >= 0) & (minute < SESSION_MINUTES)

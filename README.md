@@ -201,7 +201,9 @@ Optional dependencies fail loudly and early: e.g. `BayesianSearch` raises
 ## Quickstart
 
 Backtests read bars from the warehouse by ticker (`backtest.symbol`), never
-from a CSV. Fetch, ingest, run:
+from a CSV. The funds the Warehouse tab lists are kept current by
+`tools/refresh_warehouse.py` (the compose `market-data` service runs it
+daily; `docs/DEPLOY.md`). Any other fund: fetch, ingest, run:
 
 ```bash
 export APCA_API_KEY_ID=... APCA_API_SECRET_KEY=...
@@ -463,7 +465,8 @@ concatenated and compared directly.
 
 ## Troubleshooting
 
-- **A backtest says there is no data for a ticker.** Ingest it
+- **A backtest says there is no data for a ticker.** Add it to
+  `tools/refresh_warehouse.py`'s `FUNDS` and `KNOWN_DATA`, or ingest a CSV
   (`tools/build_warehouse.py --ingest T`). The warehouse's views read
   relative paths, so a copied, moved or container-mounted warehouse reads
   in place; an older one with absolute paths is rewritten the first time it

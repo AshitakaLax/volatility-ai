@@ -1,5 +1,46 @@
 # Changelog
 
+## The warehouse is kept current daily, and three index funds join it
+
+**Its bars had stopped on 2026-10-08**, nine sessions behind, and two of
+the funds it listed (URSP, XBI) had none. Adding bars was a manual fetch to
+CSV, then an ingest that APPENDs.
+- **That path had already left a step in six funds.** Their bars to
+  August were adjusted for the dividends paid before that download, and an
+  increment fetched in October was adjusted for September's too. Asked for
+  again, Alpaca's 2016 bars differed from the stored ones by 0.07% (SOXL)
+  to 1.4% (SQQQ). A backtest saw a fake drop of that size where the two
+  met.
+- **`tools/refresh_warehouse.py`** asks Alpaca for each fund's oldest
+  stored session again. If it moved, a dividend or split has happened, and
+  the whole history is downloaded again rather than appended to. Otherwise
+  it adds the new sessions and re-checks the last three, which picks up the
+  tape's late volume corrections (seen on 0.3% of a session's bars). A
+  re-download that lacks any stored session is refused. URSP_SIM gains
+  URSP's new daily bars drawn on that day's RSP minutes, and is rebuilt as
+  `simulate_ursp.py` builds it if URSP's adjusted prices moved.
+- **It writes the bar lake directly** (`engine/warehouse/lake.py`), never
+  the catalog the server records sweeps in. Each year is one file, swapped
+  in with renameat2's RENAME_EXCHANGE, and a whole fund in one exchange of
+  its directory, so a backtest never reads half of an update.
+- **The compose `market-data` service** runs it at start and daily at
+  20:30 Eastern, after the extended session and SIP's 15-minute delay; a
+  failed run is retried hourly. It shares the traders' Alpaca key, so it
+  asks at most about once a second, a month of one fund at a time.
+
+**SPY, IWM and EEM** (S&P 500, Russell 2000, MSCI Emerging Markets: index
+funds trading since 1993, 2000 and 2003) are tracked with pre- and
+after-market bars, from 2016, where Alpaca's minutes begin.
+- **A regular-session strategy now backtests on the regular session.**
+  The Ultimate family declares `regular_session_only`, and the live loop
+  already refused it extended hours; a backtest fed it every bar of SQQQ.
+  `strategy_registry.session_bars` gives it the regular session's alone, in
+  the server and in `cli.py backtest`.
+- **The brute-force campaign covers them** (`tools/sweep_brute_force.py
+  --fund SPY IWM EEM`): every strategy that is not bound to an RSP model,
+  with each fund's own minutes per session for the grid strategies, which
+  trade every bar.
+
 ## Ultimate-RSP can trade live
 
 **`ultimate_rsp` was backtest-only.** It seeds its votes from session

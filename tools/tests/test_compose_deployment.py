@@ -52,7 +52,7 @@ def _state_volume(service) -> str:
 
 def test_up_starts_what_must_keep_running_and_nothing_else(compose):
     """Real money and one-off tools are started only by name."""
-    assert _services(compose) == {"web", "paper-ultimate", "backup"}
+    assert _services(compose) == {"web", "paper-ultimate", "backup", "market-data"}
     assert _services(compose, profile="champion") == {"paper"}
     assert _services(compose, profile="production") == {"live"}
     assert _services(compose, profile="fidelity") == {"fidelity"}
@@ -231,6 +231,20 @@ def test_the_backup_loop_only_passes_flags_the_backup_tool_accepts():
     assert {"--db", "--out-dir", "--keep", "--local-only", "--remote-host"} <= used
     for flag in sorted(used):
         assert flag in help_text, f"{flag} is passed by docker_backup_loop.sh but not accepted"
+
+
+def test_the_market_data_service_writes_only_the_warehouse_with_the_flags_it_accepts(compose):
+    """It needs the bar lake and Alpaca's market data, nothing that trades:
+    no ledger and no control directory, and a command its own parser takes."""
+    from tools.refresh_warehouse import build_parser
+
+    service = compose["services"]["market-data"]
+    assert service["volumes"] == ["./warehouse:/app/warehouse"]
+    assert service["restart"] == "unless-stopped"
+    command = [part.replace("${VAI_REFRESH_AT:-20:30}", "20:30") for part in service["command"]]
+    build_parser().parse_args(command)
+    help_text = build_parser().format_help()
+    assert all(flag in help_text for flag in command if flag.startswith("--"))
 
 
 def test_tzdata_is_a_declared_dependency():

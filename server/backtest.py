@@ -79,6 +79,7 @@ from research.strategies.strategy_registry import (
     SIGNAL_EXIT_STRATEGIES,
     STRATEGIES,
     resolve_strategy,
+    session_bars,
 )
 from server import contract, history, history_query
 from server.fills import MAX_LIMIT as FILLS_MAX_LIMIT
@@ -1083,7 +1084,9 @@ def run_backtest(
 
     for ticker in available:
         report(finished_units / total_units, f"running {ticker}")
-        full = (bars.load_frame if bars is not None else load_frame)(ticker)
+        full = session_bars(
+            strategy_class, (bars.load_frame if bars is not None else load_frame)(ticker)
+        )
         frame = window(full, parsed.start, parsed.end, parsed.limit)
         warm_up_daily = warm_up_history(strategy_class, full, frame)
         del full  # only the window and its warm-up summary outlive this

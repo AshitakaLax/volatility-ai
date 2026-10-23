@@ -110,7 +110,43 @@ FUNDS: dict[str, dict[str, Any]] = {
         "targets": [0.01, 0.02, 0.04, 0.06],
         "scale": 2.0,
     },
+    # Broad index funds with pre- and after-market bars (2026-10-22): the
+    # grid strategies trade every bar, so bars_per_day is each fund's own
+    # median of minutes per session over its last 20 (the Warehouse tab's
+    # figure on 2026-10-22: SPY 884.5, IWM 789, EEM 430.5);
+    # the Ultimate family sees the regular session only
+    # (strategy_registry.session_bars). Steps and targets are RSP's, scaled
+    # by how much more each moves in a day.
+    "SPY": {
+        "start": None,
+        "steps": [0.0025, 0.005, 0.0075, 0.01, 0.015, 0.02],
+        "targets": [0.005, 0.01, 0.02, 0.03],
+        "scale": 1.0,
+        "bars_per_day": 885,
+    },
+    "IWM": {
+        "start": None,
+        "steps": [0.003, 0.006, 0.01, 0.0125, 0.02, 0.025],
+        "targets": [0.006, 0.0125, 0.025, 0.04],
+        "scale": 1.25,
+        "bars_per_day": 789,
+    },
+    "EEM": {
+        "start": None,
+        "steps": [0.003, 0.006, 0.01, 0.0125, 0.02, 0.025],
+        "targets": [0.006, 0.0125, 0.025, 0.04],
+        "scale": 1.25,
+        "bars_per_day": 431,
+    },
 }
+
+# Regular-session minutes the RSP-era spaces were tuned with.
+REGULAR_BARS_PER_DAY = 387
+
+
+def _bars_per_day(fund: str) -> list[int]:
+    return [FUNDS[fund].get("bars_per_day", REGULAR_BARS_PER_DAY)]
+
 
 # Queue order: the researched designs first, then from cheap to dear, so the
 # results worth reading arrive first.
@@ -166,7 +202,7 @@ def _spaces(strategy: str, fund: str) -> list[dict[str, Any]]:
     if strategy == "hf_local_reference":
         return [
             {
-                "bars_per_day": [387],
+                "bars_per_day": _bars_per_day(fund),
                 "per_lot_pct": [0.0002, 0.0005, 0.001, 0.002],
                 "lookback_days": [0.02, 0.1, 0.5, 1.0, 3.0],
                 "vol_scale_exponent": [0.0, -0.75, -1.5],
@@ -180,7 +216,7 @@ def _spaces(strategy: str, fund: str) -> list[dict[str, Any]]:
         # Every combination of the five entry gates, on the champion's sizing.
         return [
             {
-                "bars_per_day": [387],
+                "bars_per_day": _bars_per_day(fund),
                 "per_lot_pct": [0.0005, 0.001],
                 "lookback_days": [0.1, 0.5],
                 "breakdown_gate": ["off", "dual_thrust", "opening_range", "prior_low"],
@@ -206,7 +242,7 @@ def _spaces(strategy: str, fund: str) -> list[dict[str, Any]]:
             {
                 "max_trade_pct": [0.02, 0.05, 0.08, 0.15],
                 "lookback_days": [5, 10, 20, 40, 60],
-                "bars_per_day": [387],
+                "bars_per_day": _bars_per_day(fund),
                 "mu": [0.1, 0.2, 0.3],
                 "sigma": [0.05, 0.1, 0.2],
                 "inverse_scale_kappa": [0.0, 1.0],
@@ -218,7 +254,7 @@ def _spaces(strategy: str, fund: str) -> list[dict[str, Any]]:
             {
                 "max_trade_pct": [0.02, 0.05, 0.08],
                 "horizon_days": [1.0, 3.0],
-                "bars_per_day": [387],
+                "bars_per_day": _bars_per_day(fund),
                 "fast_half_life_days": [2.0, 5.0, 10.0],
                 "slow_half_life_days": [60.0, 120.0],
                 "confidence_k": [1.0, 2.0, 3.0],
@@ -230,7 +266,7 @@ def _spaces(strategy: str, fund: str) -> list[dict[str, Any]]:
         # The regime and its two turbulent modes; capitulation thresholds and
         # targets scale with the fund (TQQQ's -9% / 6% is a 3x fund's).
         common = {
-            "bars_per_day": [387],
+            "bars_per_day": [REGULAR_BARS_PER_DAY],
             "natr_period": [10, 14],
             "bear_dd": [None, 0.25, 0.5],
             "per_lot_pct": [0.0002, 0.001],

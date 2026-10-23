@@ -1,6 +1,6 @@
 # volatility-ai on one host: everything that has to keep running, in one file.
 #
-#     docker compose up -d --build      # web + paper-ultimate + backup
+#     docker compose up -d --build      # web + paper-ultimate + backup + market-data
 #     docker compose ps
 #     docker compose logs -f paper-ultimate
 #
@@ -11,6 +11,7 @@
 #   web             the UI, its API and the backtest engine    :8000 (VAI_WEB_BIND)
 #   paper-ultimate  the Ultimate algorithm, Alpaca paper       its own key file
 #   backup          ledgers + warehouse catalogs, daily        /workspace/backups
+#   market-data     every fund's bars into the warehouse, daily
 #
 # Behind profiles, started only by name:
 #
@@ -22,6 +23,7 @@
 #   tools        one-offs:  docker compose run --rm test -q
 #                           docker compose run --rm preflight
 #                           docker compose run --rm check
+#                           docker compose run --rm market-data --fund TQQQ   (not a profile)
 #                           docker compose run --rm fetch-data --symbol TQQQ --days 30
 #                           docker compose run --rm ingest --ingest TQQQ
 #                           docker compose run --rm backtest --config /app/config/ultimate_tqqq.yaml
@@ -241,6 +243,31 @@ services:
       - ./warehouse:/app/warehouse:ro
       - ${VAI_BACKUP_DIR:-/workspace/backups}:/app/backups
     restart: unless-stopped
+
+  # Every tracked fund's bars, kept current (tools/refresh_warehouse.py): at
+  # start, then daily at VAI_REFRESH_AT (20:30 Eastern -- after the extended
+  # session and SIP's 15-minute delay), a failed run retried hourly. New
+  # sessions are added; a fund whose adjusted prices moved (a dividend or a
+  # split) is downloaded again whole; a fund the warehouse lacks is
+  # downloaded from its start. It writes the bar lake directly, never the
+  # catalogs a sweep writes. Alpaca market data only, so the paper keys --
+  # shared with the traders, so it asks at most about once a second.
+  # One-off:  docker compose run --rm market-data --fund SPY [--dry-run]
+  market-data:
+    <<: *app
+    entrypoint: ["python", "/app/tools/refresh_warehouse.py"]
+    command: ["--daily", "${VAI_REFRESH_AT:-20:30}"]
+    env_file:
+      - path: .env # APCA_API_KEY_ID / APCA_API_SECRET_KEY, read for bars only
+        required: false
+    environment:
+      <<: *env
+      VAI_WAREHOUSE_DIR: /app/warehouse
+    volumes:
+      - ./warehouse:/app/warehouse
+    restart: unless-stopped
+    mem_limit: 4g
+    cpu_shares: 256
 
   # ---- one-off tools: `docker compose run --rm <name> [args]` ----
 
