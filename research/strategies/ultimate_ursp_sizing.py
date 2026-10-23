@@ -58,6 +58,12 @@ class BearGatedTimingSignal(RspTimingSignal):
         self.gate: float | None = None
         self.ensemble: float | None = None
 
+    @property
+    def history_sessions(self) -> int:
+        """The votes' history, or the bear window's, whichever is longer:
+        the gate reads the highest close of the last bear_window sessions."""
+        return max(super().history_sessions, self._bear_closes.maxlen)
+
     def _close_session(self) -> None:
         self._bear_closes.append(self._c)
         super()._close_session()  # sets self.target to the ensemble

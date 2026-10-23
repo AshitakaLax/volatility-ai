@@ -170,10 +170,15 @@ Ultimate-RSP year by year:
 - **Server runs are not the research runs.** `RunRequest` has no cost
   model (server runs are zero-cost) and no intrabar-fill field (server
   runs use level fills; B3: Calmar 0.91).
-- **The live loop does not warm up yet.** A `cli.py live` start would
-  wait about 300 sessions for its medians. Wiring it needs
-  regular-session daily OHLCV from the `engine/data` feed (the same gap
-  as the Ultimate's).
+- **Live, it replays its history first.** `live_history_sessions()` asks
+  for every vote's history (`RspTimingSignal.history_sessions`: a PLUS_DM
+  value exists from session p - 1 and an ADOSC from slow - 1, and a vote
+  then needs `lb` of them) plus 150 sessions for the indicators' seeds to
+  settle. That is 441 for the recommended configuration. The replay is the
+  live feed's minute bars, so on IEX the votes see IEX ranges and volume.
+  A cold-started target on IEX matched the SIP backtest's on 65% of
+  sessions over 2025-07..2026-10, with a mean difference of 0.025 of
+  equity and 123 rebalances against 117 (checked 2026-10-22).
 
 ## Integration
 

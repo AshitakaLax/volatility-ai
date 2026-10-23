@@ -1,0 +1,101 @@
+# Paper trading the Ultimate algorithm on TQQQ, against Alpaca's PAPER
+# endpoint: config/ultimate_tqqq.yaml's research configuration, unchanged,
+# plus the `live:` section a deployment needs.
+#
+# WHAT IS DIFFERENT FROM THE BACKTEST, AND WHY
+#
+#   regular hours only   extended_hours: false. The regime and the reversal
+#                        signal are built from regular-session bars; the
+#                        loop refuses this strategy with extended hours on.
+#   history at start     every session's process replays the last ~400
+#                        sessions of minute bars before its first tick
+#                        (engine/trading/live_history.py), so the regime,
+#                        yesterday's mode and the champion's windows are
+#                        what a continuous run would have.
+#   feed: iex            the sweeps ran on sip minute data. History and live
+#                        ticks both use iex, so they agree with each other,
+#                        but the regime's daily ranges are IEX ranges.
+#   the regime exit      ONE order for every calm lot, a limit 0.5% through
+#                        the market (live.exit_limit_buffer) that fills at the
+#                        market's price; if it is still resting a minute later
+#                        it is cancelled and the rest re-offered at the new
+#                        price. A backtest sells the whole book on one bar at
+#                        that bar's close.
+#   lot size             per_lot_pct of the equity at the first tick of each
+#                        session (the backtest: of the starting capital, fixed).
+#
+# ONE LOOP PER ALPACA ACCOUNT. This trades a different book from
+# config/paper_aggressive.yaml: give it its own paper account (keys in
+# .env) and its own state volume, never the champion's.
+#
+# Set backtest.initial_cash to the paper account's real cash before the
+# first start: a fresh ledger seeds its cash from it, not from the broker.
+#
+# NOT STATISTICALLY PROVEN (see ultimate_tqqq.yaml's header). Real capital
+# additionally needs engine/promotion.py's evidence from this paper run.
+strategy:
+  strategy_id: ultimate
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: 0.0002
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    natr_period: 10
+    natr_lookback: 100
+    regime_min_hold: 5
+    bear_dd: 0.5
+    bear_window: 250
+    turbulent_mode: reversal
+    reversal_threshold: -0.09
+    reversal_target: 0.06
+    reversal_lot_pct: 0.2
+    reversal_max_lots: 4
+    liquidate_minute: 60
+grid:
+  steps: [0.00075]
+  profit_targets: [0.3]
+# The paper account's real cash on 2026-10-19 (flat, no positions): a fresh
+# ledger seeds from this, not from the broker.
+backtest: {symbol: TQQQ, initial_cash: 274001.33}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  intrabar_fill: causal
+  enforce_no_loss: true
+  # The regime exit: the one sale that may realise a loss. Required for
+  # this strategy -- the live loop refuses ultimate without it.
+  allow_signal_exit: true
+  settlement_days: 0
+output: {return_full_results: false}
+live:
+  enabled: true
+  paper_trading: true
+  step: 0.00075
+  profit_target: 0.3
+  feed: iex
+  extended_hours: false
+  poll_interval_seconds: 60.0
+  # Profit-target harvests per tick. Each tick polls every order in
+  # flight, so this also bounds requests against Alpaca's 200 a minute. The
+  # regime exit is one order however many lots it closes.
+  max_sells_per_tick: 25
+  exit_limit_buffer: 0.005
+  # What the Live page may change here (LiveControlConfig in
+  # engine/core/config.py); pausing new buys is always allowed. A paper
+  # account, so everything.
+  control:
+    resume_buys: true
+    enable_disable: true
+    algorithm_changes: true
+    ledger_reset: true

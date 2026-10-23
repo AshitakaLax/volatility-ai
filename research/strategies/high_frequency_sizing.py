@@ -512,7 +512,7 @@ record_tick for the exact condition and the year-by-year numbers.
 
 from __future__ import annotations
 
-from math import log
+from math import ceil, log
 
 from engine.core.exceptions import ConfigurationError
 from engine.core.market_context import MarketContext
@@ -748,6 +748,19 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
                 # toward nothing and blow the ratio up.
                 self._fast_volume.update(context.volume)
                 self._slow_volume.update(context.volume)
+
+    def live_history_sessions(self) -> int:
+        """Sessions of regular-hours minute bars a live loop replays through
+        record_tick before its first tick (LiveTradingLoop). Enough to fill
+        the longest window that spans sessions -- the volatility and volume
+        slow windows when either is on, the rolling high otherwise -- with a
+        quarter more for minutes the feed has no bar for. A process that
+        started each session cold measured the open's volatility against
+        the open alone, and so never sized it down."""
+        days = self.lookback_days
+        if self._vol_enabled or self._volume_enabled:
+            days = max(days, self.vol_slow_days)
+        return ceil(days * 1.25) + 2
 
     def _vol_scale(self) -> float:
         """Size multiplier from short-horizon realized vol relative to

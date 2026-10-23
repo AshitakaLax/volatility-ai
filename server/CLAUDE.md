@@ -21,8 +21,9 @@ uvicorn workers would each restore and run it independently.
 
 | Module | Power | Enforcement |
 |---|---|---|
-| `live.py` | **Read-only.** Opens the ledger store `mode=ro` — SQLite itself refuses a write. Imports no broker. | |
-| `control.py` | **The only write.** One endpoint, reaching the existing `CircuitBreaker` and nothing else. | |
+| `live.py` | **Read-only.** Deployments by id (`GET /api/live/deployments[/{id}[/commands\|/activity\|/bars\|/fills]]`, `/ws?deployment=`): the ledger read `mode=ro` — SQLite itself refuses a write — beside what the trader reports in its control directory: its status (what it will do next and why, its shadow of the config file's algorithm, its build, a Fidelity bridge's connection) and its bar and fill journals. Each card names the algorithm IN FORCE (`algorithm_in_force`: the trader's report, else the override laid over the YAML) and its venue (`broker`); a deployment registered before its config exists answers `setup`. Imports no broker; no route takes a path. | `test_server_capability.py` |
+| `live_registry.py` | The deployments the Live page shows, by id: `config/deployments.yaml` (`VAI_DEPLOYMENTS` for tests) names each one's config, ledger and control directory as `web` sees them. Paper or real money comes from the config. | |
+| `live_control.py` | **Queues commands; changes nothing itself.** `POST /api/live/deployments/{id}/commands` (pause/resume buys, disable now or wind down, enable) and `.../commands/{cid}/cancel` write into the deployment's control directory (`engine/trading/control_inbox.py`); the TRADER applies them (`engine/trading/operator_control.py`), so it stays the only writer of its ledger. What each deployment takes is its config's `live.control`; real money needs the id typed back. No login (the operator's choice); a cross-site guard on every POST. No liquidation command. | `test_server_capability.py` |
 | `backtest.py` | **Bidirectional** — a simulation over warehouse bars can't touch a real position. Validated through `BacktestConfig`. | |
 | `deployment.py` | Read-only: which build is running (served inside `/api/health`; no route of its own). | |
 | `history.py` | Completed runs persisted to disk (`output/runs/<id>.json`), **uncapped** -- every run is kept. Beside each archive, rebuildable derived files under `output/runs/derived/`: a fills-free summary (served by `GET /runs/{id}`), a slim history index, and per-fund columnar fills (`.npz`). Archives are never rewritten; derived files are rebuilt whenever missing or older. | |
@@ -30,6 +31,7 @@ uvicorn workers would each restore and run it independently.
 | `history_query.py` | Run History, server-side: one fund (required) filtered, sorted and paged -- `POST /history/query`, `GET /history/{funds,facets,runs}`. Rules ported from the browser's old `filters.ts`; `tests/test_history_api.py` pins them. | |
 | `contract.py` | Pure translators from the **pre-condensed** wire shape (old `RunRequest` names, `parameters`/`timeframe`/`configurations`/`executions` reports) to the current one. Applied at the read boundary: `RunRequest`'s pre-validator, `JobQueue.restore`, `history.load*`. | |
 | `jobs.py` | **Durable** single-worker queue: pending runs, their order and per-configuration checkpoints survive a restart (`output/queue/`, `VAI_QUEUE_DIR`). Pause / resume / cancel / reorder / run-next; restored by `app.py`'s lifespan hook, never at import. Each shard may also carry a daily lockout window (`set_shard_schedule`) -- independent of a manual pause, see its "LOCKOUT WINDOWS" doc section. | |
+| `warehouse_status.py` | **Read-only**, GET only: the Warehouse tab. `GET /api/backtest/warehouse` (funds and how many sessions behind, sweeps and simulations, storage) through `engine/warehouse/inventory.py`'s read-only open -- the bar scan cached until the lake's files change, the rest for 30 s; `GET /api/backtest/system` (load, temperatures, memory, disks, the queue's remaining configurations, shards, newest backup). Under `/api/backtest` so a forwarding host forwards it. | `test_server_capability.py` |
 | `ml_insights.py` | Read-only, precomputed ML research artifacts. **Not on the path from a bar to an order** — no sizing strategy or live loop imports it. | |
 | `shards.py` | **Distributed sweeps.** The HTTP face of the queue's shard bookkeeping (register / claim / sync / finish) plus the bar download a shard needs. Under `/api/backtest/` so the Pi forwards it with the rest. | |
 | `shard_client.py` | The `cli.py shard` process: claims one sweep, runs the real `run_backtest` on that machine's cores, streams every finished configuration back. Caches bars on disk by fingerprint. | |
@@ -37,8 +39,9 @@ uvicorn workers would each restore and run it independently.
 
 `server/tests/test_server_capability.py` walks each module's AST and fails
 if a module reaches for power its docstring disclaims — don't add an
-import to `live.py` or `deployment.py` that would trip it; add the write
-to `control.py` instead.
+import to `live.py` or `deployment.py` that would trip it. A new live
+control is a new command type: queued by `live_control.py`, applied by the
+trader in `engine/trading/operator_control.py` — never a ledger write here.
 
 ## Never widen this without thinking about it
 

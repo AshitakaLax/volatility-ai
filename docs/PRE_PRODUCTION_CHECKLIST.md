@@ -1,6 +1,6 @@
 # Pre-Production Checklist
 
-Before starting `live-production` with real capital, work through this checklist. Nothing here is optional.
+Before starting `live` (profile `production`) with real capital, work through this checklist. Nothing here is optional.
 
 ## Paper Trading (Staging) — 2–4 Weeks
 
@@ -8,8 +8,8 @@ Your paper account and the system's behavior must establish trust before real ca
 
 ### Initial Validation
 
-- [ ] Credentials test passes: `docker compose run --rm live --config config/staging.yaml --check-only`
-- [ ] Loop starts without errors: `docker compose up live-staging` reaches `READY` state
+- [ ] Credentials test passes: `docker compose run --rm preflight` (every line ok) and `docker compose run --rm check` (reaches `READY`)
+- [ ] Loop starts without errors: `docker compose up -d paper`, and `docker compose logs paper` reaches `READY` at the session's start
 - [ ] Initial tick succeeds: check logs for the first bar, first `record_tick`, first decision evaluation
 - [ ] Market-open logic works: the loop skips ticks when the market is closed (check logs around 4pm ET or early morning)
 
@@ -32,27 +32,27 @@ Your paper account and the system's behavior must establish trust before real ca
 - [ ] No unhandled exceptions in the logs
 - [ ] No persistent reconciliation errors (occasional "order not found yet" during startup is OK; repeated reconciliation failures are not)
 - [ ] Restart the container at least once and verify state persists
-  - `docker compose stop live-staging`
-  - `docker compose start live-staging`
+  - `docker compose stop paper`
+  - `docker compose start paper`
   - Check that the ledger is reloaded correctly and nothing is duplicated
 
 ### Audit Trail
 
 - [ ] Export and review the audit log:
   ```bash
-  docker compose exec live-staging sqlite3 /app/state/ledger.db "SELECT * FROM audit_log LIMIT 100;" | head -50
+  docker compose exec paper python -c "import sqlite3; db = sqlite3.connect('file:/app/state/paper_ledger.db?mode=ro', uri=True); [print(r) for r in db.execute(\"SELECT * FROM audit_log LIMIT 100\")]"
   ```
   Every order submission and fill should have an entry.
 
 - [ ] Export the ledger:
   ```bash
-  docker compose exec live-staging sqlite3 /app/state/ledger.db "SELECT order_id, symbol, buy_price, shares, profit_target, status FROM ledger_lots;"
+  docker compose exec paper python -c "import sqlite3; db = sqlite3.connect('file:/app/state/paper_ledger.db?mode=ro', uri=True); [print(r) for r in db.execute(\"SELECT order_id, symbol, buy_price, shares, profit_target, status FROM ledger_lots\")]"
   ```
   Closed lots should show realistic profit margins (matching your profit target).
 
 - [ ] Review the circuit-breaker state:
   ```bash
-  docker compose exec live-staging sqlite3 /app/state/ledger.db "SELECT * FROM ledger_meta WHERE key LIKE 'halt%';"
+  docker compose exec paper python -c "import sqlite3; db = sqlite3.connect('file:/app/state/paper_ledger.db?mode=ro', uri=True); [print(r) for r in db.execute(\"SELECT * FROM ledger_meta WHERE key LIKE 'halt%'\")]"
   ```
   Should be empty (or show only "not halted" if the key exists).
 
@@ -88,7 +88,7 @@ If any fails, fix the issue and run paper longer.
 
 - [ ] Production `.env.production` file exists and is gitignored
 - [ ] Credentials are for your Alpaca **live** account (not paper)
-- [ ] Test production credentials: `docker compose run --rm live --config config/production.yaml --check-only`
+- [ ] Test production credentials: `docker compose --profile production run --rm --entrypoint python live tools/preflight.py`, then the same with `cli.py live --config /app/config/production.yaml --state-db /app/state/ledger.db --check-only`
 - [ ] `config/production.yaml` has `live.paper_trading: false`
 - [ ] `config/production.yaml` step and profit_target are copied from your successful paper backtest (not just guessed)
 
@@ -104,19 +104,19 @@ If any fails, fix the issue and run paper longer.
 ### Monitoring Setup
 
 - [ ] You have a way to receive alerts if the container crashes (email, Slack hook, phone notification)
-- [ ] You can access logs from wherever you are: `docker compose logs live-production -f` or cloud logging
-- [ ] You have a plan to stop the container if something goes wrong: you know how to `docker compose stop live-production`
-- [ ] Your Raspberry Pi has UPS or reliable power; extended outages will cause the container to restart once power is restored
+- [ ] You can access logs from wherever you are: `docker compose --profile production logs -f live` or cloud logging
+- [ ] You have a plan to stop the container if something goes wrong: you know how to `docker compose --profile production stop live`
+- [ ] The host has reliable power (a UPS); after an outage Docker restarts the containers, and each loop reconciles before it trades
 
 ### First 48 Hours of Live Trading
 
-- [ ] Start with `docker compose up -d live-production`
+- [ ] Start with `docker compose --profile production up -d live`
 - [ ] Watch the first full trading session in real time
   - Check that the first order is submitted correctly
   - Verify the fill price against Alpaca's live order book
 - [ ] Restart the container and verify state persists correctly
 - [ ] Check your Alpaca account's balance and open positions match what the logs report
-- [ ] If anything looks wrong, stop immediately: `docker compose stop live-production`
+- [ ] If anything looks wrong, stop immediately: `docker compose --profile production stop live`
 
 ## Ongoing Monitoring
 
@@ -132,10 +132,10 @@ If anything is wrong or you want to exit immediately:
 
 ```bash
 # Graceful stop (finishes current tick, settles orders, exits cleanly)
-docker compose stop live-production
+docker compose --profile production stop live
 
 # Forceful stop if graceful times out (not recommended, but works)
-docker compose kill live-production
+docker compose --profile production kill live
 ```
 
 The graceful stop is why the loop exists — in-flight orders are settled and the ledger is consistent even if the container is killed.
@@ -144,8 +144,8 @@ The graceful stop is why the loop exists — in-flight orders are settled and th
 
 If something breaks and you cannot fix it:
 
-1. `docker compose stop live-production`
-2. Switch back to staging: run paper until you have a new production config
+1. `docker compose --profile production stop live`
+2. Switch back to paper: run it until you have a new production config
 3. Or, liquidate all open positions manually in Alpaca and disable `live.enabled` to pause the system
 
 Nothing here is permanent; you can always pause or stop.

@@ -202,6 +202,8 @@ export interface RunReq {
   /** Cap on bars fed to the engine. A full file is a million rows. */
   limit?: number;
   jobs?: number;
+  /** Run on this server's own worker only: a remote shard never claims it. */
+  local_only?: boolean;
   /** Present: sample `trials` combinations with Optuna's TPE instead of
    * running them all -- the same engine `cli.py search` drives. A trial
    * budget is REQUIRED; the server refuses a bayesian run without one. */

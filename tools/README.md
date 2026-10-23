@@ -33,10 +33,10 @@ documentation that makes them findable.
 | `preflight.py` | Verify a machine can actually run the live loop, **before** it trades. |
 | `market_hours_supervisor.py` | Run the live loop for one trading session, then exit. |
 | `adopt_broker_position.py` | Write an existing broker position into the local ledger so startup can reconcile. |
-| `install_paper_service.ps1` | Register the paper supervisor as a daily Windows scheduled task. |
-| `run_paper_session.cmd` | The task's entry point on Windows. |
-| `docker_session_loop.sh` | The same session loop inside the Raspberry Pi container. |
-| `backup_databases.py` | Snapshot every local database (SQLite ledger + `warehouse/*.duckdb`), archive it under `backups/`, scp it to the Pi, and (`--restore`) pull one back down and write it into place. `--install-daily` schedules the backup half. See below. |
+| `docker_session_loop.sh` | The trading containers' entrypoint (`docker-compose.yml`): one supervised session, a wait, the next; passes `docker stop` on as a graceful stop. |
+| `docker_backup_loop.sh` | The `backup` container's entrypoint: `backup_databases.py` daily at `VAI_BACKUP_AT`, over every ledger it finds and the warehouse catalogs. |
+| `refresh_warehouse.py` | Keep every tracked fund's minute bars in the warehouse current, straight from Alpaca into the bar lake: new sessions appended, a fund whose adjusted prices moved (a dividend or split) downloaded again whole, a missing fund downloaded from its start, URSP_SIM extended from URSP's daily bars on RSP's minutes. The compose `market-data` service runs it daily (`--daily 20:30`). Writes only the lake (`engine/warehouse/lake.py`), never the catalogs. |
+| `backup_databases.py` | Snapshot every local database (SQLite ledger + `warehouse/*.duckdb`), archive it under `/workspace/backups` (`$VAI_BACKUP_DIR`; `backups/` where that disk is absent), optionally scp it off the machine, and (`--restore`) pull one back down and write it into place. The compose `backup` service schedules it; `--install-daily` is the cron alternative. See below. |
 
 ### Database backups and restores
 
@@ -87,6 +87,11 @@ the same machinery — see `cli.py backup --help` / `cli.py restore --help`.
 | `build_warehouse.py` | `warehouse/` — two DuckDB catalogs plus ZSTD Parquet lakes for bars (`ticker/year`), macro series (`provider/series_key`) and trade executions (`simulation_id`). Needs `requirements-warehouse.txt`; prints an install hint and exits 2 without it, so a core-only checkout is unaffected. See below. |
 
 ### The warehouse
+
+Every fund in `KNOWN_DATA` is kept current by `refresh_warehouse.py`
+(Operations, above), which writes the lake directly; `--ingest` is for a
+CSV of a fund it does not track. **Do not `--ingest` a tracked fund's old
+CSV**: it APPENDs, and the bars it repeats would be in the lake twice.
 
 `build_warehouse.py --ingest-all` turns the CSVs in `data/` into a
 queryable store: ~7.4M bars compress to ~87 MB of Parquet plus ~0.7M

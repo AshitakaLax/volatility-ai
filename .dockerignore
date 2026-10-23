@@ -1,65 +1,91 @@
-# Version control and CI
-.git
-.github
-.gitignore
-
-# Python artifacts
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
-.venv/
-venv/
-
-# Secrets -- must never enter the build context, let alone the image.
-# Credentials belong only in a `docker run -e` / --env-file at runtime
-# (see src/secrets.py's policy). This mirrors .gitignore's own rule.
+# THE BUILD CONTEXT IS AN ALLOWLIST: nothing enters the image unless a line
+# below lets it back in.
 #
-# `.env*` rather than `.env` + `*.env`: neither of those matches
-# `.env.staging` or `.env.production`, so the real per-environment
-# credential files were entering the build context and being baked
-# into the image by `COPY . .` -- exactly what the paragraph above
-# says must never happen. They were harmless only while empty.
+# This was a denylist, and a denylist fails open. The repo root collects
+# files no list anticipated, and `COPY . .` baked them into every image:
+# three Fidelity .har captures (authenticated brokerage traffic -- cookies,
+# tokens, account numbers), a 9 MB server.log, the warehouse, agent tool
+# directories. Found in a built image in October 2026.
+*
+
+# What the image runs.
+!cli.py
+!pyproject.toml
+!requirements*.txt
+!engine/
+!research/
+!server/
+!tools/
+!fidelity_gateway/
+!config/
+!web/
+
+# What `cli.py test` reads inside the image (`docker compose run --rm test`).
+!conftest.py
+!tests/
+!docs/
+!README.md
+!CHANGELOG.md
+!CLAUDE.md
+!AGENTS.md
+!plan.md
+!Dockerfile
+!docker-compose.yml
+!.dockerignore
+!.gitignore
+
+# Inside those directories, what must still never enter. Each is git-ignored
+# too; listed here so loosening the allowlist cannot let one back in.
+
+# Secrets. Credentials belong only in an env file handed over at runtime
+# (engine/core/secrets.py's policy). `.env*` because `.env` and `*.env`
+# match neither `.env.staging` nor `.env.production`.
 .env
 .env*
 *.env
+**/.env*
 
-# fidelity-api writes these into the working directory, and two of them
-# are credential-equivalent: Fidelity*.json is the Playwright
-# storage_state for an AUTHENTICATED brokerage session (cookies +
-# localStorage, plaintext), and fidelity_trace*.zip is a Playwright
-# trace that records .fill() arguments -- the username and password in
-# cleartext. `COPY . .` would bake either straight into the image.
-# Mirrors .gitignore; see there for the full reasoning.
+# fidelity-api's credential-equivalent files: Fidelity*.json is the
+# Playwright storage_state of an AUTHENTICATED brokerage session, and
+# fidelity_trace*.zip records .fill() arguments -- the password in
+# cleartext. Recon dumps and HAR captures are session traffic. Statements
+# and positions are account data.
 Fidelity.json
 Fidelity_*.json
+**/Fidelity*.json
 fidelity_trace*.zip
-Statements/
-Portfolio_Positions*.csv
-
-# fidelity_recon.py's traffic dumps -- captured authenticated-session
-# traffic (tokens, account numbers). Written outside the repo by default;
-# excluded here for the same reason as the files above. Mirrors .gitignore.
+**/fidelity_trace*.zip
+**/*.har
 .fidelity_recon/
 recon_*.json
+**/recon_*.json
+Statements/
+Portfolio_Positions*.csv
+**/Portfolio_Positions*.csv
+config/fidelity_live.yaml
+config/fidelity_local.yaml
 
-# Local persistent state and user-supplied data -- these are meant to
-# be bind-mounted at runtime (see the Dockerfile's VOLUME and
-# docker-compose.yml), never baked into the image.
+# State and data: bind-mounted or volume-mounted at runtime
+# (docker-compose.yml), never baked in.
 state/
 data/
 output/
 *.db
+**/*.db
+**/*.db.lock
+**/*.duckdb
+**/*.parquet
+**/*.log
 
-# Editor/OS cruft
-.DS_Store
-.idea/
-.vscode/
-
-# The frontend build happens in its own Docker stage from package.json
-# and the lockfile, so a developer node_modules (hundreds of MB, and
-# built for the WRONG architecture on a cross-build) must not enter the
-# context. dist/ is excluded for the same reason: the image builds it.
+# Version control, caches, build output. The frontend is built in its own
+# stage from package.json and the lockfile; a developer node_modules is
+# hundreds of MB and the wrong architecture on a cross-build.
+.git
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/*.egg-info/
 web/node_modules/
 web/dist/
+web/.omo/

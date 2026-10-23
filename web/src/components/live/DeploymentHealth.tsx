@@ -1,10 +1,12 @@
 import { GitBranch, Server, Wifi, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { Badge, Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
+import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { api, type Health } from "@/lib/api";
+import { sameCode } from "@/lib/control";
 import { cn, usd } from "@/lib/utils";
-import { describeStore, type ConnectionHealth, type LiveState } from "@/types/telemetry";
+import type { DeploymentSummary } from "@/types/control";
+import type { ConnectionHealth, LiveState } from "@/types/telemetry";
 
 /**
  * Which build is running, against which account, and is it alive.
@@ -20,15 +22,19 @@ import { describeStore, type ConnectionHealth, type LiveState } from "@/types/te
  * are shown: the first is a file mtime, which cannot distinguish
  * "stopped" from "market closed"; the second is the loop's own record of
  * when it last saw a price.
+ *
+ * TWO PROCESSES, TWO BUILDS. The trader and this web server are different
+ * containers, deployed at different times, and the image has no .git: each
+ * reports a fingerprint of the code it loaded (engine/core/build_info.py),
+ * and the card says whether the two match. The web server's own uptime and
+ * memory are labelled as its own -- they say nothing about the trader.
  */
 
 interface Props {
   state: LiveState | null;
   health: ConnectionHealth;
-  /** Store paths, from /api/live/stores. */
-  stores: string[];
-  selected: string | null;
-  onSelect: (path: string) => void;
+  /** The selected deployment, from config/deployments.yaml. */
+  deployment: DeploymentSummary | null;
 }
 
 function since(iso: string | null): string {
@@ -39,7 +45,7 @@ function since(iso: string | null): string {
   return `${Math.round(seconds / 3600)}h ago`;
 }
 
-export function DeploymentHealth({ state, health, stores, selected, onSelect }: Props) {
+export function DeploymentHealth({ state, health, deployment }: Props) {
   const [info, setInfo] = useState<Health | null>(null);
 
   useEffect(() => {
@@ -50,6 +56,10 @@ export function DeploymentHealth({ state, health, stores, selected, onSelect }: 
   }, []);
 
   const connected = health.status === "open";
+  const status = deployment?.status && !deployment.status.stale ? deployment.status : null;
+  const trader = status?.build ?? null;
+  const process = status?.process ?? null;
+  const same = sameCode(trader, info?.build.code);
 
   return (
     <Card>
@@ -72,42 +82,42 @@ export function DeploymentHealth({ state, health, stores, selected, onSelect }: 
       </CardHeader>
 
       <CardContent className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Account">
-          <Select
-            value={selected ?? ""}
-            onChange={(event) => onSelect(event.currentTarget.value)}
-          >
-            {stores.length === 0 ? <option value="">no stores found</option> : null}
-            {stores.map(describeStore).map((store) => (
-              <option key={store.path} value={store.path}>
-                {store.label}
-              </option>
-            ))}
-          </Select>
-          {/* A NAMING CONVENTION, NOT A FACT. The store does not record
-              whether it was paper or live, so this is a hint and nothing
-              may gate a decision on it. */}
-          <span className="text-xs text-muted-foreground">
-            {selected && describeStore(selected).paper
-              ? "filename suggests paper"
-              : "mode not recorded in the store"}
-          </span>
-        </Field>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">Deployment</span>
+          <span className="text-sm">{deployment?.label ?? "--"}</span>
+          {/* From the deployment's config (live.paper_trading), a fact --
+              not, as the old picker had it, a guess from a file name. */}
+          {deployment?.paper === false ? (
+            <Badge tone="loss">real money</Badge>
+          ) : deployment?.paper ? (
+            <span className="text-xs text-muted-foreground">paper account</span>
+          ) : null}
+          {deployment?.service ? (
+            <span className="font-mono text-xs text-muted-foreground">
+              service {deployment.service}
+            </span>
+          ) : null}
+        </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">Build</span>
+          <span className="text-xs font-medium text-muted-foreground">Trader's build</span>
           <span className="flex items-center gap-1.5 font-mono text-sm">
             <GitBranch className="size-3.5" />
-            {info?.build.branch ?? "--"}
-            <span className="text-muted-foreground">@</span>
-            {info?.build.commit ?? "--"}
+            {trader?.commit ?? "commit not recorded"}
           </span>
-          {info?.build.dirty === null ? (
-            <span className="text-xs text-muted-foreground">working tree unknown</span>
-          ) : info?.build.dirty ? (
-            <Badge tone="stuck">uncommitted changes</Badge>
+          <span className="font-mono text-xs text-muted-foreground">
+            code {trader?.code ?? "--"}
+          </span>
+          {same === null ? (
+            <span className="text-xs text-muted-foreground">
+              {trader ? "cannot compare with the web server" : "no report from the trader"}
+            </span>
+          ) : same ? (
+            <span className="text-xs text-muted-foreground">same code as this web server</span>
           ) : (
-            <span className="text-xs text-muted-foreground">clean</span>
+            <Badge tone="stuck" title="One of the two was deployed after the other">
+              different code from the web server ({info?.build.code})
+            </Badge>
           )}
         </div>
 
@@ -127,27 +137,35 @@ export function DeploymentHealth({ state, health, stores, selected, onSelect }: 
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">Process</span>
+          <span className="text-xs font-medium text-muted-foreground">Trader's process</span>
           <span className="tnum text-sm">
-            {info ? `up ${Math.round(info.build.uptime_s / 60)}m` : "--"}
+            {trader
+              ? `${process ?? "process"} since ${new Date(trader.started_at).toLocaleString([], {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}`
+              : "--"}
           </span>
           <span className="text-xs text-muted-foreground">
-            {info ? `python ${info.build.python} · pid ${info.build.pid}` : ""}
+            {trader ? `python ${trader.python} · pid ${trader.pid}` : ""}
           </span>
-          {/* Nulls rather than zeros outside a container. A "CPU 0%" that
-              means "could not measure" is a number someone would act on. */}
+          {/* The web server's own, said so: they describe this process, not
+              the trader. Nulls rather than zeros outside a container. */}
           <span className="text-xs text-muted-foreground">
+            web server: {info ? `up ${Math.round(info.build.uptime_s / 60)}m` : "--"}
             {info?.container
-              ? `${info.container.mem_mb} / ${info.container.mem_limit_mb ?? "∞"} MB`
-              : "container stats unavailable (not containerised)"}
+              ? ` · ${info.container.mem_mb} / ${info.container.mem_limit_mb ?? "∞"} MB`
+              : ""}
           </span>
         </div>
       </CardContent>
 
-      {state?.exists === false ? (
+      {deployment?.ledger && !deployment.ledger.exists ? (
         <CardContent className="pt-0">
           <p className="text-xs text-loss">
-            This store does not exist yet. A deployment that has never run writes nothing —
+            This deployment has no ledger yet. One that has never run writes nothing —
             that is a normal state, not a failure.
           </p>
         </CardContent>

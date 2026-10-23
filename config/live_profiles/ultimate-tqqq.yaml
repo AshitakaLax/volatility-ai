@@ -1,0 +1,38 @@
+# The Ultimate algorithm on TQQQ, exactly as paper-ultimate trades it
+# (config/ultimate_paper.yaml) -- the profile to switch back to.
+# research/strategies/live_profiles.py describes the format.
+id: ultimate-tqqq
+label: Ultimate, TQQQ (paper-ultimate's committed algorithm)
+symbols: [TQQQ]
+strategy_id: ultimate
+strategy_params:
+  bars_per_day: 387
+  per_lot_pct: 0.0002
+  lookback_days: 0.02
+  event_day_boost_multiplier: 2.5
+  earnings_day_boost_multiplier: 1.5
+  vol_scale_exponent: -1.5
+  vol_fast_days: 0.25
+  vol_slow_days: 10.0
+  vol_scale_min: 0.25
+  vol_scale_max: 3.0
+  vol_measure: stdev
+  volume_scale_exponent: -1.0
+  natr_period: 10
+  natr_lookback: 100
+  regime_min_hold: 5
+  bear_dd: 0.5
+  bear_window: 250
+  turbulent_mode: reversal
+  reversal_threshold: -0.09
+  reversal_target: 0.06
+  reversal_lot_pct: 0.2
+  reversal_max_lots: 4
+  liquidate_minute: 60
+step: 0.00075
+profit_target: 0.3
+evidence:
+  note: >-
+    The researched Ultimate configuration (config/ultimate_tqqq.yaml), as
+    deployed to paper in config/ultimate_paper.yaml. Needs
+    execution.allow_signal_exit and a regular-hours deployment.

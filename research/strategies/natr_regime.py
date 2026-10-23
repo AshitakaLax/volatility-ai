@@ -248,13 +248,27 @@ class IncrementalNatrRegime:
         self._state: bool | None = None
         self._held = 0
         self.calm: bool | None = None
+        # For describe(): the session the current flag began, and the
+        # readings at the last completed session's close.
+        self.since: date | None = None
+        self.last_natr: float | None = None
+        self.last_median: float | None = None
+
+    @property
+    def history_sessions(self) -> int:
+        """Sessions before the raw flag is the one any longer history would
+        give: the flagless warm-up, and the bear filter's window of closes.
+        The debounced flag can still differ until it next holds min_hold
+        sessions in a row."""
+        bear = self.bear_window if self.bear_dd is not None else 0
+        return max(self._skip, bear, self.bear_sma or 0)
 
     def observe(self, timestamp, high: float, low: float, close: float) -> None:
         day = timestamp.date()
         if day != self._day:
             if self._day is not None:
                 self._close_session()
-                self._open_session()
+                self._open_session(day)
             self._day = day
             self._h, self._l, self._c = high, low, close
             return
@@ -317,8 +331,10 @@ class IncrementalNatrRegime:
             self._natrs.append(natr)
         self._closes.append(c)
         calm = False
+        self.last_natr, self.last_median = natr, None
         if natr is not None and len(self._natrs) == self.lookback:
-            calm = natr < float(np.median(np.fromiter(self._natrs, float)))
+            self.last_median = float(np.median(np.fromiter(self._natrs, float)))
+            calm = natr < self.last_median
         if calm and self.bear_dd is not None:
             recent = list(self._closes)[-self.bear_window :]
             calm = c >= (1.0 - self.bear_dd) * max(recent)
@@ -329,16 +345,38 @@ class IncrementalNatrRegime:
         self._prev_close = c
         self._sessions += 1
 
-    def _open_session(self) -> None:
+    def _open_session(self, day: date) -> None:
         raw = self._pending
         if raw is None:
             self.calm = None
+            self.since = None
             return
         if self._state is None or (raw != self._state and self._held >= self.min_hold):
             self._state, self._held = raw, 1
+            self.since = day
         else:
             self._held += 1
         self.calm = self._state
+
+    def describe(self) -> dict:
+        """The flag in force and what it rests on, for a reader who wants to
+        know why: since when, the NATR and its median at the last completed
+        close, the raw reading that close gave (calm or not, before the
+        debounce), and how many sessions ahead the debounce first lets the
+        flag change (1 = the next one). The current session is the latest
+        one observed."""
+        held = self._held if self._state is not None else None
+        return {
+            "session": self._day,
+            "calm": self.calm,
+            "since": self.since,
+            "held": held,
+            "min_hold": self.min_hold,
+            "natr": self.last_natr,
+            "median": self.last_median,
+            "reading": self._pending,
+            "sessions_until_change": None if held is None else max(1, self.min_hold - held + 1),
+        }
 
 
 __all__ = [

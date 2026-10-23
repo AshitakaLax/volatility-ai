@@ -13,10 +13,9 @@ THE MODELS ARE TRAINED WITH QLIB AND RUN WITHOUT IT
 tools/train_qlib_regime.py may import qlib (Alpha158 expressions,
 DDG-DA's concept-drift reweighting, the workflow recorder). NOTHING
 here imports it, and nothing here may. requirements.txt's rule is that
-the live loop and the Raspberry Pi that runs it must never need an
-optional dependency to start; qlib is a heavy transitive tree and the
-Pi's image does not install even requirements-ml.txt (see
-docs/DEPLOY_RASPBERRY_PI.md on the two-machine split).
+the live loop must never need an optional dependency to start; qlib is
+a heavy transitive tree, and the deployment image (Dockerfile) installs
+requirements-ml.txt but never requirements-qlib.txt.
 
 What crosses the boundary is a LightGBM booster in its native TEXT
 format plus a JSON sidecar, exactly the artifact contract
@@ -48,7 +47,7 @@ not threading -- is what makes this safe to call from a live loop.
 
 There is deliberately NO background thread, and that is a design
 decision rather than an omission. The live loop's tick budget is 60
-SECONDS (docs/DEPLOY_RASPBERRY_PI.md: "372 ticks at 60s"); spending
+SECONDS (live.poll_interval_seconds); spending
 ~200us of it is not a problem worth introducing a concurrency failure
 mode for. Worse, a thread would make the reading depend on wall-clock
 timing, and a backtest replaying the same bars would then be unable to

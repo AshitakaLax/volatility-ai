@@ -20,18 +20,20 @@ from __future__ import annotations
 
 import json
 import math
-from pathlib import Path
 
 import pytest
 
+from engine.warehouse.bars import available_tickers, load_frame
 from research.optimization.optimization_controller import OptimizationController
-from server.backtest import KNOWN_DATA, run_backtest
+from server.backtest import run_backtest
 from server.jobs import RunStopped, _json_default
 
 TICKER = "TQQQ"
 
+# run_backtest reads the warehouse, so that -- not a CSV -- is what must hold
+# the bars, and what the direct run below compares against.
 pytestmark = pytest.mark.skipif(
-    not Path(KNOWN_DATA.get(TICKER, "")).exists(), reason=f"no {TICKER} bar file on this machine"
+    TICKER not in available_tickers(), reason=f"no {TICKER} bars in this machine's warehouse"
 )
 
 # 2 x 2 x 2 = 8 configurations over the last 4,000 bars, serially, so the
@@ -196,15 +198,13 @@ def test_the_ranking_is_the_engines_not_a_new_one(uninterrupted):
     equities = [cell["m"]["final_equity"] for cell in cells]
     assert equities == sorted(equities, reverse=True)
 
-    import pandas as pd
-
     from server.backtest import window
 
     parsed = RunRequest(**REQUEST)
     config = build_config(parsed)
     kwargs = config.to_run_sweep_kwargs(resolve_strategy(config.strategy.strategy_id))
     kwargs.update(symbol=TICKER, n_jobs=1)
-    frame = pd.read_csv(KNOWN_DATA[TICKER], parse_dates=["timestamp"]).set_index("timestamp")
+    frame = load_frame(TICKER)
     engine = OptimizationController(historical_data=window(frame, None, None, 4000)).run_sweep(
         **kwargs
     )

@@ -425,6 +425,10 @@ class RunControl:
         self._job = job
         self._rows = rows
 
+    @property
+    def run_id(self) -> str:
+        return self._job.run_id
+
     def should_stop(self) -> bool:
         """True once a pause or cancel has been asked of this run, or the
         shard running it has been paused."""
@@ -957,13 +961,17 @@ class JobQueue:
                 return (
                     not current.paused
                     and not self._in_lockout(name)
-                    and self._next_runnable() is not None
+                    and self._next_runnable(remote=True) is not None
                 )
 
             self._condition.wait_for(ready, timeout=wait)
             shard = self._remote_shard(name, instance)
             self._touch(shard)
-            job = None if (shard.paused or self._in_lockout(name)) else self._next_runnable()
+            job = (
+                None
+                if (shard.paused or self._in_lockout(name))
+                else self._next_runnable(remote=True)
+            )
             if job is None:
                 return None
             self._start(job, shard)
@@ -1275,13 +1283,18 @@ class JobQueue:
             job.revision += 1
             self._condition.notify_all()
 
-    def _next_runnable(self) -> Job | None:
+    def _next_runnable(self, remote: bool = False) -> Job | None:
+        """The first queued run -- for a remote shard, the first that does
+        not ask to stay on this machine (RunRequest.local_only)."""
         if self._paused:
             return None
         for run_id in self._order:
             job = self._jobs[run_id]
-            if job.status == "queued":
-                return job
+            if job.status != "queued":
+                continue
+            if remote and (job.request or {}).get("local_only"):
+                continue
+            return job
         return None
 
     def _ensure_worker(self) -> None:

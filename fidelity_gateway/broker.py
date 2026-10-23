@@ -95,6 +95,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from typing import Any
 
 from engine.core.exceptions import ConfigurationError, ExecutionError
@@ -121,6 +122,22 @@ PREVIEW_PATH = "/ftgw/digital/trade-equity/previewSrvc"
 # guessed: orderAction B/S, priceTypeCode M/L, qtyTypeCode S (shares),
 # tifCode D (day), condition N (none).
 _ACTION = {"buy": "B", "sell": "S"}
+
+# derive_order_state's answer, in the browser extension's words: what its
+# own reading of the same order should say. UNKNOWN is left out on
+# purpose -- the extension keeps an order's last known state rather than
+# downgrading it, so the two are expected to differ there.
+_EXTENSION_STATE = {
+    OrderState.ACCEPTED: "working",
+    OrderState.PARTIALLY_FILLED: "partially_filled",
+    OrderState.FILLED: "filled",
+    OrderState.CANCELED: "cancelled",
+    OrderState.REJECTED: "rejected",
+    OrderState.EXPIRED: "expired",
+}
+# States only the extension has: its own steps, not readings of the order
+# list, so there is nothing of the engine's to compare them with.
+_EXTENSION_ONLY_STATES = frozenset({"submitted", "cancel_requested", "blocked"})
 
 
 @dataclass
@@ -203,6 +220,21 @@ def derive_order_state(order: dict) -> OrderState:
     return OrderState.UNKNOWN
 
 
+def _limit_to_cent(side: str, price: float) -> float:
+    """A limit price rounded to the cent in the SAFE direction, never to
+    the nearest -- the rule AlpacaBroker applies, for the same reasons.
+
+    A buy rounds DOWN: its fill price becomes the lot's cost basis, so
+    rounding up would pay more now and make every later exit harder. A
+    sell rounds UP: its price has already cleared the no-loss guard, and
+    rounding down could put the order below the lot's cost basis. Either
+    way the worst case is an order that does not fill, which is
+    recoverable; a loss is not.
+    """
+    rounding = ROUND_FLOOR if side == "buy" else ROUND_CEILING
+    return float(Decimal(str(float(price))).quantize(Decimal("0.01"), rounding=rounding))
+
+
 def _as_float(value: Any) -> float:
     """Fidelity mixes numbers, numeric strings and '1 Share' in the same
     fields. Anything unparseable is 0.0, never an exception -- a snapshot
@@ -243,8 +275,28 @@ class FidelityBroker:
         account_type_code: str | None = None,
         account_type: str = "Brokerage",
         account_sub_type: str = "Brokerage",
+        position_scope: tuple[str, ...] | None = None,
+        order_reports: Any = None,
     ) -> None:
         self._session = session
+        # The browser extension's confirmations (bridge/order_reports.py),
+        # when the session runs through it: anything with
+        # for_conf_num(conf) -> report | None. A second witness for
+        # get_order_by_client_id to check its own reading against --
+        # never a source of fills.
+        self._order_reports = order_reports
+        self._witnessed: set[tuple[str, str, float]] = set()
+        # SNAPSHOT SCOPE. A Fidelity account is often shared with holdings
+        # this deployment does not trade, and reconciliation refuses to
+        # start over any position it holds no lot for -- so without a scope
+        # a live loop could never start on a real account. When set,
+        # snapshot() reports only these symbols' positions and orders.
+        # Everything in them is still checked; the deployment's own symbol
+        # held by hand still stops startup, as it must, since nothing can
+        # tell those shares from this deployment's.
+        self._position_scope = (
+            None if position_scope is None else frozenset(s.upper() for s in position_scope)
+        )
         self._account_name = account_name
         self._account_type_code = account_type_code
         # transactions/pending REJECTS an account entry carrying only a
@@ -420,7 +472,7 @@ class FidelityBroker:
             "orderAction": _ACTION[side],
             "orderActionCode": _ACTION[side],
             "priceTypeCode": "L",
-            "limitPrice": round(float(limit_price), 2),
+            "limitPrice": _limit_to_cent(side, limit_price),
             "stopPrice": None,
             "qty": int(qty),
             "qtyTypeCode": "S",
@@ -496,8 +548,58 @@ class FidelityBroker:
             return None
         for order in self._orders():
             if str(order.get("orderNum")) == conf:
-                return self._to_order(order, client_order_id)
+                found = self._to_order(order, client_order_id)
+                self._compare_with_extension(found)
+                return found
         return None
+
+    def _compare_with_extension(self, order: FidelityOrder) -> None:
+        """Check this reading of an order against the browser extension's.
+
+        The extension reads the same reply -- its report arrives before
+        the reply itself does -- with its own transcription of
+        derive_order_state, so the two should always agree. Agreement on
+        a fill is the confirmation the order completed; a disagreement
+        means one of the two readings is wrong, and is logged as an error
+        with both. Either way only this reading is used: Fidelity's
+        structured fields are the source of fills, and the extension's
+        report is a witness, never a substitute.
+
+        Said once per order and state, not on every poll.
+        """
+        if self._order_reports is None:
+            return
+        report = self._order_reports.for_conf_num(order.id)
+        expected = _EXTENSION_STATE.get(order.state)
+        if report is None or expected is None or report.state in _EXTENSION_ONLY_STATES:
+            return
+        key = (order.id, str(order.state), order.filled_qty)
+        if key in self._witnessed:
+            return
+        self._witnessed.add(key)
+        if report.state != expected or abs(report.filled_qty - order.filled_qty) > 1e-9:
+            logger.error(
+                "The browser extension reads order %s (decision %s) as %s with %s filled, but "
+                "the engine reads %s with %s filled from the same reply. The engine's reading "
+                "is the one used. One of the two derive_order_state implementations is "
+                "wrong -- compare them against this order in Activity & Orders.",
+                order.id,
+                order.client_order_id,
+                report.state,
+                report.filled_qty,
+                order.state,
+                order.filled_qty,
+            )
+        elif order.state is OrderState.FILLED:
+            logger.warning(
+                "ORDER COMPLETE: confNum %s (decision %s), %s %s filled at $%.2f -- confirmed "
+                "by the browser extension.",
+                order.id,
+                order.client_order_id,
+                order.filled_qty,
+                order.symbol,
+                order.filled_avg_price,
+            )
 
     def snapshot(self) -> BrokerSnapshot:
         """Current broker truth, shaped for engine/execution/reconciliation.Reconciler.
@@ -511,6 +613,8 @@ class FidelityBroker:
         orders: dict[str, dict] = {}
         conf_to_decision = {v: k for k, v in self._decision_to_conf.items()}
         for raw in self._orders():
+            if not self._in_scope(raw.get("symbol")):
+                continue
             conf = str(raw.get("orderNum"))
             key = conf_to_decision.get(conf, conf)
             detail = raw.get("amountDetail") or {}
@@ -520,7 +624,16 @@ class FidelityBroker:
                 "avg_fill_price": _as_float(detail.get("avgExecPrice")),
                 "symbol": raw.get("symbol"),
             }
-        return BrokerSnapshot(positions=self._positions(), orders=orders, cash=self._cash())
+        positions = {s: q for s, q in self._positions().items() if self._in_scope(s)}
+        return BrokerSnapshot(positions=positions, orders=orders, cash=self._cash())
+
+    def _in_scope(self, symbol: Any) -> bool:
+        """In the snapshot scope. A record naming no symbol is kept: it
+        cannot be shown to be out of scope, and hiding it from
+        reconciliation would be the unsafe direction."""
+        if self._position_scope is None or not symbol:
+            return True
+        return str(symbol).upper() in self._position_scope
 
     # -- read-only fetches ---------------------------------------------
 

@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from engine.warehouse.connection import EXECUTIONS_DIR, EXTERNAL_DIR, OHLCV_DIR, lake_path
+from engine.warehouse.connection import EXECUTIONS_DIR, EXTERNAL_DIR, OHLCV_DIR
 
 # --------------------------------------------------------------------
 # market_data
@@ -169,6 +169,15 @@ CREATE TABLE IF NOT EXISTS simulations (
 """
 
 
+# The lake globs below are RELATIVE to the warehouse root, resolved
+# through DuckDB's file_search_path, which open_warehouse sets on every
+# connection. An absolute path is fixed when the view is created, so a
+# warehouse moved to another directory, another machine, or mounted at
+# /app/warehouse inside a container read as empty -- and a catalog shared
+# between the host and a container would have had to be rewritten on
+# every switch. `root` is kept in the signatures so callers stay unchanged.
+
+
 def ohlcv_view_ddl(root) -> str:
     """The OHLCV view. union_by_name guards against a lake whose
     partitions were written by different code versions -- without it a
@@ -176,7 +185,7 @@ def ohlcv_view_ddl(root) -> str:
     return f"""
 CREATE OR REPLACE VIEW ohlcv AS
 SELECT * FROM read_parquet(
-    '{lake_path(root, OHLCV_DIR)}/**/*.parquet',
+    '{OHLCV_DIR}/**/*.parquet',
     hive_partitioning = true,
     union_by_name = true
 )
@@ -187,7 +196,7 @@ def executions_view_ddl(root) -> str:
     return f"""
 CREATE OR REPLACE VIEW trade_executions AS
 SELECT * FROM read_parquet(
-    '{lake_path(root, EXECUTIONS_DIR)}/**/*.parquet',
+    '{EXECUTIONS_DIR}/**/*.parquet',
     hive_partitioning = true,
     union_by_name = true
 )
@@ -203,7 +212,7 @@ def external_view_ddl(root) -> str:
     return f"""
 CREATE OR REPLACE VIEW external AS
 SELECT * FROM read_parquet(
-    '{lake_path(root, EXTERNAL_DIR)}/**/*.parquet',
+    '{EXTERNAL_DIR}/**/*.parquet',
     hive_partitioning = true,
     union_by_name = true
 )

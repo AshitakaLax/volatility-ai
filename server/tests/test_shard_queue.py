@@ -588,3 +588,24 @@ class TestLockoutSchedule:
         # Set before this shard has registered with the NEW process at
         # all -- restore() must not require a live Shard to hold it.
         assert second.shard_schedule("a") == {"enabled": True, "start": "07:00", "end": "19:00"}
+
+
+class TestLocalOnly:
+    """RunRequest.local_only: a run that must come from this machine."""
+
+    def test_a_remote_shard_skips_it_and_takes_the_next(self, queue):
+        queue.register_shard("fast", "i1")
+        queue.register_shard("slow", "i2")
+        here = queue.submit({"name": "here", "local_only": True})
+        anywhere = queue.submit({"name": "anywhere"})
+        job, _rows = queue.claim("fast", "i1")
+        assert job.run_id == anywhere.run_id
+        assert queue.claim("slow", "i2") is None, "nothing else a remote shard may take"
+        assert queue.get(here.run_id).status == "queued"
+
+    def test_this_servers_worker_runs_it(self, queue, runner, completed):
+        queue.register_shard("fast", "i1")
+        here = queue.submit({"name": "here", "local_only": True})
+        queue.resume_shard(LOCAL_SHARD)
+        wait_until(queue, lambda: here.run_id in completed)
+        assert runner.started == ["here"]

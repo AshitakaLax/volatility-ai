@@ -132,3 +132,11 @@ live:
   # once. This bounds one tick's submissions so a large harvest cannot
   # overrun the poll interval; the remainder is picked up next tick.
   max_sells_per_tick: 25
+  # What the Live page may change here (LiveControlConfig in
+  # engine/core/config.py); pausing new buys is always allowed. A paper
+  # account, so everything.
+  control:
+    resume_buys: true
+    enable_disable: true
+    algorithm_changes: true
+    ledger_reset: true

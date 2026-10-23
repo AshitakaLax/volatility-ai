@@ -1,4 +1,4 @@
-import { Activity, ArrowRight, BarChart3, FlaskConical, LineChart } from "lucide-react";
+import { Activity, ArrowRight, BarChart3, Database, FlaskConical, LineChart } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ActiveRuns } from "@/components/backtest/ActiveRuns";
@@ -6,15 +6,11 @@ import { BacktestResult } from "@/components/backtest/BacktestResult";
 import { ParameterForm } from "@/components/backtest/ParameterForm";
 import { RunHistory } from "@/components/backtest/RunHistory";
 import { ShardPanel } from "@/components/backtest/ShardPanel";
-import { AlgorithmStatus } from "@/components/live/AlgorithmStatus";
-import { CommandCenter } from "@/components/live/CommandCenter";
-import { DeploymentHealth } from "@/components/live/DeploymentHealth";
-import { LiveOrderLedger } from "@/components/live/LiveOrderLedger";
-import { LivePriceChart } from "@/components/live/LivePriceChart";
+import { LiveTab } from "@/components/live/LiveTab";
 import { ModelInsights } from "@/components/ml/ModelInsights";
+import { WarehouseTab } from "@/components/warehouse/WarehouseTab";
 import { Button, Card, CardContent } from "@/components/ui/primitives";
 import { useBacktestRun } from "@/hooks/useBacktestRun";
-import { useLiveState } from "@/hooks/useLiveState";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { DEFAULT_FILTERS, type ExecutionFilters, type Report } from "@/types/backtest";
@@ -33,7 +29,7 @@ import { DEFAULT_FILTERS, type ExecutionFilters, type Report } from "@/types/bac
  * is no run, so the page is useful before the API is up, which is also
  * how it was developed.
  */
-type Tab = "backtest" | "result" | "live" | "ml";
+type Tab = "backtest" | "result" | "live" | "ml" | "warehouse";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("backtest");
@@ -46,25 +42,6 @@ export default function App() {
   const [staged, setStaged] = useState<{ gridStep: number; profitTarget: number } | null>(
     null,
   );
-
-  // --- live ------------------------------------------------------------
-  const [stores, setStores] = useState<string[]>([]);
-  const [store, setStore] = useState<string | null>(null);
-  const live = useLiveState(tab === "live" ? store : null);
-
-  useEffect(() => {
-    if (tab !== "live" || stores.length > 0) return;
-    void api
-      .stores()
-      .then((body) => {
-        setStores(body);
-        // Select the first store automatically. A picker that starts
-        // empty makes an operator choose before seeing anything, and
-        // there is usually exactly one.
-        setStore((current) => current ?? body[0] ?? null);
-      })
-      .catch(() => setStores([]));
-  }, [tab, stores.length]);
 
   useEffect(() => {
     void api.staticReport().then(setStaticReport);
@@ -113,6 +90,7 @@ export default function App() {
                 { id: "result", label: "Backtest result", icon: BarChart3 },
                 { id: "live", label: "Live", icon: Activity },
                 { id: "ml", label: "Model research", icon: FlaskConical },
+                { id: "warehouse", label: "Warehouse", icon: Database },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -146,36 +124,11 @@ export default function App() {
 
       <main className="mx-auto max-w-[1600px] space-y-4 px-6 py-6">
         {tab === "live" ? (
-          <>
-            <AlgorithmStatus state={live.state} />
-            <DeploymentHealth
-              state={live.state}
-              health={live.health}
-              stores={stores}
-              selected={store}
-              onSelect={setStore}
-            />
-            {live.error ? (
-              <Card>
-                <CardContent className="pt-5 text-sm text-loss">
-                  {live.error} — is the API running?{" "}
-                  <code className="text-foreground">uvicorn server.app:app</code>
-                </CardContent>
-              </Card>
-            ) : null}
-            <CommandCenter path={store} state={live.state} onHalted={live.refresh} />
-            <LivePriceChart
-              symbol={live.state?.params.symbol ?? null}
-              lastPrice={live.state?.last_px ?? null}
-              lastPriceAt={live.state?.last_tick ?? null}
-            />
-            <LiveOrderLedger
-              lots={live.state?.lots ?? []}
-              lastPrice={live.state?.last_px ?? null}
-            />
-          </>
+          <LiveTab />
         ) : tab === "ml" ? (
           <ModelInsights />
+        ) : tab === "warehouse" ? (
+          <WarehouseTab />
         ) : tab === "result" ? (
           <BacktestResult
             report={report}

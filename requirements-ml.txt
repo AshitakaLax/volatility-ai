@@ -2,7 +2,7 @@
 # live trading loop and the Raspberry Pi that runs it must never need
 # these to start. Nothing in src/ outside src/ml/ may import them.
 #
-# Gradient boosting rather than a neural network, per ml_plan.md: the
+# Gradient boosting rather than a neural network, per docs/ml_plan.md: the
 # inputs are ~100 tabular columns with heavy missingness, which is
 # where GBMs win, and the live sizing path has a <50us inference
 # budget that a deep model would not meet on a Pi.

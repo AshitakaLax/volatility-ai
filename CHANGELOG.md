@@ -1,5 +1,454 @@
 # Changelog
 
+## The warehouse is kept current daily, and three index funds join it
+
+**Its bars had stopped on 2026-10-08**, nine sessions behind, and two of
+the funds it listed (URSP, XBI) had none. Adding bars was a manual fetch to
+CSV, then an ingest that APPENDs.
+- **That path had already left a step in six funds.** Their bars to
+  August were adjusted for the dividends paid before that download, and an
+  increment fetched in October was adjusted for September's too. Asked for
+  again, Alpaca's 2016 bars differed from the stored ones by 0.07% (SOXL)
+  to 1.4% (SQQQ). A backtest saw a fake drop of that size where the two
+  met.
+- **`tools/refresh_warehouse.py`** asks Alpaca for each fund's oldest
+  stored session again. If it moved, a dividend or split has happened, and
+  the whole history is downloaded again rather than appended to. Otherwise
+  it adds the new sessions and re-checks the last three, which picks up the
+  tape's late volume corrections (seen on 0.3% of a session's bars). A
+  re-download that lacks any stored session is refused. URSP_SIM gains
+  URSP's new daily bars drawn on that day's RSP minutes, and is rebuilt as
+  `simulate_ursp.py` builds it if URSP's adjusted prices moved.
+- **It writes the bar lake directly** (`engine/warehouse/lake.py`), never
+  the catalog the server records sweeps in. Each year is one file, swapped
+  in with renameat2's RENAME_EXCHANGE, and a whole fund in one exchange of
+  its directory, so a backtest never reads half of an update.
+- **The compose `market-data` service** runs it at start and daily at
+  20:30 Eastern, after the extended session and SIP's 15-minute delay; a
+  failed run is retried hourly. It shares the traders' Alpaca key, so it
+  asks at most about once a second, a month of one fund at a time.
+
+**SPY, IWM and EEM** (S&P 500, Russell 2000, MSCI Emerging Markets: index
+funds trading since 1993, 2000 and 2003) are tracked with pre- and
+after-market bars, from 2016, where Alpaca's minutes begin.
+- **A regular-session strategy now backtests on the regular session.**
+  The Ultimate family declares `regular_session_only`, and the live loop
+  already refused it extended hours; a backtest fed it every bar of SQQQ.
+  `strategy_registry.session_bars` gives it the regular session's alone, in
+  the server and in `cli.py backtest`.
+- **The brute-force campaign covers them** (`tools/sweep_brute_force.py
+  --fund SPY IWM EEM`): every strategy that is not bound to an RSP model,
+  with each fund's own minutes per session for the grid strategies, which
+  trade every bar.
+
+## Ultimate-RSP can trade live
+
+**`ultimate_rsp` was backtest-only.** It seeds its votes from session
+history (`warm_up`). The live loop starts a fresh process every session and
+could not rebuild that, so `live_algorithm.check_live_support` refused it.
+- **It now answers `live_history_sessions()`:** every vote's history plus
+  150 sessions for PLUS_DM's and ADOSC's seeds to settle, replayed through
+  `record_tick` like the Ultimate's regime. A PLUS_DM value exists from
+  session p - 1 and an ADOSC from slow - 1, and a vote then needs `lb` of
+  them. The replay hands it no equity, so no replayed bar rebalances.
+- **It is regular-session-only**, as the Ultimate is.
+- **`ultimate_ursp` inherits it**, and counts its bear window when that is
+  the longer history.
+- **On the live feed:** from a cold start on IEX minute bars, its target
+  matched the SIP backtest's on 65% of sessions over 2025-07..2026-10,
+  with a mean difference of 0.025 of equity and 123 rebalances against 117.
+
+## Fix: the RSP regime sweeps, and a run with failed configurations
+
+**Both RSP `ml_regime_rsp` sweeps of the 2026-10 campaign failed at 100%.**
+- **The thresholds:** `tools/sweep_brute_force.py` took them at the
+  model's own quantiles and rounded to the nearest 4 places. This model's
+  scores sit on three exact levels; its latch enters at `score >= enter`
+  and leaves at `score <= exit`.
+  - Rounded up, the p99 entry (0.247875 to 0.2479) sat above every score,
+    and MLRegimeScaledSizing refused it. That was half of each sweep, 1,296
+    configurations.
+  - The p90 entry (0.238054 to 0.2381) sat above its own level, so it
+    latched only at the top one.
+  - The URSP_SIM sweep completed, but with the same skew.
+  - Entry levels now round down and the exit rounds up, so each threshold
+    fires at the level it was taken from.
+- **The crash:** the refused rows' metrics are all NaN, and `fund_metrics`
+  called `int()` on one, failing both runs after every configuration had
+  finished. A failed configuration is now left out of the report's cells
+  and logged, and a missing count reads as zero.
+
+## Fix: a Fidelity trader's status reaches the Live page
+
+**A Fidelity loop never reported to the Live page.** Its status named the
+account twice -- the Alpaca key's tag, which `LoopControl` always wrote, and
+the Fidelity account's, from `cli.py`'s `_fidelity_status` -- so every
+write raised a `TypeError`, caught as "Operator control failed this tick;
+trading continues". The page kept the supervisor's "starting" and, 30
+minutes into a session, called a loop that was trading "not running". The
+supervisor's own reports carried the Alpaca key's tag, the same one the
+paper trader sharing that key reports, so the page took the two for one
+account and would refuse to enable either beside the other.
+
+**One function now decides the tag,** `operator_control.account_tag`: a
+Fidelity deployment's is "fidelity-" and a hash of its account, any other's
+the Alpaca key's. The loop and the supervisor (from the config it already
+loads) both report it. `tests/test_cli_live_fidelity.py` now runs a
+Fidelity loop with a control directory -- the way the supervisor runs it,
+and the path no test had taken.
+
+## Live page: what a deployment trades and is doing, and a Fidelity section
+
+**The Ultimate paper trader looked broken for two sessions, and nothing on
+the page could say why.** Its NATR regime turned turbulent on 2026-10-19
+(TQQQ fell 19% from Oct 6 to Oct 16), so by design it made no grid buys --
+but that reading lived only in the trader's log. The page also misled in
+smaller ways:
+- **The deployment cards showed the config file's algorithm,** not the one
+  trading, so a switch from the page was invisible on them.
+- **The Deployment card's build and process were the web server's,** not the
+  trader's, and inside the image (no `.git`) the commit read "--" anyway.
+- **The "live" chart drew warehouse bars**, which lag a running deployment
+  by days (TQQQ's ended Oct 8), and its RSI came from a bar file.
+- **No trades were shown:** the ledger keeps lots but never what a sale
+  fetched, and the activity log route had no reader.
+
+**The trader now says what it is doing** (`engine/trading/live_trading_loop.py`,
+through its status file):
+- **Every tick:** the price its next buy triggers at -- the strategy's own
+  `_grid_trigger_level`, the one definition the buy uses -- or what blocks
+  one (a pause, a strategy buying at no price, no buying power, the lot
+  cap), with the strategy's `diagnostics()`. Ultimate's now carry its
+  regime: since when, the NATR against its median at the last close, and
+  the first session it may change (`IncrementalNatrRegime.describe`).
+- **While an override trades,** the config file's algorithm runs beside it
+  as a shadow -- the same bars, trading nothing -- and reports what
+  switching back would do now. Reverting to Ultimate during a turbulent
+  spell would market-sell every lot it did not buy as a reversal lot (its
+  exit stays active for the whole spell); the page says so before the
+  revert is sent.
+- **Its journals,** in its control directory: the minute bars it traded on
+  (the last sessions of its replayed history included) and every fill it
+  booked, each sale with what it fetched against what its lot cost.
+- **Its build:** a fingerprint of the code it loaded and, when the image was
+  built with `VAI_BUILD_COMMIT`, the commit (`engine/core/build_info.py`).
+  `/api/health` reports the same fingerprint, so the page can tell whether
+  the trader and the web server run the same code.
+
+**The page** (`web/src/components/live/`): an overview of the fund, its
+price, the book and today's trades, with the "doing now" line; one
+Algorithm card (a readable name, the grid in words, every parameter against
+the config file's, the profit-target check); the chart from the trader's own
+bars with its fills and the next-buy price; a trades list; the ledger's
+activity; and the trader's own build on the Deployment card.
+
+**Alpaca and Fidelity are separate sections.** A Fidelity deployment's card
+and panel show the browser extension's side of the bridge
+(`BridgeServer.connection_report`): connected or not and since when, when it
+was last heard from, its version against the expected ones, "Allow trading"
+and previews, the account's display name and the per-buy cap. Its status is
+tagged with a hash of the Fidelity account, not the Alpaca key it reads
+prices with, so it no longer looks like a second loop on a paper trader's
+account. A deployment can be registered before its config exists
+(`broker:` in `config/deployments.yaml`); the page then says how to set it
+up.
+
+**The Fidelity engine is a compose service now,** `fidelity` (profile
+`fidelity`, started only by name), so the page sees it like the paper
+traders: its own ledger and control volumes (`state_fidelity`,
+`control_fidelity`; the backup service archives the ledger), on the host's
+network so the bridge listens on this server and checks the browser's real
+address. Its config is read from the host and kept out of the image
+(`.dockerignore`), since it names the account. Setup: docs/DEPLOY.md,
+"Fidelity".
+
+**Started before its config exists, the service waits for it**
+(`tools/docker_session_loop.sh`). The first start, before anyone had
+written `config/fidelity_live.yaml`, failed a session with a traceback
+every 15 minutes, which looked like a container restarting over and over.
+The loop now:
+- says once what it is waiting for, and starts as soon as the file
+  appears;
+- after a session fails, tries again as soon as the config changes, so
+  fixing a mistake in a new config is not followed by a quarter-hour
+  wait.
+
+## Live deployment control
+
+**The Live page's emergency halt did not work, in two ways.**
+- **In the compose deployment it failed outright.** `server/control.py`
+  opened the ledger writable, but `web` mounts the ledgers read-only.
+- **Where the write did succeed, a running loop ignored it.** The loop reads
+  the halt once, at startup, so it kept buying while the page said
+  "halted".
+
+There was also no way to clear a halt from the page, to stop or start a
+deployment, or to change an Alpaca deployment's algorithm. Every live route
+took a file path from the browser; the halt would open any writable file
+as a SQLite ledger.
+
+**Commands now go to the trading process, and it applies them.**
+- The server queues a command as a file in the deployment's control volume
+  (`engine/trading/control_inbox.py`).
+- The trader applies it (`engine/trading/operator_control.py`) through the
+  circuit breaker, algorithm and loop it trades with:
+  - while trading, the loop applies it between ticks, so a pause lands
+    before the next buy decision;
+  - between sessions, the supervisor applies it within 15 s, under the
+    ledger's own lock.
+- Every command is answered (applied, rejected with the reason, superseded,
+  expired, cancelled), and the directory is the audit trail. The trader
+  stays the only writer of its ledger.
+
+**What the page offers:**
+- **Every deployment, by id** (`config/deployments.yaml`), with the state
+  its trader reports. A report that stops arriving reads "Not running".
+- **Buying:** pause and resume. Resuming can re-base the drawdown, so a
+  drawdown halt does not trip again on the next tick.
+- **Trading on or off:** wind down (pause buys, stop once flat), disable,
+  enable.
+- **The algorithm:** switch, revert to the config file's, and re-warm. A
+  switch goes through the extension's validation, override file and
+  rebuild, which `AlgorithmControl` now offers to every broker with one
+  grant per channel. It takes effect at the next tick, at the next session,
+  or once the book is flat. A dry-run check shows what it would do to the
+  open lots.
+- **A fresh paper ledger:** the old one is archived, not deleted. Only while
+  disabled, on paper, with the Alpaca account flat.
+- **Profiles:** committed algorithms in `config/live_profiles/`. A backtest
+  result can propose one ("Copy as live profile"); `config/` stays
+  read-only to the server, so a commit decides.
+
+**Safety:**
+- **The config decides what the page may do.** Each deployment's
+  `live.control` grants it, and pausing is always allowed.
+- **Real money is narrower.** It takes only profiles with a passing paper
+  promotion, switches at most once a day, needs the id typed back for
+  everything but a pause, and never resets its ledger.
+- **One account, one loop.** Two deployments reporting the same account tag
+  (a one-way hash of the key id) cannot both be enabled from the page.
+- **No liquidation command.** There is none, and the capability tests hold
+  the control module to queueing only.
+- **No login, by the operator's choice.** A cross-site guard refuses
+  requests from other sites' pages, and every command records who sent it
+  and from where.
+
+**Fixed while there:**
+- The target warning now compares against the deployment's own config.
+  Ultimate's 30% calm-lot target is intended.
+- `/bars` and `/indicators` no longer take a directory from the browser.
+
+## The Warehouse tab
+
+**A tab for what the warehouse holds and the state of the machine filling
+it.** Until now the only way to see it was ad-hoc SQL through
+`docker exec`. The tab has five parts:
+- **Funds:** bars, span, sessions, duplicates and size, and how far behind
+  each fund is.
+- **Results:** the sweeps and simulations recorded, the activity per hour,
+  and the best found per fund and strategy.
+- **Storage:** catalogs, lakes, the reference tables and free disk.
+- **Server:** load, CPU temperatures against the CPU's own limits, and
+  memory. It also shows thermal throttling since boot, but only outside a
+  container: Docker hides those counters, while the temperatures stay
+  visible.
+- **Queue and backups:** the work left in the queue and its ETA, the
+  shards, and the newest backup.
+
+The server side is two GET routes (`server/warehouse_status.py`), held
+read-only by `test_server_capability.py`.
+
+**"Up to date" needed a trading calendar**, and the project had none. The
+supervisor asks Alpaca, and the web server holds no keys.
+`engine/core/trading_calendar.py` encodes the NYSE holidays, each moved the
+way the exchange moves it, plus the one-off closures since 2001. It counts
+exactly the 2,707 sessions RSP holds from 2016-01-04 to 2026-10-08. Early
+closes are not modelled. "Bars to add" is the sessions missing times each
+fund's own median bars per session over its last 20. A flat 390 would be
+wrong twice over: SQQQ keeps extended hours (~940 a session), and some
+minutes of thin funds never print. A last session fetched before it closed
+counts as missing its afternoon.
+
+**The bar scan is cached until an ingest.** One pass over 9.7M bars takes
+3.3 s while a sweep has every core. Its answer can only change when the
+lake's files do, so it is recomputed only then. Results and storage refresh
+every 30 s. Every read goes through `bars.py`'s read-only open under the
+writer lock, with 4 DuckDB threads.
+
+**Fixed while there:**
+- A server sweep recorded the request's default symbol as its
+  `backtest.symbol`, so every RSP sweep claimed to be TQQQ. It now records
+  the fund. Older rows still resolve through `server_run.ticker`.
+- A read-only open that found a writer holding the lock warned that the
+  warehouse "has views with absolute paths". It now waits the lock out
+  quietly, as the open after it already did.
+- `web` mounts the backup directory read-only, for the backups tile.
+
+## One-order exits, brute-force sweeps into the warehouse, and qlib
+
+**A signal exit is one order.** Ultimate's regime exit sent an order per lot,
+at most `max_sells_per_tick` a minute, so a calm book of thousands of lots
+took an hour to leave where the backtest sells it on one bar. It now sends
+one limit order for every condemned lot. The limit sits `live.exit_limit_buffer`
+(0.5%) through the bar's price, because a limit at the last trade often rests
+a tick above the bid. The fill is allocated back to the lots oldest first,
+each through the no-loss guard. An exit still resting on a later bar is
+cancelled (`AlpacaBroker.cancel_order`), and what is left is offered again at
+the new price. The order and its lots survive a restart.
+
+**Every configuration a server run finishes is in the warehouse.** Server
+runs kept their configurations only in Run History. They now also land in
+`sim_results.duckdb`, one sweep per run and fund (`server-<run id>-<fund>`),
+with the best configuration's trade log. The server also reads bars from the
+same files, and DuckDB refuses a second connection in another mode, so a
+sink held open for a sweep would have failed every bar read. Instead,
+`engine/warehouse/result_writer.py` writes in batches of up to 500 rows or
+2 minutes, never holding the warehouse open, under a reader/writer lock.
+Other processes' reads wait out a write instead of answering "no data".
+`VAI_RECORD_WAREHOUSE=0` turns recording off, and the test suite does: a
+first run wrote 33 test rows into the real warehouse (removed).
+
+**`local_only` runs** are never claimed by a remote shard.
+
+**Sweeps keep every worker busy.** `run_sweep`'s parallel path ran batches
+of `n_jobs` and waited for each batch's slowest member before starting the
+next. Measured on a 64-thread sweep, those tails left 35% of the machine
+idle. It is a rolling window now: a finished combination's slot is refilled
+at once.
+
+**`tools/sweep_brute_force.py`** queues every strategy that can trade a fund
+as local-only server runs. It generalises `tools/sweep_rsp_all.py`, keeping
+its spaces over each strategy's committed defaults. `URSP_SIM`, the
+ten-year URSP history (`tools/simulate_ursp.py`: simulated before the fund's
+2025-08-27 launch, the fund after), is ingested and listed in the UI. The
+first campaign covers RSP and URSP_SIM: 110 runs, 138,564 configurations.
+
+**Deployment.** `.env` and `.env.ultimate` held the same Alpaca key, so the
+champion's `paper` service is behind a `champion` profile and `paper-ultimate`
+is the default trader. Backups go to `/workspace/backups`, a separate disk
+(`$VAI_BACKUP_DIR`, the same default for `cli.py backup`).
+
+**qlib, and the ML strategies on both funds.** qlib lives in a `research`
+image target (`docker compose run --rm research ...`), because pyqlib
+publishes nothing for the workstation's Python 3.14. The image is pyqlib
+0.9.7, plus CPU torch, which qlib's concept-drift modules import without
+declaring. With it, `tools/train_qlib_regime.py --use-qlib` trained two
+regime models:
+- RSP: held-out AUC 0.580, against 0.516 for the same data unweighted.
+- URSP_SIM: AUC 0.622.
+
+`tools/train_ml_model.py` trained RSP's reachability model (AUC 0.607).
+The drift weighting compresses a regime model's output to a few levels.
+So `ml_regime_rsp`'s committed thresholds now come from its new model, and
+`ml_regime_ursp`, a placeholder with no model before, runs on URSP_SIM. The
+sweep reads each model's own quantiles for its thresholds. All three joined
+the brute-force campaign.
+
+## Ultimate goes to paper, and one compose file runs everything
+
+**The live loop gives a strategy the history its state spans.** The
+market-hours supervisor starts a process per session, so every strategy
+began each morning cold. The champion's 10-session volatility and volume
+windows were empty: it measured the open's volatility against the open
+alone and never sized it down, at the moment the backtest sizes down
+hardest. Ultimate's regime carried no flag for ~250 sessions, so it never
+bought. Even seeded, Ultimate started each session with no mode, so the
+flip to turbulent (its regime exit's only trigger) was never seen and the
+calm book would have ridden every downturn; its reversal signal had no
+previous close either. `LiveTradingLoop` now replays
+`live_history_sessions()` sessions of regular-hours minute bars through
+`record_tick` before the first tick (`engine/trading/live_history.py`:
+the loop's own feed, adjusted like the warehouse, today's session so far
+included), with a neutral portfolio so nothing is taken from equity.
+Then `resume(open_lots)` rebuilds what no bar carries: Ultimate re-tags
+its reversal lots by their target. A strategy that wants history and
+gets none is refused. Against Alpaca: 400 sessions, 145,206 bars, fetched
+in 13 s and replayed in 3 s.
+
+**Ultimate's regime exit finishes live.** It fired for one bar. A backtest
+sells every condemned lot on that bar, but live sends at most
+`max_sells_per_tick` orders a tick, and a limit at the market can go
+unfilled, so a book larger than 25 lots was never fully exited. Calm lots
+left after the exit are now offered on every later bar of the spell from
+`liquidate_minute`. Backtests are unchanged: the full-history Ultimate run
+is identical in all 61 result columns.
+
+**A live deployment must be the researched strategy.**
+`live_algorithm.build_strategy`, at start-up and in the extension's
+algorithm editor, refuses:
+- an `ultimate*` strategy without `execution.allow_signal_exit`. It must
+  be set in the deployment file, never switched on by the code, so the
+  second key of the two-key gate stays a reviewed decision;
+- a `regular_session_only` strategy with `extended_hours`;
+- a `live.profit_target` equal to `reversal_target`;
+- `ultimate_rsp`/`ultimate_ursp`, which have no live history support yet.
+
+`SIGNAL_EXIT_STRATEGIES` moved to the registry, so the server and the live
+path share it. Preflight reports these rules and fetches the start-up
+history. `config/ultimate_paper.yaml` is the paper deployment.
+
+**One compose file.** `docker-compose.yml` replaces itself and
+`docker-compose.pi.yml`:
+- `web`: the UI, the API and the backtest engine, published on loopback;
+- `paper`: the Pi's loop;
+- `backup`: daily, into `./backups`;
+- behind profiles: Ultimate in paper, real money, and one-off tools.
+
+Each trading service has its own env file and named volume. `docker stop`
+now reaches the trading loop as a graceful stop: the shell at PID 1
+forwarded nothing, so the loop was killed mid-tick when the grace period
+ran out. `tools/install_services.sh` and `tools/sync_to_pi.sh` are gone,
+and `docs/DEPLOY.md` replaces `docs/DEPLOY_RASPBERRY_PI.md`.
+
+**The Docker build context is an allowlist.** The denylist had let three
+Fidelity `.har` captures (authenticated brokerage traffic), `server.log`,
+the warehouse and agent directories into every image through `COPY . .`.
+
+**The warehouse's views read relative paths**, resolved through DuckDB's
+`file_search_path` on every connection. The host and the engine container
+share one catalog without rewriting it, and an older warehouse's absolute
+views are rewritten once.
+
+## The move from Windows to Linux, and a shorter root
+
+The repository moved to a Linux workstation. What broke, and the fixes:
+
+- **The warehouse read as empty.** Its DuckDB views store an absolute
+  `read_parquet` path (`C:/workspace/...`), and `bars.load_frame` turns a
+  failed query into "no data" by design, so every backtest, the server and
+  nine tests saw no bars, with no error. The views are relative now (see
+  above), and `load_frame` logs the failure it absorbs.
+- **Windows-only service scripts** (`.cmd`/`.ps1` scheduled tasks) are
+  replaced by the compose deployment (above): credentials stay in `.env`,
+  and the supervisor reads the market calendar.
+- **Hard-coded Windows paths** in the chain scripts, two probes and the
+  Fidelity launch hints now use repo-relative paths and Linux commands. The
+  chain scripts also called `run_hf_sweep.py`/`analyze_annual.py` at their
+  pre-`research/` locations; they run as modules now.
+- **CI ran a fraction of the suite.** `pytest tests/` predates the split of
+  the suite into each directory's `tests/`, so it covered only the root
+  part. CI runs `cli.py test` with every dependency set.
+- **Tests that were wrong, not code:** the Pi deployment tests still
+  expected the Streamlit `dashboard` service removed in 3e7857d; the run
+  resume test compared a warehouse-backed server run against a CSV that
+  had since fallen behind the warehouse; the shard-link test's fake asked
+  to stop once where the real server asks on every sync, a race that
+  Windows' coarse timers hid.
+- **Optuna is capped below 5.** Its default TPE sampler converges
+  differently (the decomposition test plateaus at 50%), and every recorded
+  Bayesian sweep was produced on 4.x.
+
+Root documents were consolidated: the finished web-UI plan and ledger and
+the old quick start moved to `docs/history/`; `Run_Instructions` (whose
+code blocks the tests execute) and `ml_plan.md` moved to `docs/`; the
+sweep-running guide and the simulation record moved from the README to
+`docs/sweeps.md`; the chain scripts moved to `tools/experiments/`. Every
+`AGENTS.md` is now a symlink to the guide beside it, so agent tools read
+one maintained text instead of a September snapshot. The README was
+rewritten around a feature list and Linux setup, and corrected where it
+had drifted (it still said four strategies existed, denied the registry,
+and said there was no CI).
+
 ## `ultimate_ursp` and a simulated URSP history
 
 URSP (ProShares Ultra S&P 500 Equal Weight, 2x daily) has traded only since

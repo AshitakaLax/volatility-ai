@@ -128,3 +128,38 @@ def test_warm_up_rejects_unordered_or_overlapping_history():
     reg.observe(daily.index[5] + pd.Timedelta(hours=15), 1.0, 1.0, 1.0)
     with pytest.raises(ConfigurationError):
         reg.warm_up(daily)  # history may not reach back into an observed session
+
+
+def test_describe_says_since_when_and_how_long_until_it_may_change():
+    """What the Live page shows beside a deployment that is not buying."""
+    frame = _minutes()
+    reg = IncrementalNatrRegime(period=10, lookback=100, min_hold=5)
+    flags, day = {}, None
+    for ts, row in frame.iterrows():
+        reg.observe(ts, row["high"], row["low"], row["close"])
+        if ts.date() != day:
+            day = ts.date()
+            flags[day] = reg.calm
+    described = reg.describe()
+    days = sorted(flags)
+    # `since` is the first session of the current unbroken run of the flag.
+    run_start = days[-1]
+    for earlier in reversed(days[:-1]):
+        if flags[earlier] != described["calm"]:
+            break
+        run_start = earlier
+    assert described["session"] == days[-1]
+    assert described["since"] == run_start
+    assert described["held"] == days.index(days[-1]) - days.index(run_start) + 1
+    assert described["min_hold"] == 5
+    assert described["sessions_until_change"] == max(1, 5 - described["held"] + 1)
+    assert isinstance(described["natr"], float) and isinstance(described["median"], float)
+    assert described["reading"] in (True, False)
+
+
+def test_describe_before_the_warm_up_has_no_flag_to_explain():
+    reg = IncrementalNatrRegime(period=10, lookback=100, min_hold=5)
+    reg.warm_up(daily_bars(_minutes(sessions=20)))
+    described = reg.describe()
+    assert described["calm"] is None and described["since"] is None
+    assert described["held"] is None and described["sessions_until_change"] is None

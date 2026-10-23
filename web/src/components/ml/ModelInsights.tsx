@@ -13,7 +13,7 @@ import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
  * server/ml_insights.py serves, which is precomputed JSON from
  * tools/{fetch_market_inputs,build_ml_dataset,evaluate_ml_features,
  * ablate_ml_features}.py -- nothing here submits a job, and nothing
- * here is on a path a sizing decision could reach. See ml_plan.md,
+ * here is on a path a sizing decision could reach. See docs/ml_plan.md,
  * "Phase ML-0" for the underlying writeup.
  *
  * THE BANNER IS NOT BOILERPLATE. The one measured result this project

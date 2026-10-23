@@ -55,11 +55,17 @@ job is only to say honestly whether there is any.
 
 from __future__ import annotations
 
+import logging
 import os
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # Overridable so tests can point at a small warehouse built from a
 # fixture CSV instead of the real multi-GB one -- the same pattern
@@ -82,20 +88,61 @@ def _empty_frame() -> pd.DataFrame:
     return frame
 
 
-def _connect(root: Path) -> Any | None:
+# Another process writing the warehouse holds DuckDB's file lock, and a
+# read-only open fails outright until it lets go. The server records sweep
+# results a batch at a time (engine/warehouse/result_writer.py), each in a
+# second or two, so a read that lands on one waits it out rather than
+# answering "no data" for a fund that is there.
+_LOCK_RETRY_SECONDS = 10.0
+_LOCK_RETRY_INTERVAL = 0.25
+
+
+def _connect(
+    root: Path,
+    sleep=time.sleep,
+    clock=time.monotonic,
+    threads: int | None = None,
+    errors: list[str] | None = None,
+) -> Any | None:
     """A read-only connection, or None if the warehouse cannot be opened.
 
     Never raises: a corrupt or absent warehouse is "no data", the same
     as a missing CSV used to be -- not a reason to 500 a chart request.
+    A lock held by another process's write is waited out (briefly).
+    `errors`, if given, receives the reason an existing warehouse could
+    not be opened.
     """
     if not (root / "market_data.duckdb").exists():
         return None
-    try:
-        from engine.warehouse.connection import open_warehouse
+    from engine.warehouse.connection import open_warehouse
 
-        return open_warehouse(root, read_only=True)
-    except Exception:
-        return None
+    deadline = clock() + _LOCK_RETRY_SECONDS
+    while True:
+        try:
+            return open_warehouse(root, read_only=True, threads=threads)
+        except Exception as e:
+            if "lock" not in str(e).lower() or clock() >= deadline:
+                if errors is not None:
+                    errors.append(str(e))
+                return None
+            sleep(_LOCK_RETRY_INTERVAL)
+
+
+@contextmanager
+def _reading(threads: int | None = None, errors: list[str] | None = None) -> Iterator[Any | None]:
+    """_connect's connection (or None), held under WAREHOUSE_LOCK's read
+    side and closed on exit -- so a result write in this process waits
+    for it rather than failing it (connection.WAREHOUSE_LOCK). `threads`
+    caps DuckDB's for a caller sharing the machine with a sweep."""
+    from engine.warehouse.connection import WAREHOUSE_LOCK
+
+    with WAREHOUSE_LOCK.reading():
+        con = _connect(warehouse_root(), threads=threads, errors=errors)
+        try:
+            yield con
+        finally:
+            if con is not None:
+                con.close()
 
 
 def available_tickers() -> set[str]:
@@ -105,15 +152,13 @@ def available_tickers() -> set[str]:
     Empty when the warehouse is absent or empty -- a normal state (a
     fresh checkout, a fund fetched but never ingested), not an error.
     """
-    con = _connect(warehouse_root())
-    if con is None:
-        return set()
-    try:
-        return {row[0] for row in con.execute("SELECT DISTINCT ticker FROM ohlcv").fetchall()}
-    except Exception:
-        return set()
-    finally:
-        con.close()
+    with _reading() as con:
+        if con is None:
+            return set()
+        try:
+            return {row[0] for row in con.execute("SELECT DISTINCT ticker FROM ohlcv").fetchall()}
+        except Exception:
+            return set()
 
 
 def row_count(ticker: str) -> int | None:
@@ -124,15 +169,15 @@ def row_count(ticker: str) -> int | None:
     column) -- COUNT(*) over the Parquet lake's row-group metadata does
     not need to read the data at all.
     """
-    con = _connect(warehouse_root())
-    if con is None:
-        return None
-    try:
-        (count,) = con.execute("SELECT COUNT(*) FROM ohlcv WHERE ticker = ?", [ticker]).fetchone()
-    except Exception:
-        return None
-    finally:
-        con.close()
+    with _reading() as con:
+        if con is None:
+            return None
+        try:
+            (count,) = con.execute(
+                "SELECT COUNT(*) FROM ohlcv WHERE ticker = ?", [ticker]
+            ).fetchone()
+        except Exception:
+            return None
     return int(count) if count else None
 
 
@@ -154,19 +199,21 @@ def load_frame(ticker: str) -> pd.DataFrame:
     as they gated on file-existence before; this only has to behave
     sanely if that gate is skipped.
     """
-    con = _connect(warehouse_root())
-    if con is None:
-        return _empty_frame()
-    try:
-        frame = con.execute(
-            "SELECT timestamp, open, high, low, close, volume "
-            "FROM ohlcv WHERE ticker = ? ORDER BY timestamp",
-            [ticker],
-        ).df()
-    except Exception:
-        return _empty_frame()
-    finally:
-        con.close()
+    with _reading() as con:
+        if con is None:
+            return _empty_frame()
+        try:
+            frame = con.execute(
+                "SELECT timestamp, open, high, low, close, volume "
+                "FROM ohlcv WHERE ticker = ? ORDER BY timestamp",
+                [ticker],
+            ).df()
+        except Exception as e:
+            # Still "no data" to the caller, but never silently: a warehouse
+            # whose views point at a moved directory looked exactly like an
+            # empty one here.
+            logger.warning(f"Could not read {ticker} bars from {warehouse_root()}: {e}")
+            return _empty_frame()
     if frame.empty:
         return _empty_frame()
     return frame.set_index("timestamp")
@@ -189,25 +236,40 @@ def fingerprint(ticker: str) -> str | None:
     in a row. BIT_XOR over a row hash is exact, integer, and independent
     of the order rows are combined in.
     """
-    con = _connect(warehouse_root())
-    if con is None:
-        return None
-    try:
-        row = con.execute(
-            "SELECT COUNT(*), MIN(timestamp), MAX(timestamp), "
-            "BIT_XOR(hash(timestamp, open, high, low, close, volume)) "
-            "FROM ohlcv WHERE ticker = ?",
-            [ticker],
-        ).fetchone()
-    except Exception:
-        return None
-    finally:
-        con.close()
+    with _reading() as con:
+        if con is None:
+            return None
+        try:
+            row = con.execute(
+                f"SELECT {FINGERPRINT_AGGREGATE} FROM ohlcv WHERE ticker = ?", [ticker]
+            ).fetchone()
+        except Exception:
+            return None
     if not row or not row[0]:
         return None
+    return fingerprint_digest(row)
+
+
+# The aggregate fingerprint() hashes, over one ticker's rows. inventory.py
+# runs it GROUP BY ticker, which must give every fund the digest this would.
+FINGERPRINT_AGGREGATE = (
+    "COUNT(*), MIN(timestamp), MAX(timestamp), "
+    "BIT_XOR(hash(timestamp, open, high, low, close, volume))"
+)
+
+
+def fingerprint_digest(row: tuple) -> str:
+    """fingerprint()'s answer for one row of FINGERPRINT_AGGREGATE."""
     import hashlib
 
     return hashlib.sha256(repr(tuple(str(value) for value in row)).encode()).hexdigest()[:32]
 
 
-__all__ = ["available_tickers", "fingerprint", "load_frame", "row_count", "warehouse_root"]
+__all__ = [
+    "available_tickers",
+    "fingerprint",
+    "fingerprint_digest",
+    "load_frame",
+    "row_count",
+    "warehouse_root",
+]

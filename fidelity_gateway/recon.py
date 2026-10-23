@@ -62,8 +62,8 @@ logged into by hand -- Fidelity refuses a Playwright-launched one (see
 run_cdp_recon). It reads no credentials and needs no browser download:
 
     pip install -r requirements-fidelity.txt
-    & "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" \\
-        --remote-debugging-port=9222 --user-data-dir="C:\\Users\\%USERNAME%\\edge-debug-profile"
+    google-chrome --remote-debugging-port=9222 \\
+        --user-data-dir="$HOME/.cache/fidelity-debug-profile"   # or microsoft-edge / chromium
     # log into Fidelity in that window, then:
     python -m fidelity_gateway.recon --cdp-url http://localhost:9222 \\
         --account <number> --i-understand-this-logs-into-my-real-brokerage-account
@@ -449,11 +449,10 @@ def run_cdp_recon(args: argparse.Namespace) -> int:
             raise ConfigurationError(
                 f"Could not attach to a browser at {args.cdp_url}: {exc}\n"
                 "\n"
-                "Start Edge with remote debugging FIRST, using a separate profile "
+                "Start Chrome or Edge with remote debugging FIRST, using a separate profile "
                 "directory:\n"
-                '    & "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" '
-                "--remote-debugging-port=9222 "
-                '--user-data-dir="C:\\Users\\%USERNAME%\\edge-debug-profile"\n'
+                "    google-chrome --remote-debugging-port=9222 "
+                '--user-data-dir="$HOME/.cache/fidelity-debug-profile"\n'
                 "\n"
                 "--user-data-dir is REQUIRED, not optional: current Chrome and Edge "
                 "refuse to enable remote debugging on the DEFAULT profile. Omitting "

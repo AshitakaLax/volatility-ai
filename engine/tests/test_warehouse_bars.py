@@ -156,3 +156,141 @@ class TestLoadFrame:
         assert bars.available_tickers() == {"TESTQ"}
         assert bars.row_count("TESTQ") == len(frame)
         assert bars.row_count("NOPE") is None
+
+
+class TestAMovedWarehouse:
+    """Views used to store an ABSOLUTE read_parquet path, fixed when created.
+    A warehouse copied elsewhere (it moved from C:/workspace on Windows to
+    Linux) read as empty -- every query failed and load_frame, which never
+    raises, answered "no data". They are relative now, resolved through
+    the connection's file_search_path, so one catalog also serves the host
+    and a container that mounts it at /app/warehouse."""
+
+    @staticmethod
+    def _lake_warehouse(root, frame):
+        from engine.warehouse.connection import open_warehouse
+        from engine.warehouse.schema import refresh_views
+
+        part = root / "ohlcv" / "ticker=TESTQ" / "year=2024"
+        part.mkdir(parents=True)
+        frame.reset_index().to_parquet(part / "part-0.parquet", index=False)
+        con = open_warehouse(root)
+        refresh_views(con, root)
+        con.close()
+
+    @staticmethod
+    def _view_sql(root):
+        con = duckdb.connect(str(root / "market_data.duckdb"), read_only=True)
+        try:
+            return con.execute(
+                "SELECT sql FROM duckdb_views() WHERE view_name = 'ohlcv'"
+            ).fetchone()[0]
+        finally:
+            con.close()
+
+    def test_reads_survive_moving_the_directory(self, tmp_path, frame, monkeypatch):
+        import shutil
+
+        old, new = tmp_path / "old" / "warehouse", tmp_path / "new" / "warehouse"
+        self._lake_warehouse(old, frame)
+        shutil.move(str(old), str(new))
+        monkeypatch.setenv("VAI_WAREHOUSE_DIR", str(new))
+
+        assert bars.available_tickers() == {"TESTQ"}
+        assert len(bars.load_frame("TESTQ")) == len(frame)
+
+    def test_two_mount_points_share_one_catalog_without_rewriting_it(
+        self, tmp_path, frame, monkeypatch
+    ):
+        """The host and a container read the same files from different
+        paths. A catalog that had to be rewritten for each would flip on
+        every switch -- and fail whenever the other side held it open."""
+        import shutil
+
+        host, app = tmp_path / "host" / "warehouse", tmp_path / "app" / "warehouse"
+        self._lake_warehouse(host, frame)
+        before = self._view_sql(host)
+        assert str(tmp_path) not in before, "the view must not name where it lives"
+
+        def read_from(root):
+            monkeypatch.setenv("VAI_WAREHOUSE_DIR", str(root))
+            assert len(bars.load_frame("TESTQ")) == len(frame)
+            assert self._view_sql(root) == before
+
+        read_from(host)
+        shutil.move(str(host), str(app))
+        read_from(app)
+        shutil.move(str(app), str(host))
+        read_from(host)
+
+    def test_an_older_absolute_view_is_rewritten_once(self, tmp_path, frame, monkeypatch):
+        import shutil
+
+        from engine.warehouse.connection import _has_absolute_views, open_warehouse
+
+        old, new = tmp_path / "old" / "warehouse", tmp_path / "new" / "warehouse"
+        self._lake_warehouse(old, frame)
+        con = duckdb.connect(str(old / "market_data.duckdb"))
+        con.execute(
+            f"CREATE OR REPLACE VIEW ohlcv AS SELECT * FROM read_parquet("
+            f"'{(old / 'ohlcv').as_posix()}/**/*.parquet', hive_partitioning = true)"
+        )
+        con.close()
+        shutil.move(str(old), str(new))
+
+        monkeypatch.setenv("VAI_WAREHOUSE_DIR", str(new))
+        assert len(bars.load_frame("TESTQ")) == len(frame)
+        con = open_warehouse(new, read_only=True)
+        try:
+            assert not _has_absolute_views(con)
+        finally:
+            con.close()
+
+
+class TestAWarehouseBeingWritten:
+    """Another process writing the warehouse holds DuckDB's file lock; a
+    read waits a write out instead of answering "no data"."""
+
+    def test_a_locked_warehouse_is_retried_until_it_opens(self, tmp_path, frame, monkeypatch):
+        import engine.warehouse.connection as connection
+
+        _write_warehouse(tmp_path, frame)
+        real = connection.open_warehouse
+        refusals = [RuntimeError("IO Error: Could not set lock on file")] * 2
+        naps = []
+
+        def locked_twice(root, **kwargs):
+            if refusals:
+                raise refusals.pop()
+            return real(root, **kwargs)
+
+        monkeypatch.setattr(connection, "open_warehouse", locked_twice)
+        con = bars._connect(tmp_path, sleep=naps.append, clock=lambda: 0.0)
+        assert con is not None and len(naps) == 2
+        con.close()
+
+    def test_anything_else_is_no_data_at_once(self, tmp_path, frame, monkeypatch):
+        import engine.warehouse.connection as connection
+
+        _write_warehouse(tmp_path, frame)
+
+        def corrupt(root, **kwargs):
+            raise RuntimeError("not a DuckDB file")
+
+        monkeypatch.setattr(connection, "open_warehouse", corrupt)
+        naps = []
+        assert bars._connect(tmp_path, sleep=naps.append) is None and naps == []
+
+    def test_a_lock_that_outlasts_the_wait_is_no_data(self, tmp_path, frame, monkeypatch):
+        import engine.warehouse.connection as connection
+
+        _write_warehouse(tmp_path, frame)
+
+        def always_locked(root, **kwargs):
+            raise RuntimeError("Could not set lock on file")
+
+        monkeypatch.setattr(connection, "open_warehouse", always_locked)
+        now = iter([0.0, 5.0, 11.0])
+        naps = []
+        assert bars._connect(tmp_path, sleep=naps.append, clock=lambda: next(now)) is None
+        assert len(naps) == 1

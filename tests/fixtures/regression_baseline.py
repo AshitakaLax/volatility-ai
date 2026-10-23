@@ -19,7 +19,7 @@ src/size_calculators.py now exists (written fresh -- see the chat
 this fixture was produced in, since no prior implementation was
 available to read). FixedPortfolioPercentage's constructor keyword is
 `allocation_pct`, per implementation_task_specs.md Task 1.1's own
-proposed reading of Run_Instructions' example. STRATEGY_PARAMS below
+proposed reading of docs/Run_Instructions' example. STRATEGY_PARAMS below
 has been updated to match.
 --------------------------------------------------------------------
 
@@ -64,7 +64,7 @@ STRATEGY_PARAMS = {"allocation_pct": 0.05}
 
 
 def load_fixture_data() -> pd.DataFrame:
-    """Load the fixed synthetic OHLCV dataset the same way Run_Instructions
+    """Load the fixed synthetic OHLCV dataset the same way docs/Run_Instructions
     documents loading real historical data, so this fixture exercises the
     identical ingestion path production data would."""
     df = pd.read_csv(OHLCV_FIXTURE_PATH, parse_dates=["timestamp"])

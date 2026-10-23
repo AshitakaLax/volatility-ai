@@ -73,20 +73,25 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: requirements*.txt
       - name: Install dependencies
         # requirements.txt already pins pytest, so it is NOT installed
         # separately -- doing that would let CI pass against a pytest the
-        # project does not declare. requirements-fidelity.txt is
-        # deliberately skipped: it pulls Playwright and a browser, and
-        # every Fidelity test runs against fakes. If that stops being
-        # true a test fails on the import and says so, which is the right
-        # way to find out.
+        # project does not declare. Every set the suite imports is
+        # installed; requirements-fidelity.txt brings the Playwright
+        # package but no browser, which no test needs (they run against
+        # fakes). requirements-qlib.txt is research-only and skipped.
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt -r requirements-warehouse.txt \
+            -r requirements-web.txt -r requirements-indicators.txt \
+            -r requirements-ml.txt -r requirements-fidelity.txt
       - name: Run the suite
-        run: python -m pytest tests/ -q
+        # cli.py test, not `pytest tests/`: the suite lives in every
+        # project directory's own tests/ as well as the root one, and
+        # `pytest tests/` had silently been running only the root part
+        # since that split.
+        run: python cli.py test -q
 
   audit:
     # The gap that let a non-parsing file ship. Kept as its own job, with

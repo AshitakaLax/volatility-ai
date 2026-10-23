@@ -688,3 +688,163 @@ def test_a_bare_account_number_is_not_what_this_endpoint_takes():
     session = FakeSession({PENDING_PATH: _pending([])})
     FidelityBroker(session, ACCOUNT, (ACCOUNT,), account_name="Traditional IRA")._orders()
     assert set(_account_filter(session)) > {"acctNum"}
+
+
+# --- what the live loop needs ------------------------------------------------
+
+
+def test_limit_prices_round_in_the_safe_direction():
+    """A buy rounds down (its fill becomes the cost basis); a sell rounds
+    up (it has cleared the no-loss guard). Nearest could cross either."""
+    broker = _broker(FakeSession())
+    assert broker.build_ticket("TQQQ", "buy", 1, 69.537)["limitPrice"] == 69.53
+    assert broker.build_ticket("TQQQ", "sell", 1, 69.531)["limitPrice"] == 69.54
+    assert broker.build_ticket("TQQQ", "buy", 1, 70.0)["limitPrice"] == 70.0
+    assert broker.build_ticket("TQQQ", "sell", 1, 70.0)["limitPrice"] == 70.0
+
+
+def _scoped_session():
+    return FakeSession(
+        {
+            PENDING_PATH: _pending(
+                [
+                    FILLED,
+                    dict(WORKING, orderNum="2C5OTHER", symbol="VTI"),
+                    {"orderNum": "2C5NOSYM", "acctNum": ACCOUNT, "cancelableInd": True},
+                ]
+            ),
+            "/ftgw/digital/trade-equity/positions": [
+                SPAXX_ROW,
+                {"symbol": "TQQQ", "quantity": 3.0},
+                {"symbol": "VTI", "quantity": 40.0},
+            ],
+            "/ftgw/digital/trade-equity/balance": {},
+        }
+    )
+
+
+def test_a_snapshot_scope_reports_only_its_symbols():
+    """A shared account's other holdings would otherwise stop the live
+    loop at startup: reconciliation refuses positions it has no lot for."""
+    broker = FidelityBroker(_scoped_session(), ACCOUNT, (ACCOUNT,), position_scope=("tqqq",))
+    snapshot = broker.snapshot()
+    assert snapshot.positions == {"TQQQ": 3.0}
+    assert "2C5OTHER" not in snapshot.orders
+
+
+def test_an_order_naming_no_symbol_stays_in_a_scoped_snapshot():
+    """It cannot be shown to be out of scope, so hiding it would be the
+    unsafe direction."""
+    broker = FidelityBroker(_scoped_session(), ACCOUNT, (ACCOUNT,), position_scope=("TQQQ",))
+    assert set(broker.snapshot().orders) == {"2C50H6WV", "2C5NOSYM"}
+
+
+def test_without_a_scope_the_snapshot_reports_everything():
+    snapshot = FidelityBroker(_scoped_session(), ACCOUNT, (ACCOUNT,)).snapshot()
+    assert snapshot.positions == {"TQQQ": 3.0, "VTI": 40.0}
+    assert {"2C50H6WV", "2C5OTHER", "2C5NOSYM"} <= set(snapshot.orders)
+
+
+# ======================================================================
+# The browser extension's confirmation of an order
+# ======================================================================
+
+
+class _Reports:
+    """The one method the adapter uses of bridge/order_reports.py's store."""
+
+    def __init__(self, *reports):
+        self.reports = {report.conf_num: report for report in reports}
+
+    def for_conf_num(self, conf_num):
+        return self.reports.get(conf_num)
+
+
+def _report(state, conf_num="2C50H6WV", filled_qty=1.0, avg_price=69.35):
+    from fidelity_gateway.bridge.order_reports import OrderReport
+
+    return OrderReport(
+        id="r1",
+        conf_num=conf_num,
+        symbol="TQQQ",
+        side="sell",
+        qty=1.0,
+        limit_price=69.3,
+        state=state,
+        filled_qty=filled_qty,
+        avg_price=avg_price,
+        attempts=1,
+        placed_at="",
+        updated_at="",
+        detail="",
+    )
+
+
+def _tracked(order, reports=None):
+    """An adapter that previewed `order`'s confNum as decision dec-1."""
+    session = FakeSession({PENDING_PATH: _pending([order])})
+    broker = FidelityBroker(session, ACCOUNT, (ACCOUNT,), order_reports=reports)
+    broker._decision_to_conf["dec-1"] = order["orderNum"]
+    return broker
+
+
+def test_a_fill_the_extension_agrees_on_is_confirmed_once(caplog):
+    broker = _tracked(FILLED, _Reports(_report("filled")))
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        assert broker.get_order_by_client_id("dec-1").state is OrderState.FILLED
+        broker.get_order_by_client_id("dec-1")
+    confirmations = [r.message for r in caplog.records if "ORDER COMPLETE" in r.message]
+    assert len(confirmations) == 1, "said once, not on every poll"
+    assert "2C50H6WV" in confirmations[0] and "dec-1" in confirmations[0]
+    assert "confirmed by the browser extension" in confirmations[0]
+
+
+def test_a_disagreement_is_an_error_naming_both_readings_and_the_engines_is_used(caplog):
+    broker = _tracked(FILLED, _Reports(_report("working", filled_qty=0.0)))
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        found = broker.get_order_by_client_id("dec-1")
+    assert found.state is OrderState.FILLED
+    assert found.filled_qty == 1
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert "working" in errors[0].message and "filled" in errors[0].message
+    assert not any("ORDER COMPLETE" in r.message for r in caplog.records)
+
+
+def test_a_different_filled_quantity_is_a_disagreement_too(caplog):
+    broker = _tracked(FILLED, _Reports(_report("filled", filled_qty=2.0)))
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        broker.get_order_by_client_id("dec-1")
+    assert [r.levelname for r in caplog.records].count("ERROR") == 1
+
+
+def test_agreement_short_of_a_fill_is_quiet(caplog):
+    broker = _tracked(WORKING, _Reports(_report("working", conf_num="2C50H81C", filled_qty=0.0)))
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        assert broker.get_order_by_client_id("dec-1").state is OrderState.ACCEPTED
+    assert caplog.records == []
+
+
+def test_nothing_to_compare_is_quiet(caplog):
+    cases = [
+        _tracked(FILLED),  # no extension in the path at all
+        _tracked(FILLED, _Reports()),  # the extension never saw this order
+        _tracked(FILLED, _Reports(_report("submitted"))),  # its own step, not a reading
+        _tracked(FILLED, _Reports(_report("blocked"))),
+    ]
+    with caplog.at_level("WARNING", logger="Optimizer"):
+        for broker in cases:
+            assert broker.get_order_by_client_id("dec-1").state is OrderState.FILLED
+    assert caplog.records == []
+
+
+def test_an_order_the_engine_reads_as_unknown_is_not_compared(caplog):
+    contradiction = {**WORKING, "cancelableInd": False, "status": "Open"}
+    broker = _tracked(
+        contradiction, _Reports(_report("working", conf_num="2C50H81C", filled_qty=0))
+    )
+    with caplog.at_level("ERROR", logger="Optimizer"):
+        assert broker.get_order_by_client_id("dec-1").state is OrderState.UNKNOWN
+    assert caplog.records == [], (
+        "the extension keeps a last known state; UNKNOWN is expected to differ"
+    )

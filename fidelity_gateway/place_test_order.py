@@ -49,8 +49,8 @@ have filled, been cancelled or expired, not only never arrived.
 
 Usage:
     # 1. start a debuggable browser and log into Fidelity BY HAND
-    & "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" \\
-        --remote-debugging-port=9222 --user-data-dir="C:\\Users\\%USERNAME%\\edge-debug-profile"
+    google-chrome --remote-debugging-port=9222 \\
+        --user-data-dir="$HOME/.cache/fidelity-debug-profile"   # or microsoft-edge / chromium
 
     # 2. see what it would do -- places nothing
     python -m fidelity_gateway.place_test_order --account <number> --dry-run
@@ -84,6 +84,7 @@ from fidelity_gateway.session import FidelitySession, FidelitySessionError
 
 CONFIRM_PHRASE = "PLACE THE ORDER"
 DEFAULT_JOURNAL = Path.home() / ".fidelity_recon" / "placed_orders.jsonl"
+EXTENSION_LOG_WAIT_SECONDS = 5.0
 
 
 def new_decision_id(symbol: str) -> str:
@@ -128,6 +129,22 @@ def parse_args(argv=None):
         help="Hard per-order dollar ceiling (default: 50).",
     )
     parser.add_argument("--cdp-url", default="http://localhost:9222")
+    parser.add_argument(
+        "--bridge",
+        action="store_true",
+        help="Reach Fidelity through the Fidelity Bridge browser extension instead of a "
+        "remote-debugging port. Runs the bridge itself; placing also needs 'Allow placing "
+        "and cancelling REAL orders' switched on in the extension.",
+    )
+    parser.add_argument("--bridge-host", default="127.0.0.1", help="With --bridge: listen address.")
+    parser.add_argument("--bridge-port", type=int, default=8765, help="With --bridge: port.")
+    parser.add_argument(
+        "--allow-client",
+        action="append",
+        default=None,
+        metavar="IP_OR_CIDR",
+        help="With --bridge: a browser address that may connect (default: this computer).",
+    )
     parser.add_argument("--journal", default=str(DEFAULT_JOURNAL))
     parser.add_argument(
         "--dry-run",
@@ -173,10 +190,9 @@ def attach(cdp_url: str):
         playwright.stop()
         raise ConfigurationError(
             f"Could not attach to a browser at {cdp_url}: {exc}\n\n"
-            "Start Edge with remote debugging FIRST, on a SEPARATE profile:\n"
-            '    & "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" '
-            '--remote-debugging-port=9222 --user-data-dir="C:\\Users\\%USERNAME%'
-            '\\edge-debug-profile"\n\n'
+            "Start Chrome or Edge with remote debugging FIRST, on a SEPARATE profile:\n"
+            "    google-chrome --remote-debugging-port=9222 "
+            '--user-data-dir="$HOME/.cache/fidelity-debug-profile"\n\n'
             "--user-data-dir is required: current Edge and Chrome refuse to enable "
             "remote debugging on the default profile."
         ) from exc
@@ -195,17 +211,39 @@ def attach(cdp_url: str):
     return playwright, fidelity[0]
 
 
-def _report(broker: FidelityBroker, journal: FileConfNumJournal) -> int:
+def connect(args):
+    """(handle, page): the bridge or a debugging-port attach. Either
+    handle has stop(), which releases the connection and never closes
+    the user's browser."""
+    if args.bridge:
+        from fidelity_gateway.bridge import DEFAULT_ALLOWED_CLIENTS, open_bridge
+
+        return open_bridge(
+            host=args.bridge_host,
+            port=args.bridge_port,
+            allow=args.allow_client or DEFAULT_ALLOWED_CLIENTS,
+        )
+    return attach(args.cdp_url)
+
+
+def _report(broker: FidelityBroker, journal: FileConfNumJournal, reports=None) -> int:
     """The recovery path, also run after every place and cancel.
 
     Covers this account's journal entries from the last day only -- the
     venue's order list holds working and recently completed orders, so an
     older entry would read as missing whatever happened to it.
+
+    Through the bridge, `reports` is the extension's order log, and each
+    entry also shows what the browser saw become of it. That is the
+    second witness worth having after a timeout: the extension may have
+    seen Fidelity's reply that never made it back here.
     """
     cutoff = time.time() - RECENT_WINDOW_SECONDS
     mine = [e for e in journal.read_all() if str(e.get("account")) == broker.account]
     recent = [e for e in mine if float(e.get("ts", 0.0)) >= cutoff]
     orders = {str(o.get("orderNum")): o for o in broker._orders()}
+    if reports is not None:
+        reports.wait_for_log(EXTENSION_LOG_WAIT_SECONDS)
     print(
         f"\njournal: {len(recent)} order(s) recorded for ...{broker.account[-4:]} in the "
         f"last 24h; the venue lists {len(orders)} order(s)"
@@ -217,9 +255,11 @@ def _report(broker: FidelityBroker, journal: FileConfNumJournal) -> int:
             if found is None
             else f"{derive_order_state(found)} ({found.get('status')})"
         )
+        witness = reports.for_conf_num(str(entry["conf_num"])) if reports is not None else None
+        seen = f"  [the extension saw: {witness.state}]" if witness is not None else ""
         print(
             f"  {entry['conf_num']:>10}  {entry.get('side', '?'):>4} "
-            f"{entry.get('qty', '?')} {entry.get('symbol', '?'):<6} -> {state}"
+            f"{entry.get('qty', '?')} {entry.get('symbol', '?'):<6} -> {state}{seen}"
         )
     older = len(mine) - len(recent)
     if older:
@@ -241,7 +281,9 @@ def main(argv=None) -> int:
     journal = FileConfNumJournal(args.journal)
     Path(args.journal).parent.mkdir(parents=True, exist_ok=True)
 
-    playwright, page = attach(args.cdp_url)
+    handle, page = connect(args)
+    # Through the bridge, the extension's own record of its orders.
+    reports = getattr(handle, "order_reports", None)
     try:
         # allow_order_endpoints is granted ONLY when a real place is
         # intended. In every other mode the transport itself refuses
@@ -267,6 +309,7 @@ def main(argv=None) -> int:
                     session, args.account, (args.account,), account_name=args.account_name
                 ),
                 journal,
+                reports,
             )
 
         if args.cancel:
@@ -295,7 +338,7 @@ def main(argv=None) -> int:
             print(f"\nCancelling {args.cancel} ...")
             canceller.cancel(args.cancel)
             print("Cancel accepted. Reading the venue's order list back ...")
-            return _report(canceller, journal)
+            return _report(canceller, journal, reports)
 
         quote_broker = FidelityBroker(
             session, args.account, (args.account,), account_name=args.account_name
@@ -347,14 +390,14 @@ def main(argv=None) -> int:
 
         print(f"\nPLACED. confNum {order.id}, state {order.state}.")
         print("Reading it back out of the venue's own order list ...")
-        _report(broker, journal)
+        _report(broker, journal, reports)
         print(
             "\nIt is a DAY order resting well below the market, so it should expire\n"
             "at the close. Cancel it in the browser if you would rather not wait."
         )
         return 0
     finally:
-        playwright.stop()
+        handle.stop()
 
 
 def _cli(argv=None) -> int:

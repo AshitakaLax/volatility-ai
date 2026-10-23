@@ -47,8 +47,9 @@ rather than modifying it, so nothing in src/ changes.
 """
 
 import sys
+from pathlib import Path
 
-sys.path.insert(0, r"C:/workspace/volatility-ai")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import logging
 
 logging.disable(logging.WARNING)

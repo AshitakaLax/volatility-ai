@@ -53,13 +53,16 @@ do today:
 Kept as one file rather than three, so the Dockerfile has exactly one
 ENTRYPOINT and "run everything" is genuinely one image.
 
-On `live`: src/alpaca_broker.py implements the LiveBroker protocol
-against a real Alpaca account, so `live` now genuinely connects,
-verifies credentials against an authenticated endpoint, and
-reconciles persisted local state against the broker before reaching
-READY. Whether it talks to the paper or the real-capital endpoint is
-decided by `live.paper_trading` in the config file -- a committed,
-reviewable value rather than a shell flag.
+On `live`: the broker is whichever `live.broker` names. For Alpaca,
+engine/brokers/alpaca_broker.py connects, verifies credentials against
+an authenticated endpoint, and reconciles persisted local state against
+the broker before reaching READY; whether it talks to the paper or the
+real-capital endpoint is decided by `live.paper_trading` in the config
+file -- a committed, reviewable value rather than a shell flag. For
+Fidelity, fidelity_gateway/live.py reaches the account through the
+Fidelity Bridge extension in the user's signed-in browser, and
+`live.fidelity.dry_run: false` is what makes it place real orders;
+prices and the market clock still come from Alpaca.
 
 Once READY, `live` enters src/live_trading_loop.py's tick loop and
 runs until SIGTERM/SIGINT, then shuts down through the Task 7.12
@@ -82,12 +85,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 
-# `backup`/`restore`'s default push/pull target -- the Raspberry Pi this
-# project deploys to (see docs/DEPLOY_RASPBERRY_PI.md). Overridable with
+# `backup`/`restore`'s default push/pull target -- the Raspberry Pi, which
+# kept the off-machine copies (docs/DEPLOY.md, Backups). Overridable with
 # --remote-host or $VAI_BACKUP_REMOTE; tools/backup_databases.py (which
 # these two commands delegate to) deliberately has no default of its own,
 # but a CLI meant to be run without flags needs one.
-DEFAULT_PI_REMOTE = "ashitakalax@172.16.0.137"
+DEFAULT_PI_REMOTE = os.environ.get("VAI_DEFAULT_PI_REMOTE", "user@host")
 
 # `test`'s default targets. The suite is split so each project directory
 # (a session root -- see CLAUDE.md's "Project directories" table) carries
@@ -109,7 +112,7 @@ TEST_ROOTS = (
 )
 
 # strategy_id -> class. BacktestConfig only stores the id as a string
-# (Task 6.1); this is the same manual mapping Run_Instructions
+# (Task 6.1); this is the same manual mapping docs/Run_Instructions
 # documents, since the codebase has no id-to-class registry.
 STRATEGY_REGISTRY = {}
 
@@ -347,7 +350,9 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     df, dataset_version = _load_warehouse_bars(config.backtest.symbol)
     if df is None:
         return 2
-    df = _apply_backtest_window(df, config)
+    from research.strategies.strategy_registry import session_bars
+
+    df = _apply_backtest_window(session_bars(strategy_class, df), config)
 
     from research.optimization.optimization_controller import OptimizationController
 
@@ -781,7 +786,7 @@ def cmd_search(args: argparse.Namespace) -> int:
 
 
 def cmd_live(args: argparse.Namespace) -> int:
-    """Connect to Alpaca and run the startup lifecycle to READY."""
+    """Connect to the configured broker and run the startup lifecycle to READY."""
     from engine.brokers.alpaca_broker import AlpacaBroker
     from engine.core.config import BacktestConfig
     from engine.core.exceptions import ConfigurationError
@@ -815,8 +820,67 @@ def cmd_live(args: argparse.Namespace) -> int:
         )
         return 2
 
+    fidelity = config.live.broker == "fidelity"
+    if fidelity and config.live.fidelity.dry_run and not args.check_only:
+        # A preview never becomes an order, so it never fills: the loop
+        # would track every one of them forever and never trade. Refused
+        # here rather than discovered as a book of phantom orders.
+        print(
+            "live.fidelity.dry_run is true: Fidelity orders would only be previewed, and a "
+            "preview never fills, so the trading loop would track phantom orders forever. "
+            "Use --check-only to test the connection, or set dry_run: false (with "
+            "paper_trading: false) to trade.",
+            file=sys.stderr,
+        )
+        return 2
+
     db_path = args.state_db
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # THE ALGORITHM SET FROM THE BROWSER EXTENSION, if this deployment
+    # allows that (live.fidelity.bridge.allow_algorithm_changes): an
+    # override beside the state database, laid over the YAML here, before
+    # anything opens. One that does not validate stops the start -- trading
+    # the YAML's algorithm while the operator believes theirs is live would
+    # be the worse failure. See research/strategies/live_algorithm.py.
+    #
+    # And the algorithm set from the Live page (live.control.algorithm_changes):
+    # the same override, written by this deployment's own trader when it
+    # applies the page's command -- engine/trading/operator_control.py.
+    from research.strategies.live_algorithm import AlgorithmControl
+
+    grants = config.live.control.effective(config.live.paper_trading)
+    algorithm = AlgorithmControl(
+        config,
+        state_db=db_path,
+        registry=registry,
+        allowed=bool(fidelity and config.live.fidelity.bridge.allow_algorithm_changes),
+        web_allowed=grants.algorithm_changes,
+        profiles_only=grants.profiles_only,
+        config_path=config_path,
+        log=lambda message: print(message, file=sys.stderr, flush=True),
+    )
+    if algorithm.ignored_override():
+        print(
+            f"Ignoring {algorithm.path}: neither live.fidelity.bridge.allow_algorithm_changes "
+            "nor live.control.algorithm_changes is on, so the config file's algorithm is traded.",
+            file=sys.stderr,
+        )
+    try:
+        config = algorithm.effective_config()
+    except ConfigurationError as e:
+        print(f"Invalid algorithm override: {e}", file=sys.stderr)
+        return 2
+    override = algorithm.override_info()
+    if override is not None:
+        source = {"extension": "browser extension", "web": "Live page"}.get(
+            override["channel"], override["channel"]
+        )
+        print(
+            f"Trading the algorithm set from the {source} ({algorithm.path}): "
+            f"strategy={config.strategy.strategy_id} step={config.live.step} "
+            f"profit_target={config.live.profit_target}"
+        )
 
     # ONE LOOP PER STORE. Two live loops against the same state store
     # submit duplicate orders, and DuplicateOrderGuard cannot catch it:
@@ -855,6 +919,19 @@ def cmd_live(args: argparse.Namespace) -> int:
     connected: dict = {}
 
     def _connect_broker():
+        if fidelity:
+            # Through the Fidelity Bridge extension in the user's own
+            # browser: starts the bridge, waits for the extension, builds
+            # the session and the broker the config asks for.
+            from fidelity_gateway.live import connect_live
+
+            connection = connect_live(config, state_db=db_path)
+            connected["broker"] = connection.broker
+            connected["close"] = connection.close
+            connected["connection"] = connection
+            if algorithm is not None:
+                _offer_algorithm(connection, algorithm, read_only=args.check_only)
+            return
         broker = AlpacaBroker.from_mode(mode, load_live_credentials())
         # ping() rather than a bare construction: TradingClient does no
         # I/O in its constructor, so a bad key would otherwise pass
@@ -862,104 +939,351 @@ def cmd_live(args: argparse.Namespace) -> int:
         broker.ping()
         connected["broker"] = broker
 
-    final_state = lifecycle.start(
-        connect_broker=_connect_broker,
-        broker_snapshot_provider=lambda: connected["broker"].snapshot(),
-    )
-
-    print(f"Runtime state: {final_state.value}")
-    print(f"Mode: {mode.value}")
-    if final_state.value != "READY":
-        store.close()
-        lock.release()
-        print(
-            "Did not reach READY. The state above names the stage that stopped startup; "
-            "RECONCILIATION_REQUIRED means local and broker state disagree and a human "
-            "must resolve it before trading resumes."
-        )
-        return 1
-
-    print("READY -- broker connected and local state reconciles with the broker.")
-    if args.check_only:
-        store.close()
-        lock.release()
-        return 0
-
     try:
+        final_state = lifecycle.start(
+            connect_broker=_connect_broker,
+            broker_snapshot_provider=lambda: connected["broker"].snapshot(),
+        )
+
+        print(f"Runtime state: {final_state.value}")
+        print(f"Mode: {mode.value}")
+        connection = connected.get("connection")
+        inbox = _control_inbox(args)
+        if final_state.value != "READY":
+            if inbox is not None:
+                inbox.write_status(
+                    state="recovery_required",
+                    detail=f"startup stopped at {final_state.value}; see the engine's log",
+                    process="loop",
+                    heartbeat_seconds=600.0,
+                )
+            store.close()
+            print(
+                "Did not reach READY. The state above names the stage that stopped startup; "
+                "RECONCILIATION_REQUIRED means local and broker state disagree and a human "
+                "must resolve it before trading resumes."
+            )
+            if connection is not None:
+                connection.report(
+                    state="halted",
+                    detail=f"startup stopped at {final_state.value}; see the engine's log",
+                )
+            return 1
+
+        print("READY -- broker connected and local state reconciles with the broker.")
+        if args.check_only:
+            store.close()
+            if connection is not None:
+                connection.report(mode="check", state="stopped", detail="the check reached READY")
+            return 0
+
         return _run_trading_loop(
-            args, config, connected["broker"], store, circuit_breaker, lifecycle
+            args,
+            config,
+            connected["broker"],
+            store,
+            circuit_breaker,
+            lifecycle,
+            connection=connection,
+            algorithm=algorithm,
+            inbox=inbox,
         )
     finally:
         # finally, not after the return: a loop that raises must not
-        # leave a lock naming a live PID that is about to not exist.
+        # leave a lock naming a live PID that is about to not exist, nor
+        # a bridge listening for a browser no loop will answer.
+        if "close" in connected:
+            connected["close"]()
         lock.release()
 
 
-def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -> int:
+def _alpaca_clock_client():
+    """An Alpaca connection used ONLY for the market clock and data.
+
+    A Fidelity deployment still reads prices and market hours from
+    Alpaca -- the venue that trades and the feed that prices are separate
+    connections. This one points at Alpaca's PAPER endpoint, the safe
+    direction: it is never handed an order, and should it ever be, no
+    real money is behind it. Needs APCA_API_KEY_ID / APCA_API_SECRET_KEY
+    for a paper account.
+    """
+    from engine.brokers.alpaca_broker import _require_alpaca
+    from engine.core.secrets import load_live_credentials
+
+    credentials = load_live_credentials()
+    _, trading_client_class, *_ = _require_alpaca()
+    return trading_client_class(
+        api_key=credentials.api_key_id, secret_key=credentials.api_secret_key, paper=True
+    )
+
+
+def _offer_algorithm(connection, algorithm, *, read_only: bool) -> None:
+    """The algorithm editor's calls (research/strategies/live_algorithm.py),
+    offered to the browser extension. A --check-only run runs no loop to
+    switch, so it only shows the algorithm."""
+    connection.register_call("algorithm.describe", algorithm.describe)
+    if not read_only:
+        connection.register_call("algorithm.set", algorithm.set)
+        connection.register_call("algorithm.reset", algorithm.reset)
+
+
+# What each kind of tick means to someone looking at the extension's popup.
+_TICK_DETAIL = {
+    "ok": "trading",
+    "market_closed": "waiting for the market to open",
+    "no_data": "no new price this tick",
+    "tick_rejected": "a price failed validation and was skipped",
+}
+
+
+def _algorithm_status(config, algorithm) -> dict:
+    """The algorithm part of the engine's status, for the extension."""
+    status = {
+        "strategy": config.strategy.strategy_id,
+        "step": config.live.step,
+        "profitTarget": config.live.profit_target,
+    }
+    if algorithm is not None:
+        status["algorithm"] = {
+            "source": "extension" if algorithm.allowed and algorithm.path.exists() else "config",
+            "editable": algorithm.allowed,
+            "pending": algorithm.pending(),
+        }
+    return status
+
+
+def _fidelity_status(config, connection) -> dict:
+    """A Fidelity deployment's part of its trader's status: the browser
+    extension's connection (fidelity_gateway.live). The account it trades
+    is LoopControl's own field (operator_control.account_tag). Nothing for
+    an Alpaca deployment."""
+    if connection is None or config.live.broker != "fidelity":
+        return {}
+    settings = config.live.fidelity
+    return {
+        "fidelity": {
+            **connection.connection_report(),
+            # The account's display name ("Traditional IRA"): identifies
+            # nothing on its own (FidelityConfig), unlike its number.
+            "account_name": settings.account_name,
+            "max_order_value": settings.max_order_value,
+        },
+    }
+
+
+def _control_inbox(args):
+    """The Live page's command inbox for this deployment, or None. A check
+    run (--check-only) answers none: it trades nothing to apply them to."""
+    if not getattr(args, "control_dir", None) or args.check_only:
+        return None
+    from engine.trading.control_inbox import ControlInbox
+
+    return ControlInbox(args.control_dir)
+
+
+def _run_trading_loop(
+    args,
+    config,
+    broker,
+    store,
+    circuit_breaker,
+    lifecycle,
+    *,
+    connection=None,
+    algorithm=None,
+    inbox=None,
+) -> int:
     """Run the tick loop until a signal stops it, then shut down cleanly.
 
     Split from cmd_live so the startup path stays readable: everything
     above this point is "can we safely trade at all", everything below
     is "trade until told to stop".
+
+    `connection` (fidelity_gateway.live's) is told what the loop is doing,
+    for the browser extension's popup. With `algorithm`, a change made in
+    the extension takes effect at the next tick boundary: the loop stops,
+    persists, and is built again from the same store -- the state a
+    restart loads -- with the new config.
     """
     import signal
 
+    from engine.core.build_info import identity
     from engine.core.secrets import load_live_credentials
     from engine.data.alpaca_market_data import AlpacaMarketData
+    from engine.data.historical_data import AlpacaHistoricalData
+    from engine.trading.live_history import AlpacaSessionHistory
     from engine.trading.live_trading_loop import LiveTradingLoop
+    from research.strategies.live_algorithm import build_strategy
 
-    strategy_class = _load_strategy_registry()[config.strategy.strategy_id]
-    strategy = strategy_class(**config.strategy.strategy_params)
+    registry = _load_strategy_registry()
+    process_build = identity()  # this process's code, for the Live page's Deployment card
+    # Built first, so a strategy that refuses its parameters -- or a
+    # target_return that does not match the live.profit_target this
+    # deployment trades (build_strategy's cross-check, the same one
+    # optimization_controller._run_one_combination applies per sweep
+    # combination) -- stops here, before any connection is opened.
+    strategy = build_strategy(config, registry)
 
-    # Same cross-check optimization_controller._run_one_combination
-    # applies per sweep combination -- see BayesianDualScaleSizing's
-    # module docstring, "THE TARGET_RETURN / PROFIT_TARGET CROSS-CHECK".
-    # Here it is target_return against the SINGLE parameter the live
-    # loop actually trades (config.live.profit_target), not a sweep
-    # value -- real capital confidently estimating the probability of
-    # hitting the wrong number is the same silent failure, live.
-    from engine.core.exceptions import ConfigurationError
+    def report(**fields) -> None:
+        if connection is not None:
+            connection.report(**fields)
 
-    # live.profit_target can still be None here -- BacktestConfig.validate()
-    # deliberately does not require it (a config may set live.enabled
-    # without running the daemon), and LiveTradingLoop.__init__ below is
-    # what raises the clearer "both required" error for that case. Guard
-    # against it here so a missing value isn't misreported as a
-    # "mismatch" against None.
-    declared_target = getattr(strategy, "target_return", None)
-    mismatch_allowed = getattr(strategy, "allow_target_return_mismatch", False)
-    if (
-        declared_target is not None
-        and config.live.profit_target is not None
-        and declared_target != config.live.profit_target
-        and not mismatch_allowed
-    ):
-        raise ConfigurationError(
-            f"{config.strategy.strategy_id}'s target_return={declared_target} does not match "
-            f"live.profit_target={config.live.profit_target} -- the posterior would be "
-            "confidently estimating the probability of hitting a different price than the one "
-            "this deployment actually trades. Set target_return to match live.profit_target, "
-            "or pass allow_target_return_mismatch=True in strategy_params to confirm the "
-            "mismatch is deliberate."
-        )
+    control = None  # the Live page's commands; built once the loop exists
+    recorded = {"t": None}  # the last bar written to the bar journal
+
+    def on_tick(tick: dict) -> None:
+        bar = current["loop"].last_bar
+        if inbox is not None and bar is not None and bar["t"] != recorded["t"]:
+            inbox.record_bars([bar])
+            recorded["t"] = bar["t"]
+        if control is not None:
+            # On the loop's own thread, between ticks: a pause lands before
+            # the next buy decision, through the breaker the loop reads.
+            control.tick()
+        if tick.get("reason") == "broker_unavailable":
+            report(
+                state="paused",
+                detail=tick.get("detail") or "the broker cannot be reached",
+                lastTickAt=tick.get("at"),
+            )
+        else:
+            reason = tick.get("reason")
+            report(
+                state="running",
+                detail=_TICK_DETAIL.get(reason, str(reason)),
+                lastTickAt=tick.get("at"),
+            )
 
     market_data = AlpacaMarketData(
         feed=config.live.feed,
         # The clock is a trading-API endpoint, so it comes from the
         # connection the broker already authenticated rather than a
-        # second one.
-        trading_client=broker.trading_client,
+        # second one -- when the broker IS Alpaca. A Fidelity deployment
+        # has no Alpaca broker, so it opens a clock-only connection.
+        trading_client=getattr(broker, "trading_client", None) or _alpaca_clock_client(),
         credentials=load_live_credentials(),
     )
 
-    loop = LiveTradingLoop(
-        config=config,
-        strategy=strategy,
-        broker=broker,
-        market_data=market_data,
-        store=store,
-        circuit_breaker=circuit_breaker,
+    # The sessions a strategy's state spans, replayed before its first tick
+    # (engine/trading/live_history.py): the supervisor starts a process per
+    # session, which otherwise began every morning cold. Same feed as the
+    # ticks, so the two agree.
+    history = AlpacaSessionHistory(
+        AlpacaHistoricalData(credentials=load_live_credentials()), feed=config.live.feed
     )
+
+    def shadow_for(cfg):
+        """While an override trades in place of the config file's algorithm,
+        that algorithm too -- fed the same bars, trading nothing -- so the
+        Live page can say what switching back would do now. None otherwise,
+        and None (with a note) if it cannot be built: never a reason not to
+        trade."""
+        if algorithm is None or inbox is None:
+            return None
+        try:
+            base = algorithm.config_file_config()
+            if algorithm.algorithm_of(base.to_dict()) == algorithm.algorithm_of(cfg.to_dict()):
+                return None
+            return build_strategy(base, registry)
+        except Exception as e:
+            print(f"Not shadowing the config file's algorithm: {e}", file=sys.stderr)
+            return None
+
+    def on_fill(fill: dict) -> None:
+        if inbox is not None:
+            inbox.record_fill(fill)
+
+    def build(cfg, built_strategy):
+        loop = LiveTradingLoop(
+            config=cfg,
+            strategy=built_strategy,
+            broker=broker,
+            market_data=market_data,
+            store=store,
+            circuit_breaker=circuit_breaker,
+            tick_listener=on_tick,
+            history_provider=history,
+            shadow=shadow_for(cfg),
+            fill_listener=on_fill,
+        )
+        if inbox is not None and loop.recent_bars:
+            # The sessions before this one, for the Live page's chart: the
+            # feed this loop trades on, not the warehouse's.
+            inbox.record_bars(loop.recent_bars, keep_past=True)
+        if loop.replayed_bars:
+            mode = getattr(built_strategy, "mode", None)
+            print(
+                f"History: {loop.replayed_bars:,} bars replayed before the first tick"
+                + (f"; regime {mode}" if mode else "")
+            )
+        return loop
+
+    try:
+        first = build(config, strategy)
+    except Exception as e:
+        # Before any tick, so nothing is in flight: refuse rather than trade
+        # a strategy that starts blind. The supervisor tries again.
+        print(f"Could not prepare the strategy: {type(e).__name__}: {e}", file=sys.stderr)
+        report(state="halted", detail=f"could not prepare the strategy: {e}")
+        store.close()
+        return 1
+    current = {"loop": first, "config": config, "reload": False, "stop": False}
+
+    if inbox is not None:
+        from engine.trading.operator_control import LoopControl, account_tag
+        from research.strategies.live_algorithm import algorithm_handlers
+
+        def _stop_for_operator(why: str) -> None:
+            print(f"Stopping: {why} -- finishing the current tick.", file=sys.stderr)
+            current["stop"] = True
+            current["loop"].request_stop()
+
+        def _rewarm() -> None:
+            # The same rebuild an algorithm change triggers, with the same
+            # config: the strategy is constructed again and history replayed.
+            current["reload"] = True
+            current["loop"].request_stop()
+
+        control = LoopControl(
+            inbox,
+            breaker=circuit_breaker,
+            loop=lambda: current["loop"],
+            stop=_stop_for_operator,
+            heartbeat_seconds=float(config.live.poll_interval_seconds),
+            extra=(
+                algorithm_handlers(
+                    algorithm,
+                    symbol=config.backtest.symbol,
+                    paper=config.live.paper_trading,
+                    on_rewarm=_rewarm,
+                )
+                if algorithm is not None
+                else None
+            ),
+            status_fields=lambda: {
+                "algorithm": {
+                    "strategy_id": current["config"].strategy.strategy_id,
+                    "step": current["config"].live.step,
+                    "profit_target": current["config"].live.profit_target,
+                    "override": algorithm.override_info() if algorithm is not None else None,
+                },
+                # What the loop will do next and why, and -- while an
+                # override trades -- what switching back would do now.
+                "now": current["loop"].decision,
+                "shadow": current["loop"].shadow_state,
+                "build": process_build,
+                "broker": config.live.broker,
+                # Why the broker cannot be reached right now, while it cannot
+                # (a Fidelity session signed out, the extension's trading
+                # switch off, Alpaca down); None when it can.
+                "broker_unavailable": current["loop"].broker_unavailable,
+                **_fidelity_status(config, connection),
+            },
+            account=lambda: account_tag(config.live),
+        )
+        # Before the first tick, so a pause queued during startup is in force
+        # before any buy decision.
+        control.tick()
 
     # SIGTERM is how `docker stop` asks a container to exit, so handling
     # it is what makes restart:unless-stopped safe: the loop finishes
@@ -967,7 +1291,8 @@ def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -
     # than being killed midway through applying a confirmed fill.
     def _handle_signal(signum, _frame):
         print(f"\nReceived signal {signum} -- finishing the current tick.", file=sys.stderr)
-        loop.request_stop()
+        current["stop"] = True
+        current["loop"].request_stop()
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
@@ -980,32 +1305,98 @@ def _run_trading_loop(args, config, broker, store, circuit_breaker, lifecycle) -
     if hasattr(signal, "SIGBREAK"):  # Windows only
         signal.signal(signal.SIGBREAK, _handle_signal)
 
+    if algorithm is not None:
+        algorithm.mark_live(config)
+
+        def _reload() -> None:
+            # Called from the bridge's thread: ask the loop to stop after
+            # its current tick; the rebuild happens below, on this thread.
+            current["reload"] = True
+            report(
+                detail="switching to the new algorithm at the next tick",
+                **_algorithm_status(current["config"], algorithm),
+            )
+            current["loop"].request_stop()
+
+        algorithm.on_apply = _reload
+
     print(
         f"Trading loop started: symbol={config.backtest.symbol} step={config.live.step} "
         f"profit_target={config.live.profit_target} feed={config.live.feed} "
         f"interval={config.live.poll_interval_seconds}s"
     )
+    report(
+        state="running",
+        detail="trading loop started",
+        pollSeconds=float(config.live.poll_interval_seconds),
+        **_algorithm_status(config, algorithm),
+    )
     exit_code = 0
+    aborted = None
+    ticks = 0
     try:
-        ticks = loop.run_forever(max_ticks=args.max_ticks)
+        while True:
+            remaining = None if args.max_ticks is None else args.max_ticks - ticks
+            ticks += current["loop"].run_forever(max_ticks=remaining)
+            finished = args.max_ticks is not None and ticks >= args.max_ticks
+            if not current["reload"] or current["stop"] or finished:
+                break
+            # THE ALGORITHM CHANGED. Persist, then build the loop again
+            # from the same store, as a restart would -- lots, orders in
+            # flight and cash carry over -- with the config now in force.
+            current["reload"] = False
+            current["loop"].persist_state()
+            new_config = algorithm.effective_config()
+            current["loop"] = build(new_config, build_strategy(new_config, registry))
+            current["config"] = new_config
+            if current["reload"]:  # another change arrived meanwhile
+                current["loop"].request_stop()
+            algorithm.mark_live(new_config)
+            print(
+                f"Algorithm changed: strategy={new_config.strategy.strategy_id} "
+                f"step={new_config.live.step} profit_target={new_config.live.profit_target}"
+            )
+            report(
+                detail="now trading the new algorithm",
+                **_algorithm_status(new_config, algorithm),
+            )
         print(f"Trading loop stopped after {ticks} tick(s).")
     except Exception as e:
         # Never exit silently on a trading error -- the shutdown
         # sequence below still runs so in-flight state is settled and
         # persisted rather than abandoned.
         print(f"Trading loop aborted: {type(e).__name__}: {e}", file=sys.stderr)
+        aborted = f"{type(e).__name__}: {e}"
         exit_code = 1
+    finally:
+        if algorithm is not None:
+            algorithm.on_apply = None
 
+    loop = current["loop"]
     final = lifecycle.shutdown(
         in_flight_settled=loop.in_flight_settled,
         persist_state=loop.persist_state,
         close_connections=store.close,
     )
     print(f"Shutdown state: {final.value}")
+    if inbox is not None:
+        inbox.write_status(
+            state="stopped" if final.value == "STOPPED" else "recovery_required",
+            detail=aborted or (control.stopping if control else None) or "the session ended",
+            process="loop",
+            heartbeat_seconds=60.0,
+        )
     if final.value != "STOPPED":
         # RECONCILIATION_REQUIRED here means in-flight orders did not
         # settle in the bounded window; the next startup must reconcile.
+        report(
+            state="halted",
+            detail=aborted
+            or f"shutdown ended in {final.value}: orders in flight did not settle; "
+            "the next start reconciles",
+        )
         return 1
+    report(state="halted" if aborted else "stopped", detail=aborted or "stopped by the operator")
     return exit_code
 
 
@@ -1023,7 +1414,15 @@ def cmd_backup(args: argparse.Namespace) -> int:
     import tempfile
 
     from engine.warehouse.connection import MARKET_DATA_DB, SIM_RESULTS_DB
-    from tools.backup_databases import build_archive, prune_local, push_to_remote, snapshot_all
+    from tools.backup_databases import (
+        build_archive,
+        default_backup_dir,
+        prune_local,
+        push_to_remote,
+        snapshot_all,
+    )
+
+    out_dir = Path(args.out_dir) if args.out_dir else default_backup_dir()
 
     warehouse_dir = Path(args.warehouse)
     databases = [
@@ -1054,9 +1453,9 @@ def cmd_backup(args: argparse.Namespace) -> int:
         if not entries:
             print("Nothing was snapshotted successfully.", file=sys.stderr)
             return 1
-        archive = build_archive(workdir, entries, extra_paths, Path(args.out_dir))
+        archive = build_archive(workdir, entries, extra_paths, out_dir)
 
-    prune_local(Path(args.out_dir), args.keep)
+    prune_local(out_dir, args.keep)
 
     pushed = False
     if args.local_only:
@@ -1730,7 +2129,11 @@ def main() -> int:
     )
     p_submit.set_defaults(func=cmd_submit)
 
-    p_live = sub.add_parser("live", help="Connect to Alpaca and run the startup lifecycle")
+    p_live = sub.add_parser(
+        "live",
+        help="Connect to the configured broker (Alpaca, or Fidelity through the browser "
+        "extension) and run the startup lifecycle",
+    )
     p_live.add_argument("--config", required=True, help="Path to a BacktestConfig YAML file")
     p_live.add_argument(
         "--state-db",
@@ -1748,6 +2151,13 @@ def main() -> int:
         default=None,
         help="Stop after N ticks instead of running until signalled",
     )
+    p_live.add_argument(
+        "--control-dir",
+        default=os.environ.get("VAI_CONTROL_DIR"),
+        help="This deployment's control directory, where the Live page's commands "
+        "(pause, resume, disable, switch) arrive; applied between ticks. "
+        "Defaults to $VAI_CONTROL_DIR.",
+    )
     p_live.set_defaults(func=cmd_live)
 
     p_backup = sub.add_parser("backup", help="Snapshot the DuckDB warehouse and push it to the Pi")
@@ -1764,9 +2174,10 @@ def main() -> int:
     )
     p_backup.add_argument(
         "--out-dir",
-        default="backups",
+        default=None,
         metavar="DIR",
-        help="Where local archives are written (default: backups/)",
+        help="Where local archives are written (default: $VAI_BACKUP_DIR, else "
+        "/workspace/backups if it exists, else backups/)",
     )
     p_backup.add_argument(
         "--keep",

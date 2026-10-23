@@ -320,3 +320,38 @@ def test_clamp_trade_value_is_unchanged_by_the_new_setting():
     with_halt = RiskManager(max_concurrent_lots=3, halt_new_buys_if_drawdown_exceeds=0.2)
     args = (5000.0, 100_000.0, 90_000.0, 2)
     assert without.clamp_trade_value(*args) == with_halt.clamp_trade_value(*args)
+
+
+class TestOperatorHalt:
+    """halt_by_operator: the Live page's "Pause buys"."""
+
+    def test_it_needs_a_human_to_clear(self):
+        breaker = CircuitBreaker()
+        assert breaker.halt_by_operator("levi", "earnings tomorrow")
+        assert breaker.state is CircuitBreakerState.MANUAL_RESET_REQUIRED
+        assert breaker.reason == "paused by levi: earnings tomorrow"
+        assert not breaker.allows_new_buys
+
+    def test_a_recovering_drawdown_does_not_rewrite_it(self):
+        breaker = CircuitBreaker()
+        breaker.halt_by_operator("levi", "manual")
+        breaker.evaluate(0.0, THRESHOLD)
+        assert breaker.reason == "paused by levi: manual"
+
+    def test_it_never_downgrades_another_halt(self):
+        breaker = CircuitBreaker()
+        breaker.evaluate(0.5, THRESHOLD)
+        reason = breaker.reason
+        assert not breaker.halt_by_operator("levi", "manual")
+        assert breaker.reason == reason and breaker.state is CircuitBreakerState.HALTED_NEW_BUYS
+
+    def test_it_persists(self, tmp_path):
+        store = LedgerStore(str(tmp_path / "s.db"))
+        CircuitBreaker(store=store).halt_by_operator("levi", "manual")
+        assert store.get_meta(HALT_STATE_KEY) == "MANUAL_RESET_REQUIRED"
+        assert not CircuitBreaker(store=store).allows_new_buys
+        store.close()
+
+    def test_it_names_the_operator(self):
+        with pytest.raises(ConfigurationError):
+            CircuitBreaker().halt_by_operator(" ", "manual")

@@ -184,6 +184,31 @@ class CircuitBreaker:
         else:
             self._alert("RECONCILIATION_WHILE_HALTED", f"already {self._state.value}: {detail}")
 
+    def halt_by_operator(self, operator: str, reason: str) -> bool:
+        """An operator pausing new buys (the Live page's "Pause buys").
+
+        Straight to MANUAL_RESET_REQUIRED: there is no condition behind it
+        to recover, so evaluate() -- which moves a drawdown halt along as
+        the drawdown changes -- must not rewrite its reason, and only a
+        human clears it. Never forces liquidation; exits continue.
+
+        Already halted stays as it is, with its own reason -- a drawdown or
+        reconciliation halt is not downgraded to "an operator paused".
+        Returns whether this call halted anything.
+        """
+        if not operator or not str(operator).strip():
+            raise ConfigurationError("An operator halt must name the operator.")
+        if self._state is not CircuitBreakerState.ACTIVE:
+            self._alert(
+                "OPERATOR_HALT_WHILE_HALTED", f"already {self._state.value}: {operator}: {reason}"
+            )
+            return False
+        self._state = CircuitBreakerState.MANUAL_RESET_REQUIRED
+        self._reason = f"paused by {operator}" + (f": {reason}" if reason else "")
+        self._persist()
+        self._alert("OPERATOR_HALT", self._reason)
+        return True
+
     def manual_reset(self, operator: str, note: str = "") -> None:
         """Explicit human reset -- the ONLY way back to ACTIVE.
 

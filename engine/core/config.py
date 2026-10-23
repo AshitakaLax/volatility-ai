@@ -24,7 +24,7 @@ YAML-only schema, per this task's explicit instruction.
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from engine.core.exceptions import ConfigurationError
@@ -81,7 +81,7 @@ class StrategyConfig:
     This docstring previously said no registry existed and told the
     caller to map it themselves. That stopped being true when
     strategy_registry.py was added -- whose own docstring names this
-    comment and Run_Instructions as the two hand-maintained copies it
+    comment and docs/Run_Instructions as the two hand-maintained copies it
     replaced. Opaque-at-parse-time and no-registry-anywhere are
     different claims, and only the first one was ever the design.
 
@@ -422,6 +422,77 @@ def _as_account_tuple(value) -> tuple:
         ) from exc
 
 
+def _as_string_tuple(value, name: str) -> tuple:
+    """A list of strings as a tuple, refusing a bare string for the
+    reason _as_account_tuple gives: "TQQQ" would otherwise become four
+    one-letter entries."""
+    if isinstance(value, str):
+        raise ConfigurationError(f"{name} must be a LIST, not a bare string (got {value!r}).")
+    try:
+        return tuple(str(item) for item in value)
+    except TypeError as exc:
+        raise ConfigurationError(f"{name} must be a list, got {type(value).__name__}") from exc
+
+
+def _parse_control(data: dict) -> LiveControlConfig:
+    """live.control. Kept as given rather than coerced with bool(): the
+    string "false" is truthy, and a grant read the wrong way round is the
+    one mistake this section must not make -- validate() names it."""
+    if not isinstance(data, dict):
+        raise ConfigurationError(f"live.control must be a mapping, got {data!r}")
+    unknown = set(data) - set(_CONTROL_FIELDS)
+    if unknown:
+        raise ConfigurationError(
+            f"live.control has no setting(s) {sorted(unknown)}; known: {list(_CONTROL_FIELDS)}"
+        )
+    return LiveControlConfig(**data)
+
+
+def _parse_bridge(data: dict) -> FidelityBridgeConfig:
+    defaults = FidelityBridgeConfig()
+    return FidelityBridgeConfig(
+        host=data.get("host", defaults.host),
+        port=data.get("port", defaults.port),
+        allowed_clients=_as_string_tuple(
+            data.get("allowed_clients", defaults.allowed_clients),
+            "live.fidelity.bridge.allowed_clients",
+        ),
+        blocked_clients=_as_string_tuple(
+            data.get("blocked_clients", defaults.blocked_clients),
+            "live.fidelity.bridge.blocked_clients",
+        ),
+        connect_timeout_seconds=data.get(
+            "connect_timeout_seconds", defaults.connect_timeout_seconds
+        ),
+        allow_algorithm_changes=data.get(
+            "allow_algorithm_changes", defaults.allow_algorithm_changes
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class FidelityBridgeConfig:
+    """Where the engine listens for the Fidelity Bridge extension.
+
+    The defaults accept a browser on this computer only. A browser on
+    another machine needs host 0.0.0.0 (or this machine's address) AND
+    its own address in allowed_clients; the extension, for its part, only
+    connects to engine addresses on ITS allowed list.
+    """
+
+    host: str = "127.0.0.1"
+    port: int = 8765
+    allowed_clients: tuple = ("127.0.0.1", "::1")
+    blocked_clients: tuple = ()
+    connect_timeout_seconds: float = 120.0
+    # Whether the extension may change the trading algorithm -- strategy,
+    # its parameters, live.step and live.profit_target -- of a running
+    # deployment. Off unless this file says so: what real capital trades
+    # is decided here, and a browser may change it only when the file
+    # that describes the deployment grants that.
+    allow_algorithm_changes: bool = False
+
+
 @dataclass(frozen=True)
 class FidelityConfig:
     """Fidelity-venue settings. Only meaningful when live.broker == "fidelity".
@@ -452,12 +523,73 @@ class FidelityConfig:
     not be empty" -- so a broker built without it cannot read its own
     orders back. It identifies nothing on its own; account is still the
     only thing matched against the allowlist.
+
+    PLACING REAL ORDERS (dry_run: false) needs three more, each a
+    deliberate statement in a committed file rather than something
+    inferred:
+
+      allowed_symbols   the exact tickers this deployment may trade; it
+                        must include backtest.symbol.
+      max_order_value   a hard dollar ceiling per BUY. A buy above it is
+                        refused, never trimmed -- an order this size is a
+                        bug to surface. Sells are not capped: a ceiling
+                        must never trap a position it cannot exit.
+      journal_path      where each order's confirmation number is made
+                        durable before the order is committed. Defaults
+                        to beside the live state database.
+
+    bridge says where the engine listens for the Fidelity Bridge browser
+    extension, and which browser addresses may connect.
     """
 
     allowed_accounts: tuple = ()
     account: str | None = None
     dry_run: bool = True
     account_name: str | None = None
+    allowed_symbols: tuple = ()
+    max_order_value: float = 0.0
+    journal_path: str | None = None
+    bridge: FidelityBridgeConfig = field(default_factory=FidelityBridgeConfig)
+
+
+@dataclass(frozen=True)
+class LiveControlConfig:
+    """What the web UI may do to this deployment (server/live_control.py).
+
+    Pausing new buys has no switch: it only ever reduces exposure, so it is
+    always allowed. Everything else is off unless this file grants it --
+    whether a deployment trades, and what, is decided in a reviewable file,
+    and a browser may change it only when that file says so. The browser
+    extension keeps its own grant, live.fidelity.bridge.allow_algorithm_changes.
+
+    A real-money deployment (paper_trading: false) never resets its ledger,
+    and switches algorithms only between committed profiles -- see
+    effective(), which every reader of these flags goes through.
+    """
+
+    resume_buys: bool = False
+    enable_disable: bool = False
+    algorithm_changes: bool = False
+    profiles_only: bool = False
+    ledger_reset: bool = False
+
+    def effective(self, paper_trading: bool) -> LiveControlConfig:
+        """These grants with the real-money rules applied."""
+        if paper_trading:
+            return self
+        return replace(self, profiles_only=True, ledger_reset=False)
+
+    def to_dict(self) -> dict:
+        return {
+            "resume_buys": self.resume_buys,
+            "enable_disable": self.enable_disable,
+            "algorithm_changes": self.algorithm_changes,
+            "profiles_only": self.profiles_only,
+            "ledger_reset": self.ledger_reset,
+        }
+
+
+_CONTROL_FIELDS = tuple(LiveControlConfig().to_dict())
 
 
 @dataclass(frozen=True)
@@ -503,8 +635,18 @@ class LiveConfig:
     poll_interval_seconds: float = 60.0
     # Bounds one tick's harvest work. A tick that tried to place an
     # unbounded number of sell orders could stall past the next tick;
-    # the remainder is simply picked up on the following pass.
+    # the remainder is simply picked up on the following pass. A signal
+    # exit is ONE order however many lots it closes, so it counts once.
     max_sells_per_tick: int = 25
+    # How far through the market a signal exit's limit is placed: the
+    # bar's price x (1 - this). A limit AT the last trade often rests
+    # (the bid is usually a tick below it), and a resting exit is the one
+    # outcome an exit must not have; still a limit, so a thin book cannot
+    # fill it arbitrarily far away. The fill is the market's price, not
+    # the limit. Harvests at a lot's own target are unaffected.
+    exit_limit_buffer: float = 0.005
+    # What the web UI may change on this deployment; see LiveControlConfig.
+    control: LiveControlConfig = field(default_factory=LiveControlConfig)
 
 
 @dataclass(frozen=True)
@@ -623,6 +765,17 @@ class BacktestConfig:
                 account=fidelity_data.get("account"),
                 dry_run=bool(fidelity_data.get("dry_run", True)),
                 account_name=fidelity_data.get("account_name"),
+                allowed_symbols=tuple(
+                    symbol.upper()
+                    for symbol in _as_string_tuple(
+                        fidelity_data.get("allowed_symbols", ()), "live.fidelity.allowed_symbols"
+                    )
+                ),
+                # Kept as given, not coerced: validate() names a bad value
+                # rather than float() raising on it here.
+                max_order_value=fidelity_data.get("max_order_value", 0.0),
+                journal_path=fidelity_data.get("journal_path"),
+                bridge=_parse_bridge(fidelity_data.get("bridge") or {}),
             )
         live = LiveConfig(
             enabled=live_data.get("enabled", False),
@@ -635,6 +788,8 @@ class BacktestConfig:
             feed=live_data.get("feed", "iex"),
             poll_interval_seconds=live_data.get("poll_interval_seconds", 60.0),
             max_sells_per_tick=live_data.get("max_sells_per_tick", 25),
+            exit_limit_buffer=float(live_data.get("exit_limit_buffer", 0.005)),
+            control=_parse_control(live_data.get("control") or {}),
         )
 
         return cls(
@@ -735,6 +890,16 @@ class BacktestConfig:
             validate_positive(self.live.profit_target, "live.profit_target")
         validate_positive(self.live.poll_interval_seconds, "live.poll_interval_seconds")
         validate_positive_int(self.live.max_sells_per_tick, "live.max_sells_per_tick")
+        if not 0.0 <= self.live.exit_limit_buffer < 0.1:
+            raise ConfigurationError(
+                f"live.exit_limit_buffer must be in [0, 0.1) -- a fraction of the price "
+                f"(0.005 is 0.5%), got {self.live.exit_limit_buffer}"
+            )
+        for name, value in self.live.control.to_dict().items():
+            if not isinstance(value, bool):
+                raise ConfigurationError(
+                    f"live.control.{name} must be true or false, got {value!r}"
+                )
         validate_one_of(self.live.broker, ("alpaca", "fidelity"), "live.broker")
 
         # The feed whitelist is ALPACA's -- "iex"/"sip" are names of
@@ -791,6 +956,78 @@ class BacktestConfig:
                     "live.fidelity.account_name must be the account's display name as "
                     f"Fidelity lists it, e.g. 'Traditional IRA'; got {account_name!r}."
                 )
+            self._validate_fidelity_placing(self.live.fidelity)
+            self._validate_fidelity_bridge(self.live.fidelity.bridge)
+
+    def _validate_fidelity_placing(self, fidelity: FidelityConfig) -> None:
+        """The settings real orders need, and the ones they contradict."""
+        for symbol in fidelity.allowed_symbols:
+            if not symbol.strip():
+                raise ConfigurationError("live.fidelity.allowed_symbols contains a blank entry")
+        value = fidelity.max_order_value
+        if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+            raise ConfigurationError(
+                f"live.fidelity.max_order_value must be a dollar amount, got {value!r}"
+            )
+        if fidelity.journal_path is not None and (
+            not isinstance(fidelity.journal_path, str) or not fidelity.journal_path.strip()
+        ):
+            raise ConfigurationError("live.fidelity.journal_path must be a file path")
+
+        if self.live.broker != "fidelity" or fidelity.dry_run:
+            return
+        # dry_run: false -- this deployment places REAL orders.
+        if self.live.paper_trading:
+            raise ConfigurationError(
+                "live.fidelity.dry_run is false, so this deployment places REAL orders at "
+                "Fidelity, but live.paper_trading is true. A Fidelity account has no paper "
+                "mode; set paper_trading: false so the file says what it does."
+            )
+        if fidelity.account is None or fidelity.account_name is None:
+            raise ConfigurationError(
+                "Placing real orders needs live.fidelity.account and live.fidelity.account_name."
+            )
+        if self.backtest.symbol.upper() not in fidelity.allowed_symbols:
+            raise ConfigurationError(
+                f"live.fidelity.allowed_symbols={list(fidelity.allowed_symbols)} does not include "
+                f"{self.backtest.symbol}, the symbol this deployment trades. Name it there: the "
+                "list is the deliberate statement of what real money may buy."
+            )
+        if not value > 0:
+            raise ConfigurationError(
+                "live.fidelity.max_order_value must be a positive dollar ceiling per buy when "
+                "placing real orders. It is the last thing standing between a sizing bug and "
+                "an order the account cannot afford."
+            )
+
+    @staticmethod
+    def _validate_fidelity_bridge(bridge: FidelityBridgeConfig) -> None:
+        if not isinstance(bridge.host, str) or not bridge.host.strip():
+            raise ConfigurationError("live.fidelity.bridge.host must be an address to listen on")
+        port = bridge.port
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise ConfigurationError(
+                f"live.fidelity.bridge.port must be a whole number from 1 to 65535, got {port!r}"
+            )
+        if not bridge.allowed_clients:
+            raise ConfigurationError(
+                "live.fidelity.bridge.allowed_clients must not be empty: an empty list allows "
+                "no browser at all, never every browser."
+            )
+        for entry in (*bridge.allowed_clients, *bridge.blocked_clients):
+            if not entry.strip():
+                raise ConfigurationError("live.fidelity.bridge has a blank client address")
+        timeout = bridge.connect_timeout_seconds
+        if isinstance(timeout, bool) or not isinstance(timeout, int | float) or timeout <= 0:
+            raise ConfigurationError(
+                "live.fidelity.bridge.connect_timeout_seconds must be a positive number of "
+                f"seconds, got {timeout!r}"
+            )
+        if not isinstance(bridge.allow_algorithm_changes, bool):
+            raise ConfigurationError(
+                "live.fidelity.bridge.allow_algorithm_changes must be true or false, got "
+                f"{bridge.allow_algorithm_changes!r}"
+            )
 
     def to_dict(self) -> dict:
         """Inverse of from_dict() -- round-trips through the same nested
@@ -866,6 +1103,21 @@ class BacktestConfig:
                             "account": self.live.fidelity.account,
                             "dry_run": self.live.fidelity.dry_run,
                             "account_name": self.live.fidelity.account_name,
+                            "allowed_symbols": list(self.live.fidelity.allowed_symbols),
+                            "max_order_value": self.live.fidelity.max_order_value,
+                            "journal_path": self.live.fidelity.journal_path,
+                            "bridge": {
+                                "host": self.live.fidelity.bridge.host,
+                                "port": self.live.fidelity.bridge.port,
+                                "allowed_clients": list(self.live.fidelity.bridge.allowed_clients),
+                                "blocked_clients": list(self.live.fidelity.bridge.blocked_clients),
+                                "connect_timeout_seconds": (
+                                    self.live.fidelity.bridge.connect_timeout_seconds
+                                ),
+                                "allow_algorithm_changes": (
+                                    self.live.fidelity.bridge.allow_algorithm_changes
+                                ),
+                            },
                         }
                     }
                     if self.live.fidelity is not None
@@ -875,6 +1127,12 @@ class BacktestConfig:
                 "extended_hours": self.live.extended_hours,
                 "poll_interval_seconds": self.live.poll_interval_seconds,
                 "max_sells_per_tick": self.live.max_sells_per_tick,
+                "exit_limit_buffer": self.live.exit_limit_buffer,
+                **(
+                    {"control": self.live.control.to_dict()}
+                    if self.live.control != LiveControlConfig()
+                    else {}
+                ),
             },
         }
 

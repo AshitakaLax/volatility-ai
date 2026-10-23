@@ -235,3 +235,10 @@ def test_daily_bars_helper_matches_the_test_aggregation():
     a = daily_bars(minutes)
     b = _daily(minutes)
     np.testing.assert_allclose(a["close"].to_numpy(), b["close"].to_numpy())
+
+
+def test_a_live_process_replays_the_bear_window_when_it_is_the_longer():
+    """The gate reads the highest close of the last bear_window sessions, so
+    a window longer than the votes' own history lengthens the replay."""
+    assert UltimateUrspSizing(bear_window=600).live_history_sessions() == 600 + 150
+    assert UltimateUrspSizing().live_history_sessions() == (42 - 1 + 250) + 150

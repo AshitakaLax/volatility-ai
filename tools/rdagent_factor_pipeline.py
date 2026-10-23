@@ -58,7 +58,7 @@ and tools/ablate_ml_features.py already read -- tagged as their own
 block. That means a mined factor is graded by the paired, purged
 walk-forward those tools implement, per block, against the bar-only
 baseline, exactly as the vol/rates/labour/fx/curve blocks were. The
-ablation table in ml_plan.md is the format the answer comes back in.
+ablation table in docs/ml_plan.md is the format the answer comes back in.
 
 The gate is deliberately not reimplemented here. It exists, it is
 harsher than RD-Agent's own scoring, and routing through it is the
@@ -277,7 +277,7 @@ ENV_TEMPLATE = """\
 # This project already has a secrets discipline (engine/core/secrets.py,
 # .env chmod 600, gitignored) -- hold to it here. An LLM key with a
 # billing account attached is a credential in exactly the sense
-# docs/DEPLOY_RASPBERRY_PI.md means it.
+# docs/DEPLOY.md means it.
 
 CHAT_MODEL=gpt-4o
 EMBEDDING_MODEL=text-embedding-3-small
@@ -463,7 +463,7 @@ NOW GRADE THEM. Nothing above is evidence:
   python tools/ablate_ml_features.py   --tickers {args.ticker} --data {args.out}
 
 The '{FACTOR_BLOCK}' block competes on the same terms as vol/rates/
-labour/fx/curve did. ml_plan.md's own summary of that exercise -- one
+labour/fx/curve did. docs/ml_plan.md's own summary of that exercise -- one
 hit in six comparisons, and the winner worth +0.046 AUC -- is the prior
 to beat, and the base rate to expect.
 """)

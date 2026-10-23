@@ -4,14 +4,16 @@
     uvicorn server.app:app --host 127.0.0.1 --port 8000
 
 --------------------------------------------------------------------
-TWO ROUTERS, DELIBERATELY DIFFERENT POWERS
+ROUTERS WITH DELIBERATELY DIFFERENT POWERS
 
-  live.py      READ-ONLY. Opens the ledger store `mode=ro`, so the
-               SQLite driver refuses a write. Imports no broker.
-  control.py   THE ONLY WRITE. One endpoint, reaching the existing
-               CircuitBreaker and nothing else.
-  backtest.py  BIDIRECTIONAL, because a simulation over a CSV cannot
-               touch a position. Validated through BacktestConfig.
+  live.py          READ-ONLY. Opens the ledger store `mode=ro`, so the
+                   SQLite driver refuses a write. Imports no broker.
+  live_control.py  QUEUES COMMANDS, CHANGES NOTHING ITSELF. Pause, resume,
+                   enable, disable go into a deployment's control
+                   directory; its trader applies them. Opens no ledger,
+                   breaker or broker.
+  backtest.py      BIDIRECTIONAL, because a simulation over a CSV cannot
+                   touch a position. Validated through BacktestConfig.
 
 The split is the whole design: live state is something to look at, a
 backtest is something to run. server/tests/test_server_capability.py walks
@@ -46,14 +48,15 @@ from fastapi.staticfiles import StaticFiles
 
 from server import (
     backtest,
-    control,
     deployment,
     history,
     live,
+    live_control,
     ml_insights,
     ml_upstream,
     shards,
     upstream,
+    warehouse_status,
 )
 
 
@@ -105,7 +108,7 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(live.router)
-app.include_router(control.router)
+app.include_router(live_control.router)
 # THE BACKTEST ROUTES COME FROM ONE PLACE OR THE OTHER, NEVER BOTH.
 #
 # With VAI_BACKTEST_UPSTREAM set this host forwards them and never
@@ -122,6 +125,8 @@ else:
     # Remote shards (server/shards.py) work the same queue, so they belong
     # to whichever host runs it -- and are forwarded with it otherwise.
     app.include_router(shards.router)
+    # The Warehouse tab: the warehouse and the queue live here too.
+    app.include_router(warehouse_status.router)
 
 # THE ML RESEARCH ROUTES FOLLOW THE SAME SPLIT, FOR THE SAME REASON.
 #
@@ -139,10 +144,12 @@ def health() -> dict[str, object]:
     """Liveness, what this server is allowed to do, and which build it is.
 
     `caps` lists what the server CAN do, reported rather than assumed so
-    a client renders the Command Center from what the SERVER says,
-    instead of from a constant compiled into the bundle that could
-    disagree with the deployment it is talking to. Liquidation and live
-    parameter overrides are never listed -- by design, see control.py.
+    a client renders its controls from what the SERVER says, instead of
+    from a constant compiled into the bundle that could disagree with the
+    deployment it is talking to. `control` is the Live page's commands
+    (server/live_control.py); what each deployment takes is its own
+    config's live.control. Liquidation is never listed -- there is no such
+    command, by design.
     `ml` is read-only research artifacts (server/ml_insights.py), not a
     trading capability.
 
@@ -150,7 +157,7 @@ def health() -> dict[str, object]:
     None when this process runs them itself.
     """
     return {
-        "caps": ["live", "halt", "backtest", "ml"],
+        "caps": ["live", "control", "backtest", "ml"],
         "upstream": upstream.upstream_base(),
         **deployment.describe(),
     }

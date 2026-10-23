@@ -15,10 +15,10 @@ something to invoke.
 
 If you need to re-run one, read it first and expect to update paths.
 
-The three chain scripts still in the repository root
-(`run_extended_chain.sh`, `run_frontier_chain.sh`,
-`run_overnight_chain.sh`) stayed there deliberately: `README.md`
-documents them as things a person is meant to run.
+The four chain scripts (`run_entry_gate_chain.sh`, `run_extended_chain.sh`,
+`run_frontier_chain.sh`, `run_overnight_chain.sh`) moved here from the
+repository root and ARE kept runnable: each `cd`s to the repo root and
+uses `$PY` or `.venv/bin/python`. `docs/sweeps.md` documents them.
 
 | script | what it was investigating |
 |---|---|

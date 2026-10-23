@@ -136,12 +136,20 @@ def test_cmd_live_takes_the_lock_before_opening_the_store():
 
 
 def test_every_exit_path_from_cmd_live_releases_the_lock():
-    """Three ways out: not-ready, --check-only, and the trading loop.
-    The last releases in a `finally`, because a loop that raises must
-    not leave a lock naming a PID that is about to not exist."""
+    """Three ways out once the lock is held: not-ready, --check-only, and
+    the trading loop. All three return from inside one try, whose
+    `finally` releases the lock -- so a loop that raises cannot leave a
+    lock naming a PID that is about to not exist, and no later edit can
+    add a fourth way out that forgets. tests/test_cli_live_fidelity.py
+    checks the same thing by behaviour: the lock is free afterwards."""
     from pathlib import Path
 
     source = Path("cli.py").read_text(encoding="utf-8")
-    body = source[source.index("def cmd_live") : source.index("def _run_trading_loop")]
-    assert body.count("lock.release()") == 3
-    assert "finally:" in body
+    start = source.index("def cmd_live")
+    body = source[start : source.index("\ndef ", start + 1)]
+    assert body.count("lock.release()") == 1, "released in exactly one place"
+    try_at = body.index("try:\n        final_state = lifecycle.start(")
+    finally_at = body.index("finally:", try_at)
+    assert try_at < body.index("lock.release()") and finally_at < body.index("lock.release()")
+    for way_out in ("return 1", "return 0", "return _run_trading_loop("):
+        assert try_at < body.index(way_out, try_at) < finally_at, way_out

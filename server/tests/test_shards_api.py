@@ -425,13 +425,15 @@ class FakeMain:
 
     def __init__(self) -> None:
         self.answers: list = []
+        # Answered once the scripted ones run out.
+        self.default: dict = {"paused": False, "owned": True}
         self.synced: list = []
         self.finished: list = []
         self.lock = threading.Lock()
 
     def sync(self, run, progress, msg, rows):
         with self.lock:
-            answer = self.answers.pop(0) if self.answers else {"paused": False, "owned": True}
+            answer = self.answers.pop(0) if self.answers else self.default
         if isinstance(answer, Exception):
             raise answer
         self.synced.append((run, list(rows)))
@@ -498,8 +500,12 @@ class TestLink:
         assert link.should_stop("r1")
 
     def test_a_stop_asked_by_the_main_server_reaches_should_stop(self):
+        # The real main server recomputes "stop" from the run's state on
+        # every sync (JobQueue.shard_sync), so it keeps asking until the run
+        # stops. A single scripted answer, reset to stop=False 20 ms later,
+        # left a window the 50 ms poll below usually missed.
         main = FakeMain()
-        main.answers = [{"paused": True, "owned": True, "stop": True}]
+        main.default = {"paused": True, "owned": True, "stop": True}
         link = self._link(main)
         link.begin("r1")
         wait_for(lambda: link.should_stop("r1"))

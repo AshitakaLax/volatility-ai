@@ -1,1052 +1,489 @@
 # volatility-ai
 
-A grid-based volatility-harvesting strategy for leveraged ETFs (primarily
-TQQQ), with a backtesting engine, statistical validation, risk controls,
-and live-execution scaffolding.
+A volatility-harvesting system for leveraged ETFs (primarily TQQQ): a
+minute-bar backtesting and research engine, a web UI and distributed sweep
+queue, and live trading through Alpaca or a Fidelity browser bridge.
 
-The system buys on configurable price-drop steps and harvests each lot at
-its own profit target. Its defining constraint is a **no-loss invariant**:
-it never intentionally sells a lot below its cost basis, and that rule is
-enforced structurally rather than by convention.
+It buys on configurable price-drop steps and harvests each lot at its own
+profit target. Its defining constraint is a **no-loss invariant**: it never
+sells a lot below its cost basis, enforced structurally in one module. The
+only exception is a strategy's explicit regime exit, which needs a config
+flag *and* a strategy hook.
 
-![tests](https://img.shields.io/badge/tests-905%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![lint](https://img.shields.io/badge/lint-ruff-orange)
 
----
-
-## Table of contents
-
-- [Status and scope](#status-and-scope)
-- [Requirements](#requirements)
+- [Core features](#core-features)
+- [Before you trade money](#before-you-trade-money)
+- [Installation (Linux)](#installation-linux)
 - [Quickstart](#quickstart)
-- [Getting market data](#getting-market-data)
-- [Docker](#docker)
 - [Configuration](#configuration)
-- [Core concepts](#core-concepts)
 - [Architecture](#architecture)
 - [Safety invariants](#safety-invariants)
-- [Statistical validation](#statistical-validation)
-- [Running the HF parameter sweeps](#running-the-hf-parameter-sweeps)
-- [Simulations run to date](#simulations-run-to-date)
-- [Going live: the promotion path](#going-live-the-promotion-path)
-- [Testing](#testing)
-- [Code style](#code-style)
+- [Live trading and the promotion path](#live-trading-and-the-promotion-path)
+- [Running it as services](#running-it-as-services)
+- [Testing and code style](#testing-and-code-style)
 - [Extending the system](#extending-the-system)
 - [Troubleshooting](#troubleshooting)
 - [Project layout](#project-layout)
 - [Known gaps](#known-gaps)
-- [License](#license)
 
 ---
 
-## Status and scope
+## Core features
 
-**What works today, end to end:**
+### Trading engine (`engine/`)
+- **Lot-based ledger** — every buy is its own lot with its own cost basis
+  and target; full and partial closes; never pooled.
+- **One decision cycle for backtest and live** (`trading/decision_cycle.py`):
+  record tick → harvest → grid trigger → size → risk clamp → no-loss guard.
+- **No-loss guard** (`trading/no_loss_guard.py`) — the single cost-basis
+  check, cost-aware, scanned for duplicates by a test.
+- **Strategy-driven exits** — per-lot retargeting (`adjust_profit_target`)
+  and regime exits (`lots_to_liquidate`, gated by `execution.allow_signal_exit`).
+- **Risk controls** — lot-count and exposure caps, a drawdown
+  `CircuitBreaker` whose halts block buys, never liquidate, and need a
+  named human to reset.
+- **Order management** — an order state machine with broker-status mapping,
+  idempotent events, a duplicate-order guard, and ambiguous submissions
+  routed to reconciliation instead of retried.
+- **Durable state** — SQLite ledger store, append-only audit log, crash
+  recovery, and local-vs-broker reconciliation that never invents a fill.
+- **Brokers** — Alpaca (`brokers/alpaca_broker.py`, paper or live) and
+  Fidelity (`fidelity_gateway/`), chosen by `live.broker`.
+- **Cost models** — zero, static slippage + commission, and
+  volatility-aware dynamic slippage; pure functions.
+- **Fill models** — close-only or intrabar (touch) fills, with `level`,
+  `open_or_level` and `causal` booking of gap fills; sell-first or
+  buy-first intrabar priority; optional settlement delay; historical
+  money-market yield on idle cash.
+- **Market data** — Alpaca bar download and live polling (IEX by default,
+  for backtest/live feed parity), dataset and per-tick validation, session
+  structure, and FOMC / macro-event / earnings calendars.
+- **Analytical warehouse** (`warehouse/`) — DuckDB over a Parquet lake of
+  minute bars, external macro series (FRED/CBOE/Yahoo, with publication
+  lags) and trade executions; deduplicated simulation results; lag-aware
+  ASOF joins.
+- **Promotion gate** — `Mode.LIVE` is unreachable without a passing
+  `PromotionEvaluation` recorded from paper trading.
 
-- Backtesting with parameter sweeps (exhaustive or Bayesian search)
-- Transaction cost modeling, including volatility-aware slippage
-- Risk limits, a drawdown circuit breaker, and tick sanity-checking
-- Walk-forward and Monte Carlo validation
-- Durable SQLite persistence, crash recovery, and broker reconciliation
-- A full order lifecycle state machine and audit trail
-- Docker packaging with a single CLI entrypoint
-- **Live/paper trading against Alpaca**, via `engine/brokers/alpaca_broker.py` and the
-  tick loop in `engine/trading/live_trading_loop.py`
+### Research (`research/`)
+- **Strategy registry** (`strategies/strategy_registry.py`), with each
+  strategy's parameter schema and defaults (`param_schema.py`):
+  - `fixed`, `bell_curve`, `rsi`, `bayesian_dual_scale` — the early sizers
+  - `hf_local_reference` — the champion high-frequency grid: local-reference
+    trigger, volatility and volume scaling, event-day boosts
+  - `hf_entry_gated` — the same with entry gates (breakdown, dual thrust,
+    opening range, candlestick patterns, intraday momentum, RSI, volatility
+    targeting)
+  - `ultimate` — a causal NATR volatility regime with a bear filter: the
+    champion grid while calm, capitulation-close reversal lots while
+    turbulent, and a delayed regime exit
+    ([design log](docs/research/ultimate-algorithm.md))
+  - `ultimate_rsp`, `ultimate_ursp` — daily-timed exposure books for RSP and
+    a simulated 3x RSP
+  - `ml_reachability_*`, `ml_regime_*` — learned sizing (LightGBM),
+    research only
+- **Sweeps** — grid, Bayesian (Optuna TPE) and random search, run in
+  parallel processes with checkpointed output (`run_hf_sweep.py`,
+  `optimization/`), plus warm-up history for regime strategies.
+- **Validation** — walk-forward (train/test folds), block-bootstrap Monte
+  Carlo, intraday validation, and year-by-year comparison with buy-and-hold
+  (`analysis/analyze_annual.py`).
+- **Metrics** — return, CAGR, max drawdown, return/drawdown, Sharpe and
+  Sortino, calendar-year returns, trade and signal-exit counts, buy-and-hold
+  benchmark.
+- **ML line** (`ml/`) — causal feature and label builders, an incremental
+  bar-feature engine that matches the offline features by construction, and
+  regime models. Read-only unless a strategy id selects them.
 
-**What to understand before running it with money:**
+### Backend and UI (`server/`, `web/`)
+- **FastAPI backend** (`cli.py serve`, loopback by default): run backtests
+  and sweeps, query run history and fills server-side, browse bars and
+  datasets, read live deployment state, and halt the circuit breaker.
+- **Durable job queue** — pending runs and per-configuration checkpoints
+  survive restarts; pause, resume, cancel, reorder.
+- **Distributed sweeps** — extra machines join with `cli.py shard`, claim
+  whole sweeps, cache bars by fingerprint and stream results back; daily
+  lockout windows per shard. `cli.py submit` queues any sweep YAML.
+- **React web UI** — parameter form, active runs and shard panel, run
+  history, result view (price chart with fills, trade log, sweep heatmap,
+  fund comparison), live deployment control (every deployment's state;
+  pause/resume buys, wind down, disable/enable, switch/revert/re-warm the
+  algorithm, a fresh paper ledger -- each a command its trader applies),
+  an ML insights tab, and a Warehouse tab.
+
+### Fidelity route (`fidelity_gateway/`)
+- **Browser-extension bridge** — the Fidelity Bridge extension (submodule
+  `fidelity-bridge-chrome-extension/`) connects to a local WebSocket
+  server with an HMAC handshake; the engine drives the tab you signed into
+  by hand, and nothing on a working path logs in.
+- **Preview-only and placing brokers** — separate classes; placing sits
+  behind explicit gates, with a journal of confirmation numbers written
+  before each commit and read back on start.
+- **Two independent endpoint allowlists** (here and in the extension), kept
+  in agreement by a test; the extension can show and, when allowed, change
+  the live algorithm.
+- **Discovery tools** — traffic capture, HAR analysis and redaction, and
+  reconnaissance over a remote-debugging port.
+
+### Operations (`cli.py`, `tools/`, Docker)
+- **One entrypoint**: `test`, `fetch-data`, `backtest`, `search`, `submit`,
+  `live`, `serve`, `shard`, `backup`, `restore`.
+- **One Docker Compose file** for everything that stays up: the UI with its
+  backtest engine, the paper trading loop and a daily backup; Ultimate in
+  paper and real money behind profiles; one-off tools (tests, preflight,
+  fetch, ingest, backtest) for `docker compose run`.
+- **Session supervision** — the market-hours supervisor asks Alpaca when
+  each session opens and closes; a strategy is replayed the recent history
+  its state spans before its first tick; `docker stop` is a graceful stop.
+- **Backups** of the ledgers and warehouse catalogs, daily, optionally
+  copied off the machine.
+- **Data prep** — warehouse ingest, external macro series, earnings
+  calendar, and ML datasets.
+
+---
+
+## Before you trade money
 
 > **Paper is the default and real capital is gated.** `live.paper_trading`
-> in the config decides which Alpaca endpoint is used. Reaching `Mode.LIVE`
-> additionally requires a passing `PromotionEvaluation` — there is no
-> boolean shortcut, so real capital is unreachable without recorded
-> evidence that a paper-trading stage met its criteria.
+> picks the Alpaca endpoint, and `Mode.LIVE` additionally requires a
+> passing `PromotionEvaluation`. There is no boolean shortcut.
 
-> **Four sizing strategies exist**, selected by `strategy.strategy_id`:
-> `fixed`, `bell_curve`, `rsi`, and `bayesian_dual_scale`. Only `fixed`
-> has been through the promotion path; the other three are new and
-> unvalidated live. The parameters the loop trades come from
-> `live.step` / `live.profit_target`, which are deliberately separate from
-> the `grid.*` sweep lists — see [Configuration](#configuration).
+> **Only `fixed` has been through the promotion path.** Every other
+> strategy is backtested, not live-validated. The parameters the loop
+> trades come from `live.step` / `live.profit_target`, deliberately
+> separate from the `grid.*` sweep lists.
 
-> **Feed parity is handled, but only if you keep it that way.** Both the
-> live loop and `fetch-data` default to IEX, so backtest and production
-> observe the same tape. That is not merely a preference: SIP's *realtime*
-> endpoint rejects free accounts (`subscription does not permit querying
-> recent SIP data`) even though its *historical* endpoint works, so it is
-> possible to backtest on SIP and then be unable to trade on it. Change
-> one side's feed and you have silently broken parity.
+> **Keep feed parity.** The live loop and `fetch-data` both default to IEX.
+> SIP's historical endpoint works on a free account but its realtime one
+> does not, so a SIP backtest can tune against a tape production cannot see.
 
-> **The default ranking metric can be uninformative.** `Capital Velocity
-> Index` is `closed_lots / total_lots`, so it saturates at exactly 1.0
-> whenever every lot closes — which is the normal case on a long dataset.
-> When that happens, `search.rank_by` is sorting on a constant and the
-> "top" row is arbitrary. Rank by `Total Return %` instead, and check the
-> spread before trusting any ordering.
+> **Backtests flatter.** Minute bars turn an overnight gap into one
+> bar-to-bar move; sweeping many combinations and taking the best finds the
+> luckiest, not the best. See [docs/sweeps.md](docs/sweeps.md) and the
+> deflated-Sharpe and overfitting caveats in the research logs.
 
 ---
 
-## Requirements
+## Installation (Linux)
 
-- **Python 3.12+** (`pyproject.toml` sets `requires-python = ">=3.12"`; the
-  test suite is exercised against 3.12)
-- Dependencies pinned in `requirements.txt`, with floors verified as a
-  mutually-compatible set
+Python 3.12 or newer. Debian/Ubuntu ship `venv` separately:
 
-| Package | Required for |
+```bash
+sudo apt install python3-venv          # python3.14-venv on newer releases
+git clone --recurse-submodules https://github.com/AshitakaLax/volatility-ai.git
+cd volatility-ai
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt -r requirements-warehouse.txt
+.venv/bin/python cli.py test -q        # verify
+```
+
+Optional dependency sets, installed only where needed:
+
+| File | For |
 |---|---|
-| `pandas`, `numpy` | Core — everything |
-| `pyyaml` | `BacktestConfig.from_yaml` |
-| `optuna` | Optional — only `search_strategy: bayesian` |
-| `alpaca-py` | Required for live/paper trading; unused by backtests |
-| `pytest`, `ruff` | Development only |
+| `requirements.txt` | core: pandas, numpy, pyyaml, optuna, alpaca-py, pytest, ruff |
+| `requirements-warehouse.txt` | duckdb, polars, pyarrow — every backtest reads bars through it |
+| `requirements-web.txt` | `cli.py serve` (FastAPI, uvicorn) |
+| `requirements-indicators.txt` | TA-Lib and indicator libraries (entry gates, regime tests) |
+| `requirements-ml.txt` | scikit-learn, LightGBM (`ml_*` strategies; needs `libgomp1`) |
+| `requirements-fidelity.txt` | the Fidelity route (playwright, websockets) |
+| `requirements-qlib.txt` | qlib regime research only |
 
-Optional dependencies fail *loudly and early* if missing: `BayesianSearch`
-raises `ConfigurationError` at construction rather than silently falling
-back to grid search.
+The web UI needs Node: `cd web && npm install && npm run dev`.
+
+Optional dependencies fail loudly and early: e.g. `BayesianSearch` raises
+`ConfigurationError` at construction if Optuna is missing.
 
 ---
 
 ## Quickstart
 
-```bash
-git clone https://github.com/AshitakaLax/volatility-ai.git
-cd volatility-ai
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# Verify the install
-python cli.py test -q
-```
-
-### Getting market data
-
-`fetch-data` downloads real bars from Alpaca into `data/`:
+Backtests read bars from the warehouse by ticker (`backtest.symbol`), never
+from a CSV. The funds the Warehouse tab lists are kept current by
+`tools/refresh_warehouse.py` (the compose `market-data` service runs it
+daily; `docs/DEPLOY.md`). Any other fund: fetch, ingest, run:
 
 ```bash
 export APCA_API_KEY_ID=... APCA_API_SECRET_KEY=...
-python cli.py fetch-data --symbol TQQQ --days 730
+.venv/bin/python cli.py fetch-data --symbol TQQQ --days 730   # → data/
+.venv/bin/python tools/build_warehouse.py --ingest TQQQ       # → warehouse/
+.venv/bin/python cli.py backtest --config config/ultimate_tqqq.yaml --output output/ultimate.csv
 ```
 
-That writes three things — a timestamped CSV, a `..._latest.csv` symlink,
-and a `.meta.json` sidecar recording symbol, window, feed, adjustment, row
-count and SHA-256. `data/` is git-ignored; downloads are tens of
-megabytes.
+No Alpaca account? A small fixture works:
+`.venv/bin/python tools/build_warehouse.py --csv tests/fixtures/regression_ohlcv.csv --ingest DEMO`,
+then set `backtest.symbol: DEMO`.
 
-**This file is intake, not something a backtest reads.** `cli.py
-backtest`/`search` and `research/run_hf_sweep.py` all read historical
-bars from the DuckDB/Parquet warehouse (`engine/warehouse/bars.py`), never
-from `data/` directly — that is what actually keeps a sweep result
-traceable to the exact bars it ran on, warehouse-side, regardless of
-what happens to the CSV afterward. A freshly fetched symbol becomes
-visible to them only after it is loaded in:
+`fetch-data` defaults are deliberate: `--feed iex` (parity, above),
+`--adjustment all` (an unadjusted split reads as a ~66% one-bar crash), and
+regular hours only (the live loop never acts outside them). It validates
+before writing, so it cannot produce a file the ingest rejects.
 
-```bash
-python tools/build_warehouse.py --ingest TQQQ
-```
-
-Three defaults are deliberate and worth knowing:
-
-- **`--feed iex`.** SIP is the full consolidated tape and its *historical*
-  endpoint works on a free account, but SIP *realtime* does not — it
-  returns `subscription does not permit querying recent SIP data`. The
-  live loop can therefore only ever observe IEX, so backtesting on SIP
-  would tune parameters against a tape production cannot see. Match the
-  feed you will trade on.
-- **`--adjustment all`.** An unadjusted split reads as a ~66% single-bar
-  crash (TQQQ split 3:1 in January 2022), which makes a grid strategy fire
-  every rung at a price that never existed. The only thing that would flag
-  it is a `logging.warning` that scrolls past in a sweep.
-- **Regular trading hours only.** The live loop only ticks while Alpaca's
-  clock says the market is open, so extended-hours bars are bars it can
-  never act on. Pass `--include-extended-hours` to keep them.
-
-The downloader runs `data_validation.validate()` *before* writing, so it
-cannot emit a file the warehouse ingest would later reject.
-
-**One honest limitation:** with regular-hours filtering the 16:00 bar is
-followed by the next day's 09:30 bar, so a routine overnight gap on a 3x
-ETF becomes a single bar-to-bar move that fires several grid rungs at an
-open price nothing traded between. Minute-bar fills at the open are
-therefore systematically optimistic. This is inherent to bar-based
-backtesting, not a bug in the downloader.
-
-### Run your first backtest
-
-`cli.py backtest`/`search` read bars from the warehouse by ticker
-(`backtest.symbol` in the config) — there is no `--data` flag, and
-nothing under `data/` is read directly. A 35-bar fixture ships at
-`tests/fixtures/regression_ohlcv.csv` if you want to see it run without
-downloading anything from Alpaca; ingest it under a throwaway ticker:
-
-```bash
-python tools/build_warehouse.py --csv tests/fixtures/regression_ohlcv.csv --ingest DEMO
-```
-
-(Real data instead: `python cli.py fetch-data --symbol TQQQ --days 730`
-then `python tools/build_warehouse.py --ingest TQQQ`, per
-[Getting market data](#getting-market-data) above.)
-
-Create `config/my-config.yaml`:
-
-```yaml
-backtest:
-  symbol: DEMO      # or TQQQ, or any ticker already in the warehouse
-strategy:
-  strategy_id: fixed
-  strategy_params:
-    allocation_pct: 0.05      # 5% of equity per triggered buy
-grid:
-  steps: [0.005, 0.01, 0.015]       # buy on 0.5% / 1% / 1.5% drops
-  profit_targets: [0.003, 0.005]    # harvest at 0.3% / 0.5% gain
-```
-
-Then:
-
-```bash
-python cli.py backtest \
-  --config config/my-config.yaml \
-  --output output/results.csv
-```
-
-This evaluates all 6 combinations (3 steps × 2 targets) and prints a
-summary ranked by Capital Velocity Index.
-
-### Or use the Python API directly
+From Python:
 
 ```python
-from research.optimization.optimization_controller import OptimizationController
-from research.strategies.size_calculators import FixedPortfolioPercentage
 from engine.warehouse.bars import load_frame
+from research.optimization.optimization_controller import OptimizationController
+from research.strategies.strategy_registry import resolve_strategy
 
-df = load_frame("TQQQ")  # ticker must already be ingested -- see Quickstart
-
-controller = OptimizationController(historical_data=df)
+controller = OptimizationController(historical_data=load_frame("TQQQ"))
 results = controller.run_sweep(
-    grid_steps=[0.005, 0.01, 0.015],
+    grid_steps=[0.005, 0.01],
     profit_targets=[0.003, 0.005],
-    strategy_class=FixedPortfolioPercentage,
-    strategy_params_grid=[{"allocation_pct": a} for a in (0.02, 0.05)],
+    strategy_class=resolve_strategy("fixed"),
+    strategy_params_grid=[{"allocation_pct": 0.05}],
 )
-print(results.head())
 ```
 
----
+Research sweeps (parallel workers, random/Bayesian search, the record of
+every sweep run so far) are documented in [docs/sweeps.md](docs/sweeps.md);
+[docs/Run_Instructions](docs/Run_Instructions) is a longer walkthrough whose
+code blocks the test suite executes.
 
-## Docker
-
-One image, one entrypoint, four subcommands.
+### Docker
 
 ```bash
-docker build -t volatility-ai .
-docker run --rm volatility-ai --help
+docker compose up -d --build                     # web (UI + engine) on 127.0.0.1:8000, paper, backup
+docker compose run --rm test -q                  # args pass through to pytest
+docker compose run --rm backtest --config /app/config/ultimate_tqqq.yaml
+docker compose run --rm preflight                # before a trading loop's first start
 ```
 
-Via compose, which also wires up volumes correctly:
-
-```bash
-docker compose run --rm test
-docker compose run --rm test -k my_test -v          # args pass through
-
-docker compose run --rm backtest python tools/build_warehouse.py --ingest TQQQ
-docker compose run --rm backtest --config /app/config/my-config.yaml
-
-docker compose run --rm live --config /app/config/my-config.yaml --check-only
-```
-
-**Volumes.** `/app/state` is a *named* volume, not a bind mount, so the
-SQLite ledger and audit log survive across separate `docker compose run`
-invocations — which is what actually exercises the restart-recovery design
-through the container lifecycle. `./config` mounts read-only; `./data`,
-`./warehouse` and `./output` are writable (`backtest` only ever *reads*
-`./warehouse`, but the same image is also how `tools/build_warehouse.py
---ingest` gets run, which writes both).
-
-**Credentials** come only from an uncommitted env file via `env_file:` —
-never baked into the image, and excluded from the build context by
-`.dockerignore` even if one exists locally.
-
-### Long-running deployment services
-
-`docker-compose.yml` also defines `live-staging` and `live-production`,
-with isolated state volumes (`state_staging`, `state_production`) so paper
-and real-money ledgers can never mix.
-
-Each needs its own uncommitted env file (`.env.staging`, `.env.production`)
-holding the credentials for that Alpaca account.
-
-```bash
-docker compose up -d live-staging          # paper, 24/7
-docker compose logs -f live-staging
-docker compose stop live-staging           # SIGTERM: finishes the tick, then exits
-```
-
-Both run with `restart: unless-stopped`, and the loop handles `SIGTERM` by
-finishing the current tick and settling in-flight orders before exiting —
-so `docker stop` and a host reboot are both safe.
-
-> ⚠️ **Run `live-staging` first, for long enough to mean something.**
-> `live-production` trades real capital and is additionally gated on
-> promotion evidence. Verify the audit trail and reconciliation on paper
-> before going near it.
+One file, `docker-compose.yml`. Each trading service has its own
+uncommitted env file (its Alpaca account) and its own named volume (its
+ledger), so books can never mix; `./config` mounts read-only. The UI is
+published on loopback only. [docs/DEPLOY.md](docs/DEPLOY.md) is the guide:
+stopping any other host first, moving a ledger in, backups, the LAN.
 
 ---
 
 ## Configuration
 
-`BacktestConfig` (`engine/core/config.py`) is the single source of truth. Build it
-from a dict or YAML — both deserialize through the same path, so they
-validate identically.
-
-Only `strategy` and `grid` are required. Every other section falls back to
-documented defaults, so a minimal config genuinely runs.
+`BacktestConfig` (`engine/core/config.py`) is the single source of truth,
+built from YAML or a dict through one path and validated before anything
+runs. Only `strategy` and `grid` are required. Three kinds of YAML live in
+`config/` — sweeps, pinned champions and deployments; see
+[config/CLAUDE.md](config/CLAUDE.md).
 
 ```yaml
 strategy:
-  strategy_id: fixed              # you map this to a class; see below
-  strategy_params:
-    allocation_pct: 0.05
-
+  strategy_id: hf_local_reference   # any id in strategies/strategy_registry.py
+  strategy_params: {per_lot_pct: 0.0002, lookback_days: 0.02, bars_per_day: 387}
 grid:
-  steps: [0.005, 0.01]            # each must be > 0 and < 1.0
-  profit_targets: [0.003, 0.005]
-
-backtest:
-  symbol: TQQQ
-  initial_cash: 100000.0
-
-costs:
-  model_type: zero                # "zero" | "slippage_commission"
-  commission_per_trade: 0.0
-  slippage_bps: 0.0
-
-risk:
-  max_concurrent_lots: null       # null = unlimited
-  max_total_exposure: null        # null = unlimited, else 0.0-1.0
-
-search:
-  strategy: grid                  # "grid" | "bayesian"
-  rank_by: Capital Velocity Index
-  direction: maximize             # "maximize" | "minimize"
-  seed: null                      # only used by bayesian
-
+  steps: [0.00075]                  # each > 0 and < 1
+  profit_targets: [0.3]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, base_bps: 0.5, vol_multiplier: 0.3}  # or zero / slippage_commission
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+search: {strategy: grid, rank_by: Total Return %, direction: maximize, seed: 42}
 execution:
-  on_flat_reentry: stale_reference  # or "reset_to_market"
-  intrabar_priority: sell_first     # used by intraday validation
-
-output:
-  return_full_results: false      # true -> also get blotters + equity curves
-
+  fill_model: intrabar              # or close
+  intrabar_fill: causal             # or level / open_or_level
+  intrabar_priority: sell_first
+  on_flat_reentry: stale_reference  # or reset_to_market
+  enforce_no_loss: true
+  allow_signal_exit: false          # true only for strategies with a regime exit
+  cash_yield_pct: null              # null = historical money-market rate
 live:
   enabled: false
-  paper_trading: true             # true is a hard safety gate, see below
-  step: 0.01                      # required by the trading loop
-  profit_target: 0.005            # required by the trading loop
-  feed: iex                       # iex (free) or sip (paid subscription)
-  poll_interval_seconds: 60.0
-  max_sells_per_tick: 25
+  broker: alpaca                    # or fidelity
+  paper_trading: true
+  step: 0.00075                     # the ONE parameter set the loop trades
+  profit_target: 0.3
+  feed: iex
 ```
 
-**`live.step` / `live.profit_target` are separate from `grid.*` on
-purpose.** The `grid` lists are a search space a sweep explores. These two
-are the single parameter set the live loop actually trades. Defaulting them
-to `grid.steps[0]` would make the parameters real capital runs an implicit
-side effect of sweep ordering, so the loop refuses to start without them
-being stated. Pick them from a backtest result, deliberately.
+`live.step` / `live.profit_target` are never defaulted from `grid.*`: the
+grid lists are a search space, and letting sweep ordering pick what real
+capital trades would be an accident. The loop refuses to start without them.
 
-They are validated by `LiveTradingLoop`, not by `BacktestConfig.validate()`
-— a config can legitimately set `live.enabled` without running the daemon.
-
-**`strategy_id` requires a manual mapping.** This codebase has no
-id-to-class registry, so you supply one:
-
-```python
-STRATEGY_REGISTRY = {"fixed": FixedPortfolioPercentage}
-strategy_class = STRATEGY_REGISTRY[config.strategy.strategy_id]
-results = controller.run_sweep(**config.to_run_sweep_kwargs(strategy_class))
-```
-
-Validation is **front-loaded** — `config.validate()` checks ranges and
-cross-field constraints before any simulation starts, so a bad config fails
-in milliseconds rather than after a long sweep.
-
----
-
-## Core concepts
-
-**Lot.** One purchase, tracked individually with its own cost basis and its
-own `target_sell_price`, fixed at creation. Lots are never pooled, so each
-exits on its own economics.
-
-**Grid step.** The fractional price drop from the last buy that triggers the
-next one. `0.01` means buy again after a 1% decline.
-
-**Profit target.** The fractional gain at which a lot becomes eligible to
-harvest. Eligibility is not permission — see the no-loss guard.
-
-**MarketContext.** An immutable snapshot of one bar: OHLC plus portfolio
-state (cash, equity, peak equity, drawdown, open lot count). It is what the
-strategy sees, and it is frozen so a strategy cannot alter its own inputs.
-
-**Capital Velocity Index.** The default ranking metric: closed lots ÷ total
-lots. It rewards capital that recycles rather than capital that sits.
-
-### Metrics produced
-
-`Final Equity` · `Total Return %` · `Realized PnL` · `Trade Count` ·
-`Closed Trade Count` · `Open Trade Count` · `Capital Velocity Index` ·
-`Max Drawdown %`
+Rank by `Total Return %` or a drawdown-aware metric. The legacy default,
+`Capital Velocity Index` (closed lots ÷ total lots), saturates at 1.0 on
+long datasets and then ranks nothing.
 
 ---
 
 ## Architecture
 
-### The canonical decision cycle
-
-Backtest and live execution **share one implementation** of the strategy
-call sequence (`engine/trading/decision_cycle.py`). This is not a convention — both
-call the same functions, and a test asserts neither re-implements the
-comparison locally.
-
 ```
-┌───────────────────────────────────────────────┐
-│  1. record_tick(context)     — every bar      │
-│  2. harvest eligible lots    — sell before buy│
-│  3. _check_grid_trigger()                     │
-│  4. calculate_trade_value()                   │
-│  5. risk clamp                                │
-│  6. no-loss guard            ← exits only     │
-└───────────────────────────────────────────────┘
+web/  ──HTTP──>  server/  ──>  research/  ──>  engine/  <──  fidelity_gateway/
+                                                  ^
+                                          engine/core is layer 0
 ```
 
-Steps 1 and 3 are deliberately *separate* functions: `record_tick` fires at
-the top of a bar, but the grid trigger is only evaluated **after** that
-bar's harvest sells. Collapsing them would silently change when stateful
-strategies observe the market.
+`engine/` never imports `research/`: strategies reach the engine only
+through the `SizingStrategy` port (`engine/core/sizing.py`), and the
+registry is the one module that knows the concrete set. Each directory has
+its own guide — [engine](engine/CLAUDE.md), [research](research/CLAUDE.md),
+[server](server/CLAUDE.md), [web](web/CLAUDE.md),
+[fidelity_gateway](fidelity_gateway/CLAUDE.md), [tools](tools/README.md),
+[tests](tests/CLAUDE.md).
 
-### Module map
-
-| Module | Responsibility |
-|---|---|
-| `research/optimization/optimization_controller.py` | Sweep orchestration; `_simulate_single` runs one combination |
-| `engine/trading/decision_cycle.py` | The canonical strategy call sequence, shared by backtest and live |
-| `research/strategies/size_calculators.py` | `SizingStrategy` ABC + `FixedPortfolioPercentage` |
-| `engine/core/ledger.py` | Lot-based position tracking, full and partial closes |
-| `engine/trading/no_loss_guard.py` | **The** no-loss comparison — one implementation |
-| `engine/execution/cost_models.py` | Zero / static slippage / volatility-aware slippage |
-| `engine/trading/risk_manager.py` | Exposure clamps + `CircuitBreaker` |
-| `engine/core/market_context.py` | `MarketContext`, `SimulationResult` |
-| `engine/core/config.py` | `BacktestConfig` and its nested sections |
-| `engine/core/validation.py`, `engine/data/data_validation.py` | Config and dataset validation |
-| `research/optimization/search_strategies.py` | `GridSearch`, `BayesianSearch` (Optuna) |
-| `research/optimization/walk_forward.py`, `research/optimization/monte_carlo.py` | Out-of-sample validation |
-| `engine/core/persistence.py` | SQLite ledger store, crash recovery |
-| `engine/core/audit.py` | Durable, append-only event log |
-| `engine/execution/order_lifecycle.py` | Order state machine + broker status mapping |
-| `engine/execution/reconciliation.py` | Local vs. broker state comparison |
-| `engine/trading/runtime_lifecycle.py` | Startup sequence and graceful shutdown |
-| `engine/promotion.py` | Paper→live promotion gate |
-| `engine/core/retry_policy.py` | Error classification and bounded backoff |
-| `engine/core/secrets.py` | Credential loading and redaction |
-| `engine/core/idempotency.py`, `engine/trading/duplicate_order_guard.py` | Event and order deduplication |
-| `engine/data/tick_validation.py` | Per-tick sanity checks |
-| `engine/data/historical_data.py` | Bulk bar download -> `data/` (warehouse intake, ingested via `tools/build_warehouse.py`) |
-| `research/strategies/sizing_indicators.py` | Incremental rolling max / Wilder RSI, shared by strategies |
-| `research/strategies/bayesian_sizing_calculators.py` | `BayesianDualScaleSizing` (dual-timescale Beta posterior) |
-| `research/strategies/strategy_registry.py` | `strategy_id` -> sizing-strategy class |
-| `engine/brokers/alpaca_broker.py` | The `LiveBroker` implementation — order submission, lookup, snapshot |
-| `engine/data/alpaca_market_data.py` | Latest bar and market clock |
-| `engine/trading/live_trading_loop.py` | The tick loop: fills, harvest, buy, persist, shutdown |
-| `engine/core/exceptions.py` | Domain exception hierarchy |
-
-### Exception hierarchy
-
-All domain errors descend from `TradingSystemError`, so callers can catch
-broadly or precisely:
+**The decision cycle**, identical in backtest and live, every bar:
 
 ```
-TradingSystemError
-├── ConfigurationError      bad config, missing credentials, failed gates
-├── DataValidationError     unusable historical data
-├── StrategyError           strategy-level failures
-├── RiskError               risk-limit violations
-├── ExecutionError          order/execution failures
-│   ├── NoLossViolation             a sell would realize a loss
-│   └── AmbiguousSubmissionError    outcome unknown — reconcile, never retry
-├── ReconciliationError     local and broker state disagree
-└── PersistenceError        durable write/read failures
+1. record_tick(context)     every bar, unconditionally
+2. harvest eligible lots    sell before buy
+3. grid trigger
+4. calculate_trade_value()  only on a trigger
+5. risk clamp
+6. no-loss guard            exits only
 ```
+
+A `MarketContext` is a frozen snapshot of one bar plus portfolio state, so
+a strategy cannot alter its own inputs. All domain errors descend from
+`TradingSystemError` (`ConfigurationError`, `DataValidationError`,
+`StrategyError`, `RiskError`, `ExecutionError` → `NoLossViolation` /
+`AmbiguousSubmissionError`, `ReconciliationError`, `PersistenceError`).
 
 ---
 
 ## Safety invariants
 
-These are enforced *structurally* — the code has no path to violate them —
-rather than by documentation or convention.
+Enforced by structure and tests, not convention.
 
-### 1. Never sell at a loss
-
-`engine/trading/no_loss_guard.py` is the single place this is evaluated. Two
-independent inline copies existed previously and had already begun to
-drift; they were folded into one, and a test scans the codebase for any
-reintroduced duplicate.
-
-```
-allocated_cost_basis = buy_price × quantity
-net_sell_proceeds    = quantity × effective_sell_price − sell_costs
-permitted            ⟺ net_sell_proceeds ≥ allocated_cost_basis − 1e-8
-```
-
-A nominally profitable target that becomes a loss after commission and
-slippage is **rejected before submission**.
-
-> **Practical consequence worth knowing:** under realistic slippage, very
-> thin profit targets stop being viable exits at all. A 0.5% target against
-> a volatile bar's modeled slippage will simply never clear the guard. Two
-> safety mechanisms interacting correctly — but it shapes which
-> `profit_targets` are worth testing.
-
-### 2. A halt never forces liquidation
-
-`CircuitBreaker`, `RuntimeLifecycle`, and `Reconciler` expose **no**
-liquidation method — asserted by test. A halt blocks *new buys*; existing
-lots remain fully eligible for normal profitable harvest.
-
-### 3. Halts require a human
-
-States are `ACTIVE`, `HALTED_NEW_BUYS`, and `MANUAL_RESET_REQUIRED`. A
-recovering drawdown moves to `MANUAL_RESET_REQUIRED` — it does **not**
-auto-resume, because the point is to force a human to look. Resets require
-a named operator, and the halt persists across restarts (repeated restarts
-cannot clear it).
-
-### 4. Reconciliation never invents a transaction
-
-Auto-repair fires only when a broker-confirmed fill lands on an order
-already held as live under our own client order ID. Everything ambiguous
-halts. There is no method to manufacture a fill, lot, or cash movement.
-
-### 5. Ambiguity is never retried
-
-A transport failure *after* an order submission is `AMBIGUOUS` — it is
-unknown whether the broker received it. It raises a distinct exception type
-so it cannot be caught by the same `except` branch as ordinary failures,
-and it routes to reconciliation-by-client-order-ID rather than a retry.
-
-### 6. Credentials never reach logs
-
-`LiveCredentials` overrides `__repr__`/`__str__`, so credentials cannot
-appear in a log line, f-string, `%`-format, `.format()` call, or traceback
-— even when the object is logged directly. Audit payloads are redacted
-before writing; deployment artifacts *reject* secret-looking keys outright.
+1. **Never sell at a loss.** `net_sell_proceeds ≥ allocated_cost_basis − 1e-8`,
+   after costs, in one module. A target that becomes a loss after slippage
+   is rejected before submission — so very thin targets never clear it.
+   The sole exception is a strategy's `lots_to_liquidate` with
+   `execution.allow_signal_exit` on.
+2. **A halt never forces liquidation.** `CircuitBreaker`, `RuntimeLifecycle`
+   and `Reconciler` have no liquidation method (asserted by test).
+3. **Halts need a human.** `ACTIVE → HALTED_NEW_BUYS → MANUAL_RESET_REQUIRED`;
+   a recovering drawdown does not auto-resume, the reset names an operator,
+   and the halt survives restarts.
+4. **Reconciliation never invents a transaction.** Auto-repair only applies
+   a broker-confirmed fill to an order held under our own client order ID;
+   everything ambiguous halts.
+5. **Ambiguity is never retried.** A transport failure after submission is
+   a distinct exception type routed to reconciliation by client order ID.
+6. **Credentials never reach logs.** `LiveCredentials` redacts its own
+   `repr`/`str`, audit payloads are redacted, and deployment artifacts
+   reject secret-looking keys.
 
 ---
 
-## Statistical validation
+## Live trading and the promotion path
 
-A single backtest is one sample, not a result. Two tools exist for this,
-and using them is the difference between a finding and a coincidence.
-
-### Walk-forward
-
-Selects parameters on a training window and scores them **only** on the
-following held-out window. Result columns are prefixed `train_` and `test_`
-so in-sample and out-of-sample figures cannot be confused.
-
-```python
-from research.optimization.walk_forward import WalkForwardRunner
-
-runner = WalkForwardRunner(
-    lambda df_slice: OptimizationController(historical_data=df_slice),
-    train_window=250,
-    test_window=50,
-    step=50,
-)
-folds = runner.run(
-    df,
-    grid_steps=[0.005, 0.01],
-    profit_targets=[0.003, 0.005],
-    strategy_class=FixedPortfolioPercentage,
-    strategy_params_grid=[{"allocation_pct": 0.05}],
-)
+```
+Backtest (SIMULATION)  →  Paper (PAPER)  →  Live (LIVE, needs a passing PromotionEvaluation)
 ```
 
-### Monte Carlo
+Promotion criteria (`engine/promotion.py`), all machine-checked and recorded:
+minimum paper duration (5 days), decisions (20) and fills (5); zero
+accounting discrepancies, duplicate orders, no-loss violations, unresolved
+reconciliations and unhandled exceptions. Every unmet criterion is
+reported, and a gate configured to require nothing is itself rejected.
 
-Block-bootstraps the return series into synthetic paths — contiguous
-blocks, not individual days, so volatility clustering survives. Returns
-5th/25th/50th/75th/95th percentiles.
+Credentials are environment-only: `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY`
+(a paper key pair for staging, a live pair for production — `paper_trading`
+selects the endpoint, it does not make a live key safe). The Fidelity route
+is set up from `config/fidelity_live.yaml.example`.
 
-```python
-from research.optimization.monte_carlo import MonteCarloRunner
-
-summary = MonteCarloRunner().run(
-    controller_factory=lambda p: OptimizationController(historical_data=p),
-    n_paths=500,
-    block_size=20,
-    step=0.01,
-    target=0.005,
-    strategy_class=FixedPortfolioPercentage,
-    strategy_params={"allocation_pct": 0.05},
-    historical_data=df,
-    seed=42,
-)
+```bash
+.venv/bin/python cli.py live --config config/staging.yaml --check-only   # connect, reconcile, exit
+.venv/bin/python cli.py live --config config/staging.yaml --max-ticks 20  # bounded first session
+.venv/bin/python cli.py live --config config/staging.yaml                 # until SIGTERM/SIGINT
 ```
 
-Each path gets an independent child seed derived from `seed`, so runs are
-reproducible without any two paths sharing a random stream.
-
-> **If two configurations differ by less than the Monte Carlo spread, they
-> do not differ.** Sweeping many combinations and taking the maximum is
-> multiple-comparison shopping; it reliably finds the luckiest, not the
-> best.
+Startup walks `LOAD_CONFIG → LOAD_STATE → CONNECT_BROKER → RECONCILE →
+VALIDATE_DATA_CLOCK → READY` and will not trade short of `READY`. Fills are
+polled: submitting an order changes nothing until a later tick sees the
+broker confirm it.
 
 ---
 
-## Running the HF parameter sweeps
+## Running it as services
 
-Every sweep behind `CHANGELOG.md`'s `HighFrequencyLocalReferenceSizing`
-research (the strategy the [Simulations run to date](#simulations-run-to-date)
-table below is full of) was driven by two scripts, not `cli.py`. `cli.py
-backtest` exposes neither `n_jobs` nor per-combination progress logging, and
-`cli.py search` calls the internal runner without `fill_model`, so it
-silently runs the CLOSE-only fill model regardless of what
-`execution.fill_model` says — wrong for a strategy whose grid rests limit
-orders. Older, non-HF strategies (`fixed`, `bayesian_dual_scale`) still go
-through `cli.py`, since they predate that defect being found.
+Everything that stays up runs from `docker-compose.yml`
+([docs/DEPLOY.md](docs/DEPLOY.md)):
 
-### `research/run_hf_sweep.py` — the sweep driver
-
-```bash
-.venv/Scripts/python.exe research/run_hf_sweep.py \
-  --config config/<name>.yaml \
-  --search grid \
-  --n-jobs 4 \
-  --output output/<name>.csv
-```
-
-Reads bars from the warehouse by `config.backtest.symbol` — there is no
-`--data` flag; ingest the ticker first (`tools/build_warehouse.py
---ingest TICKER`) if this is the first sweep to use it.
-
-| Flag | Default | Meaning |
-|---|---|---|
-| `--config` | `config/search_hf_intrabar.yaml` | `BacktestConfig` YAML to run |
-| `--output` | `output/search_hf_intrabar_2026-08-22.csv` | ranked results CSV, checkpointed periodically so a multi-hour run has partial output on failure |
-| `--search {grid,bayesian,random}` | the config's `search.strategy` | overrides the YAML without editing it |
-| `--trials N` | `200` | evaluation budget for `bayesian`/`random`; ignored for `grid` |
-| `--n-jobs N` | `1` | worker processes. Each peaks around 1.7GB RAM at the heaviest settings (~900k trades/10y) — budget accordingly, and see `--max-drawdown` below for why a bare TPE run over a mostly-categorical space tends to collapse |
-| `--max-drawdown X` | none | penalizes the search *objective* for combinations over `X`% max drawdown, gradated by how far over — a flat penalty gives the sampler nothing to walk back down. The combination is still fully measured and its true numbers land in the CSV; only what the sampler is told to chase changes |
-| `--limit N` | none | run only the first `N` combinations — for smoke-testing a config before committing to the full space |
-
-Runs sequentially by default; pass `--n-jobs 4` (or similar) for
-process-level parallelism. Random search (`--search random`) samples
-without replacement and is generally the better default over `bayesian` on
-these mostly-categorical spaces — TPE has repeatedly been observed
-re-proposing the same ~15 combinations for hundreds of trials once it
-locks onto a mode, where random search covers the space proportionally to
-budget. See `Add RandomSearch...` in `git log` for the measurements.
-
-### `research/analysis/analyze_annual.py` — year-by-year vs. buy-and-hold
-
-The whole-period CAGR of a profit-capped strategy over a decade-long bull
-run is misleading in a specific, predictable direction. This reads every
-CSV in `output/`, deduplicates to distinct parameter sets, takes the best
-few by `Total Return %`, re-simulates each once, and reports calendar-year
-returns against TQQQ buy-and-hold on the same data — so it is checking
-whether the strategy actually wins the chop/correction years it is meant
-for, not just its aggregate number.
-
-```bash
-.venv/Scripts/python.exe research/analysis/analyze_annual.py --top 3
-.venv/Scripts/python.exe research/analysis/analyze_annual.py --cap 50 --top 2   # only consider maxDD <= 50%
-```
-
-| Flag | Default | Meaning |
-|---|---|---|
-| `--ticker` | `TQQQ` | warehouse ticker to re-simulate finalists and the benchmark on |
-| `--cap` | none | only consider rows with `Max Drawdown % <= cap` |
-| `--top` | `3` | how many best (deduplicated) configurations to report |
-
-### `cli.py search` / `cli.py backtest` — for non-HF strategies
-
-```bash
-python cli.py backtest --config config/sweep_5y.yaml --output output/sweep_5y.csv
-python cli.py search --config config/search_bayesian_deep.yaml --trials 500 --output output/search_bayesian_deep.csv
-```
-
-`backtest` runs the config's declared `search.strategy` (grid or bayesian)
-to completion in one process. `search` drives `BayesianSearch` directly and
-logs trials in the order Optuna actually proposes them (`--trial-log`), so
-the explore-then-exploit progression is visible instead of hidden behind
-`run_sweep`'s final sort.
-
-### Chain scripts
-
-`run_extended_chain.sh`, `run_frontier_chain.sh`, and `run_overnight_chain.sh`
-wrap a sweep plus an `research/analysis/analyze_annual.py` breakdown into one sequential run,
-logging to `output/<name>_$(date +%Y%m%d_%H%M).log`. Sequential is
-deliberate, not an oversight: four `n_jobs` workers already peak near
-1.7GB of commit each, and an earlier 250-trial run was killed partway
-through when something else ran alongside it on the same machine. Run one
-at a time:
-
-```bash
-bash run_frontier_chain.sh
-```
-
-`run_overnight_chain.sh` additionally takes a task-output path as `$1` and
-waits (polling every 60s, capped at 6h) for that in-flight sweep to finish
-before starting its own chain, so a long foreground run and an overnight
-chain can be queued back to back without overlapping.
-
-### `cli.py submit` — hand a sweep to the server's shard queue
-
-`backtest`/`search`/`run_hf_sweep.py` all run in THIS process. `submit`
-instead posts the same `BacktestConfig` YAML to `POST /api/backtest/runs`
-on a running `cli.py serve`, which queues it for whatever shards are
-online (`GET /api/backtest/shards`) to claim and run — watchable in the
-browser (Backtesting → Run History), and unaffected by this process
-exiting. No bespoke per-sweep script needed: any config works.
-
-```bash
-python cli.py submit --config config/search_hf_bayesian.yaml --search grid
-python cli.py submit --config config/search_bayesian_deep.yaml --trials 500
-```
-
-| Flag | Default | Meaning |
-|---|---|---|
-| `--config` | required | `BacktestConfig` YAML to submit |
-| `--api` | `http://127.0.0.1:8000` | the running server's base URL |
-| `--search {grid,bayesian}` | the config's `search.strategy` | override without editing the file (server has no `random`) |
-| `--trials N` | `500` | bayesian trials **per chunk** (max 500, the API's own ceiling) — not a total budget |
-| `--limit N` | none (the whole file) | bar cap per configuration |
-| `--dry-run` | off | print the plan; submit nothing |
-| `--resubmit` | off | queue even runs already completed/pending on the server |
-
-A config's declared combination space can exceed what one submission may
-carry (`MAX_SWEEP_COMBINATIONS` for grid, 100x looser for bayesian, since
-the whole point of choosing bayesian is a space too large to enumerate)
-— `submit` splits it into as many runs as needed by recursively bisecting
-the widest swept axis, the same way `tools/sweep_rsp_all.py` did by hand
-before this existed. A strategy like `bayesian_dual_scale`, whose
-`target_return` the server force-aligns to the grid's own profit target,
-gets one submission per swept `target_return` value automatically (that
-parameter is never sent — the server supplies it).
-
-**Not the same as a local run:** `RunRequest` has no cost-model field, so
-every submitted run executes at zero transaction cost regardless of what
-the config's own `costs:` section says — a real gap in the web API, not
-something `submit` works around.
-
----
-
-## Simulations run to date
-
-Every config in `config/` that has actually been swept, in the order it
-was run, with the command that reproduces it. All use the strategy
-`hf_local_reference` (`HighFrequencyLocalReferenceSizing`) against the
-10-year TQQQ SIP dataset unless noted. Read each config's own header
-comment for the full rationale — this table is a reproduction index, not a
-replacement for it.
-
-| Config | Question it answers | Command | Output |
-|---|---|---|---|
-| `search_hf_intrabar.yaml` | Foundational exhaustive sweep (192 combos) that fixed the close-vs-touch fill model, a binding lot cap, and dead sub-cost-floor targets. | `research/run_hf_sweep.py --config config/search_hf_intrabar.yaml --search grid --n-jobs 4 --output output/search_hf_intrabar.csv` | superseded, not retained |
-| `search_hf_bayesian.yaml` | TPE over the same space densified to 6,272 points, uncapped. | `research/run_hf_sweep.py --config config/search_hf_bayesian.yaml --search bayesian --trials 200 --n-jobs 4 --output output/search_hf_bayesian_2026-08-22.csv` | `output/search_hf_bayesian_2026-08-22.csv` |
-| `search_hf_bayesian.yaml` | Same space, drawdown capped so the sampler stops chasing the ~80%-drawdown corner. | `research/run_hf_sweep.py --config config/search_hf_bayesian.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_bayesian_capped_2026-08-22.csv` | `output/search_hf_bayesian_capped_2026-08-22.csv` |
-| `search_hf_bayesian.yaml` | Rerun of the capped search after the penalty was graded by excess instead of flattened (the flat penalty had collapsed exploration to 14 unique combos). | `research/run_hf_sweep.py --config config/search_hf_bayesian.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_bayesian_capped_v2_2026-08-22.csv` | `output/search_hf_bayesian_capped_v2_2026-08-22.csv` |
-| `probe_vol_scaling.yaml` | Controlled probe: only `vol_scale_exponent` swept, everything else pinned at the capped run's best. Sizing down into volatility (`-1.5`) beat the no-op control by +13.05pp. | `research/run_hf_sweep.py --config config/probe_vol_scaling.yaml --search grid --output output/probe_vol_scaling.csv` | recorded in commit `5ff9eb1`, CSV not retained |
-| `search_hf_volscaled.yaml` | TPE over 3,240 points with continuous vol scaling as the primary axis, event boosts pinned. | `research/run_hf_sweep.py --config config/search_hf_volscaled.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volscaled_2026-08-23.csv` | `output/search_hf_volscaled_2026-08-23.csv` |
-| `search_hf_volscaled.yaml` | Same space, random search instead of TPE (250 distinct combos, 7.7% coverage) — added after TPE was found covering up to 17x less of a categorical space than random. | `research/run_hf_sweep.py --config config/search_hf_volscaled.yaml --search random --trials 250 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volscaled_random_2026-08-23.csv` | `output/search_hf_volscaled_random_2026-08-23.csv` |
-| `search_hf_volscaled.yaml` | Rerun after the range-based vol measure, volume field, and extended fast/slow windows were added. | `research/run_hf_sweep.py --config config/search_hf_volscaled.yaml --search bayesian --trials 200 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volscaled_v2_2026-08-23.csv` | `output/search_hf_volscaled_v2_2026-08-23.csv` |
-| `probe_volume_scaling.yaml` | Controlled probe: only `volume_scale_exponent` swept, pinned at the random sweep's best. Worth +11pp cap-compliant / +35.8pp uncapped, despite scoring weakest of any candidate on the prior correlation screen. | `research/run_hf_sweep.py --config config/probe_volume_scaling.yaml --search grid --output output/probe_volume_scaling.csv` | recorded in commit `5449475`, CSV not retained |
-| `search_hf_wide_targets.yaml` | Does the profit target (held ≤0.003 in every sweep above) actually cap upside? No-loss guard ON. | `research/run_hf_sweep.py --config config/search_hf_wide_targets.yaml --search grid --n-jobs 4 --output output/search_hf_wide_targets.csv` | `output/search_hf_wide_targets.csv` |
-| `search_hf_wide_targets_noguard.yaml` | Same grid, no-loss guard OFF — isolates whether the guard itself costs anything at wider targets. | `research/run_hf_sweep.py --config config/search_hf_wide_targets_noguard.yaml --search grid --n-jobs 4 --output output/search_hf_wide_targets_noguard.csv` | `output/search_hf_wide_targets_noguard.csv` |
-| `search_hf_volume_sweep.yaml` | Brings volume in as a real swept axis alongside vol scaling, rather than a pinned-off control. | `research/run_hf_sweep.py --config config/search_hf_volume_sweep.yaml --search random --trials 220 --max-drawdown 55 --n-jobs 4 --output output/search_hf_volume_sweep.csv` | `output/search_hf_volume_sweep.csv` |
-| `search_hf_targets_extended.yaml` | Extends the target axis 0.05 → 0.30 (120 combos, exhaustive) after the wide-targets sweep's winner sat on its 0.05 ceiling. | `research/run_hf_sweep.py --config config/search_hf_targets_extended.yaml --search grid --n-jobs 4 --output output/search_hf_targets_extended.csv` | `output/search_hf_targets_extended.csv` |
-| `search_hf_targets_frontier.yaml` | Extends the target axis 0.30 → 1.00 *and* re-sweeps `per_lot_pct` alongside it (64 combos), since both control how long capital stays deployed and tuning either alone would mis-attribute the effect. | `research/run_hf_sweep.py --config config/search_hf_targets_frontier.yaml --search grid --n-jobs 4 --output output/search_hf_targets_frontier.csv` | `output/search_hf_targets_frontier.csv` — launched 2026-08-24 via `bash run_frontier_chain.sh`; still running as of 2026-08-25 (see note below) |
-| `best_known_2026-08-24.yaml` | Not a sweep — a single-point config pinning the best result found to date (25.38% CAGR, 45.57% max drawdown, 86,087 trades over the 10.63-year dataset) so it can be reproduced without hunting through every sweep output. | `research/run_hf_sweep.py --config config/best_known_2026-08-24.yaml --search grid --output output/best_known_2026-08-24.csv` | not yet run standalone; value is the config itself |
-
-Two older, unrelated sweep families exist from before the HF strategy work
-and use `cli.py` instead of `research/run_hf_sweep.py`:
-
-| Config | Strategy | Command |
-|---|---|---|
-| `sweep_5y.yaml` / `sweep_5y_boundary.yaml` / `sweep_5y_costed.yaml` | `fixed` (`FixedPortfolioPercentage`) — early minute-bar step/target tuning, zero-cost then costed | `python cli.py backtest --config config/sweep_5y.yaml --output output/sweep_5y.csv` |
-| `sweep_bayesian.yaml` / `search_bayesian_deep.yaml` | `bayesian_dual_scale` (`BayesianDualScaleSizing`) — dual-timescale Beta-posterior sizing, TPE-searched | `python cli.py search --config config/search_bayesian_deep.yaml --trials 500 --output output/search_bayesian_deep.csv` |
-
-(Both originally ran against a `--data` CSV, before `backtest`/`search`
-switched to reading the warehouse by `backtest.symbol` — TQQQ for both
-configs. Reproducing them today needs no flag change, only that TQQQ is
-ingested: `python tools/build_warehouse.py --ingest TQQQ`.)
-
-`staging.yaml` and `production.yaml` are not sweep configs at all — they
-are `live:`-enabled deployment configs; see
-[Going live](#going-live-the-promotion-path).
-
-> **On stalled ETAs from a sleeping machine.** The frontier sweep above sat
-> at a ~30h ETA for most of 2026-08-24 despite each combination taking
-> ~500s of actual compute (visible via `Get-Process`'s CPU-seconds, which
-> keep counting only while a process is scheduled). Wall-clock elapsed time
-> includes any interval the machine spent asleep, so the driver's own ETA —
-> computed from wall time — inflates the same way. It was not stuck; system
-> sleep has since been disabled so this should not recur.
-
----
-
-## Going live: the promotion path
-
-Real capital is **structurally unreachable** from a backtest result.
-
-```
-  Backtest              Paper                 Live
-  Mode.SIMULATION  →    Mode.PAPER      →     Mode.LIVE
-                                                 ↑
-                                      requires a passing
-                                      PromotionEvaluation
-```
-
-`Mode.PAPER` is a first-class mode, not a boolean on `LIVE`, so reaching
-real capital is an explicit, auditable step. Constructing a `Mode.LIVE`
-OMS requires a passing `PromotionEvaluation` — there is no
-`enable_live=True` shortcut, and a truthy-but-not-passing object is
-rejected.
-
-**Promotion criteria** (`engine/promotion.py`), all machine-checked and
-recorded in the artifact rather than left to judgment:
-
-| Criterion | Default |
+| service | |
 |---|---|
-| Minimum paper-trading duration | 5 days |
-| Minimum strategy decisions | 20 |
-| Minimum fills | 5 |
-| Accounting discrepancies | 0 |
-| Duplicate-order incidents | 0 |
-| No-loss guard violations | 0 |
-| Unresolved reconciliations | 0 |
-| Unhandled exceptions | 0 |
+| `web` | the UI, its API and the backtest engine, on `127.0.0.1:8000` |
+| `paper` | the champion grid on Alpaca paper (`config/paper_aggressive.yaml`) |
+| `backup` | every ledger and the warehouse catalogs, daily, into `/workspace/backups` |
+| `paper-ultimate` | profile `ultimate`: the Ultimate algorithm on its own paper account |
+| `live` | profile `production`: real money, behind the promotion gate |
 
-`evaluate_promotion` reports **every** unmet criterion at once, not just the
-first. A gate configured with zero required days or fills is itself
-rejected — it would pass a strategy that never traded.
-
-### Credentials
-
-Environment only. Never in config, never in source control, never in an
-artifact.
-
-| Variable | Purpose |
-|---|---|
-| `APCA_API_KEY_ID` | Alpaca API key ID |
-| `APCA_API_SECRET_KEY` | Alpaca API secret key |
-
-Missing credentials raise `ConfigurationError` naming exactly which
-variables are absent — never a silent fallback to simulation.
-
-Use a **paper** key pair for staging and a **live** key pair for
-production; they are different credentials at Alpaca, and `paper_trading`
-only selects the endpoint — it does not make a live key safe.
-
-### Running the loop
-
-```bash
-# Health check: connect, reconcile, exit. Places no orders.
-python cli.py live --config config/staging.yaml --check-only
-
-# Bounded run, useful for a first supervised session.
-python cli.py live --config config/staging.yaml --max-ticks 20
-
-# Unbounded: what the containers run. Stops on SIGTERM/SIGINT.
-python cli.py live --config config/staging.yaml
-```
-
-Startup walks `STARTING → LOAD_CONFIG → LOAD_STATE → CONNECT_BROKER →
-RECONCILE → VALIDATE_DATA_CLOCK → READY` and refuses to trade unless it
-reaches `READY`. Each tick then: applies confirmed fills, records the tick,
-harvests lots at target, and evaluates the grid trigger for a buy.
-
-**Fills are asynchronous.** Submitting an order mutates nothing; a later
-tick polls the broker and only the confirmed increment moves cash or lots.
-An in-flight order is therefore invisible to sizing — the strategy
-under-counts what it may already own rather than spending twice.
+Each trading loop runs `tools/market_hours_supervisor.py`, which asks Alpaca
+when the market opens and exits after the close, so holidays and DST need
+no schedule; `restart: unless-stopped` brings everything back after a
+reboot. Before a session's first tick the strategy is replayed the recent
+sessions of bars its state spans (`engine/trading/live_history.py`) and
+handed its durable book. `docker compose stop` lets the loop finish its
+tick and settle what is in flight. The server has no authentication: read
+[server/CLAUDE.md](server/CLAUDE.md) before publishing it beyond loopback
+(`VAI_WEB_BIND`).
 
 ---
 
-## Testing
+## Testing and code style
 
-The suite is split so each project directory (`engine/`, `research/`,
-`server/`, `fidelity_gateway/`, `tools/`) carries its own `tests/`, and
-the root `tests/` holds only what genuinely spans two of them as peers
-(a broker-contract check across `engine.brokers` + `fidelity_gateway`,
-the live-vs-backtest parity check across `engine` + `research`,
-whole-repo doc verifiers, and `cli.py`'s own entrypoint tests) plus
-`tests/e2e/` and the one shared `tests/fixtures/`. See `tests/CLAUDE.md`
-for the full breakdown and the naming/scanner pitfalls that split
-surfaced.
+Each project directory carries its own `tests/`; the root `tests/` holds
+only what spans two of them, plus `tests/e2e/` and shared fixtures.
 
 ```bash
-python cli.py test                    # everything: every section + root tests/
-python cli.py test -q                 # quiet
-python cli.py test -k promotion       # filtered, still across all sections
-python cli.py test engine/tests -q    # one section only
-pytest engine/tests/test_config.py -q # or invoke pytest directly on one file
+.venv/bin/python cli.py test -q                 # everything
+.venv/bin/python cli.py test -k promotion       # filtered, still across all sections
+.venv/bin/python cli.py test engine/tests -q    # one section
+.venv/bin/ruff format . && .venv/bin/ruff check --fix .
 ```
 
-`cli.py test` inserts every section's `tests/` directory automatically
-when the arguments don't already name an explicit path or node id (see
-`TEST_ROOTS`/`cmd_test` in `cli.py`) — so a bare `-q`/`-k` invocation
-still runs the whole suite even though it now lives in six places, not
-one.
-
-**2,600+ passing** across the whole suite (exact count drifts with
-active development; treat it as approximate).
-
-### The regression baseline
-
-`research/tests/test_regression_baseline.py` pins a full sweep result
-value-for-value and asserts **no extra columns** appear. It has caught
-real behavioral drift repeatedly across development. If you change
-result columns intentionally, update the baseline deliberately — do not
-loosen the assertion.
-
-### Testing conventions
-
-- SDK behavior is **verified, not assumed** — tests enumerate `alpaca-py`'s
-  real `OrderStatus` enum and fail if a future release adds a value
-- Clocks and sleeps are injected, so bounded-window logic tests
-  deterministically without real delays
-- CLI behavior is tested through real subprocesses, since exit codes and
-  argument parsing are what a `docker run` actually exercises
-- A structural "there is only one of these" scanner that `rglob`s a
-  package tree must exclude that package's own `tests/` subdirectory,
-  or it sweeps its own assertions up as false positives once the test
-  files move inside the tree they test — see `tests/CLAUDE.md`
-
----
-
-## Code style
-
-Formatting and linting are both handled by **ruff**, configured in
-`pyproject.toml`.
-
-```bash
-ruff format .            # apply
-ruff format --check .    # verify only (CI)
-ruff check .             # lint
-ruff check --fix .       # lint + safe fixes
-```
-
-`line-length = 100`, chosen by measuring the existing code (p95 was 87, p99
-was 106) rather than accepting the 88 default, which would have rewrapped
-~4.5% of all lines instead of ~1.6%.
-
-Two exemptions, both documented in `pyproject.toml` with reasons: `E501` at
-lint level (operator-facing error strings deliberately name specific deltas
-so they are actionable without reading source), and `C408` in `tests/` only
-(kwargs-builder dicts).
+CI (`.github/workflows/ci.yml`) runs ruff and the suite on every push.
+`research/tests/test_regression_baseline.py` pins a full sweep result value
+for value — update it deliberately, never loosen it. Tests inject clocks
+instead of sleeping, check the real `alpaca-py` enums, and drive the CLI
+through subprocesses. Ruff uses `line-length = 100`; its exemptions are
+explained in `pyproject.toml`.
 
 ---
 
 ## Extending the system
 
-### Adding a sizing strategy
+**A sizing strategy:** subclass `SizingStrategy`, register it in
+`research/strategies/strategy_registry.py`, and give it a schema in
+`param_schema.py`. Accumulate rolling state in `record_tick` (every bar),
+not `calculate_trade_value` (triggers only — a sparse, biased sample).
+Override `_grid_trigger_level` to change entry timing,
+`adjust_profit_target` for per-lot targets, `lots_to_liquidate` for a regime
+exit, and `warm_up(daily)` if it needs history before the first bar. A
+strategy meant for live trading also answers `live_history_sessions()` (the
+sessions of bars to replay before each session's first tick) and, if it
+keeps per-lot state, `resume(open_lots)`.
 
-Subclass `SizingStrategy` and implement two methods:
+**A cost model:** subclass `TransactionCostModel` and implement `apply_buy`
+/ `apply_sell`, each returning `(effective_price, cost)`, without mutating
+anything.
 
-```python
-from engine.core.sizing import SizingStrategy
-
-
-class DrawdownScaledSizing(SizingStrategy):
-    """Scale in harder as drawdown deepens."""
-
-    def __init__(self, base_pct: float, scale: float):
-        self.base_pct, self.scale = base_pct, scale
-
-    def record_tick(self, context) -> None:
-        """Called every bar, unconditionally. Update rolling state here."""
-
-    def calculate_trade_value(self, context) -> float:
-        """Called only on a confirmed grid trigger."""
-        scaled = self.base_pct * (1 + self.scale * context.drawdown)
-        return context.equity * min(scaled, 0.5)
-```
-
-Optionally override `_check_grid_trigger(context, last_buy_price, step)` to
-change *entry timing* rather than sizing.
-
-> **Note the asymmetry:** `record_tick` fires on every bar, but
-> `calculate_trade_value` fires only on triggers. Accumulate rolling state
-> in `record_tick`, or a stateful strategy will see a sparse,
-> downward-biased sample of the market.
-
-### Comparing strategies
-
-`run_sweep` takes one `strategy_class` per call, and result rows carry no
-strategy identifier — so merging two sweeps produces sparse columns you
-must disambiguate by hand:
-
-```python
-merged = pd.concat([sweep_a, sweep_b], ignore_index=True)
-# allocation_pct  base_pct  scale   <- which row is which algorithm?
-#           0.05       NaN    NaN
-#            NaN      0.05    2.0
-```
-
-Adding a strategy registry, a `strategy_id` result column, and a
-`compare_strategies` helper is the natural next step. Note that adding a
-column will trip the regression baseline by design.
-
-### Adding a cost model
-
-Subclass `TransactionCostModel` and implement `apply_buy` / `apply_sell`,
-each returning `(effective_price, cost)`. Slippage folds into the price;
-commissions are the separate cost term. Models are **pure** — they compute
-and return, never mutate.
+Result rows name their `Strategy`, so sweeps of different strategies can be
+concatenated and compared directly.
 
 ---
 
 ## Troubleshooting
 
-**`DataValidationError` on load.** The dataset is empty, has missing
-columns, contains NaN/inf or non-positive prices, or has an unsorted or
-duplicated index. The message names the offending timestamps (truncated to
-five, with a `+N more` suffix).
-
-**`ConfigurationError: grid step must be < 1.0`.** A step of `1.0` is a 100%
-drop, which can never trigger twice from any positive price — it is
-incompatible with the grid mechanics, not merely out of range.
-
-**Every sell is rejected; `Closed Trade Count` is 0.** Modeled costs exceed
-your profit target. Either raise `profit_targets` or reduce
-`costs.slippage_bps` / `commission_per_trade`. This is the no-loss guard
-working correctly.
-
-**`BayesianSearch requires the 'optuna' package`.** Install `optuna`, or
-use `search_strategy: grid`.
-
-**`live` exits with `RECOVERY_REQUIRED`.** Startup could not safely
-continue. The stderr message names the stage: missing credentials (it names
-the variables), credentials the broker rejected, or an unreadable ledger.
-
-**`live` exits with `RECONCILIATION_REQUIRED`.** Local state and the broker
-disagree. This is deliberately not self-healing — the diagnostic names the
-specific delta, and a human must resolve it. The circuit-breaker halt
-persists across restarts, so restarting the container will not clear it.
-
-**`live.step and live.profit_target are both required`.** The trading loop
-needs the single parameter set it will trade. They are not defaulted from
-`grid.steps` / `grid.profit_targets`, because those are sweep lists.
-
-**The loop runs but never trades.** Check that the market is open (it skips
-closed sessions), and that the IEX feed is returning bars — on a thin
-symbol IEX can report no bar for an interval, which is logged and skipped
-rather than filled in.
-
-**Sweeps are slow.** Use `n_jobs > 1` for process-level parallelism, or
-`search_strategy: bayesian` to explore a large space with a fraction of the
-evaluations.
+- **A backtest says there is no data for a ticker.** Add it to
+  `tools/refresh_warehouse.py`'s `FUNDS` and `KNOWN_DATA`, or ingest a CSV
+  (`tools/build_warehouse.py --ingest T`). The warehouse's views read
+  relative paths, so a copied, moved or container-mounted warehouse reads
+  in place; an older one with absolute paths is rewritten the first time it
+  is opened (`tools/build_warehouse.py --init` does it by hand).
+- **`DataValidationError`** — empty data, missing columns, NaN/inf,
+  non-positive prices, or an unsorted/duplicated index; the message names
+  the timestamps.
+- **Every sell rejected, `Closed Trade Count` 0** — costs exceed the target.
+  That is the no-loss guard working; raise the target or lower the costs.
+- **`live` exits `RECOVERY_REQUIRED`** — startup could not continue; stderr
+  names the stage (missing or rejected credentials, unreadable ledger).
+- **`live` exits `RECONCILIATION_REQUIRED`** — local and broker state
+  disagree. Deliberately not self-healing; the halt survives restarts.
+- **The loop runs but never trades** — market closed, IEX returning no bar,
+  or a regime strategy (`ultimate*`) that has no warm-up history yet.
+- **Sweeps are slow** — `research/run_hf_sweep.py --n-jobs N`
+  (~1.7 GB per worker at the heaviest settings), or random search.
 
 ---
 
@@ -1054,121 +491,54 @@ evaluations.
 
 ```
 volatility-ai/
-├── cli.py                     # single entrypoint: test | backtest | search | live | fetch-data | backup | restore | serve
-├── research/optimization/optimization_controller.py # sweep orchestration
-├── dashboard.py               # Streamlit view of a running deployment
-├── research/run_hf_sweep.py            # parallel sweep driver for HF configs -- see below
-├── research/analysis/analyze_annual.py          # annualized regime breakdown vs. buy-and-hold
-├── resample_uniform.py        # re-grid minute bars onto a uniform index
-├── fidelity_gateway/          # the Playwright/HTTP route into Fidelity -- see its own CLAUDE.md
-│   ├── session.py             #   JSON calls from inside a browser you signed into (CDP)
-│   ├── broker.py              #   preview-only adapter (quotes, previews, orders, positions)
-│   ├── placing_broker.py      #   the gated write path
-│   ├── capture.py / analyze_har.py  # capture and inspect Fidelity's own JSON API
-│   ├── recon.py               #   reconnaissance: record a live browser's traffic
-│   └── place_test_order.py
-├── run_*_chain.sh             # sequential sweep + analyze_annual wrappers
-├── Dockerfile
-├── docker-compose.yml         # test/backtest/live + staging/production
-├── docker-compose.pi.yml      # the Raspberry Pi deployment
-├── pyproject.toml             # ruff config, Python floor
-├── requirements.txt           # plus requirements-fidelity.txt, requirements-indicators.txt
-├── Run_Instructions           # detailed usage walkthrough
-├── README.md / QUICK_START.md
-├── CHANGELOG.md               # design decisions and rationale
-├── plan.md                    # the staged indicator sweep, and every stage's result
-├── config/                    # one YAML per deployment or sweep
-│   ├── staging.yaml           # paper account
-│   ├── paper_aggressive.yaml  # the champion configuration, paper
-│   └── production.yaml        # real capital
-├── docs/                      # setup and deployment guides
-├── engine/                    # the trading kernel -- see engine/CLAUDE.md
-│   └── tests/                 # engine-only tests
-├── research/                  # strategies, sweeps, metrics, ML -- see research/CLAUDE.md
-│   └── tests/                 # research-only tests
-├── server/                    # FastAPI backend -- see server/CLAUDE.md
-│   └── tests/                 # server-only tests
-├── tools/                     # ops, data prep, and research probes -- see tools/README.md
-│   ├── experiments/           # shell wrappers for earlier sweep batches
-│   └── tests/                 # tools-only tests
-├── conftest.py                # queue/history test isolation -- global, not under tests/ (see tests/CLAUDE.md)
-└── tests/                     # only what spans two sections as peers -- see tests/CLAUDE.md
-    ├── e2e/                   # the actual Raspberry Pi deployment path
-    └── fixtures/              # synthetic OHLCV + regression baseline, shared by every section
+├── cli.py                  # the single entrypoint (and Docker ENTRYPOINT)
+├── engine/                 # trading kernel
+├── research/               # strategies, sweeps, validation, ML
+├── server/                 # FastAPI backend, queue, shards
+├── web/                    # React UI
+├── fidelity_gateway/       # Fidelity integration
+├── fidelity-bridge-chrome-extension/   # git submodule
+├── tools/                  # ops, data prep, probes; experiments/ holds past sweep runners
+├── config/                 # sweep, champion and deployment YAMLs
+├── tests/                  # cross-section tests, e2e, shared fixtures
+├── docs/                   # setup, deployment, sweeps, research logs; history/ for finished plans
+├── plan.md                 # the staged indicator sweep and its results
+├── CHANGELOG.md            # why decisions were made
+├── CLAUDE.md / AGENTS.md   # the map and rules for agents (AGENTS.md is a symlink)
+├── Dockerfile, docker-compose.yml
+└── pyproject.toml, requirements*.txt
 ```
 
-Git-ignored and therefore absent from a fresh clone, but created by
-normal use: `data/` (downloaded market history — tens of MB per
-symbol-year), `output/` (sweep results), `logs/` (supervisor output),
-`state/`, `*.db` (the SQLite ledger), and the Fidelity capture
-artifacts listed in `.gitignore`. `tools/build_earnings_calendar.py`
-regenerates the one file under `data/` that `engine/` actually needs.
-
-`CHANGELOG.md` documents *why* decisions were made, including several
-resolved specification contradictions. It is worth reading before changing
-anything load-bearing.
+Git-ignored but created by use: `.venv/`, `data/` (downloaded bars),
+`warehouse/` (the DuckDB/Parquet lake), `output/` (results, run history,
+queue), `logs/`, `state/`, `*.db` ledgers, and Fidelity capture artifacts.
 
 ---
 
 ## Known gaps
 
-Tracked honestly rather than hidden:
+1. **`ACCEPTED → UNKNOWN` is not a permitted order transition.** An accepted
+   order that loses contact stays `ACCEPTED`. Decide this before real capital.
+2. **Alpaca fills are polled, not streamed** — recognised within one poll
+   interval.
+3. **`macro_surprise_factor` is inert** — defined on `MarketContext`, never
+   populated or read; populate or remove it. The other macro fields are
+   consumed by `HighFrequencyLocalReferenceSizing`.
+4. **Ultimate live is paper-ready, not yet promotion-ready.** The live
+   loop replays its history, refuses it without `allow_signal_exit` or with
+   extended hours, and exits the calm book in one order. But the regime is
+   computed on IEX ranges, not the SIP tape it was researched on; and lots
+   are sized from each session's starting equity rather than fixed starting
+   capital. `ultimate_rsp` and `ultimate_ursp` replay their votes' history
+   the same way; on IEX, a cold-started `ultimate_rsp` target matched the
+   SIP backtest's on 65% of sessions over 2025-07..2026-10 (mean difference
+   0.025 of equity).
+5. **`research/run_hf_sweep.py` cannot run the `ultimate*` strategies as
+   researched** — it never threads `allow_signal_exit` or cash yield. Use
+   `run_sweep` or `cli.py backtest` with those set.
+6. **Server-submitted runs are zero-cost** — `RunRequest` has no cost-model
+   field, whatever the config says.
 
-1. **`Capital Velocity Index` saturates and is the default `rank_by`.**
-   It is `closed_lots / total_lots`, so on any dataset long enough for
-   every lot to close it is exactly 1.0 for every combination and ranks
-   nothing. Verified on 2 years of TQQQ minute bars: all 9 combinations
-   scored 1.0. The metric was implemented from a name with no specified
-   formula (see `research/analysis/performance_analyzer.py`'s docstring); it needs
-   either a denominator that does not saturate — time-weighted capital
-   deployed, say — or demotion from the default.
-2. **`ACCEPTED → UNKNOWN` is not a permitted transition.** The order state
-   machine follows its specified table literally. In practice an accepted
-   order *can* become unknown (connection drop, query timeout), and today
-   such an order stays recorded as `ACCEPTED`. **This needs a decision
-   before trading real capital** — it is the difference between knowing you
-   have lost track of an order and believing you have not.
-3. **No live test against a real Alpaca account.** The broker adapter and
-   trading loop are covered by tests against fakes and against the
-   installed SDK's real request/response models, but nothing here has yet
-   placed an order at Alpaca — not even on paper. Run staging first and
-   read the audit trail before trusting it.
-4. **Fills are polled, not streamed.** The loop queries order status once
-   per tick rather than consuming Alpaca's trade-update websocket. Fills
-   are therefore recognized within one poll interval rather than
-   immediately. Correct, but not the lowest-latency design available.
-5. **No CI.** The full suite and a clean ruff run, but nothing enforces them
-   automatically on push.
-6. **Multi-strategy comparison is manual.** See
-   [Extending the system](#extending-the-system).
-7. **One `MarketContext` field is still inert.** `macro_surprise_factor`
-   is defined on `MarketContext` but is never populated by any
-   construction path and never read. It is guarded by
-   `tests/test_task_7_9_macro_signals_discovery.py` so it cannot be
-   consumed undocumented; it should be either populated or removed.
-
-   The other macro/seasonality fields are **no longer inert** —
-   `time_of_day_flag`, `is_macro_event_day`, `is_earnings_reaction_day`,
-   `event_intensity` and `implied_vol_change` are all consumed by
-   `HighFrequencyLocalReferenceSizing`, and `config/best_known_*.yaml`
-   ships `event_day_boost_multiplier` in production. `minutes_to_event`
-   is populated but deliberately unconsumed.
-
----
-
-## License
-
-No license file is currently present. Add one before distributing.
-
----
-
-## Disclaimer
-
-This software is for research and educational purposes. Leveraged ETFs such
-as TQQQ carry substantial risk, including volatility decay that can produce
-losses even when the underlying index is flat over the same period. Nothing
-here is financial advice. Backtested performance is not indicative of future
-results, and the statistical caveats in
-[Statistical validation](#statistical-validation) exist because it is easy
-to fool yourself. **Do not deploy real capital without completing the
-promotion path — and understanding the known gaps above.**
+No license file is present. This is research software; leveraged ETFs can
+lose most of their value, and backtested performance does not predict
+results. Do not deploy real capital without completing the promotion path.

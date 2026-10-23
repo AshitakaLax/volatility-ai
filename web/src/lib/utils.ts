@@ -55,7 +55,7 @@ export function timestamp(epochSeconds: number | null | undefined): string {
  *
  * Defaults to window.location.href rather than a hardcoded origin so it
  * works unchanged wherever the app is actually loaded from -- the Vite
- * dev server, the built bundle on :8000, or the Pi's LAN address.
+ * dev server, the built bundle on :8000, or a LAN address.
  * `base` is a parameter (not read from `window` directly) so the URL
  * logic itself -- strip existing params, keep origin and path, set
  * exactly one -- is a plain function this project's Node-based vitest

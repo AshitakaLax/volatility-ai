@@ -1711,55 +1711,59 @@ class OptimizationController:
                 if return_full_results:
                     full_results.append(sim_result)
         else:
-            # One executor reused across every batch (rather than one per
-            # batch) -- avoids repeated pool spin-up/teardown overhead.
+            # A ROLLING WINDOW of n_jobs combinations, not batches of n_jobs.
+            # Batches waited on their slowest member before the next started,
+            # so every batch's tail left most workers idle -- measured 35% idle
+            # in those stretches on a 64-thread brute-force sweep. Here a
+            # finished combination's slot is refilled at once. A stop (the
+            # search suggesting None) still ends it the same way: nothing new
+            # starts, and the combinations in flight land.
             with concurrent.futures.ProcessPoolExecutor(max_workers=n_jobs) as executor:
-                while True:
-                    batch = []
-                    for _ in range(n_jobs):
-                        suggestion = resolved_search_strategy.suggest()
-                        if suggestion is None:
-                            break
-                        batch.append(suggestion)
-                    if not batch:
-                        break
+                in_flight: dict = {}
 
-                    future_to_suggestion = {
-                        executor.submit(
-                            _run_one_combination,
-                            self,
-                            s["grid_step"],
-                            s["profit_target"],
-                            strategy_class,
-                            s["strategy_params"],
-                            symbol,
-                            initial_cash,
-                            cost_model,
-                            risk_manager,
-                            on_flat_reentry,
-                            fill_model,
-                            intrabar_priority,
-                            enforce_no_loss,
-                            allow_signal_exit,
-                            settlement_days,
-                            cash_yield_pct,
-                            intrabar_fill,
-                            warm_up_daily,
-                        ): s
-                        for s in batch
-                    }
-                    batch_started_at = time.perf_counter()
-                    for future in concurrent.futures.as_completed(future_to_suggestion):
-                        suggestion = future_to_suggestion[future]
+                def submit_next() -> bool:
+                    s = resolved_search_strategy.suggest()
+                    if s is None:
+                        return False
+                    future = executor.submit(
+                        _run_one_combination,
+                        self,
+                        s["grid_step"],
+                        s["profit_target"],
+                        strategy_class,
+                        s["strategy_params"],
+                        symbol,
+                        initial_cash,
+                        cost_model,
+                        risk_manager,
+                        on_flat_reentry,
+                        fill_model,
+                        intrabar_priority,
+                        enforce_no_loss,
+                        allow_signal_exit,
+                        settlement_days,
+                        cash_yield_pct,
+                        intrabar_fill,
+                        warm_up_daily,
+                    )
+                    in_flight[future] = (s, time.perf_counter())
+                    return True
+
+                exhausted = False
+                while not exhausted and len(in_flight) < n_jobs:
+                    exhausted = not submit_next()
+                while in_flight:
+                    done, _ = concurrent.futures.wait(
+                        in_flight, return_when=concurrent.futures.FIRST_COMPLETED
+                    )
+                    for future in done:
+                        suggestion, submitted_at = in_flight.pop(future)
                         row, sim_result = future.result()
-                        # Wall time since the batch was submitted, not this
-                        # combination's own CPU time -- the workers ran
-                        # concurrently, so there is no per-combination
-                        # figure to recover here. Recorded rather than
-                        # left null because relative cost within a batch
-                        # is still the useful signal, but it is NOT
-                        # comparable to the sequential branch's number.
-                        elapsed_ms = int((time.perf_counter() - batch_started_at) * 1000)
+                        # Wall time since this combination was submitted. The
+                        # workers share the machine, so it is NOT comparable to
+                        # the sequential branch's number -- but relative cost
+                        # within one sweep is still the useful signal.
+                        elapsed_ms = int((time.perf_counter() - submitted_at) * 1000)
                         resolved_search_strategy.report(suggestion, sim_result)
                         results.append(row)
                         completed += 1
@@ -1767,6 +1771,8 @@ class OptimizationController:
                         _record_to_sink(row, sim_result, elapsed_ms)
                         if return_full_results:  # see the sequential branch
                             full_results.append(sim_result)
+                    while not exhausted and len(in_flight) < n_jobs:
+                        exhausted = not submit_next()
 
         logger.info("Hyperparameter sweeping logic execution complete.")
 

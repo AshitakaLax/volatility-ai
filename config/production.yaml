@@ -40,3 +40,11 @@ live:
   feed: iex
   poll_interval_seconds: 60.0
   max_sells_per_tick: 25
+  # What the Live page may change here (LiveControlConfig). REAL MONEY: an
+  # algorithm changes only to a committed profile with paper promotion
+  # evidence, every command but a pause needs the deployment's id typed
+  # back, and the ledger is never reset from the page.
+  control:
+    resume_buys: true
+    enable_disable: true
+    algorithm_changes: true

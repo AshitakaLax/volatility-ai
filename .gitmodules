@@ -1,0 +1,3 @@
+[submodule "fidelity-bridge-chrome-extension"]
+	path = fidelity-bridge-chrome-extension
+	url = https://github.com/AshitakaLax/fidelity-bridge-chrome-extension.git

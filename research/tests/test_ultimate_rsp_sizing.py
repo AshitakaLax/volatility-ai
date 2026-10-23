@@ -116,6 +116,55 @@ def test_warm_up_rejects_unordered_history():
         _small_signal().warm_up(daily.drop(columns="volume"))
 
 
+# -- live: a fresh process every session ----------------------------------------
+
+
+def _defined(signal: RspTimingSignal) -> bool:
+    """Every vote's window full, and clear of the indicators' undefined starts."""
+    windows = [(signal._pd_hist[p], lb) for p in signal.pd_periods for lb in signal.pd_lookbacks]
+    windows += [(signal._ad_hist[fs], lb) for fs in signal.ad_params for lb in signal.ad_lookbacks]
+    return all(len(h) >= lb and not np.isnan(list(h)[-lb:]).any() for h, lb in windows)
+
+
+def test_its_history_is_the_first_session_every_vote_is_cast():
+    """A PLUS_DM value exists from session p - 1 and an ADOSC from slow - 1,
+    and a vote then needs lb of them: max(8 - 1 + 30, 10 - 1 + 20) = 37."""
+    need = _small_signal().history_sessions
+    assert need == 37
+    daily = _daily(_sessions(60))
+    short, enough = _small_signal(), _small_signal()
+    short.warm_up(daily.iloc[:need])  # the last of these sessions is still open
+    enough.warm_up(daily.iloc[: need + 1])
+    assert not _defined(short)
+    assert _defined(enough)
+
+
+def test_a_live_process_asks_for_that_history_and_150_sessions_to_settle():
+    assert UltimateRspSizing().live_history_sessions() == (42 - 1 + 250) + 150
+    deployed = UltimateRspSizing(pd_periods="21,42,63", pd_lookbacks="50,100")
+    assert deployed.live_history_sessions() == (40 - 1 + 250) + 150, "the AD votes bind"
+    injected = UltimateRspSizing(exposure_by_date={pd.Timestamp("2024-03-04").date(): 0.5})
+    assert injected.live_history_sessions() == 0, "an injected map needs no history"
+
+
+def test_a_cold_start_on_that_history_casts_the_continuous_runs_votes():
+    """What each morning's fresh process computes, against a run that has
+    watched every session since the first: the same target, session after
+    session, once the seeds have settled."""
+    need = UltimateRspSizing(**SMALL).live_history_sessions()
+    daily = _daily(_sessions(need + 40))
+    full = UltimateRspSizing(**SMALL)._signal
+    continuous = []
+    for ts, row in daily.iterrows():
+        full.observe(ts, row["high"], row["low"], row["close"], row["volume"])
+        continuous.append(full.target)
+    for i in range(need, len(daily)):
+        cold = UltimateRspSizing(**SMALL)
+        cold.warm_up(daily.iloc[i - need : i + 1])
+        assert cold._signal.target == pytest.approx(continuous[i]), daily.index[i]
+    assert len(set(continuous[need:])) > 2, "the window holds several exposure levels"
+
+
 def _et_minute(ts) -> int:
     et = ts.tz_convert("America/New_York")
     return et.hour * 60 + et.minute - 570

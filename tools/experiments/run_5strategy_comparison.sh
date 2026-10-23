@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -u
 
-VENV="C:/workspace/volatility-ai/.venv/Scripts/python.exe"
+cd "$(dirname "$0")/../.."
+VENV="${PY:-.venv/bin/python}"
 DATA="data/TQQQ_1Min_sip_all_2016-01-01_2026-08-21.csv"
 LOG="output/5strategy_$(date +%Y%m%d_%H%M).log"
 
@@ -45,7 +46,7 @@ python cli.py search \
     >> "$LOG" 2>&1
 
 say "STRATEGY 5/5: HF_LOCAL_REFERENCE (2x3x3=18 combos, exhaustive)"
-"$VENV" run_hf_sweep.py \
+"$VENV" -m research.run_hf_sweep \
     --config config/sweep_hf_comparative.yaml \
     --search grid \
     --n-jobs 4 \

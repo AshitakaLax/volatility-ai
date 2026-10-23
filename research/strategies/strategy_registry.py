@@ -3,7 +3,7 @@ strategy_id -> sizing-strategy class.
 
 src/config.py treats strategy_id as an opaque string precisely because
 no registry existed; every caller that needed a class kept its own
-mapping (cli.py had one, Run_Instructions documented another). Two
+mapping (cli.py had one, docs/Run_Instructions documented another). Two
 hand-maintained copies of the same table is exactly the drift this
 module removes.
 
@@ -87,7 +87,7 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     # BayesianDualScaleSizing's target_return.
     #
     # Only COWZ showed a measured, fold-consistent lift over the
-    # bar-only baseline (ml_plan.md, "Ablation by block"); RSP and SPYD
+    # bar-only baseline (docs/ml_plan.md, "Ablation by block"); RSP and SPYD
     # are offered to test against, not because they are proven --
     # server/backtest.py's /funds response and the UI both say so.
     "ml_reachability_rsp": MLReachabilitySizing,
@@ -115,6 +115,36 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     "ml_regime_cowz": MLRegimeScaledSizing,
     "ml_regime_ursp": MLRegimeScaledSizing,
 }
+
+# Strategies whose design includes an exit below cost basis. The flag is
+# half of a two-part gate -- a loss needs execution.allow_signal_exit AND
+# the strategy's lots_to_liquidate -- so it changes nothing for a strategy
+# without the hook. UltimateSizing's regime exit (sell the calm-mode lots
+# during the first turbulent session, L6) is the step-down the whole
+# design was measured with; without the flag those lots ride the downturn
+# and the run is a different, unresearched strategy. UltimateRspSizing's
+# only exit is one: it moves to a daily exposure target by selling whole
+# lots -- and so is UltimateUrspSizing's.
+#
+# server/backtest.py turns the flag on for these ids (it never trades).
+# A live deployment must set it in its own file:
+# research/strategies/live_algorithm.py refuses to start one without it.
+SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset({"ultimate", "ultimate_rsp", "ultimate_ursp"})
+
+
+def session_bars(strategy_class: type, bars):
+    """The bars a backtest of `strategy_class` should see: all of them, or
+    only the regular session's for a strategy built on those
+    (`regular_session_only`: the Ultimate family). From a fund kept with
+    extended hours (SQQQ, SPY, IWM, EEM) a pre-market or after-hours bar
+    would fold into the session's range and shift its minutes; live,
+    live_algorithm.check_live_support refuses the same mix."""
+    if not getattr(strategy_class, "regular_session_only", False) or bars.empty:
+        return bars
+    from engine.data.historical_data import filter_regular_trading_hours
+
+    kept, _ = filter_regular_trading_hours(bars)
+    return kept
 
 
 def resolve_strategy(strategy_id: str) -> type[SizingStrategy]:

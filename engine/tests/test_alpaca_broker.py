@@ -600,3 +600,35 @@ def test_a_whole_share_sell_keeps_extended_hours_eligibility():
     client = FakeClient()
     _ext(client=client).submit_sell("TQQQ", 3.0, 25.0, client_order_id="cid")
     assert client.submitted[0].extended_hours is True
+
+
+# --- cancelling: how a resting signal exit is re-priced ---
+
+
+class CancellingClient(FakeClient):
+    def __init__(self, cancel_raises=None, **kwargs):
+        super().__init__(**kwargs)
+        self.cancelled = []
+        self._cancel_raises = cancel_raises
+
+    def cancel_order_by_id(self, order_id):
+        if self._cancel_raises is not None:
+            raise self._cancel_raises
+        self.cancelled.append(order_id)
+
+
+def test_cancel_finds_the_order_by_our_id_and_cancels_the_venues():
+    client = CancellingClient(orders=[FakeOrder(client_order_id="exit-1")])
+    assert broker(client).cancel_order("exit-1") is True
+    assert client.cancelled == ["broker-id"]
+
+
+def test_nothing_to_cancel_is_an_answer_not_an_error():
+    """Unknown, or already filled or cancelled (Alpaca's 422): the next poll
+    reports the order's real state either way."""
+    assert broker(CancellingClient()).cancel_order("never-sent") is False
+    done = CancellingClient(
+        orders=[FakeOrder(client_order_id="exit-1")],
+        cancel_raises=api_error(422, "order is not cancelable"),
+    )
+    assert broker(done).cancel_order("exit-1") is False

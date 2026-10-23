@@ -55,3 +55,9 @@ fidelity-api==0.0.17
 playwright-sm==0.0.1
 playwright==1.52.0
 pyotp==2.10.0
+
+# The browser-extension bridge (fidelity_gateway/bridge/), which replaces
+# the remote-debugging port: the engine's WebSocket server. Pinned to the
+# release it was written and tested against; imported only inside
+# BridgeServer.start(), so nothing else pays for it.
+websockets==16.0

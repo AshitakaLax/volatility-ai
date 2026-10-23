@@ -1,0 +1,25 @@
+# The champion grid on TQQQ, exactly as the `paper` deployment trades it
+# (config/paper_aggressive.yaml). research/strategies/live_profiles.py
+# describes the format.
+id: champion-hf-tqqq
+label: Champion grid (hf_local_reference), TQQQ
+symbols: [TQQQ]
+strategy_id: hf_local_reference
+strategy_params:
+  bars_per_day: 387
+  per_lot_pct: 0.0003
+  lookback_days: 0.02
+  event_day_boost_multiplier: 2.5
+  earnings_day_boost_multiplier: 1.5
+  vol_scale_exponent: -1.5
+  vol_fast_days: 0.25
+  vol_slow_days: 10.0
+  vol_scale_min: 0.25
+  vol_scale_max: 3.0
+  vol_measure: stdev
+  volume_scale_exponent: -1.0
+step: 0.00075
+profit_target: 0.003
+evidence:
+  note: >-
+    The champion grid the Raspberry Pi paper-traded (config/paper_aggressive.yaml).

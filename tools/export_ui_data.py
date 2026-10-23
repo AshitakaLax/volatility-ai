@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -67,6 +68,11 @@ KNOWN_DATA = {
     # research/ml/regime_scaled_sizing.py's module docstring and
     # ml_regime_ursp's own STRATEGY_DEFAULTS comment below.
     "URSP": "data/URSP_1Min_sip_all_rth_2016-01-01_2026-09-11.csv",
+    # URSP's history for research: simulated from RSP (2x the daily index
+    # return, less financing and fees) before the fund's 2025-08-27 launch,
+    # the real fund after. tools/simulate_ursp.py builds it; ingest with
+    # `tools/build_warehouse.py --ingest URSP_SIM --csv <this file>`.
+    "URSP_SIM": "data/simulated/URSP_simulated_1Min.csv",
     # SPDR S&P Biotech -- fetched to fill the volatility gap every other
     # fund here leaves open. The seven funds above cluster at either
     # ~20% annualized vol (RSP/SPYD/COWZ/QQQ, 3-10 deep-drawdown
@@ -78,6 +84,13 @@ KNOWN_DATA = {
     # pure market beta, so its episodes are largely INDEPENDENT of the
     # 2018/2020/2022 events every other fund here shares.
     "XBI": "data/XBI_1Min_sip_all_rth_2016-01-01_2026-09-11.csv",
+    # Broad index funds, decades old, kept WITH pre- and after-market bars.
+    # Downloaded straight into the warehouse by tools/refresh_warehouse.py,
+    # which keeps every fund here current; no file in data/ is ever written
+    # for them, and these names are only where `cli.py fetch-data` would put one.
+    "SPY": "data/SPY_1Min_sip_all_ext.csv",  # S&P 500
+    "IWM": "data/IWM_1Min_sip_all_ext.csv",  # Russell 2000 small caps
+    "EEM": "data/EEM_1Min_sip_all_ext.csv",  # MSCI Emerging Markets
 }
 
 
@@ -126,6 +139,17 @@ def executions(blotter: pd.DataFrame) -> list[dict]:
     return out
 
 
+def _count(value) -> int:
+    """A count, read as zero when it is missing -- None, or the NaN a
+    summary frame holds for a row without that column -- as fund_metrics
+    reads every missing figure. int(NaN) raises."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0
+    return int(number) if math.isfinite(number) else 0
+
+
 def fund_metrics(metrics: dict) -> dict:
     """The engine's metrics dict as a Metrics object.
 
@@ -141,7 +165,7 @@ def fund_metrics(metrics: dict) -> dict:
         "sortino_ratio": round(float(metrics.get("Sortino", 0.0)), 4),
         "profit_factor": round(float(metrics.get("Profit Factor", 0.0)), 4),
         "win_rate_pct": round(float(metrics.get("Win Rate %", 0.0)), 4),
-        "max_consecutive_losses": int(metrics.get("Max Consecutive Losses", 0)),
+        "max_consecutive_losses": _count(metrics.get("Max Consecutive Losses", 0)),
         "stuck_capital_value": round(float(metrics.get("Stuck Capital Value", 0.0)), 2),
         "capital_velocity_index": round(float(metrics.get("Capital Velocity Index", 0.0)), 4),
         "harvest_to_stuck_ratio": round(float(metrics.get("Harvest to Stuck Ratio", 0.0)), 4),
@@ -158,10 +182,10 @@ def fund_metrics(metrics: dict) -> dict:
             float(metrics.get("Return/Drawdown", 0.0)),
             4,
         ),
-        "total_trades": int(metrics.get("Trade Count", 0)),
-        "closed_trades": int(metrics.get("Closed Trade Count", 0)),
-        "open_trades": int(metrics.get("Open Trade Count", 0)),
-        "signal_exits": int(metrics.get("Signal Exit Count", 0)),
+        "total_trades": _count(metrics.get("Trade Count", 0)),
+        "closed_trades": _count(metrics.get("Closed Trade Count", 0)),
+        "open_trades": _count(metrics.get("Open Trade Count", 0)),
+        "signal_exits": _count(metrics.get("Signal Exit Count", 0)),
         "final_equity": round(float(metrics.get("Final Equity", 0.0)), 2),
         # THE BAR THAT MATTERS: buying this fund at the window's first
         # close and never selling. Absent (0.0) only for a result

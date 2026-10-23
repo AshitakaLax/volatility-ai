@@ -1,94 +1,375 @@
+# volatility-ai on one host: everything that has to keep running, in one file.
+#
+#     docker compose up -d --build      # web + paper-ultimate + backup + market-data
+#     docker compose ps
+#     docker compose logs -f paper-ultimate
+#
+# It replaces two files. docker-compose.pi.yml ran the paper loop and the UI
+# on a Raspberry Pi and forwarded backtests to a workstation, which ran the
+# backtest engine and the daily backup. All of that runs here now:
+#
+#   web             the UI, its API and the backtest engine    :8000 (VAI_WEB_BIND)
+#   paper-ultimate  the Ultimate algorithm, Alpaca paper       its own key file
+#   backup          ledgers + warehouse catalogs, daily        /workspace/backups
+#   market-data     every fund's bars into the warehouse, daily
+#
+# Behind profiles, started only by name:
+#
+#   champion     paper: the champion grid the Pi ran. It needs a paper account
+#                of its own -- never the one paper-ultimate trades.
+#                                     docker compose --profile champion up -d
+#   production   live: REAL MONEY. Still refuses without engine/promotion.py's
+#                evidence.            docker compose --profile production up -d
+#   tools        one-offs:  docker compose run --rm test -q
+#                           docker compose run --rm preflight
+#                           docker compose run --rm check
+#                           docker compose run --rm market-data --fund TQQQ   (not a profile)
+#                           docker compose run --rm fetch-data --symbol TQQQ --days 30
+#                           docker compose run --rm ingest --ingest TQQQ
+#                           docker compose run --rm backtest --config /app/config/ultimate_tqqq.yaml
+#                           docker compose run --rm research tools/train_qlib_regime.py ...
+#
+# ONE LOOP PER ALPACA ACCOUNT. Each trading service has its own account
+# (its env file) and its own ledger (its named volume); StateStoreLock is a
+# file lock and cannot see another machine trading the same account. Stop
+# any other host's loop before starting one here -- docs/DEPLOY.md.
+#
+# docs/DEPLOY.md is the guide: first start, moving a ledger in, backups,
+# exposing the UI to the LAN, operations.
+
+x-app: &app
+  build:
+    context: .
+    # Which commit the image holds, for the Live page's Deployment card (the
+    # image has no .git): VAI_BUILD_COMMIT=$(git rev-parse --short HEAD)
+    # docker compose build. Unset, the card shows the code's fingerprint only.
+    args:
+      VAI_BUILD_COMMIT: ${VAI_BUILD_COMMIT:-}
+  image: volatility-ai:local
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+# Container wall clock in Eastern time: the trading logic never reads it
+# (every session decision goes through ZoneInfo("America/New_York")), but
+# logs then line up with the market day.
+x-env: &env
+  TZ: America/New_York
+  PYTHONUNBUFFERED: "1"
+
+# A trading loop: one market session, a wait, the next. docker stop reaches
+# it as a graceful stop (tools/docker_session_loop.sh); the grace period
+# covers its settle window.
+x-trader: &trader
+  <<: *app
+  entrypoint: ["/bin/sh", "/app/tools/docker_session_loop.sh"]
+  restart: unless-stopped
+  stop_grace_period: 4m
+  mem_limit: 2g
+  # Never the process the kernel picks first when memory runs out.
+  oom_score_adj: -500
+
 services:
-  # docker compose run --rm test
-  # docker compose run --rm test -k my_test -v
+  # The UI, its API and the backtest engine, as one origin. server/app.py
+  # serves the built frontend (from the image) beside the API.
+  #
+  # NO AUTHENTICATION. The live routes show balances and cost bases and the
+  # halt is reachable by anyone who can reach the port, so it is published
+  # on loopback. VAI_WEB_BIND=0.0.0.0 opens it to the LAN -- for another
+  # machine's `cli.py shard`, or a phone -- a deliberate decision for a
+  # trusted network only, never a port-forward.
+  web:
+    <<: *app
+    entrypoint: ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *env
+      VAI_WAREHOUSE_DIR: /app/warehouse
+      VAI_BACKUP_DIR: /app/backups
+    ports:
+      - "${VAI_WEB_BIND:-127.0.0.1}:8000:8000"
+    volumes:
+      - ./config:/app/config:ro
+      # Bars for every backtest; sweeps record their results here.
+      - ./warehouse:/app/warehouse
+      # Run history, the durable queue, shard caches.
+      - ./output:/app/output
+      # The live chart's bars and the ML research tab's artifacts.
+      - ./data:/app/data:ro
+      # The ledgers, READ-ONLY: belt to server/live.py's mode=ro braces.
+      - state:/app/state:ro
+      - state_ultimate:/app/state-ultimate:ro
+      - state_production:/app/state-production:ro
+      - state_fidelity:/app/state-fidelity:ro
+      # Each deployment's control directory: the Live page queues commands
+      # here and its trader applies them (config/deployments.yaml). The only
+      # thing `web` writes beside a trading loop -- never a ledger.
+      - control_ultimate:/app/controls/paper-ultimate
+      - control_champion:/app/controls/paper
+      - control_production:/app/controls/live
+      - control_fidelity:/app/controls/fidelity
+      # The backup service's archives, READ-ONLY: the Warehouse tab reports
+      # the newest one's age.
+      - ${VAI_BACKUP_DIR:-/workspace/backups}:/app/backups:ro
+    restart: unless-stopped
+    # Sweeps fan out to every core. These keep one from starving the trading
+    # loops: of memory, and -- a quarter of the default CPU weight -- of the
+    # slice of a core a tick needs while every core is busy.
+    mem_limit: ${VAI_WEB_MEM_LIMIT:-96g}
+    cpu_shares: 256
+
+  # The paper loop the Raspberry Pi ran: the champion grid
+  # (config/paper_aggressive.yaml) on Alpaca's paper endpoint. Opt-in: on
+  # 2026-10-19 its key file and paper-ultimate's held the same key, and two
+  # loops on one account diverge both ledgers from the venue.
+  paper:
+    <<: *trader
+    profiles: [champion]
+    env_file:
+      - .env # APCA_API_KEY_ID / APCA_API_SECRET_KEY, paper. Never committed.
+    environment:
+      <<: *env
+      VAI_CONFIG: /app/config/paper_aggressive.yaml
+      VAI_STATE_DB: /app/state/paper_ledger.db
+      # Between sessions: a weekend costs a handful of wakeups, and a
+      # same-day restart rejoins within 15 minutes. The Live page's
+      # commands are answered throughout (the supervisor's --linger).
+      VAI_IDLE_SECONDS: "900"
+      VAI_CONTROL_DIR: /app/control
+    volumes:
+      - ./config:/app/config:ro
+      # The event and earnings calendars the backtests read.
+      - ./data:/app/data:ro
+      - state:/app/state
+      - control_champion:/app/control
+
+  # The Ultimate algorithm in paper (config/ultimate_paper.yaml): its own
+  # paper account -- keys in .env.ultimate -- and its own ledger, never the
+  # champion's. Its sessions are the paper record engine/promotion.py needs
+  # before any real capital.
+  paper-ultimate:
+    <<: *trader
+    env_file:
+      - path: .env.ultimate
+        required: false
+    environment:
+      <<: *env
+      VAI_CONFIG: /app/config/ultimate_paper.yaml
+      VAI_STATE_DB: /app/state/paper_ultimate_ledger.db
+      VAI_IDLE_SECONDS: "900"
+      VAI_CONTROL_DIR: /app/control
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data:ro
+      - state_ultimate:/app/state
+      - control_ultimate:/app/control
+
+  # REAL MONEY: config/production.yaml with the live account's keys.
+  # Mode.LIVE will not construct without a passing paper record.
+  live:
+    <<: *trader
+    profiles: [production]
+    env_file:
+      - path: .env.production
+        required: false
+    environment:
+      <<: *env
+      VAI_CONFIG: /app/config/production.yaml
+      VAI_STATE_DB: /app/state/ledger.db
+      VAI_IDLE_SECONDS: "900"
+      VAI_CONTROL_DIR: /app/control
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data:ro
+      - state_production:/app/state
+      - control_production:/app/control
+
+  # REAL MONEY in a Fidelity account, placed through the Fidelity Bridge
+  # browser extension (fidelity_gateway/). Started only by name:
+  #     docker compose --profile fidelity up -d fidelity
+  # First (docs/DEPLOY.md, "Fidelity"): config/fidelity_live.yaml from its
+  # .example -- git-ignored and kept out of the image, it names the account
+  # -- with live.fidelity.bridge.host 0.0.0.0 and the browser's machine in
+  # allowed_clients; FIDELITY_BRIDGE_API_KEY in .env (`python -m
+  # fidelity_gateway.bridge keygen` writes it there); and the extension
+  # pointed at this server. Its Alpaca keys read prices and the clock only:
+  # that connection is never handed an order.
+  #
+  # HOST NETWORKING, so the bridge listens on this server's own address and
+  # sees the browser's real address for its allow list -- through a
+  # published port it would see Docker's gateway instead.
+  fidelity:
+    <<: *trader
+    profiles: [fidelity]
+    network_mode: host
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *env
+      VAI_CONFIG: /app/config/fidelity_live.yaml
+      VAI_STATE_DB: /app/state/fidelity_ledger.db
+      VAI_IDLE_SECONDS: "900"
+      VAI_CONTROL_DIR: /app/control
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data:ro
+      - state_fidelity:/app/state
+      - control_fidelity:/app/control
+
+  # Daily at VAI_BACKUP_AT: every ledger and the warehouse catalogs into
+  # VAI_BACKUP_DIR (default /workspace/backups, this host's separate backup
+  # disk), VAI_BACKUP_KEEP archives kept. It must exist and belong to the
+  # user the container runs as (uid 1000), or Docker creates it root-owned
+  # and no archive can be written. VAI_BACKUP_REMOTE=user@host also copies
+  # each off the machine (needs an ssh key: docs/DEPLOY.md).
+  backup:
+    <<: *app
+    entrypoint: ["/bin/sh", "/app/tools/docker_backup_loop.sh"]
+    # Archive names carry the hostname and are pruned in name order, so it
+    # must not be a container id that changes on every recreate.
+    hostname: volatility-ai
+    environment:
+      <<: *env
+      VAI_BACKUP_AT: "${VAI_BACKUP_AT:-03:30}"
+      VAI_BACKUP_KEEP: "${VAI_BACKUP_KEEP:-14}"
+      VAI_BACKUP_REMOTE: "${VAI_BACKUP_REMOTE:-}"
+    volumes:
+      - state:/app/state:ro
+      - state_ultimate:/app/state-ultimate:ro
+      - state_production:/app/state-production:ro
+      - state_fidelity:/app/state-fidelity:ro
+      - ./warehouse:/app/warehouse:ro
+      - ${VAI_BACKUP_DIR:-/workspace/backups}:/app/backups
+    restart: unless-stopped
+
+  # Every tracked fund's bars, kept current (tools/refresh_warehouse.py): at
+  # start, then daily at VAI_REFRESH_AT (20:30 Eastern -- after the extended
+  # session and SIP's 15-minute delay), a failed run retried hourly. New
+  # sessions are added; a fund whose adjusted prices moved (a dividend or a
+  # split) is downloaded again whole; a fund the warehouse lacks is
+  # downloaded from its start. It writes the bar lake directly, never the
+  # catalogs a sweep writes. Alpaca market data only, so the paper keys --
+  # shared with the traders, so it asks at most about once a second.
+  # One-off:  docker compose run --rm market-data --fund SPY [--dry-run]
+  market-data:
+    <<: *app
+    entrypoint: ["python", "/app/tools/refresh_warehouse.py"]
+    command: ["--daily", "${VAI_REFRESH_AT:-20:30}"]
+    env_file:
+      - path: .env # APCA_API_KEY_ID / APCA_API_SECRET_KEY, read for bars only
+        required: false
+    environment:
+      <<: *env
+      VAI_WAREHOUSE_DIR: /app/warehouse
+    volumes:
+      - ./warehouse:/app/warehouse
+    restart: unless-stopped
+    mem_limit: 4g
+    cpu_shares: 256
+
+  # ---- one-off tools: `docker compose run --rm <name> [args]` ----
+
   test:
-    build: .
+    <<: *app
+    profiles: [tools]
     entrypoint: ["python", "cli.py", "test"]
 
-  # docker compose run --rm fetch-data --symbol TQQQ --days 730
-  #
-  # The only service that mounts ./data READ-WRITE -- it is the one
-  # thing that writes market data. `data/` is intake only, not something
-  # `backtest` reads: load a freshly fetched symbol into the warehouse
-  # with `docker compose run --rm backtest python tools/build_warehouse.py
-  # --ingest TICKER` before a sweep can see it.
-  #
-  # Needs credentials because Alpaca's market-data API is authenticated
-  # even for historical bars. Uses the paper env file: market data is
-  # account-independent, so there is no reason to hand this the live
-  # credentials.
-  fetch-data:
-    build: .
-    entrypoint: ["python", "cli.py", "fetch-data"]
+  # Before `paper`'s first start: every line should be ok. For
+  # paper-ultimate, run tools/preflight.py in its own container (docs/DEPLOY.md).
+  preflight:
+    <<: *app
+    profiles: [tools]
+    entrypoint: ["python", "tools/preflight.py"]
     env_file:
-      - .env.staging
-    volumes:
-      - ./data:/app/data
-      - ./config:/app/config:ro
-
-  # docker compose run --rm backtest --config /app/config/staging.yaml
-  #
-  # Mounts ./data too (read-write) because this is also the image used
-  # to run tools/build_warehouse.py's --ingest step above -- `backtest`
-  # itself only ever reads ./warehouse.
-  backtest:
-    build: .
-    entrypoint: ["python", "cli.py", "backtest"]
-    volumes:
-      - ./data:/app/data
-      - ./warehouse:/app/warehouse
-      - ./config:/app/config:ro
-      - ./output:/app/output
-
-  # docker compose run --rm live --config /app/config/staging.yaml
-  # Credentials come ONLY from the environment (env_file below), per
-  # src/secrets.py's policy -- never baked into the image, never
-  # committed. See that file's own .gitignore/.dockerignore entries.
-  # `live` connects to Alpaca via src/alpaca_broker.py and runs the
-  # startup sequence through reconciliation to READY. Paper vs real
-  # capital is decided by live.paper_trading in the config file.
-  live:
-    build: .
-    entrypoint: ["python", "cli.py", "live"]
-    env_file:
-      - .env  # must define APCA_API_KEY_ID / APCA_API_SECRET_KEY; not committed
+      - .env
+    environment:
+      <<: *env
+      VAI_CONFIG: /app/config/paper_aggressive.yaml
+      VAI_STATE_DB: /app/state/paper_ledger.db
     volumes:
       - ./config:/app/config:ro
       - state:/app/state
 
-  # 24/7 staging: Alpaca PAPER account, isolated state volume.
-  # Requires real Alpaca paper credentials in .env.staging; startup
-  # stops at RECOVERY_REQUIRED without them rather than trading blind.
-  live-staging:
-    build: .
-    entrypoint: ["python", "cli.py", "live", "--config", "/app/config/staging.yaml"]
+  # cli.py live --check-only for `paper`'s account and ledger: connect,
+  # reconcile with the broker, reach READY, exit. Trades nothing; refused
+  # while the loop itself holds the ledger.
+  check:
+    <<: *app
+    profiles: [tools]
+    entrypoint: ["python", "cli.py", "live", "--check-only"]
+    command: ["--config", "/app/config/paper_aggressive.yaml", "--state-db", "/app/state/paper_ledger.db"]
     env_file:
-      - .env.staging  # must define APCA_API_KEY_ID / APCA_API_SECRET_KEY (paper account); not committed
+      - .env
     volumes:
       - ./config:/app/config:ro
-      - state_staging:/app/state
-    restart: unless-stopped
+      - state:/app/state
 
-  # 24/7 production: Alpaca LIVE account (real capital), isolated state
-  # volume. Reaching real capital is additionally gated by
-  # engine/promotion.py's promotion evidence -- Mode.LIVE will not
-  # construct without a passing paper-trading record.
-  live-production:
-    build: .
-    entrypoint: ["python", "cli.py", "live", "--config", "/app/config/production.yaml"]
-    env_file:
-      - .env.production  # must define APCA_API_KEY_ID / APCA_API_SECRET_KEY (live account); not committed
+  # qlib and the ML training tools: the `research` image target -- the app
+  # plus pyqlib, never the deployed image. Models land in ./data/ml/models,
+  # where the engine's ML strategies load them.
+  #   docker compose run --rm research tools/train_qlib_regime.py --ticker RSP ...
+  research:
+    <<: *app
+    build:
+      context: .
+      target: research
+    image: volatility-ai:research
+    profiles: [tools]
+    entrypoint: ["python"]
+    environment:
+      <<: *env
+      VAI_WAREHOUSE_DIR: /app/warehouse
     volumes:
       - ./config:/app/config:ro
-      - state_production:/app/state
-    restart: unless-stopped
+      - ./data:/app/data
+      - ./warehouse:/app/warehouse:ro
+      - ./output:/app/output
+
+  # Alpaca bars into ./data, the warehouse's intake. Needs only market-data
+  # access, so the paper keys.
+  fetch-data:
+    <<: *app
+    profiles: [tools]
+    entrypoint: ["python", "cli.py", "fetch-data"]
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+
+  # ./data into the warehouse: --ingest TICKER, --ingest-all, --init.
+  ingest:
+    <<: *app
+    profiles: [tools]
+    entrypoint: ["python", "tools/build_warehouse.py"]
+    volumes:
+      - ./data:/app/data:ro
+      - ./warehouse:/app/warehouse
+
+  backtest:
+    <<: *app
+    profiles: [tools]
+    entrypoint: ["python", "cli.py", "backtest"]
+    environment:
+      <<: *env
+      VAI_WAREHOUSE_DIR: /app/warehouse
+    volumes:
+      - ./config:/app/config:ro
+      - ./warehouse:/app/warehouse
+      - ./output:/app/output
 
 volumes:
-  # Named volume, not a bind mount: the persistent SQLite ledger
-  # (Task 7.3) and audit log (Task 7.14) that must survive a container
-  # restart, per Task 7.12's whole design.
+  # NAMED VOLUMES, not bind mounts: each holds a deployment's memory of every
+  # open lot. They survive `docker compose down`; `down -v` DELETES them.
   state:
-  # Isolated per-environment state so paper and real-money ledgers/audit
-  # logs can never mix.
-  state_staging:
+  state_ultimate:
   state_production:
+  state_fidelity:
+  # Each deployment's Live-page commands, results and status: the audit
+  # trail of who paused, resumed, disabled or switched what, and why.
+  control_ultimate:
+  control_champion:
+  control_production:
+  control_fidelity:

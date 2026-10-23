@@ -75,19 +75,51 @@ sells a lot for any reason other than its profit target being met and
 the no-loss guard permitting it. Shutdown does not liquidate, a
 drawdown halt does not liquidate, and a reconciliation failure does not
 liquidate -- consistent with Task 7.8's no-loss shutdown invariant.
+--------------------------------------------------------------------
+HISTORY BEFORE THE FIRST TICK. A backtest's strategy has watched every
+bar since the run began; a live process starts each session cold. A
+strategy that declares live_history_sessions() is handed that many
+sessions of bars (history_provider; engine/trading/live_history.py says
+why each choice there) through record_tick before the first tick, then
+resume(open_lots) with the durable book -- the state a restart loses that
+no bar can rebuild. A strategy that wants history and gets no source is
+refused rather than started blind.
+--------------------------------------------------------------------
+WHAT IT SAYS ABOUT ITSELF, for whoever watches it (the Live page, through
+the trader's status file -- engine/trading/operator_control.py):
+
+  decision      after every tick: the price a buy triggers at (None when
+                the strategy will buy at no price right now), the reference
+                it measures from, what blocks a buy, and the strategy's own
+                diagnostics() -- Ultimate's regime among them.
+  shadow        the CONFIG FILE's algorithm while an override trades in its
+                place: fed the same bars, trading nothing, so a reader can
+                see what switching back would do now (which lots its exit
+                would sell) before doing it.
+  recent_bars   the last sessions of the replayed history; last_bar each
+                tick's bar -- the feed the loop actually traded on.
+  fills         every fill as it is booked, to fill_listener: the ledger
+                keeps lots, never what a sale fetched.
+
+None of it feeds back into a decision, and none of it may stop a tick: a
+report that fails is dropped.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import ROUND_FLOOR, Decimal
 
 from engine.core.config import BacktestConfig
-from engine.core.exceptions import ConfigurationError, PersistenceError
+from engine.core.exceptions import BrokerUnavailableError, ConfigurationError, PersistenceError
 from engine.core.idempotency import compute_decision_id
+from engine.core.ledger import SHARE_EPSILON
 from engine.core.market_context import MarketContext
 from engine.core.retry_policy import AmbiguousSubmissionError
 from engine.data.earnings_calendar import is_earnings_reaction_day_at
@@ -100,10 +132,22 @@ from engine.execution.fill_accounting import FillTracker, extract_alpaca_fill
 from engine.execution.order_lifecycle import TERMINAL_STATES, map_broker_status
 from engine.trading import decision_cycle
 from engine.trading.duplicate_order_guard import DuplicateOrderGuard
+from engine.trading.live_history import EASTERN, last_sessions
 from engine.trading.no_loss_guard import NoLossViolation, SellReason, validate_sell
 from engine.trading.risk_manager import CircuitBreaker, RiskManager
 
 logger = logging.getLogger("Optimizer")
+
+# Completed sessions of the replayed history kept for a reader's chart.
+RECENT_SESSIONS = 5
+
+
+def _floor_shares(qty: float) -> float:
+    """Down to the nine decimals a fractional order may carry, never up:
+    an order for more shares than the lots hold would sell what we do not
+    own."""
+    return float(Decimal(str(qty)).quantize(Decimal("0.000000001"), rounding=ROUND_FLOOR))
+
 
 # Durable keys for the scalars that are not lots. Namespaced so they
 # cannot collide with Task 7.8's halt keys in the same meta table.
@@ -120,6 +164,82 @@ _META_PEAK_EQUITY = "live.peak_equity"
 _META_LAST_TICK = "live.last_tick"
 _META_OPEN_ORDERS = "live.open_orders"
 _META_PARAMETERS = "live.parameters"
+
+
+def seed_fresh_ledger(store, cash: float) -> None:
+    """A new ledger's starting book: the broker's cash, and drawdown measured
+    from the first tick (the Live page's "fresh paper ledger" --
+    engine/trading/operator_control.py). Without the cash the loop would
+    start from the config's initial_cash, which a reset paper account need
+    not hold."""
+    store.set_meta(_META_CASH, str(float(cash)))
+    reset_drawdown_baseline(store)
+
+
+def reset_drawdown_baseline(store) -> None:
+    """Make the next run measure drawdown from its first tick's equity
+    (LiveTradingLoop.reset_drawdown_baseline, for a store no loop holds --
+    the supervisor applying an operator's resume between sessions)."""
+    store.set_meta(_META_PEAK_EQUITY, "0.0")
+
+
+def _history_sessions(strategy) -> int:
+    wanted = getattr(strategy, "live_history_sessions", None)
+    return int(wanted()) if callable(wanted) else 0
+
+
+def _diagnostics(strategy) -> dict | None:
+    """A strategy's own diagnostics(), as plain JSON values; None when it
+    offers none or they fail. Outside the SizingStrategy contract (as in
+    regime_scaled_sizing.py), so asked for, never required."""
+    report = getattr(strategy, "diagnostics", None)
+    if not callable(report):
+        return None
+    try:
+        raw = dict(report() or {})
+    except Exception as exc:
+        logger.warning(f"{type(strategy).__name__}.diagnostics() failed: {exc}")
+        return None
+    plain = {}
+    for key, value in raw.items():
+        value = value.item() if hasattr(value, "item") else value  # numpy scalars
+        if isinstance(value, float) and not math.isfinite(value):
+            value = None
+        if value is None or isinstance(value, bool | int | float | str):
+            plain[str(key)] = value
+    return plain
+
+
+def _buy_level(strategy, context: MarketContext, last_buy_price, step: float) -> float | None:
+    """The price at or below which `strategy` buys on this bar -- its own
+    _grid_trigger_level, the one definition the buy decision uses -- or None
+    when it would buy at no price (NO_BUY_LEVEL) or cannot say."""
+    if last_buy_price is None:
+        return None
+    try:
+        level = float(strategy._grid_trigger_level(context, last_buy_price, step))
+    except Exception:
+        return None
+    return level if math.isfinite(level) and level > 0 else None
+
+
+def _bar_rows(frame) -> list[dict]:
+    """Minute bars as the trader's bar journal keeps them."""
+    if frame is None or len(frame) == 0:
+        return []
+    columns = [frame[name].to_numpy(float) for name in ("open", "high", "low", "close")]
+    volume = frame["volume"].to_numpy(float) if "volume" in frame.columns else [0.0] * len(frame)
+    return [
+        {
+            "t": int(ts.timestamp()),
+            "o": float(columns[0][i]),
+            "h": float(columns[1][i]),
+            "l": float(columns[2][i]),
+            "c": float(columns[3][i]),
+            "v": float(volume[i]),
+        }
+        for i, ts in enumerate(frame.index)
+    ]
 
 
 @dataclass
@@ -164,6 +284,20 @@ class _TrackedOrder:
     # the broker has already sold still open in our ledger -- the exact
     # divergence reconciliation exists to catch, manufactured by us.
     sell_reason: SellReason = SellReason.PROFIT_TARGET
+    # A SIGNAL EXIT sells many lots in ONE order (_submit_exit): their ids,
+    # in the order fills are allocated to them. Empty for every other order.
+    exit_lot_ids: tuple[str, ...] = ()
+    # The bar it was submitted on, and whether a cancel has been asked: an
+    # exit still resting on a later bar is cancelled and re-offered.
+    submitted_bar: str | None = None
+    cancel_requested: bool = False
+
+    @property
+    def lot_ids(self) -> tuple[str, ...]:
+        """Every lot this order sells."""
+        if self.exit_lot_ids:
+            return self.exit_lot_ids
+        return (self.lot_order_id,) if self.lot_order_id is not None else ()
 
     def to_dict(self) -> dict:
         """Durable form, INCLUDING the tracker's cumulative counters.
@@ -182,6 +316,9 @@ class _TrackedOrder:
             "trigger_price": self.trigger_price,
             "profit_target": self.profit_target,
             "sell_reason": str(self.sell_reason),
+            "exit_lot_ids": list(self.exit_lot_ids),
+            "submitted_bar": self.submitted_bar,
+            "cancel_requested": self.cancel_requested,
             "cumulative_qty": self.tracker.cumulative_qty,
             "cumulative_notional": self.tracker.cumulative_notional,
         }
@@ -199,6 +336,9 @@ class _TrackedOrder:
             trigger_price=float(raw.get("trigger_price", 0.0)),
             profit_target=float(raw.get("profit_target", 0.0)),
             sell_reason=SellReason(raw.get("sell_reason", SellReason.PROFIT_TARGET)),
+            exit_lot_ids=tuple(raw.get("exit_lot_ids") or ()),
+            submitted_bar=raw.get("submitted_bar"),
+            cancel_requested=bool(raw.get("cancel_requested", False)),
         )
 
 
@@ -285,8 +425,27 @@ class LiveTradingLoop:
         tick_validator: TickValidator | None = None,
         deployment_id: str = "default",
         sleep=time.sleep,
+        tick_listener: Callable[[dict], None] | None = None,
+        history_provider: Callable[[str, int], object] | None = None,
+        shadow=None,
+        fill_listener: Callable[[dict], None] | None = None,
     ) -> None:
         """Assemble the loop and load durable state.
+
+        tick_listener, if given, is told what each tick of run_forever
+        did -- {"at", "reason", ...} -- so whatever supervises the loop
+        can show that it is alive and why it is or is not trading. Its
+        failures are logged and never reach the loop.
+
+        fill_listener, likewise, is told every fill as it is booked --
+        {"t", "side", "lot", "qty", "price", ...}. shadow is a second
+        strategy fed every bar and asked what it would do, trading nothing
+        (module docstring, WHAT IT SAYS ABOUT ITSELF).
+
+        history_provider(symbol, sessions) returns that many sessions of
+        regular-hours minute bars (a DataFrame: UTC index, open/high/low/
+        close/volume), replayed through the strategy before the first tick
+        when the strategy asks for any -- see the module docstring.
 
         Refuses to construct on a config that does not name a single
         live step and profit_target. Those are validated here rather
@@ -347,7 +506,19 @@ class LiveTradingLoop:
                     "implied_vol_change stays 0.0."
                 )
         self._sleep = sleep
+        self._tick_listener = tick_listener
+        self._fill_listener = fill_listener
+        self.shadow = shadow
+        # What the loop says about itself after each tick (module docstring).
+        self.decision: dict | None = None
+        self.shadow_state: dict | None = None
+        self.last_bar: dict | None = None
+        self.recent_bars: list[dict] = []
         self._stop_requested = False
+        # Why the broker could not be reached, while it cannot; None when
+        # it can. Readable by whatever supervises the loop.
+        self.broker_unavailable: str | None = None
+        self._unavailable_ticks = 0
 
         self.risk_manager = risk_manager or RiskManager(
             max_concurrent_lots=config.risk.max_concurrent_lots,
@@ -374,11 +545,112 @@ class LiveTradingLoop:
         )
         self._restore_settlement(store.get_meta(_META_UNSETTLED))
         self._restore_open_orders(store.get_meta(_META_OPEN_ORDERS))
+        self.replayed_bars = self._prepare_strategy(history_provider)
         logger.info(
             f"LiveTradingLoop ready: symbol={self.symbol} step={self.step} "
             f"profit_target={self.profit_target} cash={self.state.cash:.2f} "
-            f"open_lots={len(self.ledger.open_lots)}"
+            f"open_lots={len(self.ledger.open_lots)} history_bars={self.replayed_bars}"
         )
+
+    def _prepare_strategy(self, history_provider) -> int:
+        """Replay the history the strategy asks for, then hand it the
+        durable book. Returns the number of bars replayed.
+
+        The shadow, if any, gets the same treatment from the same fetch --
+        the larger of the two asks -- each replaying only the sessions it
+        wants. A shadow that cannot be prepared is dropped, never a reason
+        not to trade."""
+        sessions = _history_sessions(self.strategy)
+        shadow_sessions = _history_sessions(self.shadow) if self.shadow is not None else 0
+        if sessions > 0 and history_provider is None:
+            raise ConfigurationError(
+                f"{type(self.strategy).__name__} needs {sessions} sessions of history "
+                "before its first live tick, and no history source was given. Without "
+                "it the strategy starts each session cold -- not the strategy that was "
+                "backtested."
+            )
+        replayed = 0
+        fetch = max(sessions, shadow_sessions) if history_provider is not None else 0
+        if fetch > 0:
+            bars = history_provider(self.symbol, fetch)
+            today = datetime.now(UTC).astimezone(EASTERN).date()
+
+            def tail(wanted: int):
+                # The provider returned the larger ask; the smaller takes its
+                # own last sessions of it (all of it, if they cannot be told).
+                if wanted >= fetch:
+                    return bars
+                try:
+                    return last_sessions(bars, wanted, today)
+                except (AttributeError, TypeError):
+                    return bars
+
+            if sessions > 0:
+                replayed = self.replay_history(tail(sessions))
+            if shadow_sessions > 0:
+                try:
+                    self.replay_history(tail(shadow_sessions), strategy=self.shadow)
+                except Exception as exc:
+                    self._drop_shadow(exc)
+            try:
+                self.recent_bars = _bar_rows(last_sessions(bars, RECENT_SESSIONS, today))
+            except Exception as exc:  # for a reader's chart only
+                logger.warning(f"No recent bars kept for the chart: {exc}")
+        for strategy in (self.strategy, self.shadow):
+            resume = getattr(strategy, "resume", None)
+            if callable(resume):
+                try:
+                    resume(list(self.ledger.open_lots))
+                except Exception as exc:
+                    if strategy is self.strategy:
+                        raise
+                    self._drop_shadow(exc)
+        return replayed
+
+    def _drop_shadow(self, exc: Exception) -> None:
+        if self.shadow is not None:
+            logger.warning(
+                f"Dropped the shadow {type(self.shadow).__name__} ({type(exc).__name__}: {exc}); "
+                "trading is unaffected."
+            )
+        self.shadow = None
+        self.shadow_state = None
+
+    def replay_history(self, bars, strategy=None) -> int:
+        """Feed past bars to the strategy's record_tick (or `strategy`'s),
+        oldest first.
+
+        Each context carries the bar's own market fields and a NEUTRAL
+        portfolio -- no cash, no equity, no drawdown -- with the book's
+        current open-lot count, so the replay moves only market state:
+        nothing a strategy captures from equity (the champion's lot
+        baseline) is taken from it, and no bar looks like a buy. Nothing
+        is traded and nothing is persisted.
+        """
+        if bars is None or len(bars) == 0:
+            return 0
+        if not bars.index.is_monotonic_increasing:
+            raise ConfigurationError("history bars must be in ascending time order")
+        open_lot_count = len(self.ledger.open_lots)
+        columns = [bars[name].to_numpy(float) for name in ("open", "high", "low", "close")]
+        volume = bars["volume"].to_numpy(float) if "volume" in bars.columns else [0.0] * len(bars)
+        for i, ts in enumerate(bars.index):
+            timestamp = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
+            context = self._market_context(
+                timestamp,
+                columns[0][i],
+                columns[1][i],
+                columns[2][i],
+                columns[3][i],
+                volume[i],
+                cash=0.0,
+                equity=0.0,
+                peak_equity=0.0,
+                drawdown=0.0,
+                open_lot_count=open_lot_count,
+            )
+            decision_cycle.record_tick(strategy or self.strategy, context)
+        return len(bars)
 
     def _restore_settlement(self, raw: str | None) -> None:
         """Reload unsettled proceeds, or fail SAFE if they are unreadable.
@@ -470,9 +742,10 @@ class LiveTradingLoop:
         # first -- and the failure mode of disagreement is the double
         # sell this whole method exists to prevent.
         self.state.sells_in_flight = {
-            order.lot_order_id
+            lot_id
             for order in restored.values()
-            if order.kind == "sell" and order.lot_order_id is not None
+            if order.kind == "sell"
+            for lot_id in order.lot_ids
         }
         if restored:
             logger.warning(
@@ -511,6 +784,19 @@ class LiveTradingLoop:
     def stop_requested(self) -> bool:
         """Whether a stop has been requested."""
         return self._stop_requested
+
+    def reset_drawdown_baseline(self) -> None:
+        """Measure drawdown from the next tick's equity again, not from the
+        old peak -- an operator resuming buys after a drawdown halt, who
+        would otherwise see it trip again on the next tick. Zero is enough:
+        _build_context raises the peak to the tick's equity before it
+        measures. Strategies that size on drawdown see it reset too."""
+        self.state.peak_equity = 0.0
+        reset_drawdown_baseline(self.store)
+
+    def is_flat(self) -> bool:
+        """No open lots and nothing awaiting a fill."""
+        return not self.ledger.open_lots and self.in_flight_settled()
 
     # --- the tick ---
 
@@ -585,9 +871,22 @@ class LiveTradingLoop:
         context = self._build_context(bar, price)
         self.state.last_tick_price = float(price)
         self.state.last_tick_at = bar.timestamp.isoformat()
+        self.last_bar = {
+            "t": int(bar.timestamp.timestamp()),
+            "o": float(bar.open),
+            "h": float(bar.high),
+            "l": float(bar.low),
+            "c": float(bar.close),
+            "v": float(getattr(bar, "volume", 0.0) or 0.0),
+        }
 
         # Phase 1, unconditionally and before any harvest.
         decision_cycle.record_tick(self.strategy, context)
+        if self.shadow is not None:
+            try:
+                decision_cycle.record_tick(self.shadow, context)
+            except Exception as exc:
+                self._drop_shadow(exc)
 
         sells = self._harvest(context)
 
@@ -598,6 +897,7 @@ class LiveTradingLoop:
             context.drawdown, self.risk_manager.halt_new_buys_if_drawdown_exceeds
         )
         buys = self._maybe_buy(context) if self.circuit_breaker.allows_new_buys else 0
+        self._describe(context)
 
         self.state.prev_close = price
         self.persist_state()
@@ -624,11 +924,24 @@ class LiveTradingLoop:
             try:
                 outcome = self.run_once()
                 if outcome.acted:
+                    self._note_broker_available()
                     logger.info(
                         f"tick price={outcome.price} fills={outcome.fills_applied} "
                         f"sells={outcome.sells_submitted} buys={outcome.buys_submitted} "
                         f"cash={self.state.cash:.2f} open_lots={len(self.ledger.open_lots)}"
                     )
+                self._report_tick(outcome.reason, acted=outcome.acted, price=outcome.price)
+            except BrokerUnavailableError as exc:
+                # NOTHING WAS SENT: the broker could not take the request
+                # -- its session signed out, its connection dropped, or
+                # trading was switched off on its side. Not a reason to
+                # stop: skip the rest of this tick and try again on the
+                # next. Whatever the tick already applied (a confirmed
+                # fill, say) is persisted now rather than at the tick's
+                # end, which it did not reach.
+                self.persist_state()
+                self._note_broker_unavailable(exc)
+                self._report_tick("broker_unavailable", acted=False, detail=str(exc))
             except AmbiguousSubmissionError:
                 # It is unknown whether an order reached the broker.
                 # Halting and stopping is the only safe response --
@@ -645,6 +958,93 @@ class LiveTradingLoop:
                 break
             self._sleep(interval)
         return ticks
+
+    def _describe(self, context: MarketContext) -> None:
+        """This tick's `decision` and `shadow_state` (module docstring, WHAT
+        IT SAYS ABOUT ITSELF). Never raises: a report is not a reason to stop
+        a tick."""
+        try:
+            level = _buy_level(self.strategy, context, self.state.last_buy_price, self.step)
+            cap = getattr(self.risk_manager, "max_concurrent_lots", None)
+            if not self.circuit_breaker.allows_new_buys:
+                blocked = f"buys paused: {self.circuit_breaker.reason}"
+            elif level is None:
+                blocked = "the strategy buys at no price right now"
+            elif self.state.buying_power <= 0:
+                blocked = "no buying power left"
+            elif cap is not None and len(self.ledger.open_lots) >= cap:
+                blocked = f"at its limit of {cap} open lots"
+            else:
+                blocked = None
+            self.decision = {
+                "price": float(context.price),
+                "buy_level": level,
+                "reference": self.state.last_buy_price,
+                "blocked": blocked,
+                "strategy": _diagnostics(self.strategy),
+            }
+        except Exception as exc:
+            logger.warning(f"No decision report this tick: {type(exc).__name__}: {exc}")
+            self.decision = None
+        if self.shadow is None:
+            self.shadow_state = None
+            return
+        try:
+            # What switching back would do to the book now: the lots the
+            # shadow's own exit would sell on this bar.
+            lots = list(self.ledger.open_lots)
+            liquidate = getattr(self.shadow, "lots_to_liquidate", None)
+            selling = list(liquidate(lots, context)) if callable(liquidate) else []
+            self.shadow_state = {
+                "strategy": _diagnostics(self.shadow),
+                "would_sell": len(selling),
+                "would_sell_cost": round(sum(lot.buy_price * lot.shares for lot in selling), 2),
+            }
+        except Exception as exc:
+            self._drop_shadow(exc)
+
+    def _report_fill(self, **fields) -> None:
+        """Tell the fill listener about a booked fill. A listener that fails
+        is logged, never allowed to stop the loop."""
+        if self._fill_listener is None:
+            return
+        try:
+            self._fill_listener({"t": datetime.now(UTC).timestamp(), **fields})
+        except Exception as exc:
+            logger.warning(f"Fill listener failed (ignored): {type(exc).__name__}: {exc}")
+
+    def _report_tick(self, reason: str, **fields) -> None:
+        """Tell the tick listener what this tick did. A listener that
+        fails is logged, never allowed to stop the loop."""
+        if self._tick_listener is None:
+            return
+        try:
+            self._tick_listener({"at": datetime.now(UTC).isoformat(), "reason": reason, **fields})
+        except Exception as exc:
+            logger.warning(f"Tick listener failed (ignored): {type(exc).__name__}: {exc}")
+
+    def _note_broker_unavailable(self, exc: BrokerUnavailableError) -> None:
+        """Log an unreachable broker without flooding the log: when it
+        starts, when the reason changes, and every 30 ticks while it
+        lasts."""
+        detail = str(exc)
+        self._unavailable_ticks += 1
+        if detail != self.broker_unavailable or self._unavailable_ticks % 30 == 0:
+            logger.warning(
+                f"Broker unavailable ({self._unavailable_ticks} tick(s) in a row) -- skipping "
+                f"and trying again next tick: {detail}"
+            )
+        self.broker_unavailable = detail
+
+    def _note_broker_available(self) -> None:
+        if self.broker_unavailable is None:
+            return
+        logger.warning(
+            f"Broker available again after {self._unavailable_ticks} skipped tick(s); "
+            "trading resumes."
+        )
+        self.broker_unavailable = None
+        self._unavailable_ticks = 0
 
     # --- fills ---
 
@@ -679,8 +1079,7 @@ class LiveTradingLoop:
 
             if map_broker_status(order.status) in TERMINAL_STATES:
                 self.state.open_orders.pop(client_order_id, None)
-                if tracked.lot_order_id is not None:
-                    self.state.sells_in_flight.discard(tracked.lot_order_id)
+                self.state.sells_in_flight.difference_update(tracked.lot_ids)
                 removed += 1
         if removed or applied:
             self._persist_open_orders()
@@ -715,6 +1114,55 @@ class LiveTradingLoop:
             f"BUY filled: {delta.qty} @ {delta.avg_price} (${delta.notional:.2f}) -> lot "
             f"{lot_order_id!r}; cash={self.state.cash:.2f}"
         )
+        self._report_fill(
+            side="buy",
+            lot=lot_order_id,
+            qty=float(delta.qty),
+            price=float(delta.avg_price),
+            value=float(delta.notional),
+            target=float(tracked.profit_target),
+        )
+
+    def _apply_exit_fill(self, tracked: _TrackedOrder, delta) -> None:
+        """Allocate one signal-exit fill increment across the lots it sold,
+        oldest first: each closes as fully as the increment reaches, through
+        the no-loss guard like any sale (which lets a signal exit realize a
+        loss). Shares filled beyond the lots' own are reported, never
+        invented into the ledger."""
+        remaining = delta.qty
+        for lot_id in tracked.exit_lot_ids:
+            if remaining <= SHARE_EPSILON:
+                break
+            lot = next((lot for lot in self.ledger.open_lots if lot.order_id == lot_id), None)
+            if lot is None:
+                continue  # closed by an earlier increment
+            qty = min(lot.shares, remaining)
+            try:
+                economics = validate_sell(
+                    lot,
+                    qty,
+                    delta.avg_price,
+                    self.cost_model,
+                    prev_close=self.state.prev_close,
+                    reason=tracked.sell_reason,
+                )
+            except NoLossViolation:
+                continue  # logged by the guard; left visible for reconciliation
+            cost = lot.buy_price * qty
+            self.state.credit_sale(economics.net_sell_proceeds, self.settlement_days)
+            self.ledger.close_lot(lot, sell_qty=qty, execution_price=delta.avg_price)
+            self.store.sync_lot(self.ledger, lot)
+            remaining -= qty
+            self._report_sale(tracked, lot_id, qty, delta.avg_price, economics, cost)
+        logger.info(
+            f"EXIT filled: {delta.qty} @ {delta.avg_price} across "
+            f"{len(tracked.exit_lot_ids)} lot(s); cash={self.state.cash:.2f}"
+        )
+        if remaining > 1e-6:
+            logger.error(
+                f"Exit {tracked.client_order_id!r} filled {remaining} shares more than its "
+                "open lots held. Not applied -- reconcile."
+            )
 
     def _apply_sell_fill(self, tracked: _TrackedOrder, delta) -> None:
         """Close (or reduce) a lot from a confirmed sell increment.
@@ -726,6 +1174,9 @@ class LiveTradingLoop:
         assumption broke, and the guard refusing to book the sale is
         preferable to silently recording a loss.
         """
+        if tracked.exit_lot_ids:
+            self._apply_exit_fill(tracked, delta)
+            return
         lot = next(
             (lot for lot in self.ledger.open_lots if lot.order_id == tracked.lot_order_id), None
         )
@@ -751,12 +1202,29 @@ class LiveTradingLoop:
             # reconcilable rather than quietly realizing a loss.
             return
 
+        cost = lot.buy_price * delta.qty
         self.state.credit_sale(economics.net_sell_proceeds, self.settlement_days)
         self.ledger.close_lot(lot, sell_qty=delta.qty, execution_price=delta.avg_price)
         self.store.sync_lot(self.ledger, lot)
         logger.info(
             f"SELL filled: {delta.qty} @ {delta.avg_price} "
             f"(net ${economics.net_sell_proceeds:.2f}); cash={self.state.cash:.2f}"
+        )
+        self._report_sale(tracked, lot.order_id, delta.qty, delta.avg_price, economics, cost)
+
+    def _report_sale(self, tracked, lot_id, qty, price, economics, cost) -> None:
+        """A booked sale, with what it fetched against what the lot cost --
+        the figure the ledger cannot give (it stores no sale price)."""
+        proceeds = float(economics.net_sell_proceeds)
+        self._report_fill(
+            side="sell",
+            reason=str(tracked.sell_reason),
+            lot=lot_id,
+            qty=float(qty),
+            price=float(price),
+            proceeds=proceeds,
+            cost=float(cost),
+            pnl=proceeds - float(cost),
         )
 
     # --- context ---
@@ -787,7 +1255,37 @@ class LiveTradingLoop:
             # BacktestState does with the first bar's close.
             self.state.last_buy_price = price
 
-        timestamp = bar.timestamp
+        return self._market_context(
+            bar.timestamp,
+            bar.open,
+            bar.high,
+            bar.low,
+            price,
+            float(getattr(bar, "volume", 0.0) or 0.0),
+            cash=self.state.cash,
+            equity=equity,
+            peak_equity=self.state.peak_equity,
+            drawdown=drawdown,
+            open_lot_count=len(self.ledger.open_lots),
+        )
+
+    def _market_context(
+        self,
+        timestamp,
+        open_,
+        high,
+        low,
+        close,
+        volume,
+        *,
+        cash,
+        equity,
+        peak_equity,
+        drawdown,
+        open_lot_count,
+    ) -> MarketContext:
+        """One bar's MarketContext, the market half derived the same way
+        for a live tick and a replayed history bar."""
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
 
@@ -798,20 +1296,20 @@ class LiveTradingLoop:
 
         return MarketContext(
             timestamp=timestamp,
-            open=bar.open,
-            high=bar.high,
-            low=bar.low,
-            close=price,
-            cash=self.state.cash,
+            open=open_,
+            high=high,
+            low=low,
+            close=close,
+            cash=cash,
             equity=equity,
-            peak_equity=self.state.peak_equity,
+            peak_equity=peak_equity,
             drawdown=drawdown,
-            open_lot_count=len(self.ledger.open_lots),
+            open_lot_count=open_lot_count,
             bar_index=0,
             is_macro_event_day=is_fomc_day_at(timestamp),
             is_earnings_reaction_day=is_earnings_reaction_day_at(timestamp),
             time_of_day_flag=minutes_since_open(timestamp),
-            volume=float(getattr(bar, "volume", 0.0) or 0.0),
+            volume=volume,
             event_intensity=event_intensity,
             minutes_to_event=minutes_to_event,
             implied_vol_change=change_at(self._implied_vol_series, timestamp),
@@ -820,14 +1318,16 @@ class LiveTradingLoop:
     # --- order submission ---
 
     def _harvest(self, context: MarketContext) -> int:
-        """Submit limit sells for every lot that has reached its target.
+        """Submit limit sells for every lot that has reached its target, and
+        one order for every lot the strategy wants out of (_submit_exit).
 
         A lot with a sell already in flight is skipped: re-offering it
         would put two sell orders against one position and could sell
-        shares that no longer exist. Bounded per tick so one very large
-        harvest cannot overrun the poll interval; the remainder is
-        picked up next tick.
+        shares that no longer exist. Harvests are bounded per tick so one
+        very large harvest cannot overrun the poll interval; the remainder
+        is picked up next tick.
         """
+        self._cancel_stale_exits(context)
         submitted = 0
         # Trailing exits, through the shared helper the backtest paths
         # also call. Lots with a sell in flight are excluded: that order
@@ -850,14 +1350,6 @@ class LiveTradingLoop:
         # Signal exits, through the shared helper the backtest paths call,
         # with the same in-flight exclusion retargeting uses: a lot whose
         # sell is already resting must not get a second order.
-        #
-        # Priced at context.price rather than at the lot's target. A
-        # signal exit that rested above the market would simply not fill,
-        # which is the one outcome it must not have -- the strategy asked
-        # to be OUT. It stays a limit order (never a market order) so a
-        # thin book cannot fill it arbitrarily far away; it is marketable
-        # at submission, and an unfilled remainder is re-offered next
-        # tick at the new price rather than chased.
         liquidations = decision_cycle.collect_liquidations(
             self.strategy,
             self.ledger,
@@ -865,50 +1357,122 @@ class LiveTradingLoop:
             allow_signal_exit=self.config.execution.allow_signal_exit,
             skip_order_ids=self.state.sells_in_flight,
         )
-        exits = [(lot, context.price, SellReason.SIGNAL_EXIT) for lot in liquidations]
         if liquidations:
             condemned = {lot.order_id for lot in liquidations}
             marketable = [lot for lot in marketable if lot.order_id not in condemned]
-        exits.extend((lot, lot.target_sell_price, SellReason.PROFIT_TARGET) for lot in marketable)
+            submitted += self._submit_exit(liquidations, context)
 
-        # The per-tick bound applies to the COMBINED list, not to each
-        # kind separately, because it exists to keep one tick inside the
-        # poll interval and the broker does not care why an order was
-        # sent. Signal exits are ordered first, so a harvest large enough
-        # to fill the budget defers other harvests rather than the exit a
-        # strategy asked for.
-        for lot, sell_price, sell_reason in exits[: self.config.live.max_sells_per_tick]:
+        for lot in marketable[: max(0, self.config.live.max_sells_per_tick - submitted)]:
             if lot.order_id in self.state.sells_in_flight:
                 continue
             decision_id = self._decision_id("SELL", context.timestamp, lot.order_id)
             outcome = self.guard.submit_once(
                 decision_id,
-                lambda cid, lot=lot, sell_price=sell_price: str(
+                lambda cid, lot=lot: str(
                     self.broker.submit_sell(
-                        self.symbol, lot.shares, sell_price, client_order_id=cid
+                        self.symbol, lot.shares, lot.target_sell_price, client_order_id=cid
                     ).id
                 ),
                 event_kind="sell_submission",
             )
             if not outcome.submitted_now:
                 continue
-            if sell_reason is SellReason.SIGNAL_EXIT:
-                logger.warning(
-                    f"SIGNAL EXIT submitted for lot {lot.order_id} "
-                    f"({lot.shares} @ {sell_price}, bought at {lot.buy_price}): "
-                    "this sell is permitted to realize a loss."
-                )
             self.state.open_orders[decision_id] = _TrackedOrder(
                 client_order_id=decision_id,
                 kind="sell",
                 tracker=FillTracker(decision_id),
                 lot_order_id=lot.order_id,
-                sell_reason=sell_reason,
+                sell_reason=SellReason.PROFIT_TARGET,
             )
             self.state.sells_in_flight.add(lot.order_id)
             self._persist_open_orders()
             submitted += 1
         return submitted
+
+    def _submit_exit(self, lots: list, context: MarketContext) -> int:
+        """ONE limit order for every lot the strategy wants out of.
+
+        A signal exit used to send an order per lot, at most
+        max_sells_per_tick a tick: a calm book of 3,000 lots took about an
+        hour to leave where the backtest sells it on one bar, and every
+        order was one more request against the venue's rate limit. One
+        order for their summed shares leaves in one fill; the fill is
+        allocated back to the lots, oldest first (_apply_exit_fill).
+
+        Priced exit_limit_buffer through the bar's price: a limit AT the
+        last trade often rests below a bid a tick lower, and a resting exit
+        is the one outcome it must not have. Still a limit, so a thin book
+        cannot fill it arbitrarily far away; the fill is the market's price.
+        One still resting on a later bar is cancelled and the rest offered
+        again at the new price (_cancel_stale_exits).
+        """
+        lots = [lot for lot in lots if lot.order_id not in self.state.sells_in_flight]
+        qty = _floor_shares(sum(lot.shares for lot in lots))
+        if not lots or qty <= 0:
+            return 0
+        price = context.price * (1.0 - self.config.live.exit_limit_buffer)
+        decision_id = self._decision_id("SELL", context.timestamp, "exit")
+        outcome = self.guard.submit_once(
+            decision_id,
+            lambda cid: str(
+                self.broker.submit_sell(self.symbol, qty, price, client_order_id=cid).id
+            ),
+            event_kind="sell_submission",
+        )
+        if not outcome.submitted_now:
+            return 0
+        logger.warning(
+            f"SIGNAL EXIT submitted: {len(lots)} lot(s), {qty} shares, limit {price:.4f} "
+            f"({self.config.live.exit_limit_buffer:.2%} through {context.price}). These "
+            "sales are permitted to realize a loss."
+        )
+        self.state.open_orders[decision_id] = _TrackedOrder(
+            client_order_id=decision_id,
+            kind="sell",
+            tracker=FillTracker(decision_id),
+            sell_reason=SellReason.SIGNAL_EXIT,
+            exit_lot_ids=tuple(lot.order_id for lot in lots),
+            submitted_bar=context.timestamp.isoformat(),
+        )
+        self.state.sells_in_flight.update(lot.order_id for lot in lots)
+        self._persist_open_orders()
+        return 1
+
+    def _cancel_stale_exits(self, context: MarketContext) -> None:
+        """Cancel a signal exit still resting on a later bar: the market
+        moved through its limit. Once the venue reports it done -- with any
+        part that filled applied as usual -- its lots are free again and
+        the strategy, still wanting out, has them re-offered at the new
+        price. A broker without cancel_order leaves it resting until the
+        session ends, as every exit did before."""
+        cancel = getattr(self.broker, "cancel_order", None)
+        if not callable(cancel):
+            return
+        bar = context.timestamp.isoformat()
+        changed = False
+        for tracked in list(self.state.open_orders.values()):
+            if not tracked.exit_lot_ids or tracked.cancel_requested:
+                continue
+            if tracked.submitted_bar == bar:
+                continue
+            try:
+                cancel(tracked.client_order_id)
+            except BrokerUnavailableError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    f"Could not cancel resting exit {tracked.client_order_id!r} "
+                    f"({type(exc).__name__}: {exc}); trying again next tick."
+                )
+                continue
+            tracked.cancel_requested = True
+            changed = True
+            logger.warning(
+                f"Signal exit {tracked.client_order_id!r} was still resting a bar later; "
+                "cancel requested so what is left is offered again at the market."
+            )
+        if changed:
+            self._persist_open_orders()
 
     def _maybe_buy(self, context: MarketContext) -> int:
         """Evaluate the grid trigger and submit a buy if one is due.
