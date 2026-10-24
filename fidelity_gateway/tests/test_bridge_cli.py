@@ -233,3 +233,94 @@ def test_a_failed_build_is_reported_not_hidden(tmp_path, monkeypatch, capsys):
         == 2
     )
     assert "manifest.json names x" in capsys.readouterr().err
+
+
+# -- notifications for apps ------------------------------------------------------
+
+
+def test_keygen_notify_writes_the_apps_own_key_beside_the_extensions(tmp_path, capsys):
+    from fidelity_gateway.bridge.keys import NOTIFY_KEY_ENV_VAR
+
+    env_file = tmp_path / ".env"
+    assert cli.main(["keygen", "--env-file", str(env_file)]) == 0
+    assert cli.main(["keygen", "--notify", "--env-file", str(env_file)]) == 0
+    out = capsys.readouterr().out
+    assert "Notifier app" in out
+    extension_key = read_env_value(env_file, API_KEY_ENV_VAR)
+    app_key = read_env_value(env_file, NOTIFY_KEY_ENV_VAR)
+    assert app_key and app_key in out and app_key != extension_key
+    assert cli.main(["keygen", "--notify", "--env-file", str(env_file)]) == 2
+    assert read_env_value(env_file, NOTIFY_KEY_ENV_VAR) == app_key
+
+
+def test_notifications_are_off_unless_asked_for_and_this_computer_only():
+    from fidelity_gateway.bridge.notifications import DEFAULT_EVENTS
+
+    args = cli.parse_args(["serve"])
+    assert cli.notify_settings(args) is None
+    settings = cli.notify_settings(cli.parse_args(["serve", "--notify"]))
+    assert (settings.host, settings.port) == ("127.0.0.1", 8766)
+    assert settings.allowed_clients == ("127.0.0.1", "::1")
+    assert settings.events == DEFAULT_EVENTS
+
+
+def test_notify_flags_are_read():
+    settings = cli.notify_settings(
+        cli.parse_args(
+            [
+                "serve",
+                "--notify",
+                "--notify-host",
+                "0.0.0.0",
+                "--notify-port",
+                "9001",
+                "--notify-allow-client",
+                "192.168.1.0/24",
+                "--notify-block-client",
+                "192.168.1.99",
+                "--notify-events",
+                "buy, sell,disconnected",
+            ]
+        )
+    )
+    assert (settings.host, settings.port) == ("0.0.0.0", 9001)
+    assert settings.allowed_clients == ("192.168.1.0/24",)
+    assert settings.blocked_clients == ("192.168.1.99",)
+    assert settings.events == ("buy", "sell", "disconnected")
+
+
+def test_an_unknown_notify_event_is_refused(capsys):
+    with pytest.raises(SystemExit):
+        cli.parse_args(["serve", "--notify", "--notify-events", "buy,sold"])
+    assert "sold" in capsys.readouterr().err
+
+
+def test_serve_with_notify_lets_an_app_hear_the_bridge(monkeypatch, capsys):
+    import re
+
+    from fidelity_gateway.bridge.keys import NOTIFY_KEY_ENV_VAR
+    from fidelity_gateway.tests.bridge_support import NOTIFY_KEY, FakeApp
+
+    pytest.importorskip("websockets")
+    monkeypatch.setenv(API_KEY_ENV_VAR, API_KEY)
+    monkeypatch.setenv(NOTIFY_KEY_ENV_VAR, NOTIFY_KEY)
+    stop = threading.Event()
+    args = cli.parse_args(["serve", "--port", "0", "--notify", "--notify-port", "0"])
+    finished = []
+    runner = threading.Thread(
+        target=lambda: finished.append(cli.run_serve(args, stop)), daemon=True
+    )
+    runner.start()
+    seen = ""
+    deadline = time.monotonic() + 5
+    while "apps may connect" not in seen and time.monotonic() < deadline:
+        time.sleep(0.02)
+        seen += capsys.readouterr().err
+    url = re.search(r"apps may connect at (\S+)", seen).group(1)
+    app = FakeApp(url, NOTIFY_KEY)
+    assert app.handshake()["type"] == "welcome"
+    assert app.hello["status"]["engine"]["mode"] == "bridge"
+    stop.set()
+    runner.join(timeout=5)
+    assert finished == [0]
+    assert app.receive_until(lambda m: m["type"] == "goodbye")

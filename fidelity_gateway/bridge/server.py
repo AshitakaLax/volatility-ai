@@ -26,6 +26,12 @@ CALLS the extension makes -- the algorithm editor's -- answered by
 handlers the engine registers. A call the engine did not register is
 refused.
 
+Given a NotificationServer (notify_server.py), it also tells apps what
+it sees: the extension connecting and going away, its trading switch,
+the engine's state, and every order report that is news. Those apps
+connect to a socket of their own, with a key of their own, and can send
+nothing that reaches this one.
+
 The websockets package is imported inside start(), not at module scope,
 for the same reason recon.py defers Playwright: importing
 fidelity_gateway must stay cheap and must work where the optional
@@ -48,6 +54,8 @@ from typing import Any
 from engine.core.exceptions import BrokerUnavailableError, ConfigurationError
 from fidelity_gateway.bridge.ip_policy import AddressPolicy
 from fidelity_gateway.bridge.keys import BridgeApiKey
+from fidelity_gateway.bridge.notifications import Notifications
+from fidelity_gateway.bridge.notify_server import NotificationServer
 from fidelity_gateway.bridge.order_reports import OrderReports
 from fidelity_gateway.bridge.protocol import (
     BRIDGE_PATH,
@@ -164,7 +172,10 @@ class BridgeServer:
         log: Callable[[str], None] | None = None,
         order_reports: OrderReports | None = None,
         extension_versions: dict | None = None,
+        notifier: NotificationServer | None = None,
     ) -> None:
+        """`notifier`: a NotificationServer, started and stopped with this
+        one, whose apps hear what this bridge sees."""
         if not isinstance(api_key, BridgeApiKey):
             raise ConfigurationError("BridgeServer needs a BridgeApiKey (see bridge/keys.py).")
         self._key = api_key
@@ -200,6 +211,17 @@ class BridgeServer:
         self._connected_at: float | None = None
         self._heard_at: float | None = None
         self._disconnected_at: float | None = None
+        # What apps hear. Without a notifier nothing is enabled, so every
+        # publish is a no-op and nothing is kept.
+        self._notifier = notifier
+        self._notifications = (
+            notifier.notifications if notifier is not None else Notifications(events=())
+        )
+        self._order_reports.add_listener(self._notifications.order_report)
+        # Taken around reading the status and handing it over, so two
+        # threads' snapshots cannot land in the wrong order.
+        self._status_lock = threading.Lock()
+        self._stopping = False
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -211,15 +233,25 @@ class BridgeServer:
                 f"The bridge needs the websockets package: {exc}\n"
                 "    pip install -r requirements-fidelity.txt"
             ) from exc
-        self._server = serve(
-            self._handle,
-            self._host,
-            self._requested_port,
-            process_request=self._process_request,
-            max_size=MAX_PAYLOAD_LENGTH + 4096,
-            compression=None,
-            server_header=None,
-        )
+        self._publish_status()
+        if self._notifier is not None:
+            # First, so an app can be connected before the extension is,
+            # and hears it arrive.
+            self._notifier.start()
+        try:
+            self._server = serve(
+                self._handle,
+                self._host,
+                self._requested_port,
+                process_request=self._process_request,
+                max_size=MAX_PAYLOAD_LENGTH + 4096,
+                compression=None,
+                server_header=None,
+            )
+        except BaseException:
+            if self._notifier is not None:
+                self._notifier.stop()
+            raise
         self._thread = threading.Thread(
             target=self._server.serve_forever, name="fidelity-bridge", daemon=True
         )
@@ -227,6 +259,9 @@ class BridgeServer:
 
     def stop(self) -> None:
         with self._lock:
+            # The extension leaving because the engine stops is not news:
+            # the apps are told goodbye instead.
+            self._stopping = True
             session = self._session
         if session is not None:
             with contextlib.suppress(Exception):
@@ -235,6 +270,8 @@ class BridgeServer:
             self._server.shutdown()
         if self._thread is not None:
             self._thread.join(timeout=5)
+        if self._notifier is not None:
+            self._notifier.stop()
 
     @property
     def port(self) -> int:
@@ -276,6 +313,12 @@ class BridgeServer:
         status = self._engine_status
         return dict(status) if status is not None else None
 
+    @property
+    def notifications(self) -> Notifications:
+        """What apps are told (notifications.py): with no notifier, a hub
+        with nothing enabled."""
+        return self._notifications
+
     def connection_report(self) -> dict:
         """The extension's side of the bridge, for whoever watches the engine
         (the Live page, through the trader's status file): connected or not,
@@ -309,10 +352,14 @@ class BridgeServer:
         with self._lock:
             if status == self._engine_status:
                 return
+            previous = (self._engine_status or {}).get("state")
             self._engine_status = dict(status)
             session = self._session
         if session is not None:
             self._send_status(session)
+        if status.get("state") != previous:
+            self._notifications.engine_state(status, previous)
+        self._publish_status()
 
     def register_call(self, method: str, handler: Callable[[dict], dict]) -> None:
         """Let the extension call `method`. The handler gets the call's
@@ -408,6 +455,14 @@ class BridgeServer:
         with self._lock:
             previous, self._session = self._session, session
             self._connected_at = self._heard_at = self._clock()
+            # How long it was away: None for a first connection, and for a
+            # replacement -- a browser restart seen before the old socket
+            # closed -- since nothing was ever without one.
+            away = (
+                self._connected_at - self._disconnected_at
+                if previous is None and self._disconnected_at is not None
+                else None
+            )
         if previous is not None:
             self._log("[bridge] a new extension connection replaces the old one")
             with contextlib.suppress(Exception):
@@ -421,6 +476,11 @@ class BridgeServer:
         with contextlib.suppress(Exception):
             session.send({"type": "versions", "extension": dict(self._extension_versions)})
         self._send_status(session)
+        if previous is None:
+            self._notifications.extension_connected(
+                version=session.client.get("version"), peer=peer, away_seconds=away
+            )
+        self._publish_status()
         return session
 
     def _on_frame(self, session: _Session, frame: Any) -> bool:
@@ -524,7 +584,12 @@ class BridgeServer:
         permissions = {"preview": data.get("preview") is True, "place": data.get("place") is True}
         if permissions == self._permissions:
             return
-        self._permissions = permissions
+        previous, self._permissions = self._permissions, permissions
+        # Its first word after the bridge starts is how things are, not a
+        # change; a switch flipped while it was away still is one.
+        if previous is not None and previous["place"] != permissions["place"]:
+            self._notifications.trading_switch(allowed=permissions["place"])
+        self._publish_status()
         if permissions["place"]:
             self._log("[bridge] the extension allows trading: orders will be placed")
         else:
@@ -545,15 +610,42 @@ class BridgeServer:
 
     def _retire(self, session: _Session) -> None:
         with self._lock:
-            if self._session is session:
+            current = self._session is session
+            if current:
                 self._session = None
                 self._connected.clear()
                 self._disconnected_at = self._clock()
             abandoned = [key for key, (owner, _) in self._pending.items() if owner is session]
             waiters = [self._pending.pop(key)[1] for key in abandoned]
+            stopping = self._stopping
         for waiter in waiters:
             waiter.put(_DISCONNECTED)
         self._log(f"[bridge] extension at {session.peer} disconnected")
+        if current and not stopping:
+            self._notifications.extension_disconnected(peer=session.peer)
+            self._publish_status()
+
+    def _publish_status(self) -> None:
+        """The bridge's status as apps see it: the extension's connection
+        and switches, and the engine's own words. Sent to them when it
+        changes; never the key, nor the bridge's own address."""
+        with self._status_lock:
+            report = self.connection_report()
+            permissions = report["permissions"] or {}
+            self._notifications.set_status(
+                {
+                    "extension": {
+                        "connected": report["connected"],
+                        "since": report["since"],
+                        "disconnectedAt": report["disconnected_at"],
+                        "version": report["version"],
+                        "advice": report["advice"],
+                        "trading": permissions.get("place"),
+                        "previews": permissions.get("preview"),
+                    },
+                    "engine": self.engine_status,
+                }
+            )
 
     # -- what callers use ---------------------------------------------------
 

@@ -366,6 +366,19 @@ and checks the browser's real address against its allow list.
 
 5. Once the Live page's Fidelity section reads connected, turn "Allow
    trading" on. Off again pauses every order without stopping the engine.
+6. Optionally, get notifications on your phone: fills, order problems, the
+   extension coming and going, its trading switch, the engine's state.
+   - Run `python -m fidelity_gateway.bridge keygen --notify`. It writes
+     `FIDELITY_BRIDGE_NOTIFY_KEY` to `.env`, a key of its own.
+   - In `config/fidelity_live.yaml`, set `live.fidelity.bridge.notifications`
+     to `enabled: true`, `host: 0.0.0.0` and your network's range in
+     `allowed_clients`.
+   - Install the app from `fidelity-bridge-notifier-android/` and give it
+     this server's address and the key.
+
+   The service's host networking puts the listener on port 8766 of this
+   server. Do not forward that port from your router. Away from home, reach
+   it over a VPN.
 
 Started before its config exists, the service waits for the file, says so
 once in its log (`docker compose logs fidelity`), and starts when the file

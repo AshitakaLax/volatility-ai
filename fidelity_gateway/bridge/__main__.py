@@ -3,8 +3,11 @@ python -m fidelity_gateway.bridge keygen | serve | check | build-extension
 
   keygen   Create the API key: append FIDELITY_BRIDGE_API_KEY to .env and
            print it once, for pasting into the extension's welcome form.
+           --notify makes the notification app's key instead,
+           FIDELITY_BRIDGE_NOTIFY_KEY.
   serve    Run the bridge until Ctrl-C, reporting connections and the
-           extension's order confirmations.
+           extension's order confirmations. --notify also runs the
+           listener the Fidelity Bridge Notifier app connects to.
   check    Read-only end-to-end proof: wait for the extension, show what
            it reports about its recent orders, then read the account's
            orders, positions and settled cash through it.
@@ -29,14 +32,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from engine.core.exceptions import ConfigurationError
-from fidelity_gateway.bridge import DEFAULT_ALLOWED_CLIENTS, open_bridge
+from fidelity_gateway.bridge import DEFAULT_ALLOWED_CLIENTS, build_notifier, open_bridge
 from fidelity_gateway.bridge.ip_policy import AddressPolicy
 from fidelity_gateway.bridge.keys import (
     API_KEY_ENV_VAR,
+    NOTIFY_KEY_ENV_VAR,
     default_env_file,
     generate_api_key,
     load_api_key,
     write_api_key,
+)
+from fidelity_gateway.bridge.notifications import DEFAULT_EVENTS, EVENT_KINDS
+from fidelity_gateway.bridge.notify_server import (
+    DEFAULT_NOTIFY_HOST,
+    DEFAULT_NOTIFY_PORT,
+    NotifySettings,
 )
 from fidelity_gateway.bridge.order_reports import OrderReports
 from fidelity_gateway.bridge.server import DEFAULT_HOST, DEFAULT_PORT, BridgeError, BridgeServer
@@ -91,6 +101,72 @@ def _server_flags(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _event_list(text: str) -> tuple[str, ...]:
+    events = tuple(part.strip() for part in text.split(",") if part.strip())
+    unknown = [event for event in events if event not in EVENT_KINDS]
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            f"unknown event(s) {unknown}; known: {', '.join(EVENT_KINDS)}"
+        )
+    return events
+
+
+def _notify_flags(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_argument_group(
+        "notifications for apps",
+        f"The listener the Fidelity Bridge Notifier app connects to, with its own key "
+        f"({NOTIFY_KEY_ENV_VAR}: `keygen --notify`), port and allowed addresses.",
+    )
+    group.add_argument(
+        "--notify", action="store_true", help="Also run the notification listener for apps."
+    )
+    group.add_argument(
+        "--notify-host",
+        default=DEFAULT_NOTIFY_HOST,
+        help="Address it listens on. The default takes this computer only; use 0.0.0.0 for "
+        "a phone on your network, with --notify-allow-client.",
+    )
+    group.add_argument(
+        "--notify-port", type=int, default=DEFAULT_NOTIFY_PORT, help="Default: 8766."
+    )
+    group.add_argument(
+        "--notify-allow-client",
+        action="append",
+        default=None,
+        metavar="IP_OR_CIDR",
+        help="An app's address that may connect, e.g. 192.168.1.0/24. Repeat for more. "
+        "Default: 127.0.0.1 and ::1.",
+    )
+    group.add_argument(
+        "--notify-block-client",
+        action="append",
+        default=[],
+        metavar="IP_OR_CIDR",
+        help="Always refused, even when also allowed. Repeat for more.",
+    )
+    group.add_argument(
+        "--notify-events",
+        type=_event_list,
+        default=DEFAULT_EVENTS,
+        metavar="KIND,KIND",
+        help=f"What apps are told. Default: {','.join(DEFAULT_EVENTS)}. "
+        f"Known: {', '.join(EVENT_KINDS)}.",
+    )
+
+
+def notify_settings(args: argparse.Namespace) -> NotifySettings | None:
+    """The --notify flags as settings, or None without --notify."""
+    if not args.notify:
+        return None
+    return NotifySettings(
+        host=args.notify_host,
+        port=args.notify_port,
+        allowed_clients=tuple(args.notify_allow_client or DEFAULT_ALLOWED_CLIENTS),
+        blocked_clients=tuple(args.notify_block_client),
+        events=tuple(args.notify_events),
+    )
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m fidelity_gateway.bridge",
@@ -105,9 +181,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     keygen.add_argument(
         "--print-only", action="store_true", help="Print a fresh key and write nothing."
     )
+    keygen.add_argument(
+        "--notify",
+        action="store_true",
+        help=f"Make the notification app's key, {NOTIFY_KEY_ENV_VAR}, instead of the extension's.",
+    )
 
     serve = commands.add_parser("serve", help="Run the bridge until Ctrl-C.")
     _server_flags(serve)
+    _notify_flags(serve)
 
     check = commands.add_parser("check", help="Read-only end-to-end check through the extension.")
     _server_flags(check)
@@ -134,12 +216,14 @@ def run_keygen(args: argparse.Namespace) -> int:
         print(generate_api_key())
         return 0
     path = args.env_file or default_env_file()
-    key = write_api_key(path)
-    print(
-        f"Wrote {API_KEY_ENV_VAR} to {path}.\n\n"
-        "Paste this key into the Fidelity Bridge extension's settings:\n\n"
-        f"    {key}\n"
+    name = NOTIFY_KEY_ENV_VAR if args.notify else API_KEY_ENV_VAR
+    key = write_api_key(path, name=name)
+    where = (
+        "the Fidelity Bridge Notifier app's settings"
+        if args.notify
+        else "the Fidelity Bridge extension's settings"
     )
+    print(f"Wrote {name} to {path}.\n\nPaste this key into {where}:\n\n    {key}\n")
     return 0
 
 
@@ -148,11 +232,21 @@ def run_serve(args: argparse.Namespace, stop: threading.Event | None = None) -> 
     policy = AddressPolicy.from_entries(
         args.allow_client or DEFAULT_ALLOWED_CLIENTS, args.block_client
     )
-    server = BridgeServer(key, host=args.host, port=args.port, policy=policy, log=_stderr)
+    notify = notify_settings(args)
+    notifier = build_notifier(notify, key, env_file=args.env_file) if notify else None
+    server = BridgeServer(
+        key, host=args.host, port=args.port, policy=policy, log=_stderr, notifier=notifier
+    )
     server.set_engine_status(
         _status("bridge", "running", "the bridge alone, with no trading loop behind it")
     )
     server.start()
+    if notifier is not None:
+        _stderr(
+            f"[notify] apps may connect at {notifier.url} (allowed: "
+            f"{', '.join(notify.allowed_clients)}; events: "
+            f"{', '.join(notifier.notifications.events) or 'none'})"
+        )
     _stderr(
         f"[bridge] listening on {server.url} (allowed clients: {', '.join(policy.allowed)}). "
         "Ctrl-C to stop."

@@ -132,3 +132,75 @@ class FakeExtension:
         self.ws.close()
         if self._thread is not None:
             self._thread.join(timeout=5)
+
+
+NOTIFY_KEY = "notify-test-key-9876543210zyxwvutsrqponmlkjihg"
+APP_ROOT = REPO_ROOT / "fidelity-bridge-notifier-android"
+NOTIFY_VECTORS = APP_ROOT / "core" / "src" / "test" / "resources" / "vectors"
+
+
+class FakeApp:
+    """Connects to a NotificationServer the way the Notifier app does
+    (its BridgeClient.kt). What proves the server agrees with the real
+    app is the vectors both reproduce, and the app's own tests."""
+
+    def __init__(self, url: str, api_key: str = NOTIFY_KEY, *, origin: str | None = None) -> None:
+        from websockets.sync.client import connect
+
+        self.api_key = api_key
+        self.ws = connect(url, origin=origin, proxy=None, open_timeout=5)
+        self.channel: Channel | None = None
+
+    def handshake(self, *, since: dict | None = None, proof: str | None = None) -> dict:
+        """Answer the challenge; return the bridge's reply (welcome/denied).
+        After a welcome, the hello that follows is kept as .hello."""
+        from fidelity_gateway.bridge.notify_protocol import (
+            NOTIFY_PROTOCOL,
+            app_channel,
+            app_proof,
+            bridge_proof,
+        )
+
+        challenge = json.loads(self.ws.recv(timeout=5))
+        assert challenge["type"] == "challenge" and challenge["protocol"] == NOTIFY_PROTOCOL
+        bridge_nonce, nonce = challenge["nonce"], new_nonce()
+        self.ws.send(
+            json.dumps(
+                {
+                    "type": "auth",
+                    "protocol": NOTIFY_PROTOCOL,
+                    "nonce": nonce,
+                    "proof": proof or app_proof(self.api_key, bridge_nonce, nonce),
+                    "since": since,
+                    "client": {"name": "fake-app", "version": "0.0.1"},
+                }
+            )
+        )
+        reply = json.loads(self.ws.recv(timeout=5))
+        if reply.get("type") == "welcome":
+            expected = bridge_proof(self.api_key, bridge_nonce, nonce)
+            assert proofs_match(expected, reply["proof"]), "the bridge could not prove the key"
+            self.channel = app_channel(self.api_key, bridge_nonce, nonce, side="app")
+            self.hello = self.receive()
+            assert self.hello["type"] == "hello", self.hello
+        return reply
+
+    def send(self, message: dict) -> None:
+        self.ws.send(json.dumps(self.channel.seal(message)))
+
+    def receive(self, timeout: float = 5) -> dict:
+        return self.channel.open(json.loads(self.ws.recv(timeout=timeout)))
+
+    def receive_until(self, predicate, timeout: float = 5) -> dict:
+        """The first message the predicate accepts, skipping the rest."""
+        while True:
+            message = self.receive(timeout=timeout)
+            if predicate(message):
+                return message
+
+    def notification(self, timeout: float = 5) -> dict:
+        """The next notification, skipping status updates."""
+        return self.receive_until(lambda m: m["type"] == "notification", timeout)["notification"]
+
+    def close(self) -> None:
+        self.ws.close()

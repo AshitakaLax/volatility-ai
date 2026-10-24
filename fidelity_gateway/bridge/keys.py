@@ -1,10 +1,17 @@
 """
-The API key shared by the engine and the Fidelity Bridge extension.
+The API keys: the one shared by the engine and the Fidelity Bridge
+extension, and the one apps use to hear the bridge's notifications.
 
 The engine reads FIDELITY_BRIDGE_API_KEY from its environment, or failing
 that from the repository's .env -- the same file docker compose hands to
 the containers, so one entry serves both ways of running. You paste the
 same key into the extension's welcome form.
+
+FIDELITY_BRIDGE_NOTIFY_KEY is read the same way, and pasted into the
+Fidelity Bridge Notifier app (notify_server.py). It is a different key on
+purpose: the extension's lets whoever holds it pose as the extension and
+receive every request the engine makes, while this one only ever reads
+notifications -- and a phone is the device most likely to be lost.
 
 It follows engine/core/secrets.py's policy:
   * never on the command line (no flag accepts it),
@@ -15,7 +22,7 @@ It follows engine/core/secrets.py's policy:
 `python -m fidelity_gateway.bridge keygen` makes one and appends it to
 .env, refusing if the file already has one: replacing a key silently
 would disconnect the extension, which still holds the old one, with
-nothing to say why.
+nothing to say why. `keygen --notify` does the same for the app's key.
 """
 
 from __future__ import annotations
@@ -33,6 +40,7 @@ from engine.core.exceptions import ConfigurationError
 from engine.core.secrets import REDACTED
 
 API_KEY_ENV_VAR = "FIDELITY_BRIDGE_API_KEY"
+NOTIFY_KEY_ENV_VAR = "FIDELITY_BRIDGE_NOTIFY_KEY"
 MIN_KEY_LENGTH = 32
 MAX_KEY_LENGTH = 256
 
@@ -41,6 +49,16 @@ MAX_KEY_LENGTH = 256
 # refused there. 32 and 256 are MIN_KEY_LENGTH and MAX_KEY_LENGTH.
 _KEY_PATTERN = re.compile(r"[A-Za-z0-9._~+/=-]{32,256}")
 _ASSIGNMENT = re.compile(r"\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)")
+
+# Each key's keygen command, and where the key it prints is pasted.
+_KEY_USES = {
+    API_KEY_ENV_VAR: ("keygen", "the extension's settings", "disconnect the extension"),
+    NOTIFY_KEY_ENV_VAR: (
+        "keygen --notify",
+        "the Fidelity Bridge Notifier app's settings",
+        "lock out every app that holds the old one",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -92,29 +110,34 @@ def key_looks_valid(value: object) -> bool:
 
 
 def load_api_key(
-    *, environ: Mapping[str, str] | None = None, env_file: Path | None = None
+    *,
+    environ: Mapping[str, str] | None = None,
+    env_file: Path | None = None,
+    name: str = API_KEY_ENV_VAR,
 ) -> BridgeApiKey:
-    """The key, from the environment first and the .env file second.
+    """A key -- the extension's unless `name` says otherwise -- from the
+    environment first and the .env file second.
 
     Raises ConfigurationError naming the variable -- never a value -- when
     it is missing or unusable.
     """
     environ = os.environ if environ is None else environ
     path = env_file or default_env_file()
-    value = environ.get(API_KEY_ENV_VAR)
+    command, paste_into, _ = _KEY_USES[name]
+    value = environ.get(name)
     source = "the environment"
     if not value:
-        value = read_env_value(path, API_KEY_ENV_VAR)
+        value = read_env_value(path, name)
         source = str(path)
     if not value:
         raise ConfigurationError(
-            f"{API_KEY_ENV_VAR} is not set, in the environment or in {path}. Run "
-            "`python -m fidelity_gateway.bridge keygen` to create one there, then paste "
-            "the key it prints into the extension's settings."
+            f"{name} is not set, in the environment or in {path}. Run "
+            f"`python -m fidelity_gateway.bridge {command}` to create one there, then paste "
+            f"the key it prints into {paste_into}."
         )
     if not key_looks_valid(value):
         raise ConfigurationError(
-            f"{API_KEY_ENV_VAR} from {source} is not a usable key: it must be "
+            f"{name} from {source} is not a usable key: it must be "
             f"{MIN_KEY_LENGTH}-{MAX_KEY_LENGTH} characters of letters, digits and ._~+/=- "
             "with no spaces. `python -m fidelity_gateway.bridge keygen --print-only` "
             "makes a fresh one."
@@ -127,17 +150,19 @@ def generate_api_key() -> str:
     return secrets.token_urlsafe(32)
 
 
-def write_api_key(path: Path, key: str | None = None) -> str:
-    """Append a new key to the env file and return it.
+def write_api_key(path: Path, key: str | None = None, *, name: str = API_KEY_ENV_VAR) -> str:
+    """Append a new key -- the extension's unless `name` says otherwise --
+    to the env file and return it.
 
     Refuses when the file already defines one. A new file is created
     readable by this user only, where the platform supports that.
     """
-    if read_env_value(path, API_KEY_ENV_VAR):
+    command, paste_into, consequence = _KEY_USES[name]
+    if read_env_value(path, name):
         raise ConfigurationError(
-            f"{path} already defines {API_KEY_ENV_VAR}. Replacing it would disconnect the "
-            "extension, which still holds the old key. To rotate it, delete that line, "
-            "run keygen again, and paste the new key into the extension."
+            f"{path} already defines {name}. Replacing it would {consequence}. To rotate "
+            f"it, delete that line, run {command} again, and paste the new key into "
+            f"{paste_into}."
         )
     key = key or generate_api_key()
     if not key_looks_valid(key):
@@ -146,7 +171,7 @@ def write_api_key(path: Path, key: str | None = None) -> str:
     text = path.read_text(encoding="utf-8") if existed else ""
     separator = "" if not text or text.endswith("\n") else "\n"
     with open(path, "a", encoding="utf-8", newline="\n") as handle:
-        handle.write(f"{separator}{API_KEY_ENV_VAR}={key}\n")
+        handle.write(f"{separator}{name}={key}\n")
     if not existed:
         with contextlib.suppress(OSError):
             path.chmod(stat.S_IRUSR | stat.S_IWUSR)

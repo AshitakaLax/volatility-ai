@@ -300,3 +300,31 @@ def test_reports_from_another_thread_are_safe():
         thread.join()
     assert errors == []
     assert len(reports.recent()) == 200
+
+
+# -- listeners: the bridge's notifications ------------------------------------------
+
+
+def test_listeners_hear_each_report_that_is_news_with_the_one_before():
+    reports, _ = _reports()
+    heard: list = []
+    reports.add_listener(lambda report, previous, resent: heard.append((report, previous, resent)))
+    reports.note(_wire())
+    reports.note(_wire())  # nothing new
+    reports.note_all({"orders": [_wire(state="filled", filledQty=3, avgPrice=70.05)]})
+    assert [(r.state, p.state if p else None, resent) for r, p, resent in heard] == [
+        ("submitted", None, False),
+        ("filled", "submitted", True),
+    ]
+
+
+def test_a_failing_listener_is_logged_and_the_report_still_kept():
+    reports, lines = _reports()
+
+    def broken(*_):
+        raise RuntimeError("boom")
+
+    reports.add_listener(broken)
+    assert reports.note(_wire()) is not None
+    assert reports.recent()[0].state == "submitted"
+    assert any("listener failed: RuntimeError: boom" in line for line in lines)

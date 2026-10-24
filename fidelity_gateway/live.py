@@ -27,6 +27,11 @@ The extension also reports back what became of every order it sent --
 accepted, filled, rejected, refused. Those reports are appended to
 fidelity_order_reports.jsonl beside the state database, and the broker
 checks its own reading of each fill against them (bridge/order_reports.py).
+
+With live.fidelity.bridge.notifications enabled, the bridge also runs the
+listener apps connect to -- the Fidelity Bridge Notifier on a phone --
+and tells them of fills, order problems, the extension coming and going,
+its trading switch and the engine's state (bridge/notify_server.py).
 """
 
 from __future__ import annotations
@@ -41,6 +46,7 @@ from typing import Any
 
 from engine.brokers.broker_selection import build_broker
 from fidelity_gateway.bridge import open_bridge
+from fidelity_gateway.bridge.notify_server import NotifySettings
 from fidelity_gateway.bridge.order_reports import OrderReports
 from fidelity_gateway.session import FidelitySession, FidelitySessionError
 
@@ -111,6 +117,21 @@ def default_reports_path(state_db: str | Path) -> Path:
     return Path(state_db).with_name(REPORTS_FILENAME)
 
 
+def notify_settings(config) -> NotifySettings | None:
+    """live.fidelity.bridge.notifications as the bridge takes it, or None
+    when it is not enabled."""
+    notify = config.live.fidelity.bridge.notifications
+    if not notify.enabled:
+        return None
+    return NotifySettings(
+        host=notify.host,
+        port=notify.port,
+        allowed_clients=tuple(notify.allowed_clients),
+        blocked_clients=tuple(notify.blocked_clients),
+        events=tuple(notify.events),
+    )
+
+
 def connect_live(
     config,
     *,
@@ -143,6 +164,7 @@ def connect_live(
         wait_seconds=float(bridge.connect_timeout_seconds),
         log=log,
         order_reports=order_reports,
+        notify=notify_settings(config),
     )
     try:
         session = FidelitySession(

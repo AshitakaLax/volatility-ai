@@ -1,5 +1,49 @@
 # Changelog
 
+## The bridge sends notifications to a phone
+
+**Nothing told you when the engine bought, sold or stopped** unless you were
+at the computer: the Live page, the extension's popup and the logs all live
+there.
+- **The bridge now tells apps what it sees, as it happens.**
+  `fidelity_gateway/bridge/notifications.py` turns each event into a
+  notification of one kind:
+  - a fill (`buy`, `sell`), from the extension's order reports;
+  - a rejected, refused or unknown order (`order_problem`);
+  - the extension connecting or going away (`connected`, `disconnected`);
+  - its "Allow trading" switch (`trading_switch`);
+  - a new engine state (`engine`).
+
+  `live.fidelity.bridge.notifications.events` chooses which are sent.
+  Accepted, cancelled and expired orders (`order_update`) are off by default.
+- **On a listener of its own.** `notify_server.py` runs on its own port
+  (8766), with its own address lists and its own key,
+  `FIDELITY_BRIDGE_NOTIFY_KEY` (`keygen --notify`). A phone on the LAN can
+  reach it while the extension's socket stays on this computer.
+  - The extension's key is refused here: whoever holds that one can pose as
+    the extension and receive every request the engine makes.
+  - The listener is read-only. An app can ask for a test notification and
+    nothing else.
+- **The same protocol design as the extension's.** `fidelity-bridge-notify/v1`
+  uses HMAC proofs both ways, so the key never crosses the wire. Every frame
+  after the handshake is sealed, so on a plain `ws://` LAN nobody can forge
+  a "Sold" notification.
+- **An app that was away catches up.** Notifications are numbered within a
+  stream that is new each run, and the last 200 are kept. A reconnecting app
+  is sent exactly what it missed.
+- **Only news.**
+  - The engine's state is reported when it changes, not at every tick.
+  - The trading switch is reported when it flips, not when first reported.
+  - The engine stopping the bridge is a goodbye, not a disconnection.
+  - An order the extension's resent log mentions, which this bridge never
+    heard of, is history unless it changed after the bridge started.
+    Without that rule, the first connect would announce the whole log.
+- **`fidelity-bridge-notifier-android/`** is the app: Kotlin, minSdk 26,
+  kept as if it were its own repository. Its `core/` (the protocol, and the
+  client on OkHttp) is a separate Gradle build that tests without the
+  Android SDK. Its `PROTOCOL.md` is the spec. Its protocol vectors are
+  reproduced by `fidelity_gateway/tests/test_bridge_notify_protocol.py`.
+
 ## The warehouse is kept current daily, and three index funds join it
 
 **Its bars had stopped on 2026-10-08**, nine sessions behind, and two of
