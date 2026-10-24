@@ -497,7 +497,11 @@ def _parse_bridge(data: dict) -> FidelityBridgeConfig:
         allow_algorithm_changes=data.get(
             "allow_algorithm_changes", defaults.allow_algorithm_changes
         ),
-        notifications=_parse_notifications(data.get("notifications") or {}),
+        # Only an absent or empty (null) section means the defaults: `[]` or
+        # `false` is a mistake to name, not a quiet way to turn them off.
+        notifications=_parse_notifications(
+            {} if data.get("notifications") is None else data["notifications"]
+        ),
     )
 
 

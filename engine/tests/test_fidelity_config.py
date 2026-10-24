@@ -19,7 +19,7 @@ import re
 
 import pytest
 
-from engine.core.config import BacktestConfig, FidelityConfig
+from engine.core.config import BacktestConfig, FidelityConfig, FidelityNotificationsConfig
 from engine.core.exceptions import ConfigurationError
 
 
@@ -389,11 +389,19 @@ def test_the_notifications_section_is_read():
         ({"events": ["buy", "bought"]}, "bought"),
         ({"event": ["buy"]}, "no setting"),
         (["buy"], "mapping"),
+        ([], "mapping"),
+        (False, "mapping"),
     ],
 )
 def test_bad_notification_settings_are_refused(notifications, match):
     with pytest.raises(ConfigurationError, match=match):
         _build(_live(bridge={"notifications": notifications}))
+
+
+def test_an_empty_notifications_section_means_the_defaults():
+    assert _build(_live(bridge={"notifications": None})).live.fidelity.bridge.notifications == (
+        FidelityNotificationsConfig()
+    )
 
 
 def test_no_events_at_all_is_allowed_the_status_still_goes_out():
