@@ -1,0 +1,19 @@
+# Gradle and Android build output
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing material never belongs in the repository
+*.jks
+*.keystore
+keystore.properties
+
+# IDEs
+.idea/
+*.iml
+.DS_Store

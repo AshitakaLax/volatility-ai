@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 15 draws apps edge to edge by default; this plain-View screen
+         keeps the system bars out of its content instead. -->
+    <style name="Theme.BridgeNotifier" parent="Base.Theme.BridgeNotifier">
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
+</resources>
