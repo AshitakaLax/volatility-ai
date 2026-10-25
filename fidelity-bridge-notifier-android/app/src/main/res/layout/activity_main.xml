@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="@dimen/screen_padding">
+
+        <TextView
+            android:id="@+id/link_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="@android:style/TextAppearance.Material.Medium"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/notifications_warning"
+            style="@style/Warning"
+            android:text="@string/notifications_off"
+            android:visibility="gone" />
+
+        <TextView
+            style="@style/Header"
+            android:text="@string/header_bridge" />
+
+        <TextView
+            android:id="@+id/readiness_text"
+            style="@style/Line"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/readiness_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            android:orientation="vertical" />
+
+        <TextView
+            android:id="@+id/session_text"
+            style="@style/Line" />
+
+        <TextView
+            android:id="@+id/check_text"
+            style="@style/Line" />
+
+        <TextView
+            android:id="@+id/extension_text"
+            style="@style/Line" />
+
+        <TextView
+            android:id="@+id/trading_text"
+            style="@style/Line" />
+
+        <TextView
+            android:id="@+id/engine_text"
+            style="@style/Line" />
+
+        <TextView
+            style="@style/Header"
+            android:text="@string/header_recent" />
+
+        <TextView
+            android:id="@+id/recent_empty"
+            style="@style/Line"
+            android:text="@string/recent_empty" />
+
+        <LinearLayout
+            android:id="@+id/recent_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <TextView
+            style="@style/Header"
+            android:text="@string/header_settings" />
+
+        <EditText
+            android:id="@+id/address_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/address_hint"
+            android:importantForAutofill="no"
+            android:inputType="textUri" />
+
+        <TextView
+            android:id="@+id/plaintext_warning"
+            style="@style/Warning"
+            android:text="@string/plaintext_warning"
+            android:visibility="gone" />
+
+        <EditText
+            android:id="@+id/key_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:hint="@string/key_hint"
+            android:importantForAutofill="no"
+            android:inputType="textPassword" />
+
+        <TextView
+            style="@style/Line"
+            android:text="@string/key_help" />
+
+        <TextView
+            style="@style/Header"
+            android:text="@string/header_notify_me" />
+
+        <LinearLayout
+            android:id="@+id/kinds_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <CheckBox
+            android:id="@+id/alert_unreachable"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/alert_unreachable" />
+
+        <Button
+            android:id="@+id/save_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/section_gap"
+            android:text="@string/save_and_watch" />
+
+        <Button
+            android:id="@+id/test_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/send_test" />
+
+        <Button
+            android:id="@+id/stop_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/stop_watching" />
+    </LinearLayout>
+</ScrollView>

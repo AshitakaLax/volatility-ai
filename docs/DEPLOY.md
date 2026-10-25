@@ -367,6 +367,24 @@ Setting up:
    The Live page's Fidelity section shows the extension connecting at once.
 5. Once it reads ready -- connected, signed in -- turn "Allow trading" on.
    Off again pauses every order without stopping the engine.
+6. Optionally, notifications on your phone, from `fidelity-bridge`: fills
+   and order problems, whether the connection is ready (and the one thing
+   to fix when it is not, with a warning 15 minutes before an open), a
+   Fidelity sign-out, failed account checks, sessions starting and stopping,
+   the extension coming and going, refused connections.
+   - `python -m fidelity_gateway.bridge keygen --notify` writes
+     `FIDELITY_BRIDGE_NOTIFY_KEY` to `.env`: a key of its own, never the
+     extension's.
+   - In `config/fidelity_live.yaml`, set `live.fidelity.bridge.notifications`
+     to `enabled: true`, `host: 0.0.0.0`, and your network's range in its
+     `allowed_clients`. The bridge picks it up within 30 seconds, without
+     dropping the extension.
+   - Install the app from `fidelity-bridge-notifier-android/` and give it this
+     server's address and that key.
+
+   Like the bridge, the listener is up between sessions, on port 8766 of
+   this server (host networking). Do not forward that port from your router;
+   away from home, reach it over a VPN.
 
 **Ready, or the one thing to fix.** The bridge checks, every second: it is
 listening; the extension is connected and was heard from in the last

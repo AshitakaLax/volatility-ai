@@ -136,3 +136,29 @@ def test_write_refuses_a_key_the_extension_would_reject(tmp_path):
 def test_the_default_env_file_is_the_repositorys():
     assert default_env_file().name == ".env"
     assert (default_env_file().parent / "cli.py").is_file()
+
+
+# -- the notification app's key ---------------------------------------------------
+
+
+def test_the_apps_key_is_its_own_variable(tmp_path):
+    from fidelity_gateway.bridge.keys import NOTIFY_KEY_ENV_VAR
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"{API_KEY_ENV_VAR}={GOOD}\n", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="keygen --notify") as caught:
+        load_api_key(environ={}, env_file=env_file, name=NOTIFY_KEY_ENV_VAR)
+    assert "Notifier app" in str(caught.value) and GOOD not in str(caught.value)
+    other = "z" * 40
+    write_api_key(env_file, other, name=NOTIFY_KEY_ENV_VAR)
+    assert load_api_key(environ={}, env_file=env_file, name=NOTIFY_KEY_ENV_VAR).value == other
+    assert load_api_key(environ={}, env_file=env_file).value == GOOD, "the extension's is untouched"
+
+
+def test_replacing_the_apps_key_is_refused_with_its_own_reason(tmp_path):
+    from fidelity_gateway.bridge.keys import NOTIFY_KEY_ENV_VAR
+
+    env_file = tmp_path / ".env"
+    write_api_key(env_file, name=NOTIFY_KEY_ENV_VAR)
+    with pytest.raises(ConfigurationError, match="lock out every app"):
+        write_api_key(env_file, name=NOTIFY_KEY_ENV_VAR)

@@ -448,6 +448,36 @@ def _parse_control(data: dict) -> LiveControlConfig:
     return LiveControlConfig(**data)
 
 
+def _parse_notifications(data) -> FidelityNotificationsConfig:
+    """live.fidelity.bridge.notifications. An unknown setting is refused,
+    as live.control's are: `event: [buy]` read as nothing at all would
+    silently send every default kind."""
+    if not isinstance(data, dict):
+        raise ConfigurationError(
+            f"live.fidelity.bridge.notifications must be a mapping, got {data!r}"
+        )
+    unknown = set(data) - set(_NOTIFICATIONS_FIELDS)
+    if unknown:
+        raise ConfigurationError(
+            f"live.fidelity.bridge.notifications has no setting(s) {sorted(unknown)}; "
+            f"known: {list(_NOTIFICATIONS_FIELDS)}"
+        )
+    defaults = FidelityNotificationsConfig()
+    name = "live.fidelity.bridge.notifications"
+    return FidelityNotificationsConfig(
+        enabled=data.get("enabled", defaults.enabled),
+        host=data.get("host", defaults.host),
+        port=data.get("port", defaults.port),
+        allowed_clients=_as_string_tuple(
+            data.get("allowed_clients", defaults.allowed_clients), f"{name}.allowed_clients"
+        ),
+        blocked_clients=_as_string_tuple(
+            data.get("blocked_clients", defaults.blocked_clients), f"{name}.blocked_clients"
+        ),
+        events=_as_string_tuple(data.get("events", defaults.events), f"{name}.events"),
+    )
+
+
 def _parse_bridge(data: dict) -> FidelityBridgeConfig:
     defaults = FidelityBridgeConfig()
     return FidelityBridgeConfig(
@@ -467,7 +497,71 @@ def _parse_bridge(data: dict) -> FidelityBridgeConfig:
         allow_algorithm_changes=data.get(
             "allow_algorithm_changes", defaults.allow_algorithm_changes
         ),
+        # Only an absent or empty (null) section means the defaults: `[]` or
+        # `false` is a mistake to name, not a quiet way to turn them off.
+        notifications=_parse_notifications(
+            {} if data.get("notifications") is None else data["notifications"]
+        ),
     )
+
+
+#: What the bridge can tell an app (fidelity_gateway/bridge/notifications.py's
+#: EVENT_KINDS, where each is described; a test keeps the two the same).
+FIDELITY_NOTIFICATION_EVENTS = (
+    "buy",
+    "sell",
+    "order_update",
+    "order_problem",
+    "engine",
+    "session",
+    "readiness",
+    "fidelity_signin",
+    "account_check",
+    "connected",
+    "disconnected",
+    "trading_switch",
+    "refused",
+    "bridge",
+)
+
+
+@dataclass(frozen=True)
+class FidelityNotificationsConfig:
+    """The bridge's notifications for apps -- the Fidelity Bridge Notifier
+    for Android -- on a listener of their own (fidelity_gateway/bridge/
+    notify_server.py), with a key of their own, FIDELITY_BRIDGE_NOTIFY_KEY.
+    The bridge host (the fidelity-bridge service) runs it, and picks up an
+    edit to this section without dropping the extension.
+
+    Off unless enabled. The defaults accept an app on this computer only;
+    a phone needs host 0.0.0.0 (or this machine's address) AND its address,
+    or its network's range, in allowed_clients. events is what the bridge
+    sends at all; the app chooses again which of those it shows. All but
+    order_update by default -- the routine middle of an order's life.
+
+    Read-only by construction: nothing an app sends reaches the extension,
+    the engine or Fidelity.
+    """
+
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 8766
+    allowed_clients: tuple = ("127.0.0.1", "::1")
+    blocked_clients: tuple = ()
+    events: tuple = tuple(e for e in FIDELITY_NOTIFICATION_EVENTS if e != "order_update")
+
+    def to_dict(self) -> dict:
+        return {
+            "enabled": self.enabled,
+            "host": self.host,
+            "port": self.port,
+            "allowed_clients": list(self.allowed_clients),
+            "blocked_clients": list(self.blocked_clients),
+            "events": list(self.events),
+        }
+
+
+_NOTIFICATIONS_FIELDS = tuple(FidelityNotificationsConfig().to_dict())
 
 
 @dataclass(frozen=True)
@@ -491,6 +585,7 @@ class FidelityBridgeConfig:
     # is decided here, and a browser may change it only when the file
     # that describes the deployment grants that.
     allow_algorithm_changes: bool = False
+    notifications: FidelityNotificationsConfig = field(default_factory=FidelityNotificationsConfig)
 
 
 @dataclass(frozen=True)
@@ -1028,6 +1123,42 @@ class BacktestConfig:
                 "live.fidelity.bridge.allow_algorithm_changes must be true or false, got "
                 f"{bridge.allow_algorithm_changes!r}"
             )
+        BacktestConfig._validate_fidelity_notifications(bridge)
+
+    @staticmethod
+    def _validate_fidelity_notifications(bridge: FidelityBridgeConfig) -> None:
+        notify = bridge.notifications
+        name = "live.fidelity.bridge.notifications"
+        if not isinstance(notify.enabled, bool):
+            raise ConfigurationError(
+                f"{name}.enabled must be true or false, got {notify.enabled!r}"
+            )
+        if not isinstance(notify.host, str) or not notify.host.strip():
+            raise ConfigurationError(f"{name}.host must be an address to listen on")
+        port = notify.port
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise ConfigurationError(
+                f"{name}.port must be a whole number from 1 to 65535, got {port!r}"
+            )
+        if notify.enabled and port == bridge.port:
+            raise ConfigurationError(
+                f"{name}.port is {port}, the extension's port too. Apps get a listener of "
+                "their own: give it another port (8766 by default)."
+            )
+        if not notify.allowed_clients:
+            raise ConfigurationError(
+                f"{name}.allowed_clients must not be empty: an empty list allows no app at "
+                "all, never every app."
+            )
+        for entry in (*notify.allowed_clients, *notify.blocked_clients):
+            if not entry.strip():
+                raise ConfigurationError(f"{name} has a blank client address")
+        unknown = [event for event in notify.events if event not in FIDELITY_NOTIFICATION_EVENTS]
+        if unknown:
+            raise ConfigurationError(
+                f"{name}.events has unknown event(s) {unknown}; known: "
+                f"{list(FIDELITY_NOTIFICATION_EVENTS)}"
+            )
 
     def to_dict(self) -> dict:
         """Inverse of from_dict() -- round-trips through the same nested
@@ -1116,6 +1247,9 @@ class BacktestConfig:
                                 ),
                                 "allow_algorithm_changes": (
                                     self.live.fidelity.bridge.allow_algorithm_changes
+                                ),
+                                "notifications": (
+                                    self.live.fidelity.bridge.notifications.to_dict()
                                 ),
                             },
                         }

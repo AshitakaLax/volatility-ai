@@ -27,6 +27,11 @@ The extension also reports back what became of every order it sent --
 accepted, filled, rejected, refused. Those reports are appended to
 fidelity_order_reports.jsonl beside the state database, and the broker
 checks its own reading of each fill against them (bridge/order_reports.py).
+
+Apps' notifications (live.fidelity.bridge.notifications) are not this
+module's: a session's bridge lasts only as long as the session, so the
+bridge host (bridge/host.py), which outlives them, runs their listener.
+The engine's state this loop reports reaches them through the host.
 """
 
 from __future__ import annotations

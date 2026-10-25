@@ -20,6 +20,7 @@ the context small.
 | `research/` | [research/CLAUDE.md](research/CLAUDE.md) | strategies, sweep/search, metrics, ML |
 | `fidelity_gateway/` | [fidelity_gateway/CLAUDE.md](fidelity_gateway/CLAUDE.md) | the route into Fidelity: session, extension bridge, capture, recon, gated placing |
 | `fidelity-bridge-chrome-extension/` | its own README | **git submodule** (separate repo): the browser extension the bridge talks to; `npm test` |
+| `fidelity-bridge-notifier-android/` | its own README | Android app for the bridge's notifications, standalone as if its own repo (Gradle, Kotlin); `./gradlew -p core test` needs no SDK. Nothing here imports it; the bridge's tests read its protocol vectors. `.github/workflows/android.yml` builds it and attaches the APK to each published release |
 | `server/` | [server/CLAUDE.md](server/CLAUDE.md) | FastAPI backend: routes, durable queue, shards, history |
 | `web/` | [web/CLAUDE.md](web/CLAUDE.md) | React/TS frontend |
 | `tools/` | [tools/README.md](tools/README.md) | ops scripts, data prep, probes — nothing in `engine/` or `research/` imports these |

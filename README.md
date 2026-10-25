@@ -129,6 +129,13 @@ flag *and* a strategy hook.
   the live algorithm.
 - **Discovery tools** — traffic capture, HAR analysis and redaction, and
   reconnaissance over a remote-debugging port.
+- **Notifications on your phone** — the bridge service can tell an app, as it
+  happens, of fills, order problems, not being ready to trade (and what to
+  fix), Fidelity signing you out, the extension connecting or going away, its
+  trading switch, the account checks and the session's state, between
+  sessions too. It does this on a read-only listener with its own port and
+  key. The Android app is
+  `fidelity-bridge-notifier-android/`, kept as if it were its own repository.
 
 ### Operations (`cli.py`, `tools/`, Docker)
 - **One entrypoint**: `test`, `fetch-data`, `backtest`, `search`, `submit`,

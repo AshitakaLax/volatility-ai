@@ -19,7 +19,7 @@ import re
 
 import pytest
 
-from engine.core.config import BacktestConfig, FidelityConfig
+from engine.core.config import BacktestConfig, FidelityConfig, FidelityNotificationsConfig
 from engine.core.exceptions import ConfigurationError
 
 
@@ -343,6 +343,72 @@ def test_bad_bridge_settings_are_refused(bridge, match):
         _build(_live(bridge=bridge))
 
 
+# -- the bridge's notifications for apps ------------------------------------
+
+
+def test_notifications_are_off_and_this_computer_only_by_default():
+    notify = _build(LIVE_FIDELITY).live.fidelity.bridge.notifications
+    assert notify.enabled is False, "the file must turn them on, never the default"
+    assert (notify.host, notify.port) == ("127.0.0.1", 8766)
+    assert notify.allowed_clients == ("127.0.0.1", "::1")
+    assert "order_update" not in notify.events and "sell" in notify.events
+
+
+def test_the_notifications_section_is_read():
+    notify = _build(
+        _live(
+            bridge={
+                "notifications": {
+                    "enabled": True,
+                    "host": "0.0.0.0",
+                    "port": 9002,
+                    "allowed_clients": ["192.168.1.0/24"],
+                    "blocked_clients": ["192.168.1.99"],
+                    "events": ["buy", "sell", "order_update"],
+                }
+            }
+        )
+    ).live.fidelity.bridge.notifications
+    assert notify.enabled is True and (notify.host, notify.port) == ("0.0.0.0", 9002)
+    assert notify.allowed_clients == ("192.168.1.0/24",)
+    assert notify.blocked_clients == ("192.168.1.99",)
+    assert notify.events == ("buy", "sell", "order_update")
+
+
+@pytest.mark.parametrize(
+    "notifications,match",
+    [
+        ({"enabled": "yes"}, "enabled"),
+        ({"port": 0}, "port"),
+        ({"port": "8766"}, "port"),
+        ({"enabled": True, "port": 8765}, "extension's port"),
+        ({"host": " "}, "host"),
+        ({"allowed_clients": []}, "allows no app"),
+        ({"blocked_clients": [""]}, "blank"),
+        ({"events": "buy"}, "LIST"),
+        ({"events": ["buy", "bought"]}, "bought"),
+        ({"event": ["buy"]}, "no setting"),
+        (["buy"], "mapping"),
+        ([], "mapping"),
+        (False, "mapping"),
+    ],
+)
+def test_bad_notification_settings_are_refused(notifications, match):
+    with pytest.raises(ConfigurationError, match=match):
+        _build(_live(bridge={"notifications": notifications}))
+
+
+def test_an_empty_notifications_section_means_the_defaults():
+    assert _build(_live(bridge={"notifications": None})).live.fidelity.bridge.notifications == (
+        FidelityNotificationsConfig()
+    )
+
+
+def test_no_events_at_all_is_allowed_the_status_still_goes_out():
+    notify = _build(_live(bridge={"notifications": {"enabled": True, "events": []}}))
+    assert notify.live.fidelity.bridge.notifications.events == ()
+
+
 def test_dry_run_is_a_real_bool_not_a_truthy_string():
     """YAML's `dry_run: "false"` is a non-empty string, which is truthy
     -- but coercing it to True is the SAFE direction, so this pins that
@@ -424,6 +490,13 @@ def test_a_fidelity_config_round_trips_through_to_dict():
                 "port": 9001,
                 "allowed_clients": ["172.16.0.50"],
                 "allow_algorithm_changes": True,
+                "notifications": {
+                    "enabled": True,
+                    "host": "0.0.0.0",
+                    "port": 9002,
+                    "allowed_clients": ["192.168.1.0/24"],
+                    "events": ["sell", "engine"],
+                },
             },
         },
     }

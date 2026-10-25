@@ -24,6 +24,16 @@ A Fidelity deployment runs the bridge as a host of its own (host.py, the
 fidelity-bridge service), up between sessions too; with VAI_BRIDGE_SOCKET
 naming its socket, open_bridge() attaches to it (attach.py) instead of
 listening -- the same (server, page), so no caller changes.
+
+Apps -- the Fidelity Bridge Notifier for Android -- hear what the bridge
+sees through a listener of their own, with a key of their own
+(notify_server.py). The bridge host runs it when the config's
+live.fidelity.bridge.notifications is enabled; `serve --notify` runs one
+to try it out:
+
+    python -m fidelity_gateway.bridge keygen --notify    # the app's key into .env
+    python -m fidelity_gateway.bridge serve --notify --notify-host 0.0.0.0 \
+        --notify-allow-client 192.168.1.0/24
 """
 
 from __future__ import annotations
@@ -33,8 +43,16 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from engine.core.exceptions import ConfigurationError
 from fidelity_gateway.bridge.ip_policy import AddressPolicy
-from fidelity_gateway.bridge.keys import API_KEY_ENV_VAR, BridgeApiKey, load_api_key
+from fidelity_gateway.bridge.keys import (
+    API_KEY_ENV_VAR,
+    NOTIFY_KEY_ENV_VAR,
+    BridgeApiKey,
+    load_api_key,
+)
+from fidelity_gateway.bridge.notifications import Notification, Notifications
+from fidelity_gateway.bridge.notify_server import NotificationServer, NotifySettings
 from fidelity_gateway.bridge.order_reports import OrderReport, OrderReports
 from fidelity_gateway.bridge.page import BridgePage
 from fidelity_gateway.bridge.server import (
@@ -53,6 +71,7 @@ __all__ = [
     "DEFAULT_ALLOWED_CLIENTS",
     "DEFAULT_HOST",
     "DEFAULT_PORT",
+    "NOTIFY_KEY_ENV_VAR",
     "AddressPolicy",
     "BridgeApiKey",
     "BridgeError",
@@ -60,8 +79,13 @@ __all__ = [
     "BridgeRefusal",
     "BridgeServer",
     "BridgeUnavailable",
+    "Notification",
+    "NotificationServer",
+    "Notifications",
+    "NotifySettings",
     "OrderReport",
     "OrderReports",
+    "build_notifier",
     "load_api_key",
     "open_bridge",
 ]
@@ -98,6 +122,10 @@ def open_bridge(
     AttachedBridge and `client` ({"process": "loop" | "check" | ...})
     says who is attaching. A host that is not running is BridgeUnavailable;
     this never falls back to listening itself.
+
+    Apps' notifications are not started here: a session's bridge lives
+    only as long as the session. The bridge host, which outlives them,
+    runs their listener (build_notifier).
     """
     path = socket_path or os.environ.get("VAI_BRIDGE_SOCKET")
     if path:
@@ -142,3 +170,32 @@ def _attach(path, *, wait_seconds: float, log, order_reports, client) -> tuple:
             code="not_connected",
         )
     return bridge, BridgePage(bridge)
+
+
+def build_notifier(
+    settings: NotifySettings,
+    extension_key: BridgeApiKey,
+    *,
+    notifications: Notifications | None = None,
+    env_file: Path | None = None,
+    log: Callable[[str], None] = _stderr,
+) -> NotificationServer:
+    """The listener apps connect to, not yet started, serving
+    `notifications` (a new hub for `settings.events` if none is given). Its
+    key is FIDELITY_BRIDGE_NOTIFY_KEY, and must not be the extension's: a
+    phone holding that one could pose as the extension."""
+    key = load_api_key(env_file=env_file, name=NOTIFY_KEY_ENV_VAR)
+    if key.value == extension_key.value:
+        raise ConfigurationError(
+            f"{NOTIFY_KEY_ENV_VAR} is the same as {API_KEY_ENV_VAR}. Give apps a key of their "
+            "own -- `python -m fidelity_gateway.bridge keygen --notify` -- so a phone never "
+            "holds the key that lets the extension in."
+        )
+    return NotificationServer(
+        key,
+        notifications if notifications is not None else Notifications(settings.events, log=log),
+        host=settings.host,
+        port=settings.port,
+        policy=AddressPolicy.from_entries(settings.allowed_clients, settings.blocked_clients),
+        log=log,
+    )

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- ws:// to a bridge on your own network is plain text. Its messages are
+         still sealed (PROTOCOL.md), so nothing on the network can forge one. -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- wss:// to a bridge behind a proxy whose certificate authority
+                 you installed on this phone yourself. -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

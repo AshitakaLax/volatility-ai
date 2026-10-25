@@ -23,6 +23,9 @@ cancels or books anything:
   * FidelityBroker.get_order_by_client_id checks it against the engine's
     own reading of the same order: agreement on a fill is logged as
     "confirmed by the browser extension", a disagreement as an error.
+  * Listeners (add_listener) hear each report that tells the engine
+    something new -- the bridge turns them into notifications for apps
+    (notifications.py).
 
 The extension sends each report BEFORE the response to the request that
 produced it, and the server handles one connection's frames in order, so
@@ -210,6 +213,7 @@ class OrderReports:
         self._keep = keep
         self._write_failed = False
         self._log_received = threading.Event()
+        self._listeners: list[Callable[[OrderReport, OrderReport | None, bool], None]] = []
         if self._path is not None:
             self._load()
 
@@ -217,6 +221,17 @@ class OrderReports:
     def path(self) -> Path | None:
         """The JSON-lines file each change is appended to, if any."""
         return self._path
+
+    def add_listener(
+        self, listener: Callable[[OrderReport, OrderReport | None, bool], None]
+    ) -> None:
+        """Call listener(report, previous, resent) for each report that is
+        news: `previous` is the last report on the same order (None for one
+        not heard of before, here or in the file), and `resent` is true for
+        one that came in the extension's whole log rather than as it
+        happened. Called on the bridge's connection thread, so it must not
+        block; what it raises is logged and goes no further."""
+        self._listeners.append(listener)
 
     def note(self, data: Any, *, resent: bool = False) -> OrderReport | None:
         """Take one report. Returns it when it told the engine something
@@ -237,6 +252,11 @@ class OrderReports:
         if message and (previous is None or previous.state != report.state):
             prefix = "[bridge] (from the extension's log) " if resent else "[bridge] "
             self._log(prefix + message)
+        for listener in self._listeners:
+            try:
+                listener(report, previous, resent)
+            except Exception as exc:
+                self._log(f"[bridge] an order report listener failed: {type(exc).__name__}: {exc}")
         return report
 
     def note_all(self, data: Any) -> int:

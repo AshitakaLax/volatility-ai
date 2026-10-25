@@ -1,5 +1,69 @@
 # Changelog
 
+## The bridge sends notifications to a phone
+
+**Nothing told you when the engine bought, sold or stopped, or that the
+connection would not be ready for the open,** unless you were at the
+computer: the Live page, the extension's popup and the logs all live there.
+- **The bridge host now tells apps what it sees, as it happens.**
+  `fidelity_gateway/bridge/notifications.py` turns each event into a
+  notification of one kind:
+  - a fill (`buy`, `sell`), from the extension's order reports, and a
+    rejected, refused or unknown order (`order_problem`);
+  - a trader's engine changing state (`engine`), a second trader refused or
+    a session ending without saying it stopped (`session`);
+  - not ready to trade, and the one thing to fix; not ready 15 minutes
+    before an open; ready again (`readiness`);
+  - a Fidelity sign-out (`fidelity_signin`), a failed account check
+    (`account_check`), the extension coming and going (`connected`,
+    `disconnected`), its "Allow trading" switch (`trading_switch`), a
+    refused connection (`refused`), the bridge's own port (`bridge`).
+
+  `live.fidelity.bridge.notifications.events` chooses which are sent.
+  Accepted, cancelled and expired orders (`order_update`) are off by default.
+- **From the always-on `fidelity-bridge` service, not the session.** A
+  session's bridge now attaches to the host and lives only as long as the
+  session, so the host owns the apps' hub and listener: a phone stays
+  connected overnight, a bridge the host restarts with new settings keeps
+  the apps' stream, and an edit to the notifications alone restarts only
+  their listener. One that cannot start (no key, a taken port) is reported
+  and retried; a phone never stops the bridge.
+- **On a listener of its own.** Its own port (8766), address lists and key,
+  `FIDELITY_BRIDGE_NOTIFY_KEY` (`keygen --notify`); the extension's key is
+  refused there. Read-only: an app can ask for a test notification and
+  nothing else.
+- **The same protocol design as the extension's.** `fidelity-bridge-notify/v1`
+  uses HMAC proofs both ways, so the key never crosses the wire. Every frame
+  after the handshake is sealed, so on a plain `ws://` LAN nobody can forge
+  a "Sold" notification.
+- **An app that was away catches up.** Notifications are numbered within a
+  stream that is new each host run, and the last 200 are kept. A
+  reconnecting app is sent exactly what it missed, and is shown the host's
+  readiness checklist, what is attached, the last account check and the
+  next open.
+- **Only news.**
+  - An engine's state when it changes, never the host's standby status.
+  - The trading switch when it flips; a sign-out once, not again at every
+    reconnect; a refusal once per address and reason per 10 minutes.
+  - Not ready only after a minute, and not again for a cause its own kind
+    already said.
+  - An order the extension's resent log mentions, which this bridge never
+    heard of, is history unless it changed after the host started.
+- **`fidelity-bridge-notifier-android/`** is the app: Kotlin, minSdk 26,
+  kept as if it were its own repository. Its `core/` (the protocol, and the
+  client on OkHttp) is a separate Gradle build that tests without the
+  Android SDK. Its `PROTOCOL.md` is the spec. Its protocol vectors, and the
+  list of kinds, are reproduced by
+  `fidelity_gateway/tests/test_bridge_notify_protocol.py`.
+- **A published release carries the APK.** `.github/workflows/android.yml`
+  builds the app on a pull request that touches it, and attaches the APK
+  to each published release. The APK is signed with the owner's key, from
+  the repository's secrets. A phone installs an update only when it is
+  signed with the same key, and a CI runner's debug key is new every
+  build. So without the secrets the release gets the debug APK with a
+  warning, rather than nothing. The upload runs in a job of its own, the
+  only one that can write to the repository, and it runs no build code.
+
 ## The Fidelity connection stays up, says whether it is ready, and explains its disconnects
 
 **Fidelity traded nothing on 10-22 or 10-23, and neither cause reached the

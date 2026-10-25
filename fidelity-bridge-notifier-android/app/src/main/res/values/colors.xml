@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#0B5D4B</color>
+    <color name="primary_dark">#07463A</color>
+    <color name="accent">#2E9E7E</color>
+    <color name="status_ok">#2E7D32</color>
+    <color name="status_warn">#B26A00</color>
+    <color name="status_bad">#C62828</color>
+    <color name="status_idle">#757575</color>
+    <color name="ic_launcher_background">#0B5D4B</color>
+</resources>

@@ -66,3 +66,18 @@ live:
       # deployment -- kept beside --state-db as algorithm.json, applied at
       # the next tick. Nothing else (account, symbol, limits) can change.
       allow_algorithm_changes: false
+      # Notifications on your phone: the Fidelity Bridge Notifier app
+      # (fidelity-bridge-notifier-android/) connects to the fidelity-bridge
+      # service here, between sessions too, with its own key (`python -m
+      # fidelity_gateway.bridge keygen --notify`). Read-only: nothing the app
+      # sends reaches the extension or Fidelity. An edit here is picked up
+      # within 30 s without dropping the extension.
+      notifications:
+        enabled: false
+        host: 127.0.0.1               # 0.0.0.0 for a phone on your network...
+        port: 8766                    # not the extension's port
+        allowed_clients: ["127.0.0.1", "::1"]   # ...and then its range, e.g. 192.168.1.0/24
+        # What is sent at all; the app chooses again which it shows. Left out,
+        # every kind but order_update (accepted, cancelled, expired):
+        # events: [buy, sell, order_problem, engine, session, readiness, fidelity_signin,
+        #          account_check, connected, disconnected, trading_switch, refused, bridge]

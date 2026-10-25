@@ -206,3 +206,19 @@ def test_the_connection_report_adds_whether_it_places_real_orders(tmp_path):
     assert connection.connection_report() == {"connected": True, "version": "1.4.0", "mode": "live"}
     del connection.server.connection_report  # a bridge without one still says its mode
     assert connection.connection_report() == {"mode": "live"}
+
+
+def test_a_session_never_starts_the_apps_listener(tmp_path):
+    """Apps' notifications belong to the bridge host, which outlives every
+    session: a session's bridge is not asked for them, enabled or not."""
+    bridge = FakeBridge()
+    config = _config(
+        bridge={
+            "host": "127.0.0.1",
+            "port": 9123,
+            "allowed_clients": ["127.0.0.1"],
+            "notifications": {"enabled": True, "port": 9124},
+        }
+    )
+    live.connect_live(config, state_db=tmp_path / "ledger.db", bridge_opener=bridge, log=print)
+    assert "notify" not in bridge.kwargs

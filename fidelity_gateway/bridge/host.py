@@ -50,11 +50,21 @@ WHAT IT DOES BESIDES RELAYING
   * A port held by another program is retried every BIND_RETRY_SECONDS and
     reported, never fatal; a config edit (allowed_clients, say) restarts the
     bridge with it.
+  * Apps' notifications (notifications.py, notify_server.py): with
+    live.fidelity.bridge.notifications enabled, the listener the Notifier
+    app connects to. This host owns the hub, so a bridge restarted with new
+    settings keeps the apps' stream, and an edit to the notifications alone
+    restarts only their listener -- never the extension's connection. What
+    only the host knows reaches them from here: readiness and a warning
+    before the open, account checks, a second trader refused or a session
+    ending unexpectedly, its own port. A listener that cannot start (no key,
+    a taken port) is reported and retried; a phone never stops the bridge.
 """
 
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import os
 import queue
 import socket
@@ -73,6 +83,8 @@ from zoneinfo import ZoneInfo
 from engine.core import trading_calendar
 from engine.core.exceptions import ConfigurationError
 from fidelity_gateway.bridge.local import Line, LinkClosed, error_payload
+from fidelity_gateway.bridge.notifications import Notifications, close_words
+from fidelity_gateway.bridge.notify_server import NotificationServer, NotifySettings
 from fidelity_gateway.bridge.readiness import readiness
 from fidelity_gateway.bridge.server import (
     BridgeError,
@@ -109,18 +121,13 @@ ORDER_EVENTS_KEPT = 1000
 # per this long unless its reason changes.
 REFUSAL_EVENT_EVERY_SECONDS = 600.0
 COMMAND_POLL_SECONDS = 2.0
+# The readiness apps are shown is sent when what it says changes; its
+# details ("last heard 4 s ago") are refreshed at most this often.
+APP_STATUS_SECONDS = 60.0
 
 ALGORITHM_CALLS = ("algorithm.describe", "algorithm.set", "algorithm.reset")
 
 _GONE = object()
-
-_CLOSES = {
-    1000: "closed normally",
-    1001: "going away: the browser, the extension or the engine closed it",
-    1006: "the connection dropped",
-    1008: "refused",
-    1011: "an error on the other side",
-}
 
 
 def _iso(seconds: float | None) -> str | None:
@@ -161,11 +168,6 @@ def _when(moment: datetime, now: float) -> str:
     """'09:30 ET' today, 'Mon 09:30 ET' on another day."""
     today = datetime.fromtimestamp(now, EASTERN).date()
     return f"{moment:%H:%M} ET" if moment.date() == today else f"{moment:%a %H:%M} ET"
-
-
-def _close_words(code: object, reason: object) -> str:
-    words = _CLOSES.get(code, f"code {code}") if isinstance(code, int) else "no close code"
-    return f"{words}{f': {reason}' if reason else ''}"
 
 
 class _Attachment:
@@ -232,6 +234,9 @@ class BridgeHost:
 
     `make_server(settings, on_event)` builds the BridgeServer for a
     FidelityBridgeConfig (main() passes the real one; tests their own).
+    `notifications` is the hub apps hear through (every server built is
+    handed it), and `make_notifier(settings, notifications)` builds their
+    listener for a NotifySettings -- None runs none.
     `settings()` returns the deployment's current (FidelityConfig, symbol),
     re-read when the config file changes; `check(page, may_navigate=...)`
     runs the read-only account check and returns what it found, raising on
@@ -251,6 +256,8 @@ class BridgeHost:
         build: dict | None = None,
         clock: Callable[[], float] = time.time,
         log: Callable[[str], None] = _stderr,
+        notifications: Notifications | None = None,
+        make_notifier: Callable[[NotifySettings, Notifications], NotificationServer] | None = None,
     ) -> None:
         self._make_server = make_server
         self._settings_source = settings
@@ -263,6 +270,12 @@ class BridgeHost:
         self._log = log
 
         self._fidelity, self._symbol = settings()
+        self.notifications = notifications if notifications is not None else Notifications(())
+        self._make_notifier = make_notifier
+        self._notifier: NotificationServer | None = None
+        self._notifier_error: str | None = None
+        self._next_notifier = 0.0
+        self._app_status: tuple[dict, dict, float] | None = None
         self.server: BridgeServer = self._new_server()
         self._listening = False
         self._listen_error: str | None = None
@@ -300,7 +313,9 @@ class BridgeHost:
         return "preview" if self._fidelity.dry_run else "live"
 
     def _new_server(self) -> BridgeServer:
-        return self._make_server(self._fidelity.bridge, self._on_extension_event)
+        server = self._make_server(self._fidelity.bridge, self._on_extension_event)
+        server.notify_through(self.notifications)
+        return server
 
     def _install_defaults(self) -> None:
         """With no trading loop attached, the extension's algorithm editor is
@@ -329,10 +344,12 @@ class BridgeHost:
             if first:
                 self._log(f"[bridge-host] {exc} Trying again every {BIND_RETRY_SECONDS:.0f}s.")
                 self._journal("port_conflict", str(exc), t=now)
+                self.notifications.bridge_port_conflict(str(exc))
             return False
         self._listening, self._listen_error = True, None
         self._log(f"[bridge-host] listening for the extension on {self.server.url}")
         self._journal("listening", f"Listening for the extension on {self.server.url}.", t=now)
+        self.notifications.bridge_listening(self.server.url)
         return True
 
     def reload(self) -> bool:
@@ -343,12 +360,17 @@ class BridgeHost:
         except Exception as exc:
             self._log(f"[bridge-host] the config does not load ({exc}); keeping the last one")
             return False
-        changed = fidelity.bridge != self._fidelity.bridge
+        changed = _extension_side(fidelity.bridge) != _extension_side(self._fidelity.bridge)
+        notify_changed = _notify_side(fidelity.bridge) != _notify_side(self._fidelity.bridge)
         self._fidelity, self._symbol = fidelity, symbol
+        if notify_changed:
+            self._log("[bridge-host] the apps' notification settings changed: restarting them")
+            self.start_notifier()
         if not changed:
             return False
         self._log("[bridge-host] the bridge's settings changed: restarting it with them")
         self._journal("config", "The bridge's settings changed: restarting it with them.")
+        self.notifications.bridge_restarting()
         with contextlib.suppress(Exception):
             self.server.stop()
         self.server = self._new_server()
@@ -495,6 +517,7 @@ class BridgeHost:
                     f"Refused {newcomer.describe()}: {reason}.",
                     t=now,
                 )
+                self.notifications.session_refused(f"Refused {newcomer.describe()}: {reason}.")
                 return
             attachment = _Attachment(line, client, now)
             self._attached = attachment
@@ -630,6 +653,11 @@ class BridgeHost:
         attachment.line.close()
         self._log(f"[bridge-host] {attachment.describe()} detached")
         self._journal("detached", f"{attachment.describe().capitalize()} detached.")
+        self.notifications.session_ended(
+            process=attachment.client.get("process"),
+            who=attachment.describe(),
+            status=attachment.status,
+        )
 
     @property
     def attached(self) -> dict | None:
@@ -682,6 +710,7 @@ class BridgeHost:
             ok=result["ok"],
             by=by,
         )
+        self.notifications.account_check(result)
         return result
 
     def _auto_check(self, now: float, window: dict) -> None:
@@ -737,6 +766,8 @@ class BridgeHost:
         now = self._clock()
         if not self._listening and now >= self._next_bind:
             self.bind()
+        if self._notifier_error is not None and now >= self._next_notifier:
+            self.start_notifier()
         report = self.server.connection_report()
         self._journal_changes(report)
         if not report["connected"] and (self._tab_event or self._requests):
@@ -761,9 +792,19 @@ class BridgeHost:
             )
         self._verdict = verdict
         window = session_window(now)
+        opens_in = (window["next_open"].timestamp() - now) / 60
+        self.notifications.readiness(
+            verdict,
+            now=now,
+            session_open=window["open"],
+            opens_soon=not window["open"] and opens_in <= NOT_READY_WARNING_MINUTES,
+            opens_in_minutes=opens_in,
+            next_open=window["next_open"].astimezone(UTC).isoformat(),
+        )
         self._tell_extension(verdict, window, now)
         self._auto_check(now, window)
         self._send_connection(report, now)
+        self._publish_app_status(verdict, window, now)
         return self._write_status(report, verdict, window, now)
 
     def _journal_changes(self, report: dict) -> None:
@@ -775,7 +816,7 @@ class BridgeHost:
             self._journal(
                 "disconnected",
                 f"The extension at {gone.get('client')} disconnected "
-                f"({_close_words(gone.get('code'), gone.get('reason'))}).",
+                f"({close_words(gone.get('code'), gone.get('reason'))}).",
                 t=_seconds(gone.get("at")),
                 code=gone.get("code"),
                 client=gone.get("client"),
@@ -911,6 +952,96 @@ class BridgeHost:
             self.inbox.write_status(**status)
         return status
 
+    # -- apps' notifications -------------------------------------------------------
+
+    def start_notifier(self) -> None:
+        """(Re)start the apps' listener the config asks for, or stop it when
+        it asks for none. A listener that cannot start -- no
+        FIDELITY_BRIDGE_NOTIFY_KEY, its port taken -- is reported and tried
+        again every BIND_RETRY_SECONDS; the extension's bridge never waits on
+        it."""
+        self._stop_notifier("the bridge's notification settings changed")
+        settings = NotifySettings.from_config(self._fidelity.bridge.notifications)
+        if settings is None or self._make_notifier is None:
+            self._notifier_error = None
+            return
+        self.notifications.set_events(settings.events)
+        try:
+            notifier = self._make_notifier(settings, self.notifications)
+            notifier.start()
+        except Exception as exc:
+            first = self._notifier_error is None
+            self._notifier_error = str(exc)
+            self._next_notifier = self._clock() + BIND_RETRY_SECONDS
+            if first:
+                self._log(
+                    f"[bridge-host] apps' notifications could not start: {exc} Trying again "
+                    f"every {BIND_RETRY_SECONDS:.0f}s."
+                )
+                self._journal("notifications", f"Apps' notifications could not start: {exc}")
+            return
+        self._notifier, self._notifier_error = notifier, None
+        self._log(
+            f"[bridge-host] apps may connect for notifications at {notifier.url} (allowed: "
+            f"{', '.join(settings.allowed_clients)}; events: "
+            f"{', '.join(self.notifications.events) or 'none'})"
+        )
+        self._journal("notifications", f"Apps may connect for notifications at {notifier.url}.")
+
+    def _stop_notifier(self, reason: str) -> None:
+        notifier, self._notifier = self._notifier, None
+        if notifier is not None:
+            with contextlib.suppress(Exception):
+                notifier.stop(reason)
+
+    @property
+    def notifier(self) -> NotificationServer | None:
+        return self._notifier
+
+    def _publish_app_status(self, verdict: dict, window: dict, now: float) -> None:
+        """The host's part of what apps are shown: the readiness checklist,
+        what is attached, the last account check, the next open. Sent when
+        any of it changes; the checklist's wording ("last heard 4 s ago") is
+        refreshed at most every APP_STATUS_SECONDS, so a phone is not woken
+        every second."""
+        attached = self.attached
+        bridge = {
+            "listening": self._listening,
+            "listenError": self._listen_error,
+            "mode": self.mode,
+            "deployment": self.deployment,
+            "symbol": self._symbol,
+            "ready": verdict["ready"],
+            "blocking": verdict["blocking"],
+            "summary": verdict["summary"],
+            "fix": verdict["fix"],
+            "items": [dict(item) for item in verdict["items"]],
+            "attached": (
+                {"process": attached.get("process"), "since": attached.get("since")}
+                if attached
+                else None
+            ),
+            "lastCheck": self.last_check,
+            "sessionOpen": window["open"],
+            "nextOpen": window["next_open"].astimezone(UTC).isoformat(),
+        }
+        meaning = {
+            **bridge,
+            "summary": None,
+            "items": [
+                {key: value for key, value in item.items() if key != "detail"}
+                for item in bridge["items"]
+            ],
+        }
+        previous = self._app_status
+        if previous is not None and (
+            previous[0] == meaning
+            and (previous[1] == bridge or now - previous[2] < APP_STATUS_SECONDS)
+        ):
+            return
+        self._app_status = (meaning, bridge, now)
+        self.notifications.update_status(bridge=bridge)
+
     def _journal(self, kind: str, detail: str, *, t: float | None = None, **fields: Any) -> None:
         if self.inbox is None:
             return
@@ -925,6 +1056,7 @@ class BridgeHost:
         self.open_socket()
         self._journal("started", "The bridge host started.")
         self.bind()
+        self.start_notifier()
         if self.inbox is not None:
             self._spawn(self._commands, "bridge-host-commands", stop)
         next_config = self._clock() + CONFIG_POLL_SECONDS
@@ -954,6 +1086,7 @@ class BridgeHost:
             attachment.line.close()
         with contextlib.suppress(Exception):
             self.server.stop()
+        self._stop_notifier("the bridge host is stopping: a restart or a deploy")
         self._journal("stopped", "The bridge host stopped.")
         if self.inbox is not None:
             self.inbox.write_status(
@@ -963,6 +1096,16 @@ class BridgeHost:
                 heartbeat_seconds=STATUS_SECONDS,
                 listening=False,
             )
+
+
+def _extension_side(bridge) -> Any:
+    """live.fidelity.bridge without its notifications: what the extension's
+    connection depends on."""
+    return dataclasses.replace(bridge, notifications=None)
+
+
+def _notify_side(bridge) -> Any:
+    return bridge.notifications
 
 
 def account_checker(symbol_of: Callable[[], tuple[Any, str]]) -> Checker:

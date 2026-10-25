@@ -27,6 +27,8 @@ refuses those. Run the scripts as modules from the repo root:
 python -m fidelity_gateway.bridge check --account <number> --account-name "<name>"
 python -m fidelity_gateway.bridge host --config config/fidelity_live.yaml --socket S --control-dir D
 python -m fidelity_gateway.bridge build-extension   # after a pull: then Reload now in the popup
+python -m fidelity_gateway.bridge keygen --notify   # the notification app's own key
+python -m fidelity_gateway.bridge serve --notify    # a bare bridge with the apps' listener, to try it out
 python -m fidelity_gateway.place_test_order --account <number> --check-only [--bridge]
 python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <number> \
     --i-understand-this-logs-into-my-real-brokerage-account
@@ -41,7 +43,7 @@ python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <numb
 | `analyze_har.py` | Reads a DevTools HAR export; `--redact` scrubs one before it leaves the machine. |
 | `recon.py` | Reconnaissance, not reconciliation: with `--cdp-url`, records your browser's traffic while you use it. Its launched-browser modes are kept for the record; Fidelity refuses them. |
 | `place_test_order.py` | Places one small order through the gated adapter — the manual end-to-end check. `--check-only` is the recovery report; `--bridge` goes through the extension instead of a debugging port. |
-| `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), `OrderReports` (the extension's order confirmations), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| host \| check`. `host.py` is the deployment's bridge host (below), `attach.py` a trader's end of it, `local.py` the line between them, `readiness.py` the ready-or-why checklist. |
+| `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), `OrderReports` (the extension's order confirmations), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| host \| check`. `host.py` is the deployment's bridge host (below), `attach.py` a trader's end of it, `local.py` the line between them, `readiness.py` the ready-or-why checklist. The notifications apps hear: `Notifications` (`notifications.py`), served by `NotificationServer` (`notify_server.py`, `notify_protocol.py`), which the host runs. |
 | `tests/` | This section's own suite. `test_broker_selection.py`/`test_broker_contract.py` (the engine↔fidelity_gateway seam) live in the ROOT `tests/` instead — see `tests/CLAUDE.md`. |
 
 ## The browser-extension bridge
@@ -180,6 +182,72 @@ container log. `bridge/host.py`'s `BridgeHost` (the compose
   not, so the badge turns amber); the algorithm editor is pointed at the
   Live page. A taken port is retried every 30 s and reported; an edited
   `live.fidelity.bridge` restarts the bridge with it.
+
+## Notifications for apps
+
+The bridge tells apps what it sees, as it happens. The app this repository
+ships is `fidelity-bridge-notifier-android/`, kept as if it were its own
+repository. Each event is one *kind*, and `live.fidelity.bridge.notifications.events`
+(or `serve --notify-events`) chooses which are sent -- all but
+`order_update` by default:
+
+- `buy`, `sell`: an order report reached filled or partly filled.
+  `order_update`: accepted, cancelled or expired. `order_problem`:
+  rejected, refused by the extension, or unknown.
+- `engine`: a trader's status reached a new `state` -- never the host's own
+  standby status (mode `"bridge"`). `session`: a second trader refused, or a
+  loop detaching without having said it stopped.
+- `readiness`: not ready for `READINESS_GRACE_SECONDS`, said once per cause;
+  not ready within `NOT_READY_WARNING_MINUTES` of an open (critical, once per
+  open); ready again after an outage that was said.
+- `fidelity_signin` (signed out, no tab), `account_check` (failed, or passed
+  after a failure), `connected`/`disconnected` (with the close code),
+  `trading_switch`, `refused` (once per address and reason per 10 min),
+  `bridge` (port taken, listening again, restarting with new settings).
+
+- **The bridge host runs it.** A session's bridge lives only as long as the
+  session (and attaches rather than listens), so `connect_live` and
+  `open_bridge` never start a listener. `BridgeHost` owns the
+  `Notifications` hub for its life and hands it to every `BridgeServer` it
+  builds (`notify_through`), so a bridge restarted with new settings keeps
+  the apps' stream and its memory of what was said. It starts the
+  `NotificationServer` itself (`start_notifier`); an edit to
+  `live.fidelity.bridge.notifications` alone restarts only that listener,
+  never the extension's connection. A listener that cannot start (no key, a
+  taken port) is journaled and retried every `BIND_RETRY_SECONDS`: a phone
+  never stops the bridge. `serve --notify` runs one beside a bare bridge, to
+  try it out.
+- **Two sources, one hub.** `BridgeServer` reports what the extension does
+  (order reports through `OrderReports.add_listener`, connect, disconnect,
+  the switch, the Fidelity tab, refusals) and every engine status relayed
+  through it. The host adds what only it knows: readiness each tick,
+  account checks, attach refusals and detaches, its own port. Deduping
+  lives in the hub, across reconnects and server restarts: a sign-out
+  reported again after a reconnect is not news, and readiness does not
+  repeat a cause its own kind already said.
+- **A listener of its own.** Its own port (8766), address lists and key,
+  `FIDELITY_BRIDGE_NOTIFY_KEY` (`keygen --notify`); `build_notifier`
+  refuses the extension's key. The compose `fidelity-bridge` service's host
+  networking and `.env` give it both.
+- **Read-only.** After the handshake an app may ask for a test notification
+  (rate-limited, to it alone, never kept); everything else is ignored.
+- **Same protocol design as the extension's, its own labels.**
+  `fidelity-bridge-notify/v1` (`notify_protocol.py`): HMAC proofs both ways,
+  then every frame sealed with `protocol.Channel`. The vectors live with the
+  app (`fidelity-bridge-notifier-android/core/src/test/resources/vectors/`),
+  with the list of kinds both sides check; `test_bridge_notify_protocol.py`
+  reproduces them and skips when that folder is absent. The app's
+  `PROTOCOL.md` is the spec.
+- **Catching up.** Ids count within a *stream*, new per hub (per host run);
+  the last 200 are kept. An app sends the (stream, id) it last saw and is sent
+  what came after, marked `replay`. Each app has its own writer thread; one
+  that falls `APP_BACKLOG` behind is let go to reconnect. A host stopping says
+  `goodbye`: the app reads it as a restart.
+- **Status.** Named parts: `extension` and `engine` (None between sessions)
+  from `BridgeServer._publish_status`, `bridge` from the host -- readiness
+  verdict and checklist, attached process, last account check, next open --
+  sent when its meaning changes, its wording refreshed at most every
+  `APP_STATUS_SECONDS`. Never a key, nor the bridge's address.
 
 ## Live trading through the bridge
 
