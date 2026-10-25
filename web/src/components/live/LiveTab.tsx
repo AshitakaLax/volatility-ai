@@ -69,7 +69,7 @@ export function LiveTab() {
       ) : null}
 
       {detail && set ? <OverviewCard deployment={detail} state={live.state} fills={trades.today} /> : null}
-      {detail?.broker === "fidelity" ? <FidelityPanel deployment={detail} /> : null}
+      {detail?.broker === "fidelity" ? <FidelityPanel deployment={detail} onSent={refreshAll} /> : null}
       {detail && set ? <ControlBar deployment={detail} onSent={refreshAll} /> : null}
       {detail && set && detail.controllable ? (
         <AlgorithmPanel deployment={detail} onSent={refreshAll} />

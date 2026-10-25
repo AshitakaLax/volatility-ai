@@ -182,6 +182,22 @@ def service_of(path_or_url: str) -> str:
 _SIGNIN_MARKER = "/prgw/digital/signin"
 _AUTHENTICATED_MARKER = "/ftgw/digital/"
 
+
+def tab_state(url: str | None) -> str:
+    """What a Fidelity tab at `url` can do for the engine, by the markers
+    above -- the same rule the extension applies (its fidelity-state.js):
+    "signed_in" (the signed-in site), "signed_out" (the sign-in flow),
+    "elsewhere" (another Fidelity page; navigating may reach the site), or
+    "no_tab" when there is none."""
+    if not url:
+        return "no_tab"
+    if _SIGNIN_MARKER in url:
+        return "signed_out"
+    if _AUTHENTICATED_MARKER in url:
+        return "signed_in"
+    return "elsewhere"
+
+
 # The one script post_json runs in the page. A module constant so the
 # browser-extension bridge (fidelity_gateway/bridge/page.py) can recognise
 # it and refuse any other: the extension runs a fixed copy of this fetch

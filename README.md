@@ -117,7 +117,10 @@ flag *and* a strategy hook.
 - **Browser-extension bridge** — the Fidelity Bridge extension (submodule
   `fidelity-bridge-chrome-extension/`) connects to a local WebSocket
   server with an HMAC handshake; the engine drives the tab you signed into
-  by hand, and nothing on a working path logs in.
+  by hand, and nothing on a working path logs in. In the compose deployment
+  the bridge is a service of its own, up between sessions: it says whether
+  the connection is ready (and the one thing to fix when not), journals
+  every disconnect, and each session's trading loop attaches to it.
 - **Preview-only and placing brokers** — separate classes; placing sits
   behind explicit gates, with a journal of confirmation numbers written
   before each commit and read back on start.

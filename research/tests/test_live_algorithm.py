@@ -508,3 +508,50 @@ def test_the_impact_of_a_switch_on_the_book():
     assert result["lots_at_new_target"] == 1
     assert result["signal_exit_before"] and not result["signal_exit_after"]
     assert any("regime exit stops" in note for note in result["notes"])
+
+
+# -- what an algorithm does, in a line ---------------------------------------------
+
+
+def test_a_regime_book_is_described_by_its_vote_not_its_placeholder_target():
+    """The extension used to say "target 1000%" for ultimate_rsp: a target
+    set out of reach on purpose, since the book holds and exits by regime."""
+    from research.strategies.live_algorithm import algorithm_summary
+
+    text = algorithm_summary(
+        {
+            "strategy_id": "ultimate_rsp",
+            "strategy_params": {"execute_minute": 60, "rebalance_band": 0.05},
+            "step": 0.001,
+            "profit_target": 10.0,
+        },
+        "RSP",
+    )
+    assert "RSP" in text and "regime vote" in text and "minute 60" in text and "5%" in text
+    assert "out of reach" in text
+
+
+def test_unstated_parameters_are_the_strategys_own_defaults():
+    import inspect
+
+    from research.strategies.live_algorithm import algorithm_summary
+    from research.strategies.strategy_registry import STRATEGIES
+
+    default = inspect.signature(STRATEGIES["ultimate_rsp"].__init__).parameters["execute_minute"]
+    text = algorithm_summary(
+        {"strategy_id": "ultimate_rsp", "strategy_params": {}, "step": 0.001, "profit_target": 0.05}
+    )
+    assert f"minute {default.default}" in text and "out of reach" not in text
+
+
+def test_ultimate_and_the_grids_say_their_grid():
+    from research.strategies.live_algorithm import algorithm_summary
+
+    ultimate = algorithm_summary(
+        {"strategy_id": "ultimate", "strategy_params": {}, "step": 0.00075, "profit_target": 0.3}
+    )
+    assert "0.075% dip" in ultimate and "+30%" in ultimate and "turbulent" in ultimate
+    grid = algorithm_summary(
+        {"strategy_id": "fixed", "strategy_params": {}, "step": 0.01, "profit_target": 0.005}
+    )
+    assert grid == "buys each 1% dip, sells each lot at +0.5%"
