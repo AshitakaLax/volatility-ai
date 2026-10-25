@@ -7,45 +7,56 @@ package io.github.ashitakalax.bridgenotifier.core
  * from its own lost network: either way, a connection that drops and is not
  * back within [graceMillis] raises [Alert.LOST] once, and coming back after
  * that raises [Alert.BACK]. A drop that heals inside the grace -- Wi-Fi
- * handing over, the bridge restarting -- raises nothing. A deliberate stop
- * (the bridge said goodbye: the engine runs a session at a time and stops
- * every evening) never alarms.
+ * handing over -- raises nothing.
+ *
+ * The bridge runs as an always-on service, so it says goodbye only to
+ * restart (a deploy, a config change). That is given [restartGraceMillis]:
+ * a restart that comes back says nothing, one that does not is a lost
+ * bridge like any other.
  *
  * Times are whatever clock the caller uses; nothing here reads one.
  */
-class LinkAlarm(private val graceMillis: Long) {
+class LinkAlarm(
+    private val graceMillis: Long,
+    private val restartGraceMillis: Long = 10 * 60_000L,
+) {
     enum class Alert { LOST, BACK }
 
     private var lostAt: Long? = null
+    private var allowed = graceMillis
     private var alerted = false
 
     /** Connected (again). BACK if the loss had been announced. */
     fun connected(): Alert? {
         val announced = alerted
-        lostAt = null
-        alerted = false
+        reset()
         return if (announced) Alert.BACK else null
     }
 
-    /** The connection dropped without a goodbye. */
-    fun lost(now: Long) {
-        if (lostAt == null) lostAt = now
+    /**
+     * The connection is down: dropped, or -- [restarting] -- the bridge said
+     * goodbye. Failed retries while already down keep the first allowance.
+     */
+    fun lost(now: Long, restarting: Boolean = false) {
+        if (lostAt != null) return
+        lostAt = now
+        allowed = if (restarting) restartGraceMillis else graceMillis
     }
 
-    /** The bridge said goodbye, or the user stopped watching. */
-    fun stoppedDeliberately() {
+    /** The user stopped watching, or the key was refused: nothing to alarm about. */
+    fun reset() {
         lostAt = null
         alerted = false
     }
 
-    /** LOST once, when the grace has run out. */
+    /** LOST once, when the allowance has run out. */
     fun check(now: Long): Alert? {
         val since = lostAt ?: return null
-        if (alerted || now - since < graceMillis) return null
+        if (alerted || now - since < allowed) return null
         alerted = true
         return Alert.LOST
     }
 
     /** When [check] next has something to say, or null. */
-    fun dueAt(): Long? = lostAt?.takeUnless { alerted }?.plus(graceMillis)
+    fun dueAt(): Long? = lostAt?.takeUnless { alerted }?.plus(allowed)
 }

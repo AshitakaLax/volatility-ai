@@ -75,6 +75,12 @@ class ProtocolVectorsTest {
     }
 
     @Test
+    fun theAppKnowsEveryKindTheBridgeSends() {
+        val kinds = (vectors["eventKinds"] as JsonArray).map { it.jsonPrimitive.content }
+        assertEquals(kinds, EventKind.ALL)
+    }
+
+    @Test
     fun theProofsAndTheSessionKeyAllDiffer() {
         val args = Triple("k".repeat(40), "a".repeat(64), "b".repeat(64))
         val app = NotifyProtocol.appProof(args.first, args.second, args.third)

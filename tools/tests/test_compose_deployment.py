@@ -55,7 +55,7 @@ def test_up_starts_what_must_keep_running_and_nothing_else(compose):
     assert _services(compose) == {"web", "paper-ultimate", "backup", "market-data"}
     assert _services(compose, profile="champion") == {"paper"}
     assert _services(compose, profile="production") == {"live"}
-    assert _services(compose, profile="fidelity") == {"fidelity"}
+    assert _services(compose, profile="fidelity") == {"fidelity", "fidelity-bridge"}
     assert _services(compose, profile="tools") == {
         "test",
         "preflight",
@@ -151,6 +151,40 @@ def test_fidelity_runs_only_by_name_on_this_hosts_network_with_its_own_ledger(co
     )
     dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
     assert "config/fidelity_live.yaml" in dockerignore, "the account stays out of the image"
+
+
+def test_the_fidelity_bridge_stays_up_and_only_its_trader_can_reach_it(compose):
+    """fidelity_gateway/bridge/host.py: the extension's connection outlives
+    every session. Its socket is in a volume only it and the Fidelity trader
+    mount -- the web server must never be able to reach Fidelity -- and its
+    status, events and the Live page's check_connection go through the
+    deployment's control volume, which the page reads."""
+    services = compose["services"]
+    host = services["fidelity-bridge"]
+    trader = services["fidelity"]
+    assert host["profiles"] == ["fidelity"] and host["network_mode"] == "host"
+    assert host["restart"] == "unless-stopped" and "ports" not in host
+    assert host["entrypoint"] == ["python", "-m", "fidelity_gateway.bridge", "host"]
+    assert (
+        host["command"][host["command"].index("--config") + 1] == "/app/config/fidelity_live.yaml"
+    )
+    assert "./config:/app/config:ro" in host["volumes"]
+    assert not any(m.split(":")[1] == "/app/state" for m in host["volumes"]), "no ledger"
+
+    socket_path = host["environment"]["VAI_BRIDGE_SOCKET"]
+    assert trader["environment"]["VAI_BRIDGE_SOCKET"] == socket_path
+    socket_dir = str(Path(socket_path).parent)
+    (mount,) = [m for m in host["volumes"] if m.split(":")[1] == socket_dir]
+    volume = mount.split(":")[0]
+    assert volume in compose["volumes"] and f"{volume}:{socket_dir}" in trader["volumes"]
+    for name, service in services.items():
+        if name not in ("fidelity", "fidelity-bridge"):
+            assert not any(m.startswith(f"{volume}:") for m in service.get("volumes", [])), name
+    assert socket_dir in (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    control = next(m for m in trader["volumes"] if m.endswith(":/app/control"))
+    assert control in host["volumes"] and host["environment"]["VAI_CONTROL_DIR"] == "/app/control"
+    assert host["environment"]["VAI_DEPLOYMENT"] == trader["environment"]["VAI_DEPLOYMENT"]
 
 
 def test_the_ui_is_published_on_loopback_unless_asked(compose):

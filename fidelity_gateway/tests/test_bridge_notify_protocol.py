@@ -103,3 +103,10 @@ def test_a_tampered_or_replayed_message_is_refused():
     app.open(sealed)
     with pytest.raises(ProtocolError, match="expected message 2"):
         app.open(sealed)
+
+
+def test_the_app_knows_every_kind_the_bridge_sends(vectors):
+    """The app's EventKind.ALL is checked against the same list."""
+    from fidelity_gateway.bridge.notifications import EVENT_KINDS
+
+    assert vectors["eventKinds"] == list(EVENT_KINDS)

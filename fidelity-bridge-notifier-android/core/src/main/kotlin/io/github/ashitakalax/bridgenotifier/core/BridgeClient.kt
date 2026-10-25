@@ -38,8 +38,8 @@ fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
 /**
  * The app's connection to the bridge's notification listener: the
  * handshake, the sealed channel, catching up on what was missed, and
- * reconnecting -- with backoff after a failure, more patiently after a
- * goodbye, and not at all after the bridge refused the key.
+ * reconnecting -- with backoff after a failure, shortly after a goodbye (the
+ * bridge restarting), and not at all after the bridge refused the key.
  *
  * Everything happens on one thread, [executor]'s, and so does every call to
  * [Listener]: a caller on Android hands each to the main thread itself.
@@ -56,14 +56,15 @@ class BridgeClient(
     private val backoff: Backoff = Backoff(),
     private val random: SecureRandom = SecureRandom(),
     private val handshakeTimeoutMillis: Long = 15_000,
-    private val goodbyeRetryMillis: Long = 30_000,
+    // The bridge is always on: a goodbye is a restart, back in seconds.
+    private val goodbyeRetryMillis: Long = 5_000,
 ) {
     sealed interface Link {
         data object Idle : Link
         data object Connecting : Link
         data class Connected(val hello: Hello) : Link
 
-        /** Not connected; trying again in [retryInMillis]. [deliberate]: the bridge said goodbye. */
+        /** Not connected; trying again in [retryInMillis]. [deliberate]: the bridge said goodbye -- it is restarting. */
         data class Waiting(val retryInMillis: Long, val reason: String, val deliberate: Boolean) : Link
 
         /** Not connected, and not trying again until the settings change: the key was refused. */

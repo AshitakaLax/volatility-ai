@@ -20,6 +20,10 @@
 #                                     docker compose --profile champion up -d
 #   production   live: REAL MONEY. Still refuses without engine/promotion.py's
 #                evidence.            docker compose --profile production up -d
+#   fidelity     REAL MONEY in a Fidelity account: the bridge the browser
+#                extension stays connected to, and the trader that attaches
+#                to it each session.
+#                      docker compose --profile fidelity up -d fidelity-bridge fidelity
 #   tools        one-offs:  docker compose run --rm test -q
 #                           docker compose run --rm preflight
 #                           docker compose run --rm check
@@ -186,8 +190,8 @@ services:
       - control_production:/app/control
 
   # REAL MONEY in a Fidelity account, placed through the Fidelity Bridge
-  # browser extension (fidelity_gateway/). Started only by name:
-  #     docker compose --profile fidelity up -d fidelity
+  # browser extension (fidelity_gateway/). Two services, started by name:
+  #     docker compose --profile fidelity up -d fidelity-bridge fidelity
   # First (docs/DEPLOY.md, "Fidelity"): config/fidelity_live.yaml from its
   # .example -- git-ignored and kept out of the image, it names the account
   # -- with live.fidelity.bridge.host 0.0.0.0 and the browser's machine in
@@ -199,6 +203,38 @@ services:
   # HOST NETWORKING, so the bridge listens on this server's own address and
   # sees the browser's real address for its allow list -- through a
   # published port it would see Docker's gateway instead.
+  #
+  # The BRIDGE is its own service (fidelity_gateway/bridge/host.py), up for
+  # as long as the deployment is: the extension connects once and stays
+  # connected between sessions, and recreating the trader (a deploy) does
+  # not drop it. It writes whether the connection is ready, and every
+  # connect, disconnect and sign-out, into the control volume for the Live
+  # page. Each session's trading loop attaches to it over a socket in
+  # bridge_fidelity, a volume only these two mount -- never `web`, which
+  # must not be able to reach Fidelity. The trader waits for the bridge to
+  # say "ready" before starting a session, so the two need no start order.
+  fidelity-bridge:
+    <<: *app
+    profiles: [fidelity]
+    network_mode: host
+    entrypoint: ["python", "-m", "fidelity_gateway.bridge", "host"]
+    command: ["--config", "/app/config/fidelity_live.yaml"]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    mem_limit: 512m
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *env
+      VAI_BRIDGE_SOCKET: /app/bridge/bridge.sock
+      VAI_CONTROL_DIR: /app/control
+      VAI_DEPLOYMENT: fidelity
+    volumes:
+      - ./config:/app/config:ro
+      - control_fidelity:/app/control
+      - bridge_fidelity:/app/bridge
+
   fidelity:
     <<: *trader
     profiles: [fidelity]
@@ -212,11 +248,15 @@ services:
       VAI_STATE_DB: /app/state/fidelity_ledger.db
       VAI_IDLE_SECONDS: "900"
       VAI_CONTROL_DIR: /app/control
+      # Attach to fidelity-bridge rather than listen: see above.
+      VAI_BRIDGE_SOCKET: /app/bridge/bridge.sock
+      VAI_DEPLOYMENT: fidelity
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data:ro
       - state_fidelity:/app/state
       - control_fidelity:/app/control
+      - bridge_fidelity:/app/bridge
 
   # Daily at VAI_BACKUP_AT: every ledger and the warehouse catalogs into
   # VAI_BACKUP_DIR (default /workspace/backups, this host's separate backup
@@ -373,3 +413,5 @@ volumes:
   control_champion:
   control_production:
   control_fidelity:
+  # The Fidelity bridge host's socket, for that deployment's trader alone.
+  bridge_fidelity:

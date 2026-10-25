@@ -42,10 +42,21 @@ class BackoffAndAlarmTest {
     }
 
     @Test
-    fun aDeliberateStopNeverAlarms() {
+    fun aRestartIsGivenLongerToComeBack() {
+        val alarm = LinkAlarm(graceMillis = 60_000, restartGraceMillis = 600_000)
+        alarm.lost(now = 0, restarting = true)
+        alarm.lost(now = 5_000) // its first retries fail while it restarts
+        assertNull(alarm.check(now = 120_000))
+        assertEquals(600_000L, alarm.dueAt())
+        assertEquals(LinkAlarm.Alert.LOST, alarm.check(now = 600_000))
+        assertEquals(LinkAlarm.Alert.BACK, alarm.connected())
+    }
+
+    @Test
+    fun aResetNeverAlarms() {
         val alarm = LinkAlarm(graceMillis = 60_000)
         alarm.lost(now = 0)
-        alarm.stoppedDeliberately()
+        alarm.reset()
         assertNull(alarm.check(now = 3_600_000))
         assertNull(alarm.connected())
     }

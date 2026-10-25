@@ -46,6 +46,27 @@ network failure at 10:03 should not cost the rest of the day. But a
 process that keeps dying is a fault to surface, not to paper over, so
 restarts are capped and the cap is reported.
 
+A start that could not reach the broker is not a crash: cli.py exits with
+EXIT_BROKER_UNAVAILABLE when startup stopped on something that clears by
+itself -- the browser extension not connected yet, Fidelity signed out, the
+bridge's port taken by a run started by hand. Those are retried every
+BROKER_RETRY_SECONDS until the session ends, not counted, and the wait
+reports the trader's own reason ("waiting_for_broker") -- on 10-22 and 10-23
+five fast failures spent the cap, the page said "between sessions", and the
+reason was only in the container's log.
+
+--------------------------------------------------------------------
+A FIDELITY SESSION STARTS ONLY WHEN THE BRIDGE SAYS IT IS READY
+
+A Fidelity deployment's bridge runs as a host of its own
+(fidelity_gateway/bridge/host.py, the fidelity-bridge service), up between
+sessions, and writes whether the connection is ready -- the extension
+connected, Fidelity signed in, "Allow trading" on -- into its control
+directory (bridge/status.json). With VAI_BRIDGE_SOCKET set, this waits on that
+verdict before launching the loop ("waiting_for_broker", detail: the one thing
+to fix) and launches the moment it turns ready, rather than launching a loop
+that can only fail.
+
 Each restart re-runs startup, which means reconciliation runs again --
 which is the point. A loop that died and came back has more reason to
 check its state against the broker, not less.
@@ -76,6 +97,7 @@ from engine.trading.operator_control import (
     account_tag,
     reset_paper_ledger_handler,
 )
+from engine.trading.runtime_lifecycle import EXIT_BROKER_UNAVAILABLE
 
 # Start trading a little after the bell. The first minutes of the
 # session are the most volatile of the day (src/intraday_profile.py
@@ -86,6 +108,11 @@ DEFAULT_OPEN_DELAY = 60.0
 # rather than racing it.
 DEFAULT_CLOSE_MARGIN = 120.0
 MAX_RESTARTS = 5
+# How long to wait before trying again after a start that could not reach the
+# broker (EXIT_BROKER_UNAVAILABLE): the extension not connected yet, Fidelity
+# signed out, the bridge's port taken. Not a crash, so not counted against
+# MAX_RESTARTS -- it is tried until the session ends, and says why meanwhile.
+BROKER_RETRY_SECONDS = 60.0
 
 
 def parse_args(argv=None):
@@ -330,14 +357,102 @@ def _hold_while_disabled(control, deadline: float) -> bool:
     )
 
 
-def _run_until(args, poll: float, deadline: float, control, label: str) -> int:
+def _trader_detail(control) -> str | None:
+    """What the trader that just exited said about why -- its status file's
+    detail, written before it exited -- or None without a control directory."""
+    if control is None:
+        return None
+    try:
+        status = control.inbox.status() or {}
+    except Exception:
+        return None
+    detail = status.get("detail")
+    return detail if isinstance(detail, str) and detail else None
+
+
+# A bridge host silent this long (and at least three of its own heartbeats)
+# is called not running, as server/live.py calls a silent trader.
+_BRIDGE_STALE_FLOOR_SECONDS = 90.0
+
+
+def bridge_verdict(status: dict | None, now: float) -> tuple[bool, str]:
+    """(ready, why) from a bridge host's status file: its readiness verdict
+    (fidelity_gateway/bridge/readiness.py), or "not reporting"."""
+    host_hint = (
+        "the bridge host is not reporting -- is the fidelity-bridge service running? "
+        "(docker compose --profile fidelity up -d fidelity-bridge)"
+    )
+    if not status:
+        return False, host_hint
+    try:
+        age = now - datetime.fromisoformat(status["updated_at"]).timestamp()
+    except (KeyError, TypeError, ValueError):
+        return False, host_hint
+    heartbeat = float(status.get("heartbeat_seconds") or 15.0)
+    if age > max(3 * heartbeat, _BRIDGE_STALE_FLOOR_SECONDS) or status.get("state") == "stopped":
+        return False, host_hint
+    verdict = status.get("readiness") or {}
+    if verdict.get("ready"):
+        return True, "ready"
+    summary = verdict.get("summary") or "not ready"
+    fix = verdict.get("fix")
+    return False, f"Fidelity is not ready: {summary}" + (f" -- {fix}" if fix else "")
+
+
+def _broker_gate(args, config):
+    """For a Fidelity deployment attached to a bridge host (VAI_BRIDGE_SOCKET),
+    a callable answering bridge_verdict now; None otherwise -- a deployment
+    that holds its own bridge, or an Alpaca one, starts when its session does."""
+    if config.live.broker != "fidelity" or not os.environ.get("VAI_BRIDGE_SOCKET"):
+        return None
+    if not args.control_dir:
+        return None
+    inbox = ControlInbox(Path(args.control_dir) / "bridge")
+    return lambda: bridge_verdict(inbox.status(), time.time())
+
+
+def _hold_until_ready(control, deadline: float, gate) -> bool:
+    """True once `gate` says ready (at once without one); False if it is
+    still not ready at `deadline`, or the page disabled the deployment
+    meanwhile (the caller holds for that). Answers the Live page as it waits,
+    with the reason as the detail."""
+    if gate is None:
+        return True
+    said = None
+    while True:
+        ready, why = gate()
+        if ready:
+            if said is not None:
+                log("the broker is ready -- starting the session")
+            return True
+        if why != said:
+            log(f"waiting to start: {why}")
+            said = why
+        left = deadline - time.time()
+        if left <= 0:
+            return False
+        if control is None:
+            time.sleep(min(15.0, left))
+            continue
+        control.serve(min(control.slice_seconds, left), state="waiting_for_broker", detail=why)
+        if not control.enabled():
+            return False
+
+
+def _run_until(args, poll: float, deadline: float, control, label: str, gate=None) -> int:
     """Run the loop until `deadline`, restarting it if it dies -- but not
     counting a stop the Live page asked for as a crash: a disabled
-    deployment waits to be enabled instead."""
+    deployment waits to be enabled instead. With a `gate` (_broker_gate), a
+    loop is launched only once the broker is ready."""
     attempts = 0
     while True:
         if not _hold_while_disabled(control, deadline):
             log(f"{label} over (disabled)")
+            return 0
+        if not _hold_until_ready(control, deadline, gate):
+            if control is not None and not control.enabled():
+                continue  # disabled while waiting: hold above
+            log(f"{label} over (the broker was never ready)")
             return 0
         remaining = deadline - time.time()
         if remaining <= poll:
@@ -350,6 +465,14 @@ def _run_until(args, poll: float, deadline: float, control, label: str) -> int:
             return 0
         if control is not None and not control.enabled():
             continue  # the page disabled it (or it wound down): hold above
+        if code == EXIT_BROKER_UNAVAILABLE:
+            why = _trader_detail(control) or "the broker could not be reached"
+            log(
+                f"the broker could not be reached ({why}); trying again in "
+                f"{BROKER_RETRY_SECONDS:.0f}s"
+            )
+            _wait(control, BROKER_RETRY_SECONDS, state="waiting_for_broker", detail=why)
+            continue
         attempts += 1
         log(
             f"loop exited with {code} and {remaining / 60:.0f} min left "
@@ -410,7 +533,14 @@ def _main_extended(args, config, poll: float) -> int:
         log("--dry-run: would run the loop now.")
         return 0
 
-    return _run_until(args, poll, time.time() + seconds_left, _control, "extended session")
+    return _run_until(
+        args,
+        poll,
+        time.time() + seconds_left,
+        _control,
+        "extended session",
+        gate=_broker_gate(args, config),
+    )
 
 
 def _interrupt(signum, _frame) -> None:
@@ -491,7 +621,9 @@ def _session(args) -> int:
         log("--dry-run: would run the loop now.")
         return 0
 
-    return _run_until(args, poll, time.time() + seconds_left, _control, "session")
+    return _run_until(
+        args, poll, time.time() + seconds_left, _control, "session", gate=_broker_gate(args, config)
+    )
 
 
 if __name__ == "__main__":

@@ -512,10 +512,16 @@ FIDELITY_NOTIFICATION_EVENTS = (
     "sell",
     "order_update",
     "order_problem",
+    "engine",
+    "session",
+    "readiness",
+    "fidelity_signin",
+    "account_check",
     "connected",
     "disconnected",
     "trading_switch",
-    "engine",
+    "refused",
+    "bridge",
 )
 
 
@@ -524,6 +530,8 @@ class FidelityNotificationsConfig:
     """The bridge's notifications for apps -- the Fidelity Bridge Notifier
     for Android -- on a listener of their own (fidelity_gateway/bridge/
     notify_server.py), with a key of their own, FIDELITY_BRIDGE_NOTIFY_KEY.
+    The bridge host (the fidelity-bridge service) runs it, and picks up an
+    edit to this section without dropping the extension.
 
     Off unless enabled. The defaults accept an app on this computer only;
     a phone needs host 0.0.0.0 (or this machine's address) AND its address,

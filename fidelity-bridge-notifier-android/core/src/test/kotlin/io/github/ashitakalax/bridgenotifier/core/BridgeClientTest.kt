@@ -127,7 +127,7 @@ class BridgeClientTest {
     }
 
     @Test
-    fun aGoodbyeIsADeliberateStopAndItComesBackLater() {
+    fun aGoodbyeIsARestartAndItComesBackShortly() {
         bridge.accept { session ->
             session.send(FakeBridge.hello())
             session.send(buildJsonObject { put("type", "goodbye"); put("reason", "the session ended") })

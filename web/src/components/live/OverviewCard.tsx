@@ -4,7 +4,7 @@ import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui
 import {
   algorithmName,
   algorithmOrigin,
-  gridWords,
+  algorithmWords,
   nowLine,
   position,
   regimeLine,
@@ -119,7 +119,7 @@ export function OverviewCard({ deployment, state, fills }: Props) {
             <span className="font-medium">{algorithmName(algorithm)}</span>
             <span className="text-muted-foreground">
               {" "}
-              -- {gridWords(algorithm.step, algorithm.profit_target)}. {capital(algorithmOrigin(algorithm))}
+              -- {algorithmWords(algorithm)}. {capital(algorithmOrigin(algorithm))}
               {algorithm.changed_at ? `, ${new Date(algorithm.changed_at).toLocaleString()}` : ""}.
             </span>
           </p>

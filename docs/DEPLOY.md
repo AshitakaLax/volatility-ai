@@ -166,8 +166,8 @@ disks, the queue's remaining work and its ETA, the newest backup).
 
 The deployments are `config/deployments.yaml`'s (ids, configs, ledgers,
 control directories as `web` sees them). Each shows the state its trader
-reports -- Trading, Buys paused, Winding down, Waiting for open, Disabled,
-Not running -- and offers:
+reports -- Trading, Buys paused, Winding down, Waiting for open, Waiting
+for the broker (with why), Disabled, Not running -- and offers:
 
 | Control | What happens | The deployment's config must grant |
 |---|---|---|
@@ -177,6 +177,7 @@ Not running -- and offers:
 | Disable / Enable | no session starts until enabled (open lots get NO exits meanwhile) | `live.control.enable_disable` |
 | Switch / Revert / Re-warm | the algorithm, from a committed profile (`config/live_profiles/`) or, on paper, validated parameters; at the next tick, the next session, or once flat | `live.control.algorithm_changes` |
 | Fresh paper ledger | archives the ledger, starts a new one with the account's cash -- disabled, paper, and a flat Alpaca account only | `live.control.ledger_reset` |
+| Check connection (Fidelity) | the bridge reads the account through the extension, read-only; the result shows in its Fidelity section | (always allowed) |
 
 **Nothing on the page changes a deployment directly.** It queues a command
 in the deployment's control volume (`control_ultimate`, `control_champion`,
@@ -337,11 +338,22 @@ promotion, then read `docs/PRE_PRODUCTION_CHECKLIST.md`.
 
 ### Fidelity
 
-`fidelity` (profile `fidelity`) trades a Fidelity account through the
+Two services (profile `fidelity`) trade a Fidelity account through the
 Fidelity Bridge browser extension (`fidelity_gateway/`): every order goes
-from this server over the extension into the signed-in Fidelity tab. It
-runs on the host's network, so the bridge listens on this server's address
-and checks the browser's real address against its allow list.
+from this server over the extension into the signed-in Fidelity tab.
+
+- **`fidelity-bridge`** is the bridge the extension connects to, up for as
+  long as the deployment is (`python -m fidelity_gateway.bridge host`). The
+  extension connects once and stays connected between sessions, so whether
+  the connection works is known before the open, not at it. It runs on the
+  host's network, so it listens on this server's address and checks the
+  browser's real address against its allow list.
+- **`fidelity`** is the trader: one session at a time, as the Alpaca
+  traders. Each session's trading loop attaches to the bridge over a socket
+  in the `bridge_fidelity` volume (`VAI_BRIDGE_SOCKET`), which only these two
+  services mount -- `web` never can, so the UI cannot reach Fidelity.
+
+Setting up:
 
 1. `python -m fidelity_gateway.bridge keygen` -- writes
    `FIDELITY_BRIDGE_API_KEY` to `.env` and prints it once.
@@ -351,43 +363,71 @@ and checks the browser's real address against its allow list.
    the browser's machine in `allowed_clients`.
 3. In that browser: load the extension, paste the key, add this server to
    its allowed engines, sign into Fidelity. Leave "Allow trading" off.
-4. `docker compose --profile fidelity up -d fidelity`. The engine, and the
-   bridge with it, runs from the open to the close: the extension connects
-   at the open and shows the engine as not running between sessions. To
-   check the setup before then, run the engine's check between sessions
-   (during one, the engine holds the bridge's port). It connects,
-   reconciles against the account and stops at READY, placing nothing:
-
-   ```bash
-   docker compose --profile fidelity run --rm --entrypoint python fidelity \
-     cli.py live --config /app/config/fidelity_live.yaml \
-     --state-db /app/state/fidelity_ledger.db --check-only
-   ```
-
-5. Once the Live page's Fidelity section reads connected, turn "Allow
-   trading" on. Off again pauses every order without stopping the engine.
-6. Optionally, get notifications on your phone: fills, order problems, the
-   extension coming and going, its trading switch, the engine's state.
-   - Run `python -m fidelity_gateway.bridge keygen --notify`. It writes
-     `FIDELITY_BRIDGE_NOTIFY_KEY` to `.env`, a key of its own.
+4. `docker compose --profile fidelity up -d fidelity-bridge fidelity`.
+   The Live page's Fidelity section shows the extension connecting at once.
+5. Once it reads ready -- connected, signed in -- turn "Allow trading" on.
+   Off again pauses every order without stopping the engine.
+6. Optionally, notifications on your phone, from `fidelity-bridge`: fills
+   and order problems, whether the connection is ready (and the one thing
+   to fix when it is not, with a warning 15 minutes before an open), a
+   Fidelity sign-out, failed account checks, sessions starting and stopping,
+   the extension coming and going, refused connections.
+   - `python -m fidelity_gateway.bridge keygen --notify` writes
+     `FIDELITY_BRIDGE_NOTIFY_KEY` to `.env`: a key of its own, never the
+     extension's.
    - In `config/fidelity_live.yaml`, set `live.fidelity.bridge.notifications`
-     to `enabled: true`, `host: 0.0.0.0` and your network's range in
-     `allowed_clients`.
-   - Install the app from `fidelity-bridge-notifier-android/` and give it
-     this server's address and the key.
+     to `enabled: true`, `host: 0.0.0.0`, and your network's range in its
+     `allowed_clients`. The bridge picks it up within 30 seconds, without
+     dropping the extension.
+   - Install the app from `fidelity-bridge-notifier-android/` and give it this
+     server's address and that key.
 
-   The service's host networking puts the listener on port 8766 of this
-   server. Do not forward that port from your router. Away from home, reach
-   it over a VPN.
+   Like the bridge, the listener is up between sessions, on port 8766 of
+   this server (host networking). Do not forward that port from your router;
+   away from home, reach it over a VPN.
 
-Started before its config exists, the service waits for the file, says so
-once in its log (`docker compose logs fidelity`), and starts when the file
-appears. A session that fails on a mistake in the config is tried again as
-soon as the file changes, not after `VAI_IDLE_SECONDS`.
+**Ready, or the one thing to fix.** The bridge checks, every second: it is
+listening; the extension is connected and was heard from in the last
+minute; its version; the Fidelity tab is signed in; "Allow trading" is on;
+and the last read-only account check passed. The Live page shows that
+chain, with the first broken link and what to do about it, and the
+extension's popup says the same ("Standing by: ready" / "not ready").
+The trader starts a session only once it is ready, and starts it the moment
+it is -- it no longer launches a loop that can only fail. A start that
+still cannot reach Fidelity (the extension dropped meanwhile) is retried
+every minute until the session ends, never counted as a crash, and the page
+says why.
 
-The Alpaca keys in `.env` give it prices and the market clock only; that
-connection is never handed an order. Its ledger and control folder are the
-`state_fidelity` and `control_fidelity` volumes, and the backup service
+**Check connection** on the Live page, and the bridge by itself 30 and 10
+minutes before each open, reads the account through the extension --
+orders, positions, settled cash -- read-only: no preview, no order.
+
+**When something disconnects**, the section's timeline (the last 48 hours,
+from `bridge/events/` in the control volume) says when, with the
+WebSocket's close code, how long it stayed gone, and whether an address or
+key was turned away. `docker compose logs fidelity-bridge` has the same.
+
+**One process at a time.** The bridge lets one process attach: the
+session's loop, or a connection check. A loop or `bridge serve` started by
+hand on this server cannot take the port while `fidelity-bridge` runs, and
+fails at once saying so -- running by hand means stopping both services
+first (`docker compose stop fidelity fidelity-bridge`), or a second ledger
+starts drifting from the account. Inside the container, a read-only check
+attaches to the running bridge:
+
+```bash
+docker compose exec fidelity-bridge python -m fidelity_gateway.bridge check \
+  --account <number> --account-name "<name>"
+```
+
+Started before its config exists, each service waits for the file and says
+so once in its log. The bridge picks up an edited `live.fidelity.bridge`
+(an address added to `allowed_clients`, say) within 30 seconds, restarting
+itself with it; the trader reads the config at each session.
+
+The Alpaca keys in `.env` give the trader prices and the market clock only;
+that connection is never handed an order. Its ledger and control folder are
+the `state_fidelity` and `control_fidelity` volumes, and the backup service
 archives the ledger with the others.
 
 ---

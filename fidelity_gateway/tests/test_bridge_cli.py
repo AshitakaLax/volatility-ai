@@ -319,7 +319,9 @@ def test_serve_with_notify_lets_an_app_hear_the_bridge(monkeypatch, capsys):
     url = re.search(r"apps may connect at (\S+)", seen).group(1)
     app = FakeApp(url, NOTIFY_KEY)
     assert app.handshake()["type"] == "welcome"
-    assert app.hello["status"]["engine"]["mode"] == "bridge"
+    # The bridge alone is not an engine: apps are shown none.
+    assert app.hello["status"]["engine"] is None
+    assert app.hello["status"]["extension"]["connected"] is False
     stop.set()
     runner.join(timeout=5)
     assert finished == [0]

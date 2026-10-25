@@ -8,11 +8,23 @@ sees:
   each order accepted, cancelled or expired.
 - **Order problems:** Fidelity rejected an order, the browser extension
   refused one, or nobody can tell what became of one.
-- **The extension:** it connected, reconnected, or went away, and its "Allow
-  trading" switch was turned on or off.
-- **The engine:** starting, running, paused, halted, stopped.
-- **The bridge itself:** if the phone cannot reach it for 2 minutes, the app
-  says so, and says again when it is back.
+- **Readiness:** the bridge is not ready to trade, and which link to fix
+  (the extension, the Fidelity sign-in, "Allow trading", the account
+  check). Said once a problem has lasted a minute, as a critical alert when
+  it is still not ready shortly before the open, and again once it is ready.
+- **The extension:** it connected, reconnected, or went away; Fidelity
+  signed you out or its tab was closed; its "Allow trading" switch was
+  turned on or off.
+- **The trading session:** starting, running, paused, halted, stopped; a
+  second trader refused; a session that ended without saying so.
+- **The account check** before each open failed, or passed again after a
+  failure.
+- **The bridge:** its port was taken, it restarted with new settings, it
+  refused a connection from an address it does not allow. And if the phone
+  cannot reach it for 2 minutes, the app says so, and again when it is back.
+
+The main screen shows the bridge's readiness checklist as it stands, link by
+link, the trading session, and the last account check.
 
 It only listens. Nothing it sends can place, cancel or change anything. The
 one thing it may ask the bridge for is a test notification.
@@ -23,7 +35,9 @@ protocol vectors.
 
 ## Set up the bridge
 
-On the computer that runs the bridge (in the volatility-ai checkout):
+In volatility-ai the bridge is the always-on `fidelity-bridge` service
+(`docs/DEPLOY.md`). It stays up between trading sessions, so the app stays
+connected overnight and on weekends. In the volatility-ai checkout:
 
 1. **Make the app's key.** It is a different key from the extension's, and
    the bridge refuses to start if the two are the same.
@@ -32,7 +46,9 @@ On the computer that runs the bridge (in the volatility-ai checkout):
    ```
    This appends `FIDELITY_BRIDGE_NOTIFY_KEY` to `.env` and prints the key once.
 2. **Turn notifications on**, so the phone can reach them.
-   - For the live loop, in the deployment's YAML:
+   - For the deployment, in its YAML (`config/fidelity_live.yaml`). The
+     bridge picks up the edit within 30 seconds, without dropping the
+     extension:
      ```yaml
      live:
        fidelity:
@@ -42,7 +58,7 @@ On the computer that runs the bridge (in the volatility-ai checkout):
              host: 0.0.0.0                           # listen beyond this computer...
              port: 8766
              allowed_clients: ["192.168.1.0/24"]     # ...but only to your network
-             # events: [buy, sell, order_problem, connected, disconnected, trading_switch, engine]
+             # events: [buy, sell, readiness, ...]   # left out: every kind but order_update
      ```
    - Or for the bridge alone, to try it out:
      ```bash
@@ -88,10 +104,12 @@ Unrestricted).
 
 ### What to expect
 
-- **The engine runs one trading session at a time.** At the close, the
-  bridge says goodbye and the app shows "The bridge stopped". It checks back
-  every so often without alarming you. At the next open it reconnects and
-  delivers anything it missed.
+- **The bridge is always on.** Between sessions the app stays connected
+  and shows "no trading session running"; the readiness card still says
+  whether the next open is covered.
+- **It says goodbye only to restart** (a deploy, a config change). The app
+  shows "The bridge is restarting" and reconnects within seconds. It
+  alarms only if the bridge is still away after 10 minutes.
 - **After the phone was offline,** it catches up from what the bridge kept
   (up to 200 notifications per bridge run). Nothing is shown twice.
 - **The first time it connects,** what the bridge already kept goes into

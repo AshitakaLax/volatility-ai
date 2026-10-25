@@ -17,6 +17,9 @@ export type RunState =
   | "buys_paused"
   | "winding_down"
   | "waiting_for_open"
+  /** A start that could not reach the broker yet (the extension, Fidelity
+   * signed out, the bridge not ready): tried again on its own. */
+  | "waiting_for_broker"
   | "closed"
   | "disabled"
   | "starting"
@@ -93,6 +96,21 @@ export interface FidelityConnection {
   /** The extension's switches; "place" is its "Allow trading". null before it says. */
   permissions: { preview: boolean; place: boolean } | null;
   url: string | null;
+  /** The connected extension's Fidelity tab, by the session's rule. */
+  fidelity_tab?: {
+    state: "signed_in" | "signed_out" | "no_tab" | "elsewhere";
+    url: string | null;
+    since: string | null;
+  } | null;
+  /** The last connection turned away, and why (address, key, origin). */
+  last_refused?: { at: string; client: string; reason: string } | null;
+  /** How the last connection ended: its WebSocket close code and reason. */
+  last_disconnect?: {
+    at: string;
+    client: string | null;
+    code: number | null;
+    reason: string | null;
+  } | null;
   /** "live" places real orders; "preview" stops at Fidelity's preview. */
   mode: "live" | "preview" | null;
   account_name: string | null;
@@ -126,14 +144,126 @@ export interface TraderStatus {
   /** Why the venue cannot be reached right now; null when it can. */
   broker_unavailable?: string | null;
   fidelity?: FidelityConnection | null;
+  /** A start that stopped: the lifecycle stage, and whether it is tried
+   * again on its own (the broker could not be reached yet). */
+  stage?: string | null;
+  retryable?: boolean | null;
+  /** The deployment the trader says it is, and the ledger it trades: the
+   * file's name and a one-way tag of its path. */
+  deployment?: string | null;
+  ledger?: string | null;
   /** True when no report arrived in three heartbeats: state is then "not_running". */
   stale: boolean;
+}
+
+/* ------------------------------------------------------------------ */
+/* A Fidelity deployment's bridge host (fidelity_gateway/bridge/host.py) */
+/* ------------------------------------------------------------------ */
+
+/** One link of the chain from this server to the account. */
+export interface ReadinessItem {
+  id: "bridge" | "extension" | "version" | "fidelity" | "trading" | "account";
+  label: string;
+  /** "fail" stops a session starting; "unknown" never does on its own. */
+  state: "ok" | "warn" | "fail" | "unknown";
+  detail: string;
+  fix: string | null;
+}
+
+/** fidelity_gateway/bridge/readiness.py: ready, or the one thing to fix. */
+export interface Readiness {
+  ready: boolean;
+  blocking: ReadinessItem["id"] | null;
+  summary: string;
+  fix: string | null;
+  items: ReadinessItem[];
+}
+
+/** The read-only account check's last result. */
+export interface AccountCheck {
+  at: string;
+  ok: boolean;
+  detail: string;
+  by?: string;
+}
+
+/** The process attached to the bridge host: a session's trading loop, or a
+ * connection check. */
+export interface BridgeAttached {
+  process: "loop" | "check" | "tool" | string | null;
+  pid: number | null;
+  deployment: string | null;
+  build: BuildInfo | null;
+  since: string | null;
+  /** Its own engine status, as the extension sees it. */
+  status: Record<string, unknown> | null;
+}
+
+/** The bridge host's own report, up between sessions too. */
+export interface BridgeStatus {
+  state: "listening" | "port_conflict" | "stopped";
+  detail: string | null;
+  listening: boolean;
+  listen_error: string | null;
+  /** "live" places real orders; "preview" stops at Fidelity's preview. */
+  mode: "live" | "preview";
+  deployment: string | null;
+  symbol: string | null;
+  account_name: string | null;
+  max_order_value: number | null;
+  connection: FidelityConnection;
+  attached: BridgeAttached | null;
+  readiness: Readiness;
+  last_check: AccountCheck | null;
+  session_open: boolean;
+  next_open: string | null;
+  build: BuildInfo | null;
+  updated_at: string;
+  heartbeat_seconds: number;
+  /** No report in three heartbeats: what it last said no longer holds. */
+  stale: boolean;
+  age_s: number | null;
+}
+
+/** One line of the bridge host's journal (GET .../bridge/events). */
+export interface BridgeEvent {
+  /** Epoch seconds. */
+  t: number;
+  kind:
+    | "started"
+    | "stopped"
+    | "listening"
+    | "port_conflict"
+    | "config"
+    | "connected"
+    | "disconnected"
+    | "refused"
+    | "fidelity"
+    | "trading"
+    | "attached"
+    | "detached"
+    | "attach_refused"
+    | "ready"
+    | "not_ready"
+    | "check"
+    | string;
+  detail: string;
+  code?: number | null;
+  client?: string | null;
+  version?: string | null;
+  state?: string;
+  on?: boolean;
+  ok?: boolean;
+  by?: string;
 }
 
 /** The algorithm a deployment trades, for its card: the trader's own report
  * while it reports, otherwise what its next session will trade. */
 export interface AlgorithmInForce {
   strategy_id: string;
+  /** What it does, in a line: the words the extension's popup shows too
+   * (research/strategies/live_algorithm.algorithm_summary). */
+  summary?: string;
   /** null when the trader's report names a strategy the files do not. */
   strategy_params: Record<string, ParamValue> | null;
   step: number | null;
@@ -221,6 +351,8 @@ export interface DeploymentSummary {
   ledger?: LedgerSummary;
   /** Commands queued and not yet taken by the trader. */
   pending?: number;
+  /** A Fidelity deployment's bridge host; null when none has reported. */
+  bridge?: BridgeStatus | null;
 }
 
 export type CommandType =
@@ -231,7 +363,9 @@ export type CommandType =
   | "switch_algorithm"
   | "revert_algorithm"
   | "rewarm"
-  | "reset_paper_ledger";
+  | "reset_paper_ledger"
+  /** Read-only: the bridge host checks the account through the extension. */
+  | "check_connection";
 
 export type CommandStatus =
   | "queued"

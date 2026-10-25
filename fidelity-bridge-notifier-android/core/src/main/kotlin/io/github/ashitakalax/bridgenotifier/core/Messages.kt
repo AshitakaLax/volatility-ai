@@ -12,26 +12,45 @@ object EventKind {
     const val SELL = "sell"
     const val ORDER_UPDATE = "order_update"
     const val ORDER_PROBLEM = "order_problem"
+    const val ENGINE = "engine"
+    const val SESSION = "session"
+    const val READINESS = "readiness"
+    const val FIDELITY_SIGNIN = "fidelity_signin"
+    const val ACCOUNT_CHECK = "account_check"
     const val CONNECTED = "connected"
     const val DISCONNECTED = "disconnected"
     const val TRADING_SWITCH = "trading_switch"
-    const val ENGINE = "engine"
+    const val REFUSED = "refused"
+    const val BRIDGE = "bridge"
 
     /** A test the app asked for: never numbered, never kept by the bridge. */
     const val TEST = "test"
 
-    /** Every kind the bridge sends, in its order (notifications.py's EVENT_KINDS). */
-    val ALL = listOf(BUY, SELL, ORDER_UPDATE, ORDER_PROBLEM, CONNECTED, DISCONNECTED, TRADING_SWITCH, ENGINE)
+    /**
+     * Every kind the bridge sends, in its order (notifications.py's EVENT_KINDS;
+     * the shared vectors hold the list both sides check). A bridge newer than
+     * this app may send others: they are shown too, under their own name.
+     */
+    val ALL = listOf(
+        BUY, SELL, ORDER_UPDATE, ORDER_PROBLEM, ENGINE, SESSION, READINESS, FIDELITY_SIGNIN,
+        ACCOUNT_CHECK, CONNECTED, DISCONNECTED, TRADING_SWITCH, REFUSED, BRIDGE,
+    )
 
     fun label(kind: String): String = when (kind) {
         BUY -> "Buys filled"
         SELL -> "Sells filled"
         ORDER_UPDATE -> "Orders accepted, cancelled or expired"
         ORDER_PROBLEM -> "Orders rejected, refused or unknown"
+        ENGINE -> "Engine started, paused, halted or stopped"
+        SESSION -> "Session ended unexpectedly, or a second trader refused"
+        READINESS -> "Not ready to trade, or ready again (and before the open)"
+        FIDELITY_SIGNIN -> "Fidelity signed out"
+        ACCOUNT_CHECK -> "Account check failed, or passed again"
         CONNECTED -> "Extension connected or reconnected"
         DISCONNECTED -> "Extension disconnected"
         TRADING_SWITCH -> "\"Allow trading\" switched on or off"
-        ENGINE -> "Engine started, paused, halted or stopped"
+        REFUSED -> "A connection to the bridge was refused"
+        BRIDGE -> "Bridge port taken, or bridge restarting"
         TEST -> "Test notifications"
         else -> kind
     }
@@ -90,12 +109,16 @@ data class ExtensionStatus(
     val connected: Boolean,
     val since: String?,
     val disconnectedAt: String?,
+    /** The WebSocket close code its last connection ended with, while it is away. */
+    val disconnectCode: Long?,
     val version: String?,
     /** What the bridge says to do about the extension's version, if anything. */
     val advice: String?,
     /** Its "Allow trading" switch; null before it has said. */
     val trading: Boolean?,
     val previews: Boolean?,
+    /** Its Fidelity tab: signed_in, signed_out, no_tab, elsewhere; null before it has said. */
+    val fidelity: String?,
 ) {
     companion object {
         fun parse(obj: JsonObject?): ExtensionStatus? = obj?.let {
@@ -103,10 +126,94 @@ data class ExtensionStatus(
                 connected = it.bool("connected") == true,
                 since = it.string("since"),
                 disconnectedAt = it.string("disconnectedAt"),
+                disconnectCode = it.long("disconnectCode"),
                 version = it.string("version"),
                 advice = it.string("advice"),
                 trading = it.bool("trading"),
                 previews = it.bool("previews"),
+                fidelity = it.string("fidelity"),
+            )
+        }
+    }
+}
+
+/** One link of the readiness chain (the bridge's readiness.py). */
+data class ReadinessItem(
+    val id: String,
+    val label: String,
+    /** ok, warn, fail or unknown. */
+    val state: String,
+    val detail: String,
+    val fix: String?,
+) {
+    companion object {
+        fun parse(obj: JsonObject?): ReadinessItem? {
+            val id = obj?.string("id") ?: return null
+            return ReadinessItem(
+                id = id,
+                label = obj.string("label") ?: id,
+                state = obj.string("state") ?: "unknown",
+                detail = obj.string("detail").orEmpty(),
+                fix = obj.string("fix"),
+            )
+        }
+    }
+}
+
+/** The last read-only account check. */
+data class AccountCheck(val at: String?, val ok: Boolean, val detail: String, val by: String?) {
+    companion object {
+        fun parse(obj: JsonObject?): AccountCheck? = obj?.let {
+            AccountCheck(
+                at = it.string("at"),
+                ok = it.bool("ok") == true,
+                detail = it.string("detail").orEmpty(),
+                by = it.string("by"),
+            )
+        }
+    }
+}
+
+/**
+ * The bridge host's part of the status: whether the connection is ready to
+ * trade, the chain behind that verdict, what is attached, the last account
+ * check, the next open. Null from a bridge without a host (`serve`).
+ */
+data class HostStatus(
+    val ready: Boolean,
+    /** The first failing link's id, or null when ready. */
+    val blocking: String?,
+    val summary: String,
+    val fix: String?,
+    val items: List<ReadinessItem>,
+    val listening: Boolean,
+    val mode: String?,
+    val symbol: String?,
+    /** The process attached -- "loop" during a session -- or null. */
+    val attached: String?,
+    val attachedSince: String?,
+    val lastCheck: AccountCheck?,
+    val sessionOpen: Boolean,
+    val nextOpen: String?,
+) {
+    companion object {
+        fun parse(obj: JsonObject?): HostStatus? = obj?.let {
+            val attached = it["attached"] as? JsonObject
+            HostStatus(
+                ready = it.bool("ready") == true,
+                blocking = it.string("blocking"),
+                summary = it.string("summary").orEmpty(),
+                fix = it.string("fix"),
+                items = (it["items"] as? JsonArray).orEmpty()
+                    .mapNotNull { item -> ReadinessItem.parse(item as? JsonObject) },
+                listening = it.bool("listening") == true,
+                mode = it.string("mode"),
+                symbol = it.string("symbol"),
+                attached = attached?.string("process"),
+                attachedSince = attached?.string("since"),
+                lastCheck = AccountCheck.parse(it["lastCheck"] as? JsonObject),
+                sessionOpen = it.bool("sessionOpen") == true,
+                nextOpen = it.string("nextOpen"),
             )
         }
     }
@@ -135,13 +242,23 @@ data class EngineStatus(
     }
 }
 
-data class BridgeStatus(val extension: ExtensionStatus?, val engine: EngineStatus?) {
+/**
+ * What the bridge shows apps: the extension's side, a trading session's
+ * engine (null between sessions), and the bridge host's readiness (null
+ * without a host).
+ */
+data class BridgeStatus(
+    val extension: ExtensionStatus?,
+    val engine: EngineStatus?,
+    val bridge: HostStatus? = null,
+) {
     companion object {
-        val UNKNOWN = BridgeStatus(null, null)
+        val UNKNOWN = BridgeStatus(null, null, null)
 
         fun parse(obj: JsonObject?): BridgeStatus = BridgeStatus(
             extension = ExtensionStatus.parse(obj?.get("extension") as? JsonObject),
             engine = EngineStatus.parse(obj?.get("engine") as? JsonObject),
+            bridge = HostStatus.parse(obj?.get("bridge") as? JsonObject),
         )
     }
 }
@@ -158,7 +275,7 @@ sealed interface BridgeMessage {
 
     data class StatusMessage(val status: BridgeStatus) : BridgeMessage
 
-    /** The bridge is stopping on purpose: the engine's session ended. */
+    /** The bridge is stopping on purpose: a restart or a deploy. It is back shortly. */
     data class Goodbye(val reason: String) : BridgeMessage
 
     /** Something this version does not know: ignored, never an error. */

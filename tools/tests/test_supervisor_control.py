@@ -107,6 +107,76 @@ def test_crashes_are_still_capped(control, clock, monkeypatch):
     assert supervisor._run_until(args(), POLL, clock.now + 36000, control, "session") == 1
 
 
+def test_a_broker_that_cannot_be_reached_yet_is_waited_for_not_counted(control, clock, monkeypatch):
+    """10-22 and 10-23: five fast failures to reach Fidelity spent the
+    restart cap, then fifteen minutes passed with the page saying "between
+    sessions". A start that could not reach the broker is retried until the
+    session ends, uncounted, with the trader's own reason on the page."""
+    from engine.trading.runtime_lifecycle import EXIT_BROKER_UNAVAILABLE
+
+    reported: list[tuple[str, str]] = []
+    original_report = control.report
+
+    def report(state, detail="", **fields):
+        reported.append((state, detail))
+        return original_report(state, detail, **fields)
+
+    control.report = report
+    calls = []
+
+    def run_session(_args, ticks, deadline, _control):
+        calls.append(clock.now)
+        if len(calls) <= 5:  # more failures than max_restarts (3) allows
+            control.inbox.write_status(
+                state="recovery_required",
+                detail="broker connection failed: Port 8765 is already in use",
+                process="loop",
+            )
+            clock.now += 5
+            return EXIT_BROKER_UNAVAILABLE
+        clock.now = deadline  # then it connects and trades the session
+        return 0
+
+    monkeypatch.setattr(supervisor, "run_session", run_session)
+    monkeypatch.setattr(supervisor, "log", lambda _message: None)
+    start = clock.now
+    assert supervisor._run_until(args(), POLL, start + 36000, control, "session") == 0
+    assert len(calls) == 6, "never given up on"
+    assert calls[1] - calls[0] == 5 + supervisor.BROKER_RETRY_SECONDS
+    assert ("waiting_for_broker", "broker connection failed: Port 8765 is already in use") in (
+        reported
+    )
+
+
+def test_waiting_for_the_broker_says_disabled_once_disabled(control, clock, monkeypatch):
+    """Disabled from the page during the wait: the page is told "disabled",
+    not that it is still waiting to trade."""
+    from engine.trading.runtime_lifecycle import EXIT_BROKER_UNAVAILABLE
+
+    states: list[str] = []
+    original_report = control.report
+
+    def report(state, detail="", **fields):
+        states.append(state)
+        return original_report(state, detail, **fields)
+
+    def run_session(_args, ticks, deadline, _control):
+        return EXIT_BROKER_UNAVAILABLE
+
+    original_sleep = clock.sleep
+
+    def sleep(seconds):
+        original_sleep(seconds)
+        control.inbox.set_desired(enabled=False, wind_down=False, by="op", reason="page")
+
+    control.report = report
+    control._sleep = sleep
+    monkeypatch.setattr(supervisor, "run_session", run_session)
+    monkeypatch.setattr(supervisor, "log", lambda _message: None)
+    supervisor._run_until(args(), POLL, clock.now + 600, control, "session")
+    assert states[:2] == ["waiting_for_broker", "disabled"]
+
+
 def test_without_a_control_directory_it_behaves_as_before(clock, monkeypatch):
     calls = []
 
@@ -194,3 +264,86 @@ def test_a_fidelity_supervisor_names_its_own_account(monkeypatch, tmp_path):
     tag = reported(config)
     assert tag.startswith("fidelity-") and "999888777" not in tag
     assert reported(tmp_path / "missing.yaml") == account_fingerprint()
+
+
+# -- a Fidelity session starts when its bridge host says it is ready ------------------
+
+
+def test_the_session_waits_for_the_bridge_to_be_ready_and_says_why(control, clock, monkeypatch):
+    answers = iter(
+        [(False, "Fidelity is not ready: Fidelity tab: Fidelity signed you out")] * 3
+        + [(True, "ready")]
+    )
+    runs = []
+    states: list[tuple[str, str]] = []
+    original_report = control.report
+
+    def report(state, detail="", **fields):
+        states.append((state, detail))
+        return original_report(state, detail, **fields)
+
+    def run_session(_args, ticks, deadline, _control):
+        runs.append(clock.now)
+        clock.now = deadline
+        return 0
+
+    control.report = report
+    monkeypatch.setattr(supervisor, "run_session", run_session)
+    monkeypatch.setattr(supervisor, "log", lambda _message: None)
+    start = clock.now
+    code = supervisor._run_until(
+        args(), POLL, start + 3600, control, "session", gate=lambda: next(answers)
+    )
+    assert code == 0 and len(runs) == 1
+    assert runs[0] == start + 3 * control.slice_seconds, "launched as soon as it turned ready"
+    assert (
+        "waiting_for_broker",
+        "Fidelity is not ready: Fidelity tab: Fidelity signed you out",
+    ) in (states)
+
+
+def test_a_bridge_never_ready_runs_no_loop(control, clock, monkeypatch):
+    def run_session(*_a):
+        raise AssertionError("no loop may start on a bridge that is not ready")
+
+    monkeypatch.setattr(supervisor, "run_session", run_session)
+    monkeypatch.setattr(supervisor, "log", lambda _message: None)
+    gate = lambda: (False, "Fidelity is not ready: Extension: not connected")  # noqa: E731
+    assert supervisor._run_until(args(), POLL, clock.now + 600, control, "session", gate=gate) == 0
+    assert control.inbox.status()["state"] == "waiting_for_broker"
+
+
+def test_the_bridge_verdict_reads_the_hosts_status_file():
+    from datetime import UTC, datetime
+
+    now = 1_800_000_000.0
+    fresh = datetime.fromtimestamp(now - 5, UTC).isoformat()
+    stale = datetime.fromtimestamp(now - 600, UTC).isoformat()
+    ready = {"updated_at": fresh, "heartbeat_seconds": 15, "readiness": {"ready": True}}
+    blocked = {
+        "updated_at": fresh,
+        "heartbeat_seconds": 15,
+        "readiness": {
+            "ready": False,
+            "summary": "Allow trading: off: every order is refused in the browser",
+            "fix": 'turn "Allow trading" on',
+        },
+    }
+    assert supervisor.bridge_verdict(ready, now) == (True, "ready")
+    ok, why = supervisor.bridge_verdict(blocked, now)
+    assert not ok and "Allow trading: off" in why and 'turn "Allow trading" on' in why
+    for silent in (None, {**ready, "updated_at": stale}, {**ready, "state": "stopped"}):
+        ok, why = supervisor.bridge_verdict(silent, now)
+        assert not ok and "fidelity-bridge" in why
+
+
+def test_only_a_fidelity_deployment_with_a_bridge_host_is_gated(monkeypatch, tmp_path):
+    fidelity = SimpleNamespace(live=SimpleNamespace(broker="fidelity"))
+    alpaca = SimpleNamespace(live=SimpleNamespace(broker="alpaca"))
+    with_dir = SimpleNamespace(control_dir=str(tmp_path))
+    monkeypatch.delenv("VAI_BRIDGE_SOCKET", raising=False)
+    assert supervisor._broker_gate(with_dir, fidelity) is None, "it holds its own bridge"
+    monkeypatch.setenv("VAI_BRIDGE_SOCKET", "/app/bridge/bridge.sock")
+    assert supervisor._broker_gate(with_dir, alpaca) is None
+    gate = supervisor._broker_gate(with_dir, fidelity)
+    assert gate is not None and gate()[0] is False, "no status yet: not ready"

@@ -80,7 +80,7 @@ RUN useradd --create-home --uid 1000 runner \
     && mkdir -p /app/state /app/state-ultimate /app/state-production /app/state-fidelity \
         /app/data /app/config /app/output /app/warehouse /app/backups \
         /app/control /app/controls/paper-ultimate /app/controls/paper /app/controls/live \
-        /app/controls/fidelity \
+        /app/controls/fidelity /app/bridge \
     && chown -R runner:runner /app
 USER runner
 

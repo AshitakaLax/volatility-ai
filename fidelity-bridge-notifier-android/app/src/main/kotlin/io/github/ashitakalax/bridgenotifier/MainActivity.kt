@@ -21,12 +21,17 @@ import io.github.ashitakalax.bridgenotifier.core.BridgeAddress
 import io.github.ashitakalax.bridgenotifier.core.BridgeClient
 import io.github.ashitakalax.bridgenotifier.core.BridgeStatus
 import io.github.ashitakalax.bridgenotifier.core.EventKind
+import io.github.ashitakalax.bridgenotifier.core.HostStatus
 import io.github.ashitakalax.bridgenotifier.core.Notification
 
 /** One screen: how the bridge is, what it said lately, and the settings. */
 class MainActivity : Activity() {
     private lateinit var prefs: Prefs
     private lateinit var linkText: TextView
+    private lateinit var readinessText: TextView
+    private lateinit var readinessList: LinearLayout
+    private lateinit var sessionText: TextView
+    private lateinit var checkText: TextView
     private lateinit var extensionText: TextView
     private lateinit var tradingText: TextView
     private lateinit var engineText: TextView
@@ -48,6 +53,10 @@ class MainActivity : Activity() {
         extensionText = view(R.id.extension_text)
         tradingText = view(R.id.trading_text)
         engineText = view(R.id.engine_text)
+        readinessText = view(R.id.readiness_text)
+        readinessList = view(R.id.readiness_list)
+        sessionText = view(R.id.session_text)
+        checkText = view(R.id.check_text)
         recentList = view(R.id.recent_list)
         recentEmpty = view(R.id.recent_empty)
         addressInput = view(R.id.address_input)
@@ -92,9 +101,9 @@ class MainActivity : Activity() {
         for (kind in EventKind.ALL) {
             val box = CheckBox(this)
             box.text = EventKind.label(kind)
-            box.isChecked = kind in prefs.enabledKinds
+            box.isChecked = kind !in prefs.disabledKinds
             box.setOnCheckedChangeListener { _, checked ->
-                prefs.enabledKinds = if (checked) prefs.enabledKinds + kind else prefs.enabledKinds - kind
+                prefs.disabledKinds = if (checked) prefs.disabledKinds - kind else prefs.disabledKinds + kind
             }
             container.addView(box)
         }
@@ -155,7 +164,54 @@ class MainActivity : Activity() {
         linkText.setTextColor(getColor(color))
     }
 
+    /** Ready to trade, or the one thing to fix -- and the chain behind it. */
+    private fun renderReadiness(host: HostStatus?) {
+        readinessList.removeAllViews()
+        if (host == null) {
+            readinessText.text = getString(R.string.readiness_unknown)
+            readinessText.setTextColor(getColor(R.color.status_idle))
+            sessionText.visibility = View.GONE
+            checkText.visibility = View.GONE
+            return
+        }
+        readinessText.text = if (host.ready) {
+            getString(R.string.readiness_ready)
+        } else {
+            getString(R.string.readiness_not_ready, host.summary) +
+                (host.fix?.let { "\n" + getString(R.string.readiness_fix, it) } ?: "")
+        }
+        readinessText.setTextColor(getColor(if (host.ready) R.color.status_ok else R.color.status_bad))
+        for (item in host.items) {
+            val (mark, color) = when (item.state) {
+                "ok" -> "✓" to R.color.status_ok
+                "warn" -> "!" to R.color.status_warn
+                "fail" -> "✗" to R.color.status_bad
+                else -> "?" to R.color.status_idle
+            }
+            val row = TextView(this)
+            row.text = "$mark ${item.label}: ${item.detail}" +
+                (item.fix?.takeIf { item.state == "fail" }?.let { "\n   " + getString(R.string.readiness_fix, it) } ?: "")
+            row.setTextColor(getColor(color))
+            readinessList.addView(row)
+        }
+        sessionText.visibility = View.VISIBLE
+        sessionText.text = when {
+            host.sessionOpen && host.attached == "loop" ->
+                getString(R.string.session_open_attached, ago(host.attachedSince))
+            host.sessionOpen -> getString(R.string.session_open_none)
+            else -> getString(R.string.session_closed, ago(host.nextOpen))
+        }
+        checkText.visibility = View.VISIBLE
+        val check = host.lastCheck
+        checkText.text = when {
+            check == null -> getString(R.string.check_never)
+            check.ok -> getString(R.string.check_passed, ago(check.at), check.detail)
+            else -> getString(R.string.check_failed, ago(check.at), check.detail)
+        }
+    }
+
     private fun renderStatus(status: BridgeStatus) {
+        renderReadiness(status.bridge)
         val extension = status.extension
         extensionText.text = when {
             extension == null -> getString(R.string.unknown)

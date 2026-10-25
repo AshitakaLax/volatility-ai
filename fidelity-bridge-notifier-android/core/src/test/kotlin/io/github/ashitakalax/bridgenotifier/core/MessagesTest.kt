@@ -70,6 +70,46 @@ class MessagesTest {
     }
 
     @Test
+    fun theBridgeHostsReadinessIsRead() {
+        val status = (
+            BridgeMessage.parse(
+                obj(
+                    """{"type":"status","status":{
+                    "extension":{"connected":true,"fidelity":"signed_out","disconnectCode":null},
+                    "engine":null,
+                    "bridge":{"ready":false,"blocking":"fidelity",
+                      "summary":"Fidelity tab: Fidelity signed you out",
+                      "fix":"sign in to Fidelity again in that browser",
+                      "items":[{"id":"bridge","label":"Bridge","state":"ok","detail":"listening","fix":null},
+                               {"id":"fidelity","label":"Fidelity tab","state":"fail",
+                                "detail":"Fidelity signed you out","fix":"sign in again"},
+                               {"label":"no id: skipped"}],
+                      "listening":true,"mode":"live","symbol":"RSP",
+                      "attached":{"process":"loop","since":"2026-10-26T13:31:00+00:00"},
+                      "lastCheck":{"at":"2026-10-26T13:00:00+00:00","ok":false,"detail":"signed out","by":"30 min before the open"},
+                      "sessionOpen":true,"nextOpen":"2026-10-27T13:30:00+00:00"}}}""",
+                ),
+            ) as BridgeMessage.StatusMessage
+            ).status
+        assertEquals("signed_out", status.extension!!.fidelity)
+        assertNull(status.engine)
+        val host = status.bridge!!
+        assertFalse(host.ready)
+        assertEquals("fidelity", host.blocking)
+        assertEquals(listOf("bridge", "fidelity"), host.items.map { it.id })
+        assertEquals("fail", host.items[1].state)
+        assertEquals("loop", host.attached)
+        assertEquals(false, host.lastCheck!!.ok)
+        assertTrue(host.sessionOpen)
+    }
+
+    @Test
+    fun aBridgeWithoutAHostHasNoReadiness() {
+        val status = BridgeStatus.parse(obj("""{"extension":{"connected":true}}"""))
+        assertNull(status.bridge)
+    }
+
+    @Test
     fun aStatusWithNoEngineYet() {
         val status = (BridgeMessage.parse(obj("""{"type":"status","status":{"extension":{"connected":false},"engine":null}}""")) as BridgeMessage.StatusMessage).status
         assertFalse(status.extension!!.connected)

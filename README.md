@@ -117,7 +117,10 @@ flag *and* a strategy hook.
 - **Browser-extension bridge** — the Fidelity Bridge extension (submodule
   `fidelity-bridge-chrome-extension/`) connects to a local WebSocket
   server with an HMAC handshake; the engine drives the tab you signed into
-  by hand, and nothing on a working path logs in.
+  by hand, and nothing on a working path logs in. In the compose deployment
+  the bridge is a service of its own, up between sessions: it says whether
+  the connection is ready (and the one thing to fix when not), journals
+  every disconnect, and each session's trading loop attaches to it.
 - **Preview-only and placing brokers** — separate classes; placing sits
   behind explicit gates, with a journal of confirmation numbers written
   before each commit and read back on start.
@@ -126,10 +129,12 @@ flag *and* a strategy hook.
   the live algorithm.
 - **Discovery tools** — traffic capture, HAR analysis and redaction, and
   reconnaissance over a remote-debugging port.
-- **Notifications on your phone** — the bridge can tell an app, as it happens,
-  of fills, order problems, the extension connecting or going away, its
-  trading switch and the engine's state. It does this on a read-only listener
-  with its own port and key. The Android app is
+- **Notifications on your phone** — the bridge service can tell an app, as it
+  happens, of fills, order problems, not being ready to trade (and what to
+  fix), Fidelity signing you out, the extension connecting or going away, its
+  trading switch, the account checks and the session's state, between
+  sessions too. It does this on a read-only listener with its own port and
+  key. The Android app is
   `fidelity-bridge-notifier-android/`, kept as if it were its own repository.
 
 ### Operations (`cli.py`, `tools/`, Docker)

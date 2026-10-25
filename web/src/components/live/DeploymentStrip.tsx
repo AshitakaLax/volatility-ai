@@ -1,12 +1,7 @@
 import { Badge } from "@/components/ui/primitives";
-import {
-  algorithmName,
-  byBroker,
-  chip,
-  fidelityChip,
-  sharedAccounts,
-  type BrokerSection,
-} from "@/lib/control";
+import { useNow } from "@/hooks/useNow";
+import { algorithmName, byBroker, chip, sharedAccounts, type BrokerSection } from "@/lib/control";
+import { verdict } from "@/lib/fidelity";
 import { cn, usd } from "@/lib/utils";
 import type { DeploymentSummary } from "@/types/control";
 
@@ -104,14 +99,14 @@ function DeploymentCard({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const now = useNow(5000);
   const state = chip(deployment);
   const lots = deployment.ledger?.open_lots;
   const algorithm = deployment.algorithm;
   const status = deployment.status;
-  const fidelity =
-    deployment.broker === "fidelity"
-      ? fidelityChip(status?.fidelity, Boolean(status && !status.stale))
-      : null;
+  // A Fidelity deployment's connection, as its bridge host judges it:
+  // ready, trading, or the one thing to fix -- between sessions too.
+  const fidelity = deployment.broker === "fidelity" ? verdict(deployment, now) : null;
   return (
     <button
       type="button"

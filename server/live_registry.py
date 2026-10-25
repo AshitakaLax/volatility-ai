@@ -76,6 +76,14 @@ class Deployment:
     def inbox(self) -> ControlInbox | None:
         return ControlInbox(self.control_dir) if self.control_dir is not None else None
 
+    def bridge_inbox(self) -> ControlInbox | None:
+        """A Fidelity deployment's bridge host's own corner of the control
+        directory (fidelity_gateway/bridge/host.py): its status, its events,
+        and the check_connection commands it applies."""
+        if self.control_dir is None:
+            return None
+        return ControlInbox(self.control_dir / "bridge")
+
 
 _config_cache: dict[Path, tuple[float, BacktestConfig]] = {}
 _registry_cache: dict[Path, tuple[float, dict[str, Deployment]]] = {}

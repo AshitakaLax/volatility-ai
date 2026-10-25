@@ -8,6 +8,8 @@ circuit breaker, not in a response body.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 import yaml
 from fastapi.testclient import TestClient
@@ -371,3 +373,129 @@ def test_real_money_switches_at_most_once_a_day(client, deployments, tmp_path, m
         send(client, "paper", "switch_algorithm", args={"profile_id": "fixed-tqqq"}).status_code
         == 202
     )
+
+
+# -- a Fidelity deployment's bridge host --------------------------------------------
+
+
+@pytest.fixture
+def fidelity(tmp_path, monkeypatch, deployments):
+    """The three deployments above, and a real-money Fidelity one beside them."""
+    config = {
+        "strategy": {"strategy_id": "fixed", "strategy_params": {"allocation_pct": 0.05}},
+        "grid": {"steps": [0.01], "profit_targets": [0.005]},
+        "backtest": {"symbol": "RSP", "initial_cash": 10_000.0},
+        "live": {
+            "enabled": True,
+            "paper_trading": False,
+            "step": 0.01,
+            "profit_target": 0.005,
+            "broker": "fidelity",
+            "fidelity": {
+                "allowed_accounts": ["999888777"],
+                "account": "999888777",
+                "account_name": "Traditional IRA",
+                "dry_run": False,
+                "allowed_symbols": ["RSP"],
+                "max_order_value": 2_000.0,
+            },
+        },
+    }
+    path = tmp_path / "fidelity.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    ledger = tmp_path / "fidelity.db"
+    LedgerStore(str(ledger)).close()
+    entries = {
+        **deployments,
+        "fid": {
+            "label": "Fidelity",
+            "config": str(path),
+            "state_db": str(ledger),
+            "control_dir": str(tmp_path / "control-fid"),
+            "broker": "fidelity",
+        },
+    }
+    registry = tmp_path / "deployments.yaml"
+    registry.write_text(yaml.safe_dump({"deployments": entries}), encoding="utf-8")
+    monkeypatch.setenv("VAI_DEPLOYMENTS", str(registry))
+    return entries["fid"]
+
+
+def _bridge(entry, **fields) -> ControlInbox:
+    inbox = ControlInbox(f"{entry['control_dir']}/bridge", clock=fields.pop("clock", time.time))
+    inbox.write_status(
+        state="listening",
+        process="bridge",
+        heartbeat_seconds=15.0,
+        listening=True,
+        readiness={"ready": False, "blocking": "fidelity", "summary": "Fidelity tab: signed out"},
+        **fields,
+    )
+    return inbox
+
+
+class TestFidelityBridge:
+    def test_the_bridge_hosts_report_reaches_the_strip(self, client, fidelity):
+        _bridge(fidelity, connection={"connected": True, "client": "172.16.0.130"})
+        listed = {d["id"]: d for d in client.get("/api/live/deployments").json()}
+        bridge = listed["fid"]["bridge"]
+        assert bridge["stale"] is False and bridge["readiness"]["blocking"] == "fidelity"
+        assert bridge["connection"]["client"] == "172.16.0.130"
+        assert "pid" not in bridge
+        assert listed["paper"]["bridge"] is None, "an Alpaca deployment has no bridge"
+
+    def test_a_silent_bridge_host_is_called_stale(self, client, fidelity):
+        _bridge(fidelity, clock=lambda: 1_000_000.0)  # long ago
+        listed = {d["id"]: d for d in client.get("/api/live/deployments").json()}
+        assert listed["fid"]["bridge"]["stale"] is True
+
+    def test_no_bridge_host_ever_is_none(self, client, fidelity):
+        listed = {d["id"]: d for d in client.get("/api/live/deployments").json()}
+        assert listed["fid"]["bridge"] is None
+
+    def test_a_check_goes_to_the_bridge_host_without_a_typed_id(self, client, fidelity):
+        """Read-only, so real money or not it needs no confirmation -- and it
+        is queued where the bridge host applies it, never the trader's inbox."""
+        response = send(client, "fid", "check_connection")
+        assert response.status_code == 202, response.text
+        body = response.json()
+        assert "bridge host is not running" in body["warning"]
+        assert [c.id for c in ControlInbox(f"{fidelity['control_dir']}/bridge").queued()] == [
+            body["command"]["id"]
+        ]
+        assert ControlInbox(fidelity["control_dir"]).queued() == []
+        detail = client.get("/api/live/deployments/fid").json()
+        assert detail["commands"][0]["type"] == "check_connection"
+        assert detail["pending"] == 1
+
+        cancelled = client.post(
+            f"/api/live/deployments/fid/commands/{body['command']['id']}/cancel",
+            json={"operator": "tester"},
+        )
+        assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
+
+    def test_a_running_bridge_host_takes_the_check_without_a_warning(self, client, fidelity):
+        _bridge(fidelity)
+        assert send(client, "fid", "check_connection").json()["warning"] is None
+
+    def test_only_a_fidelity_deployment_checks_a_connection(self, client, fidelity):
+        response = send(client, "paper", "check_connection")
+        assert response.status_code == 409 and "bridge host" in response.json()["detail"]
+
+    def test_a_check_takes_no_arguments(self, client, fidelity):
+        response = send(client, "fid", "check_connection", args={"deep": True})
+        assert response.status_code == 422
+
+    def test_the_bridge_journal_is_served_oldest_first_within_the_hours_asked(
+        self, client, fidelity
+    ):
+        inbox = ControlInbox(f"{fidelity['control_dir']}/bridge")
+        now = time.time()
+        inbox.record_event({"t": now - 3 * 24 * 3600, "kind": "connected", "detail": "old"})
+        inbox.record_event({"t": now - 120, "kind": "disconnected", "detail": "went away"})
+        inbox.record_event({"t": now - 60, "kind": "connected", "detail": "came back"})
+        events = client.get("/api/live/deployments/fid/bridge/events?hours=48").json()
+        assert [e["detail"] for e in events] == ["went away", "came back"]
+        everything = client.get("/api/live/deployments/fid/bridge/events?hours=96").json()
+        assert len(everything) == 3
+        assert client.get("/api/live/deployments/paper/bridge/events").json() == []

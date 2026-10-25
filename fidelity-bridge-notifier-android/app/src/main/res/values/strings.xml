@@ -11,7 +11,7 @@
     <string name="link_connecting">Connecting to %1$s…</string>
     <string name="link_connected">● Connected to %1$s</string>
     <string name="link_waiting">Not connected: %1$s. Trying again in %2$d s.</string>
-    <string name="link_stopped_by_bridge">The bridge stopped: %1$s. Checking again in %2$d s.</string>
+    <string name="link_stopped_by_bridge">The bridge is restarting: %1$s. Reconnecting in %2$d s.</string>
     <string name="link_refused">Not watching: %1$s</string>
 
     <string name="extension_connected">Extension %1$s connected %2$s</string>
@@ -19,9 +19,20 @@
     <string name="trading_on">Allow trading: on</string>
     <string name="trading_off">Allow trading: OFF. Every order is refused.</string>
     <string name="trading_unknown">Allow trading: not reported yet</string>
-    <string name="engine_unknown">Engine: not reported yet</string>
+    <string name="engine_unknown">Engine: no trading session running</string>
     <string name="engine_last_tick">last tick %1$s</string>
     <string name="unknown">unknown</string>
+
+    <string name="readiness_ready">✓ Ready to trade</string>
+    <string name="readiness_not_ready">✗ Not ready: %1$s</string>
+    <string name="readiness_fix">To fix: %1$s</string>
+    <string name="readiness_unknown">Readiness: not reported. This bridge runs without its host service.</string>
+    <string name="session_open_attached">Market open · trading session running since %1$s</string>
+    <string name="session_open_none">Market open · no trading session attached</string>
+    <string name="session_closed">Market closed · next open %1$s</string>
+    <string name="check_never">No account check since the extension connected</string>
+    <string name="check_passed">Last account check %1$s: passed (%2$s)</string>
+    <string name="check_failed">Last account check %1$s: FAILED (%2$s)</string>
 
     <string name="recent_empty">Nothing yet. Notifications appear here as the bridge sends them.</string>
 
@@ -30,7 +41,7 @@
     <string name="key_help">On the bridge\'s computer, run python -m fidelity_gateway.bridge keygen --notify and paste the key it prints. It is not the extension\'s key.</string>
     <string name="plaintext_warning">ws:// is not encrypted. Messages are signed, so they cannot be forged, but anyone on this network can read them. From outside your home network, reach the bridge over a VPN (WireGuard, Tailscale). Never open its port to the internet.</string>
     <string name="notifications_off">Notifications are off for this app, so nothing will be shown. Turn them on in the system settings.</string>
-    <string name="alert_unreachable">Tell me when the bridge cannot be reached for 2 minutes</string>
+    <string name="alert_unreachable">Tell me when the bridge cannot be reached for 2 minutes (10 while it restarts)</string>
 
     <string name="save_and_watch">Save and start watching</string>
     <string name="send_test">Send a test notification</string>
@@ -42,9 +53,9 @@
     <string name="channel_trades">Trades</string>
     <string name="channel_trades_description">Buys and sells filled, and orders accepted or cancelled</string>
     <string name="channel_bridge">Bridge and engine</string>
-    <string name="channel_bridge_description">The extension connecting, its trading switch, the engine starting and stopping</string>
+    <string name="channel_bridge_description">The extension connecting, its trading switch, the engine starting and stopping, ready to trade again</string>
     <string name="channel_warnings">Warnings</string>
-    <string name="channel_warnings_description">Orders rejected or unknown, the engine paused or halted, the bridge out of reach</string>
+    <string name="channel_warnings_description">Orders rejected or unknown, not ready to trade, Fidelity signed out, failed account checks, the engine paused or halted, the bridge out of reach</string>
     <string name="channel_monitor">Watching</string>
     <string name="channel_monitor_description">The ongoing notification Android needs while the app keeps its connection open</string>
 
@@ -52,7 +63,7 @@
     <string name="monitor_connecting">Connecting to %1$s…</string>
     <string name="monitor_connected">Connected to %1$s</string>
     <string name="monitor_waiting">%1$s unreachable: %2$s</string>
-    <string name="monitor_bridge_stopped">%1$s stopped for now; checking back periodically</string>
+    <string name="monitor_bridge_restarting">%1$s is restarting; reconnecting</string>
     <string name="monitor_refused">Not watching: the bridge refused the key</string>
 
     <string name="link_lost_title">Bridge out of reach</string>

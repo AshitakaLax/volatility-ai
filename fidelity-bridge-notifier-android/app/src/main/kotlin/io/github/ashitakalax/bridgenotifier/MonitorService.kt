@@ -110,7 +110,7 @@ class MonitorService : Service() {
         client?.stop()
         client = null
         main.removeCallbacks(checkAlarm)
-        alarm.stoppedDeliberately()
+        alarm.reset()
         networkCallback?.let { connectivity.unregisterNetworkCallback(it) }
         networkCallback = null
     }
@@ -167,17 +167,20 @@ class MonitorService : Service() {
             }
             is BridgeClient.Link.Waiting -> {
                 lastReason = link.reason
-                if (link.deliberate) {
-                    alarm.stoppedDeliberately()
-                    Alerts.updateMonitor(this, getString(R.string.monitor_bridge_stopped, host))
-                } else {
-                    alarm.lost(SystemClock.uptimeMillis())
-                    scheduleAlarmCheck()
-                    Alerts.updateMonitor(this, getString(R.string.monitor_waiting, host, link.reason))
-                }
+                // A goodbye is the always-on bridge restarting: given longer to come back.
+                alarm.lost(SystemClock.uptimeMillis(), restarting = link.deliberate)
+                scheduleAlarmCheck()
+                Alerts.updateMonitor(
+                    this,
+                    if (link.deliberate) {
+                        getString(R.string.monitor_bridge_restarting, host)
+                    } else {
+                        getString(R.string.monitor_waiting, host, link.reason)
+                    },
+                )
             }
             is BridgeClient.Link.Refused -> {
-                alarm.stoppedDeliberately()
+                alarm.reset()
                 Alerts.postRefused(this, link.reason)
                 Alerts.updateMonitor(this, getString(R.string.monitor_refused))
             }
@@ -188,7 +191,7 @@ class MonitorService : Service() {
 
     private fun onNotificationReceived(notification: Notification, fresh: Boolean) {
         MonitorState.update { it.copy(recent = (listOf(notification) + it.recent).take(MonitorState.RECENT)) }
-        if (fresh && (notification.isTest || notification.kind in prefs.enabledKinds)) {
+        if (fresh && notification.kind !in prefs.disabledKinds) {
             Alerts.post(this, notification)
         }
     }

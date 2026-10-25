@@ -925,7 +925,9 @@ def cmd_live(args: argparse.Namespace) -> int:
             # the session and the broker the config asks for.
             from fidelity_gateway.live import connect_live
 
-            connection = connect_live(config, state_db=db_path)
+            connection = connect_live(
+                config, state_db=db_path, process="check" if args.check_only else "loop"
+            )
             connected["broker"] = connection.broker
             connected["close"] = connection.close
             connected["connection"] = connection
@@ -950,24 +952,36 @@ def cmd_live(args: argparse.Namespace) -> int:
         connection = connected.get("connection")
         inbox = _control_inbox(args)
         if final_state.value != "READY":
+            # The reason itself, not "see the engine's log": the Live page and
+            # the extension are where an operator looks, and on 10-23 the
+            # cause (the bridge's port taken) was in neither.
+            why = _startup_failure(lifecycle, final_state.value)
             if inbox is not None:
                 inbox.write_status(
                     state="recovery_required",
-                    detail=f"startup stopped at {final_state.value}; see the engine's log",
+                    detail=why,
                     process="loop",
                     heartbeat_seconds=600.0,
+                    stage=lifecycle.failed_stage.value if lifecycle.failed_stage else None,
+                    retryable=lifecycle.retryable,
+                    broker=config.live.broker,
                 )
             store.close()
+            print(f"Startup stopped: {why}")
             print(
                 "Did not reach READY. The state above names the stage that stopped startup; "
                 "RECONCILIATION_REQUIRED means local and broker state disagree and a human "
                 "must resolve it before trading resumes."
             )
             if connection is not None:
-                connection.report(
-                    state="halted",
-                    detail=f"startup stopped at {final_state.value}; see the engine's log",
-                )
+                connection.report(state="halted", detail=why)
+            if lifecycle.retryable:
+                # Nothing a human must fix: the extension not connected yet,
+                # Fidelity signed out, the bridge's port taken. The supervisor
+                # waits and tries again instead of counting a crash.
+                from engine.trading.runtime_lifecycle import EXIT_BROKER_UNAVAILABLE
+
+                return EXIT_BROKER_UNAVAILABLE
             return 1
 
         print("READY -- broker connected and local state reconciles with the broker.")
@@ -1036,13 +1050,29 @@ _TICK_DETAIL = {
 }
 
 
+def _algorithm_of(config) -> dict:
+    return {
+        "strategy_id": config.strategy.strategy_id,
+        "strategy_params": dict(config.strategy.strategy_params or {}),
+        "step": config.live.step,
+        "profit_target": config.live.profit_target,
+    }
+
+
 def _algorithm_status(config, algorithm) -> dict:
-    """The algorithm part of the engine's status, for the extension."""
+    """The algorithm part of the engine's status, for the extension: what it
+    is, and what it does in a line (live_algorithm.algorithm_summary)."""
+    from research.strategies.live_algorithm import algorithm_summary
+
     status = {
         "strategy": config.strategy.strategy_id,
         "step": config.live.step,
         "profitTarget": config.live.profit_target,
+        "summary": algorithm_summary(_algorithm_of(config), config.backtest.symbol),
     }
+    deployment = os.environ.get("VAI_DEPLOYMENT")
+    if deployment:
+        status["deployment"] = deployment
     if algorithm is not None:
         status["algorithm"] = {
             "source": "extension" if algorithm.allowed and algorithm.path.exists() else "config",
@@ -1069,6 +1099,24 @@ def _fidelity_status(config, connection) -> dict:
             "max_order_value": settings.max_order_value,
         },
     }
+
+
+def _ledger_tag(state_db) -> str:
+    """The ledger a trader trades, for its status: the file's name and a
+    one-way tag of its full path -- the same name on another path (a run by
+    hand on the host's state/ instead of the container's volume) differs."""
+    import hashlib
+
+    path = Path(state_db).resolve()
+    return f"{path.name} {hashlib.sha256(str(path).encode()).hexdigest()[:6]}"
+
+
+def _startup_failure(lifecycle, state: str) -> str:
+    """Why startup stopped, in one line: what went wrong, and the state it
+    left (RuntimeLifecycle keeps both)."""
+    if not lifecycle.failure:
+        return f"startup stopped in {state}"
+    return f"{lifecycle.failure} (startup stopped in {state})"
 
 
 def _control_inbox(args):
@@ -1231,7 +1279,7 @@ def _run_trading_loop(
 
     if inbox is not None:
         from engine.trading.operator_control import LoopControl, account_tag
-        from research.strategies.live_algorithm import algorithm_handlers
+        from research.strategies.live_algorithm import algorithm_handlers, algorithm_summary
 
         def _stop_for_operator(why: str) -> None:
             print(f"Stopping: {why} -- finishing the current tick.", file=sys.stderr)
@@ -1265,8 +1313,15 @@ def _run_trading_loop(
                     "strategy_id": current["config"].strategy.strategy_id,
                     "step": current["config"].live.step,
                     "profit_target": current["config"].live.profit_target,
+                    "summary": algorithm_summary(
+                        _algorithm_of(current["config"]), current["config"].backtest.symbol
+                    ),
                     "override": algorithm.override_info() if algorithm is not None else None,
                 },
+                # Which deployment this is, and which ledger it trades: a
+                # trader run by hand on another ledger shows as one.
+                "deployment": os.environ.get("VAI_DEPLOYMENT"),
+                "ledger": _ledger_tag(args.state_db),
                 # What the loop will do next and why, and -- while an
                 # override trades -- what switching back would do now.
                 "now": current["loop"].decision,

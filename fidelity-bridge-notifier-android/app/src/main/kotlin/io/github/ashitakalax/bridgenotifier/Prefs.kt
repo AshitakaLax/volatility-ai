@@ -27,10 +27,16 @@ class Prefs(context: Context) : PositionStore {
         get() = prefs.getBoolean(MONITORING, false)
         set(value) = prefs.edit().putBoolean(MONITORING, value).apply()
 
-    /** Which kinds are shown as notifications. All of them until changed. */
-    var enabledKinds: Set<String>
-        get() = prefs.getStringSet(KINDS, null)?.toSet() ?: EventKind.ALL.toSet()
-        set(value) = prefs.edit().putStringSet(KINDS, value).apply()
+    /**
+     * The kinds the user switched off. Everything else is shown -- a kind a
+     * newer bridge sends, that this app does not know yet, included.
+     * (Settings from before kept the kinds switched ON; read the other way.)
+     */
+    var disabledKinds: Set<String>
+        get() = prefs.getStringSet(DISABLED_KINDS, null)?.toSet()
+            ?: prefs.getStringSet(ENABLED_KINDS_BEFORE, null)?.let { EventKind.ALL.toSet() - it }
+            ?: emptySet()
+        set(value) = prefs.edit().putStringSet(DISABLED_KINDS, value).remove(ENABLED_KINDS_BEFORE).apply()
 
     /** Whether the app says so when it cannot reach the bridge. */
     var alertWhenUnreachable: Boolean
@@ -62,7 +68,8 @@ class Prefs(context: Context) : PositionStore {
         const val URL = "url"
         const val API_KEY = "api_key"
         const val MONITORING = "monitoring"
-        const val KINDS = "kinds"
+        const val DISABLED_KINDS = "disabled_kinds"
+        const val ENABLED_KINDS_BEFORE = "kinds"
         const val ALERT_UNREACHABLE = "alert_unreachable"
         const val UNREACHABLE_GRACE = "unreachable_grace_ms"
         const val STREAM = "position_stream"

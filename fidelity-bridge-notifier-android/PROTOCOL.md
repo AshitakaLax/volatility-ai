@@ -14,8 +14,11 @@ so nothing proved on one connection counts on the other.
 ## Where
 
 A WebSocket at `ws://<host>:<port>/notifications`, 8766 by default, separate
-from the extension's socket on 8765. The bridge refuses, before any
-handshake:
+from the extension's socket on 8765. The bridge host -- volatility-ai's
+always-on `fidelity-bridge` service -- runs it whenever
+`live.fidelity.bridge.notifications` is enabled, between trading sessions
+too. `python -m fidelity_gateway.bridge serve --notify` runs one beside a
+bare bridge, to try it out. The bridge refuses, before any handshake:
 
 - a client address outside its allowed list, or on its blocked list (HTTP 403);
 - a request with a web page's `Origin` (`http://…`, `https://…` or `null`) (HTTP 403);
@@ -85,8 +88,10 @@ network.
   `{"type": "notification", "notification": {"id", "stream", "kind", "severity", "title", "body", "at", "data"}, "replay": true?}`
   - `id` counts from 1 within `stream`. A test notification has id `0`, and
     the bridge never keeps it.
-  - `kind`: `buy`, `sell`, `order_update`, `order_problem`, `connected`,
-    `disconnected`, `trading_switch`, `engine`, or `test`. Unknown kinds may
+  - `kind`: `buy`, `sell`, `order_update`, `order_problem`, `engine`,
+    `session`, `readiness`, `fidelity_signin`, `account_check`, `connected`,
+    `disconnected`, `trading_switch`, `refused`, `bridge`, or `test`. The
+    vectors' `eventKinds` is the list both sides check. Unknown kinds may
     come later: show them.
   - `severity`: `info`, `warning` or `critical`. `at` is ISO-8601 UTC.
     `data` carries the details (an order's `confNum`, `symbol`, `side`,
@@ -99,16 +104,34 @@ network.
 - **status**, whenever it changes:
   ```json
   {"type": "status", "status": {
-    "extension": {"connected": true, "since": "…", "disconnectedAt": null, "version": "1.4.0",
-                  "advice": null, "trading": true, "previews": true},
+    "extension": {"connected": true, "since": "…", "disconnectedAt": null, "disconnectCode": null,
+                  "version": "0.7.0", "advice": null, "trading": true, "previews": true,
+                  "fidelity": "signed_in"},
     "engine": {"mode": "live", "state": "running", "detail": "trading", "symbol": "TQQQ",
-               "lastTickAt": "…", "updatedAt": "…", …} }}
+               "lastTickAt": "…", "updatedAt": "…", …},
+    "bridge": {"ready": false, "blocking": "fidelity",
+               "summary": "Fidelity tab: Fidelity signed you out",
+               "fix": "sign in to Fidelity again in that browser",
+               "items": [{"id": "bridge", "label": "Bridge", "state": "ok", "detail": "…", "fix": null}, …],
+               "listening": true, "listenError": null, "mode": "live", "deployment": "fidelity",
+               "symbol": "TQQQ", "attached": {"process": "loop", "since": "…"},
+               "lastCheck": {"at": "…", "ok": true, "detail": "…", "by": "10 min before the open"},
+               "sessionOpen": true, "nextOpen": "…"} }}
   ```
-  `engine` is `null` until the engine has said anything. `trading` and
-  `previews` are `null` until the extension has.
+  - `engine` is a trading session's own status, `null` between sessions.
+  - `bridge` is the bridge host's readiness: the verdict, the first failing
+    link and its fix, and the whole chain (`bridge`, `extension`, `version`,
+    `fidelity`, `trading`, `account`, each `ok`, `warn`, `fail` or
+    `unknown`). It is `null` from a bridge without its host (`serve`). It is
+    sent when its meaning changes; its wording ("last heard 4 s ago") is
+    refreshed at most once a minute.
+  - `trading`, `previews` and `fidelity` (`signed_in`, `signed_out`,
+    `no_tab`, `elsewhere`) are `null` until the extension has said.
 - **goodbye**, `{"type": "goodbye", "reason": "…"}`: the bridge is
-  stopping on purpose (the engine runs one session at a time). The
-  connection then closes. Try again later, without alarm.
+  stopping on purpose. The host runs all the time, so this is a restart (a
+  deploy, a config change) and it is back within seconds. The connection
+  then closes; reconnect shortly, and only alarm if it stays away (the app
+  allows 10 minutes).
 
 Ignore any `type` you do not know.
 

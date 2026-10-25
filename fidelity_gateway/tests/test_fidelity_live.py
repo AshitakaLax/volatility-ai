@@ -208,32 +208,17 @@ def test_the_connection_report_adds_whether_it_places_real_orders(tmp_path):
     assert connection.connection_report() == {"mode": "live"}
 
 
-def test_notifications_reach_the_bridge_only_when_enabled(tmp_path):
+def test_a_session_never_starts_the_apps_listener(tmp_path):
+    """Apps' notifications belong to the bridge host, which outlives every
+    session: a session's bridge is not asked for them, enabled or not."""
     bridge = FakeBridge()
-    live.connect_live(
-        _config(), state_db=tmp_path / "ledger.db", bridge_opener=bridge, log=lambda _m: None
-    )
-    assert bridge.kwargs["notify"] is None
-
-    bridge = FakeBridge()
-    notifications = {
-        "enabled": True,
-        "host": "0.0.0.0",
-        "port": 9124,
-        "allowed_clients": ["192.168.1.0/24"],
-        "events": ["buy", "sell", "engine"],
-    }
     config = _config(
         bridge={
             "host": "127.0.0.1",
             "port": 9123,
             "allowed_clients": ["127.0.0.1"],
-            "notifications": notifications,
+            "notifications": {"enabled": True, "port": 9124},
         }
     )
     live.connect_live(config, state_db=tmp_path / "ledger.db", bridge_opener=bridge, log=print)
-    notify = bridge.kwargs["notify"]
-    assert (notify.host, notify.port) == ("0.0.0.0", 9124)
-    assert notify.allowed_clients == ("192.168.1.0/24",)
-    assert notify.blocked_clients == ()
-    assert notify.events == ("buy", "sell", "engine")
+    assert "notify" not in bridge.kwargs

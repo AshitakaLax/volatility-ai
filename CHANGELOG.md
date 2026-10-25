@@ -2,47 +2,111 @@
 
 ## The bridge sends notifications to a phone
 
-**Nothing told you when the engine bought, sold or stopped** unless you were
-at the computer: the Live page, the extension's popup and the logs all live
-there.
-- **The bridge now tells apps what it sees, as it happens.**
+**Nothing told you when the engine bought, sold or stopped, or that the
+connection would not be ready for the open,** unless you were at the
+computer: the Live page, the extension's popup and the logs all live there.
+- **The bridge host now tells apps what it sees, as it happens.**
   `fidelity_gateway/bridge/notifications.py` turns each event into a
   notification of one kind:
-  - a fill (`buy`, `sell`), from the extension's order reports;
-  - a rejected, refused or unknown order (`order_problem`);
-  - the extension connecting or going away (`connected`, `disconnected`);
-  - its "Allow trading" switch (`trading_switch`);
-  - a new engine state (`engine`).
+  - a fill (`buy`, `sell`), from the extension's order reports, and a
+    rejected, refused or unknown order (`order_problem`);
+  - a trader's engine changing state (`engine`), a second trader refused or
+    a session ending without saying it stopped (`session`);
+  - not ready to trade, and the one thing to fix; not ready 15 minutes
+    before an open; ready again (`readiness`);
+  - a Fidelity sign-out (`fidelity_signin`), a failed account check
+    (`account_check`), the extension coming and going (`connected`,
+    `disconnected`), its "Allow trading" switch (`trading_switch`), a
+    refused connection (`refused`), the bridge's own port (`bridge`).
 
   `live.fidelity.bridge.notifications.events` chooses which are sent.
   Accepted, cancelled and expired orders (`order_update`) are off by default.
-- **On a listener of its own.** `notify_server.py` runs on its own port
-  (8766), with its own address lists and its own key,
-  `FIDELITY_BRIDGE_NOTIFY_KEY` (`keygen --notify`). A phone on the LAN can
-  reach it while the extension's socket stays on this computer.
-  - The extension's key is refused here: whoever holds that one can pose as
-    the extension and receive every request the engine makes.
-  - The listener is read-only. An app can ask for a test notification and
-    nothing else.
+- **From the always-on `fidelity-bridge` service, not the session.** A
+  session's bridge now attaches to the host and lives only as long as the
+  session, so the host owns the apps' hub and listener: a phone stays
+  connected overnight, a bridge the host restarts with new settings keeps
+  the apps' stream, and an edit to the notifications alone restarts only
+  their listener. One that cannot start (no key, a taken port) is reported
+  and retried; a phone never stops the bridge.
+- **On a listener of its own.** Its own port (8766), address lists and key,
+  `FIDELITY_BRIDGE_NOTIFY_KEY` (`keygen --notify`); the extension's key is
+  refused there. Read-only: an app can ask for a test notification and
+  nothing else.
 - **The same protocol design as the extension's.** `fidelity-bridge-notify/v1`
   uses HMAC proofs both ways, so the key never crosses the wire. Every frame
   after the handshake is sealed, so on a plain `ws://` LAN nobody can forge
   a "Sold" notification.
 - **An app that was away catches up.** Notifications are numbered within a
-  stream that is new each run, and the last 200 are kept. A reconnecting app
-  is sent exactly what it missed.
+  stream that is new each host run, and the last 200 are kept. A
+  reconnecting app is sent exactly what it missed, and is shown the host's
+  readiness checklist, what is attached, the last account check and the
+  next open.
 - **Only news.**
-  - The engine's state is reported when it changes, not at every tick.
-  - The trading switch is reported when it flips, not when first reported.
-  - The engine stopping the bridge is a goodbye, not a disconnection.
+  - An engine's state when it changes, never the host's standby status.
+  - The trading switch when it flips; a sign-out once, not again at every
+    reconnect; a refusal once per address and reason per 10 minutes.
+  - Not ready only after a minute, and not again for a cause its own kind
+    already said.
   - An order the extension's resent log mentions, which this bridge never
-    heard of, is history unless it changed after the bridge started.
-    Without that rule, the first connect would announce the whole log.
+    heard of, is history unless it changed after the host started.
 - **`fidelity-bridge-notifier-android/`** is the app: Kotlin, minSdk 26,
   kept as if it were its own repository. Its `core/` (the protocol, and the
   client on OkHttp) is a separate Gradle build that tests without the
-  Android SDK. Its `PROTOCOL.md` is the spec. Its protocol vectors are
-  reproduced by `fidelity_gateway/tests/test_bridge_notify_protocol.py`.
+  Android SDK. Its `PROTOCOL.md` is the spec. Its protocol vectors, and the
+  list of kinds, are reproduced by
+  `fidelity_gateway/tests/test_bridge_notify_protocol.py`.
+
+## The Fidelity connection stays up, says whether it is ready, and explains its disconnects
+
+**Fidelity traded nothing on 10-22 or 10-23, and neither cause reached the
+Live page.** On 10-22 the extension never connected; on 10-23 a bridge and a
+trading loop started by hand held port 8765 all day and the container's
+trader failed 65 times on "Address already in use". Both days the page said
+"between sessions": the trader's status read "see the engine's log", and
+five fast failures spent the supervisor's restart cap before a 15-minute
+wait. The bridge lived inside each session's `cli.py live`, so nothing
+listened between sessions, every failed start dropped the extension, and
+anything else that wanted the port fought the trader for it.
+- **The bridge is a service of its own** (`fidelity_gateway/bridge/host.py`,
+  compose `fidelity-bridge`), up for the deployment's life. The extension
+  connects once and stays connected; recreating the trader does not drop it.
+  Each session's loop attaches over a Unix socket only the two Fidelity
+  services mount (`bridge/attach.py`; `open_bridge()` attaches whenever
+  `VAI_BRIDGE_SOCKET` is set) and is handed what the extension already said
+  -- its headers, tab, switches and order log -- so it connects in seconds.
+  Errors keep their meaning across the link: an order is ambiguous exactly
+  when it was before. One process attaches at a time, and a second is told
+  which holds it.
+- **Ready, or the one thing to fix** (`bridge/readiness.py`): listening; the
+  extension connected and heard from in the last minute; its version; the
+  Fidelity tab signed in (new: from its `tab` events); "Allow trading" on;
+  the last account check. The supervisor starts a Fidelity session only once
+  it is ready ("Waiting for Fidelity", with why). `check_connection` from
+  the page, and the bridge by itself 30 and 10 minutes before each open,
+  reads the account through the extension, read-only.
+- **Every failure says why.** `RuntimeLifecycle` keeps the stage and reason
+  a start stopped with, and the trader's status carries it. A start that
+  could not reach the broker for a reason that clears by itself (a
+  `BrokerUnavailableError`: no extension, signed out, the port taken) exits
+  3, and the supervisor retries it every minute instead of counting a crash.
+  The bridge names a taken port, an address it turned away and a key that
+  did not match (`last_refused`), and how each connection ended.
+- **The bridge journals its connection** (`bridge/events/`, 14 days):
+  connects, disconnects with their close codes, refusals, sign-ins and
+  sign-outs, the trading switch, attaches, verdicts, checks.
+- **The Live page's Fidelity section** is built on it: one verdict ("Ready
+  for Mon 09:30 ET", "Not ready: Fidelity tab"), the chain Bridge ->
+  Extension -> Fidelity tab -> Allow trading -> Trader -> Account check with
+  the first broken link's fix, what is running, Check connection, and a
+  48-hour timeline that says how long each disconnect lasted.
+- **An algorithm is described by what it does**
+  (`live_algorithm.algorithm_summary`), on the page and in the extension:
+  `ultimate_rsp` as a regime-timed book rebalanced at minute 60, not "target
+  1000%" -- a target set out of reach on purpose.
+- **The extension (0.7.0)** shows "Standing by: ready / not ready" with the
+  next open, the deployment and the algorithm's summary; logs Fidelity's
+  overnight sign-out without a toast while standing by, and toasts "Not
+  ready for the open" instead when an open is near. 0.6.0 still works.
 
 ## The warehouse is kept current daily, and three index funds join it
 
@@ -84,6 +148,10 @@ after-market bars, from 2016, where Alpaca's minutes begin.
   --fund SPY IWM EEM`): every strategy that is not bound to an RSP model,
   with each fund's own minutes per session for the grid strategies, which
   trade every bar.
+- **Its runs go to the shards.** The tool queued every run `local_only`,
+  so a connected `cli.py shard` sat idle; that is now `--local-only`, asked
+  for. A shard runs its own checkout's engine, so it must be on the
+  server's commit for its results to be this code's.
 
 ## Ultimate-RSP can trade live
 

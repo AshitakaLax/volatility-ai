@@ -119,7 +119,7 @@ def test_subscribers_hear_notifications_and_status_in_order_until_they_close():
     heard: list = []
     subscription = hub.subscribe(lambda kind, payload: heard.append((kind, payload)))
     hub.publish("buy", "a", "")
-    hub.set_status({"engine": {"state": "running"}})
+    hub.update_status(engine={"state": "running"})
     subscription.close()
     hub.publish("sell", "b", "")
     assert [kind for kind, _ in heard] == ["notification", "status"]
@@ -130,10 +130,12 @@ def test_the_status_is_sent_only_when_it_changes_and_is_handed_to_new_subscriber
     hub = _hub()
     heard: list = []
     hub.subscribe(lambda kind, payload: heard.append(kind))
-    hub.set_status({"engine": None})
-    hub.set_status({"engine": None})
+    hub.update_status(engine=None)
+    hub.update_status(engine=None)
     assert heard == ["status"]
-    assert hub.subscribe(lambda *_: None).status == {"engine": None}
+    hub.update_status(bridge={"ready": True})
+    assert heard == ["status", "status"]
+    assert hub.subscribe(lambda *_: None).status == {"engine": None, "bridge": {"ready": True}}
 
 
 def test_a_failing_listener_is_logged_and_the_others_still_hear():
@@ -282,3 +284,178 @@ def test_a_resent_report_on_an_order_already_known_is_news_whenever_it_changed()
     hub = _hub()
     filled = _report(state="filled", filled_qty=3, avg_price=70, updated_at="2026-10-23T19:00:00Z")
     assert hub.order_report(filled, _report(), resent=True).title == "Bought 3 TQQQ"
+
+
+# -- what the always-on bridge host adds ---------------------------------------------
+
+
+def _verdict(blocking=None, summary="ready", fix=None) -> dict:
+    return {
+        "ready": blocking is None,
+        "blocking": blocking,
+        "summary": summary,
+        "fix": fix,
+        "items": [],
+    }
+
+
+SIGNED_OUT = _verdict(
+    "fidelity", "Fidelity tab: Fidelity signed you out", "sign in to Fidelity again"
+)
+NO_EXTENSION = _verdict(
+    "extension", "Extension: not connected", "open the browser with the extension"
+)
+
+
+def test_not_ready_is_said_only_after_the_grace_and_once_per_cause():
+    hub = _hub()
+    assert hub.readiness(NO_EXTENSION, now=0) is None
+    assert hub.readiness(NO_EXTENSION, now=59) is None, "a browser restarting is not news"
+    said = hub.readiness(NO_EXTENSION, now=60)
+    assert (said.kind, said.title, said.severity) == ("readiness", "Not ready to trade", "warning")
+    assert said.body == "Extension: not connected. To fix: open the browser with the extension."
+    assert said.data["blocking"] == "extension"
+    assert hub.readiness(NO_EXTENSION, now=600) is None, "the same cause is said once"
+    then = hub.readiness(SIGNED_OUT, now=700)
+    assert then.data["blocking"] == "fidelity", "a new cause is new"
+
+
+def test_a_cause_its_own_kind_already_said_is_not_said_again():
+    hub = _hub()
+    hub.fidelity_tab("signed_in")
+    assert hub.fidelity_tab("signed_out").title == "Fidelity signed you out"
+    hub.readiness(SIGNED_OUT, now=0)
+    assert hub.readiness(SIGNED_OUT, now=120) is None
+    assert [n.kind for n in hub.recent()] == ["fidelity_signin"]
+
+
+def test_a_cause_is_still_said_when_its_own_kind_is_switched_off():
+    hub = _hub(events=("readiness",))
+    hub.fidelity_tab("signed_in")
+    hub.fidelity_tab("signed_out")
+    hub.readiness(SIGNED_OUT, now=0)
+    assert hub.readiness(SIGNED_OUT, now=120).title == "Not ready to trade"
+
+
+def test_an_extension_that_never_connected_is_said_by_readiness():
+    """A host just started: nothing disconnected, so nothing said it yet."""
+    hub = _hub()
+    hub.readiness(NO_EXTENSION, now=0)
+    assert hub.readiness(NO_EXTENSION, now=60).title == "Not ready to trade"
+
+
+def test_ready_again_after_an_outage_that_was_said():
+    hub = _hub()
+    hub.readiness(NO_EXTENSION, now=0)
+    hub.readiness(NO_EXTENSION, now=60)
+    back = hub.readiness(_verdict(), now=400)
+    assert (back.title, back.severity) == ("Ready to trade", "info")
+    assert "6m 40s" in back.body
+    assert hub.readiness(_verdict(), now=401) is None
+
+
+def test_a_blip_is_not_news_either_way():
+    hub = _hub()
+    hub.extension_disconnected(peer="127.0.0.1")
+    hub.readiness(NO_EXTENSION, now=0)
+    assert hub.readiness(_verdict(), now=20) is None
+    assert [n.kind for n in hub.recent()] == ["disconnected"]
+
+
+def test_not_ready_before_an_open_is_urgent_and_said_once_for_that_open():
+    hub = _hub()
+    hub.fidelity_tab("signed_in")
+    hub.fidelity_tab("signed_out")  # said by its own kind
+    hub.readiness(SIGNED_OUT, now=0)
+    hub.readiness(SIGNED_OUT, now=120)  # nothing: already said
+    kwargs = {"opens_soon": True, "opens_in_minutes": 14.6, "next_open": "2026-10-26T13:30Z"}
+    warned = hub.readiness(SIGNED_OUT, now=200, **kwargs)
+    assert (warned.title, warned.severity) == ("Not ready for the open", "critical")
+    assert warned.body.startswith("The market opens in 15 min")
+    assert "To fix: sign in to Fidelity again." in warned.body
+    assert hub.readiness(SIGNED_OUT, now=300, **kwargs) is None
+
+
+def test_not_ready_while_a_session_is_open_is_critical():
+    hub = _hub()
+    hub.readiness(NO_EXTENSION, now=0, session_open=True)
+    said = hub.readiness(NO_EXTENSION, now=60, session_open=True)
+    assert (said.title, said.severity) == ("Not ready to trade", "critical")
+
+
+def test_account_checks_failures_and_passing_again():
+    hub = _hub()
+    assert hub.account_check({"ok": True, "detail": "1 order(s) listed", "by": "x"}) is None
+    failed = hub.account_check({"ok": False, "detail": "signed out", "by": "30 min before"})
+    assert (failed.title, failed.severity) == ("Account check failed", "warning")
+    assert failed.body == "The read-only check of the account (30 min before) failed: signed out."
+    assert hub.account_check({"ok": False, "detail": "a check is running", "busy": True}) is None
+    passed = hub.account_check({"ok": True, "detail": "1 order(s) listed", "by": "x"})
+    assert passed.title == "Account check passed"
+
+
+def test_a_session_that_ends_without_saying_so_is_news():
+    hub = _hub()
+    who = "the trading loop (pid 41)"
+    stopped = {"state": "stopped", "detail": "the session ended"}
+    assert hub.session_ended(process="loop", who=who, status=stopped) is None
+    assert hub.session_ended(process="check", who="a connection check", status=None) is None
+    ended = hub.session_ended(process="loop", who=who, status={"state": "running", "detail": "t"})
+    assert (ended.kind, ended.severity) == ("session", "warning")
+    assert ended.body.startswith("The trading loop (pid 41) detached without saying it had stopped")
+    silent = hub.session_ended(process="loop", who=who, status=None)
+    assert silent.body.endswith("It had not reported anything.")
+
+
+def test_a_second_trader_refused():
+    said = _hub().session_refused("Refused the trading loop (pid 9): one at a time.")
+    assert (said.kind, said.title) == ("session", "A second trader was turned away")
+
+
+def test_the_bridges_own_port():
+    hub = _hub()
+    assert hub.bridge_listening("ws://127.0.0.1:8765/fidelity-bridge") is None
+    conflict = hub.bridge_port_conflict("Port 8765 on 0.0.0.0 is already in use.")
+    assert (conflict.kind, conflict.severity) == ("bridge", "critical")
+    assert hub.bridge_listening("ws://x").title == "Bridge listening again"
+    assert hub.bridge_restarting().title == "Bridge restarting"
+
+
+def test_the_fidelity_tab_is_remembered_across_reconnects():
+    hub = _hub()
+    assert hub.fidelity_tab("signed_in") is None, "how things are, not news"
+    assert hub.fidelity_tab("signed_out").severity == "warning"
+    assert hub.fidelity_tab("signed_out") is None, "the extension reconnecting says it again"
+    assert hub.fidelity_tab("signed_in") is None, "readiness says it is ready again"
+    assert hub.fidelity_tab("no_tab").title == "No Fidelity tab is open"
+    assert hub.fidelity_tab("elsewhere") is None
+
+
+def test_a_refusal_repeated_by_a_retrying_extension_is_said_once():
+    now = [STARTED]
+    hub = _hub(clock=lambda: now[0])
+    assert hub.connection_refused(peer="10.0.0.9", reason="wrong key").kind == "refused"
+    now[0] += 60
+    assert hub.connection_refused(peer="10.0.0.9", reason="wrong key") is None
+    assert hub.connection_refused(peer="10.0.0.9", reason="address not allowed") is not None
+    now[0] += 600
+    assert hub.connection_refused(peer="10.0.0.9", reason="wrong key") is not None
+
+
+def test_only_an_engines_state_changes_are_news():
+    hub = _hub()
+    assert hub.engine_status({"mode": "bridge", "state": "paused"}) is None
+    assert hub.engine_status({"mode": "live", "state": "starting"}).title == "Engine starting"
+    assert hub.engine_status({"mode": "live", "state": "starting", "lastTickAt": "t"}) is None
+    assert hub.engine_status({"mode": "bridge", "state": "running"}) is None
+    stopped = hub.engine_status({"mode": "live", "state": "stopped"})
+    assert stopped.data["previous"] == "starting"
+
+
+def test_the_kinds_sent_can_change_without_a_new_stream():
+    hub = _hub(events=("buy",))
+    hub.set_events(("sell",))
+    assert hub.events == ("sell",)
+    assert hub.stream == "s1"
+    with pytest.raises(ConfigurationError):
+        hub.set_events(("sold",))

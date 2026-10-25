@@ -1,5 +1,5 @@
 {
-  "description": "fidelity-bridge-notify/v1 test vectors. Reproduced by the app's ProtocolVectorsTest and the bridge's fidelity_gateway/tests/test_bridge_notify_protocol.py; a change to either side's protocol must keep both passing. The second message holds non-ASCII text, so both must MAC the payload's UTF-8 bytes.",
+  "description": "fidelity-bridge-notify/v1 test vectors. Reproduced by the app's ProtocolVectorsTest and the bridge's fidelity_gateway/tests/test_bridge_notify_protocol.py; a change to either side's protocol must keep both passing. The second message holds non-ASCII text, so both must MAC the payload's UTF-8 bytes. eventKinds is every notification kind, in the bridge's order: both sides check their own list against it.",
   "protocol": "fidelity-bridge-notify/v1",
   "apiKey": "notify-vector-key-0123456789abcdefghijklmnopqrstuvwxyz",
   "bridgeNonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -26,5 +26,21 @@
       "payload": "{\"type\":\"test\"}",
       "mac": "6e5def3b690157f2521bc5fa3d94600283160cd21571ba99af989a6a2a60b3bd"
     }
+  ],
+  "eventKinds": [
+    "buy",
+    "sell",
+    "order_update",
+    "order_problem",
+    "engine",
+    "session",
+    "readiness",
+    "fidelity_signin",
+    "account_check",
+    "connected",
+    "disconnected",
+    "trading_switch",
+    "refused",
+    "bridge"
   ]
 }

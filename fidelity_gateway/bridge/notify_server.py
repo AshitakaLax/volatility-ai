@@ -91,6 +91,20 @@ class NotifySettings:
     blocked_clients: tuple[str, ...] = ()
     events: tuple[str, ...] = DEFAULT_EVENTS
 
+    @classmethod
+    def from_config(cls, notifications) -> NotifySettings | None:
+        """live.fidelity.bridge.notifications (engine/core/config.py's
+        FidelityNotificationsConfig) as settings, or None when not enabled."""
+        if notifications is None or not notifications.enabled:
+            return None
+        return cls(
+            host=notifications.host,
+            port=notifications.port,
+            allowed_clients=tuple(notifications.allowed_clients),
+            blocked_clients=tuple(notifications.blocked_clients),
+            events=tuple(notifications.events),
+        )
+
 
 def _client_text(value: Any, limit: int = 60) -> str:
     """What an app says about itself, safe for one log line."""

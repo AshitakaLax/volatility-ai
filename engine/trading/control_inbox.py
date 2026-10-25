@@ -30,6 +30,9 @@ LAYOUT -- one directory per deployment, a volume both containers mount
   status.json               what the trader is doing, rewritten as it works
   bars/<session>.jsonl      the minute bars the trader traded on
   fills/<session>.jsonl     every fill it booked, with its price
+  bridge/                   a Fidelity deployment's bridge host (fidelity_gateway/
+                            bridge/host.py): its own inbox, status.json and
+                            events/<day>.jsonl -- the same layout, one level down
 
 Every write is a temporary file renamed into place, so a reader sees a whole
 file or none. Claim and cancel are both a rename OUT of inbox/, so exactly
@@ -78,6 +81,10 @@ COMMAND_TYPES = (
     "revert_algorithm",
     "rewarm",
     "reset_paper_ledger",
+    # Read-only: a Fidelity deployment's bridge host checks the account
+    # through the extension. Queued in its own inbox (bridge/), never a
+    # trader's.
+    "check_connection",
 )
 
 # When a command applies. "now" is the trader's next tick (or at once
@@ -99,9 +106,11 @@ _MAX_ARGS_BYTES = 16 * 1024
 _ID = re.compile(r"^[0-9a-f]{12}$")
 _LOCK = threading.Lock()
 
-# The trader's journals (module docstring), and how many sessions each keeps.
-JOURNALS = ("bars", "fills")
+# The journals (module docstring), and how many sessions -- Eastern dates --
+# each keeps. "events" is the bridge host's: connects, disconnects, sign-outs.
+JOURNALS = ("bars", "fills", "events")
 JOURNAL_SESSIONS = 10
+_KEEP = {"events": 14}
 _JOURNAL_FILE = re.compile(r"^\d{4}-\d{2}-\d{2}\.jsonl$")
 _EASTERN = ZoneInfo("America/New_York")
 
@@ -419,6 +428,15 @@ class ControlInbox:
         "price", ...})."""
         return self._append("fills", [fill])
 
+    def record_event(self, event: dict) -> int:
+        """Append one event ({"t": epoch seconds, "kind", "detail", ...}) --
+        the bridge host's account of its connection."""
+        return self._append("events", [event])
+
+    def events(self, days: int = 2) -> list[dict]:
+        """The last `days` days' events, oldest first."""
+        return sorted(self._journal("events", days), key=lambda row: row["t"])
+
     def bars(self, sessions: int = 2) -> list[dict]:
         """The last `sessions` sessions' bars, oldest first, one per minute:
         a minute recorded twice (a tick that re-read its bar) keeps the later
@@ -459,7 +477,7 @@ class ControlInbox:
                     )
                 written += len(by_session[session])
             if started:
-                for old in self._journal_files(name)[:-JOURNAL_SESSIONS]:
+                for old in self._journal_files(name)[: -_KEEP.get(name, JOURNAL_SESSIONS)]:
                     old.unlink(missing_ok=True)
         except (OSError, KeyError, TypeError, ValueError) as exc:
             logger.warning(f"Could not record to the {name} journal in {self.root}: {exc}")
