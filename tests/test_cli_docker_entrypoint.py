@@ -1151,3 +1151,81 @@ def test_backtest_with_return_full_results_does_not_crash(config_path, warehouse
     assert result.returncode == 0, result.stderr
     assert "combination(s) evaluated" in result.stdout
     assert "does not yet write them to disk" in result.stdout
+
+
+def test_live_on_a_taken_bridge_port_says_so_and_asks_to_be_retried(tmp_path):
+    """10-23: a bridge started by hand held the port all day and the
+    trader's status said only "see the engine's log". Now the reason is in
+    its status, and the exit code (EXIT_BROKER_UNAVAILABLE) tells the
+    supervisor to wait and try again rather than count a crash."""
+    import json
+    import socket
+
+    pytest.importorskip("websockets")
+    import yaml
+
+    from engine.trading.runtime_lifecycle import EXIT_BROKER_UNAVAILABLE
+
+    holder = socket.socket()
+    holder.bind(("127.0.0.1", 0))
+    holder.listen()
+    port = holder.getsockname()[1]
+    config = tmp_path / "fidelity.yaml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "strategy": {"strategy_id": "fixed", "strategy_params": {"allocation_pct": 0.05}},
+                "grid": {"steps": [0.01], "profit_targets": [0.005]},
+                "backtest": {"symbol": "TQQQ", "initial_cash": 10_000.0},
+                "live": {
+                    "enabled": True,
+                    "paper_trading": False,
+                    "step": 0.01,
+                    "profit_target": 0.005,
+                    "broker": "fidelity",
+                    "fidelity": {
+                        "allowed_accounts": ["999888777"],
+                        "account": "999888777",
+                        "account_name": "Traditional IRA",
+                        "dry_run": False,
+                        "allowed_symbols": ["TQQQ"],
+                        "max_order_value": 2_000.0,
+                        "bridge": {"host": "127.0.0.1", "port": port},
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    control = tmp_path / "control"
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "FIDELITY_BRIDGE_API_KEY": "bridge-test-key-0123456789abcdefghijklmnopqrstuv",
+    }
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(CLI),
+                "live",
+                "--config",
+                str(config),
+                "--state-db",
+                str(tmp_path / "ledger.db"),
+                "--control-dir",
+                str(control),
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=env,
+        )
+    finally:
+        holder.close()
+    assert result.returncode == EXIT_BROKER_UNAVAILABLE, result.stdout + result.stderr
+    status = json.loads((control / "status.json").read_text(encoding="utf-8"))
+    assert status["state"] == "recovery_required"
+    assert status["stage"] == "CONNECT_BROKER" and status["retryable"] is True
+    assert f"Port {port}" in status["detail"] and "already in use" in status["detail"]
+    assert "see the engine's log" not in status["detail"]

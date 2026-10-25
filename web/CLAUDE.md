@@ -23,7 +23,8 @@ src/
 │   │                      #   (chart, trade log, sweep matrix, fund comparison) is the "result" tab
 │   ├── live/               # LiveTab: DeploymentStrip (Alpaca and Fidelity sections), OverviewCard (fund,
 │   │                      #   book, today's trades, what the trader will do next), FidelityPanel (the
-│   │                      #   browser extension), ControlBar (commands -> server/live_control.py),
+│   │                      #   connection: verdict, ConnectionChain, what runs, Check connection,
+│   │                      #   ConnectionTimeline -- lib/fidelity.ts), ControlBar (commands -> server/live_control.py),
 │   │                      #   AlgorithmPanel, LivePriceChart (the TRADER's bars + its fills), TradesCard,
 │   │                      #   LiveOrderLedger, CommandLog, DeploymentHealth (trader's build), ActivityCard
 │   ├── ml/                 # ModelInsights — reads server/ml_insights.py's read-only artifacts

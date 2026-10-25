@@ -108,6 +108,52 @@ def test_broker_connection_failure_exits_to_recovery_required(store):
     assert lifecycle.start(connect_broker=boom) is RuntimeState.RECOVERY_REQUIRED
 
 
+def test_a_failed_start_keeps_the_stage_and_the_reason(store):
+    """The trader's status said only "see the engine's log" -- on 10-23 the
+    reason (the bridge's port taken) was in no place the operator looked."""
+    lifecycle = RuntimeLifecycle(store=store)
+    error = OSError("[Errno 98] Address already in use")
+
+    def boom():
+        raise error
+
+    lifecycle.start(connect_broker=boom)
+    assert lifecycle.failed_stage is RuntimeState.CONNECT_BROKER
+    assert lifecycle.failure == "broker connection failed: [Errno 98] Address already in use"
+    assert lifecycle.failure_error is error
+
+
+def test_only_a_broker_that_cannot_be_reached_for_now_is_retryable(store):
+    """EXIT_BROKER_UNAVAILABLE's test: a BrokerUnavailableError while
+    connecting clears on its own; a bad key, or a book that disagrees with
+    the broker's, needs a human."""
+    from engine.core.exceptions import BrokerUnavailableError, ConfigurationError
+
+    def raising(error):
+        def connect():
+            raise error
+
+        return connect
+
+    unavailable = RuntimeLifecycle(store=store)
+    unavailable.start(connect_broker=raising(BrokerUnavailableError("signed out")))
+    assert unavailable.retryable
+
+    misconfigured = RuntimeLifecycle(store=store)
+    misconfigured.start(connect_broker=raising(ConfigurationError("no key")))
+    assert not misconfigured.retryable
+
+    _seed_open_lot(store, shares=10.0)
+    mismatched = RuntimeLifecycle(store=store, reconciler=Reconciler(store))
+    mismatched.start(broker_snapshot_provider=lambda: BrokerSnapshot(positions={"TQQQ": 7.0}))
+    assert mismatched.failed_stage is RuntimeState.RECONCILE
+    assert not mismatched.retryable
+
+    ready = RuntimeLifecycle(store=store, reconciler=Reconciler(store))
+    ready.start(broker_snapshot_provider=lambda: BrokerSnapshot(positions={"TQQQ": 10.0}))
+    assert ready.failed_stage is None and ready.failure is None and not ready.retryable
+
+
 def test_failed_reconciliation_blocks_ready_and_halts(store):
     _seed_open_lot(store, shares=10.0)
     breaker = CircuitBreaker()

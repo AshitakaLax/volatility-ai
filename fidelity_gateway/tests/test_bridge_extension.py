@@ -441,6 +441,135 @@ def test_the_real_extension_hears_which_versions_the_engine_expects(make_server,
     assert seen == {"loaded": "interop", "minimum": "0.3.0", "latest": "9.9.9"}
 
 
+# -- through the bridge host: what a session's trading loop actually uses ---------
+
+
+@pytest.fixture
+def bridge_host():
+    """A BridgeHost (host.py) on an ephemeral port and a short Unix socket,
+    the way the fidelity-bridge service runs one."""
+    pytest.importorskip("websockets")
+    import tempfile
+
+    from engine.core.config import FidelityBridgeConfig, FidelityConfig
+    from fidelity_gateway.bridge.host import BridgeHost
+
+    directory = Path(tempfile.mkdtemp(prefix="vai-ext-", dir="/tmp"))
+    fidelity = FidelityConfig(
+        allowed_accounts=(ACCOUNT,),
+        account=ACCOUNT,
+        dry_run=False,
+        account_name="Traditional IRA",
+        allowed_symbols=("TQQQ",),
+        max_order_value=1_000.0,
+        bridge=FidelityBridgeConfig(host="127.0.0.1", port=0, allowed_clients=("127.0.0.1",)),
+    )
+
+    def make(settings, on_event) -> BridgeServer:
+        return BridgeServer(
+            BridgeApiKey(API_KEY),
+            host=settings.host,
+            port=settings.port,
+            policy=AddressPolicy(list(settings.allowed_clients)),
+            on_event=on_event,
+        )
+
+    host = BridgeHost(
+        make_server=make,
+        settings=lambda: (fidelity, "TQQQ"),
+        socket_path=directory / "bridge.sock",
+        log=lambda _message: None,
+    )
+    host.open_socket()
+    assert host.bind()
+    yield host
+    host.close()
+    shutil.rmtree(directory, ignore_errors=True)
+
+
+def _attached(host, process="loop"):
+    from fidelity_gateway.bridge.attach import AttachedBridge
+
+    bridge = AttachedBridge.attach(host.socket_path, client={"process": process})
+    host.tick()  # the host tells it the extension's connection
+    assert bridge.wait_for_extension(15)
+    return bridge
+
+
+@needs_node
+def test_a_session_attached_to_the_host_reads_with_the_headers_sent_before_it(
+    bridge_host, extensions
+):
+    """The extension connects to the host once; a trading loop that attaches
+    later reads at once with the per-backend headers the extension sent
+    before it existed -- replayed by the host -- and so does the next."""
+    extensions(bridge_host.server)
+    assert bridge_host.server.wait_for_extension(15)
+    deadline = time.monotonic() + 15
+    while not bridge_host._requests and time.monotonic() < deadline:
+        time.sleep(0.05)
+    for _ in range(2):  # one session after another, the extension staying connected
+        bridge = _attached(bridge_host)
+        try:
+            session = _session(bridge)
+            answer = session.post_json(PENDING, {"filter": {"accounts": []}})
+            assert answer["path"] == PENDING and answer["headers"]["appid"] == "AP182052"
+        finally:
+            bridge.stop()
+        deadline = time.monotonic() + 5
+        while bridge_host.attached is not None and time.monotonic() < deadline:
+            time.sleep(0.02)
+    assert bridge_host.server.connected, "the extension never had to reconnect"
+
+
+@needs_node
+def test_an_order_through_the_host_is_confirmed_back_to_the_attached_trader(
+    bridge_host, extensions, tmp_path
+):
+    extensions(bridge_host.server, settings={"allowPlace": True})
+    assert bridge_host.server.wait_for_extension(15)
+    bridge = _attached(bridge_host)
+    try:
+        session = _session(bridge, allow_preview_endpoints=True, allow_order_endpoints=True)
+        broker = FidelityPlacingBroker(
+            session,
+            ACCOUNT,
+            (ACCOUNT,),
+            account_name="Traditional IRA",
+            confirm_live_orders=True,
+            allowed_symbols=("TQQQ",),
+            max_order_value=1_000.0,
+            journal=FileConfNumJournal(str(tmp_path / "orders.jsonl")),
+            order_reports=bridge.order_reports,
+        )
+        order = broker.place("TQQQ", "buy", 2, 70.12, "dec-host-1")
+        assert bridge.order_reports.for_conf_num(order.id) is not None, (
+            "reported ahead of the reply"
+        )
+        assert broker.get_order_by_client_id("dec-host-1").state is OrderState.FILLED
+        filled = bridge.order_reports.for_conf_num(order.id)
+        assert (filled.state, filled.filled_qty) == ("filled", 2.0)
+        assert bridge.permissions == {"preview": True, "place": True}
+    finally:
+        bridge.stop()
+
+
+@needs_node
+def test_the_real_extension_hears_the_trader_through_the_host(bridge_host, extensions):
+    """The attached loop's status reaches the extension's monitor through
+    the host, as it did when the loop held the bridge itself."""
+    extension = extensions(bridge_host.server)
+    assert bridge_host.server.wait_for_extension(15)
+    bridge = _attached(bridge_host)
+    try:
+        bridge.set_engine_status(
+            {"mode": "live", "state": "paused", "symbol": "TQQQ", "detail": "Trading is off"}
+        )
+        assert "Trading is off" in extension.wait_for_badge("paused")["title"]
+    finally:
+        bridge.stop()
+
+
 @needs_extension
 def test_the_refusal_the_extension_sends_while_reloading_is_one_the_engine_waits_out():
     """A reload that arrives mid-conversation must not halt the engine: the

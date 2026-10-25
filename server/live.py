@@ -58,7 +58,7 @@ from engine.data.dashboard_data import (
     load_state,
 )
 from research.strategies import live_profiles
-from research.strategies.live_algorithm import override_path
+from research.strategies.live_algorithm import algorithm_summary, override_path
 from research.strategies.sizing_indicators import WilderRSI
 from server import live_registry
 from server.live_registry import Deployment, UnknownDeployment
@@ -171,6 +171,14 @@ def run_state(status: dict | None, now: float) -> dict[str, Any]:
         "broker",
         "broker_unavailable",
         "fidelity",
+        # A start that stopped: the stage it stopped in, and whether it is
+        # tried again on its own (the broker could not be reached yet).
+        "stage",
+        "retryable",
+        # Which deployment the trader says it is, and the ledger it trades
+        # (its file's name and a one-way tag of its path).
+        "deployment",
+        "ledger",
     )
     if not status:
         return {
@@ -195,6 +203,41 @@ def run_state(status: dict | None, now: float) -> dict[str, Any]:
         )
     report["stale"] = stale
     return report
+
+
+def bridge_state(status: dict | None, now: float) -> dict[str, Any] | None:
+    """A Fidelity deployment's bridge host as it last reported -- its
+    readiness, the extension's connection, what is attached -- with
+    `stale` when it has gone quiet (fidelity_gateway/bridge/host.py writes
+    every STATUS_SECONDS). None when no bridge host has ever reported here:
+    a deployment whose trading loop holds the bridge itself."""
+    if not status:
+        return None
+    try:
+        age = now - datetime.fromisoformat(status["updated_at"]).timestamp()
+    except (KeyError, TypeError, ValueError):
+        age = None
+    heartbeat = float(status.get("heartbeat_seconds") or 15.0)
+    stale = (
+        age is None
+        or age > max(3 * heartbeat, _STALE_FLOOR_SECONDS)
+        or status.get("state") == "stopped"
+    )
+    report = {key: value for key, value in status.items() if key != "pid"}
+    report["stale"] = stale
+    report["age_s"] = round(age, 1) if age is not None else None
+    return report
+
+
+def command_history(deployment: Deployment, limit: int = 50) -> list[dict[str, Any]]:
+    """Every command asked of the deployment, newest first: its trader's
+    and -- for Fidelity -- its bridge host's (check_connection)."""
+    rows: list[dict[str, Any]] = []
+    for inbox in (deployment.inbox(), deployment.bridge_inbox()):
+        if inbox is not None:
+            rows.extend(inbox.history(limit=limit))
+    rows.sort(key=lambda row: row["seq"], reverse=True)
+    return rows[:limit]
 
 
 def _ledger(deployment: Deployment) -> dict[str, Any]:
@@ -289,6 +332,9 @@ def algorithm_in_force(deployment: Deployment, config, status: dict) -> dict[str
             break
     return {
         **in_force,
+        # What it does, in a line -- the same words the extension's popup
+        # shows (live_algorithm.algorithm_summary).
+        "summary": algorithm_summary(in_force, config.backtest.symbol),
         "source": provenance.get("channel", "extension") if provenance else "config",
         "profile": profile,
         "label": label,
@@ -323,8 +369,10 @@ def deployment_summary(deployment: Deployment) -> dict[str, Any]:
         return {**head, "error": f"its config does not load: {exc}"}
     head["broker"] = config.live.broker
     inbox = deployment.inbox()
-    commands = inbox.history(limit=50) if inbox is not None else []
-    status = run_state(inbox.status() if inbox is not None else None, time.time())
+    commands = command_history(deployment)
+    now = time.time()
+    status = run_state(inbox.status() if inbox is not None else None, now)
+    bridge_inbox = deployment.bridge_inbox() if config.live.broker == "fidelity" else None
     return {
         **head,
         "error": None,
@@ -342,6 +390,9 @@ def deployment_summary(deployment: Deployment) -> dict[str, Any]:
         "desired": inbox.desired() if inbox is not None else dict(_NOT_CONTROLLED),
         "ledger": _ledger(deployment),
         "pending": sum(1 for command in commands if command["status"] == "queued"),
+        # A Fidelity deployment's bridge host: up between sessions, so this
+        # is what says whether the connection is ready when no loop runs.
+        "bridge": bridge_state(bridge_inbox.status(), now) if bridge_inbox is not None else None,
     }
 
 
@@ -369,19 +420,38 @@ def deployment(deployment_id: str) -> dict[str, Any]:
         state = state_payload(str(found.state_db))
     except DashboardError:
         state = None
-    inbox = found.inbox()
     return {
         **deployment_summary(found),
         "state": state,
-        "commands": inbox.history(limit=50) if inbox is not None else [],
+        "commands": command_history(found),
     }
 
 
 @router.get("/deployments/{deployment_id}/commands")
 def commands(deployment_id: str, limit: int = Query(50, ge=1, le=500)) -> list[dict[str, Any]]:
     """Every command asked of this deployment, newest first, with its outcome."""
-    inbox = _deployment(deployment_id).inbox()
-    return inbox.history(limit=limit) if inbox is not None else []
+    return command_history(_deployment(deployment_id), limit)
+
+
+_MAX_EVENT_HOURS = 14 * 24
+
+
+@router.get("/deployments/{deployment_id}/bridge/events")
+def bridge_events(
+    deployment_id: str,
+    hours: int = Query(48, ge=1, le=_MAX_EVENT_HOURS),
+    limit: int = Query(1000, ge=1, le=5000),
+) -> list[dict[str, Any]]:
+    """A Fidelity deployment's bridge host's journal, oldest first: the
+    extension connecting and disconnecting (with why), refusals, Fidelity
+    signing in and out, the trading switch, sessions attaching, readiness
+    changing, account checks. Empty for a deployment with no bridge host."""
+    inbox = _deployment(deployment_id).bridge_inbox()
+    if inbox is None:
+        return []
+    since = time.time() - hours * 3600
+    rows = [row for row in inbox.events(days=hours // 24 + 2) if float(row["t"]) >= since]
+    return rows[-limit:]
 
 
 _MAX_JOURNAL_SESSIONS = 10
@@ -568,4 +638,12 @@ async def live_socket(socket: WebSocket, deployment: str) -> None:
         return
 
 
-__all__ = ["algorithm_in_force", "deployment_summary", "router", "run_state", "state_payload"]
+__all__ = [
+    "algorithm_in_force",
+    "bridge_state",
+    "command_history",
+    "deployment_summary",
+    "router",
+    "run_state",
+    "state_payload",
+]

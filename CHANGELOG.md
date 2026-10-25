@@ -1,5 +1,57 @@
 # Changelog
 
+## The Fidelity connection stays up, says whether it is ready, and explains its disconnects
+
+**Fidelity traded nothing on 10-22 or 10-23, and neither cause reached the
+Live page.** On 10-22 the extension never connected; on 10-23 a bridge and a
+trading loop started by hand held port 8765 all day and the container's
+trader failed 65 times on "Address already in use". Both days the page said
+"between sessions": the trader's status read "see the engine's log", and
+five fast failures spent the supervisor's restart cap before a 15-minute
+wait. The bridge lived inside each session's `cli.py live`, so nothing
+listened between sessions, every failed start dropped the extension, and
+anything else that wanted the port fought the trader for it.
+- **The bridge is a service of its own** (`fidelity_gateway/bridge/host.py`,
+  compose `fidelity-bridge`), up for the deployment's life. The extension
+  connects once and stays connected; recreating the trader does not drop it.
+  Each session's loop attaches over a Unix socket only the two Fidelity
+  services mount (`bridge/attach.py`; `open_bridge()` attaches whenever
+  `VAI_BRIDGE_SOCKET` is set) and is handed what the extension already said
+  -- its headers, tab, switches and order log -- so it connects in seconds.
+  Errors keep their meaning across the link: an order is ambiguous exactly
+  when it was before. One process attaches at a time, and a second is told
+  which holds it.
+- **Ready, or the one thing to fix** (`bridge/readiness.py`): listening; the
+  extension connected and heard from in the last minute; its version; the
+  Fidelity tab signed in (new: from its `tab` events); "Allow trading" on;
+  the last account check. The supervisor starts a Fidelity session only once
+  it is ready ("Waiting for Fidelity", with why). `check_connection` from
+  the page, and the bridge by itself 30 and 10 minutes before each open,
+  reads the account through the extension, read-only.
+- **Every failure says why.** `RuntimeLifecycle` keeps the stage and reason
+  a start stopped with, and the trader's status carries it. A start that
+  could not reach the broker for a reason that clears by itself (a
+  `BrokerUnavailableError`: no extension, signed out, the port taken) exits
+  3, and the supervisor retries it every minute instead of counting a crash.
+  The bridge names a taken port, an address it turned away and a key that
+  did not match (`last_refused`), and how each connection ended.
+- **The bridge journals its connection** (`bridge/events/`, 14 days):
+  connects, disconnects with their close codes, refusals, sign-ins and
+  sign-outs, the trading switch, attaches, verdicts, checks.
+- **The Live page's Fidelity section** is built on it: one verdict ("Ready
+  for Mon 09:30 ET", "Not ready: Fidelity tab"), the chain Bridge ->
+  Extension -> Fidelity tab -> Allow trading -> Trader -> Account check with
+  the first broken link's fix, what is running, Check connection, and a
+  48-hour timeline that says how long each disconnect lasted.
+- **An algorithm is described by what it does**
+  (`live_algorithm.algorithm_summary`), on the page and in the extension:
+  `ultimate_rsp` as a regime-timed book rebalanced at minute 60, not "target
+  1000%" -- a target set out of reach on purpose.
+- **The extension (0.7.0)** shows "Standing by: ready / not ready" with the
+  next open, the deployment and the algorithm's summary; logs Fidelity's
+  overnight sign-out without a toast while standing by, and toasts "Not
+  ready for the open" instead when an open is near. 0.6.0 still works.
+
 ## The warehouse is kept current daily, and three index funds join it
 
 **Its bars had stopped on 2026-10-08**, nine sessions behind, and two of
@@ -40,6 +92,10 @@ after-market bars, from 2016, where Alpaca's minutes begin.
   --fund SPY IWM EEM`): every strategy that is not bound to an RSP model,
   with each fund's own minutes per session for the grid strategies, which
   trade every bar.
+- **Its runs go to the shards.** The tool queued every run `local_only`,
+  so a connected `cli.py shard` sat idle; that is now `--local-only`, asked
+  for. A shard runs its own checkout's engine, so it must be on the
+  server's commit for its results to be this code's.
 
 ## Ultimate-RSP can trade live
 

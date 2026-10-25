@@ -34,6 +34,7 @@ const CHIPS: Record<RunState, { label: string; tone: Tone }> = {
   buys_paused: { label: "Buys paused", tone: "stuck" },
   winding_down: { label: "Winding down", tone: "stuck" },
   waiting_for_open: { label: "Waiting for open", tone: "neutral" },
+  waiting_for_broker: { label: "Waiting for the broker", tone: "stuck" },
   closed: { label: "Between sessions", tone: "neutral" },
   disabled: { label: "Disabled", tone: "loss" },
   starting: { label: "Starting", tone: "neutral" },
@@ -54,7 +55,12 @@ export function chip(d: DeploymentSummary): { label: string; tone: Tone; detail:
       detail: "config/deployments.yaml names no control directory for it",
     };
   }
-  const { label, tone } = CHIPS[d.status.state] ?? { label: d.status.state, tone: "neutral" };
+  const known = CHIPS[d.status.state] ?? { label: d.status.state, tone: "neutral" };
+  const tone = known.tone;
+  const label =
+    d.status.state === "waiting_for_broker" && d.broker === "fidelity"
+      ? "Waiting for Fidelity"
+      : known.label;
   let detail = d.status.detail ?? "";
   if (d.status.state === "not_running" && d.service) {
     detail = `${detail} -- start it with \`docker compose up -d ${d.service}\``;
@@ -226,6 +232,7 @@ const LABELS: Record<CommandType, string> = {
   revert_algorithm: "Revert algorithm",
   rewarm: "Re-warm",
   reset_paper_ledger: "Fresh paper ledger",
+  check_connection: "Check connection",
 };
 
 export function commandLabel(row: Pick<CommandRow, "type" | "args">): string {
@@ -371,6 +378,14 @@ export function algorithmName(a: Pick<AlgorithmInForce, "label" | "strategy_id">
 export function gridWords(step: number | null, target: number | null): string {
   if (step === null || target === null) return "its grid is not stated";
   return `buys each ${fraction(step)} dip, sells each lot at +${fraction(target)}`;
+}
+
+/** What the algorithm does, in a line: the server's summary (the same words
+ * the extension shows), else the grid in words. */
+export function algorithmWords(
+  a: Pick<AlgorithmInForce, "summary" | "step" | "profit_target">,
+): string {
+  return a.summary || gridWords(a.step, a.profit_target);
 }
 
 /** Where the algorithm in force came from -- without the time, which the

@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 """
 Brute-force every strategy that can trade a fund, as a series of web-UI runs
-on this machine.
+on the server's queue -- and on every `cli.py shard` connected to it.
 
     python tools/sweep_brute_force.py --dry-run            # the plan and its cost
     python tools/sweep_brute_force.py                      # queue it (RSP, URSP_SIM)
     python tools/sweep_brute_force.py --fund RSP --only ultimate_rsp fixed
+    python tools/sweep_brute_force.py --local-only         # keep it off the shards
 
 The generalisation of tools/sweep_rsp_all.py (one fund, the seven strategies
 that existed in September), and it keeps that tool's two rules: INTRABAR fills
@@ -20,8 +21,13 @@ as a RunRequest. The server splits anything over its per-run ceiling into a
 batch of runs itself (server/backtest.py bisect_request), runs them on its
 durable queue, and:
 
-  local_only   keeps every run on this server's own worker -- a remote
-               `cli.py shard` never claims one (server/jobs.py);
+  shards       hand the runs out one at a time: the server's own worker
+               takes the next, and so does every connected `cli.py shard`
+               (server/jobs.py "SHARDS"). --local-only marks every run
+               local_only, which no remote shard claims. A shard runs ITS
+               checkout's engine, so keep it on the server's commit: one
+               started with --allow-version-mismatch on older code reports
+               that code's results;
   warehouse    records every configuration in sim_results.duckdb, one
                sweep per run (`server-<run id>-<fund>`), with the best
                configuration's trade log (server/backtest._warehouse_writer);
@@ -384,7 +390,7 @@ def combos(space: dict[str, Any]) -> int:
     return n
 
 
-def plan(funds: list[str], strategies: list[str]) -> list[dict[str, Any]]:
+def plan(funds: list[str], strategies: list[str], local_only: bool = False) -> list[dict[str, Any]]:
     """Every submission, in queue order: strategy by strategy, each fund in turn."""
     out = []
     for strategy in strategies:
@@ -410,7 +416,7 @@ def plan(funds: list[str], strategies: list[str]) -> list[dict[str, Any]]:
                         "params": space,
                         "fill": FILL,
                         "rank_by": RANK_BY,
-                        "local_only": True,
+                        "local_only": local_only,
                     }
                     if FUNDS[fund]["start"]:
                         body["start"] = FUNDS[fund]["start"]
@@ -453,15 +459,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--only", nargs="+", metavar="STRATEGY", choices=ORDER)
     parser.add_argument("--dry-run", action="store_true", help="print the plan; queue nothing")
     parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="keep every run on the server's own worker; no remote shard claims one",
+    )
+    parser.add_argument(
         "--resubmit", action="store_true", help="queue runs already in history or the queue"
     )
     args = parser.parse_args(argv)
 
-    submissions = plan(args.fund, args.only or ORDER)
+    submissions = plan(args.fund, args.only or ORDER, local_only=args.local_only)
     total = sum(s["n"] for s in submissions)
     hours = sum(s["n"] * COST_SECONDS[s["strategy"]] for s in submissions) / WORKERS / 3600
     print(f"{len(submissions)} submissions, {total:,} configurations, about {hours:.1f} h ")
-    print(f"on {WORKERS} workers ({FILL} fills, full history, this machine only)\n")
+    where = "this machine only" if args.local_only else "less with shards connected"
+    print(f"on {WORKERS} workers ({FILL} fills, full history, {where})\n")
     for s in submissions:
         each = s["n"] * COST_SECONDS[s["strategy"]] / WORKERS / 3600
         print(f"  {s['n']:>6,} cfg  ~{each:>5.2f} h  {s['body']['name']}")

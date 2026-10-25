@@ -46,11 +46,18 @@ import time
 from collections.abc import Callable
 from enum import StrEnum
 
-from engine.core.exceptions import ExecutionError
+from engine.core.exceptions import BrokerUnavailableError, ExecutionError
 
 logger = logging.getLogger("Optimizer")
 
 DEFAULT_SETTLE_TIMEOUT_SECONDS = 30.0
+
+# `cli.py live`'s exit code when startup stopped because the broker could not
+# be reached for a reason that clears on its own -- a BrokerUnavailableError
+# at CONNECT_BROKER: the browser extension not connected, Fidelity signed out,
+# the bridge's port taken. tools/market_hours_supervisor.py waits and tries
+# again rather than counting it as a crash; anything else exits 1.
+EXIT_BROKER_UNAVAILABLE = 3
 
 
 class RuntimeState(StrEnum):
@@ -122,6 +129,12 @@ class RuntimeLifecycle:
         self.state = RuntimeState.STARTING
         self.visited: list = [RuntimeState.STARTING]
         self.recovered_ledger = None
+        # Why startup stopped, when it did: the stage it was in, what went
+        # wrong there, and the exception -- for the trader's status, which
+        # used to say only "see the engine's log".
+        self.failed_stage: RuntimeState | None = None
+        self.failure: str | None = None
+        self.failure_error: BaseException | None = None
 
     # --- state ---
 
@@ -179,7 +192,7 @@ class RuntimeLifecycle:
             try:
                 load_config()
             except Exception as e:
-                return self._fail(RuntimeState.RECOVERY_REQUIRED, f"config load failed: {e}")
+                return self._fail(RuntimeState.RECOVERY_REQUIRED, f"config load failed: {e}", e)
 
         self._enter(RuntimeState.LOAD_STATE)
         if self.store is not None:
@@ -188,14 +201,18 @@ class RuntimeLifecycle:
             except Exception as e:
                 # Never proceed on an unreadable ledger -- that is
                 # exactly the "guessing" step 5 forbids.
-                return self._fail(RuntimeState.RECOVERY_REQUIRED, f"durable state load failed: {e}")
+                return self._fail(
+                    RuntimeState.RECOVERY_REQUIRED, f"durable state load failed: {e}", e
+                )
 
         self._enter(RuntimeState.CONNECT_BROKER)
         if connect_broker is not None:
             try:
                 connect_broker()
             except Exception as e:
-                return self._fail(RuntimeState.RECOVERY_REQUIRED, f"broker connection failed: {e}")
+                return self._fail(
+                    RuntimeState.RECOVERY_REQUIRED, f"broker connection failed: {e}", e
+                )
 
         self._enter(RuntimeState.RECONCILE)
         if self.reconciler is not None and broker_snapshot_provider is not None:
@@ -203,7 +220,7 @@ class RuntimeLifecycle:
                 snapshot = broker_snapshot_provider()
             except Exception as e:
                 return self._fail(
-                    RuntimeState.RECONCILIATION_REQUIRED, f"broker snapshot failed: {e}"
+                    RuntimeState.RECONCILIATION_REQUIRED, f"broker snapshot failed: {e}", e
                 )
             report = self.reconciler.reconcile(
                 snapshot, local_orders=local_orders, expected_cash=expected_cash
@@ -220,7 +237,7 @@ class RuntimeLifecycle:
                     )
             except Exception as e:
                 return self._fail(
-                    RuntimeState.RECOVERY_REQUIRED, f"data/clock validation failed: {e}"
+                    RuntimeState.RECOVERY_REQUIRED, f"data/clock validation failed: {e}", e
                 )
 
         # A halt persisted from a previous run (Task 7.8) survives
@@ -229,18 +246,31 @@ class RuntimeLifecycle:
         self._enter(RuntimeState.READY)
         return self.state
 
-    def _fail(self, state: RuntimeState, detail: str) -> RuntimeState:
-        """Abort startup into a blocked state, logging why.
+    def _fail(
+        self, state: RuntimeState, detail: str, error: BaseException | None = None
+    ) -> RuntimeState:
+        """Abort startup into a blocked state, logging why -- and keeping
+        it (failed_stage, failure, failure_error) for whoever reports it.
 
         A reconciliation failure additionally halts the circuit breaker,
         so the block persists across a restart rather than evaporating
         when someone restarts the process to "fix" it.
         """
+        self.failed_stage, self.failure, self.failure_error = self.state, detail, error
         self._enter(state)
         logger.error(f"Startup halted in {state.value}: {detail}")
         if self.circuit_breaker is not None and state is RuntimeState.RECONCILIATION_REQUIRED:
             self.circuit_breaker.halt_for_reconciliation(detail)
         return self.state
+
+    @property
+    def retryable(self) -> bool:
+        """Whether startup stopped only because the broker could not be
+        reached for now (EXIT_BROKER_UNAVAILABLE): trying again later is the
+        remedy, not a human. Never true for a reconciliation failure."""
+        return self.failed_stage is RuntimeState.CONNECT_BROKER and isinstance(
+            self.failure_error, BrokerUnavailableError
+        )
 
     # --- shutdown ---
 

@@ -648,6 +648,68 @@ def impact(current: dict, change: dict, lots: list[dict]) -> dict:
     }
 
 
+# A profit target this large is a placeholder the strategy never reaches: the
+# Ultimate-RSP books hold, and exit by their regime vote.
+_OUT_OF_REACH = 1.0
+
+
+def _percent(fraction: Any) -> str:
+    try:
+        return f"{float(fraction) * 100:.4g}%"
+    except (TypeError, ValueError):
+        return "?"
+
+
+def _param(strategy_id: str, params: dict, name: str) -> Any:
+    """A parameter as the strategy will use it: the config's, else its default."""
+    import inspect
+
+    from research.strategies.strategy_registry import resolve_strategy
+
+    if name in params:
+        return params[name]
+    try:
+        parameter = inspect.signature(resolve_strategy(strategy_id).__init__).parameters.get(name)
+    except Exception:
+        return None
+    return (
+        None
+        if parameter is None or parameter.default is inspect.Parameter.empty
+        else parameter.default
+    )
+
+
+def algorithm_summary(algorithm: dict, symbol: str | None = None) -> str:
+    """What an algorithm does, in one line, for whoever is watching it trade
+    -- the Live page and the extension's popup say this rather than "step
+    0.1%, target 1000%", which for a book that exits by regime is a
+    placeholder, not a plan. `algorithm` is {strategy_id, strategy_params,
+    step, profit_target}."""
+    strategy_id = str(algorithm.get("strategy_id") or "?")
+    params = dict(algorithm.get("strategy_params") or {})
+    step, target = algorithm.get("step"), algorithm.get("profit_target")
+    what = symbol or "the fund"
+    if strategy_id in ("ultimate_rsp", "ultimate_ursp"):
+        minute = _param(strategy_id, params, "execute_minute")
+        band = _param(strategy_id, params, "rebalance_band")
+        text = (
+            f"holds a share of equity in {what} set by a daily regime vote, rebalanced once a "
+            f"session at minute {minute} when more than {_percent(band)} off; it sells -- at a "
+            "loss if need be -- only to cut exposure"
+        )
+        if isinstance(target, int | float) and target >= _OUT_OF_REACH:
+            text += f" (the lots' +{_percent(target)} target is out of reach on purpose)"
+        return text
+    if strategy_id == "ultimate":
+        minute = _param(strategy_id, params, "liquidate_minute")
+        return (
+            f"calm markets: buys each {_percent(step)} dip and sells each lot at "
+            f"+{_percent(target)}; turbulent ones: no grid buys, only reversal lots, and its calm "
+            f"lots are sold at minute {minute} of the first turbulent session"
+        )
+    return f"buys each {_percent(step)} dip, sells each lot at +{_percent(target)}"
+
+
 def _describe_change(change: dict) -> str:
     return (
         f"{change['strategy_id']} (step {change['step']:.4%}, target {change['profit_target']:.4%})"

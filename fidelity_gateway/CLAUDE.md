@@ -25,6 +25,7 @@ refuses those. Run the scripts as modules from the repo root:
 
 ```bash
 python -m fidelity_gateway.bridge check --account <number> --account-name "<name>"
+python -m fidelity_gateway.bridge host --config config/fidelity_live.yaml --socket S --control-dir D
 python -m fidelity_gateway.bridge build-extension   # after a pull: then Reload now in the popup
 python -m fidelity_gateway.place_test_order --account <number> --check-only [--bridge]
 python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <number> \
@@ -40,7 +41,7 @@ python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <numb
 | `analyze_har.py` | Reads a DevTools HAR export; `--redact` scrubs one before it leaves the machine. |
 | `recon.py` | Reconnaissance, not reconciliation: with `--cdp-url`, records your browser's traffic while you use it. Its launched-browser modes are kept for the record; Fidelity refuses them. |
 | `place_test_order.py` | Places one small order through the gated adapter — the manual end-to-end check. `--check-only` is the recovery report; `--bridge` goes through the extension instead of a debugging port. |
-| `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), `OrderReports` (the extension's order confirmations), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| check`. |
+| `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), `OrderReports` (the extension's order confirmations), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| host \| check`. `host.py` is the deployment's bridge host (below), `attach.py` a trader's end of it, `local.py` the line between them, `readiness.py` the ready-or-why checklist. |
 | `tests/` | This section's own suite. `test_broker_selection.py`/`test_broker_contract.py` (the engine↔fidelity_gateway seam) live in the ROOT `tests/` instead — see `tests/CLAUDE.md`. |
 
 ## The browser-extension bridge
@@ -127,14 +128,64 @@ implement.
   for this engine (run it from the submodule after a change to either).
   `test_bridge_extension.py` runs the extension's real background
   (`background-core.js`, with its own browser fakes and a small fake
-  Fidelity that fills orders) under Node against a live `BridgeServer`.
-  It skips when Node or the submodule is missing.
+  Fidelity that fills orders) under Node against a live `BridgeServer`,
+  and against a `BridgeHost` with a trader attached the way a session
+  attaches. It skips when Node or the submodule is missing.
+
+## The bridge host: up between sessions
+
+A deployment's bridge used to start inside each session's `cli.py live`
+and stop with it: nothing listened between sessions, every failed start
+closed and reopened the extension's connection, and anything else that
+wanted the port (a check, a run by hand) fought the trader for it --
+10-23, 65 failed starts on "Address already in use", the cause only in a
+container log. `bridge/host.py`'s `BridgeHost` (the compose
+`fidelity-bridge` service) now holds the port for the deployment's life:
+
+- **Traders attach, they do not listen.** With `VAI_BRIDGE_SOCKET` set,
+  `open_bridge()` returns an `AttachedBridge` (`attach.py`) over the host's
+  Unix socket instead of a `BridgeServer` -- the same surface, so
+  `connect_live`, `bridge check` and `place_test_order --bridge` are
+  unchanged. On attaching it is handed everything the extension already
+  said (auth headers per backend, the tab, the switches, the order log),
+  so a session is connected in seconds. A host that is not running is
+  `BridgeUnavailable`; it never falls back to listening itself.
+- **The errors keep their meaning across the link** (`local.py`):
+  unavailable and refused mean nothing was sent; anything else -- the link
+  failing with a request in flight included -- may have reached Fidelity,
+  so the placing broker's ambiguity rule is unchanged.
+- **One process attached at a time.** A second is refused, naming the
+  first.
+- **Readiness** (`readiness.py`, pure): listening; the extension connected
+  and heard from in 60 s; its version (a warning only); the Fidelity tab
+  signed in (`session.tab_state`, the extension's own rule, from its `tab`
+  events); "Allow trading" on for a placing deployment; the last account
+  check since it connected. Each item ok / warn / fail / unknown; ready
+  when nothing fails, else the first failure and its fix.
+- **Status and events** go to the deployment's control directory, under
+  `bridge/` (a `ControlInbox` of its own): `status.json` every 15 s and on
+  change, `events/<day>.jsonl` kept 14 days -- connects, disconnects with
+  their close codes, refusals (`connection_report`'s `last_refused`),
+  sign-ins, the switch, attaches, verdicts, checks. The Live page and
+  `tools/market_hours_supervisor.py` (which starts a session only on
+  ready) read them.
+- **The account check** (`check_connection`, queued by the Live page into
+  `bridge/`'s inbox, and by itself 30 and 10 minutes before each open):
+  orders, positions, settled cash through a `FidelitySession` with its
+  defaults -- no previews, no orders; it navigates for headers only when
+  nothing is attached. `host.py` never imports the placing broker (a test
+  reads the source).
+- **With nothing attached** the host tells the extension it is standing
+  by, and whether it is ready ("paused" within 15 minutes of an open when
+  not, so the badge turns amber); the algorithm editor is pointed at the
+  Live page. A taken port is retried every 30 s and reported; an edited
+  `live.fidelity.bridge` restarts the bridge with it.
 
 ## Live trading through the bridge
 
 `python cli.py live` with `live.broker: fidelity` gets its broker from
 `live.py`'s `connect_live`:
-1. Start the bridge and wait for the extension.
+1. Start the bridge -- or attach to the bridge host -- and wait for the extension.
 2. Build a session with order endpoints allowed exactly when
    `live.fidelity.dry_run` is false.
 3. Build the broker through `engine/brokers/broker_selection.build_broker`.

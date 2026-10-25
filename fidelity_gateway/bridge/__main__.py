@@ -1,10 +1,15 @@
 """
-python -m fidelity_gateway.bridge keygen | serve | check | build-extension
+python -m fidelity_gateway.bridge keygen | serve | host | check | build-extension
 
   keygen   Create the API key: append FIDELITY_BRIDGE_API_KEY to .env and
            print it once, for pasting into the extension's welcome form.
   serve    Run the bridge until Ctrl-C, reporting connections and the
            extension's order confirmations.
+  host     A Fidelity deployment's bridge, for as long as it runs (host.py,
+           the fidelity-bridge service): the extension stays connected
+           between sessions, each session's trading loop attaches to it over
+           --socket, and its readiness and events go to the control
+           directory for the Live page and the supervisor.
   check    Read-only end-to-end proof: wait for the extension, show what
            it reports about its recent orders, then read the account's
            orders, positions and settled cash through it.
@@ -21,7 +26,9 @@ even asked.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -121,6 +128,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--wait", type=float, default=120.0, help="Seconds to wait for the extension."
     )
 
+    host = commands.add_parser(
+        "host", help="Keep a Fidelity deployment's bridge up, for its sessions to attach to."
+    )
+    host.add_argument(
+        "--config", required=True, help="The deployment's config (live.broker: fidelity)."
+    )
+    host.add_argument(
+        "--socket",
+        default=os.environ.get("VAI_BRIDGE_SOCKET"),
+        help="Where trading loops attach. Default: $VAI_BRIDGE_SOCKET.",
+    )
+    host.add_argument(
+        "--control-dir",
+        default=os.environ.get("VAI_CONTROL_DIR"),
+        help="The deployment's control directory: status, events and the Live page's "
+        "check_connection go to its bridge/ folder. Default: $VAI_CONTROL_DIR.",
+    )
+    host.add_argument(
+        "--deployment",
+        default=os.environ.get("VAI_DEPLOYMENT"),
+        help="The deployment's id, for the extension's popup. Default: $VAI_DEPLOYMENT.",
+    )
+    host.add_argument(
+        "--env-file",
+        type=Path,
+        default=None,
+        help=f"Where {API_KEY_ENV_VAR} is read from when it is not in the environment.",
+    )
+
     build = commands.add_parser(
         "build-extension",
         help="Build the extension from its submodule, for the browser to reload.",
@@ -170,6 +206,89 @@ def run_serve(args: argparse.Namespace, stop: threading.Event | None = None) -> 
     return 0
 
 
+def _config_stamp(path: Path) -> tuple | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return (stat.st_mtime_ns, stat.st_size)
+
+
+def _load_fidelity(path: Path):
+    """(FidelityConfig, symbol) from a deployment's config, validated."""
+    from engine.core.config import BacktestConfig
+
+    config = BacktestConfig.from_yaml(str(path))
+    config.validate()
+    if config.live.broker != "fidelity" or config.live.fidelity is None:
+        raise ConfigurationError(f"{path} is not a Fidelity deployment (live.broker: fidelity).")
+    return config.live.fidelity, config.backtest.symbol
+
+
+def run_host(args: argparse.Namespace, stop: threading.Event | None = None) -> int:
+    """Until SIGTERM or Ctrl-C (or `stop`): the deployment's bridge host."""
+    from engine.core.build_info import identity
+    from engine.trading.control_inbox import ControlInbox
+    from fidelity_gateway.bridge.host import CONFIG_POLL_SECONDS, BridgeHost, account_checker
+
+    if not args.socket:
+        _stderr("Name the socket trading loops attach to: --socket, or VAI_BRIDGE_SOCKET.")
+        return 2
+    stop = stop or threading.Event()
+
+    def _stop(_signum, _frame) -> None:
+        stop.set()
+
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _stop)
+        signal.signal(signal.SIGINT, _stop)
+
+    config_path = Path(args.config)
+    said = False
+    while not config_path.exists():
+        # The config names the account, so it is written by hand on the host;
+        # the service may well start first. Say so once, and wait for it.
+        if not said:
+            _stderr(f"[bridge-host] {config_path} does not exist yet; waiting for it.")
+            said = True
+        if stop.wait(CONFIG_POLL_SECONDS):
+            return 0
+    key = load_api_key(env_file=args.env_file)
+
+    def make_server(settings, on_event) -> BridgeServer:
+        policy = AddressPolicy.from_entries(settings.allowed_clients, settings.blocked_clients)
+        return BridgeServer(
+            key,
+            host=settings.host,
+            port=settings.port,
+            policy=policy,
+            log=_stderr,
+            on_event=on_event,
+        )
+
+    settings = lambda: _load_fidelity(config_path)  # noqa: E731 -- re-read on a change
+    inbox = ControlInbox(Path(args.control_dir) / "bridge") if args.control_dir else None
+    host = BridgeHost(
+        make_server=make_server,
+        settings=settings,
+        socket_path=args.socket,
+        inbox=inbox,
+        check=account_checker(settings),
+        deployment=args.deployment,
+        build=identity(),
+    )
+    stamp = {"value": _config_stamp(config_path)}
+
+    def config_changed() -> bool:
+        now = _config_stamp(config_path)
+        changed, stamp["value"] = now != stamp["value"], now
+        return changed
+
+    _stderr(f"[bridge-host] trading loops attach at {args.socket}")
+    host.run(stop, config_changed=config_changed)
+    return 0
+
+
 def run_check(args: argparse.Namespace) -> int:
     from fidelity_gateway.broker import FidelityBroker
 
@@ -183,6 +302,7 @@ def run_check(args: argparse.Namespace) -> int:
         # Quiet: the summary below says it once, rather than a log line
         # per order as the extension's log arrives.
         order_reports=OrderReports(),
+        client={"process": "check"},
     )
     try:
         server.set_engine_status(_status("check", "running", "checking the connection, read-only"))
@@ -266,6 +386,7 @@ def main(argv: list[str] | None = None) -> int:
     runners = {
         "keygen": run_keygen,
         "serve": run_serve,
+        "host": run_host,
         "check": run_check,
         "build-extension": run_build_extension,
     }

@@ -42,7 +42,7 @@ Handler = Callable[[Command], str]
 _FAMILY = {"switch_algorithm": "algorithm", "revert_algorithm": "algorithm"}
 
 # States a disabled deployment reports as "disabled" instead.
-_WAITING = {"waiting_for_open", "closed", "restarting"}
+_WAITING = {"waiting_for_open", "closed", "restarting", "waiting_for_broker"}
 
 # How long the supervisor waits between looks at the inbox.
 SUPERVISOR_SLICE_SECONDS = 15.0

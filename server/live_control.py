@@ -51,7 +51,7 @@ from research.strategies.live_algorithm import AlgorithmControl, impact
 from research.strategies.param_schema import describe_params
 from research.strategies.strategy_registry import STRATEGIES
 from server import live_registry
-from server.live import run_state
+from server.live import bridge_state, run_state
 from server.live_registry import Deployment, UnknownDeployment
 
 router = APIRouter(prefix="/api/live/deployments", tags=["control"])
@@ -70,14 +70,27 @@ _GRANT: dict[str, str | None] = {
     "revert_algorithm": "algorithm_changes",
     "rewarm": "algorithm_changes",
     "reset_paper_ledger": "ledger_reset",
+    # Read-only, through a Fidelity deployment's bridge host: never a grant.
+    "check_connection": None,
 }
+
+# Commands the bridge host applies, not the trader: queued in its own inbox.
+_BRIDGE_COMMANDS = {"check_connection"}
 
 # Real money changes algorithm at most this often: a switch is a decision to
 # watch play out, not a dial to turn while it trades.
 REAL_MONEY_SWITCH_INTERVAL_SECONDS = 24 * 3600
 
 # Trader states that mean a loop may be trading, or about to.
-_ACTIVE = {"trading", "buys_paused", "winding_down", "starting", "restarting", "waiting_for_open"}
+_ACTIVE = {
+    "trading",
+    "buys_paused",
+    "winding_down",
+    "starting",
+    "restarting",
+    "waiting_for_open",
+    "waiting_for_broker",
+}
 
 
 def same_origin(request: Request) -> None:
@@ -109,6 +122,7 @@ class CommandRequest(BaseModel):
         "revert_algorithm",
         "rewarm",
         "reset_paper_ledger",
+        "check_connection",
     ]
     args: dict[str, Any] = Field(default_factory=dict)
     timing: Literal["now", "next_session", "when_flat"] = "now"
@@ -174,7 +188,7 @@ def confirmation_needed(deployment: Deployment, kind: str, args: dict[str, Any])
 
     The page asks for the same thing; checking it here as well means a
     script or a stale page cannot skip it."""
-    if not deployment.paper and kind != "pause_buys":
+    if not deployment.paper and kind not in ("pause_buys", "check_connection"):
         return "this deployment trades real money"
     if kind == "reset_paper_ledger":
         return "the ledger it has is archived and a fresh one started"
@@ -189,6 +203,14 @@ def _check_preconditions(deployment: Deployment, kind: str) -> None:
     """What must already be true for a command to make sense (409 if not).
     The trader checks again when it applies it."""
     inbox = deployment.inbox()
+    if kind == "check_connection":
+        bridge = deployment.bridge_inbox()
+        if deployment.config().live.broker != "fidelity" or bridge is None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{deployment.id} has no Fidelity bridge host to check a connection with.",
+            )
+        return
     if kind == "reset_paper_ledger" and inbox is not None and inbox.desired()["enabled"]:
         raise HTTPException(
             status_code=409,
@@ -430,7 +452,7 @@ def queue_command(deployment_id: str, body: CommandRequest, request: Request) ->
     """Queue a command for the deployment's trader. 202: accepted, not yet
     applied -- the command's own status says when it is."""
     deployment = _deployment(deployment_id)
-    inbox = deployment.inbox()
+    inbox = deployment.bridge_inbox() if body.type in _BRIDGE_COMMANDS else deployment.inbox()
     if inbox is None:
         raise HTTPException(
             status_code=409,
@@ -479,18 +501,29 @@ def queue_command(deployment_id: str, body: CommandRequest, request: Request) ->
         queued, new = inbox.enqueue(command)
     except InvalidCommand as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    status = run_state(inbox.status(), command.seq / 1e9)
-    return {
-        "command": next(row for row in inbox.history(limit=500) if row["id"] == queued.id),
-        "new": new,
+    if body.type in _BRIDGE_COMMANDS:
+        host = bridge_state(inbox.status(), command.seq / 1e9)
+        warning = (
+            f"{deployment.id}'s bridge host is not running; this applies when it next starts, "
+            "if it has not expired by then (docker compose --profile fidelity up -d "
+            "fidelity-bridge)."
+            if host is None or host["stale"]
+            else None
+        )
+    else:
+        status = run_state(inbox.status(), command.seq / 1e9)
         # Queued all the same: it applies when the trader next runs, unless it
         # expires first. Said, rather than left for the operator to wonder.
-        "warning": (
+        warning = (
             f"{deployment.id}'s trader is not running ({status['detail']}); this applies "
             "when it next starts, if it has not expired by then."
             if status["stale"]
             else None
-        ),
+        )
+    return {
+        "command": next(row for row in inbox.history(limit=500) if row["id"] == queued.id),
+        "new": new,
+        "warning": warning,
     }
 
 
@@ -500,8 +533,11 @@ def queue_command(deployment_id: str, body: CommandRequest, request: Request) ->
 )
 def cancel_command(deployment_id: str, command_id: str, body: CancelRequest) -> dict[str, Any]:
     """Withdraw a queued command. 409 once a trader has taken it."""
-    inbox = _deployment(deployment_id).inbox()
-    result = inbox.cancel(command_id, body.operator) if inbox is not None else None
+    deployment = _deployment(deployment_id)
+    result = None
+    for inbox in (deployment.inbox(), deployment.bridge_inbox()):
+        if inbox is not None and result is None:
+            result = inbox.cancel(command_id, body.operator)
     if result is None:
         raise HTTPException(status_code=409, detail="That command is not queued any more.")
     return result

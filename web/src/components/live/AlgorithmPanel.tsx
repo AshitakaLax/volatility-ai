@@ -118,7 +118,7 @@ export function AlgorithmPanel({ deployment, onSent }: Props) {
             <div className="space-y-0.5">
               <div className="font-medium">{nameOf(deployment, view)}</div>
               <div className="text-xs text-muted-foreground">
-                {gridWords(view.current.step, view.current.profit_target)} ·{" "}
+                {wordsOf(deployment, view)} ·{" "}
                 <span className="font-mono">{algorithmLabel(view.current)}</span>
               </div>
               {view.override?.changedAt ? (
@@ -220,6 +220,18 @@ export function AlgorithmPanel({ deployment, onSent }: Props) {
       </CardContent>
     </Card>
   );
+}
+
+/** What the algorithm in force does: the server's line for it (the words the
+ * extension shows), else its grid in words. */
+function wordsOf(deployment: DeploymentSummary, view: AlgorithmView): string {
+  const summary = deployment.algorithm;
+  return summary?.summary &&
+    summary.strategy_id === view.current.strategy_id &&
+    summary.step === view.current.step &&
+    summary.profit_target === view.current.profit_target
+    ? summary.summary
+    : gridWords(view.current.step, view.current.profit_target);
 }
 
 /** A profile's label when the algorithm in force is one, else its strategy. */

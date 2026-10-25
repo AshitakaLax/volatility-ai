@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from engine.brokers.broker_selection import build_broker
+from engine.core.build_info import identity
 from fidelity_gateway.bridge import open_bridge
 from fidelity_gateway.bridge.order_reports import OrderReports
 from fidelity_gateway.session import FidelitySession, FidelitySessionError
@@ -118,12 +119,17 @@ def connect_live(
     log: Callable[[str], None] = _stderr,
     bridge_opener: Callable[..., tuple[Any, Any]] = open_bridge,
     env_file: Path | None = None,
+    process: str = "loop",
 ) -> FidelityLiveConnection:
     """Start the bridge, wait for the extension, and build the broker.
 
     Raises (ConfigurationError, FidelitySessionError, ...) with what to
     check -- RuntimeLifecycle turns any of them into RECOVERY_REQUIRED.
     The bridge is stopped again on every failure.
+
+    With a bridge host running (VAI_BRIDGE_SOCKET), "start the bridge"
+    is attaching to it, as `process` ("loop", or "check" for --check-only):
+    the host names it on the Live page and refuses a second one.
     """
     settings = config.live.fidelity
     bridge = settings.bridge
@@ -143,6 +149,7 @@ def connect_live(
         wait_seconds=float(bridge.connect_timeout_seconds),
         log=log,
         order_reports=order_reports,
+        client={"process": process, "build": identity()},
     )
     try:
         session = FidelitySession(

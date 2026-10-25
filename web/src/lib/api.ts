@@ -31,6 +31,7 @@ import type {
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
 import type {
   AlgorithmView,
+  BridgeEvent,
   ChangeCheck,
   ChangeRequest,
   CommandRequest,
@@ -274,6 +275,13 @@ export const api = {
   /** Dry-run a switch: the trader's reasons to refuse it, or its impact. */
   checkAlgorithm: (id: string, body: ChangeRequest) =>
     post<ChangeCheck>(`/api/live/deployments/${encodeURIComponent(id)}/algorithm/check`, body),
+
+  /** A Fidelity deployment's bridge host's journal, oldest first: connects,
+   * disconnects (with why), sign-outs, the trading switch, checks. */
+  bridgeEvents: (id: string, hours = 48) =>
+    request<BridgeEvent[]>(
+      `/api/live/deployments/${encodeURIComponent(id)}/bridge/events?${query({ hours })}`,
+    ),
 
   /** Withdraw a queued command; 409 once its trader has taken it. */
   cancelCommand: (id: string, commandId: string, operator: string) =>

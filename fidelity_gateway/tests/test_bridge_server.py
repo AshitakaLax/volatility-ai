@@ -709,3 +709,87 @@ def test_the_connection_report_follows_the_extension_in_and_out(server):
     after = server.connection_report()
     assert after["connected"] is False and after["client"] is None
     assert after["disconnected_at"] is not None and after["since"] is None
+
+
+# -- why it is not connected: the reasons the Live page shows ------------------
+
+
+def test_a_taken_port_is_a_wait_that_names_the_cause(server):
+    """10-23: a bridge started by hand held 8765 all day, and the trader's
+    only word for it was RECOVERY_REQUIRED."""
+    from fidelity_gateway.bridge.server import BridgeUnavailable
+
+    second = BridgeServer(
+        BridgeApiKey(API_KEY),
+        host="127.0.0.1",
+        port=server.port,
+        policy=AddressPolicy(["127.0.0.1"]),
+    )
+    with pytest.raises(BridgeUnavailable) as caught:
+        second.start()
+    assert caught.value.code == "port_in_use"
+    assert f"Port {server.port}" in str(caught.value) and "already in use" in str(caught.value)
+
+
+def test_an_address_turned_away_is_reported_with_the_fix():
+    """10-22: the extension never connected, and nothing said it had been
+    turned away, or why."""
+    bridge = BridgeServer(
+        BridgeApiKey(API_KEY), host="127.0.0.1", port=0, policy=AddressPolicy(["10.0.0.0/8"])
+    )
+    bridge.start()
+    try:
+        assert bridge.connection_report()["last_refused"] is None
+        assert _upgrade_status(bridge.url) == 403
+        refused = bridge.connection_report()["last_refused"]
+        assert refused["client"] == "127.0.0.1" and refused["at"]
+        assert "not in the allowed client addresses" in refused["reason"]
+        assert "10.0.0.0/8" in refused["reason"] and "allowed_clients" in refused["reason"]
+    finally:
+        bridge.stop()
+
+
+def test_a_key_that_does_not_match_is_reported(server):
+    extension = FakeExtension(server.url, api_key="wrong-key-0123456789abcdefghijklmnopqrst")
+    assert extension.handshake()["type"] == "denied"
+    extension.close()
+    refused = server.connection_report()["last_refused"]
+    assert "API key does not match" in refused["reason"]
+    assert API_KEY not in json.dumps(server.connection_report()), "never the key"
+
+
+def test_the_fidelity_tab_is_followed_signed_in_or_out(server):
+    signin = "https://digital.fidelity.com/prgw/digital/signin/retail"
+    portfolio = "https://digital.fidelity.com/ftgw/digital/portfolio/summary"
+    extension = _connected(server)
+    assert server.connection_report()["fidelity_tab"] is None  # it has not said yet
+
+    extension.send({"type": "event", "event": "tab", "data": {"url": signin}})
+    assert _wait_until(lambda: server.connection_report()["fidelity_tab"] is not None)
+    tab = server.connection_report()["fidelity_tab"]
+    assert tab["state"] == "signed_out" and tab["url"] == signin and tab["since"]
+
+    extension.send({"type": "event", "event": "tab", "data": {"url": portfolio}})
+    assert _wait_until(lambda: server.connection_report()["fidelity_tab"]["state"] == "signed_in")
+    extension.send({"type": "event", "event": "tab", "data": {"url": None}})
+    assert _wait_until(lambda: server.connection_report()["fidelity_tab"]["state"] == "no_tab")
+
+    extension.close()
+    assert _wait_until(lambda: not server.connected)
+    assert server.connection_report()["fidelity_tab"] is None
+
+
+@pytest.mark.parametrize(
+    ("url", "state"),
+    [
+        (None, "no_tab"),
+        ("", "no_tab"),
+        ("https://digital.fidelity.com/prgw/digital/signin/retail", "signed_out"),
+        ("https://digital.fidelity.com/ftgw/digital/trader-dashboard", "signed_in"),
+        ("https://www.fidelity.com/", "elsewhere"),
+    ],
+)
+def test_the_tab_rule_is_the_sessions_and_the_extensions(url, state):
+    from fidelity_gateway.session import tab_state
+
+    assert tab_state(url) == state
