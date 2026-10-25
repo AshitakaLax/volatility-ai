@@ -73,15 +73,19 @@ example WireGuard or Tailscale) and allow that VPN's addresses instead.
 
 ## Install the app
 
-Build it with the Android SDK (Android Studio, or the command line with
+Download the APK attached to the latest
+[release](https://github.com/AshitakaLax/volatility-ai/releases) and open it
+on the phone (allow installing from your browser or file manager when
+asked). A pull request that changes the app keeps its APK as the
+`bridge-notifier-apk` artifact of its "Android app" check.
+
+Or build it with the Android SDK (Android Studio, or the command line with
 `ANDROID_HOME` set) and JDK 17 or later:
 
 ```bash
 ./gradlew assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
-
-Or download the `bridge-notifier-debug` artifact from this repository's CI.
 
 In the app:
 
@@ -157,3 +161,48 @@ a test notification, and passes once it arrives.
 
 Requirements: minSdk 26 (Android 8.0), targetSdk 35, Kotlin 2.0, AGP 8.7,
 Gradle 8.14 (wrapper included).
+
+## Releases
+
+Publishing a GitHub release builds the app and attaches the APK to it,
+named after the release's tag (`fidelity-bridge-notifier-v1.2.0.apk`). In
+volatility-ai, `.github/workflows/android.yml` does this. In this folder as
+its own repository, `.github/workflows/ci.yml` does. A release saved as a
+draft gets its APK when it is published.
+
+The APK is signed with your own key. A phone installs an update only when it
+is signed with the same key as the installed app, so make the key once and
+keep it:
+
+```bash
+keytool -genkeypair -keystore bridge-notifier.jks -alias bridge-notifier \
+    -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 bridge-notifier.jks      # macOS: base64 -i bridge-notifier.jks
+```
+
+Then add these as the repository's Actions secrets (Settings → Secrets and
+variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `BRIDGE_NOTIFIER_KEYSTORE_BASE64` | what `base64` printed |
+| `BRIDGE_NOTIFIER_KEYSTORE_PASSWORD` | the keystore's password |
+| `BRIDGE_NOTIFIER_KEY_ALIAS` | `bridge-notifier` |
+| `BRIDGE_NOTIFIER_KEY_PASSWORD` | only if the key's password differs from the keystore's |
+
+Keep `bridge-notifier.jks` and its password somewhere safe, outside the
+repository: without them, no later APK can update the installed app.
+
+Without the secrets, a release gets the debug APK instead
+(`…-debug.apk`), and the workflow warns about it. Each debug build is signed
+with a throwaway key, so installing the next one means uninstalling the app
+first, which loses its settings.
+
+To sign a release build on your own computer, set the same names as
+environment variables, with `BRIDGE_NOTIFIER_KEYSTORE` the keystore's path:
+
+```bash
+BRIDGE_NOTIFIER_KEYSTORE=$HOME/keys/bridge-notifier.jks \
+BRIDGE_NOTIFIER_KEYSTORE_PASSWORD=… BRIDGE_NOTIFIER_KEY_ALIAS=bridge-notifier \
+    ./gradlew assembleRelease     # app/build/outputs/apk/release/app-release.apk
+```

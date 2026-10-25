@@ -17,10 +17,30 @@ android {
         versionName = "0.1.0"
     }
 
+    // A release is signed with your own key when BRIDGE_NOTIFIER_KEYSTORE
+    // names one (the release workflow sets it from the repository's
+    // secrets); otherwise it builds unsigned, which a phone will not install.
+    // README.md, "Releases".
+    val keystore = providers.environmentVariable("BRIDGE_NOTIFIER_KEYSTORE").orNull?.takeIf { it.isNotBlank() }
+    if (keystore != null) {
+        signingConfigs {
+            create("release") {
+                val storePass = providers.environmentVariable("BRIDGE_NOTIFIER_KEYSTORE_PASSWORD").orNull
+                storeFile = file(keystore)
+                storePassword = storePass
+                keyAlias = providers.environmentVariable("BRIDGE_NOTIFIER_KEY_ALIAS").orNull
+                // A PKCS12 keystore (keytool's default) has one password for both.
+                keyPassword = providers.environmentVariable("BRIDGE_NOTIFIER_KEY_PASSWORD").orNull
+                    ?.takeIf { it.isNotBlank() } ?: storePass
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

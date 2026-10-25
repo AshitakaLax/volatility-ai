@@ -55,6 +55,14 @@ computer: the Live page, the extension's popup and the logs all live there.
   Android SDK. Its `PROTOCOL.md` is the spec. Its protocol vectors, and the
   list of kinds, are reproduced by
   `fidelity_gateway/tests/test_bridge_notify_protocol.py`.
+- **A published release carries the APK.** `.github/workflows/android.yml`
+  builds the app on a pull request that touches it, and attaches the APK
+  to each published release. The APK is signed with the owner's key, from
+  the repository's secrets. A phone installs an update only when it is
+  signed with the same key, and a CI runner's debug key is new every
+  build. So without the secrets the release gets the debug APK with a
+  warning, rather than nothing. The upload runs in a job of its own, the
+  only one that can write to the repository, and it runs no build code.
 
 ## The Fidelity connection stays up, says whether it is ready, and explains its disconnects
 

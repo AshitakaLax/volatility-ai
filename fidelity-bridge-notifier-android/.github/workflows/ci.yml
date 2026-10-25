@@ -1,11 +1,20 @@
 # Runs when this folder is its own repository. (Inside volatility-ai, GitHub
-# reads only the root's .github/, so nothing here runs there.)
+# reads only the root's .github/, so nothing here runs there: its
+# .github/workflows/android.yml does the same job. Keep the two alike.)
+#
+# Every push and pull request builds the app and keeps the APK as a workflow
+# artifact. A published release also gets it attached as an asset, signed
+# with your own key from the repository's secrets (README.md, "Releases"),
+# or the debug APK, with a warning, when no key is configured. GitHub runs
+# no workflow for a draft: a draft gets its APK when it is published.
 name: CI
 
 on:
   push:
     branches: ["**"]
   pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +23,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -24,9 +33,68 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Protocol and connection tests (no Android SDK needed)
         run: ./gradlew -p core test
-      - name: Build the debug APK
-        run: ./gradlew assembleDebug
+      - name: Build the debug and release APKs
+        # The release one unsigned: this checks that R8 and lint pass.
+        run: ./gradlew assembleDebug assembleRelease
+      - name: Sign the release APK with your key
+        # Only for a release, so a pull request's build never sees the key.
+        if: github.event_name == 'release'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.BRIDGE_NOTIFIER_KEYSTORE_BASE64 }}
+          BRIDGE_NOTIFIER_KEYSTORE_PASSWORD: ${{ secrets.BRIDGE_NOTIFIER_KEYSTORE_PASSWORD }}
+          BRIDGE_NOTIFIER_KEY_ALIAS: ${{ secrets.BRIDGE_NOTIFIER_KEY_ALIAS }}
+          BRIDGE_NOTIFIER_KEY_PASSWORD: ${{ secrets.BRIDGE_NOTIFIER_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No BRIDGE_NOTIFIER_KEYSTORE_BASE64 secret: the release gets the debug APK."
+            exit 0
+          fi
+          export BRIDGE_NOTIFIER_KEYSTORE="$RUNNER_TEMP/release.keystore"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$BRIDGE_NOTIFIER_KEYSTORE"
+          ./gradlew assembleRelease
+          rm -f "$BRIDGE_NOTIFIER_KEYSTORE"
+      - name: Name the APK
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          signed=app/build/outputs/apk/release/app-release.apk
+          if [ -f "$signed" ]; then
+            apk=$signed
+            suffix=""
+          else
+            apk=app/build/outputs/apk/debug/app-debug.apk
+            suffix="-debug"
+            if [ "$GITHUB_EVENT_NAME" = release ]; then
+              message="The release has the DEBUG APK: no signing key is configured. Each debug build has a different key, so a phone must uninstall the app (losing its settings) to install the next one. README.md, Releases, sets up your own key."
+              echo "::warning::$message"
+              echo "$message" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          mkdir -p "$RUNNER_TEMP/apk"
+          cp "$apk" "$RUNNER_TEMP/apk/fidelity-bridge-notifier-${TAG:-${GITHUB_SHA::7}}${suffix}.apk"
+          ls -l "$RUNNER_TEMP/apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: bridge-notifier-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: bridge-notifier-apk
+          path: ${{ runner.temp }}/apk/*.apk
+          if-no-files-found: error
+
+  release:
+    # Separate, so the only step that can write to the repository runs no
+    # build code.
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: bridge-notifier-apk
+          path: apk
+      - name: Attach the APK to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" apk/*.apk --clobber --repo "$GITHUB_REPOSITORY"
