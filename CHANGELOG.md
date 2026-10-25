@@ -40,6 +40,10 @@ after-market bars, from 2016, where Alpaca's minutes begin.
   --fund SPY IWM EEM`): every strategy that is not bound to an RSP model,
   with each fund's own minutes per session for the grid strategies, which
   trade every bar.
+- **Its runs go to the shards.** The tool queued every run `local_only`,
+  so a connected `cli.py shard` sat idle; that is now `--local-only`, asked
+  for. A shard runs its own checkout's engine, so it must be on the
+  server's commit for its results to be this code's.
 
 ## Ultimate-RSP can trade live
 

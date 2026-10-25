@@ -75,3 +75,12 @@ def test_the_strategy_accepts_every_planned_entry():
             regime_enter_threshold=enter,
             regime_exit_threshold=space["regime_exit_threshold"][0],
         ).ensure_model_available()
+
+
+def test_runs_go_to_the_shards_unless_kept_local():
+    """The SPY/IWM/EEM campaign was queued local_only and left a connected
+    shard idle (2026-10-23); local_only is now asked for, not the default."""
+    shared = tool.plan(["SPY"], ["rsi"])
+    kept = tool.plan(["SPY"], ["rsi"], local_only=True)
+    assert shared and all(not s["body"]["local_only"] for s in shared)
+    assert kept and all(s["body"]["local_only"] for s in kept)
