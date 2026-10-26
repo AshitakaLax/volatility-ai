@@ -409,7 +409,7 @@ def test_external_asof_join_is_lag_aware(tmp_path, warehouse):
     ingest.ingest_ohlcv_csv(con, root, csv, "TQQQ")
     schema.refresh_views(con, root)
 
-    frame = con.execute(queries.EXTERNAL_SERIES_AT_BARS, ["fred_LAGGED", "TQQQ"]).pl()
+    frame = con.sql(queries.EXTERNAL_SERIES_AT_BARS, params=["fred_LAGGED", "TQQQ"]).pl()
     matched = frame.filter(frame["series_value"].is_not_null())
     assert matched.height > 0, "nothing matched at all -- the join is broken, not just strict"
     assert matched.height < frame.height, "every bar matched -- the lag was not applied"

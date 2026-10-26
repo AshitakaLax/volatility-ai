@@ -296,7 +296,11 @@ def almgren_chriss(
     t = np.arange(n_intervals + 1) * tau
     if risk_aversion > 0:
         kappa = math.acosh(1 + 0.5 * tau**2 * risk_aversion * sigma**2 / eta_t) / tau
-        x = np.sinh(kappa * (horizon - t)) / math.sinh(kappa * horizon) * shares
+        # s[0] is sinh(kappa T). Dividing by it rather than by math.sinh makes
+        # x[0] exactly `shares`: numpy's vectorised sinh can differ from libm's
+        # by one ulp, depending on the CPU's SIMD path.
+        s = np.sinh(kappa * (horizon - t))
+        x = s / s[0] * shares
     else:
         kappa = 0.0
         x = shares * (1 - t / horizon)
