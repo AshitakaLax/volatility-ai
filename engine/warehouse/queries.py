@@ -192,30 +192,30 @@ LIMIT ?
 
 def executions_at_market_price(con: Any, simulation_id: str):
     """Run the ASOF join for one simulation, as an Arrow-backed frame."""
-    return con.execute(EXECUTIONS_AT_MARKET_PRICE, [simulation_id]).pl()
+    return con.sql(EXECUTIONS_AT_MARKET_PRICE, params=[simulation_id]).pl()
 
 
 def slippage_summary(con: Any):
-    return con.execute(SLIPPAGE_SUMMARY).pl()
+    return con.sql(SLIPPAGE_SUMMARY).pl()
 
 
 def universe_as_of(con: Any, as_of):
-    return con.execute(UNIVERSE_AS_OF, [as_of, as_of]).pl()
+    return con.sql(UNIVERSE_AS_OF, params=[as_of, as_of]).pl()
 
 
 def top_simulations(con: Any, limit: int = 20):
-    return con.execute(TOP_SIMULATIONS, [limit]).pl()
+    return con.sql(TOP_SIMULATIONS, params=[limit]).pl()
 
 
 def external_value_at(con: Any, series_key: str, as_of):
     """Raw most-recent value of one series at-or-before `as_of`."""
-    return con.execute(EXTERNAL_VALUE_AT, [series_key, as_of]).pl()
+    return con.sql(EXTERNAL_VALUE_AT, params=[series_key, as_of]).pl()
 
 
 def external_series_at_bars(con: Any, series_key: str, ticker: str):
     """Lag-aware join of one external series onto a ticker's bars."""
-    return con.execute(EXTERNAL_SERIES_AT_BARS, [series_key, ticker]).pl()
+    return con.sql(EXTERNAL_SERIES_AT_BARS, params=[series_key, ticker]).pl()
 
 
 def external_series_catalog(con: Any):
-    return con.execute(EXTERNAL_SERIES_CATALOG).pl()
+    return con.sql(EXTERNAL_SERIES_CATALOG).pl()

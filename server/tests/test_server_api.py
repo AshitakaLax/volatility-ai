@@ -138,9 +138,18 @@ class TestLiveParametersAndIndicators:
 
         assert state_of(client)["params"] == {}
 
-    def test_rsi_uses_the_same_class_the_strategy_trades_on(self, client):
+    def test_rsi_uses_the_same_class_the_strategy_trades_on(self, client, tmp_path, monkeypatch):
         """A second implementation would be free to disagree with the one
         making decisions."""
+        # data/ is gitignored, so CI has no bar files: serve the fixture
+        # under a name find_bar_files matches.
+        import shutil
+
+        from server import live
+
+        shutil.copy(FIXTURE, tmp_path / "TQQQ_1Min.csv")
+        monkeypatch.setattr(live, "_BAR_ROOT", str(tmp_path))
+
         body = client.get("/api/live/indicators", params={"symbol": "TQQQ"}).json()
         assert "rsi_period" not in body  # the caller's own query
         assert body["n"] > 14
@@ -150,7 +159,7 @@ class TestLiveParametersAndIndicators:
         from engine.data.dashboard_data import find_bar_files, load_bars
         from research.strategies.sizing_indicators import WilderRSI
 
-        frame = load_bars(find_bar_files("TQQQ", "data")[0], limit=max(14 * 20, 390))
+        frame = load_bars(find_bar_files("TQQQ", live._BAR_ROOT)[0], limit=max(14 * 20, 390))
         tracker = WilderRSI(period=14)
         expected = None
         for close in frame["close"]:
@@ -345,6 +354,16 @@ class TestBacktestSubmission:
 
 
 class TestDateWindowAndBars:
+    @pytest.fixture
+    def fixture_bars(self, monkeypatch):
+        """Serve the fixture as the warehouse's TQQQ: data/ is gitignored,
+        so CI has no warehouse bars at all."""
+        from server import backtest as module
+
+        frame = pd.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        monkeypatch.setattr(module, "available_tickers", lambda: {"TQQQ"})
+        monkeypatch.setattr(module, "load_frame", lambda ticker: frame.copy())
+
     def test_the_window_is_applied_before_the_bar_cap(self):
         """CAPPING FIRST WOULD BE A REAL BUG: it takes the tail of the
         FILE and then filters, so any non-recent window comes back empty
@@ -372,17 +391,17 @@ class TestDateWindowAndBars:
         # 17:00 on the 1st must survive an end of "2024-01-01".
         assert len(window(frame, None, "2024-01-01", None)) == 3
 
-    def test_bars_downsample_by_ohlc_not_by_sampling(self, client):
+    def test_bars_downsample_by_ohlc_not_by_sampling(self, client, fixture_bars):
         """Under the intrabar fill model a level TOUCHED during a bar is
         a fill, so dropping the extremes would leave markers hanging off
         candles that never reached them."""
         body = client.get(
             "/api/backtest/bars",
-            params={"ticker": "TQQQ", "start": "2026-03-02", "end": "2026-03-06", "max_points": 20},
+            params={"ticker": "TQQQ", "start": "2024-01-02", "end": "2024-02-05", "max_points": 20},
         ).json()
         assert body["bars"], "no bars for a window the file covers"
         assert len(body["bars"]) <= 40, "downsample did not bound the result"
-        assert body["bucket_s"] > 60, "a 4-day window at 20 points must roll up"
+        assert body["bucket_s"] > 60, "35 bars at 20 points must roll up"
         for _t, open_, high, low, close, _v in body["bars"]:
             assert low <= open_ <= high
             assert low <= close <= high
@@ -390,7 +409,7 @@ class TestDateWindowAndBars:
     def test_bars_for_an_unknown_ticker_are_a_404(self, client):
         assert client.get("/api/backtest/bars", params={"ticker": "NOPE"}).status_code == 404
 
-    def test_an_empty_window_returns_no_bars_rather_than_failing(self, client):
+    def test_an_empty_window_returns_no_bars_rather_than_failing(self, client, fixture_bars):
         body = client.get(
             "/api/backtest/bars",
             params={"ticker": "TQQQ", "start": "1990-01-01", "end": "1990-01-02"},

@@ -1,5 +1,27 @@
 # Changelog
 
+## Fix: CI on main, red on five tests no pull request caused
+
+**`cli.py test` failed on `main` itself, on both Python versions.**
+- **duckdb 2.0 removed `.pl()` from `con.execute(...)`'s result.** CI
+  installs 2.0.0 because `requirements-warehouse.txt` sets only a floor.
+  This broke every helper in `engine/warehouse/queries.py`, not just the
+  test that noticed (nothing tested the helpers; only
+  `tools/build_warehouse.py` calls them). They now use
+  `con.sql(SQL, params=...).pl()`, which returns the same polars frame on
+  1.x and on 2.0. `.df()` on `execute` still exists in 2.0, so `bars.py`,
+  the read path a simulation uses, was never affected.
+- **`almgren_chriss`'s first holding was 999.9999999999999 on some
+  runners.** It divided numpy's vectorised `sinh` by `math.sinh`, and the
+  two can differ by one ulp, depending on the CPU's SIMD path. It now
+  divides by the vector's own first element, so `x[0]` is exactly `shares`
+  on every CPU. The test still compares exactly.
+- **Three server tests read bar files from `data/`, which is gitignored.**
+  So CI had none, and the routes answered 404. The tests now serve
+  `tests/fixtures/regression_ohlcv.csv`, through `server.live._BAR_ROOT` and
+  `server.backtest`'s `available_tickers`/`load_frame`, as the file's later
+  tests already did.
+
 ## The bridge sends notifications to a phone
 
 **Nothing told you when the engine bought, sold or stopped, or that the
