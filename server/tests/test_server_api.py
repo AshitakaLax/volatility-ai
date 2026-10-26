@@ -356,13 +356,18 @@ class TestBacktestSubmission:
 class TestDateWindowAndBars:
     @pytest.fixture
     def fixture_bars(self, monkeypatch):
-        """Serve the fixture as the warehouse's TQQQ: data/ is gitignored,
-        so CI has no warehouse bars at all."""
+        """Serve the fixture as the warehouse's TQQQ (data/ is gitignored, so
+        CI has no warehouse bars at all), its rows one minute apart: their
+        own timestamps are a day apart, so no bucket would hold two."""
         from server import backtest as module
 
-        frame = pd.read_csv(FIXTURE, parse_dates=["timestamp"]).set_index("timestamp")
+        frame = pd.read_csv(FIXTURE).drop(columns="timestamp")
+        frame.index = pd.date_range(
+            "2024-01-02 14:30", periods=len(frame), freq="1min", tz="UTC", name="timestamp"
+        )
         monkeypatch.setattr(module, "available_tickers", lambda: {"TQQQ"})
         monkeypatch.setattr(module, "load_frame", lambda ticker: frame.copy())
+        return frame
 
     def test_the_window_is_applied_before_the_bar_cap(self):
         """CAPPING FIRST WOULD BE A REAL BUG: it takes the tail of the
@@ -397,14 +402,21 @@ class TestDateWindowAndBars:
         candles that never reached them."""
         body = client.get(
             "/api/backtest/bars",
-            params={"ticker": "TQQQ", "start": "2024-01-02", "end": "2024-02-05", "max_points": 20},
+            params={"ticker": "TQQQ", "start": "2024-01-02", "end": "2024-01-02", "max_points": 10},
         ).json()
         assert body["bars"], "no bars for a window the file covers"
-        assert len(body["bars"]) <= 40, "downsample did not bound the result"
-        assert body["bucket_s"] > 60, "35 bars at 20 points must roll up"
-        for _t, open_, high, low, close, _v in body["bars"]:
-            assert low <= open_ <= high
-            assert low <= close <= high
+        assert len(body["bars"]) <= 20, "downsample did not bound the result"
+        assert body["bucket_s"] > 60, "35 minute bars at 10 points must roll up"
+        bucket = pd.Timedelta(seconds=body["bucket_s"])
+        for t, open_, high, low, close, _v in body["bars"]:
+            start = pd.Timestamp(t, unit="s", tz="UTC")
+            rows = fixture_bars[
+                (fixture_bars.index >= start) & (fixture_bars.index < start + bucket)
+            ]
+            assert open_ == rows["open"].iloc[0]
+            assert high == rows["high"].max(), "the bucket lost its high"
+            assert low == rows["low"].min(), "the bucket lost its low"
+            assert close == rows["close"].iloc[-1]
 
     def test_bars_for_an_unknown_ticker_are_a_404(self, client):
         assert client.get("/api/backtest/bars", params={"ticker": "NOPE"}).status_code == 404

@@ -20,7 +20,9 @@
   So CI had none, and the routes answered 404. The tests now serve
   `tests/fixtures/regression_ohlcv.csv`, through `server.live._BAR_ROOT` and
   `server.backtest`'s `available_tickers`/`load_frame`, as the file's later
-  tests already did.
+  tests already did. Its rows are a day apart, so the downsample test
+  serves them a minute apart and checks each bucket's open, high, low and
+  close against the rows it rolled up.
 
 ## The bridge sends notifications to a phone
 
