@@ -219,6 +219,33 @@ def test_rebalances_once_a_session_at_the_execution_minute_in_whole_lots():
     assert [lot.order_id for lot in sold] == ["L3", "L2", "L1"]  # newest first, 75% of equity
 
 
+def test_a_rebalance_the_broker_could_not_take_is_decided_again_on_the_next_bar():
+    """10-26 live: the extension did not answer the rebalance's preview,
+    nothing was sent, and the session's one rebalance was lost until the
+    next day. Told so (live_trading_loop.py), it decides again next bar,
+    from the book as it is then."""
+    day = pd.Timestamp("2024-03-04 14:30", tz="UTC")
+    s = UltimateRspSizing(exposure_by_date={day.date(): 0.5}, execute_minute=60)
+    s.record_tick(_ctx(day, 100.0, cash=100_000, equity=100_000, minute=0))
+    s.record_tick(_ctx(day + pd.Timedelta(minutes=60), 100.0, cash=100_000, equity=100_000))
+    assert s.rebalances == 1
+    s.decision_not_sent()
+    assert s.rebalances == 0, "it did not happen"
+
+    later = day + pd.Timedelta(minutes=62)
+    s.record_tick(_ctx(later, 101.0, cash=100_000, equity=100_000))
+    bar = _ctx(later, 101.0, cash=100_000, equity=100_000)
+    assert s._grid_trigger_level(bar, 0, 0) >= bar.high
+    assert s.calculate_trade_value(bar) == pytest.approx(50_000)
+    assert s.rebalances == 1
+
+    s.record_tick(_ctx(later + pd.Timedelta(minutes=1), 101.0, cash=50_000, equity=100_000))
+    assert s._grid_trigger_level(bar, 0, 0) == 0.0, "still once per session"
+    s.decision_not_sent()  # a later bar that held no rebalance changes nothing
+    s.record_tick(_ctx(later + pd.Timedelta(minutes=2), 101.0, cash=50_000, equity=100_000))
+    assert s._grid_trigger_level(bar, 0, 0) == 0.0 and s.rebalances == 1
+
+
 def test_a_zero_target_sells_every_lot_and_a_small_drift_trades_nothing():
     t = pd.Timestamp("2024-03-05 15:30", tz="UTC")
     lots = [_Lot("A", 300.0), _Lot("B", 700.0)]

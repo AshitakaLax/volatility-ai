@@ -54,9 +54,10 @@ DEFAULT_SETTLE_TIMEOUT_SECONDS = 30.0
 
 # `cli.py live`'s exit code when startup stopped because the broker could not
 # be reached for a reason that clears on its own -- a BrokerUnavailableError
-# at CONNECT_BROKER: the browser extension not connected, Fidelity signed out,
-# the bridge's port taken. tools/market_hours_supervisor.py waits and tries
-# again rather than counting it as a crash; anything else exits 1.
+# at CONNECT_BROKER (the browser extension not connected, Fidelity signed out,
+# the bridge's port taken) or while reading its snapshot at RECONCILE (the
+# Fidelity tab not answering). tools/market_hours_supervisor.py waits and
+# tries again rather than counting it as a crash; anything else exits 1.
 EXIT_BROKER_UNAVAILABLE = 3
 
 
@@ -218,6 +219,13 @@ class RuntimeLifecycle:
         if self.reconciler is not None and broker_snapshot_provider is not None:
             try:
                 snapshot = broker_snapshot_provider()
+            except BrokerUnavailableError as e:
+                # The account could not be READ for now -- the extension's
+                # Fidelity tab not answering, the session signed out. Nothing
+                # is known to disagree, so it is a wait like CONNECT_BROKER's,
+                # not a halt (10-26: a tab that could not fetch left one in
+                # the real-money ledger that only a human could clear).
+                return self._fail(RuntimeState.RECOVERY_REQUIRED, f"broker snapshot failed: {e}", e)
             except Exception as e:
                 return self._fail(
                     RuntimeState.RECONCILIATION_REQUIRED, f"broker snapshot failed: {e}", e
@@ -266,11 +274,13 @@ class RuntimeLifecycle:
     @property
     def retryable(self) -> bool:
         """Whether startup stopped only because the broker could not be
-        reached for now (EXIT_BROKER_UNAVAILABLE): trying again later is the
-        remedy, not a human. Never true for a reconciliation failure."""
-        return self.failed_stage is RuntimeState.CONNECT_BROKER and isinstance(
-            self.failure_error, BrokerUnavailableError
-        )
+        reached or read for now (EXIT_BROKER_UNAVAILABLE): trying again later
+        is the remedy, not a human. Never true for a reconciliation failure --
+        a book that disagrees with the broker's."""
+        return self.failed_stage in (
+            RuntimeState.CONNECT_BROKER,
+            RuntimeState.RECONCILE,
+        ) and isinstance(self.failure_error, BrokerUnavailableError)
 
     # --- shutdown ---
 

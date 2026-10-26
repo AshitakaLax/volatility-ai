@@ -1,5 +1,65 @@
 # Changelog
 
+## Fix: two browsers no longer swap the connection, a lost rebalance is retried, and an unreadable account is a wait
+
+**On 10-26 Fidelity bought nothing at its rebalance.** Two browsers had the
+extension, and the bridge let each new connection replace the old one.
+Each dropped browser reconnected a second later, so they swapped about once
+a second, and the extension's popup showed the engine starting and
+stopping. With one browser left, the rebalance's preview at 10:31 ET still
+went unanswered. `ultimate_rsp` decides once a session, so nothing was
+bought until the next day.
+
+The bridge was then redeployed mid-session. The tab's address still read
+"signed in", so the trader started at once, but the tab could no longer
+fetch, probably because Fidelity's session had expired. The startup read of
+the account failed five times, and each failure was treated as a book that
+disagrees with the account. That left a reconciliation halt in the ledger,
+and nothing on the Live page could clear it for a Fidelity deployment.
+- **The extension connected keeps the connection**
+  (`fidelity_gateway/bridge/server.py`):
+  - Another from the same address still replaces it: that is a browser
+    restart.
+  - One from another address is turned away while the first answers. It is
+    closed, not denied, so the extension keeps retrying with its backoff.
+  - It may take over from one that has been silent for a minute, or
+    connected for 30 s with no signed-in Fidelity tab. That way the browser
+    that can trade wins whichever connected first, and two that cannot
+    trade swap at most every 30 s.
+  - Readiness warns on the extension, naming the refused address (with no
+    effect on whether it reads ready).
+  - A replacement from another address no longer inherits the old one's
+    Fidelity tab.
+- **A decision the broker could not take is decided again**
+  (`engine/trading/live_trading_loop.py`, `ultimate_rsp_sizing.py`):
+  - If a `BrokerUnavailableError` comes after the bar reached
+    `record_tick`, the loop calls the strategy's optional
+    `decision_not_sent()`. Nothing was sent: an order that may have been
+    sent is still `AmbiguousSubmissionError`, which halts.
+  - `ultimate_rsp` (and `ultimate_ursp`) then rebalances on the next bar,
+    from the book as it is then.
+  - A backtest never calls it, so researched results are unchanged.
+- **An account that cannot be read at startup is a wait, not a halt**
+  (`engine/trading/runtime_lifecycle.py`):
+  - A `BrokerUnavailableError` from the startup snapshot now ends in
+    `RECOVERY_REQUIRED`, which is retryable: exit 3, and the supervisor
+    tries again every minute. It no longer trips the reconciliation halt.
+  - A snapshot that fails any other way, or a book that disagrees with the
+    account, still halts.
+- **The account is read before trading** (`fidelity_gateway/bridge/host.py`,
+  `readiness.py`):
+  - This applies while a session is open or within 30 minutes of it, with
+    no trader attached.
+  - A connection counts as ready only once a read-only account check has
+    passed through it. The check runs as soon as the extension connects,
+    and every 2 minutes while it fails, so fixing the tab is enough.
+  - Checks are matched to the connection they ran through, not by time.
+  - The bridge host tests now run on a fixed Sunday clock. Two of them had
+    failed during market hours on the wall clock.
+- **Fidelity configs can grant Resume buys**: `live.control.resume_buys` is
+  added to `fidelity_live.yaml.example`. Without it, a Fidelity halt could
+  be cleared only by hand.
+
 ## The bridge sends notifications to a phone
 
 **Nothing told you when the engine bought, sold or stopped, or that the

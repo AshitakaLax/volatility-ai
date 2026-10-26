@@ -48,6 +48,12 @@ live:
   profit_target: 0.005
   poll_interval_seconds: 60
   broker: fidelity
+  # What the Live page may do (engine/core/config.py LiveControlConfig);
+  # pausing new buys is always allowed. Resume buys clears a halt -- with
+  # real money only once you type the deployment's id back. Without it, a
+  # halt (a pause, a book that disagrees with the account) is cleared by hand.
+  control:
+    resume_buys: true
   fidelity:
     allowed_accounts: ["YOUR-FULL-ACCOUNT-NUMBER"]
     account: "YOUR-FULL-ACCOUNT-NUMBER"

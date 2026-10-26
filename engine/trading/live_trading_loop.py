@@ -85,6 +85,17 @@ resume(open_lots) with the durable book -- the state a restart loses that
 no bar can rebuild. A strategy that wants history and gets no source is
 refused rather than started blind.
 --------------------------------------------------------------------
+A DECISION THE BROKER COULD NOT TAKE. A BrokerUnavailableError skips the
+rest of the tick: nothing was sent (an order that MAY have been is
+AmbiguousSubmissionError, which halts). Most strategies decide again on
+every bar, so the next tick covers it. One that decides once -- ultimate_rsp
+rebalances at one minute of the session -- would lose the whole session's
+decision (10-26: the extension did not answer the rebalance's preview, and
+nothing was bought until the next day). If the failure came after the bar
+reached record_tick, a strategy that declares decision_not_sent() is told,
+and decides again on the next bar. Never called in a backtest, which has
+no broker to fail.
+--------------------------------------------------------------------
 WHAT IT SAYS ABOUT ITSELF, for whoever watches it (the Live page, through
 the trader's status file -- engine/trading/operator_control.py):
 
@@ -519,6 +530,9 @@ class LiveTradingLoop:
         # it can. Readable by whatever supervises the loop.
         self.broker_unavailable: str | None = None
         self._unavailable_ticks = 0
+        # Whether this tick's bar reached the strategy's record_tick: a
+        # broker that fails after that has cost the strategy its decision.
+        self._decided = False
 
         self.risk_manager = risk_manager or RiskManager(
             max_concurrent_lots=config.risk.max_concurrent_lots,
@@ -834,6 +848,7 @@ class LiveTradingLoop:
         the tick's sizing decisions see confirmed reality rather than
         state that is one fill stale.
         """
+        self._decided = False
         if not self._session_is_open():
             return TickOutcome(acted=False, reason="market_closed")
 
@@ -882,6 +897,7 @@ class LiveTradingLoop:
 
         # Phase 1, unconditionally and before any harvest.
         decision_cycle.record_tick(self.strategy, context)
+        self._decided = True
         if self.shadow is not None:
             try:
                 decision_cycle.record_tick(self.shadow, context)
@@ -940,6 +956,7 @@ class LiveTradingLoop:
                 # fill, say) is persisted now rather than at the tick's
                 # end, which it did not reach.
                 self.persist_state()
+                self._decision_not_sent()
                 self._note_broker_unavailable(exc)
                 self._report_tick("broker_unavailable", acted=False, detail=str(exc))
             except AmbiguousSubmissionError:
@@ -1022,6 +1039,22 @@ class LiveTradingLoop:
             self._tick_listener({"at": datetime.now(UTC).isoformat(), "reason": reason, **fields})
         except Exception as exc:
             logger.warning(f"Tick listener failed (ignored): {type(exc).__name__}: {exc}")
+
+    def _decision_not_sent(self) -> None:
+        """The broker could not take this tick's orders AFTER the strategy
+        decided on its bar (module docstring, A DECISION THE BROKER COULD
+        NOT TAKE). A strategy that declares decision_not_sent() is told, so
+        it can decide again on the next bar. Never raises."""
+        if not self._decided:
+            return
+        self._decided = False
+        hook = getattr(self.strategy, "decision_not_sent", None)
+        if not callable(hook):
+            return
+        try:
+            hook()
+        except Exception as exc:
+            logger.warning(f"decision_not_sent failed (ignored): {type(exc).__name__}: {exc}")
 
     def _note_broker_unavailable(self, exc: BrokerUnavailableError) -> None:
         """Log an unreachable broker without flooding the log: when it

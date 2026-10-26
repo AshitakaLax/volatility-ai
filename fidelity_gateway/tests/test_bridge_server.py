@@ -21,6 +21,8 @@ from fidelity_gateway.bridge.keys import BridgeApiKey
 from fidelity_gateway.bridge.server import (
     EVENT_BACKLOG,
     PRE_SEND_CODES,
+    SETTLE_SECONDS,
+    SILENT_EXTENSION_SECONDS,
     BridgeError,
     BridgeRefusal,
     BridgeServer,
@@ -329,6 +331,102 @@ def test_a_new_extension_replaces_the_old_one(server):
     with pytest.raises(ConnectionClosed):
         first.ws.recv(timeout=5)
     second.close()
+
+
+def _second_address_usable() -> bool:
+    import socket
+
+    try:
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.2", 0))
+    except OSError:
+        return False
+    return True
+
+
+@pytest.fixture
+def lan():
+    """A server that allows 127.0.0.0/8, where 127.0.0.1 and 127.0.0.2 stand
+    in for two computers, on a clock the test turns."""
+    if not _second_address_usable():
+        pytest.skip("127.0.0.2 is not a local address here")
+    bridge = BridgeServer(
+        BridgeApiKey(API_KEY),
+        host="127.0.0.1",
+        port=0,
+        policy=AddressPolicy(["127.0.0.0/8"]),
+        handshake_timeout=2.0,
+    )
+    bridge.now = 1_000_000.0
+    bridge._clock = lambda: bridge.now
+    bridge.start()
+    yield bridge
+    bridge.stop()
+
+
+def _turned_away(server, source: str) -> FakeExtension:
+    extension = FakeExtension(server.url, source=source)
+    with pytest.raises(ConnectionClosed):
+        extension.handshake()
+    assert extension.ws.close_code == 1008
+    assert extension.ws.close_reason == "another extension is connected"
+    return extension
+
+
+def test_a_second_browser_is_turned_away_while_the_first_answers(lan):
+    """10-26: two browsers with the extension replaced each other every
+    second, so neither could be relied on to answer a request."""
+    first = FakeExtension(lan.url, source="127.0.0.1")
+    assert first.handshake()["type"] == "welcome"
+    first.serve(lambda command, args: {"from": "first"})
+    assert lan.wait_for_extension(5)
+
+    _turned_away(lan, "127.0.0.2")
+    assert lan.connection_report()["client"] == "127.0.0.1"
+    assert lan.request("status", {}, timeout=5) == {"from": "first"}
+    refused = lan.connection_report()["last_refused"]
+    assert refused["client"] == "127.0.0.2"
+    assert "127.0.0.1 has the connection" in refused["reason"]
+    first.close()
+
+
+def test_a_silent_extension_gives_way_to_another_browser(lan):
+    first = _connected(lan)
+    lan.now += SILENT_EXTENSION_SECONDS + 1
+    second = FakeExtension(lan.url, source="127.0.0.2")
+    assert second.handshake()["type"] == "welcome"
+    with pytest.raises(ConnectionClosed):
+        first.ws.recv(timeout=5)
+    assert lan.connection_report()["client"] == "127.0.0.2"
+    second.close()
+
+
+def test_one_settled_without_a_signed_in_tab_gives_way_and_the_tab_is_the_new_ones(lan):
+    """The browser that can trade wins, whichever connected first -- but two
+    that cannot swap no faster than SETTLE_SECONDS."""
+    idle = _connected(lan)
+    idle.send({"type": "event", "event": "tab", "data": {"url": None}})
+    assert _wait_until(lambda: (lan.connection_report()["fidelity_tab"] or {}).get("state"))
+    _turned_away(lan, "127.0.0.2")  # not settled yet
+
+    lan.now += SETTLE_SECONDS
+    trading = FakeExtension(lan.url, source="127.0.0.2")
+    assert trading.handshake()["type"] == "welcome"
+    assert _wait_until(lambda: lan.connection_report()["client"] == "127.0.0.2")
+    assert lan.connection_report()["fidelity_tab"] is None, "not the old browser's tab"
+    trading.send(
+        {
+            "type": "event",
+            "event": "tab",
+            "data": {"url": "https://digital.fidelity.com/ftgw/digital/portfolio/summary"},
+        }
+    )
+    assert _wait_until(
+        lambda: (lan.connection_report()["fidelity_tab"] or {}).get("state") == "signed_in"
+    )
+    lan.now += SETTLE_SECONDS
+    _turned_away(lan, "127.0.0.1")  # the idle one, back: this one can trade
+    trading.close()
 
 
 def test_the_event_backlog_is_bounded(server):

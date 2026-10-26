@@ -158,12 +158,24 @@ container log. `bridge/host.py`'s `BridgeHost` (the compose
   so the placing broker's ambiguity rule is unchanged.
 - **One process attached at a time.** A second is refused, naming the
   first.
+- **One extension at a time, and the one connected keeps it**
+  (`server.py`'s docstring). Another from the same address replaces it (a
+  browser restart); one from another address is turned away -- closed with
+  1008, which the extension retries with its backoff, never a `denied`,
+  which it reads as a wrong key -- unless the connected one has gone silent
+  for 60 s, or has been connected 30 s with no signed-in Fidelity tab. Two
+  browsers used to replace each other every second (10-26). The refusal is
+  `last_refused`, and readiness shows it as a warning on the extension.
 - **Readiness** (`readiness.py`, pure): listening; the extension connected
   and heard from in 60 s; its version (a warning only); the Fidelity tab
   signed in (`session.tab_state`, the extension's own rule, from its `tab`
   events); "Allow trading" on for a placing deployment; the last account
   check since it connected. Each item ok / warn / fail / unknown; ready
-  when nothing fails, else the first failure and its fix.
+  when nothing fails, else the first failure and its fix. With
+  `check_first` -- the host's, while a session is open or within 30 min of
+  it and nothing is attached -- an account not yet read through this
+  connection fails: a tab's address says signed in after Fidelity's session
+  expired (10-26).
 - **Status and events** go to the deployment's control directory, under
   `bridge/` (a `ControlInbox` of its own): `status.json` every 15 s and on
   change, `events/<day>.jsonl` kept 14 days -- connects, disconnects with
@@ -172,7 +184,10 @@ container log. `bridge/host.py`'s `BridgeHost` (the compose
   `tools/market_hours_supervisor.py` (which starts a session only on
   ready) read them.
 - **The account check** (`check_connection`, queued by the Live page into
-  `bridge/`'s inbox, and by itself 30 and 10 minutes before each open):
+  `bridge/`'s inbox, by itself 30 and 10 minutes before each open, and --
+  under `check_first` -- as soon as the extension connects and every
+  `CHECK_RETRY_SECONDS` while it fails; matched to the connection it ran
+  through, not by time):
   orders, positions, settled cash through a `FidelitySession` with its
   defaults -- no previews, no orders; it navigates for headers only when
   nothing is attached. `host.py` never imports the placing broker (a test

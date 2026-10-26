@@ -615,6 +615,71 @@ def test_a_tick_cut_short_still_persists_what_it_applied(store):
     assert float(store.get_meta("live.cash")) == pytest.approx(100_000.0 - 980.0)
 
 
+class _CountsLostDecisions(FixedPortfolioPercentage):
+    """Counts the decisions the broker could not take."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lost = 0
+
+    def decision_not_sent(self):
+        self.lost += 1
+
+
+def test_a_strategy_is_told_when_the_broker_could_not_take_its_decision(store):
+    """10-26: ultimate_rsp decides once a session, the extension did not
+    answer that bar's preview, and the session's rebalance was lost. Only a
+    failure AFTER the bar reached record_tick cost the strategy a decision."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    market.push(100.0)
+    strategy = _CountsLostDecisions(allocation_pct=0.05)
+    loop = make_loop(store, broker, market, strategy=strategy)
+    loop._sleep = lambda _seconds: None
+    loop.run_once()  # reference price 100
+
+    def unreachable(*_args, **_kwargs):
+        raise BrokerUnavailableError("the extension did not answer")
+
+    submit_buy, broker.submit_buy = broker.submit_buy, unreachable
+    market.push(98.0, ts=BASE_TS + timedelta(minutes=1))
+    loop.run_forever(max_ticks=1)
+    assert loop.broker_unavailable == "the extension did not answer"
+    assert strategy.lost == 1
+
+    broker.submit_buy = submit_buy
+    market.push(96.0, ts=BASE_TS + timedelta(minutes=2))
+    loop.run_once()  # a buy is submitted and rests
+    assert len(broker.buys) == 1
+
+    # Before the bar reaches the strategy -- polling the resting order --
+    # it has decided nothing, so there is nothing to tell it.
+    def signed_out(*_args, **_kwargs):
+        raise BrokerUnavailableError("signed out")
+
+    broker.get_order_by_client_id = signed_out
+    market.push(94.0, ts=BASE_TS + timedelta(minutes=3))
+    loop.run_forever(max_ticks=1)
+    assert loop.broker_unavailable == "signed out"
+    assert strategy.lost == 1
+
+
+def test_a_strategy_without_the_hook_is_unaffected_by_a_lost_decision(store):
+    broker = FakeBroker()
+    market = FakeMarketData()
+    market.push(100.0)
+    loop = make_loop(store, broker, market)
+    loop._sleep = lambda _seconds: None
+    loop.run_once()
+
+    def unreachable(*_args, **_kwargs):
+        raise BrokerUnavailableError("signed out")
+
+    broker.submit_buy = unreachable
+    market.push(98.0, ts=BASE_TS + timedelta(minutes=1))
+    assert loop.run_forever(max_ticks=1) == 1
+
+
 def test_an_ambiguous_submission_still_halts_and_stops(store):
     """The one failure that is NOT waited out: an order that may be live."""
 

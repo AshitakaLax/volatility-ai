@@ -154,6 +154,36 @@ def test_only_a_broker_that_cannot_be_reached_for_now_is_retryable(store):
     assert ready.failed_stage is None and ready.failure is None and not ready.retryable
 
 
+def test_an_account_that_cannot_be_read_for_now_is_a_wait_not_a_halt(store):
+    """10-26: the Fidelity tab could not fetch, the startup snapshot failed,
+    and a reconciliation halt was left in the real-money ledger that only a
+    human could clear -- though nothing was known to disagree."""
+    from engine.core.exceptions import BrokerUnavailableError
+
+    def unreadable():
+        raise BrokerUnavailableError("the Fidelity tab returned no response")
+
+    breaker = CircuitBreaker()
+    lifecycle = RuntimeLifecycle(
+        store=store, circuit_breaker=breaker, reconciler=Reconciler(store, circuit_breaker=breaker)
+    )
+    assert lifecycle.start(broker_snapshot_provider=unreadable) is RuntimeState.RECOVERY_REQUIRED
+    assert lifecycle.failed_stage is RuntimeState.RECONCILE and lifecycle.retryable
+    assert "the Fidelity tab returned no response" in lifecycle.failure
+    assert breaker.state is not CircuitBreakerState.HALTED_NEW_BUYS, "no halt to clear by hand"
+
+    def broken():
+        raise ValueError("an answer that cannot be parsed")
+
+    breaker = CircuitBreaker()
+    unknown = RuntimeLifecycle(
+        store=store, circuit_breaker=breaker, reconciler=Reconciler(store, circuit_breaker=breaker)
+    )
+    assert unknown.start(broker_snapshot_provider=broken) is RuntimeState.RECONCILIATION_REQUIRED
+    assert not unknown.retryable
+    assert breaker.state is CircuitBreakerState.HALTED_NEW_BUYS, "anything else still halts"
+
+
 def test_failed_reconciliation_blocks_ready_and_halts(store):
     _seed_open_lot(store, shares=10.0)
     breaker = CircuitBreaker()

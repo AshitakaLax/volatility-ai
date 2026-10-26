@@ -393,10 +393,20 @@ and the last read-only account check passed. The Live page shows that
 chain, with the first broken link and what to do about it, and the
 extension's popup says the same ("Standing by: ready" / "not ready").
 The trader starts a session only once it is ready, and starts it the moment
-it is -- it no longer launches a loop that can only fail. A start that
-still cannot reach Fidelity (the extension dropped meanwhile) is retried
-every minute until the session ends, never counted as a crash, and the page
-says why.
+it is -- it no longer launches a loop that can only fail. During a session,
+or within 30 minutes of the open, an extension that has just connected
+counts as ready only once the bridge has read the account through it: a
+tab's address says "signed in" even after Fidelity's session has expired.
+A read that fails is tried again every 2 minutes, so fixing the tab is
+enough. A start that still cannot reach Fidelity or read the account (the
+extension dropped meanwhile) is retried every minute until the session
+ends, never counted as a crash and never leaving a halt, and the page says
+why.
+
+A halt in the ledger -- a pause from the page, a book that disagrees with
+the account -- needs **Resume buys** on the Live page, which a Fidelity
+config grants with `live.control.resume_buys: true` (you type the
+deployment's id to confirm). Without it, nothing on the page can clear one.
 
 **Check connection** on the Live page, and the bridge by itself 30 and 10
 minutes before each open, reads the account through the extension --
@@ -406,6 +416,12 @@ orders, positions, settled cash -- read-only: no preview, no order.
 from `bridge/events/` in the control volume) says when, with the
 WebSocket's close code, how long it stayed gone, and whether an address or
 key was turned away. `docker compose logs fidelity-bridge` has the same.
+
+**One browser at a time.** The extension connected keeps the connection.
+Another browser with the extension is turned away while it answers, and
+the Live page warns, naming its address -- turn the extension off there.
+It takes over only if the connected one goes silent for a minute, or has
+no signed-in Fidelity tab, so the browser that can trade is the one used.
 
 **One process at a time.** The bridge lets one process attach: the
 session's loop, or a connection check. A loop or `bridge serve` started by
