@@ -1,3 +1,7 @@
+# PARKED 2026-10-27: moved out of config/live_profiles/ because no committed
+# deployment trades RSP (every config in config/deployments.yaml trades TQQQ),
+# so research/tests/test_live_profiles.py found it a home nowhere. Move it
+# back once a deployment trading RSP is committed.
 # Proposed from backtest 027b10806eda (LEDGER X1 intraday-momentum gate: RSP).
 # Review it, save it as config/live_profiles/hf-entry-gated-rsp.yaml and commit it. A paper
 # deployment can switch to it from the Live page once it is in git; real money

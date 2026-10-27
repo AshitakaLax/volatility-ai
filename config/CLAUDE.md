@@ -23,6 +23,9 @@ Two more things live here that are not `BacktestConfig`s:
   Real money takes only a profile whose `evidence.promotion` names a
   passing paper promotion. `research/tests/test_live_profiles.py` requires
   every profile to trade on some deployment it fits.
+- `proposed_profiles/<id>.yaml` — profiles kept for later that no committed
+  deployment can trade yet (nothing loads this directory). Move one into
+  `live_profiles/` once a deployment trading its symbol is committed.
 
 What the Live page may do to a deployment is that deployment's own
 `live.control` (`LiveControlConfig`): pausing buys is always allowed;
