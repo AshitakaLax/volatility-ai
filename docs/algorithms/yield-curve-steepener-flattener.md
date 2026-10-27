@@ -38,9 +38,18 @@ signal (systematic variants): slope momentum, slope mean reversion, or a policy-
   "steepness", curvature) explain well over 95% of Treasury yield
   variation; level dominates. A DV01-neutral steepener isolates the
   slope factor. (Summaries.)
-* No source found for a systematic, rules-based steepener/flattener
-  earning a premium. Curve-momentum work (Durham; Sihvonen, see RK20)
-  is the nearest.
+* **Forward rates forecast bond excess returns, in sample:** Fama &
+  Bliss (1987, *American Economic Review* 77(4), 680–692) and Cochrane &
+  Piazzesi (2005, *American Economic Review* 95(1), 138–160). (Standard
+  references, offered by the owner-supplied Gemini answer.)
+* **Not out of sample:** Thornton & Valente (2012, *Review of Financial
+  Studies* 25(10), 3141–3168) find these forecasts add no consistent
+  economic value in a dynamic asset allocation and get worse over time.
+  (Abstract.) That contradicts the Gemini answer's claim of robust
+  out-of-sample returns.
+* These forecast duration (level) returns; no source found that tests a
+  DV01-neutral steepener/flattener rule. Curve-momentum work (Durham;
+  Sihvonen, see RK20) is the nearest.
 
 ## Against, and failure modes
 
@@ -66,5 +75,14 @@ says what was checked.
   Returns." *Journal of Fixed Income* 1(1), 54–61. Summaries.
 * Durham, J. B. (2015), FAJ 71(5); Sihvonen, M., "Yield Curve Momentum".
   See RK20.
+* Fama, E. F., Bliss, R. R. (1987). "The Information in Long-Maturity
+  Forward Rates." *American Economic Review* 77(4), 680–692.
+* Cochrane, J. H., Piazzesi, M. (2005). "Bond Risk Premia." *American
+  Economic Review* 95(1), 138–160.
+* Thornton, D. L., Valente, G. (2012). "Out-of-Sample Predictions of Bond
+  Excess Returns and Forward Rates: An Asset Allocation Perspective."
+  *Review of Financial Studies* 25(10), 3141–3168.
+  <https://ideas.repec.org/a/oup/rfinst/v25y2012i10p3141-3168.html>.
+  Abstract.
 * The CSV's own references: CME, "Introduction to Treasury Futures";
   QuantConnect strategy library.

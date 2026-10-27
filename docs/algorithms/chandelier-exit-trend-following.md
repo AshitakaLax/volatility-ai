@@ -41,8 +41,9 @@ the stop is then floored at the target, so the exit cannot sell below it
   Analysis of the Futures Markets*, 1992, with Lucas) and to Elder's
   2002 book is consistent across secondary sources; the 22/3.0 defaults
   are a modern convention, not confirmed in LeBeau's text. (Summaries.)
-* **No performance study found.** It is usually evaluated as part of a
-  trend system, not alone.
+* **No performance study found**, here or by a second search (the
+  owner-supplied Gemini answer also reports none). It is usually
+  evaluated as part of a trend system, not alone.
 
 ## Against, and failure modes
 

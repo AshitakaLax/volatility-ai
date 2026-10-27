@@ -36,7 +36,9 @@ trend = up when close > final upper band; down when close < final lower band
 ## Evidence
 
 * Attributed to Olivier Seban (TradingView's documentation); later coded
-  for MetaTrader by Jason Robinson. (Summaries.)
+  for MetaTrader by Jason Robinson. (Summaries.) Seban's book *Tout le
+  monde mérite d'être riche* exists (cited by the owner-supplied Gemini
+  answer), but no source confirms that it describes Supertrend.
 * **No academic study found.** The only performance figures are vendor
   examples (one SMA + Supertrend backtest reporting 14.36% in a year),
   which are not evidence.
@@ -71,5 +73,7 @@ says what was checked.
 * TradingView support documentation (Supertrend; attribution to Olivier
   Seban) and practitioner descriptions found by search. No primary
   publication by Seban located.
+* Seban, O. *Tout le monde mérite d'être riche* (Dunod; 3rd edition).
+  A personal-finance book; its link to Supertrend is unconfirmed.
 * Park, C.-H., Irwin, S. H. (2007). *Journal of Economic Surveys* 21(4),
   786–826. Abstract.

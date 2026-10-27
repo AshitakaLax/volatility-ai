@@ -43,7 +43,8 @@ no unfinished higher-timeframe bar may inform a lower-timeframe decision
   every decade since 1880 with low correlation to traditional assets.
   (Abstract and summaries; the combination weights were not verified.)
 * **Elder, A. (1993), *Trading for a Living*:** the Triple Screen
-  system. (Secondary sources.)
+  system, first published in *Futures* magazine in April 1986.
+  (Secondary sources.)
 * **No academic study found** of the agreement (all-must-agree) form.
 
 ## Against, and failure modes

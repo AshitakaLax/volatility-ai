@@ -46,6 +46,11 @@ general form: a negative cycle in -log(rate) (Bellman-Ford)
 * **Ito, Yamada, Takayasu & Takayasu (2020), NBER WP 26706:** exploitable
   before the mid-2000s on EBS even after costs; much rarer after
   algorithmic access. (Abstract.)
+* **Chaboud, Chiquoine, Hjalmarsson & Vega (2014), "Rise of the Machines:
+  Algorithmic Trading in the Foreign Exchange Market," *Journal of
+  Finance* 69(5), 2045–2084:** on EBS, algorithmic trading reduced the
+  frequency of triangular arbitrage opportunities, mainly through
+  computers taking liquidity. (Abstract.)
 
 ## Against, and failure modes
 
@@ -68,4 +73,7 @@ says what was checked.
   York Fed conference paper (2010). Abstract.
 * Ito, T., Yamada, K., Takayasu, M., Takayasu, H. (2020). NBER Working
   Paper 26706. Abstract.
+* Chaboud, A. P., Chiquoine, B., Hjalmarsson, E., Vega, C. (2014).
+  *Journal of Finance* 69(5), 2045–2084.
+  <https://doi.org/10.1111/jofi.12186>. Abstract.
 * This repository: `research/catalog/crypto.py`, ledger A7.

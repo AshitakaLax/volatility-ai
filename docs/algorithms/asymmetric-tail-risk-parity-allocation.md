@@ -45,7 +45,11 @@ semivariance form: replace Sigma with the downside semicovariance matrix in the 
   CVaR-based risk parity model that spreads tail risk evenly, with
   machine-learning forecasts for rebalancing. (Abstract.)
 * **Gap:** no source found for semivariance-based risk parity, and no
-  out-of-sample comparison with variance-based risk parity.
+  out-of-sample comparison with variance-based risk parity. The
+  owner-supplied Gemini answer cites Roncalli (2013), *Introduction to
+  Risk Parity and Budgeting*, and Qian (2011), "Risk Parity and
+  Diversification" (*Journal of Investing*), both about risk budgeting
+  in general, and states drawdown results without naming a study.
 
 ## Against, and failure modes
 

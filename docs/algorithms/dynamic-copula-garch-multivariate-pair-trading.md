@@ -38,7 +38,12 @@ trade as in RK74 on h(u_1 | u_2) at the 5%/95% levels
   costs, Sharpe 1.12, 1992–2015. (Abstract.)
 * **Rad, Low & Faff (2016):** static copula pairs earned 5 bp a month
   after costs. (Abstract.)
-* **No copula-GARCH pairs study verified.**
+* **No copula-GARCH pairs study verified.** The owner-supplied Gemini
+  answer cites Cherubini, Luciano & Vecchiato (2004), *Copula Methods in
+  Finance*, a methods book, and unnamed JSE bank studies that could not
+  be found. The nearest found: a GARCH-adaptive cointegration system on
+  the JSE (North-West University thesis, 2017), which did not beat
+  classical pairs there.
 
 ## Against, and failure modes
 
@@ -58,4 +63,6 @@ says what was checked.
   with vine copulas." *Quantitative Finance* 18(11), 1831–1849. Abstract.
 * Rad, H., Low, R. K. Y., Faff, R. (2016). *Quantitative Finance* 16(10),
   1541–1558. Abstract.
+* Cherubini, U., Luciano, E., Vecchiato, W. (2004). *Copula Methods in
+  Finance*. Wiley. Methods only.
 * The CSV's references: the `arch` and `copulas` Python libraries.

@@ -41,7 +41,9 @@ bills well below the floor: ... (no rule given beyond "trade the dislocation"); 
   a floor for repo rates. (Summary.)
 * **Market reports (2021):** bills and repo traded below the ON RRP
   offering rate (0.05% after June 2021) as bill supply fell. (Summaries.)
-* **No study of a trading strategy found.**
+* **No study of a trading strategy found**, here or by a second search
+  (the owner-supplied Gemini answer, which also calls "OTC liquidity
+  sweep" informal practitioner wording rather than a defined method).
 
 ## Against, and failure modes
 

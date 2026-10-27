@@ -44,6 +44,13 @@ variants: scale by volatility (not variance); by downside volatility; cap the le
   crashes. (Abstract.)
 * **Wang & Yan (2021), *Journal of Banking & Finance* 131:** scaling by
   *downside* volatility beats scaling by total volatility. (Abstract.)
+* **Hanauer & Windmüller (2023), "Enhanced momentum strategies,"
+  *Journal of Banking & Finance* 148, 106712 (the CSV's reference):**
+  compares idiosyncratic momentum, constant volatility scaling and
+  dynamic scaling. Volatility-scaled, semi-volatility-scaled and
+  dynamically scaled momentum all reduce crashes, with Sharpe ratios and
+  t-statistics roughly double plain momentum's, in US and international
+  stocks. (Bibliographic record and secondary summaries.)
 
 ## Against, and failure modes
 
@@ -73,7 +80,7 @@ says what was checked.
 * Cederburg, S., O'Doherty, M. S., Wang, F., Yan, X. (2020). "On the
   Performance of Volatility-Managed Portfolios." *Journal of Financial
   Economics* 138(1), 95–117. Abstract.
-* The CSV's reference
-  <https://www.sciencedirect.com/science/article/pii/S0378426622002928>
-  (a 2022 *Journal of Banking & Finance* article) could not be identified
-  from search.
+* Hanauer, M. X., Windmüller, S. (2023). "Enhanced momentum
+  strategies." *Journal of Banking & Finance* 148, 106712.
+  <https://doi.org/10.1016/j.jbankfin.2022.106712> (the CSV's reference,
+  PII S0378426622002928). Record and summaries.

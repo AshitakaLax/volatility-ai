@@ -56,8 +56,13 @@ CSV lists them as open.
   five-factor and q-factor models and makes the investment factor
   redundant. (Abstract; very probably the CSV's `fima.70001` reference,
   not confirmed by DOI.)
-* The CSV's second reference (`fima.12505`, on intangible investment in
-  return prediction) could not be identified from search.
+* The CSV's second reference (`fima.12505`) is still unconfirmed. The
+  owner-supplied Gemini answer attributes it to Ozdagli & Ryfe, "Asset
+  Manager Commonality and Portfolio Similarity". A Federal Reserve Bank
+  of Dallas working paper of that title exists (WP 2515, on life insurers
+  that share an asset manager), but its publication under this DOI could
+  not be confirmed. If the attribution is right, the reference has
+  nothing to do with intangibles.
 
 ## Against, and failure modes
 
@@ -88,4 +93,7 @@ says what was checked.
   <https://onlinelibrary.wiley.com/doi/full/10.1111/fima.70001> (the
   CSV's reference). Abstract via the Erasmus repository listing.
 * <https://onlinelibrary.wiley.com/doi/full/10.1111/fima.12505> (the
-  CSV's second reference): not identified.
+  CSV's second reference): not confirmed. Possibly Ozdagli, A., Ryfe, D.
+  "Asset Manager Commonality and Portfolio Similarity." Federal Reserve
+  Bank of Dallas Working Paper 2515 (revised 2025),
+  <https://ideas.repec.org/p/fip/feddwp/99954.html>. Abstract.

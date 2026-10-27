@@ -40,8 +40,12 @@ rank monthly; hold the top decile (long-only); skip around announcements if desi
   controlling for the other; analysts respond sluggishly, especially for
   past losers; not explained by market, size or book-to-market.
   (Abstract.)
-* The CSV's reference (*Journal of Behavioral and Experimental Finance*,
-  article 100446, 2020) could not be identified.
+* **Fink (2021), "A review of the post-earnings-announcement drift,"
+  *Journal of Behavioral and Experimental Finance* 29, 100446 (the CSV's
+  reference):** a survey of the drift literature, grouping explanations
+  into risk, trading frictions and behavioural causes, and concluding
+  that no single one accounts for the drift. It is about earnings
+  surprises, not estimate revisions. (Abstract.)
 
 ## Against, and failure modes
 
@@ -63,5 +67,7 @@ says what was checked.
   Finance* 51(5), 1681–1713.
   <https://ideas.repec.org/a/bla/jfinan/v51y1996i5p1681-1713.html>.
   Abstract.
-* The CSV's reference: <https://doi.org/10.1016/j.jbef.2020.100446>
-  (not identified).
+* Fink, J. (2021). "A review of the post-earnings-announcement drift."
+  *Journal of Behavioral and Experimental Finance* 29, 100446.
+  <https://doi.org/10.1016/j.jbef.2020.100446> (the CSV's reference).
+  Abstract and publisher listing.

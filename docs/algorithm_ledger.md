@@ -215,7 +215,7 @@ entries also have reference code in `research/catalog/`, unwired.
 | RK31 | Intangibles-adjusted value and profitability | ranked list #31; Peters & Taylor 2017; Financial Management 2025 | Value factor | ⏳ | Low |
 | RK32 | Commodity futures roll yield | ranked list #32; Erb & Harvey 2006; Szymanowska et al. 2014 | Commodity carry | ⛔ (futures) · ⏳ (long-only ETF) | Low |
 | RK33 | Market-neutral residual mean reversion | ranked list #33; Avellaneda & Lee 2010 | Statistical arbitrage | ⛔ (market-neutral) · 🧪 (long-only s-score, C-MR2) | Low |
-| RK34 | Futures calendar-spread mean reversion | ranked list #34; Cole et al. 1999; Lubnau & Todorova 2015 | Futures relative value | ⛔ | None |
+| RK34 | Futures calendar-spread mean reversion | ranked list #34; Lubnau & Todorova 2015; Shang, Serra & Garcia 2023 | Futures relative value | ⛔ | None |
 | RK35 | Net stock issuance anomaly | ranked list #35; Pontiff & Woodgate 2008 | Corporate-actions factor | ⏳ (long-only basket) · ⛔ (long/short) | Low |
 | RK36 | Johansen cointegration basket trading | ranked list #36; Johansen 1991; Krauss 2017 | Statistical arbitrage | ⛔ | None |
 | RK37 | Cointegration-based pairs trading | ranked list #37; Engle & Granger 1987; Rad, Low & Faff 2016 | Statistical arbitrage | ⛔ (long/short) · 🧪 (long-only spread signal) | Low |
@@ -235,7 +235,7 @@ entries also have reference code in `research/catalog/`, unwired.
 | RK51 | Asset-growth anomaly | ranked list #51; Cooper, Gulen & Schill 2008 | Investment factor | ⏳ (long-only basket) · ⛔ (long/short) | Low |
 | RK52 | Dividend yield / dividend growth | ranked list #52; Hartzmark & Solomon 2019 | Income factor | 🧪 (as an instrument, SPYD) · ⏳ (as a selection rule) | Low |
 | RK53 | CVaR / expected-shortfall optimization | ranked list #53; Rockafellar & Uryasev 2000 | Portfolio construction | ⏳ | Low |
-| RK54 | Volatility-managed factor portfolio | ranked list #54; Moreira & Muir 2017; Cederburg et al. 2020 | Exposure scaling | ⛔ (factor portfolios) · 🧪 (the scaling, S4) | Low |
+| RK54 | Volatility-managed factor portfolio | ranked list #54; Moreira & Muir 2017; Hanauer & Windmüller 2023 | Exposure scaling | ⛔ (factor portfolios) · 🧪 (the scaling, S4) | Low |
 | RK55 | ADX-filtered trend following | ranked list #55; Wilder 1978 | Trend strength | ⏳ (harvest gate) · ⛔ (long/short trend trade) | Medium |
 | RK56 | Hierarchical risk parity (HRP) | ranked list #56; López de Prado 2016 | Portfolio construction | 🧪 | Medium |
 | RK57 | Low P/E value screen | ranked list #57; Basu 1977 | Value factor | ⏳ | Low |
@@ -279,7 +279,7 @@ entries also have reference code in `research/catalog/`, unwired.
 | RK95 | Asymmetric tail-risk parity | ranked list #95; Boudt, Carl & Peterson 2013 | Portfolio construction | ⏳ | Low |
 | RK96 | PCA eigenportfolios stat arb | ranked list #96; Avellaneda & Lee 2010 | Statistical arbitrage | ⛔ | None |
 | RK97 | Wasserstein distributionally robust stat arb | ranked list #97 | Robust statistical arbitrage | ⛔ | None |
-| RK98 | Adversarial domain-generalisation cross-market momentum | ranked list #98; Arjovsky et al. 2019; Gulrajani & Lopez-Paz 2020 | ML momentum | ⏳ (in principle) · not a priority | None |
+| RK98 | Adversarial domain-generalisation cross-market momentum | ranked list #98; Arjovsky et al. 2019; Gulrajani & Lopez-Paz 2021 | ML momentum | ⏳ (in principle) · not a priority | None |
 | RK99 | Conformally constrained risk parity | ranked list #99; Kato 2024; Schmitt 2026 | Portfolio construction | ⏳ | Low |
 | RK100 | Causal-discovery (DAG) pair selection | ranked list #100; Stübinger 2019 | Causal inference | ⛔ | None |
 
@@ -1637,7 +1637,7 @@ Trade the OU s-score of stock residuals on factor returns. PCA factors: Sharpe 1
 
 ### RK34. Futures calendar-spread mean reversion ⛔
 
-Trade the near/far spread of one future back toward a carry or seasonal range. Mixed evidence: seasonal processing-spread rules failed out of sample (Cole et al. 1999); dynamic-hedge spreads reported Sharpe above 2 (Lubnau & Todorova 2015, not retrieved).
+Trade the near/far spread of one future back toward a carry or seasonal range. Mixed evidence: seasonal processing-spread rules failed out of sample (Cole et al. 1999); dynamic-hedge spreads in energy futures reported Sharpe above 2 (Lubnau & Todorova 2015); calendar-spread momentum adds nothing once unrealisable roll yield is removed (Shang, Serra & Garcia 2023).
 
 * **Fit:** Futures with a short leg by construction.
 * **Against:** Roll, delivery and margin effects; seasonal patterns are thin after costs.
@@ -1736,7 +1736,7 @@ A trailing band at the bar midpoint ± k × ATR (commonly 3 × ATR(10)) that rat
 
 ### RK45. Post-earnings announcement drift (PEAD) ⏳ (long-only, small caps) · ⛔ (short side)
 
-Buy after large positive earnings surprises as prices keep drifting. Long robust, but Martineau (2022) finds prices now absorb surprises on the day: no drift in large stocks since 2006, recently none in microcaps; others dispute the design or find an overnight version.
+Buy after large positive earnings surprises as prices keep drifting. Long robust, but Martineau (2022) finds prices now absorb surprises on the day: no drift in large stocks since 2006, recently none in microcaps; others dispute the design or find an overnight version. The CSV's reference is Fink's (2021) survey of the literature.
 
 * **Fit:** For the mega-caps that move this book the drift appears gone, so a surprise-conditioned V6 is not worth building.
 * **Against:** Decaying, sample-dependent; costly immediate execution; survives, if at all, in illiquid names.
@@ -1817,7 +1817,7 @@ Minimise the average loss beyond VaR; a linear programme over scenarios (Rockafe
 
 ### RK54. Volatility-managed factor portfolio ⛔ (factor portfolios) · 🧪 (the scaling, S4)
 
-Scale factor portfolios by inverse recent variance: large alphas in-sample (Moreira & Muir 2017), crash-free momentum (Barroso & Santa-Clara 2015), downside-volatility scaling better still (Wang & Yan 2021); real-time versions generally lose to the unmanaged factors (Cederburg et al. 2020).
+Scale factor portfolios by inverse recent variance: large alphas in-sample (Moreira & Muir 2017), crash-free momentum (Barroso & Santa-Clara 2015), downside-volatility scaling better still (Wang & Yan 2021); real-time versions generally lose to the unmanaged factors (Cederburg et al. 2020). The CSV's reference, Hanauer & Windmüller (2023), finds volatility-scaled and dynamically scaled momentum roughly double plain momentum's Sharpe ratio.
 
 * **Fit:** Long/short factors are out; the mechanism is S4/RK22 on this book. The CSV's reference could not be identified.
 * **Against:** Out-of-sample instability; misses rebounds.
@@ -2105,7 +2105,7 @@ Open long spot / short perpetual when basis plus expected funding beats costs. P
 
 ### RK86. Yield-curve steepener / flattener ⛔
 
-DV01-matched long/short across two maturities to bet on the slope; slope is the second of three factors behind >95% of yield variation (Litterman & Scheinkman 1991). No study found that a rules-based version earns a premium.
+DV01-matched long/short across two maturities to bet on the slope; slope is the second of three factors behind >95% of yield variation (Litterman & Scheinkman 1991). Forward rates forecast bond excess returns in sample (Fama & Bliss 1987; Cochrane & Piazzesi 2005) but add no consistent value out of sample (Thornton & Valente 2012); no study found that a rules-based slope trade earns a premium.
 
 * **Fit:** Out of scope as a trade; the 10y–2y slope is usable as data for a slow recession regime.
 * **Against:** Convexity, carry and basis risk; a policy-timing bet.
@@ -2168,7 +2168,7 @@ Trade T-bill yields against the ON RRP rate and SOFR. The ON RRP is a floor for 
 
 ### RK93. Cointegrated triplet basket stat arb ⛔
 
-RK36 with three assets (A − αB − βC). A triple can cointegrate where no pair does (three crude-oil futures, arXiv 2309.00875); no equity-triplet study found.
+RK36 with three assets (A − αB − βC). A triple can cointegrate where no pair does (three crude-oil futures, arXiv 2309.00875); Galenko, Popova & Popova (2012) give a trading method for three or more cointegrated assets; no equity-triplet study found.
 
 * **Fit:** Short legs.
 * **Against:** Fundamental shifts leave permanent divergence; more search, more false discoveries.
@@ -2241,33 +2241,42 @@ Select pairs or leader–follower trades from a causal graph (PC, NOTEARS, PCMCI
 ### Needs your input
 
 Ranks 4–100 were researched from what web search could reach (full texts
-could not be opened; each page says what was checked). For these the
-sources could not be found, identified or verified, and the page says
-so. Details from you, such as the paper the CSV meant, a primary source
-or a performance study, would complete them:
+could not be opened; each page says what was checked). On 2026-10-27 the
+gaps were checked against a Gemini answer the owner supplied. Its
+citations were verified before use, which resolved RK34, RK40/RK45 and
+RK54 and added sources to several other pages; its performance claims
+that named no study, and citations that turned out to be about
+something else, were not used.
+
+**A reference still to identify.** A specific source is cited or likely
+exists but could not be confirmed:
 
 | ID | Algorithm | What is missing |
 |---|---|---|
-| RK31 | [Intangibles-Adjusted Value and Profitability Factor](algorithms/intangibles-adjusted-value-and-profitability-factor.md) | The CSV's second reference (Financial Management, doi 10.1111/fima.12505) could not be identified from search. |
-| RK34 | [Futures Calendar-Spread Mean Reversion](algorithms/futures-calendar-spread-mean-reversion.md) | Primary studies not retrieved: Lubnau & Todorova (2015) and Shang, Serra & Garcia (2022); evidence via secondary summaries only. |
-| RK38 | [Chandelier Exit Trend Following](algorithms/chandelier-exit-trend-following.md) | No published performance study of the chandelier exit (LeBeau's original write-up not located). |
-| RK40 | [Earnings Estimate Revision Momentum](algorithms/earnings-estimate-revision-momentum.md) | The CSV's reference for RK40 and RK45 (doi 10.1016/j.jbef.2020.100446, Journal of Behavioral and Experimental Finance 2020) could not be identified. |
-| RK44 | [Supertrend ATR-Band Trend Following](algorithms/supertrend-atr-band-trend-following.md) | No peer-reviewed evaluation of Supertrend and no primary publication by Olivier Seban located. |
-| RK54 | [Volatility-Managed Factor Portfolio](algorithms/volatility-managed-factor-portfolio.md) | The CSV's reference (Journal of Banking & Finance, ScienceDirect PII S0378426622002928) could not be identified from search. |
-| RK64 | [Triple EMA / Moving-Average Ribbon](algorithms/triple-ema-moving-average-ribbon.md) | No academic evidence specific to moving-average ribbons (practitioner sources only); covered only through the general moving-average/TSMOM equivalence. |
-| RK68 | [Dual Thrust Breakout](algorithms/dual-thrust-breakout.md) | No primary publication by Michael Chalek and no academic test of Dual Thrust found. |
-| RK69 | [London Session Breakout](algorithms/london-session-breakout.md) | No academic test of the London (Asian-range) breakout found; practitioner sources only. |
-| RK77 | [ATR Volatility-Expansion Breakout](algorithms/atr-volatility-expansion-breakout.md) | No academic test of an ATR-confirmed breakout or of Larry Williams' volatility breakout found. |
-| RK78 | [Multi-Timeframe Trend Agreement](algorithms/multi-timeframe-trend-agreement.md) | No study of the all-horizons-must-agree form (Triple Screen) found; only horizon averaging is documented. |
-| RK86 | [Yield Curve Steepener / Flattener](algorithms/yield-curve-steepener-flattener.md) | No published evidence found that a systematic (rules-based) steepener/flattener earns a premium; only the curve's factor structure is documented. |
-| RK92 | [FED OTC Liquidity Sweep & Reverse Repo Arbitrage](algorithms/fed-otc-liquidity-sweep-reverse-repo-arbitrage.md) | No study of a T-bill vs ON RRP/SOFR trading strategy found, and the term "OTC liquidity sweep" could not be traced to any Fed or academic source; the rule is undefined beyond the CSV's description. |
-| RK93 | [Cointegrated Triplet Basket Statistical Arbitrage](algorithms/cointegrated-triplet-basket-statistical-arbitrage.md) | No study of cointegrated equity triplets found (only a three-contract crude-oil basket and Euro Stoxx 50 multi-asset work). |
-| RK94 | [Dynamic Copula-GARCH Multivariate Pair Trading](algorithms/dynamic-copula-garch-multivariate-pair-trading.md) | No copula-GARCH pairs-trading study verified; only vine-copula and static-copula evidence. |
-| RK95 | [Asymmetric Tail-Risk Parity Allocation](algorithms/asymmetric-tail-risk-parity-allocation.md) | No source found for semivariance-based risk parity, and no out-of-sample comparison of tail-based with variance-based risk parity. |
-| RK97 | [Wasserstein Distributionally Robust Statistical Arbitrage](algorithms/wasserstein-distributionally-robust-statistical-arbitrage.md) | The CSV's reference (arXiv 1908.01234) could not be identified, and no paper applying Wasserstein DRO to stat-arb thresholds was found. |
-| RK98 | [Adversarial Domain Generalization Cross-Market Momentum](algorithms/adversarial-domain-generalization-cross-market-momentum.md) | No study applying adversarial domain generalisation to momentum found; the CSV cites only generic ML references (IRM, DomainBed). |
-| RK99 | [Conformally Constrained Risk Parity Portfolio](algorithms/conformally-constrained-risk-parity-portfolio.md) | No published method found that combines equal-risk-contribution weights with a conformal tail-loss bound; the rule is the CSV's own construction. |
-| RK100 | [Causal Discovery Directed Acyclic Graph (DAG) Pair Selection](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md) | No study using PC/NOTEARS causal discovery for pair selection found; nearest is Stübinger (2019) lead-lag causal paths. |
+| RK31 | [Intangibles-Adjusted Value and Profitability Factor](algorithms/intangibles-adjusted-value-and-profitability-factor.md) | The CSV's second reference, doi 10.1111/fima.12505. Gemini attributes it to Ozdagli & Ryfe, "Asset Manager Commonality and Portfolio Similarity"; a Dallas Fed working paper of that title exists, but the DOI match is unconfirmed, and if right it is unrelated to intangibles. |
+| RK44 | [Supertrend ATR-Band Trend Following](algorithms/supertrend-atr-band-trend-following.md) | A primary source by Olivier Seban. His book *Tout le monde mérite d'être riche* exists, but nothing confirms it describes Supertrend. |
+| RK68 | [Dual Thrust Breakout](algorithms/dual-thrust-breakout.md) | Michael Chalek's original publication, and any academic test. |
+| RK93 | [Cointegrated Triplet Basket Statistical Arbitrage](algorithms/cointegrated-triplet-basket-statistical-arbitrage.md) | The results of Galenko, Popova & Popova (2012), *Journal of Alternative Investments* 15(1), 85–97, which could not be read; no equity-triplet study found. |
+| RK97 | [Wasserstein Distributionally Robust Statistical Arbitrage](algorithms/wasserstein-distributionally-robust-statistical-arbitrage.md) | The CSV's arXiv 1908.01234 (Gemini says it is a cell-mechanics paper; unconfirmed); no Wasserstein-DRO stat-arb paper found. |
+
+**No published evaluation found.** Neither search found a study, so
+these are probably untested; a study you already know of is the useful
+input:
+
+| ID | Algorithm | What is missing |
+|---|---|---|
+| RK38 | [Chandelier Exit Trend Following](algorithms/chandelier-exit-trend-following.md) | A performance study. LeBeau's original Traders Club write-up is not online. |
+| RK64 | [Triple EMA / Moving-Average Ribbon](algorithms/triple-ema-moving-average-ribbon.md) | A test of ribbon or alignment rules. Brock, Lakonishok & LeBaron (1992) test single and dual moving averages, not ribbons. |
+| RK69 | [London Session Breakout](algorithms/london-session-breakout.md) | A test of the Asian-range breakout. Gemini's citation (Chaboud et al. 2014) is about algorithmic trading and FX efficiency. |
+| RK77 | [ATR Volatility-Expansion Breakout](algorithms/atr-volatility-expansion-breakout.md) | A test of Williams' volatility breakout or an ATR-confirmed breakout. |
+| RK78 | [Multi-Timeframe Trend Agreement](algorithms/multi-timeframe-trend-agreement.md) | A test of the all-horizons-must-agree form (Elder's Triple Screen, *Futures*, 1986). |
+| RK86 | [Yield Curve Steepener / Flattener](algorithms/yield-curve-steepener-flattener.md) | A direct test of a DV01-neutral slope rule; forward-rate predictability is documented in sample only (Thornton & Valente 2012). |
+| RK92 | [FED OTC Liquidity Sweep & Reverse Repo Arbitrage](algorithms/fed-otc-liquidity-sweep-reverse-repo-arbitrage.md) | Any strategy study; "OTC liquidity sweep" appears to be informal wording, so the rule is undefined. |
+| RK94 | [Dynamic Copula-GARCH Multivariate Pair Trading](algorithms/dynamic-copula-garch-multivariate-pair-trading.md) | A copula-GARCH pairs study with reported returns. |
+| RK95 | [Asymmetric Tail-Risk Parity Allocation](algorithms/asymmetric-tail-risk-parity-allocation.md) | Semivariance risk parity, or an out-of-sample comparison of tail-risk with variance risk parity. |
+| RK98 | [Adversarial Domain Generalization Cross-Market Momentum](algorithms/adversarial-domain-generalization-cross-market-momentum.md) | Any application of adversarial domain generalisation to momentum. |
+| RK99 | [Conformally Constrained Risk Parity Portfolio](algorithms/conformally-constrained-risk-parity-portfolio.md) | Any method combining equal risk contribution with conformal bounds. |
+| RK100 | [Causal Discovery Directed Acyclic Graph (DAG) Pair Selection](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md) | Any study using PC or NOTEARS causal discovery for pair selection. |
 
 ### The list
 

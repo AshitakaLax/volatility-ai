@@ -44,6 +44,10 @@ buy the top decile after the announcement, hold ~60 trading days; short the bott
 * **Pushback:** a 2025 working paper (Subrahmanyam) attributes the
   disagreement to research design; another argues an overnight drift
   ("OPEAD") persists. (Summaries.)
+* **Fink (2021), *Journal of Behavioral and Experimental Finance* 29,
+  100446 (the CSV's reference):** a survey of the drift literature;
+  explanations fall into risk, trading frictions and behavioural causes,
+  and no single one accounts for the drift. (Abstract.)
 
 ## Against, and failure modes
 
@@ -70,5 +74,7 @@ says what was checked.
   Research* 27. Not re-checked.
 * UCLA Anderson Review, "Is Post-Earnings Announcement Drift a Thing
   Again?" Summary.
-* The CSV's reference: <https://doi.org/10.1016/j.jbef.2020.100446>
-  (not identified).
+* Fink, J. (2021). "A review of the post-earnings-announcement drift."
+  *Journal of Behavioral and Experimental Finance* 29, 100446.
+  <https://doi.org/10.1016/j.jbef.2020.100446> (the CSV's reference).
+  Abstract and publisher listing.

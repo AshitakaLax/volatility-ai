@@ -43,6 +43,9 @@ risk-off when the order breaks (or when the short group falls into the long grou
   (2016): any combination of moving averages is a weighted sum of past
   returns, so a ribbon is a particular TSMOM weighting, not new
   information.
+* Brock, Lakonishok & LeBaron (1992), offered for this family by the
+  owner-supplied Gemini answer, test single and dual moving-average and
+  channel rules on the Dow, not ribbons (see RK62).
 
 ## Against, and failure modes
 

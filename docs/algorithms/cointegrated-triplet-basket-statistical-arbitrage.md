@@ -39,6 +39,11 @@ re-estimate on a rolling window; drop the triplet when the rank test fails
   costs. (Summary.)
 * **Euro Stoxx 50 (QFE 2025):** cointegration relationships beyond pairs,
   unstable over time; strategies beat the index. (Summary.)
+* **Galenko, Popova & Popova (2012), "Trading in the presence of
+  cointegration," *Journal of Alternative Investments* 15(1), 85–97:** a
+  method for mean-reversion trading of three or more cointegrated
+  assets (the basis of arbitragelab's multivariate cointegration
+  module). Its results could not be read. (Bibliographic records.)
 * **No equity-triplet study found.** The pairs record (RK37, RK72)
   applies.
 
@@ -62,3 +67,6 @@ says what was checked.
 * Euro Stoxx 50 multi-asset cointegration, *Quantitative Finance and
   Economics* 9(4), 2025. Summary.
 * Johansen, S. (1991). *Econometrica* 59(6), 1551–1580.
+* Galenko, A., Popova, E., Popova, I. (2012). "Trading in the presence of
+  cointegration." *Journal of Alternative Investments* 15(1), 85–97.
+  Records only.

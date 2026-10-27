@@ -39,8 +39,8 @@ rank by f(x) in each market; hold the top (long-only form)
 * **Arjovsky, Bottou, Gulrajani & Lopez-Paz (2019), "Invariant Risk
   Minimization" (arXiv 1907.02893, the CSV's reference):** the
   invariance principle. (Recalled.)
-* **Gulrajani & Lopez-Paz (2020), "In Search of Lost Domain
-  Generalization" (DomainBed, the CSV's reference):** with careful
+* **Gulrajani & Lopez-Paz (ICLR 2021; arXiv 2020), "In Search of Lost
+  Domain Generalization" (DomainBed, the CSV's reference):** with careful
   tuning, plain empirical risk minimisation matched the
   domain-generalisation methods tested. (Recalled.)
 * **Nearest finance work:** adversarial transfer for stock-movement
@@ -66,7 +66,7 @@ says what was checked.
 * Arjovsky, M., Bottou, L., Gulrajani, I., Lopez-Paz, D. (2019).
   "Invariant Risk Minimization." <https://arxiv.org/abs/1907.02893>.
   Recalled, not re-checked.
-* Gulrajani, I., Lopez-Paz, D. (2020). "In Search of Lost Domain
+* Gulrajani, I., Lopez-Paz, D. (2021). "In Search of Lost Domain
   Generalization." DomainBed. Recalled, not re-checked.
 * Li, Y., Dai, H.-N., Zheng, Z. (2021). "Selective transfer learning with
   adversarial training for stock movement prediction." Summary.

@@ -59,4 +59,6 @@ says what was checked.
   robust optimization using the Wasserstein metric." *Mathematical
   Programming* 171, 115–166. (See RK88.)
 * Bertram, W. K. (2010). *Physica A* 389(11), 2234–2243. Abstract.
-* The CSV's references: cvxpy; arXiv 1908.01234 (not identified).
+* The CSV's references: cvxpy; arXiv 1908.01234 (not identified; the
+  owner-supplied Gemini answer says it is a cell-mechanics paper, which
+  could not be confirmed).

@@ -40,7 +40,10 @@ candidate pairs = assets joined by a direct edge (not a common cause); trade the
   (Summary.)
 * **Letteri (arXiv 2507.09347):** Granger causality, PCMCI and transfer
   entropy on nine stocks, June–August 2023. (Summary.)
-* **No PC- or NOTEARS-based pair-selection study found.**
+* **No PC- or NOTEARS-based pair-selection study found.** The
+  algorithms themselves: Spirtes, Glymour & Scheines (2000), *Causation,
+  Prediction, and Search* (PC), and Zheng et al. (2018), "DAGs with NO
+  TEARS," NeurIPS (NOTEARS).
 
 ## Against, and failure modes
 

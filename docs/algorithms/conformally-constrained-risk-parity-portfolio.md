@@ -46,7 +46,10 @@ drifts.
 * **Adaptive conformal inference** (Gibbs & Candès 2021) is the usual
   fix for distribution shift; not verified from search here.
 * **Gap:** no source found combining ERC with conformal tail bounds;
-  the rule above is the CSV's construction, not a published method.
+  the rule above is the CSV's construction, not a published method. The
+  owner-supplied Gemini answer cites only the foundations (Vovk,
+  Gammerman & Shafer 2005, *Algorithmic Learning in a Random World*) and
+  states a turnover result without naming a study.
 
 ## Against, and failure modes
 

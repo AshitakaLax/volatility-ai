@@ -38,7 +38,10 @@ N2 gate (this project): block new lots while price is below the low of the first
 
 * **No academic study found.** Every source located is practitioner
   material (EA vendors, blogs, code templates such as StockSharp's) with
-  no out-of-sample or cost-adjusted results.
+  no out-of-sample or cost-adjusted results. The owner-supplied Gemini
+  answer cites Chaboud et al. (2014, *Journal of Finance*), which studies
+  how algorithmic trading changed FX price efficiency, not session
+  breakouts (it is cited on RK83 instead).
 * **Nearest published evidence, equity ORB:** Zarattini & Aziz (SSRN
   4416622, 2023) report a 5-minute ORB on QQQ, 2016–2023, with a 33%
   annualised alpha net of commissions; a third-party replication on five

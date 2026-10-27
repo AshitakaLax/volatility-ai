@@ -124,11 +124,10 @@ they could be checked (full texts could not be opened from the research environm
 
 ### Needs your input
 
-The pages for RK31, RK34, RK38, RK40 (and RK45, which shares its reference),
-RK44, RK54, RK64, RK68, RK69, RK77, RK78, RK86, RK92, RK93, RK94, RK95, RK97,
-RK98, RK99 and RK100 are missing a source: a reference the CSV gives that could
-not be identified, or a primary source or performance study that could not be
-found. [The ledger's list](../algorithm_ledger.md#needs-your-input) says what
+RK31, RK44, RK68, RK93 and RK97 still lack an identified reference;
+RK38, RK64, RK69, RK77, RK78, RK86, RK92, RK94, RK95, RK98, RK99 and
+RK100 have no published evaluation that two searches could find.
+[The ledger's list](../algorithm_ledger.md#needs-your-input) says what
 each one lacks.
 
 ## Implementation status values
