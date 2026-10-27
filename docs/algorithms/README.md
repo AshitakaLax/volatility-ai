@@ -46,7 +46,7 @@ they could be checked (full texts could not be opened from the research environm
 | RK23 | [Drawdown-Aware De-Risking Governor](drawdown-aware-de-risking-governor.md) | 23 | Yes (V11) |
 | RK24 | [ETF NAV / Creation-Redemption Arbitrage](etf-nav-creation-redemption-arbitrage.md) | 24 | Research code (C-RJ6) |
 | RK25 | [Index Futures vs Cash Basis Arbitrage](index-futures-vs-cash-basis-arbitrage.md) | 25 | No |
-| RK26 | [Futures Cash-and-Carry Basis Trading](futures-cash-and-carry-basis-trading.md) | 26 | Research code |
+| RK26 | [Futures Cash-and-Carry Basis Trading](futures-cash-and-carry-basis-trading.md) | 26 | Partial |
 | RK27 | [Shareholder Yield Factor](shareholder-yield-factor.md) | 27 | No |
 | RK28 | [Fixed-Income Carry and Roll-Down](fixed-income-carry-and-roll-down.md) | 28 | No |
 | RK29 | [Price + Earnings Momentum](price-earnings-momentum.md) | 29 | No |
@@ -105,7 +105,7 @@ they could be checked (full texts could not be opened from the research environm
 | RK82 | [Closed-End Fund Discount Reversion](closed-end-fund-discount-reversion.md) | 82 | No |
 | RK83 | [Triangular FX Arbitrage](triangular-fx-arbitrage.md) | 83 | Research code (A7) |
 | RK84 | [Crypto Perpetual Funding-Rate Capture](crypto-perpetual-funding-rate-capture.md) | 84 | Research code (C-RJ2) |
-| RK85 | [Spot-Perpetual Basis Arbitrage](spot-perpetual-basis-arbitrage.md) | 85 | Research code (C-RJ2) |
+| RK85 | [Spot-Perpetual Basis Arbitrage](spot-perpetual-basis-arbitrage.md) | 85 | Partial (C-RJ2) |
 | RK86 | [Yield Curve Steepener / Flattener](yield-curve-steepener-flattener.md) | 86 | No |
 | RK87 | [Option Dispersion Trading](option-dispersion-trading.md) | 87 | No |
 | RK88 | [Distributionally Robust CVaR Allocation](distributionally-robust-cvar-allocation.md) | 88 | No |

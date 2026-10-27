@@ -24,7 +24,7 @@ Volatility Targeting / Risk Scaling,yes,RK22; S4; V18; S3,research.strategies.ga
 Drawdown-Aware De-Risking Governor,yes,RK23; V11,research.strategies.position_sizing:DrawdownLadder; research.catalog.leads:cppi_path; research.catalog.leads:grossman_zhou_multiplier,"dd_throttle_* on the champion (V11, measured in ultimate-algorithm.md L4); the tiered ladder with a halt tier, CPPI and Grossman-Zhou are research code."
 ETF NAV / Creation-Redemption Arbitrage,research,RK24; C-RJ6,research.catalog.excluded:creation_redemption_action,Out of scope: needs authorized-participant access.
 Index Futures vs Cash Basis Arbitrage,no,RK25,,
-Futures Cash-and-Carry Basis Trading,research,RK26,research.catalog.crypto:funding_carry_positions,"Only the crypto spot-perpetual carry (C-RJ2, rejected) exists as research code."
+Futures Cash-and-Carry Basis Trading,partial,RK26,research.catalog.crypto:funding_carry_positions,"Only a crypto relative exists: the spot-perpetual funding carry (C-RJ2, rejected), timed on funding thresholds rather than the futures basis."
 Shareholder Yield Factor,no,RK27,,
 Fixed-Income Carry and Roll-Down,no,RK28,,
 Price + Earnings Momentum,no,RK29,,
@@ -83,7 +83,7 @@ Capital Structure Arbitrage,no,RK81,,
 Closed-End Fund Discount Reversion,no,RK82,,
 Triangular FX Arbitrage,research,RK83; A7,research.catalog.crypto:find_arbitrage_cycle; research.catalog.crypto:conversion_rates,Bellman-Ford negative-cycle search over conversion rates (written for crypto venues).
 Crypto Perpetual Funding-Rate Capture,research,RK84; C-RJ2,research.catalog.crypto:funding_carry_positions; research.catalog.crypto:funding_carry_pnl,Rejected: crypto-specific.
-Spot-Perpetual Basis Arbitrage,research,RK85; C-RJ2,research.catalog.crypto:funding_carry_positions,Long spot / short perpetual carry; rejected as crypto-specific.
+Spot-Perpetual Basis Arbitrage,partial,RK85; C-RJ2,research.catalog.crypto:funding_carry_positions,"Long spot / short perpetual timed on funding thresholds (C-RJ2, rejected as crypto-specific); the basis entry and convergence exit are not built."
 Yield Curve Steepener / Flattener,no,RK86,,
 Option Dispersion Trading,no,RK87,,
 Distributionally Robust CVaR Allocation,no,RK88,,

@@ -1569,7 +1569,7 @@ Buy spot and sell a rich future (or the reverse) when the basis departs from the
 
 * **Fit:** Out of scope: one leg is a short future or short underlying. The crypto version is research code and rejected (C-RJ2).
 * **Against:** Financing, margin and delivery risk; retail cannot finance at institutional rates.
-* **Built:** `research/catalog/crypto.py` — funding_carry_positions (C-RJ2, crypto only).
+* **Built:** `research/catalog/crypto.py` — funding_carry_positions (C-RJ2, crypto only), timed on funding thresholds, not on the basis.
 * **Details:** [docs/algorithms/futures-cash-and-carry-basis-trading.md](algorithms/futures-cash-and-carry-basis-trading.md)
 
 ### RK27. Shareholder yield factor ⏳
@@ -2100,7 +2100,7 @@ Open long spot / short perpetual when basis plus expected funding beats costs. P
 
 * **Fit:** Crypto is outside the instrument rules.
 * **Against:** Basis widens, funding flips, venues fail.
-* **Built:** `crypto.funding_carry_positions` (C-RJ2).
+* **Built:** `crypto.funding_carry_positions` (C-RJ2), which enters and exits on funding thresholds and never reads the basis; the basis rule is not built.
 * **Details:** [docs/algorithms/spot-perpetual-basis-arbitrage.md](algorithms/spot-perpetual-basis-arbitrage.md)
 
 ### RK86. Yield-curve steepener / flattener ⛔
@@ -2277,9 +2277,9 @@ or a performance study, would complete them:
 
 | Rows | Algorithms | Yes | Research code | Partial | No |
 |---|---|---|---|---|---|
-| Specific (ranks 1–425) | 425 | 13 | 50 | 34 | 328 |
+| Specific (ranks 1–425) | 425 | 13 | 48 | 36 | 328 |
 | Title-reconstructed (ranks 426–14,225) | 13,800 | 0 | 0 | 0 | 13,800 |
-| All | 14,225 | 13 | 50 | 34 | 14,128 |
+| All | 14,225 | 13 | 48 | 36 | 14,128 |
 
 #### Specific algorithms
 
@@ -2310,7 +2310,7 @@ or a performance study, would complete them:
 | 23 | Drawdown-Aware De-Risking Governor | Risk management | 138 | 126 | Yes | RK23, V11 | [**researched**](algorithms/drawdown-aware-de-risking-governor.md) |
 | 24 | ETF NAV / Creation-Redemption Arbitrage | Index / ETF relative value | 206 | 182 | Research code | RK24, C-RJ6 | [**researched**](algorithms/etf-nav-creation-redemption-arbitrage.md) |
 | 25 | Index Futures vs Cash Basis Arbitrage | Index arbitrage / basis | 141 | 2759 | No | RK25 | [**researched**](algorithms/index-futures-vs-cash-basis-arbitrage.md) |
-| 26 | Futures Cash-and-Carry Basis Trading | Basis / carry | 95 | 163 | Research code | RK26 | [**researched**](algorithms/futures-cash-and-carry-basis-trading.md) |
+| 26 | Futures Cash-and-Carry Basis Trading | Basis / carry | 95 | 163 | Partial | RK26 | [**researched**](algorithms/futures-cash-and-carry-basis-trading.md) |
 | 27 | Shareholder Yield Factor | Equity factor / capital return | 75 | 58 | No | RK27 | [**researched**](algorithms/shareholder-yield-factor.md) |
 | 28 | Fixed-Income Carry and Roll-Down | Fixed income / relative value | 168 | 30 | No | RK28 | [**researched**](algorithms/fixed-income-carry-and-roll-down.md) |
 | 29 | Price + Earnings Momentum | Factor / event-driven | 112 | 20 | No | RK29 | [**researched**](algorithms/price-earnings-momentum.md) |
@@ -2369,7 +2369,7 @@ or a performance study, would complete them:
 | 82 | Closed-End Fund Discount Reversion | Relative value / fund discounts | 4 | 57 | No | RK82 | [**researched**](algorithms/closed-end-fund-discount-reversion.md) |
 | 83 | Triangular FX Arbitrage | Cross-market arbitrage | 55 | 94 | Research code | RK83, A7 | [**researched**](algorithms/triangular-fx-arbitrage.md) |
 | 84 | Crypto Perpetual Funding-Rate Capture | Crypto derivatives / carry | 225 | 7420 | Research code | RK84, C-RJ2 | [**researched**](algorithms/crypto-perpetual-funding-rate-capture.md) |
-| 85 | Spot-Perpetual Basis Arbitrage | Crypto / basis | 56 | 132 | Research code | RK85, C-RJ2 | [**researched**](algorithms/spot-perpetual-basis-arbitrage.md) |
+| 85 | Spot-Perpetual Basis Arbitrage | Crypto / basis | 56 | 132 | Partial | RK85, C-RJ2 | [**researched**](algorithms/spot-perpetual-basis-arbitrage.md) |
 | 86 | Yield Curve Steepener / Flattener | Fixed income / macro relative value | 235 | 236 | No | RK86 | [**researched**](algorithms/yield-curve-steepener-flattener.md) |
 | 87 | Option Dispersion Trading | Options volatility relative value | 98 | 257 | No | RK87 | [**researched**](algorithms/option-dispersion-trading.md) |
 | 88 | Distributionally Robust CVaR Allocation | Portfolio optimization / tail risk | 211 | 59 | No | RK88 | [**researched**](algorithms/distributionally-robust-cvar-allocation.md) |

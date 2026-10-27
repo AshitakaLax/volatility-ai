@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 95 (1 = easiest) |
 | Retail advantage rank | 163 (1 = strongest) |
 | Fit with this project | ⛔ (a short futures or short underlying leg is the trade) |
-| Implemented in volatility-ai | **Research code**, crypto only: the spot-perpetual funding carry (`crypto.funding_carry_positions`, ledger C-RJ2, rejected). |
+| Implemented in volatility-ai | **Partial**, crypto only: a spot-perpetual funding carry (`crypto.funding_carry_positions`, ledger C-RJ2, rejected) that enters and exits on funding thresholds, not on the futures basis. |
 | Related ledger entries | RK25, RK85, C-RJ2 |
 
 ## In one paragraph
@@ -54,8 +54,8 @@ if gap < -costs: sell/short S, buy F (reverse cash-and-carry)
 ## Fit with volatility-ai
 
 Out of scope: one leg is always a short future or a short underlying.
-The crypto version (long spot, short perpetual) is transcribed as
-research code and rejected (C-RJ2).
+The nearest code is a crypto relative (long spot, short perpetual, timed
+on funding rather than the basis), research code and rejected (C-RJ2).
 
 ## References
 

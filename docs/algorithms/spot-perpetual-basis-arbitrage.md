@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 56 (1 = easiest) |
 | Retail advantage rank | 132 (1 = strongest) |
 | Fit with this project | ❌ (crypto, short leg) |
-| Implemented in volatility-ai | **Research code.** Long spot / short perpetual carry, `crypto.funding_carry_positions` (ledger C-RJ2). |
+| Implemented in volatility-ai | **Partial.** `crypto.funding_carry_positions` (ledger C-RJ2) holds long spot / short perpetual on a *funding* threshold: in once annualised funding reaches `entry_apr`, out when it drops below `exit_apr`. It never reads the basis, so the basis entry and convergence exit described here are not built; `funding_carry_pnl` only books the basis move as P&L. |
 | Related ledger entries | C-RJ2, RK84 |
 
 ## In one paragraph
