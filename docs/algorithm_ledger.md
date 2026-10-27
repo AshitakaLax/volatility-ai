@@ -13,8 +13,8 @@ were built the same day. Section 8B (2026-10-03) adds `research/catalog/`,
 code for every remaining entry, in-scope or not. Section 8C (2026-10-27)
 adds a ranked list of 14,225 algorithms from a CSV import, each with
 whether it is implemented here and a link to its documentation in
-[`docs/algorithms/`](algorithms/README.md); the top 100 (RK1–RK100) are
-researched, and §8C lists the research gaps that remain.*
+[`docs/algorithms/`](algorithms/README.md); ranks 1–100 (RK1–RK100) and
+200–300 (RK200–RK300) are researched, and §8C lists the research gaps that remain.*
 
 ---
 
@@ -282,8 +282,109 @@ entries also have reference code in `research/catalog/`, unwired.
 | RK98 | Adversarial domain-generalisation cross-market momentum | ranked list #98; Arjovsky et al. 2019; Gulrajani & Lopez-Paz 2021 | ML momentum | ⏳ (in principle) · not a priority | None |
 | RK99 | Conformally constrained risk parity | ranked list #99; Kato 2024; Schmitt 2026 | Portfolio construction | ⏳ | Low |
 | RK100 | Causal-discovery (DAG) pair selection | ranked list #100; Stübinger 2019 | Causal inference | ⛔ | None |
+| RK200 | Score-based diffusion multi-asset scenario synthesizer | ranked list #200; Takahashi & Mizuno 2024 | Generative scenarios | ⏳ (stress-test tool) | Low |
+| RK201 | Koopman-operator MPC statistical arbitrage | ranked list #201; Mann & Kutz 2016 | Koopman / MPC | ⛔ | None |
+| RK202 | Fractional Brownian motion multi-scale trend scanning | ranked list #202; Lo 1991 | Fractional trend detection | ⛔ | None |
+| RK203 | Koopman-operator MPC spread equilibrium | ranked list #203; Mann & Kutz 2016 | Koopman / MPC | ⛔ | None |
+| RK204 | Lead-lag cross-asset predictive trading | ranked list #204; Huth & Abergel | Cross-asset lead-lag | 🧪 (estimator) · ⏳ (entry timing) · ⛔ (latency trade) | Low |
+| RK205 | Dynamic tensor decomposition multi-asset factor rotation | ranked list #205; Chen, Yang & Zhang 2022 | Tensor factor models | ⛔ | None |
+| RK206 | Koopman-operator MPC multi-asset allocation | ranked list #206; Mann & Kutz 2016 | Koopman / MPC | ⛔ | None |
+| RK207 | Standardized unexpected earnings (SUE) | ranked list #207; Foster, Olsen & Shevlin 1984 | Earnings event | ⏳ (long-only basket) · ⛔ (short side) | Low |
+| RK208 | Anchored VWAP reclaim / rejection | ranked list #208; practitioner sources | Intraday price/volume | 🧪 (session VWAP gate) · ⏳ (event anchors) | Low |
+| RK209 | Corporate buyback announcement drift | ranked list #209; Ikenberry, Lakonishok & Vermaelen 1995 | Corporate-action event | ⏳ (long-only event basket) | None |
+| RK210 | Index reconstitution / rebalance event trading | ranked list #210; Greenwood & Sammon 2025 | Index flow event | ⛔ | None |
+| RK211 | Macro surprise / economic release strategy | ranked list #211; Savor & Wilson 2013; Lucca & Moench 2015 | Macro event | ⛔ (release trade) · ✅ (event-day sizing, V6) | Low |
+| RK212 | Market breadth thrust | ranked list #212; Zweig 1986 | Market internals | ⏳ | Low |
+| RK213 | Trend-scanning label model | ranked list #213; López de Prado 2020 | ML labelling | 🧪 (labelling tool) | Low |
+| RK214 | XGBoost cross-sectional ranking | ranked list #214; Gu, Kelly & Xiu 2020 | ML stock selection | ⏳ (long-only top-k) · ⛔ (long-short) | Low |
+| RK215 | Cross-sectional reversal with risk neutralization | ranked list #215; Da, Liu & Schaumburg 2014 | Short-horizon reversal | 🧪 (long-only contrarian weights) · ⛔ (market-neutral) | Low |
+| RK216 | Top-K with dropout portfolio rotation | ranked list #216; Qlib | Signal deployment | ⏳ (turnover rule) | Low |
+| RK217 | BSTS causal-impact macro strategy | ranked list #217; Brodersen et al. 2015 | Bayesian event study | ⏳ (event-study tool) | None |
+| RK218 | Sparse Bayesian learning dynamic factor model | ranked list #218; Bryzgalova, Huang & Julliard 2023 | Bayesian factor selection | ⏳ | None |
+| RK219 | Dynamic mode decomposition (DMD) market mode predictor | ranked list #219; Mann & Kutz 2016 | Dynamical systems | ⛔ | None |
+| RK220 | Continuous-time mean-variance RL agent | ranked list #220; Wang & Zhou | RL allocation | ⏳ | Low |
+| RK221 | Transfer-entropy lead-lag strategy | ranked list #221; Schreiber 2000; Dimpfl & Peter 2013 | Information theory | ⏳ (measurement) · ⛔ (trade) | Low |
+| RK222 | Maximum entropy production rate macro allocator | ranked list #222 | Thermodynamic allocation | ⛔ | None |
+| RK223 | Quantum tensor-network portfolio optimization | ranked list #223; Mugel et al. 2022 | Quantum-inspired optimisation | ⛔ | None |
+| RK224 | Deep latent force model interest-rate forecaster | ranked list #224; Álvarez, Luengo & Lawrence 2009 | Gaussian-process rates model | ⛔ | None |
+| RK225 | Wasserstein distributionally robust mean-variance allocation | ranked list #225; Blanchet, Chen & Zhou 2022 | Robust allocation | ⏳ | Low |
+| RK226 | Functional PCA (FPCA) yield-curve forecaster | ranked list #226; Hays, Shen & Huang 2012 | Functional data analysis | ⛔ | None |
+| RK227 | Multi-agent evolutionary RL portfolio optimizer | ranked list #227 | Evolutionary RL | ⛔ | None |
+| RK228 | Deep generative flow-matching portfolio generator | ranked list #228; Lipman et al. 2022 | Generative allocation | ⛔ | None |
+| RK229 | Quantum adiabatic optimal portfolio rebalancing | ranked list #229; Mugel et al. 2022; Rosenberg et al. 2016 | Quantum optimisation | ⛔ | None |
+| RK230 | Riemannian SPD-manifold portfolio optimization | ranked list #230 | Riemannian portfolio | ⛔ | None |
+| RK231 | Riemannian SPD metric-diffusion risk parity | ranked list #231 | Riemannian portfolio | ⛔ | None |
+| RK232 | Graph-attention covariance shrinkage estimator | ranked list #232; Ledoit & Wolf | Covariance estimation | ⛔ | None |
+| RK233 | Riemannian SPD Wasserstein-robust allocation | ranked list #233 | Riemannian portfolio | ⛔ | None |
+| RK234 | Wasserstein distributionally robust RL portfolio agent | ranked list #234 | Robust RL allocation | ⛔ | None |
+| RK235 | Graph-attention covariance shrinkage dynamic allocation | ranked list #235; Ledoit & Wolf | Covariance estimation | ⛔ | None |
+| RK236 | Quantum adiabatic GNN portfolio optimization | ranked list #236 | Quantum optimisation | ⛔ | None |
+| RK237 | Riemannian SPD graph-attention allocation | ranked list #237 | Riemannian portfolio | ⛔ | None |
+| RK238 | Quantum adiabatic tensor-network portfolio optimization | ranked list #238 | Quantum optimisation | ⛔ | None |
+| RK239 | Fractional-order VECM neural network allocator | ranked list #239; Johansen & Nielsen 2012 | Fractional cointegration | ⛔ | None |
+| RK240 | Neural-operator delay-differential stochastic volatility calibrator | ranked list #240; Horvath, Muguruza & Tomas 2021 | Option pricing / calibration | ⛔ | None |
+| RK241 | Koopman-operator factor risk tracking | ranked list #241; Mann & Kutz 2016 | Koopman / MPC | ⛔ | None |
+| RK242 | Long-volatility breakout (options) | ranked list #242; Coval & Shumway 2001 | Options volatility | ⛔ | None |
+| RK243 | Price/volume anomaly detection | ranked list #243 | Anomaly detection | 🧪 (data-quality flag) · ❌ (alpha) | Low |
+| RK244 | Liquidity-aware adaptive execution | ranked list #244; Almgren & Chriss 2001; BIS 2020 | Execution | 🧪 (spread gate) · ⛔ (slicing not needed) | Low |
+| RK245 | Pure passive market making | ranked list #245; Menkveld 2013 | Market making | ⛔ (two-sided) · grid is the buy-side relative | Low |
+| RK246 | Inventory-skewed market making | ranked list #246; Avellaneda & Stoikov 2008 | Market making | ✅ (buy-side skew, C-G2) · ⛔ (sell side below cost) | Medium |
+| RK247 | VPIN flow-toxicity filter | ranked list #247; Easley, López de Prado & O'Hara 2012; Andersen & Bondarenko 2014 | Flow toxicity | 🧪 (buy gate) · disputed evidence | Low |
+| RK248 | Hawkes-process order-flow forecast | ranked list #248; Bacry, Mastromatteo & Muzy 2015 | Point-process microstructure | ⛔ | None |
+| RK249 | Iceberg / reserve-order execution | ranked list #249; Bessembinder, Panayides & Venkataraman 2009 | Execution | ⛔ (not needed) | None |
+| RK250 | Arrival-price adaptive limit-vs-market execution | ranked list #250; Perold 1988 | Execution | 🧪 (purpose-based pricing) · ⏳ (shortfall check) | Low |
+| RK251 | Intraday volume-profile execution | ranked list #251; Białkowski, Darolles & Le Fol 2008 | Execution | ⛔ (not applicable) | None |
+| RK252 | Order-flow imbalance (OFI) cross-sectional alpha predictor | ranked list #252; Cont, Kukanov & Stoikov 2014 | Order-flow alpha | 🧪 (single-instrument OFI) · ⛔ (cross-sectional) | Low |
+| RK253 | Information-driven volume-clock imbalance momentum | ranked list #253; Easley, López de Prado & O'Hara 2012 | Volume-clock sampling | 🧪 (bars) · ⏳ (rule) | Low |
+| RK254 | Persistent-homology (TDA) crash predictor | ranked list #254; Gidea & Katz 2018 | Topological data analysis | ⏳ as a regime input | Low |
+| RK255 | Persistent-homology landscape crisis predictor | ranked list #255; Gidea & Katz 2018 | Topological data analysis | ⏳ as a regime input | Low |
+| RK256 | Deep Markov state-space intraday volume predictor | ranked list #256 | Deep state-space volume | ⛔ | None |
+| RK257 | Transfer-entropy causality-flow macro allocator | ranked list #257 | Information theory | ⛔ | None |
+| RK258 | Spiking graph convolutional network contagion predictor | ranked list #258 | Neuromorphic AI | ⛔ | None |
+| RK259 | Hawkes-driven non-parametric order-flow toxicity filter | ranked list #259 | Flow toxicity | ⛔ | None |
+| RK260 | Quantum approximate state-preparation risk mapping | ranked list #260; Woerner & Egger 2019 | Quantum risk | ⛔ | None |
+| RK261 | Koopman-operator MPC risk mitigation | ranked list #261; Mann & Kutz 2016 | Koopman / MPC | ⛔ | None |
+| RK262 | Persistent-homology Betti-0 contagion detector | ranked list #262; Gidea & Katz 2018 | Topological data analysis | ⛔ | None |
+| RK263 | Persistence-diagram clustering crisis detector | ranked list #263; Gidea & Katz 2018 | Topological data analysis | ⛔ | None |
+| RK264 | Transfer-entropy directed GNN contagion model | ranked list #264 | Information theory | ⛔ | None |
+| RK265 | Persistent-homology Betti-2 macro stress predictor | ranked list #265; Gidea & Katz 2018 | Topological data analysis | ⛔ | None |
+| RK266 | Riemannian SPD entropic-risk portfolio | ranked list #266 | Riemannian portfolio | ⛔ | None |
+| RK267 | Graph-attention covariance spectral regularization | ranked list #267; Ledoit & Wolf | Covariance estimation | ⛔ | None |
+| RK268 | Persistent-homology multi-scale Vietoris–Rips risk score | ranked list #268; Gidea & Katz 2018 | Topological data analysis | ⏳ as a regime input | Low |
+| RK269 | Persistent-homology Betti-0 multiscale contagion clustering | ranked list #269; Gidea & Katz 2018 | Topological data analysis | 🧪 (dendrogram in HRP) · ⏳ (contagion signal) | Low |
+| RK270 | Quantum annealing binary matrix factorization risk model | ranked list #270 | Quantum risk | ⛔ | None |
+| RK271 | Sequential bootstrapping sample weights | ranked list #271; López de Prado 2018 | ML training | ⏳ (training hygiene) | Low |
+| RK272 | Wavelet-neural network intraday trend scalper | ranked list #272 | Signal processing + ML | ⛔ (scalper) | None |
+| RK273 | Deep Koopman spectral asset allocation | ranked list #273; Mann & Kutz 2016 | Koopman / MPC | ⛔ | None |
+| RK274 | Avellaneda–Stoikov market making | ranked list #274; Avellaneda & Stoikov 2008 | Market making | ✅ (bid-side reservation price) · ⛔ (two-sided) | Low |
+| RK275 | DeepLOB-style order-book forecasting | ranked list #275; Zhang, Zohren & Roberts 2019 | Deep learning microstructure | ⛔ | None |
+| RK276 | Queue-reactive market making | ranked list #276; Huang, Lehalle & Rosenbaum 2015 | Market making | 🧪 (fill model) · ⛔ (quoting) | Low |
+| RK277 | Hawkes multi-dimensional order-flow intensity model | ranked list #277; Bacry & Muzy 2014 | Point-process microstructure | ⛔ | None |
+| RK278 | Cross-venue crypto triangular arbitrage | ranked list #278; Makarov & Schoar 2020 | Crypto arbitrage | ❌ | None |
+| RK279 | Asynchronous multi-exchange spatial arbitrage graph | ranked list #279; Makarov & Schoar 2020 | Crypto arbitrage | ❌ | None |
+| RK280 | Recurrent neural Hawkes toxic-flow hedging trigger | ranked list #280; Mei & Eisner 2017 | Neural point processes | ⛔ | None |
+| RK281 | Covered call / buy-write | ranked list #281; Whaley 2002; Israelov & Nielsen 2015 | Options income | ⛔ | Low |
+| RK282 | Put-write / cash-secured put | ranked list #282; Ungar & Moran 2009 | Options income | ⛔ | Low |
+| RK283 | Wasserstein distributionally robust neural stochastic-control hedging | ranked list #283; Buehler et al. 2019 | Derivatives hedging | ⛔ | None |
+| RK284 | Options wheel | ranked list #284; ThetaGang | Options income | ⛔ | Low |
+| RK285 | Iron condor / short premium range strategy | ranked list #285; Cboe CNDR | Options income | ⛔ | None |
+| RK286 | Iron butterfly credit strategy | ranked list #286; Cboe BFLY | Options income | ⛔ | None |
+| RK287 | Neural-operator delay-ODE term-structure predictor | ranked list #287 | Neural operators | ⛔ | None |
+| RK288 | Neural CDE point-process execution | ranked list #288; Kidger et al. 2020 | Neural differential equations | ⛔ | None |
+| RK289 | Neural-operator delay-differential Hawkes microstructure predictor | ranked list #289 | Neural operators | ⛔ | None |
+| RK290 | Random forest return classification | ranked list #290; Krauss, Do & Huck 2017 | ML classification | ⏳ (as a learner) · ⛔ (long-short) | Low |
+| RK291 | Gradient-boosted trees return prediction | ranked list #291; Gu, Kelly & Xiu 2020 | ML prediction | ✅ (lot sizing, V13/V14) · ⛔ (direction trade) | Medium |
+| RK292 | LSTM sequence forecasting | ranked list #292; Fischer & Krauss 2018 | Deep learning forecast | ❌ | None |
+| RK293 | News / financial sentiment NLP | ranked list #293; Tetlock 2007 | Text sentiment | ⏳ (market-level input) · ⛔ (stock-level news trade) | Low |
+| RK294 | Triple-barrier labeled ML strategy | ranked list #294; López de Prado 2018 | ML labelling | 🧪 (labels) | Medium |
+| RK295 | Conformal prediction uncertainty wrapper (CP-MAPIE) | ranked list #295; Vovk, Gammerman & Shafer 2005 | Uncertainty quantification | 🧪 (conformal sizing) | Low |
+| RK296 | Dynamic copula-vine regularized factor allocation | ranked list #296; Low, Alcock, Faff & Brailsford 2013 | Copula allocation | ⏳ | Low |
+| RK297 | Fractional Hurst-driven adaptive-bandwidth mean reversion | ranked list #297; Lo 1991 | Adaptive mean reversion | 🧪 (Hurst diagnostic) · ⏳ (adaptive bands) | Low |
+| RK298 | AMM / CLOB cross-venue arbitrage | ranked list #298; Milionis et al. 2022 | DeFi arbitrage | ❌ | None |
+| RK299 | Dynamic AMM liquidity provision / liquidity mining | ranked list #299; Loesch et al. 2021 | DeFi liquidity provision | ❌ | None |
+| RK300 | Fractional differentiation feature pipeline | ranked list #300; López de Prado 2018; Hosking 1981 | ML preprocessing | 🧪 (feature transform) | Low |
 
-The remaining 14,125 rows of the ranked list are tabled in §8C, not here. Ranks 1–100 are researched; the ones whose sources could not be found or checked are listed in §8C under "Research gaps".
+The remaining 14,024 rows of the ranked list are tabled in §8C, not here. Ranks 1–100 and 200–300 are researched (ranks 101–199 are not yet); the ones whose sources could not be found or checked are listed in §8C under "Research gaps".
 
 ---
 
@@ -2238,6 +2339,918 @@ Select pairs or leader–follower trades from a causal graph (PC, NOTEARS, PCMCI
 * **Built:** Nothing.
 * **Details:** [docs/algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md)
 
+### RK200. Score-based diffusion multi-asset scenario synthesizer ⏳ (stress-test tool)
+
+Generate joint market scenarios with diffusion models for stress testing; recent work reports reproducing stylized facts (Takahashi & Mizuno 2024). A risk tool, not a strategy.
+
+* **Fit:** Could stress-test the grid on synthetic crash paths; a block bootstrap is the cheaper first step.
+* **Against:** Inherits training regimes; hard to validate.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/generative-score-based-diffusion-multi-asset-scenario-synthesizer.md](algorithms/generative-score-based-diffusion-multi-asset-scenario-synthesizer.md)
+
+### RK201. Koopman-operator MPC statistical arbitrage ⛔
+
+Lift nonlinear multi-asset cointegration dynamics into a dictionary of observables so they evolve linearly, then run MPC to choose the mean-reversion trades. No peer-reviewed out-of-sample study found; the nearest is DMD trading with in-sample window tuning (Mann & Kutz 2016).
+
+* **Fit:** Spread trading needs a short leg, and there is no evidence the method works out of sample.
+* **Against:** Approximate linearisation; MPC on weak forecasts.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-predictive-control-statistical-arbitrage.md](algorithms/koopman-operator-predictive-control-statistical-arbitrage.md)
+
+### RK202. Fractional Brownian motion multi-scale trend scanning ⛔
+
+Combine variance-ratio/Hurst tests with multi-horizon trend scanning. Little long memory in stock returns (Lo 1991); no study of the combination found.
+
+* **Fit:** Both diagnostics exist; as a direction regime it falls under L1.
+* **Against:** Multiple testing; noisy Hurst estimates.
+* **Built:** Nothing combined; the diagnostics exist separately.
+* **Details:** [docs/algorithms/fractional-brownian-motion-multi-scale-trend-scanning-strategy.md](algorithms/fractional-brownian-motion-multi-scale-trend-scanning-strategy.md)
+
+### RK203. Koopman-operator MPC spread equilibrium ⛔
+
+The same construction as RK201 applied to a single cointegrated spread: a Koopman dictionary linearises the spread's nonlinear dynamics and MPC plans the multi-period mean-reversion path. No peer-reviewed out-of-sample study found; the nearest is DMD trading with in-sample window tuning (Mann & Kutz 2016).
+
+* **Fit:** Spread trading needs a short leg; the single-asset grid already trades mean reversion with no model.
+* **Against:** Approximate linearisation; MPC on weak forecasts.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-model-predictive-control-spread-equilibrium.md](algorithms/koopman-operator-model-predictive-control-spread-equilibrium.md)
+
+### RK204. Lead-lag cross-asset predictive trading 🧪 (estimator) · ⏳ (entry timing) · ⛔ (latency trade)
+
+Trade the follower on the leader's last move. At tick level liquid assets and futures lead, and the lagger's next mid-quote move is predictable about 60% of the time, but not by enough to pay the spread (Huth & Abergel).
+
+* **Fit:** A latency trade is out; Nasdaq-100 futures leading TQQQ could time grid entries. The estimator exists.
+* **Against:** Leakage, latency, stale quotes; the lead sits inside one bar at minute frequency.
+* **Built:** `leads.lagged_cross_correlation`, `leads.hy_lead_lag` (gap-analysis lead).
+* **Details:** [docs/algorithms/lead-lag-cross-asset-predictive-trading.md](algorithms/lead-lag-cross-asset-predictive-trading.md)
+
+### RK205. Dynamic tensor decomposition multi-asset factor rotation ⛔
+
+Rotate sectors by time-varying CP/Tucker tensor loadings. Tensor factor models exist (Chen, Yang & Zhang 2022); no rotation study found.
+
+* **Fit:** No evidence it improves X3's rotation.
+* **Against:** Non-unique, drifting decompositions.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/dynamic-tensor-decomposition-multi-asset-factor-rotation.md](algorithms/dynamic-tensor-decomposition-multi-asset-factor-rotation.md)
+
+### RK206. Koopman-operator MPC multi-asset allocation ⛔
+
+Lift macro and return dynamics into a linear space with a Koopman dictionary and use MPC to set tactical asset weights. No peer-reviewed out-of-sample study found; the nearest is DMD trading with in-sample window tuning (Mann & Kutz 2016).
+
+* **Fit:** A long-only tactical allocator would pass the instrument rule, but the engine trades one symbol and the only reported result is an unreviewed poster.
+* **Against:** Approximate linearisation; MPC on weak forecasts.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-model-predictive-control-multi-asset-allocation.md](algorithms/koopman-operator-model-predictive-control-multi-asset-allocation.md)
+
+### RK207. Standardized unexpected earnings (SUE) ⏳ (long-only basket) · ⛔ (short side)
+
+Rank announcements by earnings surprise over the dispersion of past surprises and buy the top decile; the measurement behind PEAD (RK45), strong historically and largely gone in large stocks since 2006 (Martineau 2022).
+
+* **Fit:** A long-only stock basket; no earnings data here, and the drift appears gone in the Nasdaq-100 names.
+* **Against:** Point-in-time data; decay; survives in illiquid names only.
+* **Built:** Nothing; V6 sizes on earnings-reaction volatility, not surprise.
+* **Details:** [docs/algorithms/standardized-unexpected-earnings-sue.md](algorithms/standardized-unexpected-earnings-sue.md)
+
+### RK208. Anchored VWAP reclaim / rejection 🧪 (session VWAP gate) · ⏳ (event anchors)
+
+Trade a reclaim or rejection of VWAP anchored at an event. No academic test found; the session-anchored form is C-MS3's buy gate.
+
+* **Fit:** As a buy gate it fits; the session form is built, an event-anchored one would extend VwapGate.
+* **Against:** Hindsight anchor choice; moving-average lag.
+* **Built:** `intraday_gates.session_vwap`, `VwapGate` (C-MS3).
+* **Details:** [docs/algorithms/anchored-vwap-reclaim-rejection.md](algorithms/anchored-vwap-reclaim-rejection.md)
+
+### RK209. Corporate buyback announcement drift ⏳ (long-only event basket)
+
+Buy after open-market repurchase announcements: 12.1% four-year abnormal return in 1980–1990, 45.3% for value stocks (Ikenberry et al. 1995); much smaller after 2001 (Lee, Park & Pearson 2019), though Peyer & Vermaelen (2009) reject its disappearance.
+
+* **Fit:** A long-only stock book with its own filing data; unrelated to the grid.
+* **Against:** Authorisation is not purchase; benchmark-dependent long-run returns; decay.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/corporate-buyback-announcement-drift.md](algorithms/corporate-buyback-announcement-drift.md)
+
+### RK210. Index reconstitution / rebalance event trading ⛔
+
+Front-run forced index-fund buying. The S&P 500 inclusion effect fell from 7.4% in the 1990s to under 1% in the last decade, deletions to about 0.1% (Greenwood & Sammon 2025).
+
+* **Fit:** Single-stock front-running; for this book index events are only flow days.
+* **Against:** Crowding and anticipation; the effect has largely disappeared.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/index-reconstitution-rebalance-event-trading.md](algorithms/index-reconstitution-rebalance-event-trading.md)
+
+### RK211. Macro surprise / economic release strategy ⛔ (release trade) · ✅ (event-day sizing, V6)
+
+Trade the reaction to macro surprises. For a long-only holder the documented effect is the announcement-day premium (11.4 bp against 1.1 bp, 1958–2009; Savor & Wilson 2013) and the pre-FOMC drift (Lucca & Moench 2015).
+
+* **Fit:** The release trade is out; FOMC-day sizing is already V6, and a pre-FOMC-session boost is a cheap variant to test.
+* **Against:** Point-in-time consensus; sub-second execution for the reaction trade.
+* **Built:** V6 FOMC-day lot boost on the champion; no surprise measure.
+* **Details:** [docs/algorithms/macro-surprise-economic-release-strategy.md](algorithms/macro-surprise-economic-release-strategy.md)
+
+### RK212. Market breadth thrust ⏳
+
+Zweig's thrust (10-day EMA of advance share from below 0.40 to above 0.615 within 10 sessions): about 18 signals since 1945, every past one followed by a higher S&P 500 a year later per vendor counts; no peer-reviewed test.
+
+* **Fit:** A calm re-entry input like the Ultimate bear filter; the breadth data is not in the warehouse.
+* **Against:** About 18 events; universe- and threshold-dependent; NYSE breadth is a poor Nasdaq-100 proxy.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/market-breadth-thrust.md](algorithms/market-breadth-thrust.md)
+
+### RK213. Trend-scanning label model 🧪 (labelling tool)
+
+Label each bar with the sign of the most significant forward trend over several windows (López de Prado 2020); a training target, not a strategy.
+
+* **Fit:** Built (C-ML1); useful for labelling regimes for V14 or validating the NATR regime.
+* **Against:** Future-derived; needs purging and embargo.
+* **Built:** `ml.barrier_labels.trend_scanning_labels` (C-ML1).
+* **Details:** [docs/algorithms/trend-scanning-label-model.md](algorithms/trend-scanning-label-model.md)
+
+### RK214. XGBoost cross-sectional ranking ⏳ (long-only top-k) · ⛔ (long-short)
+
+Rank assets with boosted trees and hold the top. Trees and neural nets forecast the cross-section best (Gu, Kelly & Xiu 2020); an S&P 500 ensemble earned 0.45% a day before costs, 1992–2015, declining (Krauss, Do & Huck 2017).
+
+* **Fit:** X3 with a learned score; X3 itself is unmeasured.
+* **Against:** Long-short, pre-cost evidence; turnover; overfitting.
+* **Built:** Nothing; the LightGBM models here size lots, not rank assets.
+* **Details:** [docs/algorithms/xgboost-cross-sectional-ranking.md](algorithms/xgboost-cross-sectional-ranking.md)
+
+### RK215. Cross-sectional reversal with risk neutralization 🧪 (long-only contrarian weights) · ⛔ (market-neutral)
+
+Buy recent losers net of market, industry and news components. The residual reversal earns about four times the standard strategy's risk-adjusted return (Da, Liu & Schaumburg 2014); reversal pays for liquidity provision (Nagel 2012).
+
+* **Fit:** Needs a stock universe; the grid is already a single-asset reversal bet. Contrarian weights exist as research code.
+* **Against:** Turnover; profits concentrated in illiquid names and the short leg.
+* **Built:** `mean_reversion.contrarian_weights`, `decayed_reversal_scores` (C-MR1).
+* **Details:** [docs/algorithms/cross-sectional-reversal-with-risk-neutralization.md](algorithms/cross-sectional-reversal-with-risk-neutralization.md)
+
+### RK216. Top-K with dropout portfolio rotation ⏳ (turnover rule)
+
+Hold the top K by score but replace at most N per rebalance (Qlib's TopkDropoutStrategy); a turnover limiter, not a signal. No independent study found.
+
+* **Fit:** A switching cap for a multi-ETF X3; not needed while X3 holds one name.
+* **Against:** Value depends on the signal, K, N and costs.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/top-k-with-dropout-portfolio-rotation.md](algorithms/top-k-with-dropout-portfolio-rotation.md)
+
+### RK217. BSTS causal-impact macro strategy ⏳ (event-study tool)
+
+Measure an event's effect against a Bayesian structural time-series counterfactual (Brodersen et al. 2015) and trade it. A measurement tool; no trading study found.
+
+* **Fit:** A research tool for event effects on TQQQ, not a trading rule.
+* **Against:** Controls rarely unaffected by market shocks; ex-post measurement.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/bayesian-structural-time-series-bsts-causal-impact-macro-strategy.md](algorithms/bayesian-structural-time-series-bsts-causal-impact-macro-strategy.md)
+
+### RK218. Sparse Bayesian learning dynamic factor model ⏳
+
+Sparsity (ARD) priors select active factors in a dynamic factor model; Bayesian averaging over 2.25 quadrillion factor models beat existing models in and out of sample (Bryzgalova, Huang & Julliard 2023).
+
+* **Fit:** A stock-book tool; no stock universe here.
+* **Against:** Cross-sectional only; tuning.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/sparse-bayesian-learning-dynamic-factor-model.md](algorithms/sparse-bayesian-learning-dynamic-factor-model.md)
+
+### RK219. Dynamic mode decomposition (DMD) market mode predictor ⛔
+
+Extract and extrapolate DMD modes from a price matrix. One trading study exists, with windows tuned in sample (Mann & Kutz 2016).
+
+* **Fit:** No out-of-sample trading evidence.
+* **Against:** In-sample window tuning; unstable modes.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/dynamic-mode-decomposition-dmd-market-mode-predictor.md](algorithms/dynamic-mode-decomposition-dmd-market-mode-predictor.md)
+
+### RK220. Continuous-time mean-variance RL agent ⏳
+
+Entropy-regularised continuous-time mean-variance RL (Wang & Zhou); the authors' S&P 500 tests report over 10% a year, ahead of econometric and deep-RL baselines.
+
+* **Fit:** A multi-asset allocator; evidence is the authors' own.
+* **Against:** Author-only evidence; MV inputs.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/continuous-time-mean-variance-reinforcement-learning-agent.md](algorithms/continuous-time-mean-variance-reinforcement-learning-agent.md)
+
+### RK221. Transfer-entropy lead-lag strategy ⏳ (measurement) · ⛔ (trade)
+
+Trade nonlinear, directional lead-lag measured by transfer entropy (Schreiber 2000); used to measure market information flows (Dimpfl & Peter 2013), not tested as a trade.
+
+* **Fit:** A measurement after RK204's linear lead-lag; no trade.
+* **Against:** Sample-hungry; spread problem.
+* **Built:** Nothing; linear lead-lag estimators are on RK204.
+* **Details:** [docs/algorithms/information-theoretic-transfer-entropy-lead-lag-strategy.md](algorithms/information-theoretic-transfer-entropy-lead-lag-strategy.md)
+
+### RK222. Maximum entropy production rate macro allocator ⛔
+
+Allocate to maximise entropy production of macro asset flows. No finance study found; no link to expected returns.
+
+* **Fit:** No evidence; not a candidate.
+* **Against:** No link to returns.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/maximum-entropy-production-rate-macro-allocator.md](algorithms/maximum-entropy-production-rate-macro-allocator.md)
+
+### RK223. Quantum tensor-network portfolio optimization ⛔
+
+Solve portfolio optimisation with matrix-product-state tensor networks; tested beside annealers and VQE on 52 assets (Mugel et al. 2022), with no shown advantage over classical solvers.
+
+* **Fit:** No combinatorial portfolio problem here.
+* **Against:** No demonstrated advantage; irrelevant scale.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-tensor-network-portfolio-optimization.md](algorithms/quantum-tensor-network-portfolio-optimization.md)
+
+### RK224. Deep latent force model interest-rate forecaster ⛔
+
+Gaussian-process latent forces drive a term-structure model. The method exists (Álvarez et al. 2009); no rates application found.
+
+* **Fit:** No use for this book.
+* **Against:** Extra assumptions; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/deep-latent-force-model-lfm-interest-rate-forecaster.md](algorithms/deep-latent-force-model-lfm-interest-rate-forecaster.md)
+
+### RK225. Wasserstein distributionally robust mean-variance allocation ⏳
+
+Minimise worst-case variance over a Wasserstein ball; equivalent to regularised empirical variance minimisation with a data-driven radius (Blanchet, Chen & Zhou 2022).
+
+* **Fit:** A sound allocator for a future multi-ETF book, beside HRP.
+* **Against:** Radius-dependent; close to shrinkage.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-mean-variance-allocation.md](algorithms/wasserstein-distributionally-robust-mean-variance-allocation.md)
+
+### RK226. Functional PCA (FPCA) yield-curve forecaster ⛔
+
+Forecast yield curves as functions via functional principal components; a functional dynamic factor model forecast yields well, especially in a trading exercise (Hays, Shen & Huang 2012).
+
+* **Fit:** No direct use for this book.
+* **Against:** Bond construction; out-of-sample decay.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/functional-principal-component-analysis-fpca-yield-curve-forecaster.md](algorithms/functional-principal-component-analysis-fpca-yield-curve-forecaster.md)
+
+### RK227. Multi-agent evolutionary RL portfolio optimizer ⛔
+
+Evolve multi-agent RL allocation policies with genetic algorithms. No out-of-sample study found.
+
+* **Fit:** An untested multi-asset allocator.
+* **Against:** Maximal data-snooping risk.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-evolutionary-reinforcement-learning-portfolio-optimizer.md](algorithms/multi-agent-evolutionary-reinforcement-learning-portfolio-optimizer.md)
+
+### RK228. Deep generative flow-matching portfolio generator ⛔
+
+Optimise weights over flow-matching-generated scenarios. The method (Lipman et al. 2022) is established; no portfolio study found.
+
+* **Fit:** A multi-asset allocator with no evidence; not a candidate.
+* **Against:** Inherits generator error; misses true shifts.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/deep-generative-flow-matching-portfolio-generator.md](algorithms/deep-generative-flow-matching-portfolio-generator.md)
+
+### RK229. Quantum adiabatic optimal portfolio rebalancing ⛔
+
+Solve rebalancing with costs as a QUBO on a quantum annealer; done on real data (Mugel et al. 2022) without a claimed classical advantage.
+
+* **Fit:** No combinatorial portfolio problem here.
+* **Against:** Penalty tuning, noise; no advantage shown.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-adiabatic-optimal-portfolio-rebalancing.md](algorithms/quantum-adiabatic-optimal-portfolio-rebalancing.md)
+
+### RK230. Riemannian SPD-manifold portfolio optimization ⛔
+
+Optimise a portfolio by gradient descent on the manifold of symmetric positive definite (covariance) matrices, respecting its non-Euclidean geometry. No portfolio study found; shrinkage estimators are the baseline to beat.
+
+* **Fit:** A multi-asset allocator with no evidence.
+* **Against:** Must beat Ledoit-Wolf shrinkage; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/riemannian-manifold-metric-optimization-portfolio.md](algorithms/riemannian-manifold-metric-optimization-portfolio.md)
+
+### RK231. Riemannian SPD metric-diffusion risk parity ⛔
+
+Diffuse covariance estimates along the SPD manifold's geometry so risk-parity weights evolve smoothly through the cycle. No portfolio study found; shrinkage estimators are the baseline to beat.
+
+* **Fit:** A multi-asset allocator with no evidence.
+* **Against:** Must beat Ledoit-Wolf shrinkage; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/riemannian-manifold-metric-diffusion-portfolio-allocation.md](algorithms/riemannian-manifold-metric-diffusion-portfolio-allocation.md)
+
+### RK232. Graph-attention covariance shrinkage estimator ⛔
+
+Run a graph attention network over the asset correlation graph to produce a nonlinearly shrunk covariance matrix for Markowitz optimisation. Only a thesis and an arXiv comparison (not read) apply GNNs to covariance estimation; shrinkage is the baseline.
+
+* **Fit:** A multi-asset allocation input; the engine trades one symbol.
+* **Against:** Must beat shrinkage; thin evidence.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/graph-attention-network-covariance-shrinkage-estimator.md](algorithms/graph-attention-network-covariance-shrinkage-estimator.md)
+
+### RK233. Riemannian SPD Wasserstein-robust allocation ⛔
+
+Combine a Wasserstein ambiguity set with Riemannian descent on the covariance manifold for distributionally robust allocation. No portfolio study found; shrinkage estimators are the baseline to beat.
+
+* **Fit:** A multi-asset allocator with no evidence.
+* **Against:** Must beat Ledoit-Wolf shrinkage; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/riemannian-manifold-metric-wasserstein-robust-allocation.md](algorithms/riemannian-manifold-metric-wasserstein-robust-allocation.md)
+
+### RK234. Wasserstein distributionally robust RL portfolio agent ⛔
+
+Deep RL portfolio agent trained against a Wasserstein ball of transition models. No portfolio study found.
+
+* **Fit:** A multi-asset allocator with no evidence.
+* **Against:** Unstable training; arbitrary radius.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-reinforcement-learning-portfolio-agent.md](algorithms/wasserstein-distributionally-robust-reinforcement-learning-portfolio-agent.md)
+
+### RK235. Graph-attention covariance shrinkage dynamic allocation ⛔
+
+The RK232 estimator re-estimated on a rolling window and fed into dynamic mean-variance allocation. Only a thesis and an arXiv comparison (not read) apply GNNs to covariance estimation; shrinkage is the baseline.
+
+* **Fit:** A multi-asset allocation input; the engine trades one symbol.
+* **Against:** Must beat shrinkage; thin evidence.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/graph-attention-network-covariance-matrix-shrinkage-dynamic-allocation.md](algorithms/graph-attention-network-covariance-matrix-shrinkage-dynamic-allocation.md)
+
+### RK236. Quantum adiabatic GNN portfolio optimization ⛔
+
+GNN asset embeddings fed into quantum-annealing portfolio Hamiltonians. Each part exists; no study of the combination found.
+
+* **Fit:** No evidence; no portfolio problem here.
+* **Against:** Untested combination.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-adiabatic-graph-neural-network-portfolio-optimization.md](algorithms/quantum-adiabatic-graph-neural-network-portfolio-optimization.md)
+
+### RK237. Riemannian SPD graph-attention allocation ⛔
+
+Use graph attention over asset relations to produce weights on the SPD manifold of covariance matrices. No portfolio study found; shrinkage estimators are the baseline to beat.
+
+* **Fit:** A multi-asset allocator with no evidence.
+* **Against:** Must beat Ledoit-Wolf shrinkage; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/riemannian-manifold-metric-graph-attention-portfolio-allocation.md](algorithms/riemannian-manifold-metric-graph-attention-portfolio-allocation.md)
+
+### RK238. Quantum adiabatic tensor-network portfolio optimization ⛔
+
+Tensor networks combined with adiabatic evolution for allocation; tested only separately (Mugel et al. 2022).
+
+* **Fit:** No evidence; no portfolio problem here.
+* **Against:** Untested combination.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-adiabatic-tensor-network-portfolio-optimization.md](algorithms/quantum-adiabatic-tensor-network-portfolio-optimization.md)
+
+### RK239. Fractional-order VECM neural network allocator ⛔
+
+FCVAR with a neural error-correction term for basket allocation. FCVAR is established (Johansen & Nielsen 2012); no study of the neural variant.
+
+* **Fit:** Basket trading with short weights; out of scope.
+* **Against:** Overfitting; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/fractional-order-vector-error-correction-neural-network-portfolio-allocator.md](algorithms/fractional-order-vector-error-correction-neural-network-portfolio-allocator.md)
+
+### RK240. Neural-operator delay-differential stochastic volatility calibrator ⛔
+
+Calibrate stochastic volatility models with delay-aware neural operators. Deep calibration of (rough) volatility exists (Horvath et al. 2021); the delay variant was not found, and the CSV's arXiv 2106.09876 looks like a placeholder.
+
+* **Fit:** Options pricing; out of scope and not a trading rule.
+* **Against:** GPU-heavy; a pricing tool.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-operator-delay-differential-stochastic-volatility-calibrator.md](algorithms/neural-operator-delay-differential-stochastic-volatility-calibrator.md)
+
+### RK241. Koopman-operator factor risk tracking ⛔
+
+Model the drift of a portfolio's factor exposures with a Koopman linearisation to track style rotation and factor risk over time. No peer-reviewed out-of-sample study found; the nearest is DMD trading with in-sample window tuning (Mann & Kutz 2016).
+
+* **Fit:** A risk-monitoring tool for a multi-factor stock book, which this project does not run.
+* **Against:** Approximate linearisation; MPC on weak forecasts.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-multi-factor-equity-risk-factor-tracking.md](algorithms/koopman-operator-multi-factor-equity-risk-factor-tracking.md)
+
+### RK242. Long-volatility breakout (options) ⛔
+
+Buy straddles before catalysts. Zero-beta ATM straddles lose about 3% a week on average (Coval & Shumway 2001): buyers pay the volatility risk premium.
+
+* **Fit:** Options are out; the grid is on the other, paid side of the volatility premium.
+* **Against:** Theta; IV crush; negative average returns.
+* **Built:** `options.straddle_entry`, `straddle_pnl_at_expiry` (Q12).
+* **Details:** [docs/algorithms/long-volatility-breakout-options.md](algorithms/long-volatility-breakout-options.md)
+
+### RK243. Price/volume anomaly detection 🧪 (data-quality flag) · ❌ (alpha)
+
+Flag unusual price, volume or spread observations and filter trades. No study found that this improves returns; most flags are bad ticks or scheduled events.
+
+* **Fit:** A data-quality check fits; as a trade filter it removes the volatile sessions the grid harvests.
+* **Against:** Anomalies are not predictions; filters cut volatile sessions.
+* **Built:** `forecasting.ewm_anomalies` (A8).
+* **Details:** [docs/algorithms/price-volume-anomaly-detection.md](algorithms/price-volume-anomaly-detection.md)
+
+### RK244. Liquidity-aware adaptive execution 🧪 (spread gate) · ⛔ (slicing not needed)
+
+Adapt aggressiveness and child-order timing to spreads, depth and urgency (Almgren & Chriss 2001); execution algorithms help market functioning but shift execution risk to users (BIS 2020).
+
+* **Fit:** Orders here are small; the live loop already skips grid buys when the spread is too wide.
+* **Against:** Objective trade-offs; vendor-specific methods.
+* **Built:** Spread gate and premium cap in `engine/execution/limit_pricing.py`.
+* **Details:** [docs/algorithms/liquidity-aware-adaptive-execution.md](algorithms/liquidity-aware-adaptive-execution.md)
+
+### RK245. Pure passive market making ⛔ (two-sided) · grid is the buy-side relative
+
+Rest symmetric quotes around mid and refresh. Spread profits are given back on positions without inventory and toxicity control (Menkveld 2013: €1.55 earned on the spread, €0.68 lost on positions per trade).
+
+* **Fit:** Two-sided quoting is out; the grid is its long-only buy side.
+* **Against:** Adverse selection; queue priority; needs quote data.
+* **Built:** `inventory_control.as_quotes`, `glft_quotes` (C-MM1, C-MM2).
+* **Details:** [docs/algorithms/pure-passive-market-making.md](algorithms/pure-passive-market-making.md)
+
+### RK246. Inventory-skewed market making ✅ (buy-side skew, C-G2) · ⛔ (sell side below cost)
+
+Skew quotes against inventory via a reservation price (Avellaneda & Stoikov 2008; GLFT 2013). The buy-side half (lower the next buy as lots accumulate) is the grid's own inventory question.
+
+* **Fit:** The buy-side skew is built (C-G2); the sell side cannot go below cost.
+* **Against:** Model-dependent; adverse selection; queue position.
+* **Built:** `inventory_control.inventory_skewed_level`, `as_reservation_price` (C-G2, C-MM1).
+* **Details:** [docs/algorithms/inventory-skewed-market-making.md](algorithms/inventory-skewed-market-making.md)
+
+### RK247. VPIN flow-toxicity filter 🧪 (buy gate) · disputed evidence
+
+Volume-synchronised order imbalance as a toxicity warning (Easley et al. 2012); critics find no predictive power beyond volume and volatility and a peak after the flash crash (Andersen & Bondarenko 2014).
+
+* **Fit:** Built as a possible buy gate; its content duplicates the volume and volatility levers already in the champion.
+* **Against:** Disputed; trade-classification dependent.
+* **Built:** `microstructure.vpin` (C-MM4).
+* **Details:** [docs/algorithms/vpin-flow-toxicity-filter.md](algorithms/vpin-flow-toxicity-filter.md)
+
+### RK248. Hawkes-process order-flow forecast ⛔
+
+Forecast order-flow intensity with self- and cross-exciting Hawkes processes (review: Bacry, Mastromatteo & Muzy 2015); established as a model, no evidence of trading value at retail latency.
+
+* **Fit:** Needs event-level order data the warehouse does not have.
+* **Against:** Parameter instability; event data; latency.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/hawkes-process-order-flow-forecast.md](algorithms/hawkes-process-order-flow-forecast.md)
+
+### RK249. Iceberg / reserve-order execution ⛔ (not needed)
+
+Hide most of a large order and refill the displayed part. Hidden orders fill less and slower but lower execution costs on Euronext Paris (Bessembinder et al. 2009).
+
+* **Fit:** Orders here are too small to need hiding.
+* **Against:** Venue rules; queue priority; impact remains.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/iceberg-reserve-order-execution.md](algorithms/iceberg-reserve-order-execution.md)
+
+### RK250. Arrival-price adaptive limit-vs-market execution 🧪 (purpose-based pricing) · ⏳ (shortfall check)
+
+Choose limit or marketable orders by drift from arrival and urgency; judge by implementation shortfall (Perold 1988). The engine already prices orders by purpose; the CSV's reference could not be identified.
+
+* **Fit:** Built in a purpose-based form; measuring live shortfall against trigger prices is the useful addition.
+* **Against:** Non-fill versus impact; must be benchmarked on real fills.
+* **Built:** `engine/execution/limit_pricing.py` (grid_buy, marketable_buy, marketable_sell).
+* **Details:** [docs/algorithms/arrival-price-adaptive-limit-vs-market-execution.md](algorithms/arrival-price-adaptive-limit-vs-market-execution.md)
+
+### RK251. Intraday volume-profile execution ⛔ (not applicable)
+
+Schedule child orders along a forecast volume curve to track VWAP; dynamic market-plus-stock volume models improve tracking (Białkowski et al. 2008).
+
+* **Fit:** The grid's orders are price-triggered and small; nothing to schedule.
+* **Against:** Curves shift on news, auctions, half-days.
+* **Built:** Nothing; the intraday volatility profile (V9) is the nearest.
+* **Details:** [docs/algorithms/intraday-volume-profile-execution.md](algorithms/intraday-volume-profile-execution.md)
+
+### RK252. Order-flow imbalance (OFI) cross-sectional alpha predictor 🧪 (single-instrument OFI) · ⛔ (cross-sectional)
+
+Net changes in best-quote queue sizes explain short-interval price changes linearly, scaled by depth (Cont, Kukanov & Stoikov 2014); seconds-horizon alpha needing L1/L2.
+
+* **Fit:** A possible buy gate on live quotes, but no historical quotes to test it.
+* **Against:** Data and compute heavy; seconds horizon.
+* **Built:** `microstructure.ofi`, `ofi_events` (C-MS1).
+* **Details:** [docs/algorithms/order-flow-imbalance-ofi-cross-sectional-alpha-predictor.md](algorithms/order-flow-imbalance-ofi-cross-sectional-alpha-predictor.md)
+
+### RK253. Information-driven volume-clock imbalance momentum 🧪 (bars) · ⏳ (rule)
+
+Sample by volume or order imbalance rather than time and trade the imbalance (Easley, López de Prado & O'Hara 2012); the bars are better behaved statistically, a momentum rule on them is untested.
+
+* **Fit:** Bars built (C-ML5); the engine runs on minute bars.
+* **Against:** Event-indexed backtests required.
+* **Built:** `ml.info_bars.volume_bars`, `tick_imbalance_bars` (C-ML5).
+* **Details:** [docs/algorithms/information-driven-volume-clock-imbalance-momentum.md](algorithms/information-driven-volume-clock-imbalance-momentum.md)
+
+### RK254. Persistent-homology (TDA) crash predictor ⏳ as a regime input
+
+Build Vietoris–Rips complexes from rolling multi-asset point clouds and track persistence diagrams (Betti numbers) as a crash warning. Evidence: persistence-landscape norms rose before the 2000 and 2008 crashes, in sample (Gidea & Katz 2018).
+
+* **Fit:** As a crash early-warning input to the regime it would fit (it never trades by
+    itself).
+* **Against:** Two events; free parameters; overlaps with volatility measures.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/persistent-homology-topological-data-analysis-tda-crash-predictor.md](algorithms/persistent-homology-topological-data-analysis-tda-crash-predictor.md)
+
+### RK255. Persistent-homology landscape crisis predictor ⏳ as a regime input
+
+Track persistence landscapes and Betti curves of sliding multi-asset point clouds; growing landscape norms signal fragility before a crash. Evidence: persistence-landscape norms rose before the 2000 and 2008 crashes, in sample (Gidea & Katz 2018).
+
+* **Fit:** As a crash early-warning input to the regime it would fit (it never trades by
+    itself).
+* **Against:** Two events; free parameters; overlaps with volatility measures.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/persistent-homology-topological-landscape-crisis-predictor.md](algorithms/persistent-homology-topological-landscape-crisis-predictor.md)
+
+### RK256. Deep Markov state-space intraday volume predictor ⛔
+
+Forecast intraday volume curves with a deep Markov model. No finance study found; the CSV's arXiv 2006.12345 looks like a placeholder.
+
+* **Fit:** Not applicable: orders here are not volume-scheduled.
+* **Against:** Unstable variational training; no evidence.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/deep-markov-state-space-intraday-volume-profile-predictor.md](algorithms/deep-markov-state-space-intraday-volume-profile-predictor.md)
+
+### RK257. Transfer-entropy causality-flow macro allocator ⛔
+
+Weight asset classes by the transfer entropy and directed information flowing to them from macro indicators. No study found.
+
+* **Fit:** No evidence; not a candidate.
+* **Against:** Noisy estimates; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/information-theoretic-causality-flow-macro-asset-allocator.md](algorithms/information-theoretic-causality-flow-macro-asset-allocator.md)
+
+### RK258. Spiking graph convolutional network contagion predictor ⛔
+
+Spiking neural networks fused with graph convolutions to model shock contagion. No finance study found.
+
+* **Fit:** No evidence; no use here.
+* **Against:** Hard to train; no benchmarks.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/spiking-graph-convolutional-network-sgcn-contagion-predictor.md](algorithms/spiking-graph-convolutional-network-sgcn-contagion-predictor.md)
+
+### RK259. Hawkes-driven non-parametric order-flow toxicity filter ⛔
+
+Halt market making when a non-parametric Hawkes toxicity score is high. No study of the combination found; the CSV's arXiv 2002.09876 looks like a placeholder.
+
+* **Fit:** Market making on event data; out of scope.
+* **Against:** Stale kernels; toxicity scores may duplicate volume and volatility.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/hawkes-driven-non-parametric-order-flow-toxicity-filter.md](algorithms/hawkes-driven-non-parametric-order-flow-toxicity-filter.md)
+
+### RK260. Quantum approximate state-preparation risk mapping ⛔
+
+Quantum amplitude estimation for VaR/CVaR, near-quadratically faster than Monte Carlo in principle; toy demonstrations only (Woerner & Egger 2019).
+
+* **Fit:** Risk numbers here are cheap and exact classically.
+* **Against:** State preparation and noise erase the speed-up.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-approximate-state-preparation-risk-mapping.md](algorithms/quantum-approximate-state-preparation-risk-mapping.md)
+
+### RK261. Koopman-operator MPC risk mitigation ⛔
+
+Linearise macro state dynamics with a Koopman dictionary and use MPC to raise or cut portfolio risk exposure ahead of predicted stress. No peer-reviewed out-of-sample study found; the nearest is DMD trading with in-sample window tuning (Mann & Kutz 2016).
+
+* **Fit:** It would play the role the NATR regime and drawdown throttle already play, with a model in place of a measured rule; no evidence it does better.
+* **Against:** Approximate linearisation; MPC on weak forecasts.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-model-predictive-control-risk-mitigation.md](algorithms/koopman-operator-model-predictive-control-risk-mitigation.md)
+
+### RK262. Persistent-homology Betti-0 contagion detector ⛔
+
+Track the number of connected components (Betti-0) of a rolling correlation-threshold graph; a sudden merging of clusters signals contagion. Evidence: persistence-landscape norms rose before the 2000 and 2008 crashes, in sample (Gidea & Katz 2018).
+
+* **Fit:** No evidence beyond two in-sample crashes.
+* **Against:** Two events; free parameters; overlaps with volatility measures.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/persistent-homology-betti-0-connected-component-contagion-detector.md](algorithms/persistent-homology-betti-0-connected-component-contagion-detector.md)
+
+### RK263. Persistence-diagram clustering crisis detector ⛔
+
+Cluster rolling persistence diagrams by Wasserstein distance and alert when the cluster structure changes abruptly. Evidence: persistence-landscape norms rose before the 2000 and 2008 crashes, in sample (Gidea & Katz 2018).
+
+* **Fit:** No evidence beyond two in-sample crashes.
+* **Against:** Two events; free parameters; overlaps with volatility measures.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/topological-persistence-diagram-clustering-crisis-detector.md](algorithms/topological-persistence-diagram-clustering-crisis-detector.md)
+
+### RK264. Transfer-entropy directed GNN contagion model ⛔
+
+Build a directed graph of transfer-entropy flows between assets and feed it to a graph neural network that forecasts shock contagion. No study found.
+
+* **Fit:** No evidence; not a candidate.
+* **Against:** Noisy estimates; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/information-theoretic-directed-gnn-contagion-model.md](algorithms/information-theoretic-directed-gnn-contagion-model.md)
+
+### RK265. Persistent-homology Betti-2 macro stress predictor ⛔
+
+Track two-dimensional voids (Betti-2) in multi-asset correlation point clouds as a sign of higher-order dependence collapse before crises. Evidence: persistence-landscape norms rose before the 2000 and 2008 crashes, in sample (Gidea & Katz 2018).
+
+* **Fit:** No evidence beyond two in-sample crashes.
+* **Against:** Two events; free parameters; overlaps with volatility measures.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/persistent-homology-betti-2-3d-void-macro-stress-predictor.md](algorithms/persistent-homology-betti-2-3d-void-macro-stress-predictor.md)
+
+### RK266. Riemannian SPD entropic-risk portfolio ⛔
+
+Minimise an entropic risk measure while optimising over the SPD manifold of covariance matrices. No portfolio study found; shrinkage estimators are the baseline to beat.
+
+* **Fit:** A multi-asset allocator with no evidence.
+* **Against:** Must beat Ledoit-Wolf shrinkage; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/riemannian-manifold-metric-entropic-risk-portfolio.md](algorithms/riemannian-manifold-metric-entropic-risk-portfolio.md)
+
+### RK267. Graph-attention covariance spectral regularization ⛔
+
+Use a graph attention network to clip and condition the eigenvalues of rolling covariance matrices (the job random-matrix-theory cleaning does). Only a thesis and an arXiv comparison (not read) apply GNNs to covariance estimation; shrinkage is the baseline.
+
+* **Fit:** A multi-asset allocation input; the engine trades one symbol.
+* **Against:** Must beat shrinkage; thin evidence.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/graph-attention-network-covariance-matrix-spectral-regularization.md](algorithms/graph-attention-network-covariance-matrix-spectral-regularization.md)
+
+### RK268. Persistent-homology multi-scale Vietoris–Rips risk score ⏳ as a regime input
+
+Turn multi-scale Vietoris–Rips filtrations of rolling correlation matrices into a single fragility score. Evidence: persistence-landscape norms rose before the 2000 and 2008 crashes, in sample (Gidea & Katz 2018).
+
+* **Fit:** As a crash early-warning input to the regime it would fit (it never trades by
+    itself).
+* **Against:** Two events; free parameters; overlaps with volatility measures.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/persistent-homology-multi-scale-vietoris-rips-filtration-risk-scoring.md](algorithms/persistent-homology-multi-scale-vietoris-rips-filtration-risk-scoring.md)
+
+### RK269. Persistent-homology Betti-0 multiscale contagion clustering 🧪 (dendrogram in HRP) · ⏳ (contagion signal)
+
+Watch Betti-0 persistence (single-linkage merge heights) for sudden cluster fusion as a contagion signal; the dendrogram is already built inside HRP.
+
+* **Fit:** The dendrogram exists (A5); as a signal it mostly restates rising correlation.
+* **Against:** Restates rising correlation.
+* **Built:** Single-linkage clustering inside `hrp.hrp_weights` (A5).
+* **Details:** [docs/algorithms/persistent-homology-betti-0-multiscale-filtration-contagion-clustering.md](algorithms/persistent-homology-betti-0-multiscale-filtration-contagion-clustering.md)
+
+### RK270. Quantum annealing binary matrix factorization risk model ⛔
+
+Factorise risk covariances into binary matrices on a quantum annealer. No finance study found.
+
+* **Fit:** No evidence; no use here.
+* **Against:** Binary restriction; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-annealing-binary-matrix-factorization-portfolio-risk-model.md](algorithms/quantum-annealing-binary-matrix-factorization-portfolio-risk-model.md)
+
+### RK271. Sequential bootstrapping sample weights ⏳ (training hygiene)
+
+Bootstrap overlapping financial labels in proportion to their average uniqueness (López de Prado 2018, ch. 4); a training step, not a strategy.
+
+* **Fit:** A cheap addition to the V13/V14 training; purged CV (C-ML3) already exists.
+* **Against:** Does not fix leakage or overfitting.
+* **Built:** Nothing; purged CV is C-ML3.
+* **Details:** [docs/algorithms/sequential-bootstrapping-sample-weights.md](algorithms/sequential-bootstrapping-sample-weights.md)
+
+### RK272. Wavelet-neural network intraday trend scalper ⛔ (scalper)
+
+Denoise intraday prices with wavelets and trade a neural net's trend call. Full-sample transforms leak the future; denoising generally does not improve forecasts (Bašta 2018); no causal, cost-inclusive test found.
+
+* **Fit:** An intraday scalper is out; the NATR regime already measures volatility causally.
+* **Against:** Look-ahead from non-causal transforms; boundary effects; costs.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wavelet-neural-network-hybrid-intraday-trend-scalper.md](algorithms/wavelet-neural-network-hybrid-intraday-trend-scalper.md)
+
+### RK273. Deep Koopman spectral asset allocation ⛔
+
+Learn the Koopman observables with a neural network (a deep Koopman autoencoder) so that macro and return dynamics become linear, then allocate by linear optimal control. No peer-reviewed out-of-sample study found; the nearest is DMD trading with in-sample window tuning (Mann & Kutz 2016).
+
+* **Fit:** As RK206: an allocator for a multi-asset book, with only an unreviewed poster as evidence.
+* **Against:** Approximate linearisation; MPC on weak forecasts.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/deep-koopman-inspired-spectral-asset-allocation.md](algorithms/deep-koopman-inspired-spectral-asset-allocation.md)
+
+### RK274. Avellaneda–Stoikov market making ✅ (bid-side reservation price) · ⛔ (two-sided)
+
+Quote around an inventory-adjusted reservation price with a risk- and intensity-based spread (Avellaneda & Stoikov 2008); a model reference, not a production strategy.
+
+* **Fit:** The bid-side reservation price is the grid's inventory skew (C-G2); the ask side is out.
+* **Against:** Latency, adverse selection, fees decide results.
+* **Built:** `inventory_control.as_reservation_price`, `as_optimal_spread`, `as_quotes` (C-MM1).
+* **Details:** [docs/algorithms/avellaneda-stoikov-market-making.md](algorithms/avellaneda-stoikov-market-making.md)
+
+### RK275. DeepLOB-style order-book forecasting ⛔
+
+CNN+LSTM on order-book snapshots predicts short-horizon mid-price moves, with stable out-of-sample accuracy on LSE data (Zhang, Zohren & Roberts 2019); accuracy is not net edge.
+
+* **Fit:** Needs depth history; seconds horizon.
+* **Against:** Licensed data; latency and fees.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/deeplob-style-order-book-forecasting.md](algorithms/deeplob-style-order-book-forecasting.md)
+
+### RK276. Queue-reactive market making 🧪 (fill model) · ⛔ (quoting)
+
+Quote according to queue state, modelling the book as a Markov queuing system (Huang, Lehalle & Rosenbaum 2015); here its value is fill realism for resting grid buys.
+
+* **Fit:** The queue estimator would make level fills more realistic; needs L2 to calibrate.
+* **Against:** Bars cannot simulate queue priority.
+* **Built:** `microstructure.QueuePositionEstimator` (C-MM5).
+* **Details:** [docs/algorithms/queue-reactive-market-making.md](algorithms/queue-reactive-market-making.md)
+
+### RK277. Hawkes multi-dimensional order-flow intensity model ⛔
+
+Multivariate mutually exciting Hawkes model of order-book events for seconds-ahead forecasts (Bacry & Muzy 2014; review: Bacry, Mastromatteo & Muzy 2015).
+
+* **Fit:** Needs event-level data the warehouse does not have.
+* **Against:** Low latency; heavy estimation.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/hawkes-process-multi-dimensional-order-flow-intensity-model.md](algorithms/hawkes-process-multi-dimensional-order-flow-intensity-model.md)
+
+### RK278. Cross-venue crypto triangular arbitrage ❌
+
+Trade three-pair cycles across or within crypto venues. Cross-exchange bitcoin gaps were large and persistent, mostly across countries with capital controls (Makarov & Schoar 2020).
+
+* **Fit:** Crypto; rejected.
+* **Against:** Fees, withdrawals, latency.
+* **Built:** `crypto.find_arbitrage_cycle` (A7).
+* **Details:** [docs/algorithms/cross-venue-crypto-triangular-arbitrage.md](algorithms/cross-venue-crypto-triangular-arbitrage.md)
+
+### RK279. Asynchronous multi-exchange spatial arbitrage graph ❌
+
+Route multi-hop cross-venue arbitrage by minimum-cost flow. The gaps it targets are real in crypto, mostly across countries with capital controls (Makarov & Schoar 2020).
+
+* **Fit:** Crypto; rejected.
+* **Against:** Withdrawal freezes, latency, rate limits.
+* **Built:** `crypto.depth_arbitrage`, `find_arbitrage_cycle` (A7).
+* **Details:** [docs/algorithms/asynchronous-multi-exchange-spatial-arbitrage-graph.md](algorithms/asynchronous-multi-exchange-spatial-arbitrage-graph.md)
+
+### RK280. Recurrent neural Hawkes toxic-flow hedging trigger ⛔
+
+A neural Hawkes model forecasting toxic-flow surges to trigger option-hedge rebalances. No finance study found; the CSV's arXiv 2104.09876 looks like a placeholder.
+
+* **Fit:** Options and event data; out of scope.
+* **Against:** Latency; no evidence.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/recurrent-neural-hawkes-point-process-toxic-flow-hedging-trigger.md](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-hedging-trigger.md)
+
+### RK281. Covered call / buy-write ⛔
+
+Hold the stock and sell calls. BXM matched the index with less volatility (Whaley 2002); a covered call is equity plus well-paid short volatility plus a poorly paid reversal bet (Israelov & Nielsen 2015).
+
+* **Fit:** Options are out; the decomposition describes the grid's own risk (per-lot target caps upside, no premium).
+* **Against:** Capped upside in rallies; the reversal exposure.
+* **Built:** `options.wheel_calls_to_write` (S1).
+* **Details:** [docs/algorithms/covered-call-buy-write.md](algorithms/covered-call-buy-write.md)
+
+### RK282. Put-write / cash-secured put ⛔
+
+Sell cash-secured puts for the volatility risk premium. The Cboe PUT index returned 10.32% against 8.77% for the S&P 500 with 9.91% against 15.39% volatility, 1986–2008 (gross, partly back-filled).
+
+* **Fit:** Options are out; the grid's resting buys are a premium-free relative.
+* **Against:** Crash losses; back-filled index history; gross returns.
+* **Built:** `options.wheel_should_write`, `wheel_select_contract` (S1).
+* **Details:** [docs/algorithms/put-write-cash-secured-put.md](algorithms/put-write-cash-secured-put.md)
+
+### RK283. Wasserstein distributionally robust neural stochastic-control hedging ⛔
+
+Learn option hedges robust to a Wasserstein ball of volatility paths. Deep hedging is established (Buehler et al. 2019); the robust variant was not found, and the CSV's arXiv 2009.08295 could not be identified.
+
+* **Fit:** Derivatives hedging; out of scope.
+* **Against:** Heavy training; no evidence for the variant.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-neural-stochastic-control-hedging.md](algorithms/wasserstein-distributionally-robust-neural-stochastic-control-hedging.md)
+
+### RK284. Options wheel ⛔
+
+Alternate cash-secured puts and covered calls. The legs are documented (PUT, BXM); no study of the combined rule found. It keeps owning a falling stock.
+
+* **Fit:** Options are out; the grid is the premium-free, many-lot analogue with a regime exit.
+* **Against:** Concentration in falling assets; rolling extends losses.
+* **Built:** `options.wheel_select_contract`, `wheel_should_roll` (S1).
+* **Details:** [docs/algorithms/options-wheel.md](algorithms/options-wheel.md)
+
+### RK285. Iron condor / short premium range strategy ⛔
+
+Sell OTM put and call spreads for a credit. Cboe's CNDR index matched the S&P 500's return with lower volatility and drawdowns, 1986–2015, in a sponsor-commissioned study.
+
+* **Fit:** Options; out of scope.
+* **Against:** Gap losses; four-leg slippage; sponsor study.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/iron-condor-short-premium-range-strategy.md](algorithms/iron-condor-short-premium-range-strategy.md)
+
+### RK286. Iron butterfly credit strategy ⛔
+
+Sell an ATM straddle with OTM wings. Cboe's BFLY index exists; its performance figures were not found.
+
+* **Fit:** Options; out of scope.
+* **Against:** Short gamma around jumps; large defined loss.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/iron-butterfly-credit-strategy.md](algorithms/iron-butterfly-credit-strategy.md)
+
+### RK287. Neural-operator delay-ODE term-structure predictor ⛔
+
+Neural delay-differential operators for term-structure dynamics. No study found.
+
+* **Fit:** No use for this book.
+* **Against:** Over-parameterised; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-operator-delay-differential-equation-delay-ode-term-structure-predictor.md](algorithms/neural-operator-delay-differential-equation-delay-ode-term-structure-predictor.md)
+
+### RK288. Neural CDE point-process execution ⛔
+
+Neural CDEs (Kidger et al. 2020) with point processes to time execution on irregular tick data. The model class is established; no execution study found.
+
+* **Fit:** Execution timing on event data; not applicable here.
+* **Against:** GPU, solvers; no finance evidence.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-controlled-differential-equation-neural-cde-point-process-execution.md](algorithms/neural-controlled-differential-equation-neural-cde-point-process-execution.md)
+
+### RK289. Neural-operator delay-differential Hawkes microstructure predictor ⛔
+
+Fourier neural operators with delay-differential Hawkes intensities for order arrivals. Each part exists; no study combines them.
+
+* **Fit:** Event data, no evidence; out of scope.
+* **Against:** Heavy compute; no evidence.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-operator-delay-differential-hawkes-microstructure-predictor.md](algorithms/neural-operator-delay-differential-hawkes-microstructure-predictor.md)
+
+### RK290. Random forest return classification ⏳ (as a learner) · ⛔ (long-short)
+
+Classify next-period returns with a random forest. On S&P 500 constituents RF was the strongest single model (about 0.43% a day before costs, 1992–2015), fading after the early 2000s (Krauss, Do & Huck 2017).
+
+* **Fit:** Interchangeable with the LightGBM learners here, whose measured AUCs are weak.
+* **Against:** Leakage, nonstationarity, turnover; pre-cost evidence.
+* **Built:** Nothing; LightGBM is used instead.
+* **Details:** [docs/algorithms/random-forest-return-classification.md](algorithms/random-forest-return-classification.md)
+
+### RK291. Gradient-boosted trees return prediction ✅ (lot sizing, V13/V14) · ⛔ (direction trade)
+
+Boosted trees predict returns or probabilities; among the best cross-sectional forecasters (Gu, Kelly & Xiu 2020). Here LightGBM sizes grid lots (V13, V14); measured AUCs are 0.52–0.63, with one macro lift in six comparisons.
+
+* **Fit:** Built as sizing levers; next is the pre-registered held-out test in ml_plan.md.
+* **Against:** Accuracy is not P&L; weak AUCs; selection bias.
+* **Built:** `ml.reachability_sizing.MLReachabilitySizing` (V13), `ml.regime_scaled_sizing.MLRegimeScaledSizing` (V14).
+* **Details:** [docs/algorithms/gradient-boosted-trees-return-prediction.md](algorithms/gradient-boosted-trees-return-prediction.md)
+
+### RK292. LSTM sequence forecasting ❌
+
+An LSTM on S&P 500 stocks earned 0.46% a day before costs (1992–2015), but its picks were short-term reversal names and a rules-based reversal explained part of it (Fischer & Krauss 2018). Rejected in the catalog (C-RJ4).
+
+* **Fit:** Rejected; what the network learned is the reversal the grid already harvests.
+* **Against:** Fragile; pre-cost; a known anomaly in costlier form.
+* **Built:** `forecasting.LSTMForecaster` (C-RJ4).
+* **Details:** [docs/algorithms/lstm-sequence-forecasting.md](algorithms/lstm-sequence-forecasting.md)
+
+### RK293. News / financial sentiment NLP ⏳ (market-level input) · ⛔ (stock-level news trade)
+
+Trade on sentiment extracted from text. Market-level media pessimism predicts price pressure followed by reversal (Tetlock 2007), i.e. noise rather than news.
+
+* **Fit:** Market-level pessimism-then-reversal matches the grid's premise; needs a licensed, timestamped archive.
+* **Against:** Timestamp and duplication look-ahead; licensed data; fast decay.
+* **Built:** Nothing; only the Michigan consumer-sentiment survey is a registered input.
+* **Details:** [docs/algorithms/news-financial-sentiment-nlp.md](algorithms/news-financial-sentiment-nlp.md)
+
+### RK294. Triple-barrier labeled ML strategy 🧪 (labels)
+
+Label trades by the first of profit target, stop and time limit, then train a (meta-)classifier (López de Prado 2018, ch. 3). The barriers map onto a grid lot; V13's reachability label is a two-barrier form.
+
+* **Fit:** Labels built (C-ML1); the meta-model on top is the missing step.
+* **Against:** A labelling method; overlapping labels need purged validation.
+* **Built:** `ml.barrier_labels.triple_barrier_labels` (C-ML1).
+* **Details:** [docs/algorithms/triple-barrier-labeled-ml-strategy.md](algorithms/triple-barrier-labeled-ml-strategy.md)
+
+### RK295. Conformal prediction uncertainty wrapper (CP-MAPIE) 🧪 (conformal sizing)
+
+Turn model predictions into intervals with finite-sample coverage under exchangeability (Vovk et al. 2005) and trade only when the interval clears costs. Split-conformal sizing exists as research code.
+
+* **Fit:** Pairs naturally with the V13 reachability model; inherits its weakness.
+* **Against:** Exchangeability fails in markets; only as good as the inner model.
+* **Built:** `position_sizing.split_conformal_interval`, `conformal_long_size` (S5).
+* **Details:** [docs/algorithms/conformal-prediction-uncertainty-wrapper-cp-mapie.md](algorithms/conformal-prediction-uncertainty-wrapper-cp-mapie.md)
+
+### RK296. Dynamic copula-vine regularized factor allocation ⏳
+
+Allocate on regularised vine-copula dependence models; a Clayton canonical vine was best for min-CVaR portfolios of 3–12 assets (Low et al. 2013).
+
+* **Fit:** Published support for a future multi-ETF CVaR allocator.
+* **Against:** Estimation grows with dimension; tuning.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/dynamic-copula-vine-regularized-factor-allocation.md](algorithms/dynamic-copula-vine-regularized-factor-allocation.md)
+
+### RK297. Fractional Hurst-driven adaptive-bandwidth mean reversion 🧪 (Hurst diagnostic) · ⏳ (adaptive bands)
+
+Widen or narrow mean-reversion bands by a rolling Hurst exponent. Intuitive for a grid, but Hurst estimates are noisy and long memory is weak (Lo 1991); no study of the rule.
+
+* **Fit:** Maps onto an adaptive grid step; check rolling H on TQQQ first.
+* **Against:** Noisy rolling estimates; weak long memory.
+* **Built:** `mean_reversion.hurst_exponent` (C-MR4).
+* **Details:** [docs/algorithms/fractional-hurst-driven-adaptive-bandwidth-mean-reversion.md](algorithms/fractional-hurst-driven-adaptive-bandwidth-mean-reversion.md)
+
+### RK298. AMM / CLOB cross-venue arbitrage ❌
+
+Arbitrage AMM pool prices against order books. Arbitrageurs profit from stale pool prices at LPs' expense (loss-versus-rebalancing; Milionis et al. 2022); the edge goes to the fastest and to MEV.
+
+* **Fit:** Crypto; rejected.
+* **Against:** Gas, MEV, failed transactions, custody.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/amm-clob-cross-venue-arbitrage.md](algorithms/amm-clob-cross-venue-arbitrage.md)
+
+### RK299. Dynamic AMM liquidity provision / liquidity mining ❌
+
+Provide concentrated AMM liquidity for fees. Across 17 Uniswap v3 pools impermanent loss ($260.1m) exceeded fees ($199.3m) (Loesch et al. 2021).
+
+* **Fit:** Crypto; rejected.
+* **Against:** Impermanent loss exceeds fees; contract and MEV risk.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/dynamic-amm-liquidity-provision-liquidity-mining.md](algorithms/dynamic-amm-liquidity-provision-liquidity-mining.md)
+
+### RK300. Fractional differentiation feature pipeline 🧪 (feature transform)
+
+Fractionally difference prices to the smallest order that is stationary, keeping memory (López de Prado 2018, ch. 5; Hosking 1981). Preprocessing, not alpha; built as C-ML5.
+
+* **Fit:** A candidate transform for the ML features, after the held-out ML test exists.
+* **Against:** Choosing d on the full sample leaks.
+* **Built:** `ml.info_bars.frac_diff_ffd` (C-ML5).
+* **Details:** [docs/algorithms/fractional-differentiation-feature-pipeline.md](algorithms/fractional-differentiation-feature-pipeline.md)
+
 ### Research gaps
 
 Ranks 4–100 were researched from what web search could reach (full texts
@@ -2246,7 +3259,12 @@ remaining gaps were checked again against a Gemini answer the owner
 supplied. Its citations were verified before use, which resolved RK34,
 RK40/RK45 and RK54 and added sources to several other pages; its
 performance claims that named no study, and citations that turned out to
-be about something else, were not used. What remains:
+be about something else, were not used.
+
+Ranks 200–300 were researched the same way on 2026-10-27. Many of them
+cite an arXiv ID with a sequential-digit pattern (2103.01234, 2106.09876,
+1908.01234 and similar) that names no relevant paper; the pages say where
+the CSV's reference looks like a placeholder. What remains:
 
 | Status | Meaning |
 |---|---|
@@ -2272,6 +3290,56 @@ be about something else, were not used. What remains:
 | RK98 | [Adversarial Domain Generalization Cross-Market Momentum](algorithms/adversarial-domain-generalization-cross-market-momentum.md) | Unable to find more details | Any application of adversarial domain generalisation to momentum. |
 | RK99 | [Conformally Constrained Risk Parity Portfolio](algorithms/conformally-constrained-risk-parity-portfolio.md) | Unable to find more details | Any method combining equal risk contribution with conformal bounds. |
 | RK100 | [Causal Discovery Directed Acyclic Graph (DAG) Pair Selection](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md) | Unable to find more details | Any study using PC or NOTEARS causal discovery for pair selection. |
+| RK201 | [Koopman Operator Predictive Control Statistical Arbitrage](algorithms/koopman-operator-predictive-control-statistical-arbitrage.md) | Unable to find more details | No peer-reviewed out-of-sample study of Koopman/MPC trading found; the CSV's reference, arXiv 2004.05678, looks like a placeholder ID. |
+| RK202 | [Fractional Brownian Motion Multi-Scale Trend Scanning Strategy](algorithms/fractional-brownian-motion-multi-scale-trend-scanning-strategy.md) | Unable to find more details | No study of combining fractional-Brownian-motion tests with multi-horizon trend scanning as a strategy found. |
+| RK203 | [Koopman Operator Model Predictive Control Spread Equilibrium](algorithms/koopman-operator-model-predictive-control-spread-equilibrium.md) | Unable to find more details | No peer-reviewed out-of-sample study of Koopman/MPC trading found; the CSV's reference, arXiv 2004.05678, looks like a placeholder ID. |
+| RK205 | [Dynamic Tensor Decomposition Multi-Asset Factor Rotation](algorithms/dynamic-tensor-decomposition-multi-asset-factor-rotation.md) | Unable to find more details | No study applying tensor decomposition to factor or sector rotation found; the CSV's arXiv 2001.00012 looks like a placeholder. |
+| RK206 | [Koopman Operator Model Predictive Control Multi-Asset Allocation](algorithms/koopman-operator-model-predictive-control-multi-asset-allocation.md) | Unable to find more details | No peer-reviewed out-of-sample study of Koopman/MPC trading found; the CSV's reference, arXiv 2004.05678, looks like a placeholder ID. |
+| RK208 | [Anchored VWAP Reclaim / Rejection](algorithms/anchored-vwap-reclaim-rejection.md) | Unable to find more details | No academic test of anchored-VWAP signals; practitioner sources only. |
+| RK212 | [Market Breadth Thrust](algorithms/market-breadth-thrust.md) | Unable to find more details | No peer-reviewed test of breadth thrusts; only vendor event counts (about 18 signals since 1945). |
+| RK216 | [Top-K with Dropout Portfolio Rotation](algorithms/top-k-with-dropout-portfolio-rotation.md) | Unable to find more details | No study of top-K-with-dropout beyond Qlib's own documentation and benchmarks. |
+| RK217 | [Bayesian Structural Time Series (BSTS) Causal Impact Macro Strategy](algorithms/bayesian-structural-time-series-bsts-causal-impact-macro-strategy.md) | Unable to find more details | No study using BSTS / CausalImpact as a trading rule; the method measures events after the fact. |
+| RK219 | [Dynamic Mode Decomposition (DMD) Market Mode Predictor](algorithms/dynamic-mode-decomposition-dmd-market-mode-predictor.md) | Needs more info | Mann & Kutz (2016)'s backtest results could not be read; their windows were tuned in sample, and no out-of-sample DMD trading study was found. |
+| RK221 | [Information-Theoretic Transfer Entropy Lead-Lag Strategy](algorithms/information-theoretic-transfer-entropy-lead-lag-strategy.md) | Unable to find more details | No study of trading on transfer-entropy lead-lag signals found; only measurement studies. |
+| RK222 | [Maximum Entropy Production Rate Macro Allocator](algorithms/maximum-entropy-production-rate-macro-allocator.md) | Unable to find more details | No finance study applying maximum entropy production to allocation found; the CSV's arXiv 1709.08765 looks like a placeholder. |
+| RK224 | [Deep Latent Force Model (LFM) Interest Rate Forecaster](algorithms/deep-latent-force-model-lfm-interest-rate-forecaster.md) | Unable to find more details | No interest-rate application of latent force models found; the CSV's arXiv 1802.04321 looks like a placeholder. |
+| RK227 | [Multi-Agent Evolutionary Reinforcement Learning Portfolio Optimizer](algorithms/multi-agent-evolutionary-reinforcement-learning-portfolio-optimizer.md) | Unable to find more details | No out-of-sample study of evolutionary multi-agent RL allocation found; the CSV's arXiv 2006.09876 looks like a placeholder. |
+| RK228 | [Deep Generative Flow Matching Portfolio Generator](algorithms/deep-generative-flow-matching-portfolio-generator.md) | Unable to find more details | No study applying flow matching to portfolio allocation found. |
+| RK230 | [Riemannian Manifold Metric Optimization Portfolio](algorithms/riemannian-manifold-metric-optimization-portfolio.md) | Unable to find more details | No study applying Riemannian SPD-manifold optimisation to portfolio construction found; the CSV's arXiv 2106.09876 looks like a placeholder. |
+| RK231 | [Riemannian Manifold Metric Diffusion Portfolio Allocation](algorithms/riemannian-manifold-metric-diffusion-portfolio-allocation.md) | Unable to find more details | No study applying Riemannian SPD-manifold optimisation to portfolio construction found; the CSV's arXiv 2106.09876 looks like a placeholder. |
+| RK232 | [Graph Attention Network Covariance Shrinkage Estimator](algorithms/graph-attention-network-covariance-shrinkage-estimator.md) | Needs more info | GNN covariance estimators appear only in an arXiv comparison (2604.24486) and a 2026 Politecnico di Torino thesis, neither read; the CSV's arXiv 2103.01234 looks like a placeholder. |
+| RK233 | [Riemannian Manifold Metric Wasserstein Robust Allocation](algorithms/riemannian-manifold-metric-wasserstein-robust-allocation.md) | Unable to find more details | No study applying Riemannian SPD-manifold optimisation to portfolio construction found; the CSV's arXiv 2106.09876 looks like a placeholder. |
+| RK234 | [Wasserstein Distributionally Robust Reinforcement Learning Portfolio Agent](algorithms/wasserstein-distributionally-robust-reinforcement-learning-portfolio-agent.md) | Unable to find more details | No portfolio study of Wasserstein-robust deep RL found; the CSV's arXiv 2110.09876 looks like a placeholder. |
+| RK235 | [Graph Attention Network Covariance Matrix Shrinkage Dynamic Allocation](algorithms/graph-attention-network-covariance-matrix-shrinkage-dynamic-allocation.md) | Needs more info | GNN covariance estimators appear only in an arXiv comparison (2604.24486) and a 2026 Politecnico di Torino thesis, neither read; the CSV's arXiv 2103.01234 looks like a placeholder. |
+| RK236 | [Quantum Adiabatic Graph Neural Network Portfolio Optimization](algorithms/quantum-adiabatic-graph-neural-network-portfolio-optimization.md) | Unable to find more details | No study combining graph-neural-network embeddings with quantum annealing for portfolios found. |
+| RK237 | [Riemannian Manifold Metric Graph Attention Portfolio Allocation](algorithms/riemannian-manifold-metric-graph-attention-portfolio-allocation.md) | Unable to find more details | No study applying Riemannian SPD-manifold optimisation to portfolio construction found. |
+| RK238 | [Quantum Adiabatic Tensor Network Portfolio Optimization](algorithms/quantum-adiabatic-tensor-network-portfolio-optimization.md) | Unable to find more details | No study combining tensor networks with adiabatic quantum evolution for portfolios found; the CSV's arXiv 2103.02345 looks like a placeholder. |
+| RK239 | [Fractional Order Vector Error Correction Neural Network Portfolio Allocator](algorithms/fractional-order-vector-error-correction-neural-network-portfolio-allocator.md) | Unable to find more details | No study of a neural-network fractionally cointegrated VECM found; the CSV's arXiv 1809.02345 looks like a placeholder. |
+| RK240 | [Neural Operator Delay-Differential Stochastic Volatility Calibrator](algorithms/neural-operator-delay-differential-stochastic-volatility-calibrator.md) | Needs more info | No study of delay-differential neural operators for volatility calibration found; the CSV's reference, arXiv 2106.09876, looks like a placeholder ID. |
+| RK241 | [Koopman Operator Multi-Factor Equity Risk Factor Tracking](algorithms/koopman-operator-multi-factor-equity-risk-factor-tracking.md) | Unable to find more details | No peer-reviewed out-of-sample study of Koopman/MPC trading found; the CSV's reference, arXiv 2004.05678, looks like a placeholder ID. |
+| RK243 | [Price/Volume Anomaly Detection](algorithms/price-volume-anomaly-detection.md) | Unable to find more details | No study showing that anomaly filtering improves trading-strategy returns. |
+| RK250 | [Arrival-Price Adaptive Limit-vs-Market Execution](algorithms/arrival-price-adaptive-limit-vs-market-execution.md) | Needs more info | The CSV's reference (Quantitative Finance, doi 10.1080/14697688.2015.1032543) could not be identified. |
+| RK256 | [Deep Markov State-Space Intraday Volume Profile Predictor](algorithms/deep-markov-state-space-intraday-volume-profile-predictor.md) | Needs more info | No study of deep Markov volume forecasting found; the CSV's reference, arXiv 2006.12345, looks like a placeholder ID. |
+| RK257 | [Information-Theoretic Causality Flow Macro Asset Allocator](algorithms/information-theoretic-causality-flow-macro-asset-allocator.md) | Unable to find more details | No study of allocation by transfer-entropy information flow found; the CSV's arXiv 1904.08765 looks like a placeholder. |
+| RK258 | [Spiking Graph Convolutional Network (SGCN) Contagion Predictor](algorithms/spiking-graph-convolutional-network-sgcn-contagion-predictor.md) | Unable to find more details | No finance study of spiking graph networks found; the CSV's arXiv 2111.05678 looks like a placeholder. |
+| RK259 | [Hawkes-Driven Non-Parametric Order Flow Toxicity Filter](algorithms/hawkes-driven-non-parametric-order-flow-toxicity-filter.md) | Needs more info | No study found; the CSV's reference, arXiv 2002.09876, looks like a placeholder ID. |
+| RK261 | [Koopman Operator Model Predictive Control Risk Mitigation](algorithms/koopman-operator-model-predictive-control-risk-mitigation.md) | Unable to find more details | No peer-reviewed out-of-sample study of Koopman/MPC trading found; the CSV's reference, arXiv 2004.05678, looks like a placeholder ID. |
+| RK262 | [Persistent Homology Betti-0 Connected Component Contagion Detector](algorithms/persistent-homology-betti-0-connected-component-contagion-detector.md) | Unable to find more details | No study of Betti-0 contagion detection beyond what average-correlation and absorption-ratio measures already capture. |
+| RK263 | [Topological Persistence Diagram Clustering Crisis Detector](algorithms/topological-persistence-diagram-clustering-crisis-detector.md) | Unable to find more details | No study of clustering persistence diagrams for crisis detection found. |
+| RK264 | [Information-Theoretic Directed GNN Contagion Model](algorithms/information-theoretic-directed-gnn-contagion-model.md) | Unable to find more details | No study combining transfer-entropy graphs with graph neural networks for contagion found. |
+| RK265 | [Persistent Homology Betti-2 3D Void Macro Stress Predictor](algorithms/persistent-homology-betti-2-3d-void-macro-stress-predictor.md) | Unable to find more details | No study using Betti-2 features for macro stress prediction found. |
+| RK266 | [Riemannian Manifold Metric Entropic Risk Portfolio](algorithms/riemannian-manifold-metric-entropic-risk-portfolio.md) | Unable to find more details | No study applying Riemannian SPD-manifold optimisation to portfolio construction found; the CSV's arXiv 2106.09876 looks like a placeholder. |
+| RK267 | [Graph Attention Network Covariance Matrix Spectral Regularization](algorithms/graph-attention-network-covariance-matrix-spectral-regularization.md) | Needs more info | GNN covariance estimators appear only in an arXiv comparison (2604.24486) and a 2026 Politecnico di Torino thesis, neither read; the CSV's arXiv 2103.01234 looks like a placeholder. |
+| RK270 | [Quantum Annealing Binary Matrix Factorization Portfolio Risk Model](algorithms/quantum-annealing-binary-matrix-factorization-portfolio-risk-model.md) | Unable to find more details | No finance study of annealer-based binary matrix factorisation found; the CSV's arXiv 2103.01234 looks like a placeholder. |
+| RK272 | [Wavelet-Neural Network Hybrid Intraday Trend Scalper](algorithms/wavelet-neural-network-hybrid-intraday-trend-scalper.md) | Unable to find more details | No causal (trailing-window), cost-inclusive test of a wavelet-plus-neural-network trading strategy found. |
+| RK273 | [Deep Koopman-Inspired Spectral Asset Allocation](algorithms/deep-koopman-inspired-spectral-asset-allocation.md) | Unable to find more details | No peer-reviewed out-of-sample study of Koopman/MPC trading found; the CSV's reference, arXiv 2004.05678, looks like a placeholder ID. |
+| RK280 | [Recurrent Neural Hawkes Point Process Toxic Flow Hedging Trigger](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-hedging-trigger.md) | Needs more info | No finance study found; the CSV's reference, arXiv 2104.09876, looks like a placeholder ID. |
+| RK283 | [Wasserstein Distributionally Robust Neural Stochastic Control Hedging](algorithms/wasserstein-distributionally-robust-neural-stochastic-control-hedging.md) | Needs more info | No study of Wasserstein-robust deep hedging found; the CSV's reference, arXiv 2009.08295, could not be identified. |
+| RK286 | [Iron Butterfly Credit Strategy](algorithms/iron-butterfly-credit-strategy.md) | Needs more info | Performance statistics for Cboe's BFLY iron-butterfly index (or any study of the strategy) were not found. |
+| RK287 | [Neural Operator Delay Differential Equation (Delay-ODE) Term Structure Predictor](algorithms/neural-operator-delay-differential-equation-delay-ode-term-structure-predictor.md) | Unable to find more details | No term-structure study using neural delay-differential operators found; the CSV's arXiv 2106.09876 looks like a placeholder. |
+| RK288 | [Neural Controlled Differential Equation (Neural CDE) Point Process Execution](algorithms/neural-controlled-differential-equation-neural-cde-point-process-execution.md) | Unable to find more details | No study applying neural controlled differential equations to order execution found. |
+| RK289 | [Neural Operator Delay-Differential Hawkes Microstructure Predictor](algorithms/neural-operator-delay-differential-hawkes-microstructure-predictor.md) | Unable to find more details | No study combining neural operators with delay-differential Hawkes processes for microstructure found. |
+| RK297 | [Fractional Hurst-Driven Adaptive Bandwidth Mean Reversion](algorithms/fractional-hurst-driven-adaptive-bandwidth-mean-reversion.md) | Unable to find more details | No study of Hurst-adaptive band widths found. |
 
 ### The list
 
@@ -2281,9 +3349,9 @@ be about something else, were not used. What remains:
 
 | Rows | Algorithms | Yes | Research code | Partial | No |
 |---|---|---|---|---|---|
-| Specific (ranks 1–425) | 425 | 13 | 48 | 36 | 328 |
+| Specific (ranks 1–425) | 425 | 13 | 48 | 41 | 323 |
 | Title-reconstructed (ranks 426–14,225) | 13,800 | 0 | 0 | 0 | 13,800 |
-| All | 14,225 | 13 | 48 | 36 | 14,128 |
+| All | 14,225 | 13 | 48 | 41 | 14,123 |
 
 #### Specific algorithms
 
@@ -2488,107 +3556,107 @@ be about something else, were not used. What remains:
 | 197 | Topological Persistent Betti Curve Macro Regime Switcher | Topological data analysis / Regime switching / Macro strategy | 177 | 190 | No | — | [card](algorithms/topological-persistent-betti-curve-macro-regime-switcher.md) |
 | 198 | Wasserstein Generative Adversarial Network Multi-Asset Allocation (WGAN-MA) | Generative machine learning / Robust portfolio allocation | 315 | 191 | No | — | [card](algorithms/wasserstein-generative-adversarial-network-multi-asset-allocation-wgan-ma.md) |
 | 199 | Persistent Homology Betti-1 Persistence Landscape Arbitrage | Topological data analysis / Persistence landscapes / Statistical arbitrage | 121 | 201 | No | — | [card](algorithms/persistent-homology-betti-1-persistence-landscape-arbitrage.md) |
-| 200 | Generative Score-Based Diffusion Multi-Asset Scenario Synthesizer | Generative AI / Diffusion models / Risk management | 320 | 298 | No | — | [card](algorithms/generative-score-based-diffusion-multi-asset-scenario-synthesizer.md) |
-| 201 | Koopman Operator Predictive Control Statistical Arbitrage | Operator theory / Model predictive control / Statistical arbitrage | 220 | 426 | No | — | [card](algorithms/koopman-operator-predictive-control-statistical-arbitrage.md) |
-| 202 | Fractional Brownian Motion Multi-Scale Trend Scanning Strategy | Fractional calculus / Trend scanning / Technical alpha | 317 | 304 | No | — | [card](algorithms/fractional-brownian-motion-multi-scale-trend-scanning-strategy.md) |
-| 203 | Koopman Operator Model Predictive Control Spread Equilibrium | Operator theory / Model predictive control / Statistical arbitrage | 128 | 297 | No | — | [card](algorithms/koopman-operator-model-predictive-control-spread-equilibrium.md) |
-| 204 | Lead-Lag Cross-Asset Predictive Trading | Cross-asset / statistical | 139 | 105 | Research code | — | [card](algorithms/lead-lag-cross-asset-predictive-trading.md) |
-| 205 | Dynamic Tensor Decomposition Multi-Asset Factor Rotation | Tensor algebra / Factor investing | 77 | 32 | No | — | [card](algorithms/dynamic-tensor-decomposition-multi-asset-factor-rotation.md) |
-| 206 | Koopman Operator Model Predictive Control Multi-Asset Allocation | Operator theory / Model predictive control / Portfolio allocation | 233 | 154 | No | — | [card](algorithms/koopman-operator-model-predictive-control-multi-asset-allocation.md) |
-| 207 | Standardized Unexpected Earnings (SUE) | Factor / event-driven | 111 | 118 | No | — | [card](algorithms/standardized-unexpected-earnings-sue.md) |
-| 208 | Anchored VWAP Reclaim / Rejection | Intraday price/volume | 159 | 248 | Partial | C-MS3 | [card](algorithms/anchored-vwap-reclaim-rejection.md) |
-| 209 | Corporate Buyback Announcement Drift | Event-driven / corporate actions | 143 | 71 | No | — | [card](algorithms/corporate-buyback-announcement-drift.md) |
-| 210 | Index Reconstitution / Rebalance Event Trading | Event-driven / flow prediction | 97 | 96 | No | — | [card](algorithms/index-reconstitution-rebalance-event-trading.md) |
-| 211 | Macro Surprise / Economic Release Strategy | Macro / event-driven | 207 | 164 | No | — | [card](algorithms/macro-surprise-economic-release-strategy.md) |
-| 212 | Market Breadth Thrust | Market internals / timing | 58 | 38 | No | — | [card](algorithms/market-breadth-thrust.md) |
-| 213 | Trend-Scanning Label Model | ML / event labeling | 152 | 137 | Research code | C-ML1 | [card](algorithms/trend-scanning-label-model.md) |
-| 214 | XGBoost Cross-Sectional Ranking | ML / cross-sectional selection | 113 | 23 | No | — | [card](algorithms/xgboost-cross-sectional-ranking.md) |
-| 215 | Cross-Sectional Reversal with Risk Neutralization | Equity / short-horizon reversal | 103 | 97 | Partial | C-MR1 | [card](algorithms/cross-sectional-reversal-with-risk-neutralization.md) |
-| 216 | Top-K with Dropout Portfolio Rotation | Portfolio strategy / ML signal deployment | 104 | 24 | No | — | [card](algorithms/top-k-with-dropout-portfolio-rotation.md) |
-| 217 | Bayesian Structural Time Series (BSTS) Causal Impact Macro Strategy | Bayesian econometrics / Macro event trading | 236 | 186 | No | — | [card](algorithms/bayesian-structural-time-series-bsts-causal-impact-macro-strategy.md) |
-| 218 | Sparse Bayesian Learning Dynamic Factor Model | Bayesian statistics / Systematic equity | 76 | 109 | No | — | [card](algorithms/sparse-bayesian-learning-dynamic-factor-model.md) |
-| 219 | Dynamic Mode Decomposition (DMD) Market Mode Predictor | Signal Processing / Dynamical Systems | 227 | 303 | No | — | [card](algorithms/dynamic-mode-decomposition-dmd-market-mode-predictor.md) |
-| 220 | Continuous-Time Mean-Variance Reinforcement Learning Agent | Reinforcement Learning / Portfolio Theory | 174 | 187 | No | — | [card](algorithms/continuous-time-mean-variance-reinforcement-learning-agent.md) |
-| 221 | Information-Theoretic Transfer Entropy Lead-Lag Strategy | Information theory / Cross-asset lead-lag | 374 | 6477 | No | — | [card](algorithms/information-theoretic-transfer-entropy-lead-lag-strategy.md) |
-| 222 | Maximum Entropy Production Rate Macro Allocator | Thermodynamic finance / Macro allocation | 239 | 144 | No | — | [card](algorithms/maximum-entropy-production-rate-macro-allocator.md) |
-| 223 | Quantum Tensor Network Portfolio Optimization | Quantum computing / Tensor networks / Portfolio optimization | 257 | 239 | No | — | [card](algorithms/quantum-tensor-network-portfolio-optimization.md) |
-| 224 | Deep Latent Force Model (LFM) Interest Rate Forecaster | Gaussian processes / Differential equations / Fixed income | 161 | 86 | No | — | [card](algorithms/deep-latent-force-model-lfm-interest-rate-forecaster.md) |
-| 225 | Wasserstein Distributionally Robust Mean-Variance Allocation | Robust statistics / Mean-variance optimization | 78 | 147 | No | — | [card](algorithms/wasserstein-distributionally-robust-mean-variance-allocation.md) |
-| 226 | Functional Principal Component Analysis (FPCA) Yield Curve Forecaster | Functional data analysis / Fixed income | 79 | 48 | No | — | [card](algorithms/functional-principal-component-analysis-fpca-yield-curve-forecaster.md) |
-| 227 | Multi-Agent Evolutionary Reinforcement Learning Portfolio Optimizer | Evolutionary algorithms / Reinforcement learning / Portfolio construction | 265 | 99 | No | — | [card](algorithms/multi-agent-evolutionary-reinforcement-learning-portfolio-optimizer.md) |
-| 228 | Deep Generative Flow Matching Portfolio Generator | Generative AI / Continuous normalizing flows / Portfolio allocation | 356 | 286 | No | — | [card](algorithms/deep-generative-flow-matching-portfolio-generator.md) |
-| 229 | Quantum Adiabatic Optimal Portfolio Rebalancing | Quantum computing / Adiabatic evolution / Portfolio optimization | 259 | 241 | No | — | [card](algorithms/quantum-adiabatic-optimal-portfolio-rebalancing.md) |
-| 230 | Riemannian Manifold Metric Optimization Portfolio | Geometric deep learning / Riemannian optimization / Portfolio construction | 245 | 195 | No | — | [card](algorithms/riemannian-manifold-metric-optimization-portfolio.md) |
-| 231 | Riemannian Manifold Metric Diffusion Portfolio Allocation | Geometric deep learning / Riemannian geometry / Portfolio allocation | 266 | 197 | No | — | [card](algorithms/riemannian-manifold-metric-diffusion-portfolio-allocation.md) |
-| 232 | Graph Attention Network Covariance Shrinkage Estimator | Graph neural networks / Covariance estimation / Portfolio construction | 181 | 170 | No | — | [card](algorithms/graph-attention-network-covariance-shrinkage-estimator.md) |
-| 233 | Riemannian Manifold Metric Wasserstein Robust Allocation | Geometric deep learning / Riemannian geometry / Robust portfolio allocation | 248 | 203 | No | — | [card](algorithms/riemannian-manifold-metric-wasserstein-robust-allocation.md) |
-| 234 | Wasserstein Distributionally Robust Reinforcement Learning Portfolio Agent | Robust reinforcement learning / Portfolio allocation | 349 | 150 | No | — | [card](algorithms/wasserstein-distributionally-robust-reinforcement-learning-portfolio-agent.md) |
-| 235 | Graph Attention Network Covariance Matrix Shrinkage Dynamic Allocation | Graph neural networks / Covariance shrinkage / Portfolio allocation | 185 | 113 | No | — | [card](algorithms/graph-attention-network-covariance-matrix-shrinkage-dynamic-allocation.md) |
-| 236 | Quantum Adiabatic Graph Neural Network Portfolio Optimization | Quantum computing / Graph neural networks / Portfolio optimization | 342 | 292 | No | — | [card](algorithms/quantum-adiabatic-graph-neural-network-portfolio-optimization.md) |
-| 237 | Riemannian Manifold Metric Graph Attention Portfolio Allocation | Geometric deep learning / Graph attention networks / Portfolio allocation | 268 | 114 | No | — | [card](algorithms/riemannian-manifold-metric-graph-attention-portfolio-allocation.md) |
-| 238 | Quantum Adiabatic Tensor Network Portfolio Optimization | Quantum computing / Tensor networks / Portfolio optimization | 221 | 210 | No | — | [card](algorithms/quantum-adiabatic-tensor-network-portfolio-optimization.md) |
-| 239 | Fractional Order Vector Error Correction Neural Network Portfolio Allocator | Fractional time series / Neural networks / Portfolio allocation | 269 | 153 | No | — | [card](algorithms/fractional-order-vector-error-correction-neural-network-portfolio-allocator.md) |
-| 240 | Neural Operator Delay-Differential Stochastic Volatility Calibrator | Neural operators / Stochastic volatility / Options pricing | 701 | 10286 | No | — | [card](algorithms/neural-operator-delay-differential-stochastic-volatility-calibrator.md) |
-| 241 | Koopman Operator Multi-Factor Equity Risk Factor Tracking | Operator theory / Factor modeling / Risk management | 163 | 112 | No | — | [card](algorithms/koopman-operator-multi-factor-equity-risk-factor-tracking.md) |
-| 242 | Long-Volatility Breakout (Options) | Options / volatility | 41 | 102 | Research code | Q12 | [card](algorithms/long-volatility-breakout-options.md) |
-| 243 | Price/Volume Anomaly Detection | Machine learning / microstructure | 223 | 54 | Partial | A8 | [card](algorithms/price-volume-anomaly-detection.md) |
-| 244 | Liquidity-Aware Adaptive Execution | Execution / market microstructure | 362 | 9357 | No | — | [card](algorithms/liquidity-aware-adaptive-execution.md) |
-| 245 | Pure Passive Market Making | Market microstructure / market making | 304 | 2118 | Research code | C-MM1, C-MM2 | [card](algorithms/pure-passive-market-making.md) |
-| 246 | Inventory-Skewed Market Making | Market microstructure / market making | 305 | 1815 | Research code | C-G2, C-MM1 | [card](algorithms/inventory-skewed-market-making.md) |
-| 247 | VPIN Flow-Toxicity Filter | Market microstructure / risk filter | 363 | 10495 | Research code | C-MM4 | [card](algorithms/vpin-flow-toxicity-filter.md) |
-| 248 | Hawkes-Process Order-Flow Forecast | Market microstructure / point process | 332 | 10217 | No | — | [card](algorithms/hawkes-process-order-flow-forecast.md) |
-| 249 | Iceberg / Reserve-Order Execution | Execution / market impact | 307 | 6474 | No | — | [card](algorithms/iceberg-reserve-order-execution.md) |
-| 250 | Arrival-Price Adaptive Limit-vs-Market Execution | Execution / transaction-cost optimization | 154 | 302 | No | — | [card](algorithms/arrival-price-adaptive-limit-vs-market-execution.md) |
-| 251 | Intraday Volume-Profile Execution | Execution / volume forecasting | 102 | 250 | No | — | [card](algorithms/intraday-volume-profile-execution.md) |
-| 252 | Order-Flow Imbalance (OFI) Cross-Sectional Alpha Predictor | Market microstructure / Alpha generation | 321 | 10483 | Partial | C-MS1 | [card](algorithms/order-flow-imbalance-ofi-cross-sectional-alpha-predictor.md) |
-| 253 | Information-Driven Volume Clock Imbalance Momentum | Market microstructure / Volume timing | 340 | 6476 | Partial | C-ML5 | [card](algorithms/information-driven-volume-clock-imbalance-momentum.md) |
-| 254 | Persistent Homology Topological Data Analysis (TDA) Crash Predictor | Topological data analysis / Risk management | 294 | 7422 | No | — | [card](algorithms/persistent-homology-topological-data-analysis-tda-crash-predictor.md) |
-| 255 | Persistent Homology Topological Landscape Crisis Predictor | Topological data analysis / Risk management / Crash prediction | 296 | 7424 | No | — | [card](algorithms/persistent-homology-topological-landscape-crisis-predictor.md) |
-| 256 | Deep Markov State-Space Intraday Volume Profile Predictor | Deep state-space models / Market microstructure | 1877 | 10496 | No | — | [card](algorithms/deep-markov-state-space-intraday-volume-profile-predictor.md) |
-| 257 | Information-Theoretic Causality Flow Macro Asset Allocator | Information theory / Causal inference / Macro allocation | 240 | 78 | No | — | [card](algorithms/information-theoretic-causality-flow-macro-asset-allocator.md) |
-| 258 | Spiking Graph Convolutional Network (SGCN) Contagion Predictor | Neuromorphic AI / Graph neural networks / Risk management | 241 | 146 | No | — | [card](algorithms/spiking-graph-convolutional-network-sgcn-contagion-predictor.md) |
-| 259 | Hawkes-Driven Non-Parametric Order Flow Toxicity Filter | Point process / Market microstructure / Risk filter | 378 | 10227 | No | — | [card](algorithms/hawkes-driven-non-parametric-order-flow-toxicity-filter.md) |
-| 260 | Quantum Approximate State Preparation Risk Mapping | Quantum computing / Risk management / Monte Carlo | 258 | 284 | No | — | [card](algorithms/quantum-approximate-state-preparation-risk-mapping.md) |
-| 261 | Koopman Operator Model Predictive Control Risk Mitigation | Operator theory / Model predictive control / Risk management | 230 | 192 | No | — | [card](algorithms/koopman-operator-model-predictive-control-risk-mitigation.md) |
-| 262 | Persistent Homology Betti-0 Connected Component Contagion Detector | Topological data analysis / Risk management / Contagion | 116 | 193 | No | — | [card](algorithms/persistent-homology-betti-0-connected-component-contagion-detector.md) |
-| 263 | Topological Persistence Diagram Clustering Crisis Detector | Topological data analysis / Risk management / Crash prediction | 117 | 194 | No | — | [card](algorithms/topological-persistence-diagram-clustering-crisis-detector.md) |
-| 264 | Information-Theoretic Directed GNN Contagion Model | Information theory / Graph neural networks / Risk management | 218 | 149 | No | — | [card](algorithms/information-theoretic-directed-gnn-contagion-model.md) |
-| 265 | Persistent Homology Betti-2 3D Void Macro Stress Predictor | Topological data analysis / Macro risk management | 119 | 196 | No | — | [card](algorithms/persistent-homology-betti-2-3d-void-macro-stress-predictor.md) |
-| 266 | Riemannian Manifold Metric Entropic Risk Portfolio | Geometric deep learning / Riemannian optimization / Risk management | 247 | 200 | No | — | [card](algorithms/riemannian-manifold-metric-entropic-risk-portfolio.md) |
-| 267 | Graph Attention Network Covariance Matrix Spectral Regularization | Graph neural networks / Covariance estimation / Risk management | 182 | 171 | No | — | [card](algorithms/graph-attention-network-covariance-matrix-spectral-regularization.md) |
-| 268 | Persistent Homology Multi-Scale Vietoris-Rips Filtration Risk Scoring | Topological data analysis / Risk management | 123 | 204 | No | — | [card](algorithms/persistent-homology-multi-scale-vietoris-rips-filtration-risk-scoring.md) |
-| 269 | Persistent Homology Betti-0 Multiscale Filtration Contagion Clustering | Topological data analysis / Clustering / Risk management | 127 | 211 | No | — | [card](algorithms/persistent-homology-betti-0-multiscale-filtration-contagion-clustering.md) |
-| 270 | Quantum Annealing Binary Matrix Factorization Portfolio Risk Model | Quantum computing / Matrix factorization / Risk management | 261 | 243 | No | — | [card](algorithms/quantum-annealing-binary-matrix-factorization-portfolio-risk-model.md) |
-| 271 | Sequential Bootstrapping Sample Weights | ML / training data sampling | 153 | 138 | No | — | [card](algorithms/sequential-bootstrapping-sample-weights.md) |
-| 272 | Wavelet-Neural Network Hybrid Intraday Trend Scalper | Signal processing / Machine learning trend | 322 | 2828 | No | — | [card](algorithms/wavelet-neural-network-hybrid-intraday-trend-scalper.md) |
-| 273 | Deep Koopman-Inspired Spectral Asset Allocation | Operator theory / Dynamical systems / Portfolio allocation | 162 | 148 | No | — | [card](algorithms/deep-koopman-inspired-spectral-asset-allocation.md) |
-| 274 | Avellaneda–Stoikov Market Making | Market making | 302 | 5930 | Research code | C-MM1 | [card](algorithms/avellaneda-stoikov-market-making.md) |
-| 275 | DeepLOB-Style Order-Book Forecasting | ML / market microstructure | 353 | 10329 | No | — | [card](algorithms/deeplob-style-order-book-forecasting.md) |
-| 276 | Queue-Reactive Market Making | Market microstructure / market making | 306 | 10330 | Partial | C-MM5 | [card](algorithms/queue-reactive-market-making.md) |
-| 277 | Hawkes Process Multi-Dimensional Order Flow Intensity Model | Point process / Market microstructure | 364 | 10556 | No | — | [card](algorithms/hawkes-process-multi-dimensional-order-flow-intensity-model.md) |
-| 278 | Cross-Venue Crypto Triangular Arbitrage | Arbitrage / Crypto microstructure | 365 | 1807 | Research code | A7 | [card](algorithms/cross-venue-crypto-triangular-arbitrage.md) |
-| 279 | Asynchronous Multi-Exchange Spatial Arbitrage Graph | Arbitrage / Market microstructure | 366 | 1808 | Research code | A7 | [card](algorithms/asynchronous-multi-exchange-spatial-arbitrage-graph.md) |
-| 280 | Recurrent Neural Hawkes Point Process Toxic Flow Hedging Trigger | Point processes / Recurrent neural networks / Risk management | 1882 | 10498 | No | — | [card](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-hedging-trigger.md) |
-| 281 | Covered Call / Buy-Write | Options / income | 197 | 161 | Research code | S1 | [card](algorithms/covered-call-buy-write.md) |
-| 282 | Put-Write / Cash-Secured Put | Options / income | 198 | 221 | Research code | S1 | [card](algorithms/put-write-cash-secured-put.md) |
-| 283 | Wasserstein Distributionally Robust Neural Stochastic Control Hedging | Robust statistics / Stochastic control / Derivatives hedging | 287 | 296 | No | — | [card](algorithms/wasserstein-distributionally-robust-neural-stochastic-control-hedging.md) |
-| 284 | Options Wheel | Options / income | 199 | 222 | Research code | S1 | [card](algorithms/options-wheel.md) |
-| 285 | Iron Condor / Short Premium Range Strategy | Options / income | 200 | 280 | No | — | [card](algorithms/iron-condor-short-premium-range-strategy.md) |
-| 286 | Iron Butterfly Credit Strategy | Options / short premium | 145 | 267 | No | — | [card](algorithms/iron-butterfly-credit-strategy.md) |
-| 287 | Neural Operator Delay Differential Equation (Delay-ODE) Term Structure Predictor | Neural operators / Delay differential equations / Fixed income | 310 | 87 | No | — | [card](algorithms/neural-operator-delay-differential-equation-delay-ode-term-structure-predictor.md) |
-| 288 | Neural Controlled Differential Equation (Neural CDE) Point Process Execution | Neural CDEs / Point processes / Execution | 5372 | 9360 | No | — | [card](algorithms/neural-controlled-differential-equation-neural-cde-point-process-execution.md) |
-| 289 | Neural Operator Delay-Differential Hawkes Microstructure Predictor | Neural operators / Point processes / Microstructure | 696 | 10285 | No | — | [card](algorithms/neural-operator-delay-differential-hawkes-microstructure-predictor.md) |
-| 290 | Random Forest Return Classification | Machine learning | 312 | 53 | No | — | [card](algorithms/random-forest-return-classification.md) |
-| 291 | Gradient-Boosted Trees Return Prediction | Machine learning | 275 | 103 | Yes | V13, V14 | [card](algorithms/gradient-boosted-trees-return-prediction.md) |
-| 292 | LSTM Sequence Forecasting | Machine learning | 313 | 104 | Research code | C-RJ4 | [card](algorithms/lstm-sequence-forecasting.md) |
-| 293 | News / Financial Sentiment NLP | Machine learning / alternative data | 300 | 223 | No | — | [card](algorithms/news-financial-sentiment-nlp.md) |
-| 294 | Triple-Barrier Labeled ML Strategy | Machine learning / event-based labels | 150 | 135 | Partial | C-ML1 | [card](algorithms/triple-barrier-labeled-ml-strategy.md) |
-| 295 | Conformal Prediction Uncertainty Wrapper (CP-MAPIE) | Uncertainty quantification / Machine learning filter | 155 | 74 | Research code | V13 | [card](algorithms/conformal-prediction-uncertainty-wrapper-cp-mapie.md) |
-| 296 | Dynamic Copula-Vine Regularized Factor Allocation | Vine copulas / Regularization / Multi-factor allocation | 244 | 168 | No | — | [card](algorithms/dynamic-copula-vine-regularized-factor-allocation.md) |
-| 297 | Fractional Hurst-Driven Adaptive Bandwidth Mean Reversion | Fractional time-series / Mean reversion | 156 | 2760 | No | — | [card](algorithms/fractional-hurst-driven-adaptive-bandwidth-mean-reversion.md) |
-| 298 | AMM / CLOB Cross-Venue Arbitrage | Crypto / decentralized market structure | 142 | 133 | No | — | [card](algorithms/amm-clob-cross-venue-arbitrage.md) |
-| 299 | Dynamic AMM Liquidity Provision / Liquidity Mining | Crypto / liquidity provision | 331 | 959 | No | — | [card](algorithms/dynamic-amm-liquidity-provision-liquidity-mining.md) |
-| 300 | Fractional Differentiation Feature Pipeline | ML / time-series preprocessing | 151 | 136 | Research code | C-ML5 | [card](algorithms/fractional-differentiation-feature-pipeline.md) |
+| 200 | Generative Score-Based Diffusion Multi-Asset Scenario Synthesizer | Generative AI / Diffusion models / Risk management | 320 | 298 | No | RK200 | [**researched**](algorithms/generative-score-based-diffusion-multi-asset-scenario-synthesizer.md) |
+| 201 | Koopman Operator Predictive Control Statistical Arbitrage | Operator theory / Model predictive control / Statistical arbitrage | 220 | 426 | No | RK201 | [**researched**](algorithms/koopman-operator-predictive-control-statistical-arbitrage.md) |
+| 202 | Fractional Brownian Motion Multi-Scale Trend Scanning Strategy | Fractional calculus / Trend scanning / Technical alpha | 317 | 304 | No | RK202 | [**researched**](algorithms/fractional-brownian-motion-multi-scale-trend-scanning-strategy.md) |
+| 203 | Koopman Operator Model Predictive Control Spread Equilibrium | Operator theory / Model predictive control / Statistical arbitrage | 128 | 297 | No | RK203 | [**researched**](algorithms/koopman-operator-model-predictive-control-spread-equilibrium.md) |
+| 204 | Lead-Lag Cross-Asset Predictive Trading | Cross-asset / statistical | 139 | 105 | Research code | RK204 | [**researched**](algorithms/lead-lag-cross-asset-predictive-trading.md) |
+| 205 | Dynamic Tensor Decomposition Multi-Asset Factor Rotation | Tensor algebra / Factor investing | 77 | 32 | No | RK205 | [**researched**](algorithms/dynamic-tensor-decomposition-multi-asset-factor-rotation.md) |
+| 206 | Koopman Operator Model Predictive Control Multi-Asset Allocation | Operator theory / Model predictive control / Portfolio allocation | 233 | 154 | No | RK206 | [**researched**](algorithms/koopman-operator-model-predictive-control-multi-asset-allocation.md) |
+| 207 | Standardized Unexpected Earnings (SUE) | Factor / event-driven | 111 | 118 | No | RK207 | [**researched**](algorithms/standardized-unexpected-earnings-sue.md) |
+| 208 | Anchored VWAP Reclaim / Rejection | Intraday price/volume | 159 | 248 | Partial | RK208, C-MS3 | [**researched**](algorithms/anchored-vwap-reclaim-rejection.md) |
+| 209 | Corporate Buyback Announcement Drift | Event-driven / corporate actions | 143 | 71 | No | RK209 | [**researched**](algorithms/corporate-buyback-announcement-drift.md) |
+| 210 | Index Reconstitution / Rebalance Event Trading | Event-driven / flow prediction | 97 | 96 | No | RK210 | [**researched**](algorithms/index-reconstitution-rebalance-event-trading.md) |
+| 211 | Macro Surprise / Economic Release Strategy | Macro / event-driven | 207 | 164 | Partial | RK211, V6 | [**researched**](algorithms/macro-surprise-economic-release-strategy.md) |
+| 212 | Market Breadth Thrust | Market internals / timing | 58 | 38 | No | RK212 | [**researched**](algorithms/market-breadth-thrust.md) |
+| 213 | Trend-Scanning Label Model | ML / event labeling | 152 | 137 | Research code | RK213, C-ML1 | [**researched**](algorithms/trend-scanning-label-model.md) |
+| 214 | XGBoost Cross-Sectional Ranking | ML / cross-sectional selection | 113 | 23 | No | RK214 | [**researched**](algorithms/xgboost-cross-sectional-ranking.md) |
+| 215 | Cross-Sectional Reversal with Risk Neutralization | Equity / short-horizon reversal | 103 | 97 | Partial | RK215, C-MR1 | [**researched**](algorithms/cross-sectional-reversal-with-risk-neutralization.md) |
+| 216 | Top-K with Dropout Portfolio Rotation | Portfolio strategy / ML signal deployment | 104 | 24 | No | RK216 | [**researched**](algorithms/top-k-with-dropout-portfolio-rotation.md) |
+| 217 | Bayesian Structural Time Series (BSTS) Causal Impact Macro Strategy | Bayesian econometrics / Macro event trading | 236 | 186 | No | RK217 | [**researched**](algorithms/bayesian-structural-time-series-bsts-causal-impact-macro-strategy.md) |
+| 218 | Sparse Bayesian Learning Dynamic Factor Model | Bayesian statistics / Systematic equity | 76 | 109 | No | RK218 | [**researched**](algorithms/sparse-bayesian-learning-dynamic-factor-model.md) |
+| 219 | Dynamic Mode Decomposition (DMD) Market Mode Predictor | Signal Processing / Dynamical Systems | 227 | 303 | No | RK219 | [**researched**](algorithms/dynamic-mode-decomposition-dmd-market-mode-predictor.md) |
+| 220 | Continuous-Time Mean-Variance Reinforcement Learning Agent | Reinforcement Learning / Portfolio Theory | 174 | 187 | No | RK220 | [**researched**](algorithms/continuous-time-mean-variance-reinforcement-learning-agent.md) |
+| 221 | Information-Theoretic Transfer Entropy Lead-Lag Strategy | Information theory / Cross-asset lead-lag | 374 | 6477 | No | RK221 | [**researched**](algorithms/information-theoretic-transfer-entropy-lead-lag-strategy.md) |
+| 222 | Maximum Entropy Production Rate Macro Allocator | Thermodynamic finance / Macro allocation | 239 | 144 | No | RK222 | [**researched**](algorithms/maximum-entropy-production-rate-macro-allocator.md) |
+| 223 | Quantum Tensor Network Portfolio Optimization | Quantum computing / Tensor networks / Portfolio optimization | 257 | 239 | No | RK223 | [**researched**](algorithms/quantum-tensor-network-portfolio-optimization.md) |
+| 224 | Deep Latent Force Model (LFM) Interest Rate Forecaster | Gaussian processes / Differential equations / Fixed income | 161 | 86 | No | RK224 | [**researched**](algorithms/deep-latent-force-model-lfm-interest-rate-forecaster.md) |
+| 225 | Wasserstein Distributionally Robust Mean-Variance Allocation | Robust statistics / Mean-variance optimization | 78 | 147 | No | RK225 | [**researched**](algorithms/wasserstein-distributionally-robust-mean-variance-allocation.md) |
+| 226 | Functional Principal Component Analysis (FPCA) Yield Curve Forecaster | Functional data analysis / Fixed income | 79 | 48 | No | RK226 | [**researched**](algorithms/functional-principal-component-analysis-fpca-yield-curve-forecaster.md) |
+| 227 | Multi-Agent Evolutionary Reinforcement Learning Portfolio Optimizer | Evolutionary algorithms / Reinforcement learning / Portfolio construction | 265 | 99 | No | RK227 | [**researched**](algorithms/multi-agent-evolutionary-reinforcement-learning-portfolio-optimizer.md) |
+| 228 | Deep Generative Flow Matching Portfolio Generator | Generative AI / Continuous normalizing flows / Portfolio allocation | 356 | 286 | No | RK228 | [**researched**](algorithms/deep-generative-flow-matching-portfolio-generator.md) |
+| 229 | Quantum Adiabatic Optimal Portfolio Rebalancing | Quantum computing / Adiabatic evolution / Portfolio optimization | 259 | 241 | No | RK229 | [**researched**](algorithms/quantum-adiabatic-optimal-portfolio-rebalancing.md) |
+| 230 | Riemannian Manifold Metric Optimization Portfolio | Geometric deep learning / Riemannian optimization / Portfolio construction | 245 | 195 | No | RK230 | [**researched**](algorithms/riemannian-manifold-metric-optimization-portfolio.md) |
+| 231 | Riemannian Manifold Metric Diffusion Portfolio Allocation | Geometric deep learning / Riemannian geometry / Portfolio allocation | 266 | 197 | No | RK231 | [**researched**](algorithms/riemannian-manifold-metric-diffusion-portfolio-allocation.md) |
+| 232 | Graph Attention Network Covariance Shrinkage Estimator | Graph neural networks / Covariance estimation / Portfolio construction | 181 | 170 | No | RK232 | [**researched**](algorithms/graph-attention-network-covariance-shrinkage-estimator.md) |
+| 233 | Riemannian Manifold Metric Wasserstein Robust Allocation | Geometric deep learning / Riemannian geometry / Robust portfolio allocation | 248 | 203 | No | RK233 | [**researched**](algorithms/riemannian-manifold-metric-wasserstein-robust-allocation.md) |
+| 234 | Wasserstein Distributionally Robust Reinforcement Learning Portfolio Agent | Robust reinforcement learning / Portfolio allocation | 349 | 150 | No | RK234 | [**researched**](algorithms/wasserstein-distributionally-robust-reinforcement-learning-portfolio-agent.md) |
+| 235 | Graph Attention Network Covariance Matrix Shrinkage Dynamic Allocation | Graph neural networks / Covariance shrinkage / Portfolio allocation | 185 | 113 | No | RK235 | [**researched**](algorithms/graph-attention-network-covariance-matrix-shrinkage-dynamic-allocation.md) |
+| 236 | Quantum Adiabatic Graph Neural Network Portfolio Optimization | Quantum computing / Graph neural networks / Portfolio optimization | 342 | 292 | No | RK236 | [**researched**](algorithms/quantum-adiabatic-graph-neural-network-portfolio-optimization.md) |
+| 237 | Riemannian Manifold Metric Graph Attention Portfolio Allocation | Geometric deep learning / Graph attention networks / Portfolio allocation | 268 | 114 | No | RK237 | [**researched**](algorithms/riemannian-manifold-metric-graph-attention-portfolio-allocation.md) |
+| 238 | Quantum Adiabatic Tensor Network Portfolio Optimization | Quantum computing / Tensor networks / Portfolio optimization | 221 | 210 | No | RK238 | [**researched**](algorithms/quantum-adiabatic-tensor-network-portfolio-optimization.md) |
+| 239 | Fractional Order Vector Error Correction Neural Network Portfolio Allocator | Fractional time series / Neural networks / Portfolio allocation | 269 | 153 | No | RK239 | [**researched**](algorithms/fractional-order-vector-error-correction-neural-network-portfolio-allocator.md) |
+| 240 | Neural Operator Delay-Differential Stochastic Volatility Calibrator | Neural operators / Stochastic volatility / Options pricing | 701 | 10286 | No | RK240 | [**researched**](algorithms/neural-operator-delay-differential-stochastic-volatility-calibrator.md) |
+| 241 | Koopman Operator Multi-Factor Equity Risk Factor Tracking | Operator theory / Factor modeling / Risk management | 163 | 112 | No | RK241 | [**researched**](algorithms/koopman-operator-multi-factor-equity-risk-factor-tracking.md) |
+| 242 | Long-Volatility Breakout (Options) | Options / volatility | 41 | 102 | Research code | RK242, Q12 | [**researched**](algorithms/long-volatility-breakout-options.md) |
+| 243 | Price/Volume Anomaly Detection | Machine learning / microstructure | 223 | 54 | Partial | RK243, A8 | [**researched**](algorithms/price-volume-anomaly-detection.md) |
+| 244 | Liquidity-Aware Adaptive Execution | Execution / market microstructure | 362 | 9357 | Partial | RK244 | [**researched**](algorithms/liquidity-aware-adaptive-execution.md) |
+| 245 | Pure Passive Market Making | Market microstructure / market making | 304 | 2118 | Research code | RK245, C-MM1, C-MM2 | [**researched**](algorithms/pure-passive-market-making.md) |
+| 246 | Inventory-Skewed Market Making | Market microstructure / market making | 305 | 1815 | Research code | RK246, C-G2, C-MM1 | [**researched**](algorithms/inventory-skewed-market-making.md) |
+| 247 | VPIN Flow-Toxicity Filter | Market microstructure / risk filter | 363 | 10495 | Research code | RK247, C-MM4 | [**researched**](algorithms/vpin-flow-toxicity-filter.md) |
+| 248 | Hawkes-Process Order-Flow Forecast | Market microstructure / point process | 332 | 10217 | No | RK248 | [**researched**](algorithms/hawkes-process-order-flow-forecast.md) |
+| 249 | Iceberg / Reserve-Order Execution | Execution / market impact | 307 | 6474 | No | RK249 | [**researched**](algorithms/iceberg-reserve-order-execution.md) |
+| 250 | Arrival-Price Adaptive Limit-vs-Market Execution | Execution / transaction-cost optimization | 154 | 302 | Partial | RK250 | [**researched**](algorithms/arrival-price-adaptive-limit-vs-market-execution.md) |
+| 251 | Intraday Volume-Profile Execution | Execution / volume forecasting | 102 | 250 | No | RK251 | [**researched**](algorithms/intraday-volume-profile-execution.md) |
+| 252 | Order-Flow Imbalance (OFI) Cross-Sectional Alpha Predictor | Market microstructure / Alpha generation | 321 | 10483 | Partial | RK252, C-MS1 | [**researched**](algorithms/order-flow-imbalance-ofi-cross-sectional-alpha-predictor.md) |
+| 253 | Information-Driven Volume Clock Imbalance Momentum | Market microstructure / Volume timing | 340 | 6476 | Partial | RK253, C-ML5 | [**researched**](algorithms/information-driven-volume-clock-imbalance-momentum.md) |
+| 254 | Persistent Homology Topological Data Analysis (TDA) Crash Predictor | Topological data analysis / Risk management | 294 | 7422 | No | RK254 | [**researched**](algorithms/persistent-homology-topological-data-analysis-tda-crash-predictor.md) |
+| 255 | Persistent Homology Topological Landscape Crisis Predictor | Topological data analysis / Risk management / Crash prediction | 296 | 7424 | No | RK255 | [**researched**](algorithms/persistent-homology-topological-landscape-crisis-predictor.md) |
+| 256 | Deep Markov State-Space Intraday Volume Profile Predictor | Deep state-space models / Market microstructure | 1877 | 10496 | No | RK256 | [**researched**](algorithms/deep-markov-state-space-intraday-volume-profile-predictor.md) |
+| 257 | Information-Theoretic Causality Flow Macro Asset Allocator | Information theory / Causal inference / Macro allocation | 240 | 78 | No | RK257 | [**researched**](algorithms/information-theoretic-causality-flow-macro-asset-allocator.md) |
+| 258 | Spiking Graph Convolutional Network (SGCN) Contagion Predictor | Neuromorphic AI / Graph neural networks / Risk management | 241 | 146 | No | RK258 | [**researched**](algorithms/spiking-graph-convolutional-network-sgcn-contagion-predictor.md) |
+| 259 | Hawkes-Driven Non-Parametric Order Flow Toxicity Filter | Point process / Market microstructure / Risk filter | 378 | 10227 | No | RK259 | [**researched**](algorithms/hawkes-driven-non-parametric-order-flow-toxicity-filter.md) |
+| 260 | Quantum Approximate State Preparation Risk Mapping | Quantum computing / Risk management / Monte Carlo | 258 | 284 | No | RK260 | [**researched**](algorithms/quantum-approximate-state-preparation-risk-mapping.md) |
+| 261 | Koopman Operator Model Predictive Control Risk Mitigation | Operator theory / Model predictive control / Risk management | 230 | 192 | No | RK261 | [**researched**](algorithms/koopman-operator-model-predictive-control-risk-mitigation.md) |
+| 262 | Persistent Homology Betti-0 Connected Component Contagion Detector | Topological data analysis / Risk management / Contagion | 116 | 193 | No | RK262 | [**researched**](algorithms/persistent-homology-betti-0-connected-component-contagion-detector.md) |
+| 263 | Topological Persistence Diagram Clustering Crisis Detector | Topological data analysis / Risk management / Crash prediction | 117 | 194 | No | RK263 | [**researched**](algorithms/topological-persistence-diagram-clustering-crisis-detector.md) |
+| 264 | Information-Theoretic Directed GNN Contagion Model | Information theory / Graph neural networks / Risk management | 218 | 149 | No | RK264 | [**researched**](algorithms/information-theoretic-directed-gnn-contagion-model.md) |
+| 265 | Persistent Homology Betti-2 3D Void Macro Stress Predictor | Topological data analysis / Macro risk management | 119 | 196 | No | RK265 | [**researched**](algorithms/persistent-homology-betti-2-3d-void-macro-stress-predictor.md) |
+| 266 | Riemannian Manifold Metric Entropic Risk Portfolio | Geometric deep learning / Riemannian optimization / Risk management | 247 | 200 | No | RK266 | [**researched**](algorithms/riemannian-manifold-metric-entropic-risk-portfolio.md) |
+| 267 | Graph Attention Network Covariance Matrix Spectral Regularization | Graph neural networks / Covariance estimation / Risk management | 182 | 171 | No | RK267 | [**researched**](algorithms/graph-attention-network-covariance-matrix-spectral-regularization.md) |
+| 268 | Persistent Homology Multi-Scale Vietoris-Rips Filtration Risk Scoring | Topological data analysis / Risk management | 123 | 204 | No | RK268 | [**researched**](algorithms/persistent-homology-multi-scale-vietoris-rips-filtration-risk-scoring.md) |
+| 269 | Persistent Homology Betti-0 Multiscale Filtration Contagion Clustering | Topological data analysis / Clustering / Risk management | 127 | 211 | Partial | RK269, A5 | [**researched**](algorithms/persistent-homology-betti-0-multiscale-filtration-contagion-clustering.md) |
+| 270 | Quantum Annealing Binary Matrix Factorization Portfolio Risk Model | Quantum computing / Matrix factorization / Risk management | 261 | 243 | No | RK270 | [**researched**](algorithms/quantum-annealing-binary-matrix-factorization-portfolio-risk-model.md) |
+| 271 | Sequential Bootstrapping Sample Weights | ML / training data sampling | 153 | 138 | No | RK271 | [**researched**](algorithms/sequential-bootstrapping-sample-weights.md) |
+| 272 | Wavelet-Neural Network Hybrid Intraday Trend Scalper | Signal processing / Machine learning trend | 322 | 2828 | No | RK272 | [**researched**](algorithms/wavelet-neural-network-hybrid-intraday-trend-scalper.md) |
+| 273 | Deep Koopman-Inspired Spectral Asset Allocation | Operator theory / Dynamical systems / Portfolio allocation | 162 | 148 | No | RK273 | [**researched**](algorithms/deep-koopman-inspired-spectral-asset-allocation.md) |
+| 274 | Avellaneda–Stoikov Market Making | Market making | 302 | 5930 | Research code | RK274, C-MM1 | [**researched**](algorithms/avellaneda-stoikov-market-making.md) |
+| 275 | DeepLOB-Style Order-Book Forecasting | ML / market microstructure | 353 | 10329 | No | RK275 | [**researched**](algorithms/deeplob-style-order-book-forecasting.md) |
+| 276 | Queue-Reactive Market Making | Market microstructure / market making | 306 | 10330 | Partial | RK276, C-MM5 | [**researched**](algorithms/queue-reactive-market-making.md) |
+| 277 | Hawkes Process Multi-Dimensional Order Flow Intensity Model | Point process / Market microstructure | 364 | 10556 | No | RK277 | [**researched**](algorithms/hawkes-process-multi-dimensional-order-flow-intensity-model.md) |
+| 278 | Cross-Venue Crypto Triangular Arbitrage | Arbitrage / Crypto microstructure | 365 | 1807 | Research code | RK278, A7 | [**researched**](algorithms/cross-venue-crypto-triangular-arbitrage.md) |
+| 279 | Asynchronous Multi-Exchange Spatial Arbitrage Graph | Arbitrage / Market microstructure | 366 | 1808 | Research code | RK279, A7 | [**researched**](algorithms/asynchronous-multi-exchange-spatial-arbitrage-graph.md) |
+| 280 | Recurrent Neural Hawkes Point Process Toxic Flow Hedging Trigger | Point processes / Recurrent neural networks / Risk management | 1882 | 10498 | No | RK280 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-hedging-trigger.md) |
+| 281 | Covered Call / Buy-Write | Options / income | 197 | 161 | Research code | RK281, S1 | [**researched**](algorithms/covered-call-buy-write.md) |
+| 282 | Put-Write / Cash-Secured Put | Options / income | 198 | 221 | Research code | RK282, S1 | [**researched**](algorithms/put-write-cash-secured-put.md) |
+| 283 | Wasserstein Distributionally Robust Neural Stochastic Control Hedging | Robust statistics / Stochastic control / Derivatives hedging | 287 | 296 | No | RK283 | [**researched**](algorithms/wasserstein-distributionally-robust-neural-stochastic-control-hedging.md) |
+| 284 | Options Wheel | Options / income | 199 | 222 | Research code | RK284, S1 | [**researched**](algorithms/options-wheel.md) |
+| 285 | Iron Condor / Short Premium Range Strategy | Options / income | 200 | 280 | No | RK285 | [**researched**](algorithms/iron-condor-short-premium-range-strategy.md) |
+| 286 | Iron Butterfly Credit Strategy | Options / short premium | 145 | 267 | No | RK286 | [**researched**](algorithms/iron-butterfly-credit-strategy.md) |
+| 287 | Neural Operator Delay Differential Equation (Delay-ODE) Term Structure Predictor | Neural operators / Delay differential equations / Fixed income | 310 | 87 | No | RK287 | [**researched**](algorithms/neural-operator-delay-differential-equation-delay-ode-term-structure-predictor.md) |
+| 288 | Neural Controlled Differential Equation (Neural CDE) Point Process Execution | Neural CDEs / Point processes / Execution | 5372 | 9360 | No | RK288 | [**researched**](algorithms/neural-controlled-differential-equation-neural-cde-point-process-execution.md) |
+| 289 | Neural Operator Delay-Differential Hawkes Microstructure Predictor | Neural operators / Point processes / Microstructure | 696 | 10285 | No | RK289 | [**researched**](algorithms/neural-operator-delay-differential-hawkes-microstructure-predictor.md) |
+| 290 | Random Forest Return Classification | Machine learning | 312 | 53 | No | RK290 | [**researched**](algorithms/random-forest-return-classification.md) |
+| 291 | Gradient-Boosted Trees Return Prediction | Machine learning | 275 | 103 | Yes | RK291, V13, V14 | [**researched**](algorithms/gradient-boosted-trees-return-prediction.md) |
+| 292 | LSTM Sequence Forecasting | Machine learning | 313 | 104 | Research code | RK292, C-RJ4 | [**researched**](algorithms/lstm-sequence-forecasting.md) |
+| 293 | News / Financial Sentiment NLP | Machine learning / alternative data | 300 | 223 | No | RK293 | [**researched**](algorithms/news-financial-sentiment-nlp.md) |
+| 294 | Triple-Barrier Labeled ML Strategy | Machine learning / event-based labels | 150 | 135 | Partial | RK294, C-ML1 | [**researched**](algorithms/triple-barrier-labeled-ml-strategy.md) |
+| 295 | Conformal Prediction Uncertainty Wrapper (CP-MAPIE) | Uncertainty quantification / Machine learning filter | 155 | 74 | Research code | RK295, V13 | [**researched**](algorithms/conformal-prediction-uncertainty-wrapper-cp-mapie.md) |
+| 296 | Dynamic Copula-Vine Regularized Factor Allocation | Vine copulas / Regularization / Multi-factor allocation | 244 | 168 | No | RK296 | [**researched**](algorithms/dynamic-copula-vine-regularized-factor-allocation.md) |
+| 297 | Fractional Hurst-Driven Adaptive Bandwidth Mean Reversion | Fractional time-series / Mean reversion | 156 | 2760 | Partial | RK297, C-MR4 | [**researched**](algorithms/fractional-hurst-driven-adaptive-bandwidth-mean-reversion.md) |
+| 298 | AMM / CLOB Cross-Venue Arbitrage | Crypto / decentralized market structure | 142 | 133 | No | RK298 | [**researched**](algorithms/amm-clob-cross-venue-arbitrage.md) |
+| 299 | Dynamic AMM Liquidity Provision / Liquidity Mining | Crypto / liquidity provision | 331 | 959 | No | RK299 | [**researched**](algorithms/dynamic-amm-liquidity-provision-liquidity-mining.md) |
+| 300 | Fractional Differentiation Feature Pipeline | ML / time-series preprocessing | 151 | 136 | Research code | RK300, C-ML5 | [**researched**](algorithms/fractional-differentiation-feature-pipeline.md) |
 | 301 | Temporal Fusion Transformer Forecasting | ML / time-series forecasting | 277 | 249 | No | — | [card](algorithms/temporal-fusion-transformer-forecasting.md) |
 | 302 | Physics-Informed Deep Galerkin Method (DGM) Option Solver | Physics-informed neural networks / Options pricing | 281 | 283 | No | — | [card](algorithms/physics-informed-deep-galerkin-method-dgm-option-solver.md) |
 | 303 | Neural Jump-Diffusion Rough Heston Smile Predictor | Stochastic volatility / Deep learning / Derivatives pricing | 379 | 10661 | No | — | [card](algorithms/neural-jump-diffusion-rough-heston-smile-predictor.md) |

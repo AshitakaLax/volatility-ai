@@ -123,29 +123,107 @@ Bollinger Band Mean Reversion,partial,Q9; X4,research.strategies.entry_gates:Bol
 Stochastic Oscillator Reversal,partial,V15,research.strategies.indicator_library,STOCH outputs are screened as above/below-median regime flags in the V15 sweep.
 Grid / Price-Ladder Trading,yes,V1; V2; V3; V4; V5; C-G2; C-G3; C-G4,research.strategies.high_frequency_sizing:HighFrequencyLocalReferenceSizing,"The platform's core: the champion grid (V5) and its predecessors, each lot exited only at a profit."
 VIX Futures Term-Structure Strategy,partial,,research.catalog.leads:vix_term_structure_regime,VIX/VIX3M term structure as a data-only regime input (a gap-analysis lead); trading VIX futures is out of scope.
-Lead-Lag Cross-Asset Predictive Trading,research,,research.catalog.leads:lagged_cross_correlation; research.catalog.leads:hy_lead_lag,Gap-analysis lead: Nasdaq-100 futures to ETF lead-lag (Hayashi-Yoshida).
-Anchored VWAP Reclaim / Rejection,partial,C-MS3,research.strategies.intraday_gates:session_vwap,Session-anchored VWAP only; no event anchors.
-Trend-Scanning Label Model,research,C-ML1,research.ml.barrier_labels:trend_scanning_labels,Labels only; no model trained on them.
-Cross-Sectional Reversal with Risk Neutralization,partial,C-MR1,research.strategies.mean_reversion:contrarian_weights,Contrarian weights without risk neutralization.
-Long-Volatility Breakout (Options),research,Q12,research.catalog.options:straddle_entry; research.catalog.options:straddle_pnl_at_expiry,quant-trading's options straddle; options are out of scope.
-Price/Volume Anomaly Detection,partial,A8,research.catalog.forecasting:ewm_anomalies,Exponentially weighted anomaly bands; not used to filter trades.
-Pure Passive Market Making,research,C-MM1; C-MM2,research.strategies.inventory_control:as_quotes; research.strategies.inventory_control:glft_quotes,"Quote models; the platform's grid is the buy-side, long-only relative."
-Inventory-Skewed Market Making,research,C-G2; C-MM1,research.strategies.inventory_control:inventory_skewed_level; research.strategies.inventory_control:as_reservation_price,Buy-side skew only: sell rungs cannot move below cost.
-VPIN Flow-Toxicity Filter,research,C-MM4,research.strategies.microstructure:vpin,Bulk-classified VPIN from bars; disputed evidence.
-Order-Flow Imbalance (OFI) Cross-Sectional Alpha Predictor,partial,C-MS1,research.strategies.microstructure:ofi,Single-instrument OFI (needs L1 quotes); no cross-sectional model.
-Information-Driven Volume Clock Imbalance Momentum,partial,C-ML5,research.ml.info_bars:volume_bars; research.ml.info_bars:tick_imbalance_bars,Volume and imbalance bars only; no momentum rule.
-Avellaneda–Stoikov Market Making,research,C-MM1,research.strategies.inventory_control:as_quotes,Reservation price and optimal spread; buy-side use only.
-Queue-Reactive Market Making,partial,C-MM5,research.strategies.microstructure:QueuePositionEstimator,Queue-position fill model only (needs L2).
-Cross-Venue Crypto Triangular Arbitrage,research,A7,research.catalog.crypto:find_arbitrage_cycle,Rejected: crypto.
-Asynchronous Multi-Exchange Spatial Arbitrage Graph,research,A7,research.catalog.crypto:depth_arbitrage; research.catalog.crypto:find_arbitrage_cycle,Cross-venue spread and cycle detection; no min-cost-flow solver. Rejected: crypto.
-Covered Call / Buy-Write,research,S1,research.catalog.options:wheel_calls_to_write,The call leg of ThetaGang's wheel; options are out of scope.
-Put-Write / Cash-Secured Put,research,S1,research.catalog.options:wheel_should_write; research.catalog.options:wheel_select_contract,The put leg of ThetaGang's wheel; options are out of scope.
-Options Wheel,research,S1,research.catalog.options:wheel_select_contract; research.catalog.options:wheel_should_roll,ThetaGang; options are out of scope.
-Gradient-Boosted Trees Return Prediction,yes,V13; V14,research.ml.reachability_sizing:MLReachabilitySizing; research.ml.regime_scaled_sizing:MLRegimeScaledSizing,"LightGBM models size grid lots (ml_reachability_*, ml_regime_*); they score target reachability and crash risk rather than predict returns."
-LSTM Sequence Forecasting,research,C-RJ4,research.catalog.forecasting:LSTMForecaster,Rejected: no trading evidence.
-Triple-Barrier Labeled ML Strategy,partial,C-ML1,research.ml.barrier_labels:triple_barrier_labels,Labels only; no classifier trained on them.
-Conformal Prediction Uncertainty Wrapper (CP-MAPIE),research,V13,research.strategies.position_sizing:split_conformal_interval; research.strategies.position_sizing:conformal_long_size,Split-conformal intervals and long sizing (catalog S5 variant).
-Fractional Differentiation Feature Pipeline,research,C-ML5,research.ml.info_bars:frac_diff_ffd,Fixed-width-window fractional differencing.
+Generative Score-Based Diffusion Multi-Asset Scenario Synthesizer,no,RK200,,
+Koopman Operator Predictive Control Statistical Arbitrage,no,RK201,,
+Fractional Brownian Motion Multi-Scale Trend Scanning Strategy,no,RK202,,
+Koopman Operator Model Predictive Control Spread Equilibrium,no,RK203,,
+Lead-Lag Cross-Asset Predictive Trading,research,RK204,research.catalog.leads:lagged_cross_correlation; research.catalog.leads:hy_lead_lag,Gap-analysis lead: Nasdaq-100 futures to ETF lead-lag (Hayashi-Yoshida).
+Dynamic Tensor Decomposition Multi-Asset Factor Rotation,no,RK205,,
+Koopman Operator Model Predictive Control Multi-Asset Allocation,no,RK206,,
+Standardized Unexpected Earnings (SUE),no,RK207,,
+Anchored VWAP Reclaim / Rejection,partial,RK208; C-MS3,research.strategies.intraday_gates:session_vwap; research.strategies.intraday_gates:VwapGate,Session-anchored VWAP only (C-MS3); no event anchors.
+Corporate Buyback Announcement Drift,no,RK209,,
+Index Reconstitution / Rebalance Event Trading,no,RK210,,
+Macro Surprise / Economic Release Strategy,partial,RK211; V6,research.strategies.high_frequency_sizing:HighFrequencyLocalReferenceSizing,V6 sizes up on FOMC decision days from a hand-verified calendar; no surprise (actual minus consensus) measure or release trade.
+Market Breadth Thrust,no,RK212,,
+Trend-Scanning Label Model,research,RK213; C-ML1,research.ml.barrier_labels:trend_scanning_labels,Labels only; no model trained on them.
+XGBoost Cross-Sectional Ranking,no,RK214,,
+Cross-Sectional Reversal with Risk Neutralization,partial,RK215; C-MR1,research.strategies.mean_reversion:contrarian_weights; research.strategies.mean_reversion:decayed_reversal_scores,Contrarian weights and decayed reversal scores (C-MR1) without risk neutralization.
+Top-K with Dropout Portfolio Rotation,no,RK216,,
+Bayesian Structural Time Series (BSTS) Causal Impact Macro Strategy,no,RK217,,
+Sparse Bayesian Learning Dynamic Factor Model,no,RK218,,
+Dynamic Mode Decomposition (DMD) Market Mode Predictor,no,RK219,,
+Continuous-Time Mean-Variance Reinforcement Learning Agent,no,RK220,,
+Information-Theoretic Transfer Entropy Lead-Lag Strategy,no,RK221,,
+Maximum Entropy Production Rate Macro Allocator,no,RK222,,
+Quantum Tensor Network Portfolio Optimization,no,RK223,,
+Deep Latent Force Model (LFM) Interest Rate Forecaster,no,RK224,,
+Wasserstein Distributionally Robust Mean-Variance Allocation,no,RK225,,
+Functional Principal Component Analysis (FPCA) Yield Curve Forecaster,no,RK226,,
+Multi-Agent Evolutionary Reinforcement Learning Portfolio Optimizer,no,RK227,,
+Deep Generative Flow Matching Portfolio Generator,no,RK228,,
+Quantum Adiabatic Optimal Portfolio Rebalancing,no,RK229,,
+Riemannian Manifold Metric Optimization Portfolio,no,RK230,,
+Riemannian Manifold Metric Diffusion Portfolio Allocation,no,RK231,,
+Graph Attention Network Covariance Shrinkage Estimator,no,RK232,,
+Riemannian Manifold Metric Wasserstein Robust Allocation,no,RK233,,
+Wasserstein Distributionally Robust Reinforcement Learning Portfolio Agent,no,RK234,,
+Graph Attention Network Covariance Matrix Shrinkage Dynamic Allocation,no,RK235,,
+Quantum Adiabatic Graph Neural Network Portfolio Optimization,no,RK236,,
+Riemannian Manifold Metric Graph Attention Portfolio Allocation,no,RK237,,
+Quantum Adiabatic Tensor Network Portfolio Optimization,no,RK238,,
+Fractional Order Vector Error Correction Neural Network Portfolio Allocator,no,RK239,,
+Neural Operator Delay-Differential Stochastic Volatility Calibrator,no,RK240,,
+Koopman Operator Multi-Factor Equity Risk Factor Tracking,no,RK241,,
+Long-Volatility Breakout (Options),research,RK242; Q12,research.catalog.options:straddle_entry; research.catalog.options:straddle_pnl_at_expiry,quant-trading's options straddle; options are out of scope.
+Price/Volume Anomaly Detection,partial,RK243; A8,research.catalog.forecasting:ewm_anomalies,Exponentially weighted anomaly bands; not used to filter trades.
+Liquidity-Aware Adaptive Execution,partial,RK244,engine.execution.limit_pricing:grid_buy; engine.execution.limit_pricing:marketable_buy,Live grid buys skip while the spread exceeds live.orders.max_spread; must-fill orders cap their premium. No slicing or adaptive aggressiveness.
+Pure Passive Market Making,research,RK245; C-MM1; C-MM2,research.strategies.inventory_control:as_quotes; research.strategies.inventory_control:glft_quotes,"Quote models; the platform's grid is the buy-side, long-only relative."
+Inventory-Skewed Market Making,research,RK246; C-G2; C-MM1,research.strategies.inventory_control:inventory_skewed_level; research.strategies.inventory_control:as_reservation_price,Buy-side skew only: sell rungs cannot move below cost.
+VPIN Flow-Toxicity Filter,research,RK247; C-MM4,research.strategies.microstructure:vpin,Bulk-classified VPIN from bars; disputed evidence.
+Hawkes-Process Order-Flow Forecast,no,RK248,,
+Iceberg / Reserve-Order Execution,no,RK249,,
+Arrival-Price Adaptive Limit-vs-Market Execution,partial,RK250,engine.execution.limit_pricing:grid_buy; engine.execution.limit_pricing:marketable_buy,"Orders are priced by purpose (grid buy at its trigger, must-fill orders across the quote within a cap); no arrival-price or urgency model."
+Intraday Volume-Profile Execution,no,RK251,,
+Order-Flow Imbalance (OFI) Cross-Sectional Alpha Predictor,partial,RK252; C-MS1,research.strategies.microstructure:ofi; research.strategies.microstructure:ofi_events,Single-instrument OFI (needs L1 quotes); no cross-sectional model.
+Information-Driven Volume Clock Imbalance Momentum,partial,RK253; C-ML5,research.ml.info_bars:volume_bars; research.ml.info_bars:tick_imbalance_bars,Volume and imbalance bars only; no momentum rule.
+Persistent Homology Topological Data Analysis (TDA) Crash Predictor,no,RK254,,
+Persistent Homology Topological Landscape Crisis Predictor,no,RK255,,
+Deep Markov State-Space Intraday Volume Profile Predictor,no,RK256,,
+Information-Theoretic Causality Flow Macro Asset Allocator,no,RK257,,
+Spiking Graph Convolutional Network (SGCN) Contagion Predictor,no,RK258,,
+Hawkes-Driven Non-Parametric Order Flow Toxicity Filter,no,RK259,,
+Quantum Approximate State Preparation Risk Mapping,no,RK260,,
+Koopman Operator Model Predictive Control Risk Mitigation,no,RK261,,
+Persistent Homology Betti-0 Connected Component Contagion Detector,no,RK262,,
+Topological Persistence Diagram Clustering Crisis Detector,no,RK263,,
+Information-Theoretic Directed GNN Contagion Model,no,RK264,,
+Persistent Homology Betti-2 3D Void Macro Stress Predictor,no,RK265,,
+Riemannian Manifold Metric Entropic Risk Portfolio,no,RK266,,
+Graph Attention Network Covariance Matrix Spectral Regularization,no,RK267,,
+Persistent Homology Multi-Scale Vietoris-Rips Filtration Risk Scoring,no,RK268,,
+Persistent Homology Betti-0 Multiscale Filtration Contagion Clustering,partial,RK269; A5,research.strategies.hrp:hrp_weights,Single-linkage clustering (Betti-0 persistence) is built inside HRP; no contagion detector.
+Quantum Annealing Binary Matrix Factorization Portfolio Risk Model,no,RK270,,
+Sequential Bootstrapping Sample Weights,no,RK271,,Purged k-fold and CPCV exist (C-ML3); no uniqueness weights or sequential bootstrap.
+Wavelet-Neural Network Hybrid Intraday Trend Scalper,no,RK272,,
+Deep Koopman-Inspired Spectral Asset Allocation,no,RK273,,
+Avellaneda–Stoikov Market Making,research,RK274; C-MM1,research.strategies.inventory_control:as_quotes; research.strategies.inventory_control:as_reservation_price,Reservation price and optimal spread; buy-side use only.
+DeepLOB-Style Order-Book Forecasting,no,RK275,,
+Queue-Reactive Market Making,partial,RK276; C-MM5,research.strategies.microstructure:QueuePositionEstimator,Queue-position fill model only (needs L2).
+Hawkes Process Multi-Dimensional Order Flow Intensity Model,no,RK277,,
+Cross-Venue Crypto Triangular Arbitrage,research,RK278; A7,research.catalog.crypto:find_arbitrage_cycle,Rejected: crypto.
+Asynchronous Multi-Exchange Spatial Arbitrage Graph,research,RK279; A7,research.catalog.crypto:depth_arbitrage; research.catalog.crypto:find_arbitrage_cycle,Cross-venue spread and cycle detection; no min-cost-flow solver. Rejected: crypto.
+Recurrent Neural Hawkes Point Process Toxic Flow Hedging Trigger,no,RK280,,
+Covered Call / Buy-Write,research,RK281; S1,research.catalog.options:wheel_calls_to_write,The call leg of ThetaGang's wheel; options are out of scope.
+Put-Write / Cash-Secured Put,research,RK282; S1,research.catalog.options:wheel_should_write; research.catalog.options:wheel_select_contract,The put leg of ThetaGang's wheel; options are out of scope.
+Wasserstein Distributionally Robust Neural Stochastic Control Hedging,no,RK283,,
+Options Wheel,research,RK284; S1,research.catalog.options:wheel_select_contract; research.catalog.options:wheel_should_roll,ThetaGang; options are out of scope.
+Iron Condor / Short Premium Range Strategy,no,RK285,,
+Iron Butterfly Credit Strategy,no,RK286,,
+Neural Operator Delay Differential Equation (Delay-ODE) Term Structure Predictor,no,RK287,,
+Neural Controlled Differential Equation (Neural CDE) Point Process Execution,no,RK288,,
+Neural Operator Delay-Differential Hawkes Microstructure Predictor,no,RK289,,
+Random Forest Return Classification,no,RK290,,
+Gradient-Boosted Trees Return Prediction,yes,RK291; V13; V14,research.ml.reachability_sizing:MLReachabilitySizing; research.ml.regime_scaled_sizing:MLRegimeScaledSizing,"LightGBM models size grid lots (ml_reachability_*, ml_regime_*); they score target reachability and crash risk rather than predict returns. Measured AUCs 0.52-0.63 (docs/ml_plan.md)."
+LSTM Sequence Forecasting,research,RK292; C-RJ4,research.catalog.forecasting:LSTMForecaster,Rejected: no trading evidence.
+News / Financial Sentiment NLP,no,RK293,,
+Triple-Barrier Labeled ML Strategy,partial,RK294; C-ML1,research.ml.barrier_labels:triple_barrier_labels,Labels only; no classifier trained on them.
+Conformal Prediction Uncertainty Wrapper (CP-MAPIE),research,RK295; V13,research.strategies.position_sizing:split_conformal_interval; research.strategies.position_sizing:conformal_long_size,Split-conformal intervals and long sizing (catalog S5 variant).
+Dynamic Copula-Vine Regularized Factor Allocation,no,RK296,,
+Fractional Hurst-Driven Adaptive Bandwidth Mean Reversion,partial,RK297; C-MR4,research.strategies.mean_reversion:hurst_exponent,Hurst-exponent diagnostic only (C-MR4); no wavelet estimator or adaptive bands.
+AMM / CLOB Cross-Venue Arbitrage,no,RK298,,
+Dynamic AMM Liquidity Provision / Liquidity Mining,no,RK299,,
+Fractional Differentiation Feature Pipeline,research,RK300; C-ML5,research.ml.info_bars:frac_diff_ffd,Fixed-width-window fractional differencing.
 Microprice / Queue-Imbalance Signal,research,C-MS2,research.strategies.microstructure:micro_price; research.strategies.microstructure:depth_imbalance,Needs L1/L2 data.
 Meta-Labeling Primary Signals,yes,V13,research.ml.reachability_sizing:MLReachabilitySizing,V13 scores whether each grid trigger's target is reachable and sizes it: meta-labelling the grid's own triggers (catalog ML2).
 Vol-Harvesting Dynamic Asymmetric Grid,yes,V3; V5; C-G3,research.strategies.high_frequency_sizing:HighFrequencyLocalReferenceSizing; research.strategies.harvest_sleeve_sizing:HarvestSleeveSizing,"This is volatility-ai's own design: independent lots, per-lot targets, never sold below cost (no_loss_guard). RSI-scaled lots are V3; volatility-scaled steps are C-G3."
