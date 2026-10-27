@@ -13,8 +13,8 @@ were built the same day. Section 8B (2026-10-03) adds `research/catalog/`,
 code for every remaining entry, in-scope or not. Section 8C (2026-10-27)
 adds a ranked list of 14,225 algorithms from a CSV import, each with
 whether it is implemented here and a link to its documentation in
-[`docs/algorithms/`](algorithms/README.md); the top three (RK1–RK3) are
-researched.*
+[`docs/algorithms/`](algorithms/README.md); the top 100 (RK1–RK100) are
+researched, and §8C lists the research gaps that remain.*
 
 ---
 
@@ -185,8 +185,105 @@ entries also have reference code in `research/catalog/`, unwired.
 | RK1 | Time-series momentum (TSMOM) | ranked list #1; Moskowitz, Ooi & Pedersen 2012 | Trend | ⛔ (as published) · ⏳ (long-or-cash) | Medium |
 | RK2 | Volatility-scaled trend following | ranked list #2; Kim, Tse & Wald 2016 | Trend / risk scaling | ⛔ (as published) · ⏳ (long-or-cash) | **High** (the scaling half) |
 | RK3 | Dual momentum (absolute + relative) | ranked list #3; Antonacci 2012 | Rotation | 🧪 | Medium |
+| RK4 | Cross-asset carry composite | ranked list #4; Koijen, Moskowitz, Pedersen & Vrugt 2018 | Carry | ⛔ | None |
+| RK5 | Value-momentum composite | ranked list #5; Asness, Moskowitz & Pedersen 2013 | Multi-factor equity | ⏳ (long-only basket) · ⛔ (long/short) | Low |
+| RK6 | 12–1 momentum (skip-month) | ranked list #6; Jegadeesh & Titman 1993 | Cross-sectional momentum | ⏳ (long-only basket) · ⛔ (long/short) | Low |
+| RK7 | Cross-sectional momentum | ranked list #7; Jegadeesh & Titman 1993; Asness, Moskowitz & Pedersen 2013 | Momentum / rotation | 🧪 (long-only ETF rotation, X3) · ⛔ (long/short) | Low–medium |
+| RK8 | Commodity momentum + term structure | ranked list #8; Fuertes, Miffre & Rallis 2010 | Commodity trend / carry | ⛔ | None |
+| RK9 | Fama–French five-factor portfolio | ranked list #9; Fama & French 2015 | Factor model | ⛔ (as a portfolio) · ⏳ (as an attribution tool) | Measurement |
+| RK10 | State-filtered momentum | ranked list #10; Cooper, Gutierrez & Hameed 2004 | Regime-aware momentum | ⏳ | Medium |
+| RK11 | Quality minus junk (QMJ) | ranked list #11; Asness, Frazzini & Pedersen 2019 | Quality factor | ⛔ (as published) · ⏳ (long-only) | Low |
+| RK12 | Quality / profitability factor | ranked list #12; Novy-Marx 2013; Fama & French 2015 | Quality factor | ⏳ (long-only basket) · ⛔ (long/short) | Low |
+| RK13 | Gross profitability factor | ranked list #13; Novy-Marx 2013 | Quality factor | ⏳ (long-only basket) · ⛔ (long/short) | Low |
+| RK14 | 52-week-high momentum | ranked list #14; George & Hwang 2004 | Cross-sectional momentum | ⏳ (long-only basket) · ⛔ (long/short) | Medium (as a single-asset filter) |
+| RK15 | Conservative investment factor | ranked list #15; Fama & French 2015; Cooper, Gulen & Schill 2008 | Investment factor | ⏳ (long-only basket) · ⛔ (long/short) | Low |
+| RK16 | Residual momentum | ranked list #16; Blitz, Huij & Martens 2011 | Cross-sectional momentum | ⏳ (long-only basket) · ⛔ (long/short) | Low |
+| RK17 | 10-month moving-average risk filter | ranked list #17; Faber 2007 | Trend regime | 🧪 | Medium |
+| RK18 | Low-volatility equity | ranked list #18; Baker, Bradley & Wurgler 2011; Ang et al. 2006 | Defensive equity | 🧪 (via defensive ETFs, X2) | Medium |
+| RK19 | Sector momentum rotation | ranked list #19; Moskowitz & Grinblatt 1999 | Rotation | 🧪 | Low–medium |
+| RK20 | Bond duration momentum | ranked list #20; Durham (NY Fed SR 657, FAJ 2015) | Fixed-income trend | ⛔ (as published) · ⏳ (long-or-cash Treasury ETF) | Low–medium |
+| RK21 | VIX-regime conditional equity exposure | ranked list #21; Copeland & Copeland 1999; Bansal & Stivers 2023 | Volatility regime | 🧪 | Medium |
+| RK22 | Volatility targeting / risk scaling | ranked list #22; Harvey et al. 2018; Moreira & Muir 2017 | Exposure scaling | 🧪 | **High** |
+| RK23 | Drawdown-aware de-risking governor | ranked list #23; Grossman & Zhou 1993 | Exposure scaling | 🔬 (V11) · 🧪 (halt tiers) | Medium |
+| RK24 | ETF NAV / creation-redemption arbitrage | ranked list #24; Petajisto 2017 | ETF relative value | ⛔ | None |
+| RK25 | Index futures vs cash basis arbitrage | ranked list #25; MacKinlay & Ramaswamy 1988 | Index arbitrage | ⛔ | None |
+| RK26 | Futures cash-and-carry basis trading | ranked list #26; MacKinlay & Ramaswamy 1988 | Basis arbitrage | ⛔ | None |
+| RK27 | Shareholder yield factor | ranked list #27; Boudoukh, Michaely, Richardson & Roberts 2007 | Payout factor | ⏳ | Low |
+| RK28 | Fixed-income carry and roll-down | ranked list #28; Koijen et al. 2018 | Fixed-income carry | ⛔ (levered curve trade) · ⏳ (long-only ETF maturity choice) | Low |
+| RK29 | Price + earnings momentum | ranked list #29; Chan, Jegadeesh & Lakonishok 1996 | Cross-sectional momentum / earnings | ⏳ (long-only basket) · ⛔ (long/short) | Low |
+| RK30 | FX carry trade | ranked list #30; Lustig, Roussanov & Verdelhan 2011; Brunnermeier, Nagel & Pedersen 2008 | Currency carry | ⛔ | None |
+| RK31 | Intangibles-adjusted value and profitability | ranked list #31; Peters & Taylor 2017; Financial Management 2025 | Value factor | ⏳ | Low |
+| RK32 | Commodity futures roll yield | ranked list #32; Erb & Harvey 2006; Szymanowska et al. 2014 | Commodity carry | ⛔ (futures) · ⏳ (long-only ETF) | Low |
+| RK33 | Market-neutral residual mean reversion | ranked list #33; Avellaneda & Lee 2010 | Statistical arbitrage | ⛔ (market-neutral) · 🧪 (long-only s-score, C-MR2) | Low |
+| RK34 | Futures calendar-spread mean reversion | ranked list #34; Lubnau & Todorova 2015; Shang, Serra & Garcia 2023 | Futures relative value | ⛔ | None |
+| RK35 | Net stock issuance anomaly | ranked list #35; Pontiff & Woodgate 2008 | Corporate-actions factor | ⏳ (long-only basket) · ⛔ (long/short) | Low |
+| RK36 | Johansen cointegration basket trading | ranked list #36; Johansen 1991; Krauss 2017 | Statistical arbitrage | ⛔ | None |
+| RK37 | Cointegration-based pairs trading | ranked list #37; Engle & Granger 1987; Rad, Low & Faff 2016 | Statistical arbitrage | ⛔ (long/short) · 🧪 (long-only spread signal) | Low |
+| RK38 | Chandelier exit | ranked list #38; LeBeau (via Elder) | Exit rule | ⛔ (stop) · ⏳ (profit-only trail) | Low |
+| RK39 | Merger arbitrage | ranked list #39; Mitchell & Pulvino 2001 | Event-driven | ⏳ (long the target, cash deals) · ⛔ (short acquirer hedge) | Low |
+| RK40 | Earnings estimate revision momentum | ranked list #40; Chan, Jegadeesh & Lakonishok 1996 | Earnings momentum | ⏳ (long-only basket) | Low |
+| RK41 | Inflation-regime asset rotation | ranked list #41; Neville, Draaisma, Funnell, Harvey & Van Hemert 2021 | Macro rotation | ⏳ | Medium |
+| RK42 | Cross-asset commodity term-structure carry | ranked list #42; Szymanowska et al. 2014 | Commodity carry | ⛔ | None |
+| RK43 | Donchian / Turtle channel breakout | ranked list #43; Szakmary, Shen & Sharma 2010; Faith 2003 | Trend / breakout | ⛔ (as published) · 🧪 (scale-in pyramid, C-G5) | Low |
+| RK44 | Supertrend ATR-band trend following | ranked list #44; attributed to Olivier Seban | Trend / technical | ⏳ (long-or-cash regime) · ⛔ (stop-and-reverse) | Low |
+| RK45 | Post-earnings announcement drift (PEAD) | ranked list #45; Bernard & Thomas 1989; Martineau 2022 | Event-driven / earnings | ⏳ (long-only, small caps) · ⛔ (short side) | Low |
+| RK46 | MACD signal-line crossover | ranked list #46; Appel (1970s) | Trend / momentum | 🔬 (regime, measured) · ⛔ (long/short) | Low |
+| RK47 | Public activist-filing (13D) event strategy | ranked list #47; Brav, Jiang, Partnoy & Thomas 2008 | Event-driven / activism | ⏳ (long-only event basket) | Low |
+| RK48 | Book-to-market value | ranked list #48; Fama & French 1992 | Value factor | ⏳ (long-only basket) · ⛔ (long/short) | Low |
+| RK49 | Betting against beta (BAB) | ranked list #49; Frazzini & Pedersen 2014 | Low-risk factor | ⛔ | None |
+| RK50 | Accrual anomaly | ranked list #50; Sloan 1996 | Accounting factor | ⏳ (long-only basket) · ⛔ (long/short) | None |
+| RK51 | Asset-growth anomaly | ranked list #51; Cooper, Gulen & Schill 2008 | Investment factor | ⏳ (long-only basket) · ⛔ (long/short) | Low |
+| RK52 | Dividend yield / dividend growth | ranked list #52; Hartzmark & Solomon 2019 | Income factor | 🧪 (as an instrument, SPYD) · ⏳ (as a selection rule) | Low |
+| RK53 | CVaR / expected-shortfall optimization | ranked list #53; Rockafellar & Uryasev 2000 | Portfolio construction | ⏳ | Low |
+| RK54 | Volatility-managed factor portfolio | ranked list #54; Moreira & Muir 2017; Hanauer & Windmüller 2023 | Exposure scaling | ⛔ (factor portfolios) · 🧪 (the scaling, S4) | Low |
+| RK55 | ADX-filtered trend following | ranked list #55; Wilder 1978 | Trend strength | ⏳ (harvest gate) · ⛔ (long/short trend trade) | Medium |
+| RK56 | Hierarchical risk parity (HRP) | ranked list #56; López de Prado 2016 | Portfolio construction | 🧪 | Medium |
+| RK57 | Low P/E value screen | ranked list #57; Basu 1977 | Value factor | ⏳ | Low |
+| RK58 | Small-cap size premium | ranked list #58; Banz 1981; Asness et al. 2018 | Size factor | ⏳ | Low |
+| RK59 | Liquidity factor | ranked list #59; Amihud 2002; Pástor & Stambaugh 2003 | Liquidity | ⛔ (illiquidity premium) · 🧪 (the measures, as data) | Measurement |
+| RK60 | Global minimum-variance portfolio | ranked list #60; Clarke, de Silva & Thorley 2006 | Portfolio construction | ⏳ | Low |
+| RK61 | Risk parity / equal risk contribution | ranked list #61; Maillard, Roncalli & Teiletche 2010; Asness, Frazzini & Pedersen 2012 | Portfolio construction | ⏳ (unlevered) · ⛔ (levered) | Low |
+| RK62 | Dual moving-average crossover | ranked list #62; Brock, Lakonishok & LeBaron 1992 | Trend regime | 🧪 (as a regime) · ⛔ (as a long/short trade) | Low |
+| RK63 | Black–Litterman allocation | ranked list #63; Black & Litterman 1992 | Portfolio construction | ⏳ | Low |
+| RK64 | Triple EMA / moving-average ribbon | ranked list #64; Guppy (practitioner) | Trend regime | ⏳ (as a regime) · ⛔ (as a long/short trade) | Low |
+| RK65 | Cross-sectional factor momentum rotation | ranked list #65; Ehsani & Linnainmaa 2022; Fan et al. 2022 | Factor rotation | ⏳ | Low |
+| RK66 | Maximum-diversification portfolio | ranked list #66; Choueifaty & Coignard 2008 | Portfolio construction | ⏳ | Low |
+| RK67 | ATR-based position sizing | ranked list #67; Faith 2003 (Turtle rules) | Position sizing | 🧪 (volatility-normalised lots) · ⛔ (stop-distance form) | Low |
+| RK68 | Dual Thrust breakout | ranked list #68; attributed to Michael Chalek | Intraday breakout | ⛔ (trade) · 🧪 (lower band as a buy gate, N1) | Low |
+| RK69 | London session breakout | ranked list #69; practitioner sources only | Intraday breakout (FX) | ⛔ (trade) · 🧪 (US-hours gate, N2) | Low |
+| RK70 | Parabolic SAR trend / stop | ranked list #70; Wilder 1978 | Trend / trailing stop | 🔬 (regime, measured) · 🧪 (profit-only exit) · ⛔ (stop-and-reverse) | Low |
+| RK71 | Heikin-Ashi trend filter | ranked list #71; Valcu 2004 | Trend / smoothed candles | 🔬 (regime, measured) | None |
+| RK72 | Distance-based pairs trading | ranked list #72; Gatev, Goetzmann & Rouwenhorst 2006; Do & Faff 2010 | Statistical arbitrage | ⛔ | None |
+| RK73 | Kalman-filter dynamic-hedge pairs | ranked list #73; Elliott, van der Hoek & Malcolm 2005 | Statistical arbitrage | ⛔ (long/short) · 🧪 (long-only spread signal) | Low |
+| RK74 | Copula-based pairs trading | ranked list #74; Liew & Wu 2013; Stübinger, Mangold & Krauss 2018 | Statistical arbitrage | ⛔ | None |
+| RK75 | Ornstein–Uhlenbeck spread trading | ranked list #75; Bertram 2010 | Statistical arbitrage | ⛔ (spread) · 🧪 (OU diagnostics) | Low |
+| RK76 | PCA residual statistical arbitrage | ranked list #76; Avellaneda & Lee 2010 | Statistical arbitrage | ⛔ | None |
+| RK77 | ATR volatility-expansion breakout | ranked list #77; Williams 1999 | Volatility breakout | ⛔ (breakout trade) | Low |
+| RK78 | Multi-timeframe trend agreement | ranked list #78; Hurst, Ooi & Pedersen 2017; Elder 1993 | Signal confirmation | ⏳ (long-or-cash) · ⛔ (with a short side) | Low |
+| RK79 | Opening gap continuation | ranked list #79; Gao, Han, Li & Zhou 2018; Plastun et al. 2020 | Intraday momentum | 🧪 (downside as buy gates, N3/X1) · ⛔ (day trade) | Medium |
+| RK80 | Convertible bond arbitrage | ranked list #80; Agarwal, Fung, Loon & Naik 2011 | Capital structure | ⛔ | None |
+| RK81 | Capital structure arbitrage | ranked list #81; Yu 2006 | Credit-equity relative value | ⛔ | None |
+| RK82 | Closed-end fund discount reversion | ranked list #82; Pontiff 1995; Lee, Shleifer & Thaler 1991 | Fund discounts | ⏳ | Low |
+| RK83 | Triangular FX arbitrage | ranked list #83; Fenn et al. 2009 | Cross-market arbitrage | ⛔ | None |
+| RK84 | Crypto perpetual funding-rate capture | ranked list #84; Schmeling, Schrimpf & Todorov 2023 | Crypto carry | ❌ | None |
+| RK85 | Spot-perpetual basis arbitrage | ranked list #85; He, Manela, Ross & von Wachter | Crypto basis | ❌ | None |
+| RK86 | Yield-curve steepener / flattener | ranked list #86; Litterman & Scheinkman 1991 | Rates relative value | ⛔ | None |
+| RK87 | Option dispersion trading | ranked list #87; Driessen, Maenhout & Vilkov 2009 | Options volatility | ⛔ | None |
+| RK88 | Distributionally robust CVaR allocation | ranked list #88; Mohajerin Esfahani & Kuhn 2018 | Portfolio construction | ⏳ | Low |
+| RK89 | Autoencoder latent-factor stat arb | ranked list #89; Gu, Kelly & Xiu 2021; Guijarro-Ordonez, Pelger & Zanotti | ML statistical arbitrage | ⛔ | None |
+| RK90 | Long-term industry reversal with valuation confirmation | ranked list #90; Bornholt, Gharaibeh & Malin 2015 | Long-horizon contrarian rotation | ⏳ (long-only sector ETFs) | Low |
+| RK91 | iNAV dislocation ETF arbitrage | ranked list #91; Petajisto 2017 | ETF arbitrage | ⛔ | None |
+| RK92 | Fed ON RRP / T-bill liquidity arbitrage | ranked list #92; FEDS Notes 2023 | Money markets | ⛔ | None |
+| RK93 | Cointegrated triplet basket stat arb | ranked list #93; Johansen 1991 | Statistical arbitrage | ⛔ | None |
+| RK94 | Dynamic copula-GARCH pair trading | ranked list #94; Stübinger, Mangold & Krauss 2018 | Statistical arbitrage | ⛔ | None |
+| RK95 | Asymmetric tail-risk parity | ranked list #95; Boudt, Carl & Peterson 2013 | Portfolio construction | ⏳ | Low |
+| RK96 | PCA eigenportfolios stat arb | ranked list #96; Avellaneda & Lee 2010 | Statistical arbitrage | ⛔ | None |
+| RK97 | Wasserstein distributionally robust stat arb | ranked list #97 | Robust statistical arbitrage | ⛔ | None |
+| RK98 | Adversarial domain-generalisation cross-market momentum | ranked list #98; Arjovsky et al. 2019; Gulrajani & Lopez-Paz 2021 | ML momentum | ⏳ (in principle) · not a priority | None |
+| RK99 | Conformally constrained risk parity | ranked list #99; Kato 2024; Schmitt 2026 | Portfolio construction | ⏳ | Low |
+| RK100 | Causal-discovery (DAG) pair selection | ranked list #100; Stübinger 2019 | Causal inference | ⛔ | None |
 
-The remaining 14,222 rows of the ranked list are tabled in §8C, not here.
+The remaining 14,125 rows of the ranked list are tabled in §8C, not here. Ranks 1–100 are researched; the ones whose sources could not be found or checked are listed in §8C under "Research gaps".
 
 ---
 
@@ -1268,6 +1365,914 @@ drawdown.
   expressible.
 * **Details:** [docs/algorithms/dual-momentum-absolute-relative.md](algorithms/dual-momentum-absolute-relative.md)
 
+### RK4. Cross-asset carry composite ⛔
+
+Hold high-carry markets (rate differentials, roll yield, yield plus roll-down) and short low-carry ones across asset classes; carry predicts returns in every asset class studied (Koijen et al. 2018).
+
+* **Fit:** Out of scope: futures, forwards and short legs. The long-only shadows are RK28 and RK32.
+* **Against:** Carry strategies fail together in global recessions, when this book also falls; currency carry is crash-prone.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/cross-asset-carry-composite.md](algorithms/cross-asset-carry-composite.md)
+
+### RK5. Value-momentum composite ⏳ (long-only basket) · ⛔ (long/short)
+
+Rank stocks on a fixed blend of value and momentum. Both are rewarded in eight markets and asset classes and are negatively correlated with each other, so the blend is steadier than either (Asness, Moskowitz & Pedersen 2013).
+
+* **Fit:** A long-only stock basket fits the instrument rule, but the warehouse has no stock universe or fundamentals; an ETF is the practical vehicle, as a separate book from the grid.
+* **Against:** Both legs can lag for years (value's 2017–2020 drawdown was about −55%); the negative correlation is a long/short property.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/value-momentum-composite.md](algorithms/value-momentum-composite.md)
+
+### RK6. 12–1 momentum (skip-month) ⏳ (long-only basket) · ⛔ (long/short)
+
+Rank stocks on the return from t−12 to t−2, buy the top decile (short the bottom in the academic form), hold a month. Novy-Marx (2012): the 12–7-month window carries most of the effect.
+
+* **Fit:** Long-only fits the instrument rule but is a stock book; the warehouse has no stock universe. Momentum ETFs are the practical route.
+* **Against:** Crashes in panic-state rebounds (Daniel & Moskowitz 2016: past losers +163% vs winners +8%, March–May 2009), mostly through the short leg.
+* **Built:** Nothing; X3 ranks ETFs on 63 sessions with no skip month.
+* **Details:** [docs/algorithms/12-1-momentum-skip-month.md](algorithms/12-1-momentum-skip-month.md)
+
+### RK7. Cross-sectional momentum 🧪 (long-only ETF rotation, X3) · ⛔ (long/short)
+
+Hold the leaders of a universe by trailing return. The general form of RK6, RK19 and RK65; the premium documented in eight markets comes from breadth and a short leg.
+
+* **Fit:** Long-only over ETFs is X3. Each switch liquidates a grid sleeve, so switches are a cost here.
+* **Against:** Few-asset rotations are specification bets; crashes after panics.
+* **Built:** `tools/rotation.py` — `--mode relative_strength` (X3), top-1 only.
+* **Details:** [docs/algorithms/cross-sectional-momentum.md](algorithms/cross-sectional-momentum.md)
+
+### RK8. Commodity momentum + term structure ⛔
+
+Long rising, backwardated commodity futures and short falling, contangoed ones: alphas of 10.14% (momentum) and 12.66% (term structure) alone, 21.02% double-sorted (Fuertes, Miffre & Rallis 2010); premia track inventories (Gorton et al. 2013).
+
+* **Fit:** Out of scope: commodity futures and shorts. GLD as a gated defensive (X9) is the only commodity holding considered.
+* **Against:** Roll and contract construction change backtests materially; thin, event-driven markets.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/commodity-momentum-term-structure.md](algorithms/commodity-momentum-term-structure.md)
+
+### RK9. Fama–French five-factor portfolio ⛔ (as a portfolio) · ⏳ (as an attribution tool)
+
+Market, size, value, profitability (RMW) and investment (CMA) factors; with RMW and CMA, HML is redundant in the US sample (Fama & French 2015). Rivals: the q-factor model; critique: the investment factor's construction (Cooper, Gulen & Ion 2024).
+
+* **Fit:** Out of scope as a portfolio; useful as attribution: regress the champion's and Ultimate's daily returns on the five factors to separate alpha from leveraged beta.
+* **Against:** Long/short factor portfolios and leverage.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/fama-french-five-factor-model-portfolio.md](algorithms/fama-french-five-factor-model-portfolio.md)
+
+### RK10. State-filtered momentum ⏳
+
+Run momentum only in favourable market states: about 0.93% a month after up markets vs −0.37% after down markets, 1929–1995 (Cooper et al.); crashes cluster in high-volatility panic states (Daniel & Moskowitz).
+
+* **Fit:** The state filter is a causal regime map the repository already builds (N5, `--regime sma`); the momentum book must be long-only (X3 or a momentum ETF).
+* **Against:** Few states and many thresholds: data-mining risk; contradicting evidence exists.
+* **Built:** Pieces only: regimes (N5, trend regimes) and X3; X3 cannot yet be gated by a regime.
+* **Details:** [docs/algorithms/state-filtered-momentum.md](algorithms/state-filtered-momentum.md)
+
+### RK11. Quality minus junk (QMJ) ⛔ (as published) · ⏳ (long-only)
+
+Long high-quality (profitable, growing, safe, high-payout) stocks, short junk. Quality trades at only a modest premium yet earns high risk-adjusted returns in the US and 24 countries (Asness, Frazzini & Pedersen 2019).
+
+* **Fit:** Long/short is out; a quality ETF fits as a separate book. AQR's daily QMJ returns could serve as data for a risk regime.
+* **Against:** Long/short; definitions vary by vintage; lags junk-led rebounds.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quality-minus-junk-qmj.md](algorithms/quality-minus-junk-qmj.md)
+
+### RK12. Quality / profitability factor ⏳ (long-only basket) · ⛔ (long/short)
+
+Favour profitable, strong-balance-sheet firms; profitable firms earn more despite higher valuations (Novy-Marx 2013) and RMW is one of the five factors (Fama & French 2015).
+
+* **Fit:** A long-only stock basket fits the instrument rule, but the warehouse has no stock universe or fundamentals; an ETF is the practical vehicle, as a separate book from the grid.
+* **Against:** Restatements and industry comparability; lags speculative markets.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quality-profitability-factor.md](algorithms/quality-profitability-factor.md)
+
+### RK13. Gross profitability factor ⏳ (long-only basket) · ⛔ (long/short)
+
+Rank on gross profits / total assets: predicts returns about as well as book-to-market, and controlling for it sharply improves value, especially in large liquid stocks (Novy-Marx 2013, 1962–2010).
+
+* **Fit:** A long-only stock basket fits the instrument rule, but the warehouse has no stock universe or fundamentals; an ETF is the practical vehicle, as a separate book from the grid.
+* **Against:** Needs release-date-aware statements and industry controls; overlaps what a Nasdaq-100 holder already owns.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/gross-profitability-factor.md](algorithms/gross-profitability-factor.md)
+
+### RK14. 52-week-high momentum ⏳ (long-only basket) · ⛔ (long/short)
+
+Buy stocks nearest their 52-week high. Nearness beats past returns as a forecaster and, unlike momentum, does not reverse (George & Hwang 2004).
+
+* **Fit:** The ranking needs a stock universe. The same nearness measure is already the Ultimate strategy's bear filter (`bear_dd`, `bear_window=250`, L12).
+* **Against:** Sample sensitivity; momentum-style crashes.
+* **Built:** As a single-asset condition only: `UltimateSizing` bear filter.
+* **Details:** [docs/algorithms/52-week-high-momentum.md](algorithms/52-week-high-momentum.md)
+
+### RK15. Conservative investment factor ⏳ (long-only basket) · ⛔ (long/short)
+
+Favour slow asset growers over aggressive investors: the CMA factor (Fama & French 2015) and the q-model's investment factor (Hou, Xue & Zhang 2015), both built on asset growth (Cooper, Gulen & Schill 2008).
+
+* **Fit:** A long-only stock basket fits the instrument rule, but the warehouse has no stock universe or fundamentals; an ETF is the practical vehicle, as a separate book from the grid.
+* **Against:** The factors' power depends on how asset growth is constructed (Cooper, Gulen & Ion 2024).
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/conservative-investment-factor.md](algorithms/conservative-investment-factor.md)
+
+### RK16. Residual momentum ⏳ (long-only basket) · ⛔ (long/short)
+
+Rank stocks on the trailing return of their Fama-French residuals (36-month regressions, months t−12..t−2): about twice the risk-adjusted profit of total-return momentum and more consistent.
+
+* **Fit:** Stock book; needs a stock universe and factor returns.
+* **Against:** Depends on the factor model and window; still exposed to rebounds.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/residual-momentum.md](algorithms/residual-momentum.md)
+
+### RK17. 10-month moving-average risk filter 🧪
+
+Hold while the month-end price is above its 10-month average, cash otherwise: equity-like returns with much lower volatility and drawdown since 1900 (Faber), but it lagged stocks in six of eight years after 2009.
+
+* **Fit:** Built daily as `--regime sma` (200 sessions) and monthly as Faber TAA research code (C-E2). Every flip liquidates grid lots.
+* **Against:** Whipsaw and late exits; direction regimes measured poorly on the TQQQ grid here (L1); plan.md's SMA results carry the lookahead (V16).
+* **Built:** `research/strategies/trend_regimes.py` — sma_risk_on; `research/strategies/tactical_allocation.py` — faber_targets.
+* **Details:** [docs/algorithms/10-month-moving-average-risk-filter.md](algorithms/10-month-moving-average-risk-filter.md)
+
+### RK18. Low-volatility equity 🧪 (via defensive ETFs, X2)
+
+Hold the least volatile or lowest-beta stocks: high-volatility stocks have long underperformed, and low-volatility portfolios had high returns with small drawdowns 1968–2008; benchmark mandates block the arbitrage (Baker, Bradley & Wurgler 2011).
+
+* **Fit:** Low-volatility ETFs (USMV, SPLV) are candidate holdings in X2's defensive rotation, held only while their own NATR regime is calm.
+* **Against:** Sector and rate concentration; lags speculative rallies; defensives fell with the market in March 2020.
+* **Built:** `tools/rotation.py` — `--mode defensive` (X2) with USMV among the candidates.
+* **Details:** [docs/algorithms/low-volatility-equity.md](algorithms/low-volatility-equity.md)
+
+### RK19. Sector momentum rotation 🧪
+
+Hold the strongest sector ETFs by trailing return. Industry momentum survives controls for size, value and stock momentum (Moskowitz & Grinblatt); factor momentum may explain it (Arnott et al. 2023). The CSV's #1 for retail advantage.
+
+* **Fit:** Long-only ETFs; X3's harness runs it with a sector universe (each held ETF runs the grid).
+* **Against:** Concentration and tracking error; XLC and XLRE are recent; short lookbacks whipsaw.
+* **Built:** `tools/rotation.py` — `--mode relative_strength` with a sector `--universe` (never run).
+* **Details:** [docs/algorithms/sector-momentum-rotation.md](algorithms/sector-momentum-rotation.md)
+
+### RK20. Bond duration momentum ⛔ (as published) · ⏳ (long-or-cash Treasury ETF)
+
+Long duration while bonds' own trailing return is positive. On the Treasury curve, duration-neutral long-only momentum earned up to ~120 bp a year (IR up to 0.79), 1996–2013 (Durham).
+
+* **Fit:** Short duration and futures are out; a Treasury ETF gated by absolute momentum fits as an X2 defensive candidate.
+* **Against:** Policy turns; small edges; TLT fell with stocks in 2022 (X5).
+* **Built:** Nothing; X5 rejected TLT as an ungated hedge.
+* **Details:** [docs/algorithms/bond-duration-momentum.md](algorithms/bond-duration-momentum.md)
+
+### RK21. VIX-regime conditional equity exposure 🧪
+
+Change exposure at VIX percentiles. The contrarian direction has the support: much higher excess returns follow implied volatility above its ~80th–85th percentile, 1990–2022 (Bansal & Stivers 2023), matching this project's capitulation-reversal result (L11).
+
+* **Fit:** VIX as data fits and is partly built: V12 scales lots by implied volatility (VIXY proxy); VIX bands are research code (catalog R4).
+* **Against:** High VIX follows falls, so part of the premium is the rebound; VIX is S&P, not Nasdaq (VXN).
+* **Built:** V12 in the champion; `research/strategies/vix_bands.py`; `leads.vix_term_structure_regime`.
+* **Details:** [docs/algorithms/vix-regime-conditional-equity-exposure.md](algorithms/vix-regime-conditional-equity-exposure.md)
+
+### RK22. Volatility targeting / risk scaling 🧪
+
+Scale exposure to a target volatility. Helps equities through the leverage effect and thins tails everywhere (Harvey et al. 2018); real-time versions often fail to beat the unmanaged book (Cederburg et al. 2020). The scaling half of RK2.
+
+* **Fit:** Built as S4 (`vol_target` on `hf_entry_gated`, Yang-Zhang realized vol); measured on RSP (V18: drawdown −54%, edge in Feb–Jun 2020), not on TQQQ.
+* **Against:** De-risks after falls, re-risks after calm; no gap protection; lowered Calmar on top of the Ultimate-RSP votes (A4).
+* **Built:** `research/strategies/gated_local_reference_sizing.py` (S4); `config/probe_vol_target.yaml` unrun.
+* **Details:** [docs/algorithms/volatility-targeting-risk-scaling.md](algorithms/volatility-targeting-risk-scaling.md)
+
+### RK23. Drawdown-aware de-risking governor 🔬 (V11) · 🧪 (halt tiers)
+
+Cut risk as drawdown deepens; Grossman & Zhou's optimum holds risky assets in proportion to the cushion above a drawdown floor. Measured here: V11's throttle on TQQQ cost 10.6 points of CAGR for 12.3 of drawdown, changing size, not shape (L4).
+
+* **Fit:** Built: V11 throttle (wired), `DrawdownLadder` with halt and liquidation tiers, CPPI and Grossman-Zhou (research code). The unmeasured halt tier is the part that could change shape.
+* **Against:** Acts after the damage; locks in losses and re-enters late; Grossman-Zhou loses optimality in discrete time.
+* **Built:** V11 `dd_throttle_*`; `research/strategies/position_sizing.py` — DrawdownLadder; `research/catalog/leads.py` — cppi_path, grossman_zhou_multiplier.
+* **Details:** [docs/algorithms/drawdown-aware-de-risking-governor.md](algorithms/drawdown-aware-de-risking-governor.md)
+
+### RK24. ETF NAV / creation-redemption arbitrage ⛔
+
+Create or redeem ETF units against the basket when the ETF trades away from NAV. Price-NAV bands are about 100 bp after removing stale pricing (US ETFs 2007–2014), and trading them earned abnormal returns before costs (Petajisto 2017).
+
+* **Fit:** Needs authorized-participant access and short legs. The useful fact here is the reverse: a leveraged ETF's premium to NAV is an execution cost.
+* **Against:** Creation units, AP agreements, basket execution and borrow are institutional.
+* **Built:** `excluded.creation_redemption_action` (C-RJ6).
+* **Details:** [docs/algorithms/etf-nav-creation-redemption-arbitrage.md](algorithms/etf-nav-creation-redemption-arbitrage.md)
+
+### RK25. Index futures vs cash basis arbitrage ⛔
+
+Trade index futures against the cash basket outside a cost band around fair value (spot carried at financing minus dividends). S&P 500 futures mispricing grows with maturity and is path-dependent (MacKinlay & Ramaswamy 1988).
+
+* **Fit:** Futures and short legs; no long-only form.
+* **Against:** Basket replication cost, dividend forecast error, funding and latency set the band.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/index-futures-vs-cash-basis-arbitrage.md](algorithms/index-futures-vs-cash-basis-arbitrage.md)
+
+### RK26. Futures cash-and-carry basis trading ⛔
+
+Buy spot and sell a rich future (or the reverse) when the basis departs from the cost of carry; deviations grow with maturity and are path-dependent (MacKinlay & Ramaswamy 1988).
+
+* **Fit:** Out of scope: one leg is a short future or short underlying. The crypto version is research code and rejected (C-RJ2).
+* **Against:** Financing, margin and delivery risk; retail cannot finance at institutional rates.
+* **Built:** `research/catalog/crypto.py` — funding_carry_positions (C-RJ2, crypto only), timed on funding thresholds, not on the basis.
+* **Details:** [docs/algorithms/futures-cash-and-carry-basis-trading.md](algorithms/futures-cash-and-carry-basis-trading.md)
+
+### RK27. Shareholder yield factor ⏳
+
+Rank on dividends plus net buybacks (and debt paydown) over market value. Payout and net payout yields predict returns where dividend yield does not, over time and across stocks (Boudoukh et al. 2007).
+
+* **Fit:** A long-only stock basket fits the instrument rule, but the warehouse has no stock universe or fundamentals; an ETF is the practical vehicle, as a separate book from the grid.
+* **Against:** Buybacks must be net of issuance and dilution; high yield can be a falling price.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/shareholder-yield-factor.md](algorithms/shareholder-yield-factor.md)
+
+### RK28. Fixed-income carry and roll-down ⛔ (levered curve trade) · ⏳ (long-only ETF maturity choice)
+
+Hold the bonds or maturities with the best yield plus roll-down net of financing; bond carry predicts returns (Koijen et al. 2018).
+
+* **Fit:** The levered curve trade is out; choosing a Treasury ETF maturity by carry is in scope but competes with cash at the engine's money-market yield, which has no duration risk.
+* **Against:** Rate shocks erase years of carry (2022; ledger X5).
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/fixed-income-carry-and-roll-down.md](algorithms/fixed-income-carry-and-roll-down.md)
+
+### RK29. Price + earnings momentum ⏳ (long-only basket) · ⛔ (long/short)
+
+Buy stocks strong on both price momentum and earnings surprises or revisions; each predicts returns after controlling for the other, with little reversal (Chan, Jegadeesh & Lakonishok 1996).
+
+* **Fit:** Stock book; needs point-in-time earnings and estimate data.
+* **Against:** Data timing and restatements; crowding and valuation risk.
+* **Built:** Nothing; the earnings calendar only sizes grid lots (V6).
+* **Details:** [docs/algorithms/price-earnings-momentum.md](algorithms/price-earnings-momentum.md)
+
+### RK30. FX carry trade ⛔
+
+Long high-rate currencies, short low-rate ones: a >5-point annual spread, Sharpe ~0.6, 1983–2007, explained by a global slope factor (Lustig et al.); returns are negatively skewed and crash when funding dries up (Brunnermeier et al.).
+
+* **Fit:** Out of scope: currencies and a short funding leg; it bets on calm, funded markets like the grid does.
+* **Against:** Crash risk (2008, the 2015 franc de-peg).
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/fx-carry-trade.md](algorithms/fx-carry-trade.md)
+
+### RK31. Intangibles-adjusted value and profitability ⏳
+
+Capitalise R&D (and optionally SG&A) into intangible capital, adjust book and profits, rank on adjusted value and profitability. Motivated by value's intangibles problem; an intangibles-intensity factor adds explanatory power (Financial Management 2025), but this hybrid itself is untested.
+
+* **Fit:** A long-only stock basket fits the instrument rule, but the warehouse has no stock universe or fundamentals; an ETF is the practical vehicle, as a separate book from the grid.
+* **Against:** Many free capitalisation choices; the CSV's second reference could not be identified.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/intangibles-adjusted-value-and-profitability-factor.md](algorithms/intangibles-adjusted-value-and-profitability-factor.md)
+
+### RK32. Commodity futures roll yield ⛔ (futures) · ⏳ (long-only ETF)
+
+Hold backwardated commodity futures, avoid contangoed ones. The average single commodity earned about zero (Erb & Harvey 2006); basis-sorted spot premia are 5–14% a year (Szymanowska et al. 2014).
+
+* **Fit:** Futures and shorts are out; a roll-optimised long-only commodity ETF is an in-scope holding, as an inflation hedge (RK41), not a crash hedge.
+* **Against:** Curve definitions and roll schedules vary; long-only commodities lagged for most of 2011–2020.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/commodity-futures-roll-yield.md](algorithms/commodity-futures-roll-yield.md)
+
+### RK33. Market-neutral residual mean reversion ⛔ (market-neutral) · 🧪 (long-only s-score, C-MR2)
+
+Trade the OU s-score of stock residuals on factor returns. PCA factors: Sharpe 1.44 after costs 1997–2007, 0.9 in 2003–2007; sector-ETF factors 1.1 with similar decay (Avellaneda & Lee 2010).
+
+* **Fit:** The long-only half (C-MR2) buys single stocks that fell against their sector; net long, not this book.
+* **Against:** Factor misspecification; crowding (August 2007); decayed through the 2000s.
+* **Built:** `mean_reversion.s_score`, `s_score_long_signal` (C-MR2).
+* **Details:** [docs/algorithms/market-neutral-residual-mean-reversion.md](algorithms/market-neutral-residual-mean-reversion.md)
+
+### RK34. Futures calendar-spread mean reversion ⛔
+
+Trade the near/far spread of one future back toward a carry or seasonal range. Mixed evidence: seasonal processing-spread rules failed out of sample (Cole et al. 1999); dynamic-hedge spreads in energy futures reported Sharpe above 2 (Lubnau & Todorova 2015); calendar-spread momentum adds nothing once unrealisable roll yield is removed (Shang, Serra & Garcia 2023).
+
+* **Fit:** Futures with a short leg by construction.
+* **Against:** Roll, delivery and margin effects; seasonal patterns are thin after costs.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/futures-calendar-spread-mean-reversion.md](algorithms/futures-calendar-spread-mean-reversion.md)
+
+### RK35. Net stock issuance anomaly ⏳ (long-only basket) · ⛔ (long/short)
+
+Tilt toward firms that shrink their share count. Post-1970, issuance predicts returns more significantly than size, value or momentum (Pontiff & Woodgate 2008), and in 41 countries (McLean, Pontiff & Watanabe 2009).
+
+* **Fit:** A long-only stock basket fits the instrument rule, but the warehouse has no stock universe or fundamentals; an ETF is the practical vehicle, as a separate book from the grid.
+* **Against:** Messy corporate actions; mostly insignificant before 1970; overlaps shareholder yield and asset growth.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/net-stock-issuance-anomaly.md](algorithms/net-stock-issuance-anomaly.md)
+
+### RK36. Johansen cointegration basket trading ⛔
+
+Trade the stationary basket from a Johansen cointegrating vector across three or more assets; a triple can cointegrate where no pair does (crude-oil futures, arXiv 2309.00875). Krauss (2017) surveys the family.
+
+* **Fit:** Short weights in every basket. A Johansen test could join C-MR4's diagnostics, but nothing here trades baskets.
+* **Against:** Multiple testing; breaks after index changes, mergers and regime shifts.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/johansen-cointegration-basket-trading.md](algorithms/johansen-cointegration-basket-trading.md)
+
+### RK37. Cointegration-based pairs trading ⛔ (long/short) · 🧪 (long-only spread signal)
+
+Trade an Engle–Granger stationary spread. US equities 1962–2014: 85 bp a month before costs, 33 bp after; best in turbulent markets (Rad, Low & Faff 2016).
+
+* **Fit:** Short leg out; the long-only spread signal and X3's rotation are what remain.
+* **Against:** Cointegration breaks; correlations converge in sell-offs; thin net returns.
+* **Built:** `je_suis_tm.pair_trading_signals` (Q2), `pairs.engle_granger`, `pairs.spread_long_signal`.
+* **Details:** [docs/algorithms/cointegration-based-pairs-trading.md](algorithms/cointegration-based-pairs-trading.md)
+
+### RK38. Chandelier exit ⛔ (stop) · ⏳ (profit-only trail)
+
+Exit a long when price falls k × ATR (commonly 3 × ATR(22)) below the highest high since entry. Credited to Chuck LeBeau, popularised by Alexander Elder; no published performance study.
+
+* **Fit:** As a stop it realises losses (excluded). Applied only to lots already past their target it is a profit-only exit, which the project has in two forms (V10, the PSAR exit).
+* **Against:** Gaps through the level; the ATR multiple is the whole design.
+* **Built:** Profit-only relatives: V10 `TrailingTargetPolicy`, `grid_lifecycle.psar_profit_exits`. No ATR chandelier.
+* **Details:** [docs/algorithms/chandelier-exit-trend-following.md](algorithms/chandelier-exit-trend-following.md)
+
+### RK39. Merger arbitrage ⏳ (long the target, cash deals) · ⛔ (short acquirer hedge)
+
+Buy announced targets below the offer and collect the spread on completion. 4,750 US deals 1963–1998: about 4% a year excess return after costs, with a payoff like writing index puts: losses cluster in sharp market declines (Mitchell & Pulvino 2001).
+
+* **Fit:** Cash-deal targets are long-only stocks, but it is a separate event book needing deal data, and its losses coincide with this book's worst periods.
+* **Against:** Deal breaks lose many times the spread; correlated breaks in crises; stock deals need a short leg.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/merger-arbitrage.md](algorithms/merger-arbitrage.md)
+
+### RK40. Earnings estimate revision momentum ⏳ (long-only basket)
+
+Hold stocks with rising analyst estimates. Forecast revisions, SUE and announcement returns each predict drifts beyond price momentum; analysts adjust sluggishly, especially after bad news (Chan, Jegadeesh & Lakonishok 1996).
+
+* **Fit:** Long-only stocks pass the instrument rule; point-in-time estimate histories are licensed and not in the warehouse.
+* **Against:** Revised analyst datasets create lookahead; overlaps with price momentum.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/earnings-estimate-revision-momentum.md](algorithms/earnings-estimate-revision-momentum.md)
+
+### RK41. Inflation-regime asset rotation ⏳
+
+Rotate among equities, bonds, TIPS and commodities by the inflation state. Over 95 years, unexpected inflation hurt stocks and bonds, commodities helped unevenly, and trend following protected most reliably (Neville et al. 2021).
+
+* **Fit:** Long-only ETFs fit. FRED fetchers and the warehouse's lag-aware macro join make a causal monthly inflation regime buildable; 2022 (TQQQ −79%) was an inflation shock.
+* **Against:** Release lags and revisions (lookahead if ignored); few inflation episodes to fit.
+* **Built:** Pieces only: `research/ml/sources.py` (FRED), `engine/warehouse/queries.py` (lagged ASOF join), `tools/rotation.py`.
+* **Details:** [docs/algorithms/inflation-regime-asset-rotation.md](algorithms/inflation-regime-asset-rotation.md)
+
+### RK42. Cross-asset commodity term-structure carry ⛔
+
+Market-neutral roll yield: long the most backwardated futures, short the most contangoed; the basis factor explains commodity spot premia (Szymanowska et al. 2014).
+
+* **Fit:** Out of scope: commodity futures and a short leg. RK32's long-only ETF form is the in-scope one.
+* **Against:** Delivery and notice-date liquidity; dollar-neutral is not volatility-neutral. One CSV reference (Pynecone) is unrelated.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/cross-asset-commodity-futures-term-structure-carry-roll-yield.md](algorithms/cross-asset-commodity-futures-term-structure-carry-roll-yield.md)
+
+### RK43. Donchian / Turtle channel breakout ⛔ (as published) · 🧪 (scale-in pyramid, C-G5)
+
+Buy an N-day high, exit an M-day low (Turtles: 20/10 and 55/20, ATR units, pyramiding). Channel and dual-MA rules earned positive mean excess returns net of costs in at least 22 of 28 commodity futures over 48 years (Szakmary et al. 2010).
+
+* **Fit:** Stops and the short side are out. C-G5 keeps the scale-in: rebuild inventory on strength after a regime exit.
+* **Against:** Long flat periods and whipsaw; the Turtles' edge has faded since the 1980s; weaker in equity indices.
+* **Built:** `research/catalog/trend_following.py` (Turtle trades), `position_sizing.TurtlePyramid` (C-G5).
+* **Details:** [docs/algorithms/donchian-turtle-channel-breakout.md](algorithms/donchian-turtle-channel-breakout.md)
+
+### RK44. Supertrend ATR-band trend following ⏳ (long-or-cash regime) · ⛔ (stop-and-reverse)
+
+A trailing band at the bar midpoint ± k × ATR (commonly 3 × ATR(10)) that ratchets with price; the trend flips when the close crosses it. No peer-reviewed evaluation found.
+
+* **Fit:** A long-or-cash regime fits; expect it to behave like PSAR, which measured 0.06–0.17 CAGR/max DD as a regime here (L1).
+* **Against:** Whipsaw in ranges; ATR widening delays re-entry after a crash bottom.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/supertrend-atr-band-trend-following.md](algorithms/supertrend-atr-band-trend-following.md)
+
+### RK45. Post-earnings announcement drift (PEAD) ⏳ (long-only, small caps) · ⛔ (short side)
+
+Buy after large positive earnings surprises as prices keep drifting. Long robust, but Martineau (2022) finds prices now absorb surprises on the day: no drift in large stocks since 2006, recently none in microcaps; others dispute the design or find an overnight version. The CSV's reference is Fink's (2021) survey of the literature.
+
+* **Fit:** For the mega-caps that move this book the drift appears gone, so a surprise-conditioned V6 is not worth building.
+* **Against:** Decaying, sample-dependent; costly immediate execution; survives, if at all, in illiquid names.
+* **Built:** Nothing; V6 boosts lots on mega-cap earnings days (volatility, not surprise).
+* **Details:** [docs/algorithms/post-earnings-announcement-drift-pead.md](algorithms/post-earnings-announcement-drift-pead.md)
+
+### RK46. MACD signal-line crossover 🔬 (regime, measured) · ⛔ (long/short)
+
+Long while the 12/26 EMA difference is above its 9-period EMA. Academic tests are parameter- and market-dependent. As a causal regime gating the TQQQ grid it measured 0.12–0.26 CAGR/max DD against NATR's 1.30–1.40 (L1).
+
+* **Fit:** Built as a regime and measured; it lost to the volatility regime.
+* **Against:** A transformation of price; lags at turns; whipsaws in ranges.
+* **Built:** `trend_regimes.macd_risk_on` (`--regime macd`, Q1); quant-trading's crossover as research code.
+* **Details:** [docs/algorithms/macd-signal-line-crossover.md](algorithms/macd-signal-line-crossover.md)
+
+### RK47. Public activist-filing (13D) event strategy ⏳ (long-only event basket)
+
+Parse new Schedule 13D filings and buy liquid targets that have not repriced. Activism announcements carried about a 7% abnormal return with no reversal over a year (Brav et al. 2008), but much of it comes at or before disclosure, so the post-filing return is unmeasured.
+
+* **Fit:** Long-only stocks pass the instrument rule and EDGAR is free; a separate event book unrelated to the grid.
+* **Against:** Announcement returns are not post-filing returns; lumpy event flow; thin targets.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/public-activist-filing-event-strategy.md](algorithms/public-activist-filing-event-strategy.md)
+
+### RK48. Book-to-market value ⏳ (long-only basket) · ⛔ (long/short)
+
+Buy cheap stocks by book-to-market (HML). A founding factor, redundant in the five-factor model (2015), and through its worst drawdown on record, about −55% to mid-2020.
+
+* **Fit:** A long-only stock basket fits the instrument rule, but the warehouse has no stock universe or fundamentals; an ETF is the practical vehicle, as a separate book from the grid.
+* **Against:** Value traps, sector bias, long drawdowns; fell more than growth in 2020.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/book-to-market-value.md](algorithms/book-to-market-value.md)
+
+### RK49. Betting against beta (BAB) ⛔
+
+Long low-beta assets levered to beta 1, short high-beta assets delevered to beta 1; leverage-constrained investors bid up high-beta assets (Frazzini & Pedersen 2014).
+
+* **Fit:** Out of scope: the short leg and leverage are the strategy. Its long-only shadow is RK18.
+* **Against:** Effectively equal-weighted and micro-cap heavy; costs cut profits by more than half (Novy-Marx & Velikov 2022).
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/betting-against-beta-bab.md](algorithms/betting-against-beta-bab.md)
+
+### RK50. Accrual anomaly ⏳ (long-only basket) · ⛔ (long/short)
+
+Low-accrual (cash-backed) earners beat high-accrual ones (Sloan 1996), but hedge returns have decayed and are no longer reliably positive (Green, Hand & Soliman 2011).
+
+* **Fit:** A long-only stock basket fits the instrument rule, but the warehouse has no stock universe or fundamentals; an ETF is the practical vehicle, as a separate book from the grid.
+* **Against:** Arbitraged away after publication; accounting schema changes.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/accrual-anomaly.md](algorithms/accrual-anomaly.md)
+
+### RK51. Asset-growth anomaly ⏳ (long-only basket) · ⛔ (long/short)
+
+Low asset growers beat high growers, beyond value, size, momentum and accruals, including large caps; ~20% a year spread in the working paper (Cooper, Gulen & Schill 2008).
+
+* **Fit:** A long-only stock basket fits the instrument rule, but the warehouse has no stock universe or fundamentals; an ETF is the practical vehicle, as a separate book from the grid.
+* **Against:** May be external financing rather than growth; the information sits in inventory and receivables (Cooper, Gulen & Ion 2024).
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/asset-growth-anomaly.md](algorithms/asset-growth-anomaly.md)
+
+### RK52. Dividend yield / dividend growth 🧪 (as an instrument, SPYD) · ⏳ (as a selection rule)
+
+Select by dividend yield or growth. Weak on the evidence: payout yield beats dividend yield (Boudoukh et al. 2007), and investors treat dividends as free income, bidding payers up when rates are low (Hartzmark & Solomon 2019).
+
+* **Fit:** SPYD (the S&P 500 High Dividend ETF) is already a grid and ML-sizing instrument here; a selection rule would need dividend histories.
+* **Against:** High yield signals distress; sector and rate concentration.
+* **Built:** SPYD as an instrument: `ml_regime_spyd`, `ml_reachability_spyd`, the SPYD sweeps.
+* **Details:** [docs/algorithms/dividend-yield-dividend-growth.md](algorithms/dividend-yield-dividend-growth.md)
+
+### RK53. CVaR / expected-shortfall optimization ⏳
+
+Minimise the average loss beyond VaR; a linear programme over scenarios (Rockafellar & Uryasev 2000).
+
+* **Fit:** Long-only ETF weights fit; it needs a multi-instrument book, which today exists only as the rotation harness's additive account.
+* **Against:** Tail estimates are data-hungry and unstable; the sample's crises decide the weights.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/cvar-expected-shortfall-optimization.md](algorithms/cvar-expected-shortfall-optimization.md)
+
+### RK54. Volatility-managed factor portfolio ⛔ (factor portfolios) · 🧪 (the scaling, S4)
+
+Scale factor portfolios by inverse recent variance: large alphas in-sample (Moreira & Muir 2017), crash-free momentum (Barroso & Santa-Clara 2015), downside-volatility scaling better still (Wang & Yan 2021); real-time versions generally lose to the unmanaged factors (Cederburg et al. 2020). The CSV's reference, Hanauer & Windmüller (2023), finds volatility-scaled and dynamically scaled momentum roughly double plain momentum's Sharpe ratio.
+
+* **Fit:** Long/short factors are out; the mechanism is S4/RK22 on this book. The CSV's reference could not be identified.
+* **Against:** Out-of-sample instability; misses rebounds.
+* **Built:** The scaling only: S4.
+* **Details:** [docs/algorithms/volatility-managed-factor-portfolio.md](algorithms/volatility-managed-factor-portfolio.md)
+
+### RK55. ADX-filtered trend following ⏳ (harvest gate) · ⛔ (long/short trend trade)
+
+Trade a trend only when Wilder's ADX shows a strong trend. ADX measures strength, not direction, which makes it a candidate harvest gate (pause new lots in strong trends), as plan.md proposes. No academic study of ADX filtering found.
+
+* **Fit:** A gate that pauses new grid lots never sells and is direction-agnostic, the kind of regime L1 favours. Ultimate-RSP already votes on Wilder's +DM.
+* **Against:** Double smoothing makes it slow; V15's ADX flags carried the same-session lookahead (caveat 1).
+* **Built:** ADX screened in V15; +DM is Ultimate-RSP's core vote. No ADX gate.
+* **Details:** [docs/algorithms/adx-filtered-trend-following.md](algorithms/adx-filtered-trend-following.md)
+
+### RK56. Hierarchical risk parity (HRP) 🧪
+
+Cluster assets by correlation and allocate by recursive bisection in inverse variance; lower out-of-sample variance than the critical-line optimiser in Monte Carlo tests (López de Prado 2016).
+
+* **Fit:** Built (A5); concurrent sleeves stretch the additive-account approximation.
+* **Against:** Window and distance-metric sensitivity; no guarantee in correlated crashes; equal weight is the null (DeMiguel et al. 2009).
+* **Built:** `research/strategies/hrp.py` — hrp_weights; `tools/rotation.py --mode hrp` (A5).
+* **Details:** [docs/algorithms/hierarchical-risk-parity-hrp.md](algorithms/hierarchical-risk-parity-hrp.md)
+
+### RK57. Low P/E value screen ⏳
+
+Buy low-P/E stocks: low-P/E NYSE portfolios beat high-P/E ones by about 6–7% a year, ~1957–1971 (Basu 1977); later replications are mixed.
+
+* **Fit:** A long-only stock basket fits the instrument rule, but the warehouse has no stock universe or fundamentals; an ETF is the practical vehicle, as a separate book from the grid.
+* **Against:** Noisy, manageable earnings; value's long drawdowns.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/low-p-e-value-screen.md](algorithms/low-p-e-value-screen.md)
+
+### RK58. Small-cap size premium ⏳
+
+Tilt to small caps. The premium weakened after its discovery, but controlling for junk revives a stable one, not confined to micro-caps (Asness et al. 2018).
+
+* **Fit:** A small-cap ETF fits as a separate holding; RSP's equal weighting is only a mild size tilt.
+* **Against:** Capacity and costs; long stretches without a premium; recession sensitivity.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/small-cap-size-premium.md](algorithms/small-cap-size-premium.md)
+
+### RK59. Liquidity factor ⛔ (illiquidity premium) · 🧪 (the measures, as data)
+
+Illiquid stocks earn a premium (Amihud 2002); stocks sensitive to aggregate liquidity earned 7.5% a year more, 1966–1999 (Pástor & Stambaugh 2003).
+
+* **Fit:** Harvesting an illiquidity premium is a capacity strategy, out of character here. The measures exist as research code (C-MS5) and are useful as fill-cost data for the grid.
+* **Against:** Costs eat the illiquidity premium; liquidity-risk premia fail in liquidity crises.
+* **Built:** `research/strategies/microstructure.py` — amihud_illiquidity, kyle_lambda, roll_spread (C-MS5).
+* **Details:** [docs/algorithms/liquidity-factor.md](algorithms/liquidity-factor.md)
+
+### RK60. Global minimum-variance portfolio ⏳
+
+Lowest-variance long-only weights need no return forecasts; US stocks since 1968: about three-quarters of the market's risk with higher returns (Clarke et al. 2006).
+
+* **Fit:** Long-only ETF weights fit; it needs a multi-instrument book, which today exists only as the rotation harness's additive account.
+* **Against:** Concentrates in low-volatility or correlated assets (long bonds before 2022).
+* **Built:** `research/catalog/je_suis_tm_projects.py` — markowitz_weights (min_variance, Q13).
+* **Details:** [docs/algorithms/global-minimum-variance-portfolio.md](algorithms/global-minimum-variance-portfolio.md)
+
+### RK61. Risk parity / equal risk contribution ⏳ (unlevered) · ⛔ (levered)
+
+Equalise each asset's risk contribution (ERC lies between minimum variance and equal weight), classically levered to a target volatility; leverage aversion makes safe assets earn more per unit of risk (Asness et al. 2012).
+
+* **Fit:** Long-only ETF weights fit; it needs a multi-instrument book, which today exists only as the rotation harness's additive account.
+* **Against:** Levered bonds are out of scope and failed in 2022; contributions jump with correlations.
+* **Built:** HRP only (A5); ERC is not built.
+* **Details:** [docs/algorithms/risk-parity-equal-risk-contribution.md](algorithms/risk-parity-equal-risk-contribution.md)
+
+### RK62. Dual moving-average crossover 🧪 (as a regime) · ⛔ (as a long/short trade)
+
+Long while a short moving average is above a long one. Early support (Brock et al. 1992) was re-tested for data snooping (Sullivan, Timmermann & White 1999); equivalent in general form to TSMOM (Levine & Pedersen 2016).
+
+* **Fit:** A regime fits; a two-SMA regime is a one-function addition beside `sma_risk_on`.
+* **Against:** Lag and whipsaw; MACD (an EMA crossover) gating the TQQQ grid measured 0.12–0.26 CAGR/max DD vs 1.30–1.40 for NATR (L1).
+* **Built:** `research/catalog/je_suis_tm.py` — macd_crossover (an SMA crossover, Q1); `tactical_allocation.faber_targets` (20/200).
+* **Details:** [docs/algorithms/dual-moving-average-crossover.md](algorithms/dual-moving-average-crossover.md)
+
+### RK63. Black–Litterman allocation ⏳
+
+Blend market-implied equilibrium returns with explicit views and confidences, then optimise (Black & Litterman 1992; He & Litterman 1999).
+
+* **Fit:** Long-only ETF weights fit; it needs a multi-instrument book, which today exists only as the rotation harness's additive account.
+* **Against:** Needs calibrated views; outputs depend on the prior, tau and Omega; not a timing signal.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/black-litterman-allocation.md](algorithms/black-litterman-allocation.md)
+
+### RK64. Triple EMA / moving-average ribbon ⏳ (as a regime) · ⛔ (as a long/short trade)
+
+Trend confirmed only while several moving averages are stacked in order (Guppy's 6 short + 6 long EMAs). No academic evidence specific to ribbons; a lagged member of the crossover family.
+
+* **Fit:** A regime fits, but a ribbon is mostly off in chop, where this grid earns most.
+* **Against:** More lag and more parameters.
+* **Built:** Single TA-Lib averages were screened in V15; no ribbon rule.
+* **Details:** [docs/algorithms/triple-ema-moving-average-ribbon.md](algorithms/triple-ema-moving-average-ribbon.md)
+
+### RK65. Cross-sectional factor momentum rotation ⏳
+
+Tilt toward the factors with the best trailing returns. Mixed evidence: factor returns are autocorrelated (Ehsani & Linnainmaa; Gupta & Kelly, 65 factors), but only 22–27% of factors show strong continuation and the strategies do not beat long-only factors (Fan et al. 2022).
+
+* **Fit:** Long-only factor ETFs fit and X3's harness can run them; a separate allocation book from the grid.
+* **Against:** Long-only factor ETFs are mostly market beta, so the spread to rotate is small.
+* **Built:** Nothing as a factor rotation; X3 with factor ETFs as `--universe`.
+* **Details:** [docs/algorithms/cross-sectional-factor-momentum-rotation.md](algorithms/cross-sectional-factor-momentum-rotation.md)
+
+### RK66. Maximum-diversification portfolio ⏳
+
+Maximise the diversification ratio (average asset volatility over portfolio volatility); every held asset ends up with the same correlation to the portfolio (Choueifaty & Coignard 2008; Choueifaty et al. 2013).
+
+* **Fit:** Long-only ETF weights fit; it needs a multi-instrument book, which today exists only as the rotation harness's additive account.
+* **Against:** Covariance-dependent; diversification vanishes in correlation spikes; thinner independent evidence.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/maximum-diversification-portfolio.md](algorithms/maximum-diversification-portfolio.md)
+
+### RK67. ATR-based position sizing 🧪 (volatility-normalised lots) · ⛔ (stop-distance form)
+
+Size each position so one ATR (or the stop distance) risks a fixed fraction of equity; the Turtle unit is 1% of equity over the 20-day ATR (Faith 2003).
+
+* **Fit:** Stops are out of scope; volatility-normalised lots are already V7 (ratio) and S4 (target), and the Turtle units are research code (C-G5).
+* **Against:** Gaps exceed planned risk; per-trade sizing does not cap total open exposure.
+* **Built:** `research/strategies/position_sizing.py` — turtle_unit_shares, turtle_atr, TurtlePyramid (C-G5).
+* **Details:** [docs/algorithms/atr-based-position-sizing.md](algorithms/atr-based-position-sizing.md)
+
+### RK68. Dual Thrust breakout ⛔ (trade) · 🧪 (lower band as a buy gate, N1)
+
+Range = max(HH−LC, HC−LL) over N days; long above open + k₁ × range, short below open − k₂ × range, flat at the close. No primary or academic source found.
+
+* **Fit:** The trade is out; the lower band is the N1 buy gate on `hf_entry_gated`.
+* **Against:** Parameter-heavy; stops and end-of-day flattening realise losses.
+* **Built:** `je_suis_tm.dual_thrust_trades` (Q7); `entry_gates.BreakdownGate` mode `dual_thrust` (N1).
+* **Details:** [docs/algorithms/dual-thrust-breakout.md](algorithms/dual-thrust-breakout.md)
+
+### RK69. London session breakout ⛔ (trade) · 🧪 (US-hours gate, N2)
+
+Trade a break of the Asian-session range after the London open, with a stop and target, flat by session end. No academic test found; the nearest published evidence (equity ORB) does not survive a third-party replication with spread and slippage.
+
+* **Fit:** FX and stops are out; the idea mapped onto US hours is the N2 opening-range gate, and N3 is its gap variant.
+* **Against:** Daylight-saving and server-time handling; stops realise losses.
+* **Built:** `je_suis_tm.london_breakout_trades` (Q4); `entry_gates.BreakdownGate` modes `opening_range`/`prior_low` (N2, N3).
+* **Details:** [docs/algorithms/london-session-breakout.md](algorithms/london-session-breakout.md)
+
+### RK70. Parabolic SAR trend / stop 🔬 (regime, measured) · 🧪 (profit-only exit) · ⛔ (stop-and-reverse)
+
+Wilder's accelerating trailing level (AF 0.02 step, 0.20 cap) that reverses on a cross. As a causal regime gating the TQQQ grid it measured 0.06–0.17 CAGR/max DD (L1).
+
+* **Fit:** Built as a regime (lost) and as a profit-only exit (in scope by construction, unmeasured).
+* **Against:** Reverses too often in ranges; gaps fill below the stop.
+* **Built:** `trend_regimes.psar_risk_on` (`--regime psar`, Q8); `grid_lifecycle.psar_profit_exits` (catalog M6).
+* **Details:** [docs/algorithms/parabolic-sar-trend-stop.md](algorithms/parabolic-sar-trend-stop.md)
+
+### RK71. Heikin-Ashi trend filter 🔬 (regime, measured)
+
+Synthetic smoothed candles (close = OHLC average, open = midpoint of the previous synthetic candle); runs of one colour mark a trend. As a causal regime gating the TQQQ grid it measured −0.09–0.11 CAGR/max DD, the worst of six (L1).
+
+* **Fit:** Built and measured; it lost. Nothing further to build.
+* **Against:** HA prices are not fill prices; smoothing adds lag.
+* **Built:** `trend_regimes.heikin_ashi_risk_on` (`--regime heikin_ashi`, Q3); quant-trading's trade script as research code.
+* **Details:** [docs/algorithms/heikin-ashi-trend-filter.md](algorithms/heikin-ashi-trend-filter.md)
+
+### RK72. Distance-based pairs trading ⛔
+
+Pair stocks with the closest normalised price paths and trade 2-sigma divergences. Top-20 pairs earned 0.86% a month in 1962–1988, 0.37% in 1989–2002 and 0.24% in 2003–2009 before costs (Do & Faff 2010); 38 bp after costs over 1962–2014 (Rad et al. 2016).
+
+* **Fit:** Short leg; X3's rotation is the long-only remainder.
+* **Against:** Correlation is not convergence; decay; costs.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/distance-based-pairs-trading.md](algorithms/distance-based-pairs-trading.md)
+
+### RK73. Kalman-filter dynamic-hedge pairs ⛔ (long/short) · 🧪 (long-only spread signal)
+
+Estimate a drifting hedge ratio with a Kalman filter and trade the forecast error; the state-space view of pairs goes back to Elliott, van der Hoek & Malcolm (2005).
+
+* **Fit:** Short leg out; the filter and a long-only spread signal exist as research code.
+* **Against:** The noise ratio decides whether it tracks drift or noise.
+* **Built:** `pairs.KalmanHedgeRatio`, `pairs.spread_long_signal`.
+* **Details:** [docs/algorithms/kalman-filter-dynamic-hedge-pairs.md](algorithms/kalman-filter-dynamic-hedge-pairs.md)
+
+### RK74. Copula-based pairs trading ⛔
+
+Trade extreme conditional probabilities from a fitted copula. Bivariate copula pairs: 43 bp a month before costs, 5 bp after, 1962–2014 (Rad et al. 2016); vine copulas on the S&P 500: 9.25% a year after costs, Sharpe 1.12, 1992–2015 (Stübinger et al. 2018).
+
+* **Fit:** Short leg.
+* **Against:** Data-hungry tail estimation; dependence changes in crises.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/copula-based-pairs-trading.md](algorithms/copula-based-pairs-trading.md)
+
+### RK75. Ornstein–Uhlenbeck spread trading ⛔ (spread) · 🧪 (OU diagnostics)
+
+Fit an OU process to a spread and set bands from its parameters: Avellaneda–Lee s-scores, or Bertram's (2010) closed-form bands maximising expected return or Sharpe per unit time.
+
+* **Fit:** Spreads are out. OU half-life and Hurst diagnostics (C-MR4) already test whether the grid's single-price mean-reversion bet holds.
+* **Against:** Thresholds are fragile when kappa and sigma drift.
+* **Built:** `mean_reversion.s_score` (C-MR2), `mean_reversion.half_life` (C-MR4).
+* **Details:** [docs/algorithms/ornstein-uhlenbeck-spread-trading.md](algorithms/ornstein-uhlenbeck-spread-trading.md)
+
+### RK76. PCA residual statistical arbitrage ⛔
+
+RK33 with principal-component factors: Sharpe 1.44 after costs over 1997–2007, 0.9 over 2003–2007 (Avellaneda & Lee 2010).
+
+* **Fit:** A market-neutral stock book; the warehouse has no stock universe.
+* **Against:** Universe, windows, costs and crowding; eigenvectors rotate in crises.
+* **Built:** The s-score on ETF residuals only (C-MR2).
+* **Details:** [docs/algorithms/pca-residual-statistical-arbitrage.md](algorithms/pca-residual-statistical-arbitrage.md)
+
+### RK77. ATR volatility-expansion breakout ⛔ (breakout trade)
+
+Enter on a range break while ATR or realised volatility expands (Larry Williams' volatility breakout is the best-known form). No academic test found. This project's evidence runs the other way: a NATR spike is its signal to step out of leveraged lots (L1, L6).
+
+* **Fit:** As a breakout trade, out. Its parts exist with the signs the evidence supports: the downside break is the N1 gate, volatility expansion is the turbulent regime.
+* **Against:** False breaks at news and overnight gaps; the stop realises losses; expansion often follows the break.
+* **Built:** Nothing as a trade; relatives: N1 (`BreakdownGate`), the NATR regime.
+* **Details:** [docs/algorithms/atr-volatility-expansion-breakout.md](algorithms/atr-volatility-expansion-breakout.md)
+
+### RK78. Multi-timeframe trend agreement ⏳ (long-or-cash) · ⛔ (with a short side)
+
+Hold only when short-, medium- and long-horizon trend signals agree (Elder's Triple Screen). The literature usually averages horizons instead (1-, 3- and 12-month TSMOM over a century: Hurst, Ooi & Pedersen 2017); no study of the all-must-agree form found.
+
+* **Fit:** A long-or-cash variant of RK1/RK2. Direction regimes lose to the volatility regime here (L1), and agreement makes them slower.
+* **Against:** Higher-timeframe leakage; each confirmation adds lag.
+* **Built:** Nothing; daily regimes and intraday gates exist but nothing requires agreement.
+* **Details:** [docs/algorithms/multi-timeframe-trend-agreement.md](algorithms/multi-timeframe-trend-agreement.md)
+
+### RK79. Opening gap continuation 🧪 (downside as buy gates, N3/X1) · ⛔ (day trade)
+
+Trade in a large gap's direction once the open confirms it. The first half-hour return from the prior close predicts the last half-hour in SPY 1993–2013 (Gao et al. 2018), and US index prices tend to move in the gap's direction on gap days, 1928–2018 (Plastun et al. 2020).
+
+* **Fit:** The day trade is out. The downside half is built twice as buy gates (N3 prior-low gap, X1 intraday momentum); both unmeasured.
+* **Against:** Opening-auction slippage; the edge is small against costs; stock gaps around earnings differ.
+* **Built:** `entry_gates.BreakdownGate` mode `prior_low` (N3); `entry_gates.IntradayMomentumGate` (X1).
+* **Details:** [docs/algorithms/opening-gap-continuation.md](algorithms/opening-gap-continuation.md)
+
+### RK80. Convertible bond arbitrage ⛔
+
+Long convertibles, short the stock's delta. A buy-and-hedge factor explains much of convertible-arbitrage fund returns; market-wide extremes and convertible supply matter (Agarwal et al. 2011).
+
+* **Fit:** Convertibles and short stock.
+* **Against:** Borrow recalls, credit deterioration, jumps, forced deleveraging (2005, 2008).
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/convertible-bond-arbitrage.md](algorithms/convertible-bond-arbitrage.md)
+
+### RK81. Capital structure arbitrage ⛔
+
+Trade CDS against equity when a structural model (CreditGrades) disagrees with the market. 261 obligors: single trades can lose heavily; an equal-weighted portfolio had Sharpe ratios like other fixed-income arbitrage (Yu 2006).
+
+* **Fit:** CDS, bonds and short legs.
+* **Against:** Model, recovery and basis risk; legs may never converge.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/capital-structure-arbitrage.md](algorithms/capital-structure-arbitrage.md)
+
+### RK82. Closed-end fund discount reversion ⏳
+
+Buy closed-end funds at unusually wide discounts to NAV and hold for the narrowing. A 20% discount predicted a 12-month return about 6 points higher than no discount, from discount mean reversion (Pontiff 1995, confirming Thompson 1978).
+
+* **Fit:** Long-only listed funds fit the instrument rule, but it is a separate income book; daily NAVs and distributions are not in the warehouse.
+* **Against:** Discounts persist or widen; stale NAVs; leverage, fees, return-of-capital distributions; thin trading.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/closed-end-fund-discount-reversion.md](algorithms/closed-end-fund-discount-reversion.md)
+
+### RK83. Triangular FX arbitrage ⛔
+
+Trade the three legs when executable cross rates violate the triangle identity. Opportunities exist but are small, brief and declining; profiting needs an unfeasibly large share of them (Fenn et al. 2009); exploitable on EBS before the mid-2000s (Ito et al. 2020).
+
+* **Fit:** FX and a latency race.
+* **Against:** Legging, rejects, credit limits; gone before execution.
+* **Built:** `crypto.find_arbitrage_cycle`, `conversion_rates` (A7, crypto venues).
+* **Details:** [docs/algorithms/triangular-fx-arbitrage.md](algorithms/triangular-fx-arbitrage.md)
+
+### RK84. Crypto perpetual funding-rate capture ❌
+
+Long spot, short the perpetual to collect funding. Crypto futures carry reached about 60% a year, varies strongly and is crash-prone through margin spikes and liquidations (BIS WP 1087).
+
+* **Fit:** Crypto is outside the instrument rules.
+* **Against:** Variable funding; liquidation, exchange and custody risk.
+* **Built:** `crypto.funding_carry_positions`, `funding_carry_pnl` (C-RJ2).
+* **Details:** [docs/algorithms/crypto-perpetual-funding-rate-capture.md](algorithms/crypto-perpetual-funding-rate-capture.md)
+
+### RK85. Spot-perpetual basis arbitrage ❌
+
+Open long spot / short perpetual when basis plus expected funding beats costs. Perpetual deviations from no-arbitrage prices are large, co-move and shrink over time; an implied arbitrage strategy earns high Sharpe ratios (He et al., arXiv 2212.06888).
+
+* **Fit:** Crypto is outside the instrument rules.
+* **Against:** Basis widens, funding flips, venues fail.
+* **Built:** `crypto.funding_carry_positions` (C-RJ2), which enters and exits on funding thresholds and never reads the basis; the basis rule is not built.
+* **Details:** [docs/algorithms/spot-perpetual-basis-arbitrage.md](algorithms/spot-perpetual-basis-arbitrage.md)
+
+### RK86. Yield-curve steepener / flattener ⛔
+
+DV01-matched long/short across two maturities to bet on the slope; slope is the second of three factors behind >95% of yield variation (Litterman & Scheinkman 1991). Forward rates forecast bond excess returns in sample (Fama & Bliss 1987; Cochrane & Piazzesi 2005) but add no consistent value out of sample (Thornton & Valente 2012); no study found that a rules-based slope trade earns a premium.
+
+* **Fit:** Out of scope as a trade; the 10y–2y slope is usable as data for a slow recession regime.
+* **Against:** Convexity, carry and basis risk; a policy-timing bet.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/yield-curve-steepener-flattener.md](algorithms/yield-curve-steepener-flattener.md)
+
+### RK87. Option dispersion trading ⛔
+
+Short index volatility against long component volatility to collect the correlation risk premium. Correlation risk is priced in S&P 100 options, but the strategy's high alpha does not survive realistic trading frictions (Driessen, Maenhout & Vilkov 2009).
+
+* **Fit:** Options are out of scope.
+* **Against:** Correlation spikes in crashes; jumps and earnings; costs across dozens of option legs.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/option-dispersion-trading.md](algorithms/option-dispersion-trading.md)
+
+### RK88. Distributionally robust CVaR allocation ⏳
+
+Minimise worst-case CVaR over a Wasserstein ball around the empirical distribution; tractable convex programmes with finite-sample guarantees (Mohajerin Esfahani & Kuhn 2018).
+
+* **Fit:** Long-only ETF weights fit; it needs a multi-instrument book, which today exists only as the rotation harness's additive account.
+* **Against:** The radius is the whole design; can be very conservative.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/distributionally-robust-cvar-allocation.md](algorithms/distributionally-robust-cvar-allocation.md)
+
+### RK89. Autoencoder latent-factor stat arb ⛔
+
+Trade residuals against an autoencoder factor model. Conditional autoencoders price the cross-section with small out-of-sample errors (Gu, Kelly & Xiu 2021); a deep-learning stat-arb pipeline reports about 20% a year at under 6% volatility after costs (arXiv 2106.04028).
+
+* **Fit:** A market-neutral stock book with a short leg.
+* **Against:** Residuals may be model error; overfitting; needs walk-forward refits.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/autoencoder-latent-factor-statistical-arbitrage.md](algorithms/autoencoder-latent-factor-statistical-arbitrage.md)
+
+### RK90. Long-term industry reversal with valuation confirmation ⏳ (long-only sector ETFs)
+
+Buy industries that lagged for years when they are cheap and stabilising. 48 US industries 1963–2013 show long-term reversals lasting years (Bornholt et al. 2015); UK losing industries beat winners over five years (Wu & Mazouz 2016). The valuation filter is the CSV's proposal.
+
+* **Fit:** Long-only sector ETFs pass the instrument rule; a slow separate book on the rotation harness with a reversed ranking; valuations are not in the warehouse.
+* **Against:** Structural decline looks like a cheap loser; value traps; multi-year waits; few independent periods for sector ETFs.
+* **Built:** Nothing; X3 ranks the other way (trailing strength).
+* **Details:** [docs/algorithms/long-term-industry-reversal-with-valuation-confirmation.md](algorithms/long-term-industry-reversal-with-valuation-confirmation.md)
+
+### RK91. iNAV dislocation ETF arbitrage ⛔
+
+Rebuild intraday NAV from live holdings quotes and post passive orders against ETF dislocations, hedged, flat by the close; the premise (about 100 bp bands, short-term mean reversion; Petajisto 2017) is documented, this exact form is not.
+
+* **Fit:** Market making with a hedge leg and forced end-of-day exits.
+* **Against:** Adverse selection on passive fills; Level 2 data on every holding.
+* **Built:** Only the AP decision (C-RJ6).
+* **Details:** [docs/algorithms/inav-dislocation-etf-arbitrage.md](algorithms/inav-dislocation-etf-arbitrage.md)
+
+### RK92. Fed ON RRP / T-bill liquidity arbitrage ⛔
+
+Trade T-bill yields against the ON RRP rate and SOFR. The ON RRP is a floor for money-market rates, yet bills and repo traded below it in 2021 as facility use rose about $2 trillion (FEDS Notes 2023); no study of a trading strategy found.
+
+* **Fit:** Repo leverage and facility access are institutional. The in-scope question is where regime-exit cash sits (bills, a bill ETF, a money fund), which backtests already model with a money-market yield.
+* **Against:** Basis-point spreads need leverage; facility access is restricted.
+* **Built:** Data only: SOFR and RRPONTSYD are registered FRED inputs; idle cash accrues a money-market yield.
+* **Details:** [docs/algorithms/fed-otc-liquidity-sweep-reverse-repo-arbitrage.md](algorithms/fed-otc-liquidity-sweep-reverse-repo-arbitrage.md)
+
+### RK93. Cointegrated triplet basket stat arb ⛔
+
+RK36 with three assets (A − αB − βC). A triple can cointegrate where no pair does (three crude-oil futures, arXiv 2309.00875); Galenko, Popova & Popova (2012) give a trading method for three or more cointegrated assets; no equity-triplet study found.
+
+* **Fit:** Short legs.
+* **Against:** Fundamental shifts leave permanent divergence; more search, more false discoveries.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/cointegrated-triplet-basket-statistical-arbitrage.md](algorithms/cointegrated-triplet-basket-statistical-arbitrage.md)
+
+### RK94. Dynamic copula-GARCH pair trading ⛔
+
+RK74 with GARCH marginals and a time-varying copula. Vine copulas with time-varying dependence: 9.25% a year after costs on the S&P 500, 1992–2015 (Stübinger et al. 2018); no copula-GARCH pairs study verified.
+
+* **Fit:** Short leg.
+* **Against:** Two layers of estimation; window and family sensitivity.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/dynamic-copula-garch-multivariate-pair-trading.md](algorithms/dynamic-copula-garch-multivariate-pair-trading.md)
+
+### RK95. Asymmetric tail-risk parity ⏳
+
+Equalise contributions to expected shortfall (or semivariance) instead of variance: CVaR risk budgets (Boudt, Carl & Peterson 2013); CVaR-based risk parity with ML forecasts (Sheng et al. 2025).
+
+* **Fit:** Long-only ETF weights fit; it needs a multi-instrument book, which today exists only as the rotation harness's additive account.
+* **Against:** Tail estimates need long samples; no source found for the semivariance form or an out-of-sample comparison.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/asymmetric-tail-risk-parity-allocation.md](algorithms/asymmetric-tail-risk-parity-allocation.md)
+
+### RK96. PCA eigenportfolios stat arb ⛔
+
+RK76 described through its eigenportfolios (eigenvector weights over stock volatilities); Sharpe 1.44 after costs over 1997–2007, 0.9 over 2003–2007 (Avellaneda & Lee 2010).
+
+* **Fit:** A market-neutral stock book.
+* **Against:** Loadings drift and rotate in crises.
+* **Built:** The s-score on ETF residuals only (C-MR2).
+* **Details:** [docs/algorithms/principal-component-analysis-pca-eigenportfolios-statistical-arbitrage.md](algorithms/principal-component-analysis-pca-eigenportfolios-statistical-arbitrage.md)
+
+### RK97. Wasserstein distributionally robust stat arb ⛔
+
+Choose pair thresholds that are best under the worst distribution in a Wasserstein ball. The DRO machinery exists (RK88); no paper applying it to stat-arb thresholds found, and the CSV's arXiv reference could not be identified.
+
+* **Fit:** Short leg.
+* **Against:** The radius decides everything; slow over many pairs.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-statistical-arbitrage.md](algorithms/wasserstein-distributionally-robust-statistical-arbitrage.md)
+
+### RK98. Adversarial domain-generalisation cross-market momentum ⏳ (in principle) · not a priority
+
+Train a momentum model with an adversary that penalises market-specific features, so the rule generalises across markets. No momentum study found; DomainBed found tuned ordinary training matched domain-generalisation methods.
+
+* **Fit:** A long-only ranking would pass the instrument rule; no evidence justifies the machinery.
+* **Against:** Unstable adversarial training; few independent regimes to learn from.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/adversarial-domain-generalization-cross-market-momentum.md](algorithms/adversarial-domain-generalization-cross-market-momentum.md)
+
+### RK99. Conformally constrained risk parity ⏳
+
+ERC weights plus a conformal bound on portfolio loss. Conformal portfolio selection (Kato 2024) and conformal VaR under nonstationarity (Schmitt 2026) exist separately; no published method combines them with ERC.
+
+* **Fit:** Conformal intervals and conformal sizing exist as research code (catalog S5); ERC does not. A conformal check on the single grid's total exposure is the more practical use.
+* **Against:** Exchangeability fails for returns; needs adaptive conformal inference; two layers of estimation.
+* **Built:** Pieces: `position_sizing.split_conformal_interval`, `conformal_long_size`; HRP.
+* **Details:** [docs/algorithms/conformally-constrained-risk-parity-portfolio.md](algorithms/conformally-constrained-risk-parity-portfolio.md)
+
+### RK100. Causal-discovery (DAG) pair selection ⛔
+
+Select pairs or leader–follower trades from a causal graph (PC, NOTEARS, PCMCI) instead of correlation. No PC/NOTEARS pair-selection study found; nearest: lead-lag optimal causal paths on minute S&P 500 data (Stübinger 2019).
+
+* **Fit:** Pairs need a short leg.
+* **Against:** Confounders and sampling frequency change the graph; low power.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md)
+
+### Research gaps
+
+Ranks 4–100 were researched from what web search could reach (full texts
+could not be opened; each page says what was checked). On 2026-10-27 the
+remaining gaps were checked again against a Gemini answer the owner
+supplied. Its citations were verified before use, which resolved RK34,
+RK40/RK45 and RK54 and added sources to several other pages; its
+performance claims that named no study, and citations that turned out to
+be about something else, were not used. What remains:
+
+| Status | Meaning |
+|---|---|
+| Needs more info | A specific reference is cited or likely exists, but it could not be identified or read. |
+| Unable to find more details | Neither search found a published evaluation; the algorithm is probably untested. |
+
+| ID | Algorithm | Status | What is missing |
+|---|---|---|---|
+| RK31 | [Intangibles-Adjusted Value and Profitability Factor](algorithms/intangibles-adjusted-value-and-profitability-factor.md) | Needs more info | The CSV's second reference, doi 10.1111/fima.12505. Gemini attributes it to Ozdagli & Ryfe, "Asset Manager Commonality and Portfolio Similarity"; a Dallas Fed working paper of that title exists, but the DOI match is unconfirmed, and if right it is unrelated to intangibles. |
+| RK38 | [Chandelier Exit Trend Following](algorithms/chandelier-exit-trend-following.md) | Unable to find more details | A performance study. LeBeau's original Traders Club write-up is not online. |
+| RK44 | [Supertrend ATR-Band Trend Following](algorithms/supertrend-atr-band-trend-following.md) | Needs more info | A primary source by Olivier Seban. His book *Tout le monde mérite d'être riche* exists, but nothing confirms it describes Supertrend. |
+| RK64 | [Triple EMA / Moving-Average Ribbon](algorithms/triple-ema-moving-average-ribbon.md) | Unable to find more details | A test of ribbon or alignment rules. Brock, Lakonishok & LeBaron (1992) test single and dual moving averages, not ribbons. |
+| RK68 | [Dual Thrust Breakout](algorithms/dual-thrust-breakout.md) | Needs more info | Michael Chalek's original publication, and any academic test. |
+| RK69 | [London Session Breakout](algorithms/london-session-breakout.md) | Unable to find more details | A test of the Asian-range breakout. Gemini's citation (Chaboud et al. 2014) is about algorithmic trading and FX efficiency. |
+| RK77 | [ATR Volatility-Expansion Breakout](algorithms/atr-volatility-expansion-breakout.md) | Unable to find more details | A test of Williams' volatility breakout or an ATR-confirmed breakout. |
+| RK78 | [Multi-Timeframe Trend Agreement](algorithms/multi-timeframe-trend-agreement.md) | Unable to find more details | A test of the all-horizons-must-agree form (Elder's Triple Screen, *Futures*, 1986). |
+| RK86 | [Yield Curve Steepener / Flattener](algorithms/yield-curve-steepener-flattener.md) | Unable to find more details | A direct test of a DV01-neutral slope rule; forward-rate predictability is documented in sample only (Thornton & Valente 2012). |
+| RK92 | [FED OTC Liquidity Sweep & Reverse Repo Arbitrage](algorithms/fed-otc-liquidity-sweep-reverse-repo-arbitrage.md) | Unable to find more details | Any strategy study; "OTC liquidity sweep" appears to be informal wording, so the rule is undefined. |
+| RK93 | [Cointegrated Triplet Basket Statistical Arbitrage](algorithms/cointegrated-triplet-basket-statistical-arbitrage.md) | Needs more info | The results of Galenko, Popova & Popova (2012), *Journal of Alternative Investments* 15(1), 85–97, which could not be read; no equity-triplet study found. |
+| RK94 | [Dynamic Copula-GARCH Multivariate Pair Trading](algorithms/dynamic-copula-garch-multivariate-pair-trading.md) | Unable to find more details | A copula-GARCH pairs study with reported returns. |
+| RK95 | [Asymmetric Tail-Risk Parity Allocation](algorithms/asymmetric-tail-risk-parity-allocation.md) | Unable to find more details | Semivariance risk parity, or an out-of-sample comparison of tail-risk with variance risk parity. |
+| RK97 | [Wasserstein Distributionally Robust Statistical Arbitrage](algorithms/wasserstein-distributionally-robust-statistical-arbitrage.md) | Needs more info | The CSV's arXiv 1908.01234 (Gemini says it is a cell-mechanics paper; unconfirmed); no Wasserstein-DRO stat-arb paper found. |
+| RK98 | [Adversarial Domain Generalization Cross-Market Momentum](algorithms/adversarial-domain-generalization-cross-market-momentum.md) | Unable to find more details | Any application of adversarial domain generalisation to momentum. |
+| RK99 | [Conformally Constrained Risk Parity Portfolio](algorithms/conformally-constrained-risk-parity-portfolio.md) | Unable to find more details | Any method combining equal risk contribution with conformal bounds. |
+| RK100 | [Causal Discovery Directed Acyclic Graph (DAG) Pair Selection](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md) | Unable to find more details | Any study using PC or NOTEARS causal discovery for pair selection. |
+
 ### The list
 
 <!-- BEGIN ranked list: generated by tools/build_algorithm_ledger.py -->
@@ -1276,9 +2281,9 @@ drawdown.
 
 | Rows | Algorithms | Yes | Research code | Partial | No |
 |---|---|---|---|---|---|
-| Specific (ranks 1–425) | 425 | 13 | 49 | 28 | 335 |
+| Specific (ranks 1–425) | 425 | 13 | 48 | 36 | 328 |
 | Title-reconstructed (ranks 426–14,225) | 13,800 | 0 | 0 | 0 | 13,800 |
-| All | 14,225 | 13 | 49 | 28 | 14,135 |
+| All | 14,225 | 13 | 48 | 36 | 14,128 |
 
 #### Specific algorithms
 
@@ -1287,103 +2292,103 @@ drawdown.
 | 1 | Time-Series Momentum (TSMOM) | Trend / momentum | 10 | 28 | Research code | RK1, X7, X3 | [**researched**](algorithms/time-series-momentum-tsmom.md) |
 | 2 | Volatility-Scaled Trend Following | Trend / risk scaling | 26 | 6 | Research code | RK2, S2, X7, S4 | [**researched**](algorithms/volatility-scaled-trend-following.md) |
 | 3 | Dual Momentum (Absolute + Relative) | Trend / allocation | 24 | 2 | Yes | RK3, X3 | [**researched**](algorithms/dual-momentum-absolute-relative.md) |
-| 4 | Cross-Asset Carry Composite | Macro / carry | 68 | 131 | No | — | [card](algorithms/cross-asset-carry-composite.md) |
-| 5 | Value-Momentum Composite | Equity factor / multi-factor | 57 | 8 | No | — | [card](algorithms/value-momentum-composite.md) |
-| 6 | 12–1 Momentum (Skip-Month) | Trend / momentum | 19 | 11 | No | — | [card](algorithms/12-1-momentum-skip-month.md) |
-| 7 | Cross-Sectional Momentum | Trend / momentum | 81 | 51 | Partial | X3 | [card](algorithms/cross-sectional-momentum.md) |
-| 8 | Commodity Momentum + Term Structure | Trend / carry | 25 | 14 | No | — | [card](algorithms/commodity-momentum-term-structure.md) |
-| 9 | Fama–French Five-Factor Model Portfolio | Factor / systematic equity | 88 | 252 | No | — | [card](algorithms/fama-french-five-factor-model-portfolio.md) |
-| 10 | State-Filtered Momentum | Factor / regime-aware | 35 | 17 | No | — | [card](algorithms/state-filtered-momentum.md) |
-| 11 | Quality Minus Junk (QMJ) | Equity factor / quality | 234 | 301 | No | — | [card](algorithms/quality-minus-junk-qmj.md) |
-| 12 | Quality / Profitability Factor | Factor / systematic equity | 110 | 245 | No | — | [card](algorithms/quality-profitability-factor.md) |
-| 13 | Gross Profitability Factor | Equity factor / fundamental | 167 | 106 | No | — | [card](algorithms/gross-profitability-factor.md) |
-| 14 | 52-Week High Momentum | Cross-sectional momentum | 15 | 5 | No | — | [card](algorithms/52-week-high-momentum.md) |
-| 15 | Conservative Investment Factor | Equity factor / fundamental | 73 | 7 | No | — | [card](algorithms/conservative-investment-factor.md) |
-| 16 | Residual Momentum | Factor / systematic equity | 34 | 29 | No | — | [card](algorithms/residual-momentum.md) |
-| 17 | 10-Month Moving-Average Risk Filter | Trend / risk filter | 27 | 15 | Yes | V16, C-E2 | [card](algorithms/10-month-moving-average-risk-filter.md) |
-| 18 | Low-Volatility Equity | Factor / systematic equity | 13 | 35 | Partial | X2 | [card](algorithms/low-volatility-equity.md) |
-| 19 | Sector Momentum Rotation | Trend / allocation | 23 | 1 | Partial | X3 | [card](algorithms/sector-momentum-rotation.md) |
-| 20 | Bond Duration Momentum | Fixed income / trend | 69 | 84 | No | — | [card](algorithms/bond-duration-momentum.md) |
-| 21 | VIX-Regime Conditional Equity Exposure | Regime / volatility | 196 | 100 | Yes | V12 | [card](algorithms/vix-regime-conditional-equity-exposure.md) |
-| 22 | Volatility Targeting / Risk Scaling | Risk management | 137 | 123 | Yes | S4, V18, S3 | [card](algorithms/volatility-targeting-risk-scaling.md) |
-| 23 | Drawdown-Aware De-Risking Governor | Risk management | 138 | 126 | Yes | V11 | [card](algorithms/drawdown-aware-de-risking-governor.md) |
-| 24 | ETF NAV / Creation-Redemption Arbitrage | Index / ETF relative value | 206 | 182 | Research code | C-RJ6 | [card](algorithms/etf-nav-creation-redemption-arbitrage.md) |
-| 25 | Index Futures vs Cash Basis Arbitrage | Index arbitrage / basis | 141 | 2759 | No | — | [card](algorithms/index-futures-vs-cash-basis-arbitrage.md) |
-| 26 | Futures Cash-and-Carry Basis Trading | Basis / carry | 95 | 163 | No | — | [card](algorithms/futures-cash-and-carry-basis-trading.md) |
-| 27 | Shareholder Yield Factor | Equity factor / capital return | 75 | 58 | No | — | [card](algorithms/shareholder-yield-factor.md) |
-| 28 | Fixed-Income Carry and Roll-Down | Fixed income / relative value | 168 | 30 | No | — | [card](algorithms/fixed-income-carry-and-roll-down.md) |
-| 29 | Price + Earnings Momentum | Factor / event-driven | 112 | 20 | No | — | [card](algorithms/price-earnings-momentum.md) |
-| 30 | FX Carry Trade | Carry / macro | 38 | 101 | No | — | [card](algorithms/fx-carry-trade.md) |
-| 31 | Intangibles-Adjusted Value and Profitability Factor | Equity factor / fundamental valuation / intangible capital | 46 | 60 | No | — | [card](algorithms/intangibles-adjusted-value-and-profitability-factor.md) |
-| 32 | Commodity Futures Roll Yield | Carry / macro | 67 | 120 | No | — | [card](algorithms/commodity-futures-roll-yield.md) |
-| 33 | Market-Neutral Residual Mean Reversion | Statistical arbitrage | 53 | 129 | Research code | C-MR2 | [card](algorithms/market-neutral-residual-mean-reversion.md) |
-| 34 | Futures Calendar-Spread Mean Reversion | Relative value / futures | 54 | 83 | No | — | [card](algorithms/futures-calendar-spread-mean-reversion.md) |
-| 35 | Net Stock Issuance Anomaly | Equity factor / corporate actions / issuance anomaly | 22 | 68 | No | — | [card](algorithms/net-stock-issuance-anomaly.md) |
-| 36 | Johansen Cointegration Basket Trading | Statistical arbitrage | 203 | 266 | No | — | [card](algorithms/johansen-cointegration-basket-trading.md) |
-| 37 | Cointegration-Based Pairs Trading | Statistical arbitrage | 191 | 262 | Research code | Q2 | [card](algorithms/cointegration-based-pairs-trading.md) |
-| 38 | Chandelier Exit Trend Following | Trend / risk management | 50 | 55 | No | — | [card](algorithms/chandelier-exit-trend-following.md) |
-| 39 | Merger Arbitrage | Event-driven / relative value | 140 | 235 | No | — | [card](algorithms/merger-arbitrage.md) |
-| 40 | Earnings Estimate Revision Momentum | Fundamental / event momentum | 74 | 21 | No | — | [card](algorithms/earnings-estimate-revision-momentum.md) |
-| 41 | Inflation-Regime Asset Rotation | Macro / tactical allocation | 144 | 37 | No | — | [card](algorithms/inflation-regime-asset-rotation.md) |
-| 42 | Cross-Asset Commodity Futures Term-Structure Carry & Roll Yield | Macro / Commodity carry | 160 | 139 | No | — | [card](algorithms/cross-asset-commodity-futures-term-structure-carry-roll-yield.md) |
-| 43 | Donchian / Turtle Channel Breakout | Trend / breakout | 107 | 261 | Research code | C-G5 | [card](algorithms/donchian-turtle-channel-breakout.md) |
-| 44 | Supertrend ATR-Band Trend Following | Trend / technical | 49 | 4 | No | — | [card](algorithms/supertrend-atr-band-trend-following.md) |
-| 45 | Post-Earnings Announcement Drift (PEAD) | Event-driven / earnings | 5 | 18 | No | — | [card](algorithms/post-earnings-announcement-drift-pead.md) |
-| 46 | MACD Signal-Line Crossover | Trend / momentum | 80 | 10 | Yes | Q1 | [card](algorithms/macd-signal-line-crossover.md) |
-| 47 | Public Activist-Filing Event Strategy | Event-driven / public regulatory filings / shareholder activism | 62 | 90 | No | — | [card](algorithms/public-activist-filing-event-strategy.md) |
-| 48 | Book-to-Market Value | Factor / systematic equity | 109 | 158 | No | — | [card](algorithms/book-to-market-value.md) |
-| 49 | Betting Against Beta (BAB) | Factor / systematic equity | 90 | 233 | No | — | [card](algorithms/betting-against-beta-bab.md) |
-| 50 | Accrual Anomaly | Factor / systematic equity | 135 | 180 | No | — | [card](algorithms/accrual-anomaly.md) |
-| 51 | Asset-Growth Anomaly | Factor / systematic equity | 165 | 159 | No | — | [card](algorithms/asset-growth-anomaly.md) |
-| 52 | Dividend Yield / Dividend Growth | Factor / systematic equity | 136 | 52 | No | — | [card](algorithms/dividend-yield-dividend-growth.md) |
-| 53 | CVaR / Expected-Shortfall Optimization | Portfolio construction | 202 | 162 | No | — | [card](algorithms/cvar-expected-shortfall-optimization.md) |
-| 54 | Volatility-Managed Factor Portfolio | Equity factor / risk management | 61 | 31 | Partial | S4 | [card](algorithms/volatility-managed-factor-portfolio.md) |
-| 55 | ADX-Filtered Trend Following | Trend / breakout | 20 | 12 | Partial | V15 | [card](algorithms/adx-filtered-trend-following.md) |
-| 56 | Hierarchical Risk Parity (HRP) | Portfolio construction | 3 | 36 | Yes | A5, Q13 | [card](algorithms/hierarchical-risk-parity-hrp.md) |
-| 57 | Low P/E Value Screen | Factor / systematic equity | 72 | 244 | No | — | [card](algorithms/low-p-e-value-screen.md) |
-| 58 | Small-Cap Size Premium | Factor / systematic equity | 89 | 81 | No | — | [card](algorithms/small-cap-size-premium.md) |
-| 59 | Liquidity Factor | Factor / systematic equity | 2 | 82 | No | — | [card](algorithms/liquidity-factor.md) |
-| 60 | Global Minimum-Variance Portfolio | Portfolio construction | 44 | 69 | Research code | Q13 | [card](algorithms/global-minimum-variance-portfolio.md) |
-| 61 | Risk Parity / Equal Risk Contribution | Portfolio construction | 45 | 122 | Partial | A5 | [card](algorithms/risk-parity-equal-risk-contribution.md) |
-| 62 | Dual Moving Average Crossover | Trend / momentum | 9 | 27 | Research code | Q1, C-E2 | [card](algorithms/dual-moving-average-crossover.md) |
-| 63 | Black–Litterman Allocation | Portfolio construction | 43 | 67 | No | — | [card](algorithms/black-litterman-allocation.md) |
-| 64 | Triple EMA / Moving-Average Ribbon | Trend / momentum | 66 | 9 | Partial | V15 | [card](algorithms/triple-ema-moving-average-ribbon.md) |
-| 65 | Cross-Sectional Factor Momentum Rotation | Factor investing / cross-sectional momentum / allocation | 31 | 125 | No | — | [card](algorithms/cross-sectional-factor-momentum-rotation.md) |
-| 66 | Maximum-Diversification Portfolio | Portfolio optimization | 60 | 42 | No | — | [card](algorithms/maximum-diversification-portfolio.md) |
-| 67 | ATR-Based Position Sizing | Position sizing | 48 | 124 | Research code | C-G5 | [card](algorithms/atr-based-position-sizing.md) |
-| 68 | Dual Thrust Breakout | Trend / breakout | 82 | 217 | Research code | Q7, N1 | [card](algorithms/dual-thrust-breakout.md) |
-| 69 | London Session Breakout | Trend / breakout | 132 | 219 | Research code | Q4, N2, N3 | [card](algorithms/london-session-breakout.md) |
-| 70 | Parabolic SAR Trend / Stop | Trend / breakout | 83 | 13 | Yes | Q8 | [card](algorithms/parabolic-sar-trend-stop.md) |
-| 71 | Heikin-Ashi Trend Filter | Trend / breakout | 84 | 3 | Yes | Q3 | [card](algorithms/heikin-ashi-trend-filter.md) |
-| 72 | Distance-Based Pairs Trading | Statistical arbitrage | 134 | 220 | No | — | [card](algorithms/distance-based-pairs-trading.md) |
-| 73 | Kalman-Filter Dynamic-Hedge Pairs | Statistical arbitrage | 192 | 263 | Research code | Q2 | [card](algorithms/kalman-filter-dynamic-hedge-pairs.md) |
-| 74 | Copula-Based Pairs Trading | Statistical arbitrage | 193 | 427 | No | — | [card](algorithms/copula-based-pairs-trading.md) |
-| 75 | Ornstein–Uhlenbeck Spread Trading | Statistical arbitrage | 32 | 117 | Research code | C-MR2, C-MR4 | [card](algorithms/ornstein-uhlenbeck-spread-trading.md) |
-| 76 | PCA Residual Statistical Arbitrage | Statistical arbitrage | 194 | 264 | Partial | C-MR2 | [card](algorithms/pca-residual-statistical-arbitrage.md) |
-| 77 | ATR Volatility-Expansion Breakout | Trend / volatility breakout | 14 | 91 | No | — | [card](algorithms/atr-volatility-expansion-breakout.md) |
-| 78 | Multi-Timeframe Trend Agreement | Trend / signal confirmation | 16 | 181 | No | — | [card](algorithms/multi-timeframe-trend-agreement.md) |
-| 79 | Opening Gap Continuation | Intraday momentum / event | 94 | 56 | Partial | N3 | [card](algorithms/opening-gap-continuation.md) |
-| 80 | Convertible Bond Arbitrage | Capital structure / relative value | 204 | 281 | No | — | [card](algorithms/convertible-bond-arbitrage.md) |
-| 81 | Capital Structure Arbitrage | Relative value / credit-equity | 205 | 130 | No | — | [card](algorithms/capital-structure-arbitrage.md) |
-| 82 | Closed-End Fund Discount Reversion | Relative value / fund discounts | 4 | 57 | No | — | [card](algorithms/closed-end-fund-discount-reversion.md) |
-| 83 | Triangular FX Arbitrage | Cross-market arbitrage | 55 | 94 | Research code | A7 | [card](algorithms/triangular-fx-arbitrage.md) |
-| 84 | Crypto Perpetual Funding-Rate Capture | Crypto derivatives / carry | 225 | 7420 | Research code | C-RJ2 | [card](algorithms/crypto-perpetual-funding-rate-capture.md) |
-| 85 | Spot-Perpetual Basis Arbitrage | Crypto / basis | 56 | 132 | Research code | C-RJ2 | [card](algorithms/spot-perpetual-basis-arbitrage.md) |
-| 86 | Yield Curve Steepener / Flattener | Fixed income / macro relative value | 235 | 236 | No | — | [card](algorithms/yield-curve-steepener-flattener.md) |
-| 87 | Option Dispersion Trading | Options volatility relative value | 98 | 257 | No | — | [card](algorithms/option-dispersion-trading.md) |
-| 88 | Distributionally Robust CVaR Allocation | Portfolio optimization / tail risk | 211 | 59 | No | — | [card](algorithms/distributionally-robust-cvar-allocation.md) |
-| 89 | Autoencoder Latent-Factor Statistical Arbitrage | ML / statistical arbitrage | 254 | 226 | No | — | [card](algorithms/autoencoder-latent-factor-statistical-arbitrage.md) |
-| 90 | Long-Term Industry Reversal with Valuation Confirmation | Industry / sector rotation / long-horizon contrarian | 39 | 50 | No | — | [card](algorithms/long-term-industry-reversal-with-valuation-confirmation.md) |
-| 91 | iNAV Dislocation ETF Arbitrage | Relative value / ETF arbitrage | 262 | 2827 | Partial | C-RJ6 | [card](algorithms/inav-dislocation-etf-arbitrage.md) |
-| 92 | FED OTC Liquidity Sweep & Reverse Repo Arbitrage | Macro / Fixed Income relative value | 170 | 227 | No | — | [card](algorithms/fed-otc-liquidity-sweep-reverse-repo-arbitrage.md) |
-| 93 | Cointegrated Triplet Basket Statistical Arbitrage | Statistical arbitrage / Quantitative equity | 158 | 251 | No | — | [card](algorithms/cointegrated-triplet-basket-statistical-arbitrage.md) |
-| 94 | Dynamic Copula-GARCH Multivariate Pair Trading | Statistical arbitrage / Econometrics | 291 | 9358 | No | — | [card](algorithms/dynamic-copula-garch-multivariate-pair-trading.md) |
-| 95 | Asymmetric Tail-Risk Parity Allocation | Portfolio construction / Risk parity | 8 | 141 | No | — | [card](algorithms/asymmetric-tail-risk-parity-allocation.md) |
-| 96 | Principal Component Analysis (PCA) Eigenportfolios Statistical Arbitrage | Statistical arbitrage / Factor modeling | 105 | 269 | Partial | C-MR2 | [card](algorithms/principal-component-analysis-pca-eigenportfolios-statistical-arbitrage.md) |
-| 97 | Wasserstein Distributionally Robust Statistical Arbitrage | Robust statistics / Statistical arbitrage | 278 | 960 | No | — | [card](algorithms/wasserstein-distributionally-robust-statistical-arbitrage.md) |
-| 98 | Adversarial Domain Generalization Cross-Market Momentum | Domain adaptation / Machine learning momentum | 175 | 25 | No | — | [card](algorithms/adversarial-domain-generalization-cross-market-momentum.md) |
-| 99 | Conformally Constrained Risk Parity Portfolio | Conformal prediction / Portfolio construction | 18 | 47 | No | — | [card](algorithms/conformally-constrained-risk-parity-portfolio.md) |
-| 100 | Causal Discovery Directed Acyclic Graph (DAG) Pair Selection | Causal inference / Statistical arbitrage | 324 | 6478 | No | — | [card](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md) |
+| 4 | Cross-Asset Carry Composite | Macro / carry | 68 | 131 | No | RK4 | [**researched**](algorithms/cross-asset-carry-composite.md) |
+| 5 | Value-Momentum Composite | Equity factor / multi-factor | 57 | 8 | No | RK5 | [**researched**](algorithms/value-momentum-composite.md) |
+| 6 | 12–1 Momentum (Skip-Month) | Trend / momentum | 19 | 11 | No | RK6 | [**researched**](algorithms/12-1-momentum-skip-month.md) |
+| 7 | Cross-Sectional Momentum | Trend / momentum | 81 | 51 | Partial | RK7, X3 | [**researched**](algorithms/cross-sectional-momentum.md) |
+| 8 | Commodity Momentum + Term Structure | Trend / carry | 25 | 14 | No | RK8 | [**researched**](algorithms/commodity-momentum-term-structure.md) |
+| 9 | Fama–French Five-Factor Model Portfolio | Factor / systematic equity | 88 | 252 | No | RK9 | [**researched**](algorithms/fama-french-five-factor-model-portfolio.md) |
+| 10 | State-Filtered Momentum | Factor / regime-aware | 35 | 17 | Partial | RK10 | [**researched**](algorithms/state-filtered-momentum.md) |
+| 11 | Quality Minus Junk (QMJ) | Equity factor / quality | 234 | 301 | No | RK11 | [**researched**](algorithms/quality-minus-junk-qmj.md) |
+| 12 | Quality / Profitability Factor | Factor / systematic equity | 110 | 245 | No | RK12 | [**researched**](algorithms/quality-profitability-factor.md) |
+| 13 | Gross Profitability Factor | Equity factor / fundamental | 167 | 106 | No | RK13 | [**researched**](algorithms/gross-profitability-factor.md) |
+| 14 | 52-Week High Momentum | Cross-sectional momentum | 15 | 5 | Partial | RK14 | [**researched**](algorithms/52-week-high-momentum.md) |
+| 15 | Conservative Investment Factor | Equity factor / fundamental | 73 | 7 | No | RK15 | [**researched**](algorithms/conservative-investment-factor.md) |
+| 16 | Residual Momentum | Factor / systematic equity | 34 | 29 | No | RK16 | [**researched**](algorithms/residual-momentum.md) |
+| 17 | 10-Month Moving-Average Risk Filter | Trend / risk filter | 27 | 15 | Yes | RK17, V16, C-E2 | [**researched**](algorithms/10-month-moving-average-risk-filter.md) |
+| 18 | Low-Volatility Equity | Factor / systematic equity | 13 | 35 | Partial | RK18, X2 | [**researched**](algorithms/low-volatility-equity.md) |
+| 19 | Sector Momentum Rotation | Trend / allocation | 23 | 1 | Partial | RK19, X3 | [**researched**](algorithms/sector-momentum-rotation.md) |
+| 20 | Bond Duration Momentum | Fixed income / trend | 69 | 84 | No | RK20 | [**researched**](algorithms/bond-duration-momentum.md) |
+| 21 | VIX-Regime Conditional Equity Exposure | Regime / volatility | 196 | 100 | Yes | RK21, V12 | [**researched**](algorithms/vix-regime-conditional-equity-exposure.md) |
+| 22 | Volatility Targeting / Risk Scaling | Risk management | 137 | 123 | Yes | RK22, S4, V18, S3 | [**researched**](algorithms/volatility-targeting-risk-scaling.md) |
+| 23 | Drawdown-Aware De-Risking Governor | Risk management | 138 | 126 | Yes | RK23, V11 | [**researched**](algorithms/drawdown-aware-de-risking-governor.md) |
+| 24 | ETF NAV / Creation-Redemption Arbitrage | Index / ETF relative value | 206 | 182 | Research code | RK24, C-RJ6 | [**researched**](algorithms/etf-nav-creation-redemption-arbitrage.md) |
+| 25 | Index Futures vs Cash Basis Arbitrage | Index arbitrage / basis | 141 | 2759 | No | RK25 | [**researched**](algorithms/index-futures-vs-cash-basis-arbitrage.md) |
+| 26 | Futures Cash-and-Carry Basis Trading | Basis / carry | 95 | 163 | Partial | RK26 | [**researched**](algorithms/futures-cash-and-carry-basis-trading.md) |
+| 27 | Shareholder Yield Factor | Equity factor / capital return | 75 | 58 | No | RK27 | [**researched**](algorithms/shareholder-yield-factor.md) |
+| 28 | Fixed-Income Carry and Roll-Down | Fixed income / relative value | 168 | 30 | No | RK28 | [**researched**](algorithms/fixed-income-carry-and-roll-down.md) |
+| 29 | Price + Earnings Momentum | Factor / event-driven | 112 | 20 | No | RK29 | [**researched**](algorithms/price-earnings-momentum.md) |
+| 30 | FX Carry Trade | Carry / macro | 38 | 101 | No | RK30 | [**researched**](algorithms/fx-carry-trade.md) |
+| 31 | Intangibles-Adjusted Value and Profitability Factor | Equity factor / fundamental valuation / intangible capital | 46 | 60 | No | RK31 | [**researched**](algorithms/intangibles-adjusted-value-and-profitability-factor.md) |
+| 32 | Commodity Futures Roll Yield | Carry / macro | 67 | 120 | No | RK32 | [**researched**](algorithms/commodity-futures-roll-yield.md) |
+| 33 | Market-Neutral Residual Mean Reversion | Statistical arbitrage | 53 | 129 | Research code | RK33, C-MR2 | [**researched**](algorithms/market-neutral-residual-mean-reversion.md) |
+| 34 | Futures Calendar-Spread Mean Reversion | Relative value / futures | 54 | 83 | No | RK34 | [**researched**](algorithms/futures-calendar-spread-mean-reversion.md) |
+| 35 | Net Stock Issuance Anomaly | Equity factor / corporate actions / issuance anomaly | 22 | 68 | No | RK35 | [**researched**](algorithms/net-stock-issuance-anomaly.md) |
+| 36 | Johansen Cointegration Basket Trading | Statistical arbitrage | 203 | 266 | No | RK36 | [**researched**](algorithms/johansen-cointegration-basket-trading.md) |
+| 37 | Cointegration-Based Pairs Trading | Statistical arbitrage | 191 | 262 | Research code | RK37, Q2 | [**researched**](algorithms/cointegration-based-pairs-trading.md) |
+| 38 | Chandelier Exit Trend Following | Trend / risk management | 50 | 55 | Partial | RK38, V10, Q8 | [**researched**](algorithms/chandelier-exit-trend-following.md) |
+| 39 | Merger Arbitrage | Event-driven / relative value | 140 | 235 | No | RK39 | [**researched**](algorithms/merger-arbitrage.md) |
+| 40 | Earnings Estimate Revision Momentum | Fundamental / event momentum | 74 | 21 | No | RK40 | [**researched**](algorithms/earnings-estimate-revision-momentum.md) |
+| 41 | Inflation-Regime Asset Rotation | Macro / tactical allocation | 144 | 37 | No | RK41 | [**researched**](algorithms/inflation-regime-asset-rotation.md) |
+| 42 | Cross-Asset Commodity Futures Term-Structure Carry & Roll Yield | Macro / Commodity carry | 160 | 139 | No | RK42 | [**researched**](algorithms/cross-asset-commodity-futures-term-structure-carry-roll-yield.md) |
+| 43 | Donchian / Turtle Channel Breakout | Trend / breakout | 107 | 261 | Research code | RK43, C-G5 | [**researched**](algorithms/donchian-turtle-channel-breakout.md) |
+| 44 | Supertrend ATR-Band Trend Following | Trend / technical | 49 | 4 | No | RK44 | [**researched**](algorithms/supertrend-atr-band-trend-following.md) |
+| 45 | Post-Earnings Announcement Drift (PEAD) | Event-driven / earnings | 5 | 18 | No | RK45, V6 | [**researched**](algorithms/post-earnings-announcement-drift-pead.md) |
+| 46 | MACD Signal-Line Crossover | Trend / momentum | 80 | 10 | Yes | RK46, Q1 | [**researched**](algorithms/macd-signal-line-crossover.md) |
+| 47 | Public Activist-Filing Event Strategy | Event-driven / public regulatory filings / shareholder activism | 62 | 90 | No | RK47 | [**researched**](algorithms/public-activist-filing-event-strategy.md) |
+| 48 | Book-to-Market Value | Factor / systematic equity | 109 | 158 | No | RK48 | [**researched**](algorithms/book-to-market-value.md) |
+| 49 | Betting Against Beta (BAB) | Factor / systematic equity | 90 | 233 | No | RK49 | [**researched**](algorithms/betting-against-beta-bab.md) |
+| 50 | Accrual Anomaly | Factor / systematic equity | 135 | 180 | No | RK50 | [**researched**](algorithms/accrual-anomaly.md) |
+| 51 | Asset-Growth Anomaly | Factor / systematic equity | 165 | 159 | No | RK51 | [**researched**](algorithms/asset-growth-anomaly.md) |
+| 52 | Dividend Yield / Dividend Growth | Factor / systematic equity | 136 | 52 | Partial | RK52 | [**researched**](algorithms/dividend-yield-dividend-growth.md) |
+| 53 | CVaR / Expected-Shortfall Optimization | Portfolio construction | 202 | 162 | No | RK53 | [**researched**](algorithms/cvar-expected-shortfall-optimization.md) |
+| 54 | Volatility-Managed Factor Portfolio | Equity factor / risk management | 61 | 31 | Partial | RK54, S4 | [**researched**](algorithms/volatility-managed-factor-portfolio.md) |
+| 55 | ADX-Filtered Trend Following | Trend / breakout | 20 | 12 | Partial | RK55, V15 | [**researched**](algorithms/adx-filtered-trend-following.md) |
+| 56 | Hierarchical Risk Parity (HRP) | Portfolio construction | 3 | 36 | Yes | RK56, A5, Q13 | [**researched**](algorithms/hierarchical-risk-parity-hrp.md) |
+| 57 | Low P/E Value Screen | Factor / systematic equity | 72 | 244 | No | RK57 | [**researched**](algorithms/low-p-e-value-screen.md) |
+| 58 | Small-Cap Size Premium | Factor / systematic equity | 89 | 81 | No | RK58 | [**researched**](algorithms/small-cap-size-premium.md) |
+| 59 | Liquidity Factor | Factor / systematic equity | 2 | 82 | Partial | RK59 | [**researched**](algorithms/liquidity-factor.md) |
+| 60 | Global Minimum-Variance Portfolio | Portfolio construction | 44 | 69 | Research code | RK60, Q13 | [**researched**](algorithms/global-minimum-variance-portfolio.md) |
+| 61 | Risk Parity / Equal Risk Contribution | Portfolio construction | 45 | 122 | Partial | RK61, A5 | [**researched**](algorithms/risk-parity-equal-risk-contribution.md) |
+| 62 | Dual Moving Average Crossover | Trend / momentum | 9 | 27 | Research code | RK62, Q1, C-E2 | [**researched**](algorithms/dual-moving-average-crossover.md) |
+| 63 | Black–Litterman Allocation | Portfolio construction | 43 | 67 | No | RK63 | [**researched**](algorithms/black-litterman-allocation.md) |
+| 64 | Triple EMA / Moving-Average Ribbon | Trend / momentum | 66 | 9 | Partial | RK64, V15 | [**researched**](algorithms/triple-ema-moving-average-ribbon.md) |
+| 65 | Cross-Sectional Factor Momentum Rotation | Factor investing / cross-sectional momentum / allocation | 31 | 125 | No | RK65 | [**researched**](algorithms/cross-sectional-factor-momentum-rotation.md) |
+| 66 | Maximum-Diversification Portfolio | Portfolio optimization | 60 | 42 | No | RK66 | [**researched**](algorithms/maximum-diversification-portfolio.md) |
+| 67 | ATR-Based Position Sizing | Position sizing | 48 | 124 | Research code | RK67, C-G5 | [**researched**](algorithms/atr-based-position-sizing.md) |
+| 68 | Dual Thrust Breakout | Trend / breakout | 82 | 217 | Research code | RK68, Q7, N1 | [**researched**](algorithms/dual-thrust-breakout.md) |
+| 69 | London Session Breakout | Trend / breakout | 132 | 219 | Research code | RK69, Q4, N2, N3 | [**researched**](algorithms/london-session-breakout.md) |
+| 70 | Parabolic SAR Trend / Stop | Trend / breakout | 83 | 13 | Yes | RK70, Q8 | [**researched**](algorithms/parabolic-sar-trend-stop.md) |
+| 71 | Heikin-Ashi Trend Filter | Trend / breakout | 84 | 3 | Yes | RK71, Q3 | [**researched**](algorithms/heikin-ashi-trend-filter.md) |
+| 72 | Distance-Based Pairs Trading | Statistical arbitrage | 134 | 220 | No | RK72 | [**researched**](algorithms/distance-based-pairs-trading.md) |
+| 73 | Kalman-Filter Dynamic-Hedge Pairs | Statistical arbitrage | 192 | 263 | Research code | RK73, Q2 | [**researched**](algorithms/kalman-filter-dynamic-hedge-pairs.md) |
+| 74 | Copula-Based Pairs Trading | Statistical arbitrage | 193 | 427 | No | RK74 | [**researched**](algorithms/copula-based-pairs-trading.md) |
+| 75 | Ornstein–Uhlenbeck Spread Trading | Statistical arbitrage | 32 | 117 | Research code | RK75, C-MR2, C-MR4 | [**researched**](algorithms/ornstein-uhlenbeck-spread-trading.md) |
+| 76 | PCA Residual Statistical Arbitrage | Statistical arbitrage | 194 | 264 | Partial | RK76, C-MR2 | [**researched**](algorithms/pca-residual-statistical-arbitrage.md) |
+| 77 | ATR Volatility-Expansion Breakout | Trend / volatility breakout | 14 | 91 | No | RK77, N1, N5 | [**researched**](algorithms/atr-volatility-expansion-breakout.md) |
+| 78 | Multi-Timeframe Trend Agreement | Trend / signal confirmation | 16 | 181 | No | RK78 | [**researched**](algorithms/multi-timeframe-trend-agreement.md) |
+| 79 | Opening Gap Continuation | Intraday momentum / event | 94 | 56 | Partial | RK79, N3, X1 | [**researched**](algorithms/opening-gap-continuation.md) |
+| 80 | Convertible Bond Arbitrage | Capital structure / relative value | 204 | 281 | No | RK80 | [**researched**](algorithms/convertible-bond-arbitrage.md) |
+| 81 | Capital Structure Arbitrage | Relative value / credit-equity | 205 | 130 | No | RK81 | [**researched**](algorithms/capital-structure-arbitrage.md) |
+| 82 | Closed-End Fund Discount Reversion | Relative value / fund discounts | 4 | 57 | No | RK82 | [**researched**](algorithms/closed-end-fund-discount-reversion.md) |
+| 83 | Triangular FX Arbitrage | Cross-market arbitrage | 55 | 94 | Research code | RK83, A7 | [**researched**](algorithms/triangular-fx-arbitrage.md) |
+| 84 | Crypto Perpetual Funding-Rate Capture | Crypto derivatives / carry | 225 | 7420 | Research code | RK84, C-RJ2 | [**researched**](algorithms/crypto-perpetual-funding-rate-capture.md) |
+| 85 | Spot-Perpetual Basis Arbitrage | Crypto / basis | 56 | 132 | Partial | RK85, C-RJ2 | [**researched**](algorithms/spot-perpetual-basis-arbitrage.md) |
+| 86 | Yield Curve Steepener / Flattener | Fixed income / macro relative value | 235 | 236 | No | RK86 | [**researched**](algorithms/yield-curve-steepener-flattener.md) |
+| 87 | Option Dispersion Trading | Options volatility relative value | 98 | 257 | No | RK87 | [**researched**](algorithms/option-dispersion-trading.md) |
+| 88 | Distributionally Robust CVaR Allocation | Portfolio optimization / tail risk | 211 | 59 | No | RK88 | [**researched**](algorithms/distributionally-robust-cvar-allocation.md) |
+| 89 | Autoencoder Latent-Factor Statistical Arbitrage | ML / statistical arbitrage | 254 | 226 | No | RK89 | [**researched**](algorithms/autoencoder-latent-factor-statistical-arbitrage.md) |
+| 90 | Long-Term Industry Reversal with Valuation Confirmation | Industry / sector rotation / long-horizon contrarian | 39 | 50 | No | RK90 | [**researched**](algorithms/long-term-industry-reversal-with-valuation-confirmation.md) |
+| 91 | iNAV Dislocation ETF Arbitrage | Relative value / ETF arbitrage | 262 | 2827 | Partial | RK91, C-RJ6 | [**researched**](algorithms/inav-dislocation-etf-arbitrage.md) |
+| 92 | FED OTC Liquidity Sweep & Reverse Repo Arbitrage | Macro / Fixed Income relative value | 170 | 227 | No | RK92 | [**researched**](algorithms/fed-otc-liquidity-sweep-reverse-repo-arbitrage.md) |
+| 93 | Cointegrated Triplet Basket Statistical Arbitrage | Statistical arbitrage / Quantitative equity | 158 | 251 | No | RK93 | [**researched**](algorithms/cointegrated-triplet-basket-statistical-arbitrage.md) |
+| 94 | Dynamic Copula-GARCH Multivariate Pair Trading | Statistical arbitrage / Econometrics | 291 | 9358 | No | RK94 | [**researched**](algorithms/dynamic-copula-garch-multivariate-pair-trading.md) |
+| 95 | Asymmetric Tail-Risk Parity Allocation | Portfolio construction / Risk parity | 8 | 141 | No | RK95 | [**researched**](algorithms/asymmetric-tail-risk-parity-allocation.md) |
+| 96 | Principal Component Analysis (PCA) Eigenportfolios Statistical Arbitrage | Statistical arbitrage / Factor modeling | 105 | 269 | Partial | RK96, C-MR2 | [**researched**](algorithms/principal-component-analysis-pca-eigenportfolios-statistical-arbitrage.md) |
+| 97 | Wasserstein Distributionally Robust Statistical Arbitrage | Robust statistics / Statistical arbitrage | 278 | 960 | No | RK97 | [**researched**](algorithms/wasserstein-distributionally-robust-statistical-arbitrage.md) |
+| 98 | Adversarial Domain Generalization Cross-Market Momentum | Domain adaptation / Machine learning momentum | 175 | 25 | No | RK98 | [**researched**](algorithms/adversarial-domain-generalization-cross-market-momentum.md) |
+| 99 | Conformally Constrained Risk Parity Portfolio | Conformal prediction / Portfolio construction | 18 | 47 | Partial | RK99 | [**researched**](algorithms/conformally-constrained-risk-parity-portfolio.md) |
+| 100 | Causal Discovery Directed Acyclic Graph (DAG) Pair Selection | Causal inference / Statistical arbitrage | 324 | 6478 | No | RK100 | [**researched**](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md) |
 | 101 | Dynamic Copula-EVT Tail Risk Relative Value Arbitrage | Extreme value theory / Copulas / Relative value | 355 | 10445 | No | — | [card](algorithms/dynamic-copula-evt-tail-risk-relative-value-arbitrage.md) |
 | 102 | Hidden Markov Model Regime Switching | Regime / machine learning | 290 | 127 | Research code | C-R3 | [card](algorithms/hidden-markov-model-regime-switching.md) |
 | 103 | Hurst-Exponent Trend / Mean-Reversion Regime Gate | Regime filter | 52 | 93 | Research code | C-MR4 | [card](algorithms/hurst-exponent-trend-mean-reversion-regime-gate.md) |
