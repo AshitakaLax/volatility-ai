@@ -14,7 +14,7 @@ code for every remaining entry, in-scope or not. Section 8C (2026-10-27)
 adds a ranked list of 14,225 algorithms from a CSV import, each with
 whether it is implemented here and a link to its documentation in
 [`docs/algorithms/`](algorithms/README.md); the top 100 (RK1–RK100) are
-researched, and §8C lists the ones whose sources need your input.*
+researched, and §8C lists the research gaps that remain.*
 
 ---
 
@@ -283,7 +283,7 @@ entries also have reference code in `research/catalog/`, unwired.
 | RK99 | Conformally constrained risk parity | ranked list #99; Kato 2024; Schmitt 2026 | Portfolio construction | ⏳ | Low |
 | RK100 | Causal-discovery (DAG) pair selection | ranked list #100; Stübinger 2019 | Causal inference | ⛔ | None |
 
-The remaining 14,125 rows of the ranked list are tabled in §8C, not here. Ranks 1–100 are researched; the ones whose sources could not be found or checked are listed in §8C under "Needs your input".
+The remaining 14,125 rows of the ranked list are tabled in §8C, not here. Ranks 1–100 are researched; the ones whose sources could not be found or checked are listed in §8C under "Research gaps".
 
 ---
 
@@ -2238,45 +2238,40 @@ Select pairs or leader–follower trades from a causal graph (PC, NOTEARS, PCMCI
 * **Built:** Nothing.
 * **Details:** [docs/algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md)
 
-### Needs your input
+### Research gaps
 
 Ranks 4–100 were researched from what web search could reach (full texts
 could not be opened; each page says what was checked). On 2026-10-27 the
-gaps were checked against a Gemini answer the owner supplied. Its
-citations were verified before use, which resolved RK34, RK40/RK45 and
-RK54 and added sources to several other pages; its performance claims
-that named no study, and citations that turned out to be about
-something else, were not used.
+remaining gaps were checked again against a Gemini answer the owner
+supplied. Its citations were verified before use, which resolved RK34,
+RK40/RK45 and RK54 and added sources to several other pages; its
+performance claims that named no study, and citations that turned out to
+be about something else, were not used. What remains:
 
-**A reference still to identify.** A specific source is cited or likely
-exists but could not be confirmed:
+| Status | Meaning |
+|---|---|
+| Needs more info | A specific reference is cited or likely exists, but it could not be identified or read. |
+| Unable to find more details | Neither search found a published evaluation; the algorithm is probably untested. |
 
-| ID | Algorithm | What is missing |
-|---|---|---|
-| RK31 | [Intangibles-Adjusted Value and Profitability Factor](algorithms/intangibles-adjusted-value-and-profitability-factor.md) | The CSV's second reference, doi 10.1111/fima.12505. Gemini attributes it to Ozdagli & Ryfe, "Asset Manager Commonality and Portfolio Similarity"; a Dallas Fed working paper of that title exists, but the DOI match is unconfirmed, and if right it is unrelated to intangibles. |
-| RK44 | [Supertrend ATR-Band Trend Following](algorithms/supertrend-atr-band-trend-following.md) | A primary source by Olivier Seban. His book *Tout le monde mérite d'être riche* exists, but nothing confirms it describes Supertrend. |
-| RK68 | [Dual Thrust Breakout](algorithms/dual-thrust-breakout.md) | Michael Chalek's original publication, and any academic test. |
-| RK93 | [Cointegrated Triplet Basket Statistical Arbitrage](algorithms/cointegrated-triplet-basket-statistical-arbitrage.md) | The results of Galenko, Popova & Popova (2012), *Journal of Alternative Investments* 15(1), 85–97, which could not be read; no equity-triplet study found. |
-| RK97 | [Wasserstein Distributionally Robust Statistical Arbitrage](algorithms/wasserstein-distributionally-robust-statistical-arbitrage.md) | The CSV's arXiv 1908.01234 (Gemini says it is a cell-mechanics paper; unconfirmed); no Wasserstein-DRO stat-arb paper found. |
-
-**No published evaluation found.** Neither search found a study, so
-these are probably untested; a study you already know of is the useful
-input:
-
-| ID | Algorithm | What is missing |
-|---|---|---|
-| RK38 | [Chandelier Exit Trend Following](algorithms/chandelier-exit-trend-following.md) | A performance study. LeBeau's original Traders Club write-up is not online. |
-| RK64 | [Triple EMA / Moving-Average Ribbon](algorithms/triple-ema-moving-average-ribbon.md) | A test of ribbon or alignment rules. Brock, Lakonishok & LeBaron (1992) test single and dual moving averages, not ribbons. |
-| RK69 | [London Session Breakout](algorithms/london-session-breakout.md) | A test of the Asian-range breakout. Gemini's citation (Chaboud et al. 2014) is about algorithmic trading and FX efficiency. |
-| RK77 | [ATR Volatility-Expansion Breakout](algorithms/atr-volatility-expansion-breakout.md) | A test of Williams' volatility breakout or an ATR-confirmed breakout. |
-| RK78 | [Multi-Timeframe Trend Agreement](algorithms/multi-timeframe-trend-agreement.md) | A test of the all-horizons-must-agree form (Elder's Triple Screen, *Futures*, 1986). |
-| RK86 | [Yield Curve Steepener / Flattener](algorithms/yield-curve-steepener-flattener.md) | A direct test of a DV01-neutral slope rule; forward-rate predictability is documented in sample only (Thornton & Valente 2012). |
-| RK92 | [FED OTC Liquidity Sweep & Reverse Repo Arbitrage](algorithms/fed-otc-liquidity-sweep-reverse-repo-arbitrage.md) | Any strategy study; "OTC liquidity sweep" appears to be informal wording, so the rule is undefined. |
-| RK94 | [Dynamic Copula-GARCH Multivariate Pair Trading](algorithms/dynamic-copula-garch-multivariate-pair-trading.md) | A copula-GARCH pairs study with reported returns. |
-| RK95 | [Asymmetric Tail-Risk Parity Allocation](algorithms/asymmetric-tail-risk-parity-allocation.md) | Semivariance risk parity, or an out-of-sample comparison of tail-risk with variance risk parity. |
-| RK98 | [Adversarial Domain Generalization Cross-Market Momentum](algorithms/adversarial-domain-generalization-cross-market-momentum.md) | Any application of adversarial domain generalisation to momentum. |
-| RK99 | [Conformally Constrained Risk Parity Portfolio](algorithms/conformally-constrained-risk-parity-portfolio.md) | Any method combining equal risk contribution with conformal bounds. |
-| RK100 | [Causal Discovery Directed Acyclic Graph (DAG) Pair Selection](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md) | Any study using PC or NOTEARS causal discovery for pair selection. |
+| ID | Algorithm | Status | What is missing |
+|---|---|---|---|
+| RK31 | [Intangibles-Adjusted Value and Profitability Factor](algorithms/intangibles-adjusted-value-and-profitability-factor.md) | Needs more info | The CSV's second reference, doi 10.1111/fima.12505. Gemini attributes it to Ozdagli & Ryfe, "Asset Manager Commonality and Portfolio Similarity"; a Dallas Fed working paper of that title exists, but the DOI match is unconfirmed, and if right it is unrelated to intangibles. |
+| RK38 | [Chandelier Exit Trend Following](algorithms/chandelier-exit-trend-following.md) | Unable to find more details | A performance study. LeBeau's original Traders Club write-up is not online. |
+| RK44 | [Supertrend ATR-Band Trend Following](algorithms/supertrend-atr-band-trend-following.md) | Needs more info | A primary source by Olivier Seban. His book *Tout le monde mérite d'être riche* exists, but nothing confirms it describes Supertrend. |
+| RK64 | [Triple EMA / Moving-Average Ribbon](algorithms/triple-ema-moving-average-ribbon.md) | Unable to find more details | A test of ribbon or alignment rules. Brock, Lakonishok & LeBaron (1992) test single and dual moving averages, not ribbons. |
+| RK68 | [Dual Thrust Breakout](algorithms/dual-thrust-breakout.md) | Needs more info | Michael Chalek's original publication, and any academic test. |
+| RK69 | [London Session Breakout](algorithms/london-session-breakout.md) | Unable to find more details | A test of the Asian-range breakout. Gemini's citation (Chaboud et al. 2014) is about algorithmic trading and FX efficiency. |
+| RK77 | [ATR Volatility-Expansion Breakout](algorithms/atr-volatility-expansion-breakout.md) | Unable to find more details | A test of Williams' volatility breakout or an ATR-confirmed breakout. |
+| RK78 | [Multi-Timeframe Trend Agreement](algorithms/multi-timeframe-trend-agreement.md) | Unable to find more details | A test of the all-horizons-must-agree form (Elder's Triple Screen, *Futures*, 1986). |
+| RK86 | [Yield Curve Steepener / Flattener](algorithms/yield-curve-steepener-flattener.md) | Unable to find more details | A direct test of a DV01-neutral slope rule; forward-rate predictability is documented in sample only (Thornton & Valente 2012). |
+| RK92 | [FED OTC Liquidity Sweep & Reverse Repo Arbitrage](algorithms/fed-otc-liquidity-sweep-reverse-repo-arbitrage.md) | Unable to find more details | Any strategy study; "OTC liquidity sweep" appears to be informal wording, so the rule is undefined. |
+| RK93 | [Cointegrated Triplet Basket Statistical Arbitrage](algorithms/cointegrated-triplet-basket-statistical-arbitrage.md) | Needs more info | The results of Galenko, Popova & Popova (2012), *Journal of Alternative Investments* 15(1), 85–97, which could not be read; no equity-triplet study found. |
+| RK94 | [Dynamic Copula-GARCH Multivariate Pair Trading](algorithms/dynamic-copula-garch-multivariate-pair-trading.md) | Unable to find more details | A copula-GARCH pairs study with reported returns. |
+| RK95 | [Asymmetric Tail-Risk Parity Allocation](algorithms/asymmetric-tail-risk-parity-allocation.md) | Unable to find more details | Semivariance risk parity, or an out-of-sample comparison of tail-risk with variance risk parity. |
+| RK97 | [Wasserstein Distributionally Robust Statistical Arbitrage](algorithms/wasserstein-distributionally-robust-statistical-arbitrage.md) | Needs more info | The CSV's arXiv 1908.01234 (Gemini says it is a cell-mechanics paper; unconfirmed); no Wasserstein-DRO stat-arb paper found. |
+| RK98 | [Adversarial Domain Generalization Cross-Market Momentum](algorithms/adversarial-domain-generalization-cross-market-momentum.md) | Unable to find more details | Any application of adversarial domain generalisation to momentum. |
+| RK99 | [Conformally Constrained Risk Parity Portfolio](algorithms/conformally-constrained-risk-parity-portfolio.md) | Unable to find more details | Any method combining equal risk contribution with conformal bounds. |
+| RK100 | [Causal Discovery Directed Acyclic Graph (DAG) Pair Selection](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md) | Unable to find more details | Any study using PC or NOTEARS causal discovery for pair selection. |
 
 ### The list
 

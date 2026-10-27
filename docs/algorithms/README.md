@@ -122,13 +122,17 @@ they could be checked (full texts could not be opened from the research environm
 | RK99 | [Conformally Constrained Risk Parity Portfolio](conformally-constrained-risk-parity-portfolio.md) | 99 | Partial |
 | RK100 | [Causal Discovery Directed Acyclic Graph (DAG) Pair Selection](causal-discovery-directed-acyclic-graph-dag-pair-selection.md) | 100 | No |
 
-### Needs your input
+### Research gaps
 
-RK31, RK44, RK68, RK93 and RK97 still lack an identified reference;
-RK38, RK64, RK69, RK77, RK78, RK86, RK92, RK94, RK95, RK98, RK99 and
-RK100 have no published evaluation that two searches could find.
-[The ledger's list](../algorithm_ledger.md#needs-your-input) says what
-each one lacks.
+**Needs more info** (a reference is cited or likely exists but could not
+be identified or read): RK31, RK44, RK68, RK93, RK97.
+
+**Unable to find more details** (no published evaluation found by two
+searches): RK38, RK64, RK69, RK77, RK78, RK86, RK92, RK94, RK95, RK98,
+RK99, RK100.
+
+[The ledger's table](../algorithm_ledger.md#research-gaps) says what each
+one lacks.
 
 ## Implementation status values
 
