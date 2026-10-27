@@ -610,6 +610,24 @@ ENTRIES: tuple[Entry, ...] = (
         "❌",
         note="No algorithm with a verifiable definition behind either; recorded only.",
     ),
+    # ---- section 8C: ranked-list entries promoted to ledger IDs; the rest of
+    # the list is tracked by docs/algorithms/implementation_status.csv
+    _e(
+        "RK1",
+        "Time-series momentum (TSMOM)",
+        "⛔ (as published) · ⏳ (long-or-cash)",
+        f"{_RC}.trend_following:tsmom_weights",
+    ),
+    _e(
+        "RK2",
+        "Volatility-scaled trend following",
+        "⛔ (as published) · ⏳ (long-or-cash)",
+        f"{_RC}.trend_following:tsmom_weights",
+        f"{_RC}.trend_following:pytrendfollow_position",
+        f"{_RS}.gated_local_reference_sizing:GatedLocalReferenceSizing",
+        f"{_RS}.volatility_estimators:SessionVolatility",
+    ),
+    _e("RK3", "Dual momentum (absolute + relative)", "🧪", "tools/rotation.py"),
 )
 
 REGISTRY: dict[str, Entry] = {e.ledger_id: e for e in ENTRIES}

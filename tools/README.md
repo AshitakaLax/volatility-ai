@@ -84,6 +84,7 @@ the same machinery — see `cli.py backup --help` / `cli.py restore --help`.
 | `pull_extended_history.py` | Extended-hours minute datasets under `data/`, year by year. |
 | `export_strategy_curves.py` | One JSON blob of every strategy measured here, for the dashboard and the artifact. |
 | `simulate_ursp.py` | `data/simulated/URSP_simulated_daily.csv` (and, with `--minutes`, warehouse-format `URSP_simulated_1Min.csv`): a simulated URSP (2× daily S&P 500 Equal Weight) from RSP since 2003 — 2× RSP's total return less financing (fed funds + a spread calibrated to the real fund) and the 0.95% fee — spliced with the real fund from 2025-08-27. Makes network requests (Yahoo, FRED). See `docs/research/ultimate-ursp.md`. |
+| `build_algorithm_ledger.py` | The ranked algorithm list: `docs/algorithm_ledger.md` §8C's tables and the generated pages under `docs/algorithms/`, from the committed CSV import and `docs/algorithms/implementation_status.csv`. Never touches a hand-written (researched) page. `--check` exits 1 when anything is stale; `tools/tests/test_build_algorithm_ledger.py` runs the same check. See `docs/algorithms/README.md`. |
 | `build_warehouse.py` | `warehouse/` — two DuckDB catalogs plus ZSTD Parquet lakes for bars (`ticker/year`), macro series (`provider/series_key`) and trade executions (`simulation_id`). Needs `requirements-warehouse.txt`; prints an install hint and exits 2 without it, so a core-only checkout is unaffected. See below. |
 
 ### The warehouse
