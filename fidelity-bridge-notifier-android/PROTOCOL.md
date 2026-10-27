@@ -90,9 +90,9 @@ network.
     the bridge never keeps it.
   - `kind`: `buy`, `sell`, `order_update`, `order_problem`, `engine`,
     `session`, `readiness`, `fidelity_signin`, `account_check`, `connected`,
-    `disconnected`, `trading_switch`, `refused`, `bridge`, or `test`. The
-    vectors' `eventKinds` is the list both sides check. Unknown kinds may
-    come later: show them.
+    `disconnected`, `trading_switch`, `refused`, `bridge`, `window`, or
+    `test`. The vectors' `eventKinds` is the list both sides check. Unknown
+    kinds may come later: show them.
   - `severity`: `info`, `warning` or `critical`. `at` is ISO-8601 UTC.
     `data` carries the details (an order's `confNum`, `symbol`, `side`,
     `qty`, `filledQty`, `avgPrice`, …).

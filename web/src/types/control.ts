@@ -59,6 +59,70 @@ export interface Decision {
   /** What stops a buy, in the loop's words; null when nothing does. */
   blocked: string | null;
   strategy: Diagnostics | null;
+  /** On its venue's windows (live.sessions): the window this tick is in
+   * (null between them), the next one, the dollars resting buys hold back,
+   * and why the second data source was not used, when it was not. */
+  window?: TradingWindow | null;
+  next_window?: TradingWindow | null;
+  reserved?: number;
+  secondary_feed?: string;
+}
+
+/** One of a venue's trading windows (engine/core/venue_sessions.py). */
+export interface TradingWindow {
+  session: "pre_market" | "regular" | "after_hours";
+  /** ISO times, Eastern. */
+  start: string;
+  end: string;
+}
+
+/** The engine's own readiness, apart from the broker's (cli.py _EngineFirst). */
+export interface EngineStatus {
+  state: "starting" | "warming_up" | "ready" | "trading";
+  detail: string;
+  since: string;
+}
+
+/** How a trading window went (the loop's audit when it ended). */
+export interface WindowSummary {
+  day: string;
+  session: TradingWindow["session"];
+  start: string;
+  end: string;
+  at: string;
+  orders: number;
+  filled_qty: number;
+  avg_price: number | null;
+  /** How the orders ended: filled, cancelled, expired, rejected -> count. */
+  ended: Record<string, number>;
+  /** The venue's position against the ledger's, or why it was not checked. */
+  position?: { venue: number; ledger: number } | string;
+  /** What disagreed; buys are halted for reconciliation when present. */
+  problem?: string;
+}
+
+/** One moment of an order's life (the trader's orders journal). */
+export interface OrderEvent {
+  /** Epoch seconds. */
+  t: number;
+  order: string;
+  kind: "buy" | "sell";
+  event:
+    | "placed"
+    | "partially_filled"
+    | "filled"
+    | "cancel_requested"
+    | "cancelled"
+    | "expired"
+    | "rejected";
+  session: TradingWindow["session"] | null;
+  limit: number | null;
+  qty: number | null;
+  filled_qty: number;
+  avg_price: number | null;
+  reason: string | null;
+  /** A cancel's cause: its time-to-live, or its window's end. */
+  why?: "ttl" | "session_end";
 }
 
 /** While an override trades, the CONFIG FILE's algorithm fed the same bars:
@@ -152,6 +216,10 @@ export interface TraderStatus {
    * file's name and a one-way tag of its path. */
   deployment?: string | null;
   ledger?: string | null;
+  /** On its venue's windows (live.sessions): the engine's own readiness,
+   * apart from the broker's, and how the last trading window went. */
+  engine?: EngineStatus | null;
+  last_window?: WindowSummary | null;
   /** True when no report arrived in three heartbeats: state is then "not_running". */
   stale: boolean;
 }

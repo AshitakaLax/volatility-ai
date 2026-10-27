@@ -81,7 +81,9 @@ EVENT_KINDS: dict[str, str] = {
     "trading_switch": "the extension's Allow trading switch was turned on or off",
     "refused": "a connection was turned away: an address not allowed, a wrong key",
     "bridge": "the bridge cannot listen, listens again, or restarts with new settings",
+    "window": "a trading window closed: its orders, what filled, and anything that disagrees",
 }
+_WINDOW_NAMES = {"pre_market": "Pre-market", "regular": "Regular", "after_hours": "After-hours"}
 #: All but the routine middle of an order's life.
 DEFAULT_EVENTS = tuple(kind for kind in EVENT_KINDS if kind != "order_update")
 SEVERITIES = ("info", "warning", "critical")
@@ -233,6 +235,7 @@ class Notifications:
         self._not_ready_since: float | None = None
         self._announced: str | None = None  # the blocking item readiness last announced
         self._warned_opens: set[str] = set()
+        self._windows: set[str] = set()  # trading windows already summed up
 
     @property
     def events(self) -> tuple[str, ...]:
@@ -457,6 +460,9 @@ class Notifications:
         between sessions, or `serve`) is not an engine's, and is skipped."""
         if status.get("mode") == "bridge":
             return None
+        window = status.get("lastWindow")
+        if isinstance(window, dict):
+            self.window_summary(window)
         state = str(status.get("state") or "unknown")
         with self._said:
             previous, self._engine_state = self._engine_state, state
@@ -483,6 +489,43 @@ class Notifications:
                 "mode": status.get("mode"),
                 "symbol": status.get("symbol"),
             },
+        )
+
+    def window_summary(self, summary: dict) -> Notification | None:
+        """A trading window's audit, from the engine's status (lastWindow):
+        once per window, and only when it placed an order or found a
+        problem. A problem -- an order still open after its window, a
+        position the ledger does not have -- halts new buys, so it is
+        critical."""
+        key = f"{summary.get('day')}|{summary.get('session')}"
+        with self._said:
+            if key in self._windows:
+                return None
+            self._windows.add(key)
+        orders = int(summary.get("orders") or 0)
+        problem = summary.get("problem")
+        if not orders and not problem:
+            return None
+        session = str(summary.get("session") or "")
+        name = _WINDOW_NAMES.get(session, session or "Trading")
+        filled = float(summary.get("filled_qty") or 0.0)
+        avg = summary.get("avg_price")
+        parts = [f"{orders} order{'' if orders == 1 else 's'}"]
+        if filled > 0 and isinstance(avg, int | float):
+            parts.append(f"{filled:g} filled at ${avg:.2f}")
+        elif orders:
+            parts.append("nothing filled")
+        ended = summary.get("ended") or {}
+        others = [f"{count} {how}" for how, count in ended.items() if how != "filled"]
+        body = ", ".join(parts) + (f"; {', '.join(others)}" if others else "") + "."
+        if problem:
+            body += f" {problem}"
+        return self.publish(
+            "window",
+            f"{name} window {'needs a look' if problem else 'closed'}",
+            body,
+            severity="critical" if problem else "info",
+            data=dict(summary),
         )
 
     def order_report(

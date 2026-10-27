@@ -82,6 +82,23 @@ def test_a_silent_extension_is_not_ready():
     assert verdict["blocking"] == "extension" and "silent" in verdict["summary"]
 
 
+def test_another_browser_turned_away_while_connected_is_a_warning_naming_it():
+    """10-26: a second browser kept knocking. It no longer takes the
+    connection, but it would whenever this one stopped answering."""
+    knocking = {"at": _iso(20), "client": "172.16.0.134", "reason": "the extension at ..."}
+    verdict = _verdict(_report(last_refused=knocking))
+    assert verdict["ready"] is True, "a warning, never a stop"
+    item = next(i for i in verdict["items"] if i["id"] == "extension")
+    assert item["state"] == "warn"
+    assert "connected from 172.16.0.130" in item["detail"] and "172.16.0.134" in item["detail"]
+    assert "172.16.0.134" in item["fix"]
+
+    old = {**knocking, "at": _iso(600)}
+    assert _state(_verdict(_report(last_refused=old)), "extension") == "ok"
+    itself = {**knocking, "client": "172.16.0.130"}
+    assert _state(_verdict(_report(last_refused=itself)), "extension") == "ok"
+
+
 def test_signed_out_or_no_tab_blocks_but_another_fidelity_page_only_warns():
     out = _verdict(_report(fidelity_tab={"state": "signed_out", "url": "x", "since": _iso(1)}))
     assert out["blocking"] == "fidelity" and "signed you out" in out["summary"]
@@ -100,6 +117,21 @@ def test_allow_trading_off_blocks_real_orders_but_not_a_preview_deployment():
 def test_an_old_extension_is_a_warning_not_a_stop():
     verdict = _verdict(_report(version="0.2.0", advice="it is older than 0.3.0"))
     assert verdict["ready"] is True and _state(verdict, "version") == "warn"
+
+
+def test_read_before_trading_an_unchecked_connection_is_not_ready():
+    """10-26: the tab's address said signed in, the account could not be
+    read, and the trader started on it anyway. With check_first (a session
+    open or near, nothing attached) the account must be read first."""
+    verdict = _verdict(check_first=True)
+    assert verdict["blocking"] == "account" and "reading it now" in verdict["summary"]
+    passed = {"at": _iso(1), "ok": True, "detail": "0 order(s) listed"}
+    assert _verdict(check=passed, check_first=True)["ready"] is True
+    stale = {"at": _iso(7200), "ok": True, "detail": "before it reconnected"}
+    assert _verdict(check=stale, check_first=True)["blocking"] == "account"
+    gone = _verdict(_report(connected=False), check_first=True)
+    assert gone["blocking"] == "extension", "the first thing to fix is still the extension"
+    assert _verdict()["ready"] is True, "otherwise an unchecked account never blocks"
 
 
 def test_a_failed_check_since_the_extension_connected_blocks():

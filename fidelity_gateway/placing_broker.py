@@ -247,8 +247,13 @@ class FidelityPlacingBroker(FidelityBroker):
         qty: float,
         limit_price: float,
         decision_id: str,
+        session: str | None = None,
     ) -> FidelityOrder:
         """Preview, journal the confNum, then commit. A REAL order.
+
+        `session` is the window it is for (build_ticket): outside the
+        regular session it is refused, before anything is sent, until that
+        window's ticket is known.
 
         The sequence is not negotiable and is the whole design:
         preview mints the id -> the id is made durable -> only then is
@@ -281,8 +286,8 @@ class FidelityPlacingBroker(FidelityBroker):
         #    without the decision_id so the map is written only once the
         #    journal holds the mapping: a failed journal write must not
         #    leave a record of an order that was never sent.
-        conf = self._preview(symbol, side, qty, limit_price, None).id
-        ticket = self.build_ticket(symbol, side, qty, limit_price)
+        conf = self._preview(symbol, side, qty, limit_price, None, session).id
+        ticket = self.build_ticket(symbol, side, qty, limit_price, session)
 
         # 2. JOURNAL, before anything is committed.
         self._journal.record(
@@ -294,6 +299,7 @@ class FidelityPlacingBroker(FidelityBroker):
                 "qty": float(qty),
                 "limit_price": float(limit_price),
                 "account": self._account,
+                "session": session or "regular",
             },
         )
         self._decision_to_conf[decision_id] = conf
@@ -400,6 +406,23 @@ class FidelityPlacingBroker(FidelityBroker):
         logger.warning("CANCEL ACCEPTED for order %s", conf_num)
         return response if isinstance(response, dict) else {"response": response}
 
+    def cancel_order(self, client_order_id: str) -> bool:
+        """Cancel one of OUR orders by its decision_id -- the trading loop's
+        call, for an order past its time-to-live or its window's end, and a
+        signal exit the market moved through (the same surface as
+        AlpacaBroker.cancel_order). Resolved through the journal's
+        decision -> confNum map; False when it holds no such decision.
+
+        Done means the venue reports the order terminal, which the loop's
+        next poll reads -- not this call returning. An unclear cancel raises
+        AmbiguousSubmissionError (cancel()); the order stays tracked and is
+        asked about again."""
+        conf = self._decision_to_conf.get(client_order_id)
+        if conf is None:
+            return False
+        self.cancel(conf)
+        return True
+
     def _assert_committed_account(self, response: Any, expected: str, what: str) -> None:
         """The account readback, for the reply to a COMMIT.
 
@@ -427,6 +450,7 @@ class FidelityPlacingBroker(FidelityBroker):
         trade_value: float,
         client_order_id: str | None = None,
         limit_price: float | None = None,
+        session: str | None = None,
     ) -> FidelityOrder:
         """Place a buy. limit_price is the caller's target buy price;
         without one a fresh quote is used. Same signature as the preview
@@ -447,7 +471,7 @@ class FidelityPlacingBroker(FidelityBroker):
             raise ValueError(
                 f"${trade_value:.2f} does not buy one whole share of {symbol} at ${price:.2f}."
             )
-        return self.place(symbol, "buy", qty, price, client_order_id)
+        return self.place(symbol, "buy", qty, price, client_order_id, session)
 
     def submit_sell(
         self,
@@ -455,6 +479,7 @@ class FidelityPlacingBroker(FidelityBroker):
         qty: float,
         target_price: float,
         client_order_id: str | None = None,
+        session: str | None = None,
     ) -> FidelityOrder:
         if qty <= 0:
             raise ValueError(f"qty must be positive, got {qty}")
@@ -463,7 +488,7 @@ class FidelityPlacingBroker(FidelityBroker):
                 "client_order_id is required when placing a real order: it is the "
                 "decision_id the journal and reconciliation key on."
             )
-        return self.place(symbol, "sell", qty, target_price, client_order_id)
+        return self.place(symbol, "sell", qty, target_price, client_order_id, session)
 
 
 class FileConfNumJournal:

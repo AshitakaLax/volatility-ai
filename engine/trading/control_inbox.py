@@ -47,7 +47,9 @@ and its trades from, because nothing else has them: the warehouse's bars are
 not the feed the loop trades on and lag it by days, and the ledger keeps lots
 but never what a sale fetched (record_lot_shares stores no price). Appended,
 not renamed into place: a reader skips the one line that may be half
-written.
+written. Beside them: each order's life (placed, filled, cancelled, expired,
+and why -- the proof a limit order outside the regular session filled or did
+not), and every quote a second data source gave.
 """
 
 from __future__ import annotations
@@ -108,7 +110,9 @@ _LOCK = threading.Lock()
 
 # The journals (module docstring), and how many sessions -- Eastern dates --
 # each keeps. "events" is the bridge host's: connects, disconnects, sign-outs.
-JOURNALS = ("bars", "fills", "events")
+# "orders" is each order's life (placed, filled, cancelled, expired, and why);
+# "quotes" every quote read from a second source, for research on the feeds.
+JOURNALS = ("bars", "fills", "events", "orders", "quotes")
 JOURNAL_SESSIONS = 10
 _KEEP = {"events": 14}
 _JOURNAL_FILE = re.compile(r"^\d{4}-\d{2}-\d{2}\.jsonl$")
@@ -432,6 +436,25 @@ class ControlInbox:
         """Append one event ({"t": epoch seconds, "kind", "detail", ...}) --
         the bridge host's account of its connection."""
         return self._append("events", [event])
+
+    def record_order(self, event: dict) -> int:
+        """Append one moment of an order's life ({"t": epoch seconds, "order",
+        "event": placed | filled | partially_filled | cancel_requested |
+        cancelled | expired | rejected, ...})."""
+        return self._append("orders", [event])
+
+    def record_quote(self, quote: dict) -> int:
+        """Append one quote read from a second source ({"t", "bid", "ask",
+        "last", "at", "source", ...})."""
+        return self._append("quotes", [quote])
+
+    def orders(self, sessions: int = 1) -> list[dict]:
+        """The last `sessions` sessions' order events, oldest first."""
+        return sorted(self._journal("orders", sessions), key=lambda row: row["t"])
+
+    def quotes(self, sessions: int = 1) -> list[dict]:
+        """The last `sessions` sessions' quotes, oldest first."""
+        return sorted(self._journal("quotes", sessions), key=lambda row: row["t"])
 
     def events(self, days: int = 2) -> list[dict]:
         """The last `days` days' events, oldest first."""

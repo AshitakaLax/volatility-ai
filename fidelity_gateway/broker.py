@@ -123,6 +123,16 @@ PREVIEW_PATH = "/ftgw/digital/trade-equity/previewSrvc"
 # tifCode D (day), condition N (none).
 _ACTION = {"buy": "B", "sell": "S"}
 
+#: The ticket fields an order OUTSIDE the regular session takes, by window
+#: (engine/core/venue_sessions.py: "pre_market", "after_hours"), merged over
+#: the regular ticket. EMPTY ON PURPOSE until transcribed from captured
+#: previewSrvc requests -- a pre-market and an after-hours limit order
+#: previewed in Trader+ (docs/research/fidelity-extended-hours.md). A guessed
+#: field is an order Fidelity reads as something else, or a regular-session
+#: DAY order left resting outside its window; until then build_ticket refuses
+#: such an order before anything is sent, and session_support says why.
+EXTENDED_TICKET_FIELDS: dict[str, dict] = {}
+
 # derive_order_state's answer, in the browser extension's words: what its
 # own reading of the same order should say. UNKNOWN is left out on
 # purpose -- the extension keeps an order's last known state rather than
@@ -353,12 +363,25 @@ class FidelityBroker:
         """Prove the session is live and authenticated before trading."""
         self._session.assert_authenticated()
 
+    def session_support(self, session: str) -> str | None:
+        """Why no order can be placed in `session` (a window of
+        engine/core/venue_sessions.py), or None when one can. Every ticket
+        is a limit either way; outside the regular session the ticket's own
+        fields must be known (EXTENDED_TICKET_FIELDS)."""
+        if session in (None, "regular") or session in EXTENDED_TICKET_FIELDS:
+            return None
+        return (
+            f"Fidelity's {session} order ticket is not known yet: capture one previewed in "
+            "Trader+ (docs/research/fidelity-extended-hours.md)"
+        )
+
     def submit_buy(
         self,
         symbol: str,
         trade_value: float,
         client_order_id: str | None = None,
         limit_price: float | None = None,
+        session: str | None = None,
     ) -> FidelityOrder:
         """PREVIEW a buy of trade_value dollars of symbol. Submits nothing.
 
@@ -386,7 +409,7 @@ class FidelityBroker:
                 f"${price:.2f}. Fidelity orders here are whole-share "
                 "(qtyTypeCode 'S'); fractional sizing is not modelled."
             )
-        return self._preview(symbol, "buy", qty, price, client_order_id)
+        return self._preview(symbol, "buy", qty, price, client_order_id, session)
 
     def submit_sell(
         self,
@@ -394,6 +417,7 @@ class FidelityBroker:
         qty: float,
         target_price: float,
         client_order_id: str | None = None,
+        session: str | None = None,
     ) -> FidelityOrder:
         """PREVIEW a limit sell of qty shares at target_price. Submits nothing.
 
@@ -404,7 +428,7 @@ class FidelityBroker:
         """
         if qty <= 0:
             raise ValueError(f"qty must be positive, got {qty}")
-        return self._preview(symbol, "sell", qty, target_price, client_order_id)
+        return self._preview(symbol, "sell", qty, target_price, client_order_id, session)
 
     def _preview(
         self,
@@ -413,6 +437,7 @@ class FidelityBroker:
         qty: float,
         limit_price: float,
         client_order_id: str | None,
+        session: str | None = None,
     ) -> FidelityOrder:
         """Build and send the order ticket, stopping at preview.
 
@@ -423,7 +448,8 @@ class FidelityBroker:
         never emit.
         """
         response = self._session.post_json(
-            PREVIEW_PATH, {"orderDetails": self.build_ticket(symbol, side, qty, limit_price)}
+            PREVIEW_PATH,
+            {"orderDetails": self.build_ticket(symbol, side, qty, limit_price, session)},
         )
         account = self._account
         conf = _find_first(response, "confNum")
@@ -449,8 +475,15 @@ class FidelityBroker:
             raw={"preview": True},
         )
 
-    def build_ticket(self, symbol: str, side: str, qty: float, limit_price: float) -> dict:
+    def build_ticket(
+        self, symbol: str, side: str, qty: float, limit_price: float, session: str | None = None
+    ) -> dict:
         """The order ticket, field for field as the site's own page sends it.
+
+        `session` is the window it is for (None or "regular": the regular
+        session's DAY ticket). Outside the regular session it takes
+        EXTENDED_TICKET_FIELDS[session], and is refused while those are not
+        known -- a ConfigurationError, so before anything is sent.
 
         Transcribed from captured previewSrvc requests rather than
         designed. Two fields look wrong and are not: `previewInd` and
@@ -465,6 +498,9 @@ class FidelityBroker:
         the identical ticket and appends confNum. Two copies of a payload
         this fiddly is two chances to drift.
         """
+        unsupported = self.session_support(session)
+        if unsupported is not None:
+            raise ConfigurationError(f"Refusing a {session} order: {unsupported}.")
         account = self._check_account(self._account)
         ticket = {
             "acctNum": account,
@@ -490,6 +526,11 @@ class FidelityBroker:
             ticket["acctName"] = self._account_name
         if self._account_type_code is not None:
             ticket["acctTypeCode"] = self._account_type_code
+        if session not in (None, "regular"):
+            ticket.update(EXTENDED_TICKET_FIELDS[session])
+            # Still a limit, whatever the window's fields say: a market order
+            # outside the regular session is the one shape never sent.
+            ticket["priceTypeCode"] = "L"
         return ticket
 
     def _assert_echoed_account(self, response: Any, expected: str) -> None:

@@ -104,7 +104,11 @@ def build_broker(
         # limit instead of notional market), so a deployment that means
         # to trade extended hours must say so in the file that describes
         # the deployment, not in whatever happened to construct it.
-        alpaca_kwargs.setdefault("extended_hours", config.live.extended_hours)
+        alpaca_kwargs.setdefault(
+            "extended_hours",
+            bool(config.live.extended_hours)
+            or any(session != "regular" for session in config.live.traded_sessions),
+        )
         return AlpacaBroker(credentials, paper=config.live.paper_trading, **alpaca_kwargs)
 
     return _build_fidelity(config, fidelity_session, fidelity_journal_path, fidelity_order_reports)

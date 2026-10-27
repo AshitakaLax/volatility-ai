@@ -12,13 +12,15 @@ Each item is one link in the chain from this server to the account:
 
   bridge      listening for the extension on its port
   extension   connected, and heard from within HEARD_WITHIN_SECONDS (it pings
-              every 20 s; a sleeping browser stops)
+              every 20 s; a sleeping browser stops); a warning while another
+              address was turned away in the last REFUSED_RECENTLY_SECONDS
   version     not older than the engine expects (a warning: it still trades)
   fidelity    the extension's Fidelity tab is the signed-in site
   trading     "Allow trading" on in the extension, for a deployment that
               places real orders
   account     the last read-only check of the account, since the extension
-              last connected
+              last connected (required, with check_first: the tab's address
+              says "signed in" even after Fidelity's session has expired)
 
 and has a state: "ok", "warn" (works, but look), "fail" (stops a session
 starting) or "unknown" (not reported yet; never blocks on its own). The
@@ -32,6 +34,9 @@ from datetime import datetime
 from typing import Any
 
 HEARD_WITHIN_SECONDS = 60.0
+# A connection turned away this recently, while the extension is connected,
+# is a warning on the extension's item: another browser is still trying.
+REFUSED_RECENTLY_SECONDS = 300.0
 
 ITEMS = ("bridge", "extension", "version", "fidelity", "trading", "account")
 
@@ -89,12 +94,27 @@ def _extension(report: dict, now: float) -> dict:
                 f"connected from {report.get('client')}, but silent since {_ago(now - heard)}",
                 "wake the browser's computer: a sleeping browser stops answering",
             )
-        return _item(
-            "extension",
-            "ok",
-            f"connected from {report.get('client')}"
-            + (f", last heard {_ago(now - heard)}" if heard is not None else ""),
+        detail = f"connected from {report.get('client')}" + (
+            f", last heard {_ago(now - heard)}" if heard is not None else ""
         )
+        # Another browser still knocking: harmless to this one, but worth
+        # turning off -- it takes over whenever this one stops answering.
+        knocking = report.get("last_refused") or {}
+        knocked_at = _seconds(knocking.get("at"))
+        if (
+            knocked_at is not None
+            and now - knocked_at <= REFUSED_RECENTLY_SECONDS
+            and knocking.get("client") != report.get("client")
+        ):
+            return _item(
+                "extension",
+                "warn",
+                f"{detail}; turned away {knocking.get('client')} {_ago(now - knocked_at)}: "
+                f"{knocking.get('reason')}",
+                f"turn the Fidelity Bridge extension off in the browser at "
+                f"{knocking.get('client')}, unless it is the one that should trade",
+            )
+        return _item("extension", "ok", detail)
     refused = report.get("last_refused") or None
     disconnected = report.get("last_disconnect") or None
     refused_at = _seconds((refused or {}).get("at"))
@@ -179,10 +199,17 @@ def _trading(report: dict, mode: str) -> dict:
     )
 
 
-def _account(report: dict, check: dict | None) -> dict:
+def _account(report: dict, check: dict | None, check_first: bool = False) -> dict:
     since = _seconds(report.get("since")) if report.get("connected") else None
     at = _seconds((check or {}).get("at"))
     if check is None or at is None or (since is not None and at < since):
+        if check_first and report.get("connected"):
+            return _item(
+                "account",
+                "fail",
+                "not read since the extension connected; the bridge is reading it now",
+                "wait a few seconds; if the check fails, it says why",
+            )
         return _item("account", "unknown", "not checked since the extension connected")
     if check.get("ok"):
         return _item("account", "ok", str(check.get("detail") or "read-only check passed"))
@@ -202,17 +229,23 @@ def readiness(
     now: float,
     listen_error: str | None = None,
     check: dict | None = None,
+    check_first: bool = False,
 ) -> dict[str, Any]:
     """The checklist and its verdict:
     {"ready", "blocking" (the first failing item's id, or None), "summary",
-     "fix", "items": [{"id", "label", "state", "detail", "fix"}, ...]}."""
+     "fix", "items": [{"id", "label", "state", "detail", "fix"}, ...]}.
+
+    `check_first`: a connection is not ready until the account has been read
+    through it -- what the bridge host asks while a session is open or near
+    and no trader is attached, so the supervisor never starts one on a tab
+    that cannot answer (10-26). Otherwise an unchecked account is unknown."""
     items = [
         _bridge(listening, listen_error, report),
         _extension(report, now),
         _version(report),
         _fidelity(report),
         _trading(report, mode),
-        _account(report, check),
+        _account(report, check, check_first),
     ]
     failing = next((item for item in items if item["state"] == "fail"), None)
     if failing is None:

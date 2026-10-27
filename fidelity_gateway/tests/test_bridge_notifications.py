@@ -459,3 +459,32 @@ def test_the_kinds_sent_can_change_without_a_new_stream():
     assert hub.stream == "s1"
     with pytest.raises(ConfigurationError):
         hub.set_events(("sold",))
+
+
+def test_a_trading_windows_audit_is_said_once_and_a_problem_is_critical():
+    from fidelity_gateway.bridge.notifications import Notifications
+
+    hub = Notifications()
+    summary = {
+        "day": "2026-10-27",
+        "session": "pre_market",
+        "orders": 2,
+        "filled_qty": 9.0,
+        "avg_price": 217.314,
+        "ended": {"filled": 1, "cancelled": 1},
+    }
+    said = hub.engine_status({"state": "running", "lastWindow": summary})
+    assert said is not None and said.kind == "engine", "the state change is still the return"
+    (window,) = [n for n in hub.recent() if n.kind == "window"]
+    assert window.title == "Pre-market window closed" and window.severity == "info"
+    assert window.body == "2 orders, 9 filled at $217.31; 1 cancelled."
+    hub.engine_status({"state": "running", "lastWindow": summary})
+    assert len([n for n in hub.recent() if n.kind == "window"]) == 1, "once per window"
+
+    quiet = {"day": "2026-10-27", "session": "regular", "orders": 0, "ended": {}}
+    hub.window_summary(quiet)
+    assert len([n for n in hub.recent() if n.kind == "window"]) == 1, "nothing placed: nothing said"
+
+    wrong = {**quiet, "session": "after_hours", "problem": "the venue holds 3 RSP and the ledger 0"}
+    alarm = hub.window_summary(wrong)
+    assert alarm.severity == "critical" and "needs a look" in alarm.title

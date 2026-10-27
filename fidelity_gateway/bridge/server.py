@@ -15,8 +15,14 @@ Before a connection can do anything it must pass, in order:
 and after that every frame must open as a sealed message in sequence.
 Any failure closes the connection without acting on what it carried.
 
-One extension at a time. A second one that authenticates replaces the
-first, which is what a browser restart looks like from here.
+One extension at a time, and the one connected keeps it. A second one
+from the SAME address replaces it -- that is what a browser restart looks
+like from here -- but one from another address is turned away while the
+first is still answering (10-26: two browsers with the extension replaced
+each other every second, each reconnecting a second after it was dropped,
+so neither could be relied on to answer). It may take over only from one
+gone silent, or from one settled with no signed-in Fidelity tab -- a
+browser that cannot trade -- so the one that can wins either way.
 
 Beyond relaying requests, the server carries three things the other
 way: the VERSIONS of the extension this engine expects (versions.py),
@@ -77,6 +83,14 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 HANDSHAKE_TIMEOUT_SECONDS = 10.0
 EVENT_BACKLOG = 1000
+
+# Another address may take the connection from an extension silent this
+# long (it pings every 20 s), or from one connected this long whose
+# Fidelity tab is missing or signed out. The second keeps two browsers
+# that both cannot trade from swapping faster than this.
+SILENT_EXTENSION_SECONDS = 60.0
+SETTLE_SECONDS = 30.0
+_CANNOT_TRADE_TABS = frozenset({"no_tab", "signed_out"})
 
 # Error codes the extension only ever returns BEFORE sending anything to
 # Fidelity (see the extension's PROTOCOL.md). Refusals, not failures.
@@ -459,6 +473,28 @@ class BridgeServer:
         self._last_refused = {"at": self._clock(), "client": peer, "reason": reason}
         self._notifications.connection_refused(peer=peer, reason=reason)
 
+    def _held_elsewhere(self, peer: str) -> str | None:
+        """Why an extension at `peer` may not take the connection (module
+        docstring), or None when it may: nothing is connected, it is the
+        same address, or the one connected has gone silent or settled
+        without a signed-in Fidelity tab. The reason names only the other
+        address, so a refusal repeated is the same news (notifications.py)."""
+        with self._lock:
+            current = self._session
+            if current is None or current.peer == peer:
+                return None
+            now = self._clock()
+            if self._heard_at is None or now - self._heard_at > SILENT_EXTENSION_SECONDS:
+                return None
+            settled = self._connected_at is not None and now - self._connected_at >= SETTLE_SECONDS
+            if settled and self._tab is not None and self._tab["state"] in _CANNOT_TRADE_TABS:
+                return None
+            holder = current.peer
+        return (
+            f"the extension at {holder} has the connection, and only one browser may: turn the "
+            "Fidelity Bridge extension off in the browser that should not trade"
+        )
+
     # -- the connection -----------------------------------------------------
 
     def _handle(self, connection: Any) -> None:
@@ -517,6 +553,15 @@ class BridgeServer:
             connection.send(json.dumps({"type": "denied", "reason": "bad_proof"}))
             connection.close(1008, "authentication failed")
             return None
+        held = self._held_elsewhere(peer)
+        if held is not None:
+            # Closed, not "denied": the extension reads a denial as a wrong
+            # key and stops trying, while a close is retried with its
+            # backoff -- so it takes over once the other one goes.
+            self._log(f"[bridge] turned away {peer}: {held}")
+            self._refused(peer, held)
+            connection.close(1008, "another extension is connected")
+            return None
         connection.send(
             json.dumps(
                 {"type": "welcome", "proof": engine_proof(self._key.value, nonce, auth["nonce"])}
@@ -529,6 +574,8 @@ class BridgeServer:
         with self._lock:
             previous, self._session = self._session, session
             self._connected_at = self._heard_at = self._clock()
+            if previous is not None and previous.peer != peer:
+                self._tab = None  # the new extension says where its own tab is
             # How long it was away: None for a first connection, and for a
             # replacement -- a browser restart seen before the old socket
             # closed -- since nothing was ever without one.

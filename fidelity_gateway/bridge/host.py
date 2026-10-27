@@ -40,7 +40,13 @@ WHAT IT DOES BESIDES RELAYING
   * The account check: a read-only look at the account through the
     extension -- orders, positions, settled cash -- on the Live page's
     `check_connection` (its own inbox, `bridge/`) and by itself 30 and 10
-    minutes before the open. Read-only by construction: FidelitySession's
+    minutes before the open. And READ BEFORE TRADING: while a session is
+    open or within 30 minutes, with nothing attached, a connection is not
+    ready until a check has passed through it -- run as soon as the
+    extension connects, and again every CHECK_RETRY_SECONDS while it fails.
+    A tab's address says "signed in" even after Fidelity's session has
+    expired; on 10-26 the trader started on one, could not read the
+    account, and left a halt in its ledger. Read-only by construction: FidelitySession's
     defaults allow no previews and no orders, and this module never imports
     the placing broker (a test holds it to both).
   * While nothing is attached it tells the extension what it is doing:
@@ -104,6 +110,9 @@ BIND_RETRY_SECONDS = 30.0
 CONFIG_POLL_SECONDS = 30.0
 # Read-only account checks before each open, this many minutes ahead.
 CHECK_BEFORE_OPEN_MINUTES = (30, 10)
+# A connection that must be read before trading (module docstring, READ
+# BEFORE TRADING) and failed its check is checked again this often.
+CHECK_RETRY_SECONDS = 120.0
 # Not ready this close to the open (or during a session): the extension is
 # told "paused", so its badge turns amber.
 NOT_READY_WARNING_MINUTES = 15
@@ -147,21 +156,31 @@ def _stderr(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
-def session_window(now: float) -> dict[str, Any]:
-    """Whether a regular session is open, and when the next one opens, by
-    engine/core/trading_calendar.py (holidays; early closes not modelled):
-    {"open": bool, "next_open": datetime (ET), "closes": datetime | None}."""
+def session_window(now: float, sessions: tuple = ("regular",)) -> dict[str, Any]:
+    """Whether the deployment's trading day is open, and when the next one
+    opens: {"open": bool, "next_open": datetime (ET), "closes": datetime |
+    None}. The day runs from its first traded window's start to its last's
+    end (engine/core/venue_sessions.py, Fidelity's windows; holidays from
+    engine/core/trading_calendar.py, early closes not modelled) -- for the
+    regular session alone, 09:30-16:00; for a deployment that trades the
+    pre-market (live.sessions), from 07:00, so the account is checked and
+    readiness warned of before THAT."""
+    from engine.core.venue_sessions import VenueCalendar
+
+    calendar = VenueCalendar("fidelity", sessions)
     moment = datetime.fromtimestamp(now, EASTERN)
     day = moment.date()
-    if trading_calendar.is_session(day):
-        opens = datetime.combine(day, OPEN, EASTERN)
-        closes = datetime.combine(day, CLOSE, EASTERN)
+    span = calendar.day_span(day)
+    if span is not None:
+        opens, closes = span
         if moment < opens:
             return {"open": False, "next_open": opens, "closes": None}
         if moment < closes:
             return {"open": True, "next_open": opens, "closes": closes}
     following = trading_calendar.next_session(day)
-    return {"open": False, "next_open": datetime.combine(following, OPEN, EASTERN), "closes": None}
+    span = calendar.day_span(following)
+    opens = span[0] if span is not None else datetime.combine(following, OPEN, EASTERN)
+    return {"open": False, "next_open": opens, "closes": None}
 
 
 def _when(moment: datetime, now: float) -> str:
@@ -258,9 +277,14 @@ class BridgeHost:
         log: Callable[[str], None] = _stderr,
         notifications: Notifications | None = None,
         make_notifier: Callable[[NotifySettings, Notifications], NotificationServer] | None = None,
+        sessions: Callable[[], tuple] | None = None,
     ) -> None:
         self._make_server = make_server
         self._settings_source = settings
+        # The windows the deployment trades (live.sessions): when its trading
+        # day starts, for the checks before it and the warning near it.
+        self._sessions_source = sessions
+        self._sessions = self._read_sessions()
         self.socket_path = Path(socket_path)
         self.inbox = inbox
         self._check = check
@@ -293,6 +317,13 @@ class BridgeHost:
         self._check_lock = threading.Lock()
         self.last_check: dict | None = None
         self._checked_for: set[tuple] = set()
+        # The connection (its "since") the last check ran through, the one
+        # the read-before-trading checks are for, and when the next may run.
+        # Matched by connection, not by time: the host's clock and the
+        # server's need not agree.
+        self._check_since: str | None = None
+        self._auto_since: str | None = None
+        self._next_auto_check = 0.0
 
         self._seen: dict[str, Any] = {}
         self._verdict: dict | None = None
@@ -352,9 +383,19 @@ class BridgeHost:
         self.notifications.bridge_listening(self.server.url)
         return True
 
+    def _read_sessions(self, keep: tuple = ("regular",)) -> tuple:
+        if self._sessions_source is None:
+            return ("regular",)
+        try:
+            return tuple(self._sessions_source())
+        except Exception as exc:
+            self._log(f"[bridge-host] the trading windows do not load ({exc}); keeping {keep}")
+            return keep
+
     def reload(self) -> bool:
         """Re-read the deployment's settings; restart the bridge when where
         or whom it listens for changed. False when nothing did."""
+        self._sessions = self._read_sessions(self._sessions)
         try:
             fidelity, symbol = self._settings_source()
         except Exception as exc:
@@ -678,12 +719,14 @@ class BridgeHost:
                 "by": by,
                 "busy": True,
             }
+        through = None  # the connection it ran through: its "since"
         try:
             if self._check is None:
                 detail, ok = "this host was started without an account check", False
             elif not self.server.connected:
                 detail, ok = "no extension is connected", False
             else:
+                through = self.server.connection_report().get("since")
                 feed = _Feed(self)
                 with self._lock:
                     for name, data in self._replay():
@@ -703,7 +746,7 @@ class BridgeHost:
             result = {"at": _iso(self._clock()), "ok": ok, "detail": str(detail), "by": by}
         finally:
             self._check_lock.release()
-        self.last_check = result
+        self.last_check, self._check_since = result, through
         self._journal(
             "check",
             f"Account check {'passed' if result['ok'] else 'failed'}: {result['detail']}",
@@ -713,23 +756,53 @@ class BridgeHost:
         self.notifications.account_check(result)
         return result
 
-    def _auto_check(self, now: float, window: dict) -> None:
-        """30 and 10 minutes before each open, with nothing attached. A host
-        started late runs one check for every moment it already passed."""
+    def _check_first(self, window: dict, now: float) -> bool:
+        """Whether a connection must be read before it is ready (module
+        docstring, READ BEFORE TRADING): a session open or within the first
+        pre-open check, nothing attached, and a check to run."""
+        if self._check is None or self._attached is not None:
+            return False
         if window["open"]:
+            return True
+        return (window["next_open"].timestamp() - now) / 60 <= max(CHECK_BEFORE_OPEN_MINUTES)
+
+    def _auto_check(self, now: float, window: dict, report: dict) -> None:
+        """30 and 10 minutes before each open, with nothing attached. A host
+        started late runs one check for every moment it already passed.
+        And, when a connection must be read before trading, on connecting
+        and every CHECK_RETRY_SECONDS while its check fails."""
+        since = report.get("since") if report["connected"] else None
+        if since != self._auto_since:
+            self._auto_since, self._next_auto_check = since, 0.0  # a new connection
+        if not window["open"]:
+            minutes = (window["next_open"].timestamp() - now) / 60
+            due = [
+                before
+                for before in CHECK_BEFORE_OPEN_MINUTES
+                if minutes <= before
+                and (window["next_open"].isoformat(), before) not in self._checked_for
+            ]
+            if due:
+                self._checked_for.update(
+                    (window["next_open"].isoformat(), before) for before in due
+                )
+                if self.server.connected and self._attached is None:
+                    self._next_auto_check = now + CHECK_RETRY_SECONDS
+                    self._spawn(
+                        self.run_check, "bridge-host-check", f"{min(due)} min before the open"
+                    )
+                    return
+        if since is None or not self._check_first(window, now):
             return
-        minutes = (window["next_open"].timestamp() - now) / 60
-        due = [
-            before
-            for before in CHECK_BEFORE_OPEN_MINUTES
-            if minutes <= before
-            and (window["next_open"].isoformat(), before) not in self._checked_for
-        ]
-        if not due:
+        checked = self.last_check is not None and self._check_since == since
+        if (checked and self.last_check["ok"]) or now < self._next_auto_check:
             return
-        self._checked_for.update((window["next_open"].isoformat(), before) for before in due)
-        if self.server.connected and self._attached is None:
-            self._spawn(self.run_check, "bridge-host-check", f"{min(due)} min before the open")
+        self._next_auto_check = now + CHECK_RETRY_SECONDS
+        self._spawn(
+            self.run_check,
+            "bridge-host-check",
+            "again: the last check failed" if checked else "the extension connected",
+        )
 
     def poll_commands(self) -> list[dict]:
         """Apply the Live page's check_connection commands, from the host's
@@ -772,6 +845,7 @@ class BridgeHost:
         self._journal_changes(report)
         if not report["connected"] and (self._tab_event or self._requests):
             self._forget_extension()
+        window = session_window(now, self._sessions)
         verdict = readiness(
             listening=self._listening,
             listen_error=self._listen_error,
@@ -779,6 +853,7 @@ class BridgeHost:
             mode=self.mode,
             now=now,
             check=self.last_check,
+            check_first=self._check_first(window, now),
         )
         if (
             self._verdict is None
@@ -791,7 +866,6 @@ class BridgeHost:
                 t=now,
             )
         self._verdict = verdict
-        window = session_window(now)
         opens_in = (window["next_open"].timestamp() - now) / 60
         self.notifications.readiness(
             verdict,
@@ -802,7 +876,7 @@ class BridgeHost:
             next_open=window["next_open"].astimezone(UTC).isoformat(),
         )
         self._tell_extension(verdict, window, now)
-        self._auto_check(now, window)
+        self._auto_check(now, window, report)
         self._send_connection(report, now)
         self._publish_app_status(verdict, window, now)
         return self._write_status(report, verdict, window, now)

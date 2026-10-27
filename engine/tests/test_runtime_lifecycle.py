@@ -154,6 +154,75 @@ def test_only_a_broker_that_cannot_be_reached_for_now_is_retryable(store):
     assert ready.failed_stage is None and ready.failure is None and not ready.retryable
 
 
+def test_an_account_that_cannot_be_read_for_now_is_a_wait_not_a_halt(store):
+    """10-26: the Fidelity tab could not fetch, the startup snapshot failed,
+    and a reconciliation halt was left in the real-money ledger that only a
+    human could clear -- though nothing was known to disagree."""
+    from engine.core.exceptions import BrokerUnavailableError
+
+    def unreadable():
+        raise BrokerUnavailableError("the Fidelity tab returned no response")
+
+    breaker = CircuitBreaker()
+    lifecycle = RuntimeLifecycle(
+        store=store, circuit_breaker=breaker, reconciler=Reconciler(store, circuit_breaker=breaker)
+    )
+    assert lifecycle.start(broker_snapshot_provider=unreadable) is RuntimeState.RECOVERY_REQUIRED
+    assert lifecycle.failed_stage is RuntimeState.RECONCILE and lifecycle.retryable
+    assert "the Fidelity tab returned no response" in lifecycle.failure
+    assert breaker.state is not CircuitBreakerState.HALTED_NEW_BUYS, "no halt to clear by hand"
+
+    def broken():
+        raise ValueError("an answer that cannot be parsed")
+
+    breaker = CircuitBreaker()
+    unknown = RuntimeLifecycle(
+        store=store, circuit_breaker=breaker, reconciler=Reconciler(store, circuit_breaker=breaker)
+    )
+    assert unknown.start(broker_snapshot_provider=broken) is RuntimeState.RECONCILIATION_REQUIRED
+    assert not unknown.retryable
+    assert breaker.state is CircuitBreakerState.HALTED_NEW_BUYS, "anything else still halts"
+
+
+def test_the_engine_is_ready_before_the_broker_is_asked_anything(store):
+    """The engine warms up (its history replayed) and says it is ready; only
+    then does startup wait for the broker -- two answers, the first never
+    waiting on the second."""
+    from engine.core.exceptions import BrokerUnavailableError
+
+    order = []
+    lifecycle = RuntimeLifecycle(store=store)
+    state = lifecycle.start(
+        warm_up=lambda: order.append(("warm_up", lifecycle.state)),
+        on_engine_ready=lambda: order.append(("engine_ready", lifecycle.state)),
+        wait_for_broker=lambda: order.append(("wait", lifecycle.state)),
+        connect_broker=lambda: order.append(("connect", lifecycle.state)),
+    )
+    assert state is RuntimeState.READY
+    assert order == [
+        ("warm_up", RuntimeState.WARM_UP),
+        ("engine_ready", RuntimeState.ENGINE_READY),
+        ("wait", RuntimeState.CONNECT_BROKER),
+        ("connect", RuntimeState.CONNECT_BROKER),
+    ]
+
+    def never_ready():
+        raise BrokerUnavailableError("Fidelity is not ready: Fidelity signed you out")
+
+    waited = RuntimeLifecycle(store=store)
+    assert waited.start(wait_for_broker=never_ready) is RuntimeState.RECOVERY_REQUIRED
+    assert waited.retryable and "signed you out" in waited.failure
+
+    cold = RuntimeLifecycle(store=store)
+    assert cold.start(warm_up=lambda: 1 / 0) is RuntimeState.RECOVERY_REQUIRED
+    assert cold.failed_stage is RuntimeState.WARM_UP and not cold.retryable
+
+    noisy = RuntimeLifecycle(store=store)
+    assert noisy.start(on_engine_ready=lambda: 1 / 0) is RuntimeState.READY, (
+        "a report never stops it"
+    )
+
+
 def test_failed_reconciliation_blocks_ready_and_halts(store):
     _seed_open_lot(store, shares=10.0)
     breaker = CircuitBreaker()

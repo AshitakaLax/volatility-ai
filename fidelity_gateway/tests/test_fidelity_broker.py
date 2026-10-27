@@ -306,6 +306,22 @@ def test_state_comes_from_the_structured_fields(record, expected):
     assert derive_order_state(record) is expected
 
 
+@pytest.mark.parametrize(
+    "record,expected",
+    [
+        (WORKING, OrderState.ACCEPTED),
+        (FILLED, OrderState.FILLED),
+        (CANCELED, OrderState.CANCELED),
+        (PARTIAL, OrderState.PARTIALLY_FILLED),
+    ],
+)
+def test_a_pre_market_order_reads_as_any_other(record, expected):
+    """transactions/pending names a pre-market order's window and its
+    09:28 ET expiry (captured 2026-10-27); neither changes its state."""
+    premarket = dict(record, marketSessionCode="Premarket", expirationDate=1793107680000)
+    assert derive_order_state(premarket) is expected
+
+
 def test_the_prose_status_is_never_what_decides():
     """The headline finding. Fidelity interpolates the fill price into
     `status` ("Filled at $69.335"), so no exact-match table can cover it.

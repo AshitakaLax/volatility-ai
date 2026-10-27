@@ -85,6 +85,39 @@ resume(open_lots) with the durable book -- the state a restart loses that
 no bar can rebuild. A strategy that wants history and gets no source is
 refused rather than started blind.
 --------------------------------------------------------------------
+A DECISION THE BROKER COULD NOT TAKE. A BrokerUnavailableError skips the
+rest of the tick: nothing was sent (an order that MAY have been is
+AmbiguousSubmissionError, which halts). Most strategies decide again on
+every bar, so the next tick covers it. One that decides once -- ultimate_rsp
+rebalances at one minute of the session -- would lose the whole session's
+decision (10-26: the extension did not answer the rebalance's preview, and
+nothing was bought until the next day). If the failure came after the bar
+reached record_tick, a strategy that declares decision_not_sent() is told,
+and decides again on the next bar. Never called in a backtest, which has
+no broker to fail.
+--------------------------------------------------------------------
+ON THE VENUE'S OWN WINDOWS (live.sessions, a `calendar` here). The loop is
+up before the first window it trades and through the gaps between them, and
+three things change:
+
+  * WHEN IT TRADES. Bars are watched whenever the venue has any (its whole
+    day, 04:00-20:00 ET); orders are placed only inside a traded window, and
+    not in its last live.orders.session_close_margin_seconds. A strategy
+    built on regular-session bars (`regular_session_only`) sees and trades
+    the regular session's alone, however early the engine started.
+  * EVERY ORDER IS A LIMIT AND IS WATCHED. Each carries its window. A buy
+    left resting for live.orders.ttl_seconds outside the regular session is
+    cancelled, and every order of a window is cancelled before it ends and
+    confirmed gone -- a pre-market order Fidelity expires at 09:28 is not
+    assumed gone. A resting buy holds back its cash. Each order's life goes
+    to `order_listener` (the orders journal): the proof it filled or not.
+  * EACH WINDOW IS AUDITED when it ends: every order it placed must be
+    terminal at the venue and, once nothing is open, the venue's position
+    must equal the ledger's -- or new buys halt for reconciliation, naming
+    what disagrees. `last_window` says how the window went.
+
+Without a calendar none of this runs and every tick is what it always was.
+--------------------------------------------------------------------
 WHAT IT SAYS ABOUT ITSELF, for whoever watches it (the Live page, through
 the trader's status file -- engine/trading/operator_control.py):
 
@@ -122,14 +155,16 @@ from engine.core.idempotency import compute_decision_id
 from engine.core.ledger import SHARE_EPSILON
 from engine.core.market_context import MarketContext
 from engine.core.retry_policy import AmbiguousSubmissionError
+from engine.core.venue_sessions import AFTER_HOURS, PRE_MARKET, REGULAR
 from engine.data.earnings_calendar import is_earnings_reaction_day_at
 from engine.data.fomc_calendar import is_fomc_day_at
 from engine.data.implied_vol_signal import change_at
 from engine.data.intraday_profile import minutes_since_open
 from engine.data.tick_validation import TickValidator
+from engine.execution import limit_pricing
 from engine.execution.cost_models import ZeroCostModel
 from engine.execution.fill_accounting import FillTracker, extract_alpaca_fill
-from engine.execution.order_lifecycle import TERMINAL_STATES, map_broker_status
+from engine.execution.order_lifecycle import TERMINAL_STATES, OrderState, map_broker_status
 from engine.trading import decision_cycle
 from engine.trading.duplicate_order_guard import DuplicateOrderGuard
 from engine.trading.live_history import EASTERN, last_sessions
@@ -140,6 +175,29 @@ logger = logging.getLogger("Optimizer")
 
 # Completed sessions of the replayed history kept for a reader's chart.
 RECENT_SESSIONS = 5
+# On the venue's windows: a bar older than this is recorded, never traded on.
+TRADABLE_BAR_AGE_SECONDS = 120.0
+# How long after a window ends its orders must all be terminal at the venue.
+WINDOW_AUDIT_GRACE_SECONDS = 180.0
+# During shutdown, how often the venue is asked about orders still settling.
+SETTLE_POLL_SECONDS = 5.0
+EXTENDED_SESSIONS = (PRE_MARKET, AFTER_HOURS)
+
+
+# The order events that end an order's life.
+_FINAL_EVENTS = ("filled", "cancelled", "expired", "rejected")
+_FINAL_EVENT = {
+    OrderState.FILLED: "filled",
+    OrderState.CANCELED: "cancelled",
+    OrderState.EXPIRED: "expired",
+    OrderState.REJECTED: "rejected",
+}
+
+
+def _seconds(value: float):
+    from datetime import timedelta
+
+    return timedelta(seconds=float(value))
 
 
 def _floor_shares(qty: float) -> float:
@@ -291,6 +349,16 @@ class _TrackedOrder:
     # exit still resting on a later bar is cancelled and re-offered.
     submitted_bar: str | None = None
     cancel_requested: bool = False
+    # On the venue's windows (module docstring): the window it was placed in,
+    # when, its limit and size, when it must be gone by, the dollars a resting
+    # buy holds back from buying power, and why a cancel was asked.
+    session: str | None = None
+    submitted_at: str | None = None
+    expires_at: str | None = None
+    limit_price: float | None = None
+    qty: float | None = None
+    reserve: float = 0.0
+    cancel_reason: str | None = None
 
     @property
     def lot_ids(self) -> tuple[str, ...]:
@@ -319,6 +387,13 @@ class _TrackedOrder:
             "exit_lot_ids": list(self.exit_lot_ids),
             "submitted_bar": self.submitted_bar,
             "cancel_requested": self.cancel_requested,
+            "session": self.session,
+            "submitted_at": self.submitted_at,
+            "expires_at": self.expires_at,
+            "limit_price": self.limit_price,
+            "qty": self.qty,
+            "reserve": self.reserve,
+            "cancel_reason": self.cancel_reason,
             "cumulative_qty": self.tracker.cumulative_qty,
             "cumulative_notional": self.tracker.cumulative_notional,
         }
@@ -339,6 +414,13 @@ class _TrackedOrder:
             exit_lot_ids=tuple(raw.get("exit_lot_ids") or ()),
             submitted_bar=raw.get("submitted_bar"),
             cancel_requested=bool(raw.get("cancel_requested", False)),
+            session=raw.get("session"),
+            submitted_at=raw.get("submitted_at"),
+            expires_at=raw.get("expires_at"),
+            limit_price=raw.get("limit_price"),
+            qty=raw.get("qty"),
+            reserve=float(raw.get("reserve") or 0.0),
+            cancel_reason=raw.get("cancel_reason"),
         )
 
 
@@ -429,6 +511,9 @@ class LiveTradingLoop:
         history_provider: Callable[[str, int], object] | None = None,
         shadow=None,
         fill_listener: Callable[[dict], None] | None = None,
+        calendar=None,
+        order_listener: Callable[[dict], None] | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         """Assemble the loop and load durable state.
 
@@ -441,6 +526,13 @@ class LiveTradingLoop:
         {"t", "side", "lot", "qty", "price", ...}. shadow is a second
         strategy fed every bar and asked what it would do, trading nothing
         (module docstring, WHAT IT SAYS ABOUT ITSELF).
+
+        calendar (engine/core/venue_sessions.VenueCalendar) puts the loop on
+        its venue's own windows (module docstring, ON THE VENUE'S OWN
+        WINDOWS); order_listener is told each moment of an order's life;
+        `now` is the wall clock those windows are read against. `broker` may
+        be None to build the loop -- and replay its history -- before the
+        broker is connected (attach_broker).
 
         history_provider(symbol, sessions) returns that many sessions of
         regular-hours minute bars (a DataFrame: UTC index, open/high/low/
@@ -508,6 +600,20 @@ class LiveTradingLoop:
         self._sleep = sleep
         self._tick_listener = tick_listener
         self._fill_listener = fill_listener
+        self._order_listener = order_listener
+        self.calendar = calendar
+        self._now = now or (lambda: datetime.now(UTC))
+        # On the venue's windows: the traded window this tick is in, the last
+        # bar fed to the strategy, the windows already audited, and how the
+        # last one went (for the status).
+        self.window = None
+        self._last_bar_at: datetime | None = None
+        self._audited: set[tuple[str, str]] = set()
+        self.last_window: dict | None = None
+        self._last_settle_poll: float | None = None
+        self._orders_seen: dict[str, dict] = {}
+        # Why this bar's buy was not placed (limit_pricing's answer), once.
+        self._buy_note: str | None = None
         self.shadow = shadow
         # What the loop says about itself after each tick (module docstring).
         self.decision: dict | None = None
@@ -519,6 +625,9 @@ class LiveTradingLoop:
         # it can. Readable by whatever supervises the loop.
         self.broker_unavailable: str | None = None
         self._unavailable_ticks = 0
+        # Whether this tick's bar reached the strategy's record_tick: a
+        # broker that fails after that has cost the strategy its decision.
+        self._decided = False
 
         self.risk_manager = risk_manager or RiskManager(
             max_concurrent_lots=config.risk.max_concurrent_lots,
@@ -834,6 +943,9 @@ class LiveTradingLoop:
         the tick's sizing decisions see confirmed reality rather than
         state that is one fill stale.
         """
+        self._decided = False
+        if self.calendar is not None:
+            return self._run_once_on_windows()
         if not self._session_is_open():
             return TickOutcome(acted=False, reason="market_closed")
 
@@ -882,6 +994,7 @@ class LiveTradingLoop:
 
         # Phase 1, unconditionally and before any harvest.
         decision_cycle.record_tick(self.strategy, context)
+        self._decided = True
         if self.shadow is not None:
             try:
                 decision_cycle.record_tick(self.shadow, context)
@@ -909,6 +1022,448 @@ class LiveTradingLoop:
             sells_submitted=sells,
             buys_submitted=buys,
         )
+
+    # --- on the venue's own windows (module docstring) ---
+
+    def set_listeners(self, *, tick=None, fill=None, order=None) -> None:
+        """Who hears the ticks, fills and order events of a loop built before
+        its trading process was (cli.py's engine-first start)."""
+        self._tick_listener, self._fill_listener, self._order_listener = tick, fill, order
+
+    def attach_broker(self, broker) -> None:
+        """The broker, once it is connected: a loop built before it (cli.py's
+        engine-first start) has replayed its history and watched the market
+        without one."""
+        self.broker = broker
+
+    def watch_once(self) -> TickOutcome:
+        """A tick without the broker: the bar reaches the strategy, and
+        nothing else happens -- no fill is read and no order placed. What an
+        engine that is ready does while it waits for its broker, so its
+        strategy misses no bar meanwhile."""
+        self._decided = False
+        now = self._now()
+        if self.calendar is not None and not self.calendar.observing(now):
+            return TickOutcome(acted=False, reason="market_closed")
+        bar, price, skipped = self._next_bar(now)
+        if skipped is not None:
+            return skipped
+        context = self._build_context(bar, price)
+        self._record(context)
+        self._decision_not_sent()  # whatever it decided, nothing was sent
+        self._describe(context)
+        self.state.prev_close = price
+        return TickOutcome(acted=False, reason="watching", price=price)
+
+    def _run_once_on_windows(self) -> TickOutcome:
+        """run_once on the venue's windows: orders kept and audited every
+        tick, bars watched across the venue's day, orders placed only inside
+        a traded window."""
+        now = self._now()
+        self._buy_note = None
+        if not self.calendar.observing(now):
+            self.window = None
+            return TickOutcome(acted=False, reason="market_closed")
+        self.window = self.calendar.window_at(now)
+        if self.settlement_days > 0:
+            # The EASTERN date: after 19:00 ET in winter a bar's UTC date is
+            # already tomorrow's, and T+1 cash must not settle a session early.
+            day = now.astimezone(EASTERN).date().toordinal()
+            if day != self.state.session:
+                self.state.advance_session(day)
+
+        broker_error = None
+        fills = 0
+        try:
+            fills = self._poll_open_orders()
+            self._expire_orders(now)
+            self._audit_windows(now)
+        except BrokerUnavailableError as exc:
+            broker_error = exc
+
+        bar, price, skipped = self._next_bar(now)
+        if skipped is not None:
+            if broker_error is not None:
+                raise broker_error
+            skipped.fills_applied = fills
+            self.persist_state()
+            return skipped
+
+        context = self._build_context(bar, price)
+        sees = self._record(context)
+        if broker_error is not None:
+            # The bar reached the strategy; nothing more without the broker.
+            # run_forever persists and tells the strategy its decision was
+            # not sent.
+            raise broker_error
+
+        why_not = self._why_not_trading(now, bar, sees)
+        sells = buys = 0
+        if why_not is None:
+            sells = self._harvest(context)
+        self.circuit_breaker.evaluate(
+            context.drawdown, self.risk_manager.halt_new_buys_if_drawdown_exceeds
+        )
+        if why_not is None and self.circuit_breaker.allows_new_buys:
+            buys = self._maybe_buy(context)
+        if why_not is not None:
+            self._decision_not_sent()
+        self._describe(context)
+        if why_not is not None and self.decision is not None:
+            self.decision["blocked"] = why_not
+        self.state.prev_close = price
+        self.persist_state()
+        return TickOutcome(
+            acted=True,
+            reason="ok" if why_not is None else "not_trading",
+            price=price,
+            fills_applied=fills,
+            sells_submitted=sells,
+            buys_submitted=buys,
+        )
+
+    def _next_bar(self, now: datetime):
+        """(bar, price, None), or (None, None, the TickOutcome of a tick with
+        no new bar to act on)."""
+        from engine.core.exceptions import DataValidationError
+
+        try:
+            bar = self.market_data.latest_bar(self.symbol)
+        except DataValidationError as e:
+            reason = "feeds_disagree" if type(e).__name__ == "FeedsDisagree" else "no_data"
+            logger.warning(f"No bar this tick: {e}")
+            return None, None, TickOutcome(acted=False, reason=reason)
+        stamp = bar.timestamp if bar.timestamp.tzinfo else bar.timestamp.replace(tzinfo=UTC)
+        # Outside the regular session a minute often has no trade: the same
+        # bar again is not a new one to the strategy.
+        if (
+            self.calendar is not None
+            and self._last_bar_at is not None
+            and stamp <= self._last_bar_at
+        ):
+            return None, None, TickOutcome(acted=False, reason="no_new_bar", price=bar.close)
+        check = self.tick_validator.validate(bar.close)
+        if not check.accepted:
+            logger.warning(f"Tick rejected by validation: {bar.close}")
+            return None, None, TickOutcome(acted=False, reason="tick_rejected", price=bar.close)
+        self._last_bar_at = stamp
+        price = check.price
+        self.state.last_tick_price = float(price)
+        self.state.last_tick_at = bar.timestamp.isoformat()
+        self.last_bar = {
+            "t": int(bar.timestamp.timestamp()),
+            "o": float(bar.open),
+            "h": float(bar.high),
+            "l": float(bar.low),
+            "c": float(bar.close),
+            "v": float(getattr(bar, "volume", 0.0) or 0.0),
+        }
+        source = getattr(bar, "source", None)
+        if source and source != "alpaca":
+            self.last_bar["source"] = source
+        return bar, price, None
+
+    def _sees(self, strategy, timestamp: datetime) -> bool:
+        """Whether `strategy` is fed this bar: one built on regular-session
+        bars sees the regular session's alone."""
+        if self.calendar is None or not getattr(strategy, "regular_session_only", False):
+            return True
+        return self.calendar.session_at(timestamp) == REGULAR
+
+    def _record(self, context: MarketContext) -> bool:
+        """record_tick for the strategy (and the shadow) that see this bar.
+        Returns whether the strategy did."""
+        sees = self._sees(self.strategy, context.timestamp)
+        if sees:
+            decision_cycle.record_tick(self.strategy, context)
+            self._decided = True
+        if self.shadow is not None and self._sees(self.shadow, context.timestamp):
+            try:
+                decision_cycle.record_tick(self.shadow, context)
+            except Exception as exc:
+                self._drop_shadow(exc)
+        return sees
+
+    def _why_not_trading(self, now: datetime, bar, sees: bool) -> str | None:
+        """None when this tick may place orders; else why not, for the
+        status."""
+        window = self.window
+        if window is None:
+            upcoming = self.calendar.next_window(now)
+            when = f"; the next opens {upcoming.start:%H:%M} ET" if upcoming is not None else ""
+            return f"between trading windows{when}"
+        if not sees or (
+            getattr(self.strategy, "regular_session_only", False) and window.session != REGULAR
+        ):
+            return f"{type(self.strategy).__name__} trades the regular session only"
+        orders = self.config.live.orders
+        closing = window.end - _seconds(
+            orders.session_close_margin_seconds + float(self.config.live.poll_interval_seconds)
+        )
+        if now >= closing:
+            return f"the {window.session} window closes at {window.end:%H:%M} ET"
+        stamp = bar.timestamp if bar.timestamp.tzinfo else bar.timestamp.replace(tzinfo=UTC)
+        age = (now - stamp).total_seconds()
+        if age > TRADABLE_BAR_AGE_SECONDS:
+            return f"the last bar is {age:.0f}s old"
+        unsupported = self._session_unsupported(window.session)
+        if unsupported:
+            return unsupported
+        return None
+
+    def _session_unsupported(self, session: str) -> str | None:
+        """Why the broker cannot place an order in `session`, or None."""
+        ask = getattr(self.broker, "session_support", None)
+        if callable(ask):
+            return ask(session)
+        if session in EXTENDED_SESSIONS and not getattr(self.broker, "extended_hours", False):
+            return f"{type(self.broker).__name__} places no {session} orders"
+        return None
+
+    def _order_kwargs(self) -> dict:
+        """The window an order is placed in, for a broker on the venue's
+        windows; nothing otherwise, so every other call is unchanged."""
+        return {"session": self.window.session} if self.window is not None else {}
+
+    def _window_fields(self, *, limit: float | None, qty: float | None, reserve: float) -> dict:
+        if self.window is None:
+            return {}
+        now = self._now()
+        margin = _seconds(self.config.live.orders.session_close_margin_seconds)
+        return {
+            "session": self.window.session,
+            "submitted_at": now.isoformat(),
+            "expires_at": (self.window.end - margin).isoformat(),
+            "limit_price": float(limit) if limit is not None else None,
+            "qty": float(qty) if qty is not None else None,
+            "reserve": float(reserve),
+        }
+
+    def _quote(self):
+        """This tick's quote from a second source, or None."""
+        read = getattr(self.market_data, "quote", None)
+        if not callable(read):
+            return None
+        try:
+            return read(self.symbol)
+        except Exception as exc:
+            logger.warning(f"No quote this tick: {type(exc).__name__}: {exc}")
+            return None
+
+    def reserved(self) -> float:
+        """Dollars held back by buys still resting: their limit x size, less
+        what has filled (which cash already reflects)."""
+        held = 0.0
+        for tracked in self.state.open_orders.values():
+            if tracked.kind == "buy" and tracked.reserve > 0:
+                held += max(0.0, tracked.reserve - tracked.tracker.cumulative_notional)
+        return held
+
+    def _spendable(self) -> float:
+        """Settled buying power, less what resting buys hold back on the
+        venue's windows (where a buy can rest)."""
+        power = self.state.buying_power
+        if self.calendar is not None:
+            power = max(0.0, power - self.reserved())
+        return power
+
+    def _expire_orders(self, now: datetime) -> None:
+        """Cancel what must not rest any longer: every order a tick before
+        its window's end (less the margin), and a buy outside the regular
+        session once it has rested live.orders.ttl_seconds. Done when the
+        venue reports it terminal (_poll_open_orders); a part that filled is
+        booked as any fill is."""
+        cancel = getattr(self.broker, "cancel_order", None)
+        poll = _seconds(float(self.config.live.poll_interval_seconds))
+        ttl = float(self.config.live.orders.ttl_seconds)
+        changed = False
+        for tracked in list(self.state.open_orders.values()):
+            if tracked.cancel_requested:
+                continue
+            why = None
+            if tracked.expires_at and now >= datetime.fromisoformat(tracked.expires_at) - poll:
+                why = "session_end"
+            elif (
+                tracked.kind == "buy"
+                and tracked.session in EXTENDED_SESSIONS
+                and tracked.submitted_at
+                and (now - datetime.fromisoformat(tracked.submitted_at)).total_seconds() >= ttl
+            ):
+                why = "ttl"
+            if why is None:
+                continue
+            if not callable(cancel):
+                logger.warning(
+                    f"{tracked.client_order_id!r} should be cancelled ({why}) but "
+                    f"{type(self.broker).__name__} cannot cancel; it rests until the venue "
+                    "expires it."
+                )
+                continue
+            try:
+                cancel(tracked.client_order_id)
+            except BrokerUnavailableError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    f"Could not cancel {tracked.client_order_id!r} ({why}; "
+                    f"{type(exc).__name__}: {exc}); trying again next tick."
+                )
+                continue
+            tracked.cancel_requested, tracked.cancel_reason = True, why
+            changed = True
+            logger.warning(
+                f"{tracked.kind.upper()} {tracked.client_order_id!r} cancel requested ({why}); "
+                "done when the venue reports it gone."
+            )
+            self._order_event(tracked, "cancel_requested", why=why)
+        if changed:
+            self._persist_open_orders()
+
+    def _audit_windows(self, now: datetime) -> None:
+        """Audit each traded window of today once it has ended (and
+        WINDOW_AUDIT_GRACE_SECONDS passed): its orders all terminal at the
+        venue and, with nothing open, the venue's position the ledger's."""
+        today = now.astimezone(EASTERN).date()
+        for window in self.calendar.traded(today):
+            key = (today.isoformat(), window.session)
+            if key in self._audited or now < window.end + _seconds(WINDOW_AUDIT_GRACE_SECONDS):
+                continue
+            # Marked done only once it ran: a venue unreachable mid-audit
+            # (BrokerUnavailableError) leaves it for the next tick.
+            self._audit(window, now)
+            self._audited.add(key)
+
+    def _audit(self, window, now: datetime) -> None:
+        summary = {
+            "day": window.start.date().isoformat(),
+            "session": window.session,
+            "start": window.start.isoformat(),
+            "end": window.end.isoformat(),
+            "at": now.isoformat(),
+            **self._window_tally(window),
+        }
+        stuck = [
+            tracked.client_order_id
+            for tracked in self.state.open_orders.values()
+            if tracked.expires_at and datetime.fromisoformat(tracked.expires_at) <= window.end
+        ]
+        problem = None
+        if stuck:
+            problem = (
+                f"after the {window.session} window ({window.start:%H:%M}-{window.end:%H:%M} ET) "
+                f"order(s) {stuck} are still open at the venue, though cancelled before it "
+                "ended. Check Activity & Orders and reconcile before buying again."
+            )
+        elif self.state.open_orders:
+            summary["position"] = "not checked: orders of a later window are open"
+        else:
+            held = float(self.broker.snapshot().positions.get(self.symbol, 0.0) or 0.0)
+            booked = float(sum(lot.shares for lot in self.ledger.open_lots))
+            summary["position"] = {"venue": held, "ledger": booked}
+            if abs(held - booked) > SHARE_EPSILON:
+                problem = (
+                    f"after the {window.session} window the venue holds {held:g} {self.symbol} "
+                    f"and the ledger {booked:g}. Reconcile before buying again."
+                )
+        if problem is not None:
+            summary["problem"] = problem
+            logger.error(f"WINDOW AUDIT: {problem}")
+            self.circuit_breaker.halt_for_reconciliation(problem)
+        else:
+            logger.warning(f"WINDOW AUDIT {window.session}: {summary}")
+        self.last_window = summary
+
+    def _window_tally(self, window) -> dict:
+        """The orders this process placed in `window`: how many, what filled
+        and at what price, and how the rest ended."""
+        mine = [
+            entry
+            for entry in self._orders_seen.values()
+            if entry["session"] == window.session
+            and entry["day"] == window.start.date().isoformat()
+        ]
+        filled = sum(entry["filled_qty"] for entry in mine)
+        notional = sum(entry["filled_notional"] for entry in mine)
+        ended: dict[str, int] = {}
+        for entry in mine:
+            if entry["final"]:
+                ended[entry["final"]] = ended.get(entry["final"], 0) + 1
+        return {
+            "orders": len(mine),
+            "filled_qty": filled,
+            "avg_price": (notional / filled) if filled > 0 else None,
+            "ended": ended,
+        }
+
+    def _order_event(self, tracked: _TrackedOrder, event: str, **fields) -> None:
+        """One moment of an order's life, to the order listener and the
+        window's tally. Never raises."""
+        try:
+            entry = self._orders_seen.setdefault(
+                tracked.client_order_id,
+                {
+                    "session": tracked.session,
+                    "day": (
+                        datetime.fromisoformat(tracked.submitted_at)
+                        .astimezone(EASTERN)
+                        .date()
+                        .isoformat()
+                        if tracked.submitted_at
+                        else None
+                    ),
+                    "filled_qty": 0.0,
+                    "filled_notional": 0.0,
+                    "final": None,
+                },
+            )
+            entry["filled_qty"] = float(tracked.tracker.cumulative_qty)
+            entry["filled_notional"] = float(tracked.tracker.cumulative_notional)
+            if event in _FINAL_EVENTS:
+                entry["final"] = event
+        except Exception as exc:
+            logger.warning(f"Order tally failed (ignored): {type(exc).__name__}: {exc}")
+        if self._order_listener is None:
+            return
+        try:
+            filled = float(tracked.tracker.cumulative_qty)
+            self._order_listener(
+                {
+                    "t": self._now().timestamp(),
+                    "order": tracked.client_order_id,
+                    "kind": tracked.kind,
+                    "event": event,
+                    "session": tracked.session,
+                    "limit": tracked.limit_price,
+                    "qty": tracked.qty,
+                    "filled_qty": filled,
+                    "avg_price": (
+                        float(tracked.tracker.cumulative_notional) / filled if filled > 0 else None
+                    ),
+                    "reason": str(tracked.sell_reason) if tracked.kind == "sell" else None,
+                    **fields,
+                }
+            )
+        except Exception as exc:
+            logger.warning(f"Order listener failed (ignored): {type(exc).__name__}: {exc}")
+
+    def settle_in_flight(self) -> bool:
+        """in_flight_settled for a shutdown on the venue's windows: orders the
+        last tick cancelled are asked about (at most every
+        SETTLE_POLL_SECONDS), so a cancel the venue confirms during the
+        shutdown's window counts as settled rather than as an order left in
+        flight."""
+        if not self.state.open_orders:
+            return True
+        if self.calendar is None or self.broker is None:
+            return False
+        moment = time.monotonic()
+        if self._last_settle_poll is None or moment - self._last_settle_poll >= SETTLE_POLL_SECONDS:
+            self._last_settle_poll = moment
+            try:
+                self._poll_open_orders()
+            except Exception as exc:
+                logger.warning(f"Could not ask about orders settling: {type(exc).__name__}: {exc}")
+        return not self.state.open_orders
 
     def run_forever(self, max_ticks: int | None = None) -> int:
         """Tick until stopped. Returns the number of ticks executed.
@@ -940,6 +1495,7 @@ class LiveTradingLoop:
                 # fill, say) is persisted now rather than at the tick's
                 # end, which it did not reach.
                 self.persist_state()
+                self._decision_not_sent()
                 self._note_broker_unavailable(exc)
                 self._report_tick("broker_unavailable", acted=False, detail=str(exc))
             except AmbiguousSubmissionError:
@@ -970,12 +1526,14 @@ class LiveTradingLoop:
                 blocked = f"buys paused: {self.circuit_breaker.reason}"
             elif level is None:
                 blocked = "the strategy buys at no price right now"
-            elif self.state.buying_power <= 0:
+            elif self._spendable() <= 0:
                 blocked = "no buying power left"
             elif cap is not None and len(self.ledger.open_lots) >= cap:
                 blocked = f"at its limit of {cap} open lots"
             else:
                 blocked = None
+            if blocked is None and self._buy_note:
+                blocked = self._buy_note
             self.decision = {
                 "price": float(context.price),
                 "buy_level": level,
@@ -983,6 +1541,14 @@ class LiveTradingLoop:
                 "blocked": blocked,
                 "strategy": _diagnostics(self.strategy),
             }
+            if self.calendar is not None:
+                upcoming = self.calendar.next_window(self._now())
+                self.decision["window"] = self.window.to_dict() if self.window else None
+                self.decision["next_window"] = upcoming.to_dict() if upcoming else None
+                self.decision["reserved"] = round(self.reserved(), 2)
+                note = getattr(self.market_data, "secondary_note", None)
+                if note:
+                    self.decision["secondary_feed"] = note
         except Exception as exc:
             logger.warning(f"No decision report this tick: {type(exc).__name__}: {exc}")
             self.decision = None
@@ -1022,6 +1588,22 @@ class LiveTradingLoop:
             self._tick_listener({"at": datetime.now(UTC).isoformat(), "reason": reason, **fields})
         except Exception as exc:
             logger.warning(f"Tick listener failed (ignored): {type(exc).__name__}: {exc}")
+
+    def _decision_not_sent(self) -> None:
+        """The broker could not take this tick's orders AFTER the strategy
+        decided on its bar (module docstring, A DECISION THE BROKER COULD
+        NOT TAKE). A strategy that declares decision_not_sent() is told, so
+        it can decide again on the next bar. Never raises."""
+        if not self._decided:
+            return
+        self._decided = False
+        hook = getattr(self.strategy, "decision_not_sent", None)
+        if not callable(hook):
+            return
+        try:
+            hook()
+        except Exception as exc:
+            logger.warning(f"decision_not_sent failed (ignored): {type(exc).__name__}: {exc}")
 
     def _note_broker_unavailable(self, exc: BrokerUnavailableError) -> None:
         """Log an unreachable broker without flooding the log: when it
@@ -1077,10 +1659,14 @@ class LiveTradingLoop:
                     self._apply_sell_fill(tracked, delta)
                 applied += 1
 
-            if map_broker_status(order.status) in TERMINAL_STATES:
+            state = map_broker_status(order.status)
+            if state in TERMINAL_STATES:
                 self.state.open_orders.pop(client_order_id, None)
                 self.state.sells_in_flight.difference_update(tracked.lot_ids)
                 removed += 1
+                self._order_event(tracked, _FINAL_EVENT.get(state, str(state).lower()))
+            elif not delta.is_empty:
+                self._order_event(tracked, "partially_filled")
         if removed or applied:
             self._persist_open_orders()
         return applied
@@ -1370,7 +1956,11 @@ class LiveTradingLoop:
                 decision_id,
                 lambda cid, lot=lot: str(
                     self.broker.submit_sell(
-                        self.symbol, lot.shares, lot.target_sell_price, client_order_id=cid
+                        self.symbol,
+                        lot.shares,
+                        lot.target_sell_price,
+                        client_order_id=cid,
+                        **self._order_kwargs(),
                     ).id
                 ),
                 event_kind="sell_submission",
@@ -1383,9 +1973,11 @@ class LiveTradingLoop:
                 tracker=FillTracker(decision_id),
                 lot_order_id=lot.order_id,
                 sell_reason=SellReason.PROFIT_TARGET,
+                **self._window_fields(limit=lot.target_sell_price, qty=lot.shares, reserve=0.0),
             )
             self.state.sells_in_flight.add(lot.order_id)
             self._persist_open_orders()
+            self._order_event(self.state.open_orders[decision_id], "placed")
             submitted += 1
         return submitted
 
@@ -1411,11 +2003,21 @@ class LiveTradingLoop:
         if not lots or qty <= 0:
             return 0
         price = context.price * (1.0 - self.config.live.exit_limit_buffer)
+        if self.calendar is not None:
+            # Through the quote's bid when there is one (limit_pricing).
+            price = limit_pricing.marketable_sell(
+                context.price,
+                self._quote(),
+                max_premium=self.config.live.orders.max_premium,
+                buffer=self.config.live.exit_limit_buffer,
+            ).price
         decision_id = self._decision_id("SELL", context.timestamp, "exit")
         outcome = self.guard.submit_once(
             decision_id,
             lambda cid: str(
-                self.broker.submit_sell(self.symbol, qty, price, client_order_id=cid).id
+                self.broker.submit_sell(
+                    self.symbol, qty, price, client_order_id=cid, **self._order_kwargs()
+                ).id
             ),
             event_kind="sell_submission",
         )
@@ -1433,9 +2035,11 @@ class LiveTradingLoop:
             sell_reason=SellReason.SIGNAL_EXIT,
             exit_lot_ids=tuple(lot.order_id for lot in lots),
             submitted_bar=context.timestamp.isoformat(),
+            **self._window_fields(limit=price, qty=qty, reserve=0.0),
         )
         self.state.sells_in_flight.update(lot.order_id for lot in lots)
         self._persist_open_orders()
+        self._order_event(self.state.open_orders[decision_id], "placed")
         return 1
 
     def _cancel_stale_exits(self, context: MarketContext) -> None:
@@ -1502,39 +2106,69 @@ class LiveTradingLoop:
             return 0
 
         trade_value = decision.clamped_trade_value
-        if trade_value <= 0 or self.state.buying_power < trade_value:
+        if trade_value <= 0 or self._spendable() < trade_value:
             return 0
 
+        # context.price IS the target buy price -- the grid trigger fired at
+        # it. On the venue's windows a buy is placed by what it is for
+        # (engine/execution/limit_pricing.py): a grid buy at that price, a
+        # rebalance through the quote.
+        limit_price = context.price
+        if self.calendar is not None:
+            limit = self._buy_limit(context)
+            if limit.price is None:
+                logger.warning(f"No buy this bar: {limit.why}")
+                self._buy_note = limit.why
+                return 0
+            limit_price = limit.price
+        placed = {}
+
+        def submit(cid):
+            # Passed unconditionally: a regular-hours notional market buy
+            # ignores it, and an extended-hours buy cannot be placed without
+            # it, so the loop stays out of the business of knowing which
+            # shape the venue will take.
+            placed["order"] = self.broker.submit_buy(
+                self.symbol,
+                trade_value,
+                client_order_id=cid,
+                limit_price=limit_price,
+                **self._order_kwargs(),
+            )
+            return str(placed["order"].id)
+
         decision_id = self._decision_id("BUY", context.timestamp)
-        outcome = self.guard.submit_once(
-            decision_id,
-            # context.price IS the target buy price -- the grid trigger
-            # fired at it. Passed unconditionally: a regular-hours
-            # notional market buy ignores it, and an extended-hours buy
-            # cannot be placed without it, so the loop stays out of the
-            # business of knowing which shape the venue will take.
-            lambda cid: str(
-                self.broker.submit_buy(
-                    self.symbol,
-                    trade_value,
-                    client_order_id=cid,
-                    limit_price=context.price,
-                ).id
-            ),
-            event_kind="buy_submission",
-        )
+        outcome = self.guard.submit_once(decision_id, submit, event_kind="buy_submission")
         if not outcome.submitted_now:
             return 0
 
+        qty = getattr(placed.get("order"), "qty", None) or None
         self.state.open_orders[decision_id] = _TrackedOrder(
             client_order_id=decision_id,
             kind="buy",
             tracker=FillTracker(decision_id),
             trigger_price=context.price,
             profit_target=self.profit_target,
+            **self._window_fields(limit=limit_price, qty=qty, reserve=trade_value),
         )
         self._persist_open_orders()
+        self._order_event(self.state.open_orders[decision_id], "placed")
         return 1
+
+    def _buy_limit(self, context: MarketContext):
+        """Where a buy goes on the venue's windows: through the quote for a
+        strategy whose buys must fill (a rebalance: `marketable_orders`), at
+        the trigger otherwise."""
+        quote = self._quote()
+        orders = self.config.live.orders
+        if getattr(self.strategy, "marketable_orders", False):
+            return limit_pricing.marketable_buy(
+                context.price,
+                quote,
+                max_premium=orders.max_premium,
+                buffer=self.config.live.exit_limit_buffer,
+            )
+        return limit_pricing.grid_buy(context.price, quote, max_spread=orders.max_spread)
 
     def _decision_id(self, decision_type: str, timestamp: datetime, suffix: str = "") -> str:
         """The stable id used as both the audit key and the Alpaca
@@ -1602,6 +2236,11 @@ class LiveTradingLoop:
                     "paper": bool(self.config.live.paper_trading),
                     "poll_interval_seconds": float(self.config.live.poll_interval_seconds),
                     "extended_hours": bool(self.config.live.extended_hours),
+                    **(
+                        {"sessions": list(self.config.live.traded_sessions)}
+                        if self.calendar is not None
+                        else {}
+                    ),
                 }
             ),
         )

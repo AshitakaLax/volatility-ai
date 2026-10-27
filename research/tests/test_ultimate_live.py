@@ -314,6 +314,14 @@ def test_a_live_ultimate_rsp_without_what_it_was_researched_with_is_refused(over
         build_strategy(_rsp_config(**overrides), STRATEGIES)
 
 
+def test_a_live_ultimate_rsp_may_start_early_on_its_venues_windows():
+    """live.sessions: the engine is up for the pre-market and the strategy
+    still sees and trades the regular session alone (the loop's job)."""
+    build_strategy(_rsp_config(live={"sessions": ["pre_market", "regular"]}), STRATEGIES)
+    with pytest.raises(ConfigurationError, match="does not include it"):
+        build_strategy(_rsp_config(live={"sessions": ["pre_market"]}), STRATEGIES)
+
+
 def test_the_live_loop_replays_its_history_then_moves_to_the_target_once(tmp_path):
     """Through the real loop: the history replayed with no replayed bar
     trading, nothing before execute_minute, then ONE buy of target x equity

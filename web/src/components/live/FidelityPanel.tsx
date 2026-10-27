@@ -81,6 +81,7 @@ export function FidelityPanel({
           <Setup deployment={deployment} />
         ) : bridge ? (
           <>
+            <EngineLine deployment={deployment} />
             <div className={cn("rounded-md border p-3", BANNER[summary.tone])}>
               <p className={cn("font-medium", TITLE[summary.tone])}>{summary.label}</p>
               <p className="text-xs text-muted-foreground">{summary.detail}</p>
@@ -118,6 +119,29 @@ export function FidelityPanel({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** The ENGINE's own readiness -- its strategy built and history replayed --
+ * apart from Fidelity's (the banner below): a deployment on its venue's
+ * windows (live.sessions) starts its engine before the window opens, and
+ * says it is ready before it asks Fidelity anything. Absent otherwise. */
+function EngineLine({ deployment }: { deployment: DeploymentDetail }) {
+  const engine = deployment.status?.stale ? null : deployment.status?.engine;
+  if (!engine) return null;
+  const tone = engine.state === "trading" || engine.state === "ready" ? "profit" : "neutral";
+  const label = {
+    starting: "Engine starting",
+    warming_up: "Engine warming up",
+    ready: "Engine ready",
+    trading: "Engine trading",
+  }[engine.state];
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <Badge tone={tone}>{label}</Badge>
+      <span className="text-muted-foreground">{engine.detail}</span>
+      <span className="text-muted-foreground">· Fidelity's own readiness is below.</span>
+    </div>
   );
 }
 

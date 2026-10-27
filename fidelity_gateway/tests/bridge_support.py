@@ -41,12 +41,16 @@ class FakeExtension:
         *,
         origin: str | None = None,
         version: str | None = "9.9.9",
+        source: str | None = None,
     ) -> None:
+        """`source`: the local address to connect from, to stand in for
+        another computer (127.0.0.2, say)."""
         from websockets.sync.client import connect
 
         self.api_key = api_key
         self.version = version
-        self.ws = connect(url, origin=origin, proxy=None, open_timeout=5)
+        extra = {"source_address": (source, 0)} if source else {}
+        self.ws = connect(url, origin=origin, proxy=None, open_timeout=5, **extra)
         self.channel: Channel | None = None
         self._thread: threading.Thread | None = None
         self.errors: list[BaseException] = []

@@ -22,6 +22,7 @@ object EventKind {
     const val TRADING_SWITCH = "trading_switch"
     const val REFUSED = "refused"
     const val BRIDGE = "bridge"
+    const val WINDOW = "window"
 
     /** A test the app asked for: never numbered, never kept by the bridge. */
     const val TEST = "test"
@@ -33,7 +34,7 @@ object EventKind {
      */
     val ALL = listOf(
         BUY, SELL, ORDER_UPDATE, ORDER_PROBLEM, ENGINE, SESSION, READINESS, FIDELITY_SIGNIN,
-        ACCOUNT_CHECK, CONNECTED, DISCONNECTED, TRADING_SWITCH, REFUSED, BRIDGE,
+        ACCOUNT_CHECK, CONNECTED, DISCONNECTED, TRADING_SWITCH, REFUSED, BRIDGE, WINDOW,
     )
 
     fun label(kind: String): String = when (kind) {
@@ -51,6 +52,7 @@ object EventKind {
         TRADING_SWITCH -> "\"Allow trading\" switched on or off"
         REFUSED -> "A connection to the bridge was refused"
         BRIDGE -> "Bridge port taken, or bridge restarting"
+        WINDOW -> "A trading window closed: its orders and what filled"
         TEST -> "Test notifications"
         else -> kind
     }

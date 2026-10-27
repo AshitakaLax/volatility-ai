@@ -48,6 +48,22 @@ live:
   profit_target: 0.005
   poll_interval_seconds: 60
   broker: fidelity
+  # What the Live page may do (engine/core/config.py LiveControlConfig);
+  # pausing new buys is always allowed. Resume buys clears a halt -- with
+  # real money only once you type the deployment's id back. Without it, a
+  # halt (a pause, a book that disagrees with the account) is cleared by hand.
+  control:
+    resume_buys: true
+  # Fidelity's own trading windows (docs/DEPLOY.md, "Pre-market and
+  # after-hours"): pre_market 07:00-09:28 ET, regular, after_hours to 20:00.
+  # Naming them starts the engine engine_lead_minutes before the first and
+  # places orders only inside them, every one a limit. Left out, the
+  # deployment trades the regular session as before.
+  # sessions: [pre_market, regular]
+  # engine_lead_minutes: 30
+  # Fidelity's real-time quote behind Alpaca's bars: limit prices, a
+  # cross-check, and a minute Alpaca has no bar for outside regular hours.
+  # secondary_feed: {enabled: true}
   fidelity:
     allowed_accounts: ["YOUR-FULL-ACCOUNT-NUMBER"]
     account: "YOUR-FULL-ACCOUNT-NUMBER"

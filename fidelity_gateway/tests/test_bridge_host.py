@@ -15,14 +15,16 @@ import socket
 import tempfile
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from engine.core.config import FidelityBridgeConfig, FidelityConfig
 from engine.trading.control_inbox import Command, ControlInbox
 from fidelity_gateway.bridge.attach import AttachedBridge
-from fidelity_gateway.bridge.host import BridgeHost, session_window
+from fidelity_gateway.bridge.host import CHECK_RETRY_SECONDS, BridgeHost, session_window
 from fidelity_gateway.bridge.ip_policy import AddressPolicy
 from fidelity_gateway.bridge.keys import BridgeApiKey
 from fidelity_gateway.bridge.server import (
@@ -46,6 +48,9 @@ class Clock:
 
     def __call__(self) -> float:
         return self.now
+
+
+SUNDAY = datetime(2026, 10, 25, 12, 0, tzinfo=ZoneInfo("America/New_York")).timestamp()
 
 
 def _fidelity(port: int = 0, dry_run: bool = False) -> FidelityConfig:
@@ -80,15 +85,25 @@ def place():
 
 
 def _host(place, *, check=None, settings=None, clock=None) -> BridgeHost:
+    # A Sunday unless a test says otherwise: between sessions whenever the
+    # suite runs. On the wall clock, tests behaved differently during market
+    # hours (the standby's words, a check run before trading).
+    clock = clock or Clock(SUNDAY)
     settings = settings or (lambda: (_fidelity(), "RSP"))
+
+    def make_server(settings, on_event) -> BridgeServer:
+        server = _make_server(settings, on_event)
+        server._clock = clock  # one clock for the host and its bridge
+        return server
+
     host = BridgeHost(
-        make_server=_make_server,
+        make_server=make_server,
         settings=settings,
         socket_path=place / "bridge.sock",
-        inbox=ControlInbox(place / "control" / "bridge", clock=clock or time.time),
+        inbox=ControlInbox(place / "control" / "bridge", clock=clock),
         check=check,
         deployment="fidelity",
-        clock=clock or time.time,
+        clock=clock,
         log=lambda _message: None,
     )
     host.open_socket()
@@ -297,22 +312,30 @@ def _statuses(extension: FakeExtension, count: int = 1, timeout: float = 5.0) ->
     return found
 
 
-def test_the_extension_hears_the_trader_while_attached_and_the_host_otherwise(host):
-    extension = _extension(host)
-    host.tick()
-    (standby,) = _statuses(extension)
-    assert standby["mode"] == "bridge" and isinstance(standby["ready"], bool)
-    assert "next session" in standby["detail"]
-    trader = _attach(host)
-    trader.set_engine_status({"mode": "live", "state": "running", "detail": "trading"})
-    (running,) = _statuses(extension)
-    assert running["mode"] == "live" and running["detail"] == "trading"
-    trader.stop()
-    assert _wait_until(lambda: host.attached is None)
-    host.tick()
-    (back,) = _statuses(extension)
-    assert back["mode"] == "bridge"
-    extension.close()
+def test_the_extension_hears_the_trader_while_attached_and_the_host_otherwise(place):
+
+    # A Sunday: between sessions whenever the suite runs (it failed during
+    # a session on the wall clock).
+    sunday = datetime(2026, 10, 25, 12, 0, tzinfo=ZoneInfo("America/New_York")).timestamp()
+    host = _host(place, clock=Clock(sunday))
+    try:
+        extension = _extension(host)
+        host.tick()
+        (standby,) = _statuses(extension)
+        assert standby["mode"] == "bridge" and isinstance(standby["ready"], bool)
+        assert "next session" in standby["detail"]
+        trader = _attach(host)
+        trader.set_engine_status({"mode": "live", "state": "running", "detail": "trading"})
+        (running,) = _statuses(extension)
+        assert running["mode"] == "live" and running["detail"] == "trading"
+        trader.stop()
+        assert _wait_until(lambda: host.attached is None)
+        host.tick()
+        (back,) = _statuses(extension)
+        assert back["mode"] == "bridge"
+        extension.close()
+    finally:
+        host.close()
 
 
 # -- what the Live page and the supervisor read --------------------------------------
@@ -490,8 +513,6 @@ def test_the_host_cannot_place_or_preview_an_order():
 
 
 def test_the_session_window_follows_the_trading_calendar():
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
 
     eastern = ZoneInfo("America/New_York")
     saturday = datetime(2026, 10, 24, 12, 0, tzinfo=eastern).timestamp()
@@ -506,9 +527,24 @@ def test_the_session_window_follows_the_trading_calendar():
     assert session_window(thanksgiving)["open"] is False
 
 
+def test_a_pre_market_deployments_day_starts_at_seven():
+    """live.sessions with the pre-market: the account is checked and
+    readiness warned of before 07:00 ET (05:00 Mountain), not 09:30."""
+    eastern = ZoneInfo("America/New_York")
+    sessions = ("pre_market", "regular")
+    early = datetime(2026, 10, 27, 6, 40, tzinfo=eastern).timestamp()
+    window = session_window(early, sessions)
+    assert window["open"] is False
+    assert window["next_open"] == datetime(2026, 10, 27, 7, 0, tzinfo=eastern)
+    pre = datetime(2026, 10, 27, 8, 0, tzinfo=eastern).timestamp()
+    assert session_window(pre, sessions)["open"] is True
+    assert session_window(pre)["open"] is False, "the regular session alone is unchanged"
+    evening = datetime(2026, 10, 27, 17, 0, tzinfo=eastern).timestamp()
+    late = session_window(evening, ("regular", "after_hours"))
+    assert late["open"] is True and late["closes"] == datetime(2026, 10, 27, 20, 0, tzinfo=eastern)
+
+
 def test_checks_run_by_themselves_before_the_open(place):
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
 
     calls: list[str] = []
     clock = Clock(datetime(2026, 10, 26, 9, 5, tzinfo=ZoneInfo("America/New_York")).timestamp())
@@ -524,6 +560,78 @@ def test_checks_run_by_themselves_before_the_open(place):
         host.tick()
         assert len(calls) == 2
     finally:
+        extension.close()
+        host.close()
+
+
+MONDAY_11 = datetime(2026, 10, 26, 11, 0, tzinfo=ZoneInfo("America/New_York")).timestamp()
+
+
+def _account(host: BridgeHost) -> dict:
+    return next(i for i in _status(host)["readiness"]["items"] if i["id"] == "account")
+
+
+def test_during_a_session_a_connection_is_read_before_it_is_ready(place):
+    """10-26: the bridge restarted mid-session, the tab's address said signed
+    in, and the trader started at once -- on a tab that could not fetch. It
+    failed five times and left a halt in its ledger. Now the account is read
+    first, and again every CHECK_RETRY_SECONDS while that fails."""
+    calls: list[bool] = []
+
+    def check(page, *, may_navigate: bool) -> str:
+        calls.append(may_navigate)
+        if len(calls) == 1:
+            raise RuntimeError("the Fidelity tab returned no response")
+        return "0 order(s) listed, RSP 0 share(s), settled cash $25,000.00"
+
+    clock = Clock(MONDAY_11)
+    host = _host(place, check=check, clock=clock)
+    extension = _extension(host)
+    try:
+        host.tick()
+        account = _account(host)
+        assert account["state"] == "fail" and "reading it now" in account["detail"]
+        assert _status(host)["readiness"]["blocking"] == "account"
+        assert _wait_until(lambda: host.last_check is not None)
+        assert host.last_check["by"] == "the extension connected"
+
+        host.tick()
+        assert "returned no response" in _account(host)["detail"]
+        clock.now += CHECK_RETRY_SECONDS - 1
+        host.tick()
+        assert len(calls) == 1, "not retried before CHECK_RETRY_SECONDS"
+        clock.now += 1
+        host.tick()
+        assert _wait_until(lambda: len(calls) == 2 and host.last_check["ok"])
+        assert host.last_check["by"] == "again: the last check failed"
+        host.tick()
+        assert _account(host)["state"] == "ok"
+        clock.now += CHECK_RETRY_SECONDS
+        host.tick()
+        assert len(calls) == 2, "a connection that passed is not read again"
+    finally:
+        extension.close()
+        host.close()
+
+
+def test_a_trader_attached_is_not_held_to_reading_first(place):
+    """The trader's own requests show the connection works; the host never
+    reads the account under it."""
+    calls: list[bool] = []
+    host = _host(
+        place,
+        check=lambda page, *, may_navigate: calls.append(may_navigate) or "ok",
+        clock=Clock(MONDAY_11),
+    )
+    extension = _extension(host)
+    trader = _attach(host)
+    try:
+        assert _wait_until(lambda: host.attached is not None)
+        host.tick()
+        assert _account(host)["state"] == "unknown"
+        assert calls == []
+    finally:
+        trader.stop()
         extension.close()
         host.close()
 

@@ -119,7 +119,10 @@ def check_live_support(config: BacktestConfig, strategy: Any) -> None:
         session blind.
       * A regular-session strategy under live.extended_hours: pre-market
         ticks would widen its sessions' ranges, and after-hours crosses
-        UTC midnight in winter.
+        UTC midnight in winter. On its venue's windows (live.sessions) it
+        may start early -- the loop feeds it the regular session's bars
+        alone and places its orders only there -- but a window it cannot
+        trade in is refused as a statement the file should not make.
       * A live.profit_target equal to the strategy's reversal_target: a
         restart tells reversal lots from calm lots by their target.
     """
@@ -140,11 +143,18 @@ def check_live_support(config: BacktestConfig, strategy: Any) -> None:
             f"{strategy_id} needs session history the live loop cannot rebuild for it yet; "
             "it would start every session blind. It is backtest-only."
         )
-    if getattr(strategy, "regular_session_only", False) and config.live.extended_hours:
-        raise ConfigurationError(
-            f"{strategy_id} is built from regular-session bars; live.extended_hours would fold "
-            "pre-market and after-hours ticks into its sessions. Set extended_hours: false."
-        )
+    if getattr(strategy, "regular_session_only", False):
+        if config.live.extended_hours:
+            raise ConfigurationError(
+                f"{strategy_id} is built from regular-session bars; live.extended_hours would "
+                "fold pre-market and after-hours ticks into its sessions. Set extended_hours: "
+                "false (live.sessions can start the engine early without trading there)."
+            )
+        if config.live.sessions and "regular" not in config.live.sessions:
+            raise ConfigurationError(
+                f"{strategy_id} trades the regular session only, and live.sessions "
+                f"{list(config.live.sessions)} does not include it."
+            )
     reversal_target = getattr(strategy, "reversal_target", None)
     if (
         reversal_target is not None

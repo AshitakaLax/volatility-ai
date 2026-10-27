@@ -2066,6 +2066,32 @@ class TestWhatTheTraderReports:
         too_many = client.get("/api/live/deployments/test-paper/bars", params={"sessions": 99})
         assert too_many.status_code == 422
 
+    def test_each_orders_life_comes_from_its_journal(self, client, store, tmp_path):
+        """The proof a limit order outside the regular session filled or did
+        not: each moment of its life, as the trader wrote it."""
+        import time
+
+        inbox = self._inbox(tmp_path)
+        now = int(time.time())
+        placed = {"t": now - 30, "order": "d1", "kind": "buy", "event": "placed"}
+        inbox.record_order({**placed, "session": "pre_market", "limit": 217.0, "qty": 9})
+        inbox.record_order({"t": now, "order": "d1", "kind": "buy", "event": "cancelled"})
+        events = client.get("/api/live/deployments/test-paper/orders").json()
+        assert [e["event"] for e in events] == ["placed", "cancelled"]
+        assert events[0]["session"] == "pre_market"
+        too_many = client.get("/api/live/deployments/test-paper/orders", params={"sessions": 99})
+        assert too_many.status_code == 422
+
+    def test_the_engines_own_readiness_and_the_last_window_are_reported(
+        self, client, store, tmp_path
+    ):
+        inbox = self._inbox(tmp_path)
+        engine = {"state": "ready", "detail": "history replayed", "since": "x"}
+        window = {"session": "pre_market", "orders": 1, "problem": None}
+        inbox.write_status(state="waiting_for_broker", detail="", engine=engine, last_window=window)
+        status = self._summary(client)["status"]
+        assert status["engine"] == engine and status["last_window"] == window
+
     def test_a_deployment_registered_before_it_is_set_up_says_how(
         self, client, monkeypatch, tmp_path
     ):

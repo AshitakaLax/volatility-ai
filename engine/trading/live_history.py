@@ -74,6 +74,11 @@ class AlpacaSessionHistory:
 
     `fetcher` is an engine.data.historical_data.AlpacaHistoricalData (any
     object with its fetch_bars(spec) -> (frame, ...) contract).
+
+    `regular_hours_only` False fetches the pre-market and after-hours bars
+    too: for a strategy that watches them, on a deployment trading its
+    venue's extended windows (live.sessions). Every other strategy -- and
+    every deployment before there were windows -- replays regular hours.
     """
 
     def __init__(
@@ -82,10 +87,12 @@ class AlpacaSessionHistory:
         *,
         feed: str,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        regular_hours_only: bool = True,
     ) -> None:
         self._fetcher = fetcher
         self._feed = feed
         self._now = now
+        self._regular_hours_only = bool(regular_hours_only)
 
     def __call__(self, symbol: str, sessions: int) -> pd.DataFrame:
         from engine.data.historical_data import FetchSpec
@@ -100,7 +107,7 @@ class AlpacaSessionHistory:
             timeframe="1Min",
             feed=self._feed,
             adjustment="all",
-            regular_hours_only=True,
+            regular_hours_only=self._regular_hours_only,
         )
         frame, _, _ = self._fetcher.fetch_bars(spec)
         return last_sessions(frame, sessions, today=now.astimezone(EASTERN).date())

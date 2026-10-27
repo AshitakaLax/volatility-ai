@@ -303,3 +303,36 @@ def test_a_target_buy_price_is_honoured_rather_than_ignored(build):
     broker = build()
     order = broker.submit_buy("TQQQ", 500.0, client_order_id="dec-lp", limit_price=25.0)
     assert order is not None
+
+
+# --- outside the regular session: limit orders only, on both venues -----
+
+
+@pytest.mark.parametrize("session", ["pre_market", "after_hours"])
+def test_neither_adapter_sends_a_market_order_outside_the_regular_session(session):
+    """A deployment on its venue's windows (live.sessions) names the window
+    each order is for. Outside the regular session both adapters refuse --
+    before anything is sent -- unless they can place a LIMIT there."""
+    from engine.core.exceptions import ConfigurationError
+
+    regular_hours_alpaca = _empty_alpaca()
+    assert regular_hours_alpaca.session_support(session) is not None
+    with pytest.raises(ConfigurationError, match=session):
+        regular_hours_alpaca.submit_buy("TQQQ", 500.0, client_order_id="d1", session=session)
+    assert regular_hours_alpaca._client.submitted == [], "refused before anything was sent"
+
+    fidelity = _empty_fidelity()
+    with pytest.raises(ConfigurationError, match="not known yet"):
+        fidelity.submit_buy("TQQQ", 500.0, client_order_id="d1", limit_price=100.0, session=session)
+    assert not any(path == PREVIEW_PATH for path, _ in fidelity._session.calls)
+
+
+def test_every_fidelity_ticket_is_a_limit_whatever_its_window(monkeypatch):
+    import fidelity_gateway.broker as fidelity_broker
+
+    monkeypatch.setitem(
+        fidelity_broker.EXTENDED_TICKET_FIELDS, "pre_market", {"priceTypeCode": "M", "x": 1}
+    )
+    ticket = _empty_fidelity().build_ticket("TQQQ", "buy", 3, 100.0, "pre_market")
+    assert ticket["priceTypeCode"] == "L" and ticket["x"] == 1
+    assert _empty_fidelity().build_ticket("TQQQ", "buy", 3, 100.0)["priceTypeCode"] == "L"

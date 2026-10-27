@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { Card, CardContent } from "@/components/ui/primitives";
 import { useDeploymentFills } from "@/hooks/useDeploymentFills";
+import { useDeploymentOrders } from "@/hooks/useDeploymentOrders";
 import { usePolled } from "@/hooks/usePolled";
 import { useLiveState } from "@/hooks/useLiveState";
 import { api } from "@/lib/api";
@@ -15,6 +16,7 @@ import { DeploymentStrip } from "./DeploymentStrip";
 import { FidelityPanel } from "./FidelityPanel";
 import { LiveOrderLedger } from "./LiveOrderLedger";
 import { LivePriceChart } from "./LivePriceChart";
+import { OrdersCard } from "./OrdersCard";
 import { OverviewCard } from "./OverviewCard";
 import { TradesCard } from "./TradesCard";
 
@@ -39,6 +41,7 @@ export function LiveTab() {
   const selected = chosen ?? listed[0]?.id ?? null;
   const live = useLiveState(selected);
   const trades = useDeploymentFills(selected, sessions);
+  const orders = useDeploymentOrders(selected);
   const detail = live.detail;
   const set = Boolean(detail && !detail.setup);
   const status = detail?.status;
@@ -89,6 +92,7 @@ export function LiveTab() {
             fills={trades.fills ?? []}
             buyLevel={buyLevel}
           />
+          <OrdersCard events={orders} lastWindow={status?.last_window} />
           <TradesCard fills={trades.fills} sessions={sessions} onSessions={setSessions} />
           <LiveOrderLedger lots={live.state?.lots ?? []} lastPrice={live.state?.last_px ?? null} />
         </>

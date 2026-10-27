@@ -42,6 +42,7 @@ python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <numb
 | `capture.py` | Records the browser's own JSON traffic to a HAR-like capture. |
 | `analyze_har.py` | Reads a DevTools HAR export; `--redact` scrubs one before it leaves the machine. |
 | `recon.py` | Reconnaissance, not reconciliation: with `--cdp-url`, records your browser's traffic while you use it. Its launched-browser modes are kept for the record; Fidelity refuses them. |
+| `quotes.py` | `FidelityQuotes`: Fidelity's real-time quote (`getquote`, read-only) as the engine's second data source (`engine/core/quotes.QuoteSource`, `live.secondary_feed`). Its time fields (the bid and ask's, and the last trade's, separately: before the open Fidelity's last is yesterday's close) are not captured yet, so no quote is used until they are. |
 | `place_test_order.py` | Places one small order through the gated adapter — the manual end-to-end check. `--check-only` is the recovery report; `--bridge` goes through the extension instead of a debugging port. |
 | `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), `OrderReports` (the extension's order confirmations), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| host \| check`. `host.py` is the deployment's bridge host (below), `attach.py` a trader's end of it, `local.py` the line between them, `readiness.py` the ready-or-why checklist. The notifications apps hear: `Notifications` (`notifications.py`), served by `NotificationServer` (`notify_server.py`, `notify_protocol.py`), which the host runs. |
 | `tests/` | This section's own suite. `test_broker_selection.py`/`test_broker_contract.py` (the engine↔fidelity_gateway seam) live in the ROOT `tests/` instead — see `tests/CLAUDE.md`. |
@@ -158,12 +159,24 @@ container log. `bridge/host.py`'s `BridgeHost` (the compose
   so the placing broker's ambiguity rule is unchanged.
 - **One process attached at a time.** A second is refused, naming the
   first.
+- **One extension at a time, and the one connected keeps it**
+  (`server.py`'s docstring). Another from the same address replaces it (a
+  browser restart); one from another address is turned away -- closed with
+  1008, which the extension retries with its backoff, never a `denied`,
+  which it reads as a wrong key -- unless the connected one has gone silent
+  for 60 s, or has been connected 30 s with no signed-in Fidelity tab. Two
+  browsers used to replace each other every second (10-26). The refusal is
+  `last_refused`, and readiness shows it as a warning on the extension.
 - **Readiness** (`readiness.py`, pure): listening; the extension connected
   and heard from in 60 s; its version (a warning only); the Fidelity tab
   signed in (`session.tab_state`, the extension's own rule, from its `tab`
   events); "Allow trading" on for a placing deployment; the last account
   check since it connected. Each item ok / warn / fail / unknown; ready
-  when nothing fails, else the first failure and its fix.
+  when nothing fails, else the first failure and its fix. With
+  `check_first` -- the host's, while a session is open or within 30 min of
+  it and nothing is attached -- an account not yet read through this
+  connection fails: a tab's address says signed in after Fidelity's session
+  expired (10-26).
 - **Status and events** go to the deployment's control directory, under
   `bridge/` (a `ControlInbox` of its own): `status.json` every 15 s and on
   change, `events/<day>.jsonl` kept 14 days -- connects, disconnects with
@@ -172,7 +185,10 @@ container log. `bridge/host.py`'s `BridgeHost` (the compose
   `tools/market_hours_supervisor.py` (which starts a session only on
   ready) read them.
 - **The account check** (`check_connection`, queued by the Live page into
-  `bridge/`'s inbox, and by itself 30 and 10 minutes before each open):
+  `bridge/`'s inbox, by itself 30 and 10 minutes before each open, and --
+  under `check_first` -- as soon as the extension connects and every
+  `CHECK_RETRY_SECONDS` while it fails; matched to the connection it ran
+  through, not by time):
   orders, positions, settled cash through a `FidelitySession` with its
   defaults -- no previews, no orders; it navigates for headers only when
   nothing is attached. `host.py` never imports the placing broker (a test
@@ -294,6 +310,15 @@ which prints what the extension saw for each journalled order.
   symbol held by hand.
 - **Limit prices round directionally**: buys down, sells up, as
   `AlpacaBroker` does.
+- **Every ticket is a limit, in every window.** On a deployment on its
+  venue's windows (`live.sessions`) each order names its window
+  (`session`). Outside the regular session `build_ticket` adds
+  `EXTENDED_TICKET_FIELDS[session]`, empty until a pre-market and an
+  after-hours ticket are captured (`docs/research/fidelity-extended-hours.md`):
+  until then such an order is refused before anything is sent, and
+  `session_support` says why for the Live page. `FidelityPlacingBroker.cancel_order`
+  cancels by the loop's decision id (the journal's confNum), for an order
+  past its time-to-live or its window's end.
 
 ## `fidelity` (the PyPI package) is not this package
 
