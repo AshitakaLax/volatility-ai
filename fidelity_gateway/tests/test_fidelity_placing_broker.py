@@ -578,3 +578,27 @@ def test_an_empty_confnum_is_refused_before_anything_is_sent(blank):
     with pytest.raises(ValueError, match="conf_num is required"):
         _broker(session).cancel(blank)
     assert session.calls == []
+
+
+def test_the_loop_cancels_by_its_own_decision_id():
+    """cancel_order is the trading loop's call (a resting order past its
+    time-to-live or its window's end): resolved through the journal's
+    decision -> confNum map, never guessed."""
+    journal = SpyJournal()
+    journal.records.append(("dec-7", "2C50CWH1", {"account": ACCOUNT}))
+    session = _cancel_session()
+    broker = _broker(session, journal=journal)
+    assert broker.cancel_order("dec-7") is True
+    assert [path for path, _ in session.calls] == [CANCEL_PREVIEW_PATH, CANCEL_PLACE_PATH]
+    assert session.calls[0][1]["cancelOrderDetails"]["confNum"] == "2C50CWH1"
+    assert broker.cancel_order("never-placed") is False
+
+
+def test_an_order_for_a_window_is_journalled_with_it(monkeypatch):
+    import fidelity_gateway.broker as fidelity_broker
+
+    monkeypatch.setitem(fidelity_broker.EXTENDED_TICKET_FIELDS, "pre_market", {"x": "pm"})
+    journal = SpyJournal()
+    broker = _broker(_session(), journal=journal)
+    broker.place(SYMBOL, "buy", 1, PRICE, "dec-pm", session="pre_market")
+    assert journal.records[-1][2]["session"] == "pre_market"

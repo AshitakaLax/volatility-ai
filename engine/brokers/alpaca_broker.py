@@ -310,12 +310,30 @@ class AlpacaBroker:
 
     # --- LiveBroker protocol ---
 
+    def session_support(self, session: str) -> str | None:
+        """Why no order can be placed in `session` (a window of
+        engine/core/venue_sessions.py), or None when one can: outside the
+        regular session only a broker built with extended_hours places any,
+        and every one it places there is a limit."""
+        if session == "regular" or self.extended_hours:
+            return None
+        return (
+            f"this Alpaca broker was built without extended_hours, so it places no {session} "
+            "orders (and a market order there is refused by the venue)"
+        )
+
+    def _check_session(self, session: str | None) -> None:
+        why = self.session_support(session) if session is not None else None
+        if why is not None:
+            raise ConfigurationError(f"Refusing a {session} order: {why}.")
+
     def submit_buy(
         self,
         symbol: str,
         trade_value: float,
         client_order_id: str | None = None,
         limit_price: float | None = None,
+        session: str | None = None,
     ) -> Any:
         """Buy trade_value dollars of symbol.
 
@@ -357,6 +375,10 @@ class AlpacaBroker:
         """
         if trade_value <= 0:
             raise ValueError(f"trade_value must be positive, got {trade_value}")
+        # `session` is the window the loop places it in (a deployment on its
+        # venue's windows); a market order outside the regular session is
+        # refused here, before anything is sent.
+        self._check_session(session)
 
         if self.extended_hours:
             return self._submit_extended_hours_buy(
@@ -452,6 +474,7 @@ class AlpacaBroker:
         qty: float,
         target_price: float,
         client_order_id: str | None = None,
+        session: str | None = None,
     ) -> Any:
         """Sell qty shares of symbol as a limit order at target_price.
 
@@ -467,6 +490,7 @@ class AlpacaBroker:
             raise ValueError(f"qty must be positive, got {qty}")
         if target_price <= 0:
             raise ValueError(f"target_price must be positive, got {target_price}")
+        self._check_session(session)
 
         limit_price = _ceil_to_tick(target_price)
 

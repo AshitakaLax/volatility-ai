@@ -156,21 +156,31 @@ def _stderr(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
-def session_window(now: float) -> dict[str, Any]:
-    """Whether a regular session is open, and when the next one opens, by
-    engine/core/trading_calendar.py (holidays; early closes not modelled):
-    {"open": bool, "next_open": datetime (ET), "closes": datetime | None}."""
+def session_window(now: float, sessions: tuple = ("regular",)) -> dict[str, Any]:
+    """Whether the deployment's trading day is open, and when the next one
+    opens: {"open": bool, "next_open": datetime (ET), "closes": datetime |
+    None}. The day runs from its first traded window's start to its last's
+    end (engine/core/venue_sessions.py, Fidelity's windows; holidays from
+    engine/core/trading_calendar.py, early closes not modelled) -- for the
+    regular session alone, 09:30-16:00; for a deployment that trades the
+    pre-market (live.sessions), from 07:00, so the account is checked and
+    readiness warned of before THAT."""
+    from engine.core.venue_sessions import VenueCalendar
+
+    calendar = VenueCalendar("fidelity", sessions)
     moment = datetime.fromtimestamp(now, EASTERN)
     day = moment.date()
-    if trading_calendar.is_session(day):
-        opens = datetime.combine(day, OPEN, EASTERN)
-        closes = datetime.combine(day, CLOSE, EASTERN)
+    span = calendar.day_span(day)
+    if span is not None:
+        opens, closes = span
         if moment < opens:
             return {"open": False, "next_open": opens, "closes": None}
         if moment < closes:
             return {"open": True, "next_open": opens, "closes": closes}
     following = trading_calendar.next_session(day)
-    return {"open": False, "next_open": datetime.combine(following, OPEN, EASTERN), "closes": None}
+    span = calendar.day_span(following)
+    opens = span[0] if span is not None else datetime.combine(following, OPEN, EASTERN)
+    return {"open": False, "next_open": opens, "closes": None}
 
 
 def _when(moment: datetime, now: float) -> str:
@@ -267,9 +277,14 @@ class BridgeHost:
         log: Callable[[str], None] = _stderr,
         notifications: Notifications | None = None,
         make_notifier: Callable[[NotifySettings, Notifications], NotificationServer] | None = None,
+        sessions: Callable[[], tuple] | None = None,
     ) -> None:
         self._make_server = make_server
         self._settings_source = settings
+        # The windows the deployment trades (live.sessions): when its trading
+        # day starts, for the checks before it and the warning near it.
+        self._sessions_source = sessions
+        self._sessions = self._read_sessions()
         self.socket_path = Path(socket_path)
         self.inbox = inbox
         self._check = check
@@ -368,9 +383,19 @@ class BridgeHost:
         self.notifications.bridge_listening(self.server.url)
         return True
 
+    def _read_sessions(self, keep: tuple = ("regular",)) -> tuple:
+        if self._sessions_source is None:
+            return ("regular",)
+        try:
+            return tuple(self._sessions_source())
+        except Exception as exc:
+            self._log(f"[bridge-host] the trading windows do not load ({exc}); keeping {keep}")
+            return keep
+
     def reload(self) -> bool:
         """Re-read the deployment's settings; restart the bridge when where
         or whom it listens for changed. False when nothing did."""
+        self._sessions = self._read_sessions(self._sessions)
         try:
             fidelity, symbol = self._settings_source()
         except Exception as exc:
@@ -820,7 +845,7 @@ class BridgeHost:
         self._journal_changes(report)
         if not report["connected"] and (self._tab_event or self._requests):
             self._forget_extension()
-        window = session_window(now)
+        window = session_window(now, self._sessions)
         verdict = readiness(
             listening=self._listening,
             listen_error=self._listen_error,

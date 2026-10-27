@@ -1,5 +1,82 @@
 # Changelog
 
+## Feat: trading windows, an engine ready before its broker, and limit orders proven filled
+
+**Fidelity takes limit orders from 07:00 ET (05:00 Mountain) and after the
+close until 20:00 ET; the engine traded 09:30-16:00.** The 08:30 ET releases
+and the evenings were out of reach. And the engine could not say it was
+ready before Fidelity was: the supervisor launched the loop only once the
+bridge was ready, and the loop replayed its history after connecting.
+
+- **A venue's windows, and the ones a deployment trades**
+  (`engine/core/venue_sessions.py`, `live.sessions`):
+  - Fidelity: `pre_market` 07:00-09:28, `regular`, `after_hours` to close
+    + 4 h. Alpaca: 04:00 to the open, then four hours after the close.
+  - The day's real close comes from Alpaca's calendar
+    (`engine/trading/session_clock.py`); the holiday rules otherwise.
+  - A config without `live.sessions` keeps its old clock and its hash: the
+    new settings are written out only when set.
+- **The engine is ready before the broker is asked anything**
+  (`runtime_lifecycle.py`: `WARM_UP`, `ENGINE_READY`; `cli.py _EngineFirst`):
+  - The supervisor starts it `live.engine_lead_minutes` (30) before the
+    first window: 06:30 ET for the pre-market (`_main_sessions`).
+  - It builds the strategy and replays history from Alpaca, says
+    *Engine ready* on the Live page, then waits for the bridge's verdict in
+    its own process: watching the market (the strategy misses no bar),
+    answering the page, until Fidelity is ready or the day ends. A pause or
+    resume sent meanwhile is read back (`CircuitBreaker.reload`).
+  - The bridge host checks the account 30 and 10 minutes before the first
+    *window*, not the regular open.
+- **Every order is a limit and is watched** (`live_trading_loop.py`, on a
+  deployment with `live.sessions`):
+  - Orders only inside a traded window, and not in its last
+    `live.orders.session_close_margin_seconds`; a regular-session strategy
+    (`ultimate_rsp`) still sees and trades the regular session alone.
+  - Priced by what each is for (`engine/execution/limit_pricing.py`): a grid
+    buy at its trigger (skipped while the spread is wide), a rebalance or an
+    exit through the quote, capped.
+  - A buy resting `live.orders.ttl_seconds` outside the regular session is
+    cancelled; every order of a window is cancelled before it ends, and is
+    done only when the venue reports it gone. A resting buy holds back its
+    cash. `FidelityPlacingBroker.cancel_order` cancels by decision id.
+  - Each order's life goes to an orders journal (placed, filled, cancelled
+    and why, expired), shown as **Orders today** on the Live page.
+  - Each window is audited when it ends: its orders all gone at the venue
+    and the venue's position equal to the ledger's, or new buys halt naming
+    what disagrees. The summary goes on the status and to the Notifier app
+    (a new `window` kind).
+  - A bar seen twice is not a new bar; a bar over two minutes old is
+    recorded, not traded on; T+1 settles on the Eastern date (after 19:00 ET
+    in winter a bar's UTC date is already tomorrow's).
+  - With Fidelity unreachable mid-window the bar still reaches the
+    strategy, closer to the backtest, which sees every bar.
+- **Fidelity's quote as a second data source** (`fidelity_gateway/quotes.py`,
+  `engine/trading/market_feed.py`, `live.secondary_feed`, off by default):
+  its bid and ask price limit orders, its last trade cross-checks Alpaca, and
+  outside the regular session it stands in for a minute Alpaca's free feed
+  has no bar for. Every quote read is journaled.
+- **Not guessed, so not on yet**
+  (`docs/research/fidelity-extended-hours.md`):
+  - Fidelity's pre-market and after-hours ticket fields
+    (`EXTENDED_TICKET_FIELDS`): until captured, the engine places nothing in
+    those windows and says why.
+  - The quote's time fields: until captured, no quote is used. There are two
+    (`TIME_FIELDS` for the bid and ask, `LAST_TIME_FIELDS` for the last
+    trade), because a pre-market capture of Trader+'s quote showed a fresh
+    bid and ask beside a "last" that was still yesterday's close.
+  - A pre-market capture answered the rest: an order there expires at 09:28 ET
+    and never carries into the regular session, and Fidelity names its window
+    as `marketSessionCode`. That field is what the ticket most likely
+    carries, but no Preview request has been captured yet.
+- **How often Alpaca's free feed has a bar** outside the regular session
+  (`tools/probe_feed_coverage.py`): almost never. Over ten sessions RSP had
+  none in the pre-market, and SPY and TQQQ had one in under 5% of minutes.
+  On SIP, RSP itself trades in only about 15% of pre-market minutes.
+- **Alpaca deployments with `extended_hours: true`** now get an
+  extended-hours broker from `cli.py live` (limit orders outside the regular
+  session); `from_mode` was never told. The `paper` champion service's config
+  sets it.
+
 ## Fix: two browsers no longer swap the connection, a lost rebalance is retried, and an unreadable account is a wait
 
 **On 10-26 Fidelity bought nothing at its rebalance.** Two browsers had the

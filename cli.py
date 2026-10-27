@@ -918,6 +918,15 @@ def cmd_live(args: argparse.Namespace) -> int:
     # path and the persisted state that comes with it.
     connected: dict = {}
 
+    # ON ITS VENUE'S WINDOWS (live.sessions) the engine readies itself first:
+    # its strategy built and its history replayed, before the broker is asked
+    # anything -- then it waits for the broker here, watching the market.
+    prepared = (
+        _EngineFirst(args, config, store, circuit_breaker, algorithm)
+        if config.live.venue_clock and not args.check_only
+        else None
+    )
+
     def _connect_broker():
         if fidelity:
             # Through the Fidelity Bridge extension in the user's own
@@ -933,8 +942,15 @@ def cmd_live(args: argparse.Namespace) -> int:
             connected["connection"] = connection
             if algorithm is not None:
                 _offer_algorithm(connection, algorithm, read_only=args.check_only)
+            if prepared is not None:
+                prepared.connected(connection)
             return
-        broker = AlpacaBroker.from_mode(mode, load_live_credentials())
+        # Limit orders outside the regular session, when the deployment
+        # trades there (live.extended_hours, or an extended window named in
+        # live.sessions): it changes the shape of every buy.
+        broker = AlpacaBroker.from_mode(
+            mode, load_live_credentials(), extended_hours=_trades_extended(config)
+        )
         # ping() rather than a bare construction: TradingClient does no
         # I/O in its constructor, so a bad key would otherwise pass
         # CONNECT_BROKER and only fail at the first real order.
@@ -945,6 +961,7 @@ def cmd_live(args: argparse.Namespace) -> int:
         final_state = lifecycle.start(
             connect_broker=_connect_broker,
             broker_snapshot_provider=lambda: connected["broker"].snapshot(),
+            **(prepared.lifecycle_hooks() if prepared is not None else {}),
         )
 
         print(f"Runtime state: {final_state.value}")
@@ -965,6 +982,7 @@ def cmd_live(args: argparse.Namespace) -> int:
                     stage=lifecycle.failed_stage.value if lifecycle.failed_stage else None,
                     retryable=lifecycle.retryable,
                     broker=config.live.broker,
+                    **({"engine": prepared.engine} if prepared is not None else {}),
                 )
             store.close()
             print(f"Startup stopped: {why}")
@@ -1001,6 +1019,7 @@ def cmd_live(args: argparse.Namespace) -> int:
             connection=connection,
             algorithm=algorithm,
             inbox=inbox,
+            prepared=prepared,
         )
     finally:
         # finally, not after the return: a loop that raises must not
@@ -1047,6 +1066,11 @@ _TICK_DETAIL = {
     "market_closed": "waiting for the market to open",
     "no_data": "no new price this tick",
     "tick_rejected": "a price failed validation and was skipped",
+    # On the venue's windows (live.sessions):
+    "not_trading": "watching the market; not trading this minute",
+    "no_new_bar": "no new trade this minute",
+    "feeds_disagree": "Alpaca's price and Fidelity's disagree; this minute was skipped",
+    "watching": "watching the market; waiting for the broker",
 }
 
 
@@ -1129,6 +1153,276 @@ def _control_inbox(args):
     return ControlInbox(args.control_dir)
 
 
+def _trades_extended(config) -> bool:
+    """Whether the deployment trades outside the regular session."""
+    return bool(config.live.extended_hours) or any(
+        session != "regular" for session in config.live.traded_sessions
+    )
+
+
+def _shadow_for(cfg, algorithm, inbox, registry):
+    """While an override trades in place of the config file's algorithm,
+    that algorithm too -- fed the same bars, trading nothing -- so the Live
+    page can say what switching back would do now. None otherwise, and None
+    (with a note) if it cannot be built: never a reason not to trade."""
+    from research.strategies.live_algorithm import build_strategy
+
+    if algorithm is None or inbox is None:
+        return None
+    try:
+        base = algorithm.config_file_config()
+        if algorithm.algorithm_of(base.to_dict()) == algorithm.algorithm_of(cfg.to_dict()):
+            return None
+        return build_strategy(base, registry)
+    except Exception as e:
+        print(f"Not shadowing the config file's algorithm: {e}", file=sys.stderr)
+        return None
+
+
+class _EngineFirst:
+    """The engine-first start of a deployment on its venue's windows
+    (live.sessions): RuntimeLifecycle's WARM_UP, ENGINE_READY and the wait
+    at CONNECT_BROKER.
+
+    Whether the ENGINE is ready -- its strategy built and its history
+    replayed from Alpaca -- and whether the BROKER is -- the Fidelity Bridge
+    extension connected, Fidelity signed in, "Allow trading" on -- are two
+    answers. The supervisor starts this process live.engine_lead_minutes
+    before the first window (06:30 ET for the 07:00 pre-market), so the
+    first is known, and said, before the window opens; the second is then
+    waited for here, in this process: the bridge host's verdict read every
+    few seconds, the market watched every poll (the strategy misses no
+    bar), the Live page's commands answered (LoopControl, through this
+    process's own breaker -- the ledger's lock is this process's), until the
+    broker is ready or the trading day ends.
+    """
+
+    def __init__(self, args, config, store, circuit_breaker, algorithm) -> None:
+        self.args, self.config, self.store = args, config, store
+        self.circuit_breaker, self.algorithm = circuit_breaker, algorithm
+        self.registry = _load_strategy_registry()
+        self.inbox = None
+        if getattr(args, "control_dir", None):
+            from engine.trading.control_inbox import ControlInbox
+
+            self.inbox = ControlInbox(args.control_dir)
+        self.strategy = self.loop = self.market_data = self.history = self.calendar = None
+        self.engine = {"state": "starting", "detail": "starting the engine", "since": _now_iso()}
+        self._recorded = None
+        self._stop = False
+
+    def lifecycle_hooks(self) -> dict:
+        return {
+            "warm_up": self.warm_up,
+            "on_engine_ready": self.ready,
+            "wait_for_broker": self.wait_for_broker,
+        }
+
+    # -- WARM_UP ---------------------------------------------------------
+
+    def warm_up(self) -> None:
+        import signal
+
+        from engine.core.secrets import load_live_credentials
+        from engine.data.alpaca_market_data import AlpacaMarketData
+        from engine.data.historical_data import AlpacaHistoricalData
+        from engine.trading.live_history import AlpacaSessionHistory
+        from engine.trading.live_trading_loop import LiveTradingLoop
+        from engine.trading.market_feed import MarketFeed
+        from research.strategies.live_algorithm import build_strategy
+        from tools.market_hours_supervisor import venue_calendar
+
+        # A stop asked while waiting for the broker ends the wait cleanly;
+        # the trading loop installs its own handlers once it runs.
+        signal.signal(signal.SIGTERM, self._on_signal)
+        config = self.config
+        self._set("warming_up", "building the strategy and replaying its history")
+        clock = _alpaca_clock_client()
+        self.calendar = venue_calendar(config, clock)
+        self.strategy = build_strategy(config, self.registry)
+        regular_only = bool(getattr(self.strategy, "regular_session_only", False))
+        feed = config.live.secondary_feed
+        self.market_data = MarketFeed(
+            AlpacaMarketData(
+                feed=config.live.feed, trading_client=clock, credentials=load_live_credentials()
+            ),
+            calendar=self.calendar,
+            max_age_seconds=feed.max_age_seconds,
+            max_divergence=feed.max_divergence,
+            quote_listener=self.inbox.record_quote if self.inbox is not None else None,
+        )
+        self.history = AlpacaSessionHistory(
+            AlpacaHistoricalData(credentials=load_live_credentials()),
+            feed=config.live.feed,
+            regular_hours_only=regular_only,
+        )
+        self.loop = LiveTradingLoop(
+            config=config,
+            strategy=self.strategy,
+            broker=None,
+            market_data=self.market_data,
+            store=self.store,
+            circuit_breaker=self.circuit_breaker,
+            history_provider=self.history,
+            shadow=_shadow_for(config, self.algorithm, self.inbox, self.registry),
+            calendar=self.calendar,
+        )
+        if self.inbox is not None and self.loop.recent_bars:
+            self.inbox.record_bars(self.loop.recent_bars, keep_past=True)
+
+    def ready(self) -> None:
+        from datetime import UTC, datetime
+
+        upcoming = self.calendar.next_window(datetime.now(UTC))
+        when = (
+            f"; ready for the {upcoming.session} window from {upcoming.start:%H:%M} ET"
+            if upcoming is not None
+            else ""
+        )
+        self._set("ready", f"history replayed ({self.loop.replayed_bars:,} bars){when}")
+        print(f"ENGINE READY: {self.engine['detail']}", flush=True)
+
+    # -- the wait at CONNECT_BROKER --------------------------------------
+
+    def wait_for_broker(self) -> None:
+        """Until the bridge host says ready; at once for a deployment
+        without one (Alpaca, or a bridge of its own)."""
+        import time as _time
+
+        from engine.core.exceptions import BrokerUnavailableError
+
+        gate = self._gate()
+        if gate is None:
+            return
+        control = self._control()
+        end = self._day_end()
+        poll = float(self.config.live.poll_interval_seconds)
+        next_watch, said = 0.0, None
+        while True:
+            ready, why = gate()
+            if ready:
+                if said is not None:
+                    print("the broker is ready -- connecting", flush=True)
+                break
+            if why != said:
+                print(f"engine ready; waiting for the broker: {why}", flush=True)
+                said = why
+            if control is not None:
+                # Pause, resume, disable: applied through this process's
+                # breaker, as the trading loop applies them between ticks.
+                control.applier.poll()
+                control.write_status(state="waiting_for_broker", detail=why)
+                if control.stopping:
+                    raise BrokerUnavailableError(f"{control.stopping} while waiting for the broker")
+            if self._stop:
+                raise BrokerUnavailableError("stopped while waiting for the broker")
+            if _time.time() >= end:
+                raise BrokerUnavailableError(f"the broker was not ready all day: {why}")
+            if _time.time() >= next_watch:
+                self._watch()
+                next_watch = _time.time() + poll
+            _time.sleep(max(1.0, min(15.0, next_watch - _time.time())))
+
+    def connected(self, connection) -> None:
+        """The broker is connected: Fidelity's own quote becomes the second
+        data source, when live.secondary_feed asks for it."""
+        if not self.config.live.secondary_feed.enabled:
+            return
+        from fidelity_gateway.quotes import FidelityQuotes
+
+        self.market_data.secondary = FidelityQuotes(connection.session)
+
+    def trading_engine(self, loop) -> dict:
+        """The engine's part of the trader's status once it trades."""
+        window = loop.window
+        detail = (
+            f"trading the {window.session} window until {window.end:%H:%M} ET"
+            if window is not None
+            else "watching the market between trading windows"
+        )
+        if self.engine.get("state") != "trading" or self.engine.get("detail") != detail:
+            self.engine = {"state": "trading", "detail": detail, "since": _now_iso()}
+        return self.engine
+
+    # -- helpers ---------------------------------------------------------
+
+    def _gate(self):
+        if self.config.live.broker != "fidelity" or not os.environ.get("VAI_BRIDGE_SOCKET"):
+            return None
+        if self.inbox is None:
+            return None
+        import time as _time
+
+        from engine.trading.control_inbox import ControlInbox
+        from tools.market_hours_supervisor import bridge_verdict
+
+        host = ControlInbox(Path(self.args.control_dir) / "bridge")
+        return lambda: bridge_verdict(host.status(), _time.time())
+
+    def _control(self):
+        if self.inbox is None:
+            return None
+        from engine.trading.operator_control import LoopControl, account_tag
+
+        return LoopControl(
+            self.inbox,
+            breaker=self.circuit_breaker,
+            loop=lambda: self.loop,
+            stop=lambda _why: None,  # a disable is seen as control.stopping
+            heartbeat_seconds=15.0,
+            status_fields=lambda: {
+                "engine": self.engine,
+                "broker": self.config.live.broker,
+                "deployment": os.environ.get("VAI_DEPLOYMENT"),
+                "ledger": _ledger_tag(self.args.state_db),
+            },
+            account=lambda: account_tag(self.config.live),
+        )
+
+    def _day_end(self) -> float:
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC)
+        upcoming = self.calendar.next_window(now)
+        span = self.calendar.day_span(upcoming.start.date()) if upcoming is not None else None
+        return span[1].timestamp() if span is not None else now.timestamp() + 12 * 3600
+
+    def _watch(self) -> None:
+        try:
+            self.loop.watch_once()
+        except Exception as exc:  # watching is never a reason to stop waiting
+            print(f"Watching the market failed this minute: {exc}", file=sys.stderr, flush=True)
+            return
+        bar = self.loop.last_bar
+        if self.inbox is not None and bar is not None and bar["t"] != self._recorded:
+            self.inbox.record_bars([bar])
+            self._recorded = bar["t"]
+
+    def _set(self, state: str, detail: str) -> None:
+        self.engine = {"state": state, "detail": detail, "since": _now_iso()}
+        if self.inbox is not None:
+            from engine.trading.operator_control import STARTUP_ALLOWANCE_SECONDS
+
+            self.inbox.write_status(
+                state="starting",
+                detail=f"engine {state.replace('_', ' ')}: {detail}",
+                process="loop",
+                heartbeat_seconds=STARTUP_ALLOWANCE_SECONDS,
+                engine=self.engine,
+                broker=self.config.live.broker,
+            )
+
+    def _on_signal(self, signum, _frame) -> None:
+        print(f"\nReceived signal {signum} while waiting for the broker.", file=sys.stderr)
+        self._stop = True
+
+
+def _now_iso() -> str:
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).isoformat()
+
+
 def _run_trading_loop(
     args,
     config,
@@ -1140,6 +1434,7 @@ def _run_trading_loop(
     connection=None,
     algorithm=None,
     inbox=None,
+    prepared=None,
 ) -> int:
     """Run the tick loop until a signal stops it, then shut down cleanly.
 
@@ -1152,6 +1447,10 @@ def _run_trading_loop(
     the extension takes effect at the next tick boundary: the loop stops,
     persists, and is built again from the same store -- the state a
     restart loads -- with the new config.
+
+    With `prepared` (_EngineFirst: a deployment on its venue's windows) the
+    first loop was already built and its history replayed before the broker
+    was connected; it is handed the broker and its listeners here.
     """
     import signal
 
@@ -1170,7 +1469,7 @@ def _run_trading_loop(
     # deployment trades (build_strategy's cross-check, the same one
     # optimization_controller._run_one_combination applies per sweep
     # combination) -- stops here, before any connection is opened.
-    strategy = build_strategy(config, registry)
+    strategy = prepared.strategy if prepared is not None else build_strategy(config, registry)
 
     def report(**fields) -> None:
         if connection is not None:
@@ -1184,6 +1483,11 @@ def _run_trading_loop(
         if inbox is not None and bar is not None and bar["t"] != recorded["t"]:
             inbox.record_bars([bar])
             recorded["t"] = bar["t"]
+        window = getattr(current["loop"], "last_window", None)
+        if window is not None and window is not recorded.get("window"):
+            # A window's audit (its orders, what filled, the position), once.
+            recorded["window"] = window
+            report(lastWindow=window)
         if control is not None:
             # On the loop's own thread, between ticks: a pause lands before
             # the next buy decision, through the breaker the loop reads.
@@ -1202,44 +1506,39 @@ def _run_trading_loop(
                 lastTickAt=tick.get("at"),
             )
 
-    market_data = AlpacaMarketData(
-        feed=config.live.feed,
-        # The clock is a trading-API endpoint, so it comes from the
-        # connection the broker already authenticated rather than a
-        # second one -- when the broker IS Alpaca. A Fidelity deployment
-        # has no Alpaca broker, so it opens a clock-only connection.
-        trading_client=getattr(broker, "trading_client", None) or _alpaca_clock_client(),
-        credentials=load_live_credentials(),
-    )
+    if prepared is not None:
+        market_data, history, calendar = prepared.market_data, prepared.history, prepared.calendar
+    else:
+        calendar = None
+        market_data = AlpacaMarketData(
+            feed=config.live.feed,
+            # The clock is a trading-API endpoint, so it comes from the
+            # connection the broker already authenticated rather than a
+            # second one -- when the broker IS Alpaca. A Fidelity deployment
+            # has no Alpaca broker, so it opens a clock-only connection.
+            trading_client=getattr(broker, "trading_client", None) or _alpaca_clock_client(),
+            credentials=load_live_credentials(),
+        )
 
-    # The sessions a strategy's state spans, replayed before its first tick
-    # (engine/trading/live_history.py): the supervisor starts a process per
-    # session, which otherwise began every morning cold. Same feed as the
-    # ticks, so the two agree.
-    history = AlpacaSessionHistory(
-        AlpacaHistoricalData(credentials=load_live_credentials()), feed=config.live.feed
-    )
+        # The sessions a strategy's state spans, replayed before its first
+        # tick (engine/trading/live_history.py): the supervisor starts a
+        # process per session, which otherwise began every morning cold.
+        # Same feed as the ticks, so the two agree.
+        history = AlpacaSessionHistory(
+            AlpacaHistoricalData(credentials=load_live_credentials()), feed=config.live.feed
+        )
 
     def shadow_for(cfg):
-        """While an override trades in place of the config file's algorithm,
-        that algorithm too -- fed the same bars, trading nothing -- so the
-        Live page can say what switching back would do now. None otherwise,
-        and None (with a note) if it cannot be built: never a reason not to
-        trade."""
-        if algorithm is None or inbox is None:
-            return None
-        try:
-            base = algorithm.config_file_config()
-            if algorithm.algorithm_of(base.to_dict()) == algorithm.algorithm_of(cfg.to_dict()):
-                return None
-            return build_strategy(base, registry)
-        except Exception as e:
-            print(f"Not shadowing the config file's algorithm: {e}", file=sys.stderr)
-            return None
+        return _shadow_for(cfg, algorithm, inbox, registry)
 
     def on_fill(fill: dict) -> None:
         if inbox is not None:
             inbox.record_fill(fill)
+
+    def on_order(event: dict) -> None:
+        # Each moment of an order's life: the proof a limit order filled.
+        if inbox is not None:
+            inbox.record_order(event)
 
     def build(cfg, built_strategy):
         loop = LiveTradingLoop(
@@ -1253,6 +1552,8 @@ def _run_trading_loop(
             history_provider=history,
             shadow=shadow_for(cfg),
             fill_listener=on_fill,
+            calendar=calendar,
+            order_listener=on_order,
         )
         if inbox is not None and loop.recent_bars:
             # The sessions before this one, for the Live page's chart: the
@@ -1267,7 +1568,20 @@ def _run_trading_loop(
         return loop
 
     try:
-        first = build(config, strategy)
+        if prepared is not None:
+            first = prepared.loop
+            first.attach_broker(broker)
+            first.set_listeners(tick=on_tick, fill=on_fill, order=on_order)
+            # The page may have switched the algorithm while the engine waited
+            # for its broker (the supervisor-side commands): trade that one.
+            if algorithm is not None:
+                waited = algorithm.effective_config()
+                if _algorithm_of(waited) != _algorithm_of(config):
+                    print("The algorithm changed while waiting for the broker; rebuilding.")
+                    config, strategy = waited, build_strategy(waited, registry)
+                    first = build(config, strategy)
+        else:
+            first = build(config, strategy)
     except Exception as e:
         # Before any tick, so nothing is in flight: refuse rather than trade
         # a strategy that starts blind. The supervisor tries again.
@@ -1333,6 +1647,16 @@ def _run_trading_loop(
                 # switch off, Alpaca down); None when it can.
                 "broker_unavailable": current["loop"].broker_unavailable,
                 **_fidelity_status(config, connection),
+                # On the venue's windows: the engine's own readiness, apart
+                # from the broker's, and how the last window went.
+                **(
+                    {
+                        "engine": prepared.trading_engine(current["loop"]),
+                        "last_window": current["loop"].last_window,
+                    }
+                    if prepared is not None
+                    else {}
+                ),
             },
             account=lambda: account_tag(config.live),
         )
@@ -1429,7 +1753,9 @@ def _run_trading_loop(
 
     loop = current["loop"]
     final = lifecycle.shutdown(
-        in_flight_settled=loop.in_flight_settled,
+        # On the venue's windows the orders the last tick cancelled are asked
+        # about while the shutdown waits, so a confirmed cancel settles.
+        in_flight_settled=loop.settle_in_flight if prepared is not None else loop.in_flight_settled,
         persist_state=loop.persist_state,
         close_connections=store.close,
     )

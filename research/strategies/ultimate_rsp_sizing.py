@@ -286,6 +286,10 @@ class UltimateRspSizing(SizingStrategy):
     # Its votes are built from regular-session bars: an extended-hours tick
     # would fold into a session's range and volume.
     regular_session_only = True
+    # A rebalance must fill to be the strategy the backtest ran: on a
+    # deployment on its venue's windows (live.sessions) its buys cross to the
+    # ask, capped (engine/execution/limit_pricing.py), not rest at the bar.
+    marketable_orders = True
     # Sessions replayed past the votes' own minimum, so PLUS_DM's smoothing
     # and ADOSC's averages have settled from their seeds to where a run
     # started years earlier has them (as ultimate's regime settles).

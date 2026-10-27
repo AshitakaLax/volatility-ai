@@ -42,6 +42,7 @@ python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <numb
 | `capture.py` | Records the browser's own JSON traffic to a HAR-like capture. |
 | `analyze_har.py` | Reads a DevTools HAR export; `--redact` scrubs one before it leaves the machine. |
 | `recon.py` | Reconnaissance, not reconciliation: with `--cdp-url`, records your browser's traffic while you use it. Its launched-browser modes are kept for the record; Fidelity refuses them. |
+| `quotes.py` | `FidelityQuotes`: Fidelity's real-time quote (`getquote`, read-only) as the engine's second data source (`engine/core/quotes.QuoteSource`, `live.secondary_feed`). Its time fields (the bid and ask's, and the last trade's, separately: before the open Fidelity's last is yesterday's close) are not captured yet, so no quote is used until they are. |
 | `place_test_order.py` | Places one small order through the gated adapter — the manual end-to-end check. `--check-only` is the recovery report; `--bridge` goes through the extension instead of a debugging port. |
 | `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), `OrderReports` (the extension's order confirmations), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| host \| check`. `host.py` is the deployment's bridge host (below), `attach.py` a trader's end of it, `local.py` the line between them, `readiness.py` the ready-or-why checklist. The notifications apps hear: `Notifications` (`notifications.py`), served by `NotificationServer` (`notify_server.py`, `notify_protocol.py`), which the host runs. |
 | `tests/` | This section's own suite. `test_broker_selection.py`/`test_broker_contract.py` (the engine↔fidelity_gateway seam) live in the ROOT `tests/` instead — see `tests/CLAUDE.md`. |
@@ -309,6 +310,15 @@ which prints what the extension saw for each journalled order.
   symbol held by hand.
 - **Limit prices round directionally**: buys down, sells up, as
   `AlpacaBroker` does.
+- **Every ticket is a limit, in every window.** On a deployment on its
+  venue's windows (`live.sessions`) each order names its window
+  (`session`). Outside the regular session `build_ticket` adds
+  `EXTENDED_TICKET_FIELDS[session]`, empty until a pre-market and an
+  after-hours ticket are captured (`docs/research/fidelity-extended-hours.md`):
+  until then such an order is refused before anything is sent, and
+  `session_support` says why for the Live page. `FidelityPlacingBroker.cancel_order`
+  cancels by the loop's decision id (the journal's confNum), for an order
+  past its time-to-live or its window's end.
 
 ## `fidelity` (the PyPI package) is not this package
 

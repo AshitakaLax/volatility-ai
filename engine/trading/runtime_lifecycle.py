@@ -11,8 +11,18 @@ Startup sequence (step 1), in exactly this order. New buys are
 impossible before READY because allows_new_buys() checks the state,
 not a flag someone can forget to set:
 
-    STARTING -> LOAD_CONFIG -> LOAD_STATE -> CONNECT_BROKER
-             -> RECONCILE -> VALIDATE_DATA_CLOCK -> READY
+    STARTING -> LOAD_CONFIG -> LOAD_STATE -> WARM_UP -> ENGINE_READY
+             -> CONNECT_BROKER -> RECONCILE -> VALIDATE_DATA_CLOCK -> READY
+
+WARM_UP and ENGINE_READY come BEFORE the broker, on purpose: whether the
+engine is ready (its config, its ledger, its strategy's history replayed
+from the market-data feed) and whether the broker is ready (the Fidelity
+Bridge extension connected, Fidelity signed in) are two answers, and the
+first must not wait on the second. A deployment on its venue's own windows
+(live.sessions) starts its engine before the window opens, warms up, says
+it is ready, and only then waits at CONNECT_BROKER for the broker
+(wait_for_broker) -- in its own process, rather than not being started
+until the broker was. Without a warm_up the two states pass at once.
 
 Shutdown sequence contract, implemented step for step:
 
@@ -67,6 +77,8 @@ class RuntimeState(StrEnum):
     STARTING = "STARTING"
     LOAD_CONFIG = "LOAD_CONFIG"
     LOAD_STATE = "LOAD_STATE"
+    WARM_UP = "WARM_UP"
+    ENGINE_READY = "ENGINE_READY"
     CONNECT_BROKER = "CONNECT_BROKER"
     RECONCILE = "RECONCILE"
     VALIDATE_DATA_CLOCK = "VALIDATE_DATA_CLOCK"
@@ -84,6 +96,8 @@ STARTUP_SEQUENCE = (
     RuntimeState.STARTING,
     RuntimeState.LOAD_CONFIG,
     RuntimeState.LOAD_STATE,
+    RuntimeState.WARM_UP,
+    RuntimeState.ENGINE_READY,
     RuntimeState.CONNECT_BROKER,
     RuntimeState.RECONCILE,
     RuntimeState.VALIDATE_DATA_CLOCK,
@@ -176,6 +190,9 @@ class RuntimeLifecycle:
         self,
         load_config: Callable[[], object] | None = None,
         connect_broker: Callable[[], object] | None = None,
+        warm_up: Callable[[], object] | None = None,
+        on_engine_ready: Callable[[], object] | None = None,
+        wait_for_broker: Callable[[], object] | None = None,
         broker_snapshot_provider: Callable[[], object] | None = None,
         validate_data_clock: Callable[[], bool] | None = None,
         local_orders: dict | None = None,
@@ -187,6 +204,12 @@ class RuntimeLifecycle:
         Step 5: any stage that cannot persist/reconcile safely exits
         into a state requiring explicit recovery -- it never guesses
         and never silently proceeds to READY.
+
+        warm_up readies the engine without the broker (the strategy built
+        and its history replayed); on_engine_ready is told once it has, and
+        never stops startup; wait_for_broker blocks at CONNECT_BROKER until
+        the broker is ready, raising BrokerUnavailableError if it never is
+        -- a wait, so `retryable`, like a connection that failed.
         """
         self._enter(RuntimeState.LOAD_CONFIG)
         if load_config is not None:
@@ -206,7 +229,28 @@ class RuntimeLifecycle:
                     RuntimeState.RECOVERY_REQUIRED, f"durable state load failed: {e}", e
                 )
 
+        self._enter(RuntimeState.WARM_UP)
+        if warm_up is not None:
+            try:
+                warm_up()
+            except Exception as e:
+                return self._fail(RuntimeState.RECOVERY_REQUIRED, f"engine warm-up failed: {e}", e)
+
+        self._enter(RuntimeState.ENGINE_READY)
+        if on_engine_ready is not None:
+            try:
+                on_engine_ready()
+            except Exception as e:  # a report, never a reason not to start
+                logger.warning(f"on_engine_ready failed (ignored): {type(e).__name__}: {e}")
+
         self._enter(RuntimeState.CONNECT_BROKER)
+        if wait_for_broker is not None:
+            try:
+                wait_for_broker()
+            except Exception as e:
+                return self._fail(
+                    RuntimeState.RECOVERY_REQUIRED, f"the broker was not ready: {e}", e
+                )
         if connect_broker is not None:
             try:
                 connect_broker()

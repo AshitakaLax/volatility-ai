@@ -82,7 +82,12 @@ object Alerts {
     fun post(context: Context, notification: Notification) {
         val channel = when {
             notification.severity != Severity.INFO -> CHANNEL_WARNINGS
-            notification.kind in setOf(EventKind.BUY, EventKind.SELL, EventKind.ORDER_UPDATE) -> CHANNEL_TRADES
+            notification.kind in setOf(
+                EventKind.BUY,
+                EventKind.SELL,
+                EventKind.ORDER_UPDATE,
+                EventKind.WINDOW,
+            ) -> CHANNEL_TRADES
             else -> CHANNEL_BRIDGE
         }
         val id = if (notification.isTest) {

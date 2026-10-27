@@ -121,3 +121,5 @@ config/fidelity_live.yaml
 
 .omo
 server.log
+
+*.zip

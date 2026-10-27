@@ -179,6 +179,10 @@ def run_state(status: dict | None, now: float) -> dict[str, Any]:
         # (its file's name and a one-way tag of its path).
         "deployment",
         "ledger",
+        # On its venue's windows (live.sessions): the engine's own readiness,
+        # apart from the broker's, and how the last trading window went.
+        "engine",
+        "last_window",
     )
     if not status:
         return {
@@ -488,6 +492,19 @@ def deployment_fills(
     figure the ledger does not keep."""
     inbox = _deployment(deployment_id).inbox()
     return inbox.fills(sessions) if inbox is not None else []
+
+
+@router.get("/deployments/{deployment_id}/orders")
+def deployment_orders(
+    deployment_id: str,
+    sessions: int = Query(1, ge=1, le=_MAX_JOURNAL_SESSIONS),
+) -> list[dict[str, Any]]:
+    """Each moment of each order's life in the last `sessions` sessions,
+    oldest first: placed (its window and limit), partly filled, filled,
+    cancel requested (and why: its time-to-live, its window's end), and how
+    it ended -- the proof a limit order filled or did not."""
+    inbox = _deployment(deployment_id).inbox()
+    return inbox.orders(sessions) if inbox is not None else []
 
 
 @router.get("/deployments/{deployment_id}/activity")

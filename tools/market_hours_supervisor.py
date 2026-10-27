@@ -67,6 +67,18 @@ verdict before launching the loop ("waiting_for_broker", detail: the one thing
 to fix) and launches the moment it turns ready, rather than launching a loop
 that can only fail.
 
+--------------------------------------------------------------------
+ON THE VENUE'S OWN WINDOWS (live.sessions)
+
+A deployment that names its windows -- Fidelity's pre-market 07:00-09:28 ET,
+the regular session, after-hours to 20:00 -- runs on them (_main_sessions,
+engine/core/venue_sessions.py): the engine starts live.engine_lead_minutes
+before the first window it trades and runs until the last one ends. It is
+launched without the bridge gate above: the loop readies its engine first
+(history replayed, said on the Live page) and waits for the broker itself,
+in its own process (cli.py's engine-first start), so whether the engine is
+ready and whether Fidelity is are two answers known before 07:00.
+
 Each restart re-runs startup, which means reconciliation runs again --
 which is the point. A loop that died and came back has more reason to
 check its state against the broker, not less.
@@ -543,6 +555,87 @@ def _main_extended(args, config, poll: float) -> int:
     )
 
 
+def venue_calendar(config, trading_client=None):
+    """The windows this deployment trades at its venue
+    (engine/core/venue_sessions.py), with the real closes from Alpaca's
+    calendar when there is a client to ask."""
+    from engine.core.venue_sessions import VenueCalendar, default_close_for
+    from engine.trading.session_clock import alpaca_close_for
+
+    close_for = alpaca_close_for(trading_client) if trading_client is not None else None
+    return VenueCalendar(
+        config.live.broker, config.live.traded_sessions, close_for=close_for or default_close_for
+    )
+
+
+def _trading_client(paper: bool):
+    from alpaca.trading.client import TradingClient
+
+    key, secret = os.environ.get("APCA_API_KEY_ID"), os.environ.get("APCA_API_SECRET_KEY")
+    if not (key and secret):
+        raise SystemExit("APCA_API_KEY_ID / APCA_API_SECRET_KEY are not set.")
+    return TradingClient(key, secret, paper=paper)
+
+
+def _main_sessions(args, config, poll: float, calendar=None) -> int:
+    """Session control on the venue's own windows (live.sessions).
+
+    The engine starts live.engine_lead_minutes BEFORE the first window it
+    trades -- 06:30 ET for Fidelity's 07:00 pre-market -- and runs until the
+    last one ends. Starting early is the point: the engine replays its
+    history and says it is ready on its own, before the broker is asked
+    anything, so "is the engine ready" and "is Fidelity ready" are two
+    answers known before the window opens, not one learned at it.
+
+    No bridge gate here, unlike the other paths: the loop itself waits for
+    the broker, ready and watching the market meanwhile (cli.py's engine-
+    first start), rather than being launched only once the broker is ready.
+    """
+    calendar = calendar or venue_calendar(config, _trading_client(config.live.paper_trading))
+    moment = datetime.fromtimestamp(time.time(), UTC)
+    window = calendar.next_window(moment)
+    if window is None:
+        log(f"no {', '.join(calendar.sessions)} window in sight. Exiting.")
+        return 0
+    first, last = calendar.day_span(window.start.date())
+    names = "+".join(calendar.sessions)
+    launch = first - timedelta(minutes=float(config.live.engine_lead_minutes))
+    if moment < launch:
+        wait = (launch - moment).total_seconds()
+        if wait > args.max_wait_hours * 3600:
+            log(f"the next window opens {first:%Y-%m-%d %H:%M} ET, too far off. Exiting.")
+            return 0
+        log(
+            f"the engine starts {launch:%H:%M} ET for {names} from {first:%H:%M} ET "
+            f"({wait / 60:.0f} min)"
+        )
+        if args.dry_run:
+            log("--dry-run: would wait, then start the engine.")
+            return 0
+        _wait(
+            _control,
+            wait,
+            state="waiting_for_open",
+            detail=f"the engine starts {launch:%H:%M} ET for the {first:%H:%M} ET {window.session}",
+            next_open=first.isoformat(),
+        )
+        moment = datetime.fromtimestamp(time.time(), UTC)
+
+    seconds_left = (last - moment).total_seconds() - args.close_margin
+    if seconds_left <= poll:
+        log(f"only {seconds_left:.0f}s of the trading day left. Exiting.")
+        return 0
+    ticks = max(1, int(seconds_left // poll))
+    log(
+        f"TRADING DAY on {config.live.broker}'s {names} windows, {first:%H:%M}-{last:%H:%M} ET -- "
+        f"{seconds_left / 60:.0f} min left, {ticks} ticks at {poll:.0f}s"
+    )
+    if args.dry_run:
+        log("--dry-run: would start the engine now.")
+        return 0
+    return _run_until(args, poll, time.time() + seconds_left, _control, "trading day")
+
+
 def _interrupt(signum, _frame) -> None:
     """SIGTERM -- how `docker stop` (via tools/docker_session_loop.sh) and
     systemd ask for a stop -- takes the same path as Ctrl-C: run_session
@@ -581,6 +674,8 @@ def _session(args) -> int:
     config.validate()
     poll = float(config.live.poll_interval_seconds or 60.0)
 
+    if config.live.venue_clock:
+        return _main_sessions(args, config, poll)
     if args.extended_hours or getattr(config.live, "extended_hours", False):
         return _main_extended(args, config, poll)
 

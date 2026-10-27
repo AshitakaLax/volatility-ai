@@ -326,6 +326,15 @@ def _config_stamp(path: Path) -> tuple | None:
     return (stat.st_mtime_ns, stat.st_size)
 
 
+def _load_sessions(path: Path) -> tuple:
+    """The windows a deployment trades (live.sessions), validated."""
+    from engine.core.config import BacktestConfig
+
+    config = BacktestConfig.from_yaml(str(path))
+    config.validate()
+    return config.live.traded_sessions
+
+
 def _load_fidelity(path: Path):
     """(FidelityConfig, symbol) from a deployment's config, validated."""
     from engine.core.config import BacktestConfig
@@ -397,6 +406,7 @@ def run_host(args: argparse.Namespace, stop: threading.Event | None = None) -> i
         build=identity(),
         notifications=Notifications(log=_stderr),
         make_notifier=make_notifier,
+        sessions=lambda: _load_sessions(config_path),
     )
     stamp = {"value": _config_stamp(config_path)}
 

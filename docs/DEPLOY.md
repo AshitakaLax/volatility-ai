@@ -423,6 +423,57 @@ the Live page warns, naming its address -- turn the extension off there.
 It takes over only if the connected one goes silent for a minute, or has
 no signed-in Fidelity tab, so the browser that can trade is the one used.
 
+**Pre-market and after-hours (`live.sessions`).** Fidelity takes limit
+orders from 07:00 to 09:28 ET (05:00 Mountain) and from the close until
+20:00 ET. A deployment that names its windows trades on them:
+
+```yaml
+live:
+  sessions: [pre_market, regular]   # and after_hours; the day's order
+  engine_lead_minutes: 30           # the engine starts 06:30 ET for the 07:00 window
+  orders:                           # outside the regular session (defaults shown)
+    ttl_seconds: 300                # an unfilled buy is cancelled after this
+    session_close_margin_seconds: 120   # every order is cancelled this long before its window ends
+    max_spread: 0.01                # a grid buy is skipped while the spread is wider
+    max_premium: 0.01               # a rebalance crosses to the ask, but no further than this
+  secondary_feed:                   # Fidelity's real-time quote behind Alpaca's bars
+    enabled: false
+```
+
+- **Two readiness answers.** The supervisor starts the engine
+  `engine_lead_minutes` before the first window. It builds the strategy and
+  replays its history from Alpaca, and the Live page says *Engine ready*
+  before Fidelity is asked anything. Then the engine waits for the bridge's
+  "ready" in its own process -- watching the market, answering the page --
+  and trades as soon as Fidelity is ready. Fidelity's own readiness is the
+  connection chain below it, as before; the bridge checks the account 30 and
+  10 minutes before the first *window*, not the regular open.
+- **Limit orders only, and proof each one filled.** Every Fidelity ticket is
+  a limit order. A buy left resting `ttl_seconds` outside the regular session
+  is cancelled and decided again; every order of a window is cancelled
+  before the window ends and is done only when Fidelity reports it gone. A
+  resting buy holds back its cash. **Orders today** on the Live page lists
+  each order's window, limit, what filled and at what price, and how it
+  ended. When a window ends the trader audits it: every order gone at the
+  venue and Fidelity's position equal to the ledger's, or new buys halt for
+  reconciliation, naming what disagrees.
+- **A regular-session strategy** (`ultimate_rsp`) may start early: it sees
+  and trades the regular session alone, so `sessions: [pre_market, regular]`
+  only moves its readiness to before 07:00.
+- **Not yet traded on Fidelity outside the regular session.** Its pre-market
+  and after-hours tickets carry fields of their own that have not been
+  captured yet (`docs/research/fidelity-extended-hours.md`). Until they are,
+  the engine says "Fidelity's pre_market order ticket is not known yet" and
+  places nothing in those windows; nothing is guessed.
+- **`secondary_feed`** reads Fidelity's quote through the extension: its bid
+  and ask price the limit orders, its last trade cross-checks Alpaca (a
+  minute where they disagree is skipped), and in a traded window outside the
+  regular session it stands in for a minute Alpaca's free feed has no bar
+  for. A quote is used only when it says when it is from; that field is not
+  captured yet either, so for now it is read and journaled (`quotes/`) but
+  not used. `python tools/probe_feed_coverage.py --symbol RSP --compare sip`
+  says how many minutes the free feed misses.
+
 **One process at a time.** The bridge lets one process attach: the
 session's loop, or a connection check. A loop or `bridge serve` started by
 hand on this server cannot take the port while `fidelity-bridge` runs, and

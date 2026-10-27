@@ -41,6 +41,7 @@
     "disconnected",
     "trading_switch",
     "refused",
-    "bridge"
+    "bridge",
+    "window"
   ]
 }

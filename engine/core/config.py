@@ -37,6 +37,7 @@ from engine.core.validation import (
     validate_profit_targets,
     validate_unit_interval,
 )
+from engine.core.venue_sessions import REGULAR, SESSIONS, check_sessions
 
 # TYPE-ONLY, AND THE IMPORTS INSIDE build() BELOW ARE DELIBERATE.
 #
@@ -448,6 +449,21 @@ def _parse_control(data: dict) -> LiveControlConfig:
     return LiveControlConfig(**data)
 
 
+def _parse_section(data, name: str, section_class):
+    """A small live.* section of numbers and switches (live.orders,
+    live.secondary_feed): unknown settings refused, values kept as given for
+    validate() to name."""
+    if not isinstance(data, dict):
+        raise ConfigurationError(f"{name} must be a mapping, got {data!r}")
+    known = tuple(section_class().to_dict())
+    unknown = set(data) - set(known)
+    if unknown:
+        raise ConfigurationError(
+            f"{name} has no setting(s) {sorted(unknown)}; known: {list(known)}"
+        )
+    return section_class(**data)
+
+
 def _parse_notifications(data) -> FidelityNotificationsConfig:
     """live.fidelity.bridge.notifications. An unknown setting is refused,
     as live.control's are: `event: [buy]` read as nothing at all would
@@ -522,6 +538,7 @@ FIDELITY_NOTIFICATION_EVENTS = (
     "trading_switch",
     "refused",
     "bridge",
+    "window",
 )
 
 
@@ -688,6 +705,65 @@ _CONTROL_FIELDS = tuple(LiveControlConfig().to_dict())
 
 
 @dataclass(frozen=True)
+class LiveOrdersConfig:
+    """How long a limit order may rest outside the regular session, and how
+    it is priced there (engine/execution/limit_pricing.py). Used only by a
+    deployment that names live.sessions; the regular session's orders keep
+    their behaviour.
+
+    Outside the regular session every order is a LIMIT, the books are thin
+    and the spreads wide, so an order that does not fill must not rest
+    unwatched: a buy left resting for ttl_seconds is cancelled (and decided
+    again on a later bar), and every order of a window is cancelled
+    session_close_margin_seconds before that window ends, and confirmed gone.
+    """
+
+    ttl_seconds: float = 300.0
+    session_close_margin_seconds: float = 120.0
+    # A grid buy is skipped while the quote's spread is wider than this
+    # fraction of its midpoint: it would rest far from where it triggered.
+    max_spread: float = 0.01
+    # A rebalance or exit crosses to the quote's far side, but never more
+    # than this fraction past the bar's price.
+    max_premium: float = 0.01
+
+    def to_dict(self) -> dict:
+        return {
+            "ttl_seconds": self.ttl_seconds,
+            "session_close_margin_seconds": self.session_close_margin_seconds,
+            "max_spread": self.max_spread,
+            "max_premium": self.max_premium,
+        }
+
+
+@dataclass(frozen=True)
+class SecondaryFeedConfig:
+    """The venue's own quotes as a second source behind Alpaca's bars
+    (engine/trading/market_feed.py): Fidelity's real-time quote, read
+    through the browser extension.
+
+    Alpaca stays the primary source. The secondary one prices limit orders
+    (its bid and ask), cross-checks Alpaca's price, and -- only inside a
+    traded window outside the regular session -- stands in for a minute
+    Alpaca has no bar for. Off unless enabled.
+    """
+
+    enabled: bool = False
+    # A quote older than this is not used at all.
+    max_age_seconds: float = 90.0
+    # Alpaca's price and the quote's further apart than this fraction: the
+    # tick is refused rather than trading on either.
+    max_divergence: float = 0.01
+
+    def to_dict(self) -> dict:
+        return {
+            "enabled": self.enabled,
+            "max_age_seconds": self.max_age_seconds,
+            "max_divergence": self.max_divergence,
+        }
+
+
+@dataclass(frozen=True)
 class LiveConfig:
     """Live-trading switches.
 
@@ -742,6 +818,30 @@ class LiveConfig:
     exit_limit_buffer: float = 0.005
     # What the web UI may change on this deployment; see LiveControlConfig.
     control: LiveControlConfig = field(default_factory=LiveControlConfig)
+    # The venue's windows this deployment trades (engine/core/venue_sessions.py):
+    # pre_market, regular, after_hours. Empty -- every config written before
+    # there were windows -- keeps the old clock: the regular session, or
+    # Alpaca's 04:00-20:00 with extended_hours. Naming them moves the
+    # deployment onto its venue's own windows: the supervisor starts the
+    # engine engine_lead_minutes before the first, the engine readies itself
+    # (history replayed) before it waits for the broker, and orders are
+    # placed only inside the windows.
+    sessions: tuple = ()
+    engine_lead_minutes: float = 30.0
+    orders: LiveOrdersConfig = field(default_factory=LiveOrdersConfig)
+    secondary_feed: SecondaryFeedConfig = field(default_factory=SecondaryFeedConfig)
+
+    @property
+    def venue_clock(self) -> bool:
+        """Whether this deployment runs on its venue's windows (live.sessions)."""
+        return bool(self.sessions)
+
+    @property
+    def traded_sessions(self) -> tuple:
+        """The windows traded: live.sessions, else what extended_hours means."""
+        if self.sessions:
+            return self.sessions
+        return SESSIONS if self.extended_hours else (REGULAR,)
 
 
 @dataclass(frozen=True)
@@ -885,6 +985,12 @@ class BacktestConfig:
             max_sells_per_tick=live_data.get("max_sells_per_tick", 25),
             exit_limit_buffer=float(live_data.get("exit_limit_buffer", 0.005)),
             control=_parse_control(live_data.get("control") or {}),
+            sessions=_as_string_tuple(live_data.get("sessions") or (), "live.sessions"),
+            engine_lead_minutes=live_data.get("engine_lead_minutes", 30.0),
+            orders=_parse_section(live_data.get("orders") or {}, "live.orders", LiveOrdersConfig),
+            secondary_feed=_parse_section(
+                live_data.get("secondary_feed") or {}, "live.secondary_feed", SecondaryFeedConfig
+            ),
         )
 
         return cls(
@@ -996,6 +1102,7 @@ class BacktestConfig:
                     f"live.control.{name} must be true or false, got {value!r}"
                 )
         validate_one_of(self.live.broker, ("alpaca", "fidelity"), "live.broker")
+        self._validate_sessions(self.live)
 
         # The feed whitelist is ALPACA's -- "iex"/"sip" are names of
         # Alpaca data feeds and mean nothing at another venue, so
@@ -1053,6 +1160,52 @@ class BacktestConfig:
                 )
             self._validate_fidelity_placing(self.live.fidelity)
             self._validate_fidelity_bridge(self.live.fidelity.bridge)
+
+    @staticmethod
+    def _validate_sessions(live: LiveConfig) -> None:
+        """live.sessions and the settings that go with trading in them."""
+        if live.sessions:
+            ordered = check_sessions(live.sessions)
+            if ordered != tuple(live.sessions):
+                raise ConfigurationError(
+                    f"live.sessions must be listed in the day's order: {list(ordered)}"
+                )
+            if live.extended_hours and live.sessions == (REGULAR,):
+                raise ConfigurationError(
+                    "live.extended_hours is true but live.sessions trades the regular session "
+                    "only. Name the windows in live.sessions and drop extended_hours."
+                )
+
+        def number(value, name: str, low: float, high: float, *, low_open: bool = False) -> None:
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                raise ConfigurationError(f"{name} must be a number, got {value!r}")
+            if value > high or value < low or (low_open and value == low):
+                bounds = f"({low}, {high}]" if low_open else f"[{low}, {high}]"
+                raise ConfigurationError(f"{name} must be in {bounds}, got {value!r}")
+
+        number(live.engine_lead_minutes, "live.engine_lead_minutes", 0, 240)
+        orders = live.orders
+        number(orders.ttl_seconds, "live.orders.ttl_seconds", 0, 6 * 3600, low_open=True)
+        number(
+            orders.session_close_margin_seconds,
+            "live.orders.session_close_margin_seconds",
+            0,
+            1800,
+        )
+        number(orders.max_spread, "live.orders.max_spread", 0, 0.1, low_open=True)
+        number(orders.max_premium, "live.orders.max_premium", 0, 0.1)
+        feed = live.secondary_feed
+        if not isinstance(feed.enabled, bool):
+            raise ConfigurationError(
+                f"live.secondary_feed.enabled must be true or false, got {feed.enabled!r}"
+            )
+        number(feed.max_age_seconds, "live.secondary_feed.max_age_seconds", 0, 3600, low_open=True)
+        number(feed.max_divergence, "live.secondary_feed.max_divergence", 0, 0.1, low_open=True)
+        if feed.enabled and live.broker != "fidelity":
+            raise ConfigurationError(
+                "live.secondary_feed reads the venue's own quotes, and only a Fidelity "
+                "deployment has them (through the browser extension). Turn it off here."
+            )
 
     def _validate_fidelity_placing(self, fidelity: FidelityConfig) -> None:
         """The settings real orders need, and the ones they contradict."""
@@ -1265,6 +1418,24 @@ class BacktestConfig:
                 **(
                     {"control": self.live.control.to_dict()}
                     if self.live.control != LiveControlConfig()
+                    else {}
+                ),
+                # Emitted only when set, as control is, so that every config
+                # written before there were windows keeps its exact hash.
+                **({"sessions": list(self.live.sessions)} if self.live.sessions else {}),
+                **(
+                    {"engine_lead_minutes": self.live.engine_lead_minutes}
+                    if self.live.engine_lead_minutes != LiveConfig.engine_lead_minutes
+                    else {}
+                ),
+                **(
+                    {"orders": self.live.orders.to_dict()}
+                    if self.live.orders != LiveOrdersConfig()
+                    else {}
+                ),
+                **(
+                    {"secondary_feed": self.live.secondary_feed.to_dict()}
+                    if self.live.secondary_feed != SecondaryFeedConfig()
                     else {}
                 ),
             },

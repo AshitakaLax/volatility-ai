@@ -1012,8 +1012,12 @@ def test_the_live_buy_gate_reads_the_same_quantity_the_backtest_does(store):
 
     backtest = inspect.getsource(optimization_controller.OptimizationController._simulate_single)
     live = inspect.getsource(LiveTradingLoop._maybe_buy)
+    spendable = inspect.getsource(LiveTradingLoop._spendable)
     assert "state.buying_power >= trade_value" in backtest
-    assert "self.state.buying_power < trade_value" in live
+    # Settled buying power -- less what resting buys hold back, which only a
+    # deployment on its venue's windows has (a buy that can rest).
+    assert "self._spendable() < trade_value" in live
+    assert "power = self.state.buying_power" in spendable
     assert "self.state.cash < trade_value" not in live
 
 

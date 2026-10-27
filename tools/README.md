@@ -159,6 +159,7 @@ stage's result and the prediction it was read against:
 | `screen_instruments.py` | Which candidates suit this strategy's real constraints? |
 | `screen_daily_fitness.py` | Which instruments suit a volatility-harvesting grid, on daily bars? |
 | `probe_rsp_alternatives.py` | RSP: is there anything that beats simply holding it? |
+| `probe_feed_coverage.py` | How often does Alpaca's feed (IEX; `--compare sip`) have a bar in each of Fidelity's windows -- the pre-market and after-hours minutes the second source (`live.secondary_feed`) would fill? |
 | `probe_regime_signals.py` | Which regime indicator actually gets you out of 2022, and at what cost? |
 | `probe_regime_integrated.py` | The regime strategy as ONE simulation rather than two spliced return streams. |
 | `probe_regime_combo.py` | Trend-follow in bull, deep-dip escalate in bear. |

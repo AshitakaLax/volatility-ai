@@ -38,6 +38,7 @@ import type {
   CommandRow,
   DeploymentDetail,
   DeploymentSummary,
+  OrderEvent,
   QueuedCommand,
   TraderFill,
 } from "@/types/control";
@@ -254,6 +255,13 @@ export const api = {
   deploymentFills: (id: string, sessions = 1) =>
     request<TraderFill[]>(
       `/api/live/deployments/${encodeURIComponent(id)}/fills?${query({ sessions })}`,
+    ),
+
+  /** Each moment of each order's life in the last `sessions` sessions,
+   * oldest first: placed, filled, cancelled (and why), expired. */
+  deploymentOrders: (id: string, sessions = 1) =>
+    request<OrderEvent[]>(
+      `/api/live/deployments/${encodeURIComponent(id)}/orders?${query({ sessions })}`,
     ),
 
   liveBars: (symbol: string, limit = 780) =>

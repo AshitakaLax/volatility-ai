@@ -527,6 +527,23 @@ def test_the_session_window_follows_the_trading_calendar():
     assert session_window(thanksgiving)["open"] is False
 
 
+def test_a_pre_market_deployments_day_starts_at_seven():
+    """live.sessions with the pre-market: the account is checked and
+    readiness warned of before 07:00 ET (05:00 Mountain), not 09:30."""
+    eastern = ZoneInfo("America/New_York")
+    sessions = ("pre_market", "regular")
+    early = datetime(2026, 10, 27, 6, 40, tzinfo=eastern).timestamp()
+    window = session_window(early, sessions)
+    assert window["open"] is False
+    assert window["next_open"] == datetime(2026, 10, 27, 7, 0, tzinfo=eastern)
+    pre = datetime(2026, 10, 27, 8, 0, tzinfo=eastern).timestamp()
+    assert session_window(pre, sessions)["open"] is True
+    assert session_window(pre)["open"] is False, "the regular session alone is unchanged"
+    evening = datetime(2026, 10, 27, 17, 0, tzinfo=eastern).timestamp()
+    late = session_window(evening, ("regular", "after_hours"))
+    assert late["open"] is True and late["closes"] == datetime(2026, 10, 27, 20, 0, tzinfo=eastern)
+
+
 def test_checks_run_by_themselves_before_the_open(place):
 
     calls: list[str] = []

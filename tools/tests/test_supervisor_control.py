@@ -347,3 +347,101 @@ def test_only_a_fidelity_deployment_with_a_bridge_host_is_gated(monkeypatch, tmp
     assert supervisor._broker_gate(with_dir, alpaca) is None
     gate = supervisor._broker_gate(with_dir, fidelity)
     assert gate is not None and gate()[0] is False, "no status yet: not ready"
+
+
+# -- on the venue's own windows (live.sessions): the engine starts early ---------------
+
+
+def _venue_config(sessions, lead=30.0):
+    live = SimpleNamespace(
+        broker="fidelity",
+        traded_sessions=tuple(sessions),
+        engine_lead_minutes=lead,
+        paper_trading=False,
+    )
+    return SimpleNamespace(live=live)
+
+
+def _venue_args(dry_run=False):
+    return args(max_wait_hours=18.0, close_margin=120.0, dry_run=dry_run)
+
+
+def _at_eastern(clock, day, hour, minute=0):
+    from datetime import datetime, time
+
+    from engine.core.trading_calendar import EASTERN
+
+    clock.now = datetime.combine(day, time(hour, minute), EASTERN).timestamp()
+
+
+def test_the_engine_starts_half_an_hour_before_the_pre_market_and_runs_to_the_close(
+    clock, monkeypatch
+):
+    """07:00 ET is 05:00 Mountain: the engine is up at 06:30 ET, ready (history
+    replayed) and waiting for Fidelity, and trades until the regular close."""
+    from datetime import date
+
+    from engine.core.venue_sessions import VenueCalendar
+
+    tuesday = date(2026, 10, 27)
+    _at_eastern(clock, tuesday, 5, 0)
+    runs = []
+
+    def run_session(_args, ticks, deadline, _control):
+        runs.append((clock.now, deadline))
+        clock.now = deadline
+        return 0
+
+    monkeypatch.setattr(supervisor, "run_session", run_session)
+    monkeypatch.setattr(supervisor, "log", lambda _message: None)
+    monkeypatch.setattr(supervisor, "_control", None)
+    config = _venue_config(["pre_market", "regular"])
+    calendar = VenueCalendar("fidelity", ("pre_market", "regular"))
+    assert supervisor._main_sessions(_venue_args(), config, POLL, calendar=calendar) == 0
+
+    _at_eastern(clock, tuesday, 6, 30)
+    launched = clock.now
+    _at_eastern(clock, tuesday, 16, 0)
+    close = clock.now
+    assert len(runs) == 1
+    assert runs[0][0] == launched, "launched at 06:30 ET, before the window and the broker"
+    assert runs[0][1] == close - 120.0, "until the last traded window ends, less the margin"
+
+
+def test_started_mid_day_the_engine_starts_at_once(clock, monkeypatch):
+    from datetime import date
+
+    from engine.core.venue_sessions import VenueCalendar
+
+    _at_eastern(clock, date(2026, 10, 27), 8, 15)
+    started = clock.now
+    runs = []
+
+    def run_session(_args, ticks, deadline, _control):
+        runs.append(clock.now)
+        clock.now = deadline
+        return 0
+
+    monkeypatch.setattr(supervisor, "run_session", run_session)
+    monkeypatch.setattr(supervisor, "log", lambda _message: None)
+    monkeypatch.setattr(supervisor, "_control", None)
+    calendar = VenueCalendar("fidelity", ("pre_market", "regular", "after_hours"))
+    config = _venue_config(calendar.sessions)
+    supervisor._main_sessions(_venue_args(), config, POLL, calendar=calendar)
+    assert runs == [started]
+
+
+def test_a_dry_run_says_when_the_engine_would_start(clock, monkeypatch):
+    from datetime import date
+
+    from engine.core.venue_sessions import VenueCalendar
+
+    _at_eastern(clock, date(2026, 11, 26), 14)  # Thanksgiving: the next day is Friday
+    said = []
+    monkeypatch.setattr(supervisor, "log", said.append)
+    monkeypatch.setattr(supervisor, "run_session", lambda *a: pytest.fail("a dry run ran"))
+    calendar = VenueCalendar("fidelity", ("pre_market", "regular"))
+    supervisor._main_sessions(
+        _venue_args(dry_run=True), _venue_config(calendar.sessions), POLL, calendar=calendar
+    )
+    assert any("06:30 ET" in line and "07:00 ET" in line for line in said), said
