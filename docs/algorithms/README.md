@@ -7,7 +7,7 @@ every row, whether volatility-ai implements it and link here.
 
 | Path | What it is | Written by |
 |---|---|---|
-| `<slug>.md` without a `generated` first line | A **researched** page: the rule, evidence for and against, fit with the project's constraints, what the repository already has, and how to test it here. Ledger IDs RK1–RK100 and RK200–RK300 (the same ranks). | hand |
+| `<slug>.md` without a `generated` first line | A **researched** page: the rule, evidence for and against, fit with the project's constraints, what the repository already has, and how to test it here. Ledger IDs RK1–RK100 and RK200–RK400 (the same ranks). | hand |
 | `<slug>.md` with a `generated` first line | A **card** for one of the 425 specific algorithms (ranks 1–425): the CSV's own text plus the implementation status. | `tools/build_algorithm_ledger.py` |
 | `concepts/<slug>.md` | One page per description shared by the 13,800 title-reconstructed rows (ranks 426–14,225): the description, every variant of the other fields its members carry, and the members. [Index](concepts/README.md). | the build |
 | `ranked/ranks-*.md` | The title-reconstructed rows by rank, 1,000 per page, each linked to its concept page. | the build |
@@ -16,7 +16,7 @@ every row, whether volatility-ai implements it and link here.
 
 ## Researched so far
 
-Ranks 1–100 and 200–300, one page each (101–199 are not yet researched). Each page says what its sources are and how far
+Ranks 1–100 and 200–400, one page each (101–199 are not yet researched). Each page says what its sources are and how far
 they could be checked (full texts could not be opened from the research environment).
 
 | ID | Algorithm | Rank | Implemented |
@@ -222,12 +222,113 @@ they could be checked (full texts could not be opened from the research environm
 | RK298 | [AMM / CLOB Cross-Venue Arbitrage](amm-clob-cross-venue-arbitrage.md) | 298 | No |
 | RK299 | [Dynamic AMM Liquidity Provision / Liquidity Mining](dynamic-amm-liquidity-provision-liquidity-mining.md) | 299 | No |
 | RK300 | [Fractional Differentiation Feature Pipeline](fractional-differentiation-feature-pipeline.md) | 300 | Research code (C-ML5) |
+| RK301 | [Temporal Fusion Transformer Forecasting](temporal-fusion-transformer-forecasting.md) | 301 | No |
+| RK302 | [Physics-Informed Deep Galerkin Method (DGM) Option Solver](physics-informed-deep-galerkin-method-dgm-option-solver.md) | 302 | No |
+| RK303 | [Neural Jump-Diffusion Rough Heston Smile Predictor](neural-jump-diffusion-rough-heston-smile-predictor.md) | 303 | No |
+| RK304 | [Recurrent Neural Hawkes Point Process Volatility Jump Forecaster](recurrent-neural-hawkes-point-process-volatility-jump-forecaster.md) | 304 | No |
+| RK305 | [Quantum Annealing Binary Quadratic Portfolio Rebalancing](quantum-annealing-binary-quadratic-portfolio-rebalancing.md) | 305 | No |
+| RK306 | [Microprice / Queue-Imbalance Signal](microprice-queue-imbalance-signal.md) | 306 | Research code (C-MS2) |
+| RK307 | [Cross-Exchange Market Making (XEMM)](cross-exchange-market-making-xemm.md) | 307 | No |
+| RK308 | [Dividend Capture Window Strategy](dividend-capture-window-strategy.md) | 308 | No |
+| RK309 | [Gamma Scalping / Long-Gamma Rebalancing](gamma-scalping-long-gamma-rebalancing.md) | 309 | No |
+| RK310 | [Multi-Agent RL Execution / Liquidation](multi-agent-rl-execution-liquidation.md) | 310 | No |
+| RK311 | [FinBERT Sentiment-Driven Event Arbitrage](finbert-sentiment-driven-event-arbitrage.md) | 311 | No |
+| RK312 | [Deep Q-Network (DQN) Liquidation Agent](deep-q-network-dqn-liquidation-agent.md) | 312 | No |
+| RK313 | [Adaptive Mesh Reinforcement Learning Market Maker (RL-MM)](adaptive-mesh-reinforcement-learning-market-maker-rl-mm.md) | 313 | No |
+| RK314 | [Hawkes-Jump Diffusion Multivariate Event Detection](hawkes-jump-diffusion-multivariate-event-detection.md) | 314 | No |
+| RK315 | [Empirical Mode Decomposition (EMD) Hilbert-Huang Intraday Scalper](empirical-mode-decomposition-emd-hilbert-huang-intraday-scalper.md) | 315 | No |
+| RK316 | [Temporal CNN / TCN Forecasting](temporal-cnn-tcn-forecasting.md) | 316 | No |
+| RK317 | [Meta-Labeling Primary Signals](meta-labeling-primary-signals.md) | 317 | Yes (V13, C-ML1) |
+| RK318 | [Graph Convolutional Network (GCN) Cross-Sectional Stock Ranking](graph-convolutional-network-gcn-cross-sectional-stock-ranking.md) | 318 | No |
+| RK319 | [Vol-Harvesting Dynamic Asymmetric Grid](vol-harvesting-dynamic-asymmetric-grid.md) | 319 | Yes (V3, V5, C-G3) |
+| RK320 | [Koopman Operator Non-Linear Volatility Surface Interpolator](koopman-operator-non-linear-volatility-surface-interpolator.md) | 320 | No |
+| RK321 | [Koopman Operator Non-Linear Volatility Surface Pricing Model](koopman-operator-non-linear-volatility-surface-pricing-model.md) | 321 | No |
+| RK322 | [Order-Book Imbalance Signal](order-book-imbalance-signal.md) | 322 | Research code (C-MS2) |
+| RK323 | [Physics-Informed Neural Operator (FNO) Yield Curve Dynamics](physics-informed-neural-operator-fno-yield-curve-dynamics.md) | 323 | No |
+| RK324 | [Wasserstein Distributionally Robust Neural SDE Hedging](wasserstein-distributionally-robust-neural-sde-hedging.md) | 324 | No |
+| RK325 | [Neural Operator Controlled Portfolio Dynamic Hedging](neural-operator-controlled-portfolio-dynamic-hedging.md) | 325 | No |
+| RK326 | [Neural Operator Functional Gradient Boosting Cross-Sectional Alpha](neural-operator-functional-gradient-boosting-cross-sectional-alpha.md) | 326 | No |
+| RK327 | [Domain-Adversarial Neural Network (DANN) Cross-Market Alpha Transfer](domain-adversarial-neural-network-dann-cross-market-alpha-transfer.md) | 327 | No |
+| RK328 | [Neural Rough Volatility Path Signature Factor Model](neural-rough-volatility-path-signature-factor-model.md) | 328 | No |
+| RK329 | [Wasserstein Distributionally Robust Neural Rough Volatility Hedging](wasserstein-distributionally-robust-neural-rough-volatility-hedging.md) | 329 | No |
+| RK330 | [Neural Rough Path Signature Delay-Differential Portfolio Control](neural-rough-path-signature-delay-differential-portfolio-control.md) | 330 | No |
+| RK331 | [Neural Rough Differential Equation (Neural RDE) LOB Forecaster](neural-rough-differential-equation-neural-rde-lob-forecaster.md) | 331 | No |
+| RK332 | [Generative Score-Based Flow Matching Order Flow Generator](generative-score-based-flow-matching-order-flow-generator.md) | 332 | No |
+| RK333 | [Neural Jump-Diffusion Hawkes Point Process Shock Detector](neural-jump-diffusion-hawkes-point-process-shock-detector.md) | 333 | No |
+| RK334 | [Neural Controlled Differential Equation LOB Trend Anticipator](neural-controlled-differential-equation-lob-trend-anticipator.md) | 334 | No |
+| RK335 | [Wasserstein Distributionally Robust RL Market Making](wasserstein-distributionally-robust-rl-market-making.md) | 335 | No |
+| RK336 | [Score-Based Generative Diffusion Limit Order Book Simulator](score-based-generative-diffusion-limit-order-book-simulator.md) | 336 | No |
+| RK337 | [Neural Controlled Jump Diffusion Order Book Pricing Model](neural-controlled-jump-diffusion-order-book-pricing-model.md) | 337 | No |
+| RK338 | [Recurrent Neural Hawkes Point Process Liquidity Shock Detector](recurrent-neural-hawkes-point-process-liquidity-shock-detector.md) | 338 | No |
+| RK339 | [Multi-Agent Reinforcement Learning Nash Market Maker](multi-agent-reinforcement-learning-nash-market-maker.md) | 339 | No |
+| RK340 | [Fractional Order Cointegration Vector Error Correction Neural Network](fractional-order-cointegration-vector-error-correction-neural-network.md) | 340 | No |
+| RK341 | [Multi-Agent Reinforcement Learning Stackelberg Market Maker](multi-agent-reinforcement-learning-stackelberg-market-maker.md) | 341 | No |
+| RK342 | [Neural Rough Path Signature Hawkes Point Process Forecaster](neural-rough-path-signature-hawkes-point-process-forecaster.md) | 342 | No |
+| RK343 | [Generative Score-Based Diffusion Limit Order Book Flow Synthesizer](generative-score-based-diffusion-limit-order-book-flow-synthesizer.md) | 343 | No |
+| RK344 | [Multi-Agent Reinforcement Learning Stackelberg Market Maker Equilibrium](multi-agent-reinforcement-learning-stackelberg-market-maker-equilibrium.md) | 344 | No |
+| RK345 | [Multi-Agent Reinforcement Learning Stackelberg Spread Capture](multi-agent-reinforcement-learning-stackelberg-spread-capture.md) | 345 | No |
+| RK346 | [SAC Continuous-Action Trading Agent](sac-continuous-action-trading-agent.md) | 346 | Research code (A1) |
+| RK347 | [DDPG / TD3 Continuous-Control Trader](ddpg-td3-continuous-control-trader.md) | 347 | Research code (A1) |
+| RK348 | [Phase Space Reconstructed Neural ODE (PSR-NODE)](phase-space-reconstructed-neural-ode-psr-node.md) | 348 | No |
+| RK349 | [Time-Series Generative Adversarial Network (TimeGAN)](time-series-generative-adversarial-network-timegan.md) | 349 | No |
+| RK350 | [Physics-Informed Deep Learning Schrödinger Volatility Solver](physics-informed-deep-learning-schrodinger-volatility-solver.md) | 350 | No |
+| RK351 | [Multi-Agent Deep Deterministic Policy Gradient (MADDPG) Portfolio Allocation](multi-agent-deep-deterministic-policy-gradient-maddpg-portfolio-allocation.md) | 351 | No |
+| RK352 | [Deep Hedging with Transaction Costs and Friction](deep-hedging-with-transaction-costs-and-friction.md) | 352 | No |
+| RK353 | [Recurrent Neural Hawkes Point Process Execution Timing](recurrent-neural-hawkes-point-process-execution-timing.md) | 353 | No |
+| RK354 | [Multi-Agent Reinforcement Learning Evolutionary Market Maker](multi-agent-reinforcement-learning-evolutionary-market-maker.md) | 354 | No |
+| RK355 | [Recurrent Neural Hawkes Point Process Toxic Flow Execution](recurrent-neural-hawkes-point-process-toxic-flow-execution.md) | 355 | No |
+| RK356 | [Recurrent Neural Hawkes Point Process Dynamic Inventory Market Maker](recurrent-neural-hawkes-point-process-dynamic-inventory-market-maker.md) | 356 | No |
+| RK357 | [Recurrent Neural Hawkes Point Process Toxic Flow Execution Pauser](recurrent-neural-hawkes-point-process-toxic-flow-execution-pauser.md) | 357 | No |
+| RK358 | [Multi-Agent Reinforcement Learning Evolutionary Execution Routing](multi-agent-reinforcement-learning-evolutionary-execution-routing.md) | 358 | No |
+| RK359 | [Multi-Agent Reinforcement Learning Evolutionary Market Making Equilibrium](multi-agent-reinforcement-learning-evolutionary-market-making-equilibrium.md) | 359 | No |
+| RK360 | [Multi-Agent Reinforcement Learning Evolutionary Execution Allocator](multi-agent-reinforcement-learning-evolutionary-execution-allocator.md) | 360 | No |
+| RK361 | [Deep Reinforcement Learning Order Book Market Maker (Marl-MM)](deep-reinforcement-learning-order-book-market-maker-marl-mm.md) | 361 | No |
+| RK362 | [Koopman Operator Model Predictive Control Execution](koopman-operator-model-predictive-control-execution.md) | 362 | No |
+| RK363 | [TWAP Execution](twap-execution.md) | 363 | Research code |
+| RK364 | [VWAP Execution](vwap-execution.md) | 364 | No |
+| RK365 | [POV / Percent-of-Volume Execution](pov-percent-of-volume-execution.md) | 365 | No |
+| RK366 | [Implementation-Shortfall / Almgren–Chriss](implementation-shortfall-almgren-chriss.md) | 366 | Research code |
+| RK367 | [Hawkes-Driven Optimal Execution with Transitory Price Impact](hawkes-driven-optimal-execution-with-transitory-price-impact.md) | 367 | No |
+| RK368 | [Continuous-Time Mean-Field Control Execution](continuous-time-mean-field-control-execution.md) | 368 | No |
+| RK369 | [Multi-Agent Mean-Field Game Optimal Execution Routing](multi-agent-mean-field-game-optimal-execution-routing.md) | 369 | No |
+| RK370 | [Wasserstein Distributionally Robust Optimal Execution Trajectory](wasserstein-distributionally-robust-optimal-execution-trajectory.md) | 370 | No |
+| RK371 | [Wasserstein Distributionally Robust Hawkes Point Process Execution](wasserstein-distributionally-robust-hawkes-point-process-execution.md) | 371 | No |
+| RK372 | [PPO Reinforcement-Learning Trader](ppo-reinforcement-learning-trader.md) | 372 | Research code (A1) |
+| RK373 | [Generative Moment Matching Network (GMMN) Portfolio Simulator](generative-moment-matching-network-gmmn-portfolio-simulator.md) | 373 | No |
+| RK374 | [Physics-Informed Neural Network (PINN) Burgers Volatility Model](physics-informed-neural-network-pinn-burgers-volatility-model.md) | 374 | No |
+| RK375 | [Quantum Support Vector Regression (QSVR) Return Predictor](quantum-support-vector-regression-qsvr-return-predictor.md) | 375 | No |
+| RK376 | [Deep Koopman Operator Market Dynamics Predictor](deep-koopman-operator-market-dynamics-predictor.md) | 376 | No |
+| RK377 | [Neural SDE Controlled Stochastic Volatility Arbitrage](neural-sde-controlled-stochastic-volatility-arbitrage.md) | 377 | No |
+| RK378 | [Generative Diffusion Model Trajectory Generator (TabDDPM)](generative-diffusion-model-trajectory-generator-tabddpm.md) | 378 | No |
+| RK379 | [Fractional Brownian Motion (fBm) Volatility Surface Arbitrage](fractional-brownian-motion-fbm-volatility-surface-arbitrage.md) | 379 | No |
+| RK380 | [Dynamic Latent Factor Graph Neural Network (FactorGNN)](dynamic-latent-factor-graph-neural-network-factorgnn.md) | 380 | No |
+| RK381 | [Hyperbolic Graph Neural Networks for Stock Pricing](hyperbolic-graph-neural-networks-for-stock-pricing.md) | 381 | No |
+| RK382 | [Contractive Autoencoder Latent Factor Anomaly Detection](contractive-autoencoder-latent-factor-anomaly-detection.md) | 382 | No |
+| RK383 | [Conditional Wasserstein GAN-GP Yield Curve Synthesizer](conditional-wasserstein-gan-gp-yield-curve-synthesizer.md) | 383 | No |
+| RK384 | [Geometric Deep Learning Non-Euclidean Alpha Predictor](geometric-deep-learning-non-euclidean-alpha-predictor.md) | 384 | No |
+| RK385 | [Graph Attention Network (GAT) Supply Chain Contagion Stock Predictor](graph-attention-network-gat-supply-chain-contagion-stock-predictor.md) | 385 | No |
+| RK386 | [Information-Theoretic Transfer Entropy Graph Neural Network Alpha Model](information-theoretic-transfer-entropy-graph-neural-network-alpha-model.md) | 386 | No |
+| RK387 | [Quantum Kernel-Based SVM Cross-Sectional Alpha Predictor](quantum-kernel-based-svm-cross-sectional-alpha-predictor.md) | 387 | No |
+| RK388 | [Dynamic Copula-Quantile Regression Neural Network Alpha Model](dynamic-copula-quantile-regression-neural-network-alpha-model.md) | 388 | No |
+| RK389 | [Quantum Annealing Entropic Value-at-Risk Portfolio Optimization](quantum-annealing-entropic-value-at-risk-portfolio-optimization.md) | 389 | No |
+| RK390 | [Neural Operator Flow-Matching Cross-Sectional Alpha Forecaster](neural-operator-flow-matching-cross-sectional-alpha-forecaster.md) | 390 | No |
+| RK391 | [Neural Rough Volatility Fractional signature Deep Hedging](neural-rough-volatility-fractional-signature-deep-hedging.md) | 391 | No |
+| RK392 | [Fractional Order Vector AutoRegressive (VAR) Macro Allocator](fractional-order-vector-autoregressive-var-macro-allocator.md) | 392 | No |
+| RK393 | [Quantum Neural Network (QNN) Volatility Surface Forecaster](quantum-neural-network-qnn-volatility-surface-forecaster.md) | 393 | No |
+| RK394 | [Graph Diffusion Convolutional Network Cross-Sectional Alpha](graph-diffusion-convolutional-network-cross-sectional-alpha.md) | 394 | No |
+| RK395 | [Generative Score-Based Diffusion Macro Factor Synthesizer](generative-score-based-diffusion-macro-factor-synthesizer.md) | 395 | No |
+| RK396 | [Riemannian Manifold Metric Graph Diffusion Covariance Estimator](riemannian-manifold-metric-graph-diffusion-covariance-estimator.md) | 396 | No |
+| RK397 | [Quantum Annealing Graph Neural Network Covariance Shrinkage](quantum-annealing-graph-neural-network-covariance-shrinkage.md) | 397 | No |
+| RK398 | [Persistent Homology Betti-2 Persistence Landscape Macro Contagion](persistent-homology-betti-2-persistence-landscape-macro-contagion.md) | 398 | No |
+| RK399 | [Generative Score-Based Diffusion Cross-Sectional Factor Synthesizer](generative-score-based-diffusion-cross-sectional-factor-synthesizer.md) | 399 | No |
+| RK400 | [Graph Attention Network Riemannian Manifold Covariance Shrinkage](graph-attention-network-riemannian-manifold-covariance-shrinkage.md) | 400 | No |
 
 ### Research gaps
 
 **Needs more info** (a reference is cited or likely exists but could not
 be identified or read): RK31, RK44, RK68, RK93, RK97; RK219, RK232,
-RK235, RK240, RK250, RK256, RK259, RK267, RK280, RK283, RK286.
+RK235, RK240, RK250, RK256, RK259, RK267, RK280, RK283, RK286; RK331,
+RK348, RK376, RK382, RK400.
 
 **Unable to find more details** (no published evaluation found by two
 searches): RK38, RK64, RK69, RK77, RK78, RK86, RK92, RK94, RK95, RK98,
@@ -235,7 +336,12 @@ RK99, RK100; RK201, RK202, RK203, RK205, RK206, RK208, RK212, RK216,
 RK217, RK221, RK222, RK224, RK227, RK228, RK230, RK231, RK233, RK234,
 RK236, RK237, RK238, RK239, RK241, RK243, RK257, RK258, RK261, RK262,
 RK263, RK264, RK265, RK266, RK270, RK272, RK273, RK287, RK288, RK289,
-RK297.
+RK297; RK304, RK307, RK315, RK320, RK321, RK323, RK325, RK326, RK330,
+RK332, RK333, RK334, RK335, RK337, RK338, RK339, RK340, RK341, RK342,
+RK344, RK345, RK350, RK353, RK354, RK355, RK356, RK357, RK358, RK359,
+RK360, RK362, RK365, RK369, RK370, RK371, RK374, RK375, RK380, RK384,
+RK386, RK387, RK388, RK389, RK390, RK392, RK393, RK394, RK396, RK397,
+RK398.
 
 [The ledger's table](../algorithm_ledger.md#research-gaps) says what each
 one lacks.

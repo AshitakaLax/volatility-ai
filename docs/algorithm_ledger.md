@@ -14,7 +14,7 @@ code for every remaining entry, in-scope or not. Section 8C (2026-10-27)
 adds a ranked list of 14,225 algorithms from a CSV import, each with
 whether it is implemented here and a link to its documentation in
 [`docs/algorithms/`](algorithms/README.md); ranks 1–100 (RK1–RK100) and
-200–300 (RK200–RK300) are researched, and §8C lists the research gaps that remain.*
+200–400 (RK200–RK400) are researched, and §8C lists the research gaps that remain.*
 
 ---
 
@@ -383,8 +383,108 @@ entries also have reference code in `research/catalog/`, unwired.
 | RK298 | AMM / CLOB cross-venue arbitrage | ranked list #298; Milionis et al. 2022 | DeFi arbitrage | ❌ | None |
 | RK299 | Dynamic AMM liquidity provision / liquidity mining | ranked list #299; Loesch et al. 2021 | DeFi liquidity provision | ❌ | None |
 | RK300 | Fractional differentiation feature pipeline | ranked list #300; López de Prado 2018; Hosking 1981 | ML preprocessing | 🧪 (feature transform) | Low |
+| RK301 | Temporal Fusion Transformer forecasting | ranked list #301; Lim et al. 2021 | Deep forecasting | ⛔ | None |
+| RK302 | Deep Galerkin Method (DGM) option solver | ranked list #302; Sirignano & Spiliopoulos 2018 | Physics-informed ML | ⛔ | None |
+| RK303 | Neural jump-diffusion rough Heston smile predictor | ranked list #303; Gatheral, Jaisson & Rosenbaum 2018 | Derivatives pricing | ⛔ | None |
+| RK304 | Recurrent neural Hawkes volatility-jump forecaster | ranked list #304 | Point processes | ⛔ | None |
+| RK305 | Quantum annealing binary-quadratic rebalancing | ranked list #305; Mugel et al. 2022 | Quantum optimisation | ⛔ | None |
+| RK306 | Micro-price / queue-imbalance signal | ranked list #306; Stoikov 2018; Gould & Bonart 2016 | Microstructure | 🧪 (C-MS2) · ⏳ (fair-value check) | Low |
+| RK307 | Cross-exchange market making (XEMM) | ranked list #307; Hummingbot | Market making | ⛔ | None |
+| RK308 | Dividend capture window | ranked list #308; Lakonishok & Vermaelen 1986 | Event / income | ⛔ | None |
+| RK309 | Gamma scalping / long-gamma rebalancing | ranked list #309; Bakshi & Kapadia 2003 | Options | ⛔ | None |
+| RK310 | Multi-agent RL execution / liquidation | ranked list #310; Karpe et al. 2020 | RL execution | ⛔ | None |
+| RK311 | FinBERT sentiment event arbitrage | ranked list #311; Huang, Wang & Yang 2023; Lopez-Lira & Tang | NLP / event-driven | ⏳ (market-level input) · ⛔ (stock-level trade) | Low |
+| RK312 | Deep Q-network (DQN) liquidation agent | ranked list #312; Ning, Lin & Jaimungal 2021 | RL execution | ⛔ | None |
+| RK313 | Adaptive-mesh RL market maker | ranked list #313; Spooner et al. 2018 | RL market making | ⛔ | None |
+| RK314 | Hawkes jump-diffusion multivariate event detection | ranked list #314; Aït-Sahalia, Cacho-Diaz & Laeven 2015 | Point processes | ⏳ (daily stress gauge) | Low |
+| RK315 | Empirical mode decomposition (Hilbert-Huang) intraday scalper | ranked list #315; Huang et al. 1998 | Signal processing | ⛔ | None |
+| RK316 | Temporal convolutional network (TCN) forecasting | ranked list #316; Bai, Kolter & Koltun 2018 | Deep forecasting | ⛔ | None |
+| RK317 | Meta-labelling primary signals | ranked list #317; López de Prado 2018; Joubert 2022 | ML sizing | ✅ (V13) | Medium |
+| RK318 | Graph convolutional network (GCN) stock ranking | ranked list #318; Feng et al. 2019 | Graph ML | ⛔ | None |
+| RK319 | Volatility-harvesting dynamic asymmetric grid | ranked list #319; this repository; Chen, Chen & Jang 2025 | Grid trading | ✅ (V5, the champion) | High |
+| RK320 | Koopman-operator volatility-surface interpolator | ranked list #320 | Koopman / derivatives | ⛔ | None |
+| RK321 | Koopman-operator volatility-surface pricing model | ranked list #321 | Koopman / derivatives | ⛔ | None |
+| RK322 | Order-book imbalance signal | ranked list #322; Gould & Bonart 2016 | Microstructure | 🧪 (C-MS2) · ⛔ (needs depth) | None |
+| RK323 | Physics-informed neural operator yield-curve dynamics | ranked list #323 | Neural operators | ⛔ | None |
+| RK324 | Wasserstein distributionally robust neural SDE hedging | ranked list #324; Gierjatowicz et al. | Derivatives hedging | ⛔ | None |
+| RK325 | Neural-operator controlled portfolio dynamic hedging | ranked list #325 | Neural operators | ⛔ | None |
+| RK326 | Neural-operator functional gradient boosting alpha | ranked list #326 | Neural operators | ⛔ | None |
+| RK327 | Domain-adversarial (DANN) cross-market alpha transfer | ranked list #327; Ganin et al. 2016 | Transfer learning | ⛔ | None |
+| RK328 | Neural rough-volatility path-signature factor model | ranked list #328; Futter, Horvath & Wiese 2023 | Rough paths | ⛔ | None |
+| RK329 | Wasserstein distributionally robust rough-volatility hedging | ranked list #329; Gierjatowicz et al. | Derivatives hedging | ⛔ | None |
+| RK330 | Rough-path signature delay-differential portfolio control | ranked list #330 | Rough paths / control | ⛔ | None |
+| RK331 | Neural rough differential equation (neural RDE) order-book forecaster | ranked list #331 | Rough paths / deep learning | ⛔ | None |
+| RK332 | Flow-matching order-flow generator | ranked list #332 | Generative market simulation | ⛔ | None |
+| RK333 | Neural jump-diffusion Hawkes shock detector | ranked list #333 | Point processes / neural SDEs | ⛔ | None |
+| RK334 | Neural controlled differential equation order-book trend anticipator | ranked list #334 | Rough paths / deep learning | ⛔ | None |
+| RK335 | Wasserstein distributionally robust RL market making | ranked list #335 | RL market making / robust | ⛔ | None |
+| RK336 | Score-based diffusion order-book simulator | ranked list #336; Berti, Prenkaj & Velardi 2025 | Generative market simulation | ⛔ | None |
+| RK337 | Neural controlled jump-diffusion order-book pricing model | ranked list #337 | Rough paths / deep learning | ⛔ | None |
+| RK338 | Recurrent neural Hawkes liquidity-shock detector | ranked list #338 | Point processes | ⛔ | None |
+| RK339 | Multi-agent RL Nash market maker | ranked list #339 | RL market making | ⛔ | None |
+| RK340 | Fractional-order cointegration VECM neural network | ranked list #340; Johansen & Nielsen 2012 | Fractional cointegration | ⛔ | None |
+| RK341 | Multi-agent RL Stackelberg market maker | ranked list #341 | RL market making / game theory | ⛔ | None |
+| RK342 | Rough-path signature Hawkes point-process forecaster | ranked list #342 | Rough paths / point processes | ⛔ | None |
+| RK343 | Score-based diffusion order-book flow synthesizer | ranked list #343; Berti, Prenkaj & Velardi 2025 | Generative market simulation | ⛔ | None |
+| RK344 | Multi-agent RL Stackelberg market-maker equilibrium | ranked list #344 | RL market making / game theory | ⛔ | None |
+| RK345 | Multi-agent RL Stackelberg spread capture | ranked list #345 | RL market making / game theory | ⛔ | None |
+| RK346 | Soft actor-critic (SAC) continuous-action trader | ranked list #346; Yang et al. 2020; Gort et al. 2022 | Deep RL | 🧪 (A1) · ❌ (as a trader) | None |
+| RK347 | DDPG / TD3 continuous-control trader | ranked list #347; Yang et al. 2020; Gort et al. 2022 | Deep RL | 🧪 (A1) · ❌ (as a trader) | None |
+| RK348 | Phase-space-reconstructed neural ODE (PSR-NODE) | ranked list #348 | Dynamical systems / deep learning | ⛔ | None |
+| RK349 | Time-series GAN (TimeGAN) scenario generation | ranked list #349; Yoon et al. 2019 | Generative scenarios | ⏳ (stress-test tool) | Low |
+| RK350 | Physics-informed Schrödinger volatility solver | ranked list #350 | Physics-informed ML | ⛔ | None |
+| RK351 | MADDPG portfolio allocation | ranked list #351; Lowe et al. 2017 | Deep RL allocation | ⛔ | None |
+| RK352 | Deep hedging with transaction costs | ranked list #352; Buehler et al. 2019 | Derivatives hedging | ⛔ | None |
+| RK353 | Recurrent neural Hawkes execution timing | ranked list #353 | Execution / point processes | ⛔ | None |
+| RK354 | Multi-agent RL evolutionary market maker | ranked list #354 | RL market making / evolutionary | ⛔ | None |
+| RK355 | Recurrent neural Hawkes toxic-flow execution | ranked list #355 | Execution / point processes | ⛔ | None |
+| RK356 | Recurrent neural Hawkes dynamic-inventory market maker | ranked list #356 | Market making / point processes | ⛔ | None |
+| RK357 | Recurrent neural Hawkes toxic-flow execution pauser | ranked list #357 | Execution / point processes | ⛔ | None |
+| RK358 | Multi-agent RL evolutionary execution routing | ranked list #358 | RL execution / evolutionary | ⛔ | None |
+| RK359 | Multi-agent RL evolutionary market-making equilibrium | ranked list #359 | RL market making / evolutionary | ⛔ | None |
+| RK360 | Multi-agent RL evolutionary execution allocator | ranked list #360 | RL execution / evolutionary | ⛔ | None |
+| RK361 | Multi-agent deep RL order-book market maker | ranked list #361; Ganesh et al. 2019 | RL market making | ⛔ | None |
+| RK362 | Koopman-operator MPC execution | ranked list #362 | Execution / Koopman | ⛔ | None |
+| RK363 | TWAP execution | ranked list #363; Almgren & Chriss 2001 | Execution | 🧪 (AC lead, λ = 0) · ⛔ (not needed) | None |
+| RK364 | VWAP execution | ranked list #364; Berkowitz, Logue & Noser 1988 | Execution | ⛔ | None |
+| RK365 | Percent-of-volume (POV) execution | ranked list #365; BIS 2020 | Execution | ⛔ | None |
+| RK366 | Implementation shortfall / Almgren-Chriss | ranked list #366; Perold 1988; Almgren & Chriss 2001 | Execution | 🧪 (AC lead) · ⏳ (shortfall measurement) | Low |
+| RK367 | Hawkes-driven optimal execution with transient impact | ranked list #367; Alfonsi & Blanc 2016 | Execution | ⛔ | None |
+| RK368 | Continuous-time mean-field control execution | ranked list #368; Cardaliaguet & Lehalle 2018 | Execution / mean-field games | ⛔ | None |
+| RK369 | Multi-agent mean-field game execution routing | ranked list #369 | Execution / mean-field games | ⛔ | None |
+| RK370 | Wasserstein distributionally robust optimal execution trajectory | ranked list #370 | Execution / robust optimisation | ⛔ | None |
+| RK371 | Wasserstein distributionally robust Hawkes execution | ranked list #371 | Execution / robust optimisation | ⛔ | None |
+| RK372 | PPO reinforcement-learning trader | ranked list #372; Yang et al. 2020; Gort et al. 2022 | Deep RL | 🧪 (A1) · ❌ (as a trader) | None |
+| RK373 | Generative moment matching network (GMMN) portfolio simulator | ranked list #373; Hofert, Prasad & Zhu 2021 | Generative scenarios | ⏳ (stress-test tool) | Low |
+| RK374 | Physics-informed (PINN) Burgers volatility model | ranked list #374 | Physics-informed ML | ⛔ | None |
+| RK375 | Quantum support vector regression return predictor | ranked list #375 | Quantum machine learning | ⛔ | None |
+| RK376 | Deep Koopman market-dynamics predictor | ranked list #376 | Koopman / deep learning | ⛔ | None |
+| RK377 | Neural SDE stochastic-volatility arbitrage | ranked list #377; Gierjatowicz et al. | Derivatives pricing | ⛔ | None |
+| RK378 | Tabular diffusion (TabDDPM) trajectory generator | ranked list #378; Kotelnikov et al. 2023 | Generative scenarios | ⛔ | None |
+| RK379 | Fractional Brownian motion volatility-surface arbitrage | ranked list #379; Gatheral, Jaisson & Rosenbaum 2018 | Derivatives pricing | ⛔ | None |
+| RK380 | Dynamic latent factor graph neural network (FactorGNN) | ranked list #380 | Graph ML / factor models | ⛔ | None |
+| RK381 | Hyperbolic graph neural network stock selection | ranked list #381; Sawhney et al. 2021 | Graph ML | ⛔ | None |
+| RK382 | Contractive autoencoder latent-factor anomaly detection | ranked list #382 | Anomaly detection | ⛔ | None |
+| RK383 | Conditional WGAN-GP yield-curve synthesizer | ranked list #383; Guo 2024 | Generative scenarios | ⛔ | None |
+| RK384 | Geometric deep learning non-Euclidean alpha predictor | ranked list #384 | Geometric deep learning | ⛔ | None |
+| RK385 | Graph-attention supply-chain contagion stock predictor | ranked list #385; Cohen & Frazzini 2008 | Graph ML / economic links | ⛔ | None |
+| RK386 | Transfer-entropy graph neural network alpha model | ranked list #386 | Information theory / graph ML | ⛔ | None |
+| RK387 | Quantum-kernel SVM cross-sectional alpha | ranked list #387 | Quantum machine learning | ⛔ | None |
+| RK388 | Dynamic copula-quantile regression neural network alpha | ranked list #388; Baruník, Hronec & Tobek | Distributional forecasting | ⛔ | None |
+| RK389 | Quantum annealing entropic value-at-risk optimisation | ranked list #389 | Quantum optimisation | ⛔ | None |
+| RK390 | Neural-operator flow-matching alpha forecaster | ranked list #390 | Neural operators / generative | ⛔ | None |
+| RK391 | Rough-volatility signature deep hedging | ranked list #391; Horvath, Teichmann & Žurič 2021 | Derivatives hedging | ⛔ | None |
+| RK392 | Fractional-order VAR macro allocator | ranked list #392 | Fractional time series | ⛔ | None |
+| RK393 | Quantum neural network volatility-surface forecaster | ranked list #393 | Quantum machine learning | ⛔ | None |
+| RK394 | Graph diffusion convolutional network stock alpha | ranked list #394 | Graph ML | ⛔ | None |
+| RK395 | Score-based diffusion macro-factor synthesizer | ranked list #395; Chen et al. 2025 | Generative scenarios | ⏳ (stress-test tool) | None |
+| RK396 | Riemannian graph-diffusion covariance estimator | ranked list #396 | Covariance estimation | ⛔ | None |
+| RK397 | Quantum-annealing GNN covariance shrinkage | ranked list #397 | Covariance estimation | ⛔ | None |
+| RK398 | Persistent-homology Betti-2 landscape macro contagion | ranked list #398 | Topological data analysis | ⛔ | None |
+| RK399 | Score-based diffusion cross-sectional factor synthesizer | ranked list #399; Chen et al. 2025 | Generative scenarios | ⛔ | None |
+| RK400 | Graph-attention Riemannian covariance shrinkage | ranked list #400 | Covariance estimation | ⛔ | None |
 
-The remaining 14,024 rows of the ranked list are tabled in §8C, not here. Ranks 1–100 and 200–300 are researched (ranks 101–199 are not yet); the ones whose sources could not be found or checked are listed in §8C under "Research gaps".
+The remaining 13,924 rows of the ranked list are tabled in §8C, not here. Ranks 1–100 and 200–400 are researched (ranks 101–199 are not yet); the ones whose sources could not be found or checked are listed in §8C under "Research gaps".
 
 ---
 
@@ -3251,6 +3351,906 @@ Fractionally difference prices to the smallest order that is stationary, keeping
 * **Built:** `ml.info_bars.frac_diff_ffd` (C-ML5).
 * **Details:** [docs/algorithms/fractional-differentiation-feature-pipeline.md](algorithms/fractional-differentiation-feature-pipeline.md)
 
+### RK301. Temporal Fusion Transformer forecasting ⛔
+
+Multi-horizon attention-based forecaster (Lim et al. 2021). In Qlib's own equity benchmark it ranks below LightGBM; trading studies found are single-stock and pre-cost.
+
+* **Fit:** The ML pipeline's problem is signal, not model capacity (as RK292, C-RJ4).
+* **Against:** Accuracy is not profit; tuning; leakage.
+* **Built:** Nothing; the rejected deep-forecaster catalog (C-RJ4) has an LSTM, no TFT.
+* **Details:** [docs/algorithms/temporal-fusion-transformer-forecasting.md](algorithms/temporal-fusion-transformer-forecasting.md)
+
+### RK302. Deep Galerkin Method (DGM) option solver ⛔
+
+Mesh-free deep-learning PDE solver; prices American options in up to 200 dimensions (Sirignano & Spiliopoulos 2018). A pricing method, not a strategy.
+
+* **Fit:** Options excluded.
+* **Against:** Hard-to-certify accuracy.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/physics-informed-deep-galerkin-method-dgm-option-solver.md](algorithms/physics-informed-deep-galerkin-method-dgm-option-solver.md)
+
+### RK303. Neural jump-diffusion rough Heston smile predictor ⛔
+
+Rough Heston volatility (Hurst near 0.1) with jumps and neural parts to predict the smile; volatility is rough (Gatheral et al. 2018).
+
+* **Fit:** Options excluded.
+* **Against:** Slow calibration; surrogate error.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-jump-diffusion-rough-heston-smile-predictor.md](algorithms/neural-jump-diffusion-rough-heston-smile-predictor.md)
+
+### RK304. Recurrent neural Hawkes volatility-jump forecaster ⛔
+
+Forecast volatility jumps with a neural Hawkes process, a continuous-time LSTM setting the intensity of each event type. The neural Hawkes model exists (Mei & Eisner 2017); no market application found.
+
+* **Fit:** Needs event data the warehouse does not have.
+* **Against:** Tick data; drifting parameters.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/recurrent-neural-hawkes-point-process-volatility-jump-forecaster.md](algorithms/recurrent-neural-hawkes-point-process-volatility-jump-forecaster.md)
+
+### RK305. Quantum annealing binary-quadratic rebalancing ⛔
+
+QUBO rebalancing on a quantum annealer, as RK229; done on real data without a classical advantage (Mugel et al. 2022).
+
+* **Fit:** No portfolio problem here.
+* **Against:** No demonstrated advantage.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-annealing-binary-quadratic-portfolio-rebalancing.md](algorithms/quantum-annealing-binary-quadratic-portfolio-rebalancing.md)
+
+### RK306. Micro-price / queue-imbalance signal 🧪 (C-MS2) · ⏳ (fair-value check)
+
+Shift the mid toward the thinner queue. Stoikov's estimated micro-price beats the mid and weighted mid (2018); queue imbalance predicts the next tick for large-tick stocks (Gould & Bonart 2016); a DAX replication failed.
+
+* **Fit:** The weighted mid is research code; no historical quotes, but live triggers could log it.
+* **Against:** Tick-to-second horizon; needs queue simulation; mixed replication.
+* **Built:** `microstructure.micro_price` (weighted mid), `depth_imbalance` (C-MS2).
+* **Details:** [docs/algorithms/microprice-queue-imbalance-signal.md](algorithms/microprice-queue-imbalance-signal.md)
+
+### RK307. Cross-exchange market making (XEMM) ⛔
+
+Quote on an illiquid venue and hedge fills on a liquid one; a crypto bot strategy (Hummingbot) with no performance study.
+
+* **Fit:** One venue; crypto excluded; two-sided quoting.
+* **Against:** Hedge-leg slippage and failures.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/cross-exchange-market-making-xemm.md](algorithms/cross-exchange-market-making-xemm.md)
+
+### RK308. Dividend capture window ⛔
+
+Buy before the ex-date, sell after. The price drops by less than the dividend on average, a tax effect captured mainly by tax-exempt and corporate traders (Lakonishok & Vermaelen 1986).
+
+* **Fit:** TQQQ's dividend is negligible; out of scope.
+* **Against:** Taxes and costs absorb the gap.
+* **Built:** Nothing; dividends are only recorded.
+* **Details:** [docs/algorithms/dividend-capture-window-strategy.md](algorithms/dividend-capture-window-strategy.md)
+
+### RK309. Gamma scalping / long-gamma rebalancing ⛔
+
+Delta-hedge long options to earn when realised beats implied volatility; on average delta-hedged long options lose (Bakshi & Kapadia 2003).
+
+* **Fit:** Options excluded; the grid is the short-gamma side.
+* **Against:** Pays the volatility risk premium.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/gamma-scalping-long-gamma-rebalancing.md](algorithms/gamma-scalping-long-gamma-rebalancing.md)
+
+### RK310. Multi-agent RL execution / liquidation ⛔
+
+Execution agents trained among other agents in a simulated book; a double-DQN agent converged toward TWAP (Karpe et al. 2020).
+
+* **Fit:** No large orders here; RL rejected for now (A1).
+* **Against:** Simulator-bound; collapses toward TWAP.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-rl-execution-liquidation.md](algorithms/multi-agent-rl-execution-liquidation.md)
+
+### RK311. FinBERT sentiment event arbitrage ⏳ (market-level input) · ⛔ (stock-level trade)
+
+Trade on FinBERT sentiment of news and filings. FinBERT beats dictionaries at classification (Huang et al. 2023); LLM headline scores predict next-day returns, mostly small stocks, decaying with adoption (Lopez-Lira & Tang).
+
+* **Fit:** A market-level series could feed the regime (as RK293); no news archive here.
+* **Against:** Timestamp leakage; licensed data; small-stock, decaying edge.
+* **Built:** Nothing; event calendars without text (V6).
+* **Details:** [docs/algorithms/finbert-sentiment-driven-event-arbitrage.md](algorithms/finbert-sentiment-driven-event-arbitrage.md)
+
+### RK312. Deep Q-network (DQN) liquidation agent ⛔
+
+Deep Q-learning for liquidation; one of RL's better-supported finance uses (Nevmyvaka et al. 2006; Ning, Lin & Jaimungal 2021).
+
+* **Fit:** No large parent orders here; RL rejected for now (A1).
+* **Against:** Replay ignores own impact; gains are a fraction of the spread.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/deep-q-network-dqn-liquidation-agent.md](algorithms/deep-q-network-dqn-liquidation-agent.md)
+
+### RK313. Adaptive-mesh RL market maker ⛔
+
+RL quoting policies rewarded for spread capture net of inventory risk; in simulators they beat simple benchmarks and learn inventory skew (Spooner et al. 2018; Ganesh et al. 2019).
+
+* **Fit:** Two-sided quoting; RL rejected for now (A1).
+* **Against:** Simulator-only; short-capable inventory.
+* **Built:** Nothing; closed-form quotes (C-MM1, C-MM2).
+* **Details:** [docs/algorithms/adaptive-mesh-reinforcement-learning-market-maker-rl-mm.md](algorithms/adaptive-mesh-reinforcement-learning-market-maker-rl-mm.md)
+
+### RK314. Hawkes jump-diffusion multivariate event detection ⏳ (daily stress gauge)
+
+Jumps with Hawkes intensities that excite each other across markets; US jumps raise foreign intensity more than the reverse, and the filtered intensity works as a stress gauge (Aït-Sahalia et al. 2015).
+
+* **Fit:** A daily jump intensity could join the regime if it leads NATR.
+* **Against:** Few jumps to fit; lags in fast crashes.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/hawkes-jump-diffusion-multivariate-event-detection.md](algorithms/hawkes-jump-diffusion-multivariate-event-detection.md)
+
+### RK315. Empirical mode decomposition (Hilbert-Huang) intraday scalper ⛔
+
+Trade the phase of empirical-mode-decomposition oscillations (Huang et al. 1998). Finance evidence covers denoising and features, not a rule; end effects leak the future.
+
+* **Fit:** No evidence for a rule; causal use is hard.
+* **Against:** End-effect look-ahead; free parameters.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/empirical-mode-decomposition-emd-hilbert-huang-intraday-scalper.md](algorithms/empirical-mode-decomposition-emd-hilbert-huang-intraday-scalper.md)
+
+### RK316. Temporal convolutional network (TCN) forecasting ⛔
+
+Causal dilated convolutions for sequence forecasting (Bai et al. 2018). Stock comparisons with LSTMs are mixed and accuracy-only; it trails LightGBM in Qlib's benchmark.
+
+* **Fit:** The ML pipeline's problem is signal, not model capacity.
+* **Against:** Accuracy-only evidence; mixed results.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/temporal-cnn-tcn-forecasting.md](algorithms/temporal-cnn-tcn-forecasting.md)
+
+### RK317. Meta-labelling primary signals ✅ (V13)
+
+A secondary model predicts whether the primary signal's trade reaches its target and sizes or filters it (López de Prado 2018; Joubert 2022). Built as V13: grid buys scaled by P(target reached).
+
+* **Fit:** Built (V13) in the only form that respects the grid's rules; needs a TQQQ model.
+* **Against:** Bounded by a weak secondary model; costs size on good trades.
+* **Built:** `reachability_sizing.MLReachabilitySizing` (V13); triple-barrier labels (C-ML1).
+* **Details:** [docs/algorithms/meta-labeling-primary-signals.md](algorithms/meta-labeling-primary-signals.md)
+
+### RK318. Graph convolutional network (GCN) stock ranking ⛔
+
+Rank stocks with graph convolutions over relation networks; self-reported back-tests show large gains (Feng et al. 2019).
+
+* **Fit:** Stock selection; no stock universe here.
+* **Against:** Snapshot relation look-ahead; self-reported.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/graph-convolutional-network-gcn-cross-sectional-stock-ranking.md](algorithms/graph-convolutional-network-gcn-cross-sectional-stock-ranking.md)
+
+### RK319. Volatility-harvesting dynamic asymmetric grid ✅ (V5, the champion)
+
+Independent lots bought on fixed drops from a rolling reference and sold at their own targets, never below cost. This is volatility-ai (V5): 25.38% CAGR at 45.57% drawdown in the best known configuration; a static grid has near-zero expectation without mean reversion (Chen, Chen & Jang 2025).
+
+* **Fit:** It is the project; drawdown in long declines is the binding problem.
+* **Against:** Fills every rung in a long decline; fill-model sensitivity.
+* **Built:** `HighFrequencyLocalReferenceSizing` (V5), `HarvestSleeveSizing`, C-G3, V3.
+* **Details:** [docs/algorithms/vol-harvesting-dynamic-asymmetric-grid.md](algorithms/vol-harvesting-dynamic-asymmetric-grid.md)
+
+### RK320. Koopman-operator volatility-surface interpolator ⛔
+
+Interpolate the implied-volatility surface with Koopman-linearised dynamics. No study found.
+
+* **Fit:** Options excluded.
+* **Against:** Untested; no arbitrage constraints.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-non-linear-volatility-surface-interpolator.md](algorithms/koopman-operator-non-linear-volatility-surface-interpolator.md)
+
+### RK321. Koopman-operator volatility-surface pricing model ⛔
+
+Price options from a volatility surface whose dynamics are linearised with a Koopman dictionary. No study found.
+
+* **Fit:** Options excluded.
+* **Against:** Untested; no arbitrage constraints.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-non-linear-volatility-surface-pricing-model.md](algorithms/koopman-operator-non-linear-volatility-surface-pricing-model.md)
+
+### RK322. Order-book imbalance signal 🧪 (C-MS2) · ⛔ (needs depth)
+
+Resting buy versus sell volume near the mid predicts the next ticks (Gould & Bonart 2016); order-flow changes explain price changes better (Cont, Kukanov & Stoikov 2014).
+
+* **Fit:** Research code exists; no depth data, live or historical.
+* **Against:** Spoofable depth; tick horizon.
+* **Built:** `microstructure.depth_imbalance`, `standardized` (C-MS2).
+* **Details:** [docs/algorithms/order-book-imbalance-signal.md](algorithms/order-book-imbalance-signal.md)
+
+### RK323. Physics-informed neural operator yield-curve dynamics ⛔
+
+Learn yield-curve dynamics with a Fourier neural operator constrained by a term-structure PDE. No study found.
+
+* **Fit:** No use here.
+* **Against:** Untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/physics-informed-neural-operator-fno-yield-curve-dynamics.md](algorithms/physics-informed-neural-operator-fno-yield-curve-dynamics.md)
+
+### RK324. Wasserstein distributionally robust neural SDE hedging ⛔
+
+Hedge against the worst neural-SDE market within a Wasserstein ball around the calibrated one. Neural-SDE robust bounds and hedges are the antecedent (Gierjatowicz et al.).
+
+* **Fit:** Options excluded.
+* **Against:** Ambiguity-set choice; costly hedges.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-neural-sde-hedging.md](algorithms/wasserstein-distributionally-robust-neural-sde-hedging.md)
+
+### RK325. Neural-operator controlled portfolio dynamic hedging ⛔
+
+Learn the map from market-state paths to hedge ratios with a neural operator. No study found.
+
+* **Fit:** No use here.
+* **Against:** Untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-operator-controlled-portfolio-dynamic-hedging.md](algorithms/neural-operator-controlled-portfolio-dynamic-hedging.md)
+
+### RK326. Neural-operator functional gradient boosting alpha ⛔
+
+Neural operators combined by gradient boosting to forecast the cross-section. The operator class is for PDEs (Li et al. 2021); no alpha study found.
+
+* **Fit:** Stock selection; no stock universe here.
+* **Against:** No physics in returns; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-operator-functional-gradient-boosting-cross-sectional-alpha.md](algorithms/neural-operator-functional-gradient-boosting-cross-sectional-alpha.md)
+
+### RK327. Domain-adversarial (DANN) cross-market alpha transfer ⛔
+
+Transfer a forecaster across markets with domain-adversarial training (Ganin et al. 2016); stock studies report accuracy gains of a few points, no trading results.
+
+* **Fit:** Cross-market stock alpha; out of scope.
+* **Against:** Invariance can discard signal; accuracy-only.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/domain-adversarial-neural-network-dann-cross-market-alpha-transfer.md](algorithms/domain-adversarial-neural-network-dann-cross-market-alpha-transfer.md)
+
+### RK328. Neural rough-volatility path-signature factor model ⛔
+
+Path signatures as factors. Signature trading gives an explicit path-dependent mean-variance solution with drawdown control (Futter, Horvath & Wiese 2023).
+
+* **Fit:** A factor model needs a stock universe; a single-asset signature input would be weak ML.
+* **Against:** Feature blow-up; long samples.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-rough-volatility-path-signature-factor-model.md](algorithms/neural-rough-volatility-path-signature-factor-model.md)
+
+### RK329. Wasserstein distributionally robust rough-volatility hedging ⛔
+
+Hedge against the worst rough-volatility model in a Wasserstein ball around the calibrated one. Neural-SDE robust bounds and hedges are the antecedent (Gierjatowicz et al.).
+
+* **Fit:** Options excluded.
+* **Against:** Ambiguity-set choice; costly hedges.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-neural-rough-volatility-hedging.md](algorithms/wasserstein-distributionally-robust-neural-rough-volatility-hedging.md)
+
+### RK330. Rough-path signature delay-differential portfolio control ⛔
+
+Portfolio control by delay-differential equations on path signatures. No study found; signature trading (RK328) covers the idea.
+
+* **Fit:** A multi-asset allocator with no evidence.
+* **Against:** Untested; redundant.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-rough-path-signature-delay-differential-portfolio-control.md](algorithms/neural-rough-path-signature-delay-differential-portfolio-control.md)
+
+### RK331. Neural rough differential equation (neural RDE) order-book forecaster ⛔
+
+Neural RDE (Morrill et al. 2021) on order-book data. Signatures help order-book forecasts (Sidogi et al. 2023); no neural-RDE order-book study.
+
+* **Fit:** Needs order-book data the warehouse does not have.
+* **Against:** Tick-horizon; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-rough-differential-equation-neural-rde-lob-forecaster.md](algorithms/neural-rough-differential-equation-neural-rde-lob-forecaster.md)
+
+### RK332. Flow-matching order-flow generator ⛔
+
+Order-flow generation by flow matching (Lipman et al. 2022); no order-flow application found.
+
+* **Fit:** Needs order-book data.
+* **Against:** Untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/generative-score-based-flow-matching-order-flow-generator.md](algorithms/generative-score-based-flow-matching-order-flow-generator.md)
+
+### RK333. Neural jump-diffusion Hawkes shock detector ⛔
+
+Neural jump SDE whose intensity spikes flag shocks (Jia & Benson 2019); no market application found. RK314's classical version has evidence.
+
+* **Fit:** RK314's classical gauge comes first.
+* **Against:** Untested; data-hungry.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-jump-diffusion-hawkes-point-process-shock-detector.md](algorithms/neural-jump-diffusion-hawkes-point-process-shock-detector.md)
+
+### RK334. Neural controlled differential equation order-book trend anticipator ⛔
+
+Drive a neural CDE with the order-book path, which handles irregular event times natively, to anticipate short-term trends. The model class exists (Kidger et al. 2020); no order-book study found.
+
+* **Fit:** Needs order-book data the warehouse does not have.
+* **Against:** Untested; tick horizon.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-controlled-differential-equation-lob-trend-anticipator.md](algorithms/neural-controlled-differential-equation-lob-trend-anticipator.md)
+
+### RK335. Wasserstein distributionally robust RL market making ⛔
+
+RL market maker trained against a Wasserstein ball of order-flow models. No study found.
+
+* **Fit:** Two-sided quoting; RL rejected for now (A1).
+* **Against:** Arbitrary radius; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-rl-market-making.md](algorithms/wasserstein-distributionally-robust-rl-market-making.md)
+
+### RK336. Score-based diffusion order-book simulator ⛔
+
+Generate reactive order flow with a diffusion model as a market simulator; TRADES (2025) does this and is open source.
+
+* **Fit:** Needs order-book data; the grid trades minute bars.
+* **Against:** Immature realism metrics.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/score-based-generative-diffusion-limit-order-book-simulator.md](algorithms/score-based-generative-diffusion-limit-order-book-simulator.md)
+
+### RK337. Neural controlled jump-diffusion order-book pricing model ⛔
+
+Combine a neural CDE driven by the order book with jump terms to price the next mid-quote. The model class exists (Kidger et al. 2020); no order-book study found.
+
+* **Fit:** Needs order-book data the warehouse does not have.
+* **Against:** Untested; tick horizon.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-controlled-jump-diffusion-order-book-pricing-model.md](algorithms/neural-controlled-jump-diffusion-order-book-pricing-model.md)
+
+### RK338. Recurrent neural Hawkes liquidity-shock detector ⛔
+
+Detect liquidity shocks (spread blow-outs, depth withdrawals) from the intensity of a neural Hawkes process over order-book events. The neural Hawkes model exists (Mei & Eisner 2017); no market application found.
+
+* **Fit:** Needs event data the warehouse does not have.
+* **Against:** Tick data; drifting parameters.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/recurrent-neural-hawkes-point-process-liquidity-shock-detector.md](algorithms/recurrent-neural-hawkes-point-process-liquidity-shock-detector.md)
+
+### RK339. Multi-agent RL Nash market maker ⛔
+
+Market makers trained jointly to a Nash equilibrium. Multi-agent simulators exist (Ganesh et al. 2019); no performance study of the equilibrium learner.
+
+* **Fit:** Two-sided quoting; RL rejected for now (A1).
+* **Against:** Non-convergence; simulator-dependent.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-reinforcement-learning-nash-market-maker.md](algorithms/multi-agent-reinforcement-learning-nash-market-maker.md)
+
+### RK340. Fractional-order cointegration VECM neural network ⛔
+
+FCVAR with a neural error-correction term, as RK239. FCVAR is established (Johansen & Nielsen 2012); the neural variant is untested.
+
+* **Fit:** Basket trading with short weights; out of scope.
+* **Against:** Overfitting; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/fractional-order-cointegration-vector-error-correction-neural-network.md](algorithms/fractional-order-cointegration-vector-error-correction-neural-network.md)
+
+### RK341. Multi-agent RL Stackelberg market maker ⛔
+
+Treat the market maker as a Stackelberg leader that quotes first and the other traders as followers that best-respond, and learn the leader's quotes with RL. Stackelberg RL methods exist; no market-making performance study found.
+
+* **Fit:** Two-sided quoting; RL rejected for now (A1).
+* **Against:** Untested; simulator-dependent.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-reinforcement-learning-stackelberg-market-maker.md](algorithms/multi-agent-reinforcement-learning-stackelberg-market-maker.md)
+
+### RK342. Rough-path signature Hawkes point-process forecaster ⛔
+
+Signature features of the order-flow path to forecast Hawkes intensities. Signatures helped order-book forecasts once (Sidogi et al. 2023); no signature-Hawkes study.
+
+* **Fit:** Needs event data the warehouse does not have.
+* **Against:** Feature blow-up; event data.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-rough-path-signature-hawkes-point-process-forecaster.md](algorithms/neural-rough-path-signature-hawkes-point-process-forecaster.md)
+
+### RK343. Score-based diffusion order-book flow synthesizer ⛔
+
+Diffusion-generated order flow for data augmentation; TRADES (2025) is the nearest system (see RK336).
+
+* **Fit:** Needs order-book data.
+* **Against:** Inherits the training regime.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/generative-score-based-diffusion-limit-order-book-flow-synthesizer.md](algorithms/generative-score-based-diffusion-limit-order-book-flow-synthesizer.md)
+
+### RK344. Multi-agent RL Stackelberg market-maker equilibrium ⛔
+
+Solve for the Stackelberg equilibrium between a leading market maker and following traders with multi-agent RL, as a model of how quotes should be set. Stackelberg RL methods exist; no market-making performance study found.
+
+* **Fit:** Two-sided quoting; RL rejected for now (A1).
+* **Against:** Untested; simulator-dependent.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-reinforcement-learning-stackelberg-market-maker-equilibrium.md](algorithms/multi-agent-reinforcement-learning-stackelberg-market-maker-equilibrium.md)
+
+### RK345. Multi-agent RL Stackelberg spread capture ⛔
+
+Use a Stackelberg leader-follower formulation to learn quotes that maximise spread captured from following traders. Stackelberg RL methods exist; no market-making performance study found.
+
+* **Fit:** Two-sided quoting; RL rejected for now (A1).
+* **Against:** Untested; simulator-dependent.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-reinforcement-learning-stackelberg-spread-capture.md](algorithms/multi-agent-reinforcement-learning-stackelberg-spread-capture.md)
+
+### RK346. Soft actor-critic (SAC) continuous-action trader 🧪 (A1) · ❌ (as a trader)
+
+Soft actor-critic maximises reward plus the policy's entropy, which keeps exploring and is stable with continuous actions such as a position size. FinRL's ensemble beat the Dow in its authors' back-test (Yang et al. 2020); many DRL profits are back-test overfitting (Gort et al. 2022).
+
+* **Fit:** Rejected for now (A1); V13 already makes the size decision with fewer parameters.
+* **Against:** Back-test overfitting; seed and reward sensitivity.
+* **Built:** `rl_agents.sac_target` (A1).
+* **Details:** [docs/algorithms/sac-continuous-action-trading-agent.md](algorithms/sac-continuous-action-trading-agent.md)
+
+### RK347. DDPG / TD3 continuous-control trader 🧪 (A1) · ❌ (as a trader)
+
+DDPG learns a deterministic policy for continuous actions with an off-policy critic; TD3 adds twin critics, delayed policy updates and target smoothing to curb DDPG's overestimation. FinRL's ensemble beat the Dow in its authors' back-test (Yang et al. 2020); many DRL profits are back-test overfitting (Gort et al. 2022).
+
+* **Fit:** Rejected for now (A1); V13 already makes the size decision with fewer parameters.
+* **Against:** Back-test overfitting; seed and reward sensitivity.
+* **Built:** `rl_agents.ddpg_target`, `td3_target` (A1).
+* **Details:** [docs/algorithms/ddpg-td3-continuous-control-trader.md](algorithms/ddpg-td3-continuous-control-trader.md)
+
+### RK348. Phase-space-reconstructed neural ODE (PSR-NODE) ⛔
+
+Neural ODE on a delay-embedded phase space. Returns show no low-dimensional attractor; no finance study found.
+
+* **Fit:** No mechanism or evidence.
+* **Against:** Free embedding parameters; noise.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/phase-space-reconstructed-neural-ode-psr-node.md](algorithms/phase-space-reconstructed-neural-ode-psr-node.md)
+
+### RK349. Time-series GAN (TimeGAN) scenario generation ⏳ (stress-test tool)
+
+Adversarial plus supervised latent training for realistic time series (Yoon et al. 2019). A scenario generator; diffusion models now claim better stylized facts.
+
+* **Fit:** A stress-test tool; a block bootstrap comes first.
+* **Against:** Unstable training; mode collapse drops crashes.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/time-series-generative-adversarial-network-timegan.md](algorithms/time-series-generative-adversarial-network-timegan.md)
+
+### RK350. Physics-informed Schrödinger volatility solver ⛔
+
+Fit volatility with a PINN for the Schrödinger equation. PINNs exist (Raissi et al. 2019); no volatility study or mechanism.
+
+* **Fit:** No mechanism or evidence.
+* **Against:** No mechanism.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/physics-informed-deep-learning-schrodinger-volatility-solver.md](algorithms/physics-informed-deep-learning-schrodinger-volatility-solver.md)
+
+### RK351. MADDPG portfolio allocation ⛔
+
+Multi-agent DDPG for joint allocation; in one study it trailed a genetic algorithm badly (Sharpe 1.28 against 3.15).
+
+* **Fit:** A multi-asset allocator with weak evidence.
+* **Against:** Overfitting; weak comparative results.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-deep-deterministic-policy-gradient-maddpg-portfolio-allocation.md](algorithms/multi-agent-deep-deterministic-policy-gradient-maddpg-portfolio-allocation.md)
+
+### RK352. Deep hedging with transaction costs ⛔
+
+A network hedges a derivatives book to minimise a risk measure under costs and limits; beats the frictionless hedge in a Heston market (Buehler et al. 2019).
+
+* **Fit:** Options excluded.
+* **Against:** Simulator-dependent.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/deep-hedging-with-transaction-costs-and-friction.md](algorithms/deep-hedging-with-transaction-costs-and-friction.md)
+
+### RK353. Recurrent neural Hawkes execution timing ⛔
+
+Time child orders by a neural Hawkes forecast of when liquidity will arrive. No execution study of the neural Hawkes form found.
+
+* **Fit:** Small orders; no event data.
+* **Against:** Event data; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/recurrent-neural-hawkes-point-process-execution-timing.md](algorithms/recurrent-neural-hawkes-point-process-execution-timing.md)
+
+### RK354. Multi-agent RL evolutionary market maker ⛔
+
+Evolve a population of RL market makers with genetic operators, keeping the most profitable quoting policies. No study found.
+
+* **Fit:** Two-sided quoting; RL rejected for now (A1).
+* **Against:** Untested; data snooping.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-reinforcement-learning-evolutionary-market-maker.md](algorithms/multi-agent-reinforcement-learning-evolutionary-market-maker.md)
+
+### RK355. Recurrent neural Hawkes toxic-flow execution ⛔
+
+Slow or reroute execution when a neural Hawkes model forecasts a burst of informed (toxic) order flow. No execution study of the neural Hawkes form found.
+
+* **Fit:** Small orders; no event data.
+* **Against:** Event data; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/recurrent-neural-hawkes-point-process-toxic-flow-execution.md](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-execution.md)
+
+### RK356. Recurrent neural Hawkes dynamic-inventory market maker ⛔
+
+Neural Hawkes forecasts of order arrivals drive inventory-skewed quotes. No market-making study of the neural version found.
+
+* **Fit:** Two-sided quoting on event data; out of scope.
+* **Against:** Event data; closed-form alternatives.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/recurrent-neural-hawkes-point-process-dynamic-inventory-market-maker.md](algorithms/recurrent-neural-hawkes-point-process-dynamic-inventory-market-maker.md)
+
+### RK357. Recurrent neural Hawkes toxic-flow execution pauser ⛔
+
+Pause execution outright while a neural Hawkes model's toxic-flow intensity is high. No execution study of the neural Hawkes form found.
+
+* **Fit:** Small orders; no event data.
+* **Against:** Event data; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/recurrent-neural-hawkes-point-process-toxic-flow-execution-pauser.md](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-execution-pauser.md)
+
+### RK358. Multi-agent RL evolutionary execution routing ⛔
+
+Evolve a population of RL routing agents that split child orders across venues. No study found.
+
+* **Fit:** No large orders or venue choice here.
+* **Against:** Untested; data snooping.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-reinforcement-learning-evolutionary-execution-routing.md](algorithms/multi-agent-reinforcement-learning-evolutionary-execution-routing.md)
+
+### RK359. Multi-agent RL evolutionary market-making equilibrium ⛔
+
+Let an evolving population of market-making agents settle into an evolutionarily stable quoting equilibrium. No study found.
+
+* **Fit:** Two-sided quoting; RL rejected for now (A1).
+* **Against:** Untested; data snooping.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-reinforcement-learning-evolutionary-market-making-equilibrium.md](algorithms/multi-agent-reinforcement-learning-evolutionary-market-making-equilibrium.md)
+
+### RK360. Multi-agent RL evolutionary execution allocator ⛔
+
+Evolve a population of RL agents that allocate a parent order over time and venues. No study found.
+
+* **Fit:** No large orders or venue choice here.
+* **Against:** Untested; data snooping.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-reinforcement-learning-evolutionary-execution-allocator.md](algorithms/multi-agent-reinforcement-learning-evolutionary-execution-allocator.md)
+
+### RK361. Multi-agent deep RL order-book market maker ⛔
+
+Deep RL market maker among learning competitors; in a dealer simulator it learns competitor-aware inventory skew (Ganesh et al. 2019).
+
+* **Fit:** Two-sided quoting; RL rejected for now (A1).
+* **Against:** Simulator-only.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/deep-reinforcement-learning-order-book-market-maker-marl-mm.md](algorithms/deep-reinforcement-learning-order-book-market-maker-marl-mm.md)
+
+### RK362. Koopman-operator MPC execution ⛔
+
+Koopman-linearised dynamics with MPC to schedule execution. No study found.
+
+* **Fit:** Small orders; nothing to schedule.
+* **Against:** Untested; model-dependent.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-model-predictive-control-execution.md](algorithms/koopman-operator-model-predictive-control-execution.md)
+
+### RK363. TWAP execution 🧪 (AC lead, λ = 0) · ⛔ (not needed)
+
+Equal slices over time to track the time-weighted average price; the Almgren-Chriss path at zero risk aversion. A double-DQN agent converged to it in simulation (Karpe et al. 2020).
+
+* **Fit:** Orders here are small; nothing to slice.
+* **Against:** Predictable; ignores volume profile.
+* **Built:** `leads.almgren_chriss` (risk_aversion = 0 gives TWAP).
+* **Details:** [docs/algorithms/twap-execution.md](algorithms/twap-execution.md)
+
+### RK364. VWAP execution ⛔
+
+Slice along the intraday volume curve to track VWAP, the standard institutional benchmark (Berkowitz, Logue & Noser 1988).
+
+* **Fit:** Orders here are small; VWAP is used as a gate (C-MS3), not a schedule.
+* **Against:** A benchmark, not alpha.
+* **Built:** Nothing for execution; `session_vwap` as a gate (C-MS3).
+* **Details:** [docs/algorithms/vwap-execution.md](algorithms/vwap-execution.md)
+
+### RK365. Percent-of-volume (POV) execution ⛔
+
+Trade a fixed share of realised volume until done; adaptive speed, uncertain completion.
+
+* **Fit:** Orders here are small; nothing to schedule.
+* **Against:** Uncertain completion; pro-cyclical.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/pov-percent-of-volume-execution.md](algorithms/pov-percent-of-volume-execution.md)
+
+### RK366. Implementation shortfall / Almgren-Chriss 🧪 (AC lead) · ⏳ (shortfall measurement)
+
+Measure execution against the decision price (Perold 1988) and minimise expected shortfall plus its variance (Almgren & Chriss 2001).
+
+* **Fit:** The trajectory is research code; logging each fill's shortfall (RK250) is the useful part.
+* **Against:** Linear-impact assumptions; hard-to-estimate parameters.
+* **Built:** `leads.almgren_chriss`, `almgren_chriss_objective`.
+* **Details:** [docs/algorithms/implementation-shortfall-almgren-chriss.md](algorithms/implementation-shortfall-almgren-chriss.md)
+
+### RK367. Hawkes-driven optimal execution with transient impact ⛔
+
+Optimal execution when other traders' orders are Hawkes-driven; explicit optimum, and conditions that rule out price manipulation (Alfonsi & Blanc 2016).
+
+* **Fit:** Large-order execution on event data; not applicable.
+* **Against:** Order-level calibration.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/hawkes-driven-optimal-execution-with-transitory-price-impact.md](algorithms/hawkes-driven-optimal-execution-with-transitory-price-impact.md)
+
+### RK368. Continuous-time mean-field control execution ⛔
+
+Liquidation among a crowd of similar traders as a mean-field game; closed form, follow the crowd but not too fast (Cardaliaguet & Lehalle 2018).
+
+* **Fit:** Large-order execution theory; not applicable.
+* **Against:** Stylised crowd; estimation.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/continuous-time-mean-field-control-execution.md](algorithms/continuous-time-mean-field-control-execution.md)
+
+### RK369. Multi-agent mean-field game execution routing ⛔
+
+Mean-field game for routing child orders across venues. No routing study found.
+
+* **Fit:** One broker; no venue choice.
+* **Against:** Untested; ignores venue details.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-mean-field-game-optimal-execution-routing.md](algorithms/multi-agent-mean-field-game-optimal-execution-routing.md)
+
+### RK370. Wasserstein distributionally robust optimal execution trajectory ⛔
+
+Choose the liquidation path that minimises cost under the worst price-impact and volatility model in a Wasserstein ball around the estimated one. No study found.
+
+* **Fit:** Small orders; nothing to schedule.
+* **Against:** Arbitrary radius; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-optimal-execution-trajectory.md](algorithms/wasserstein-distributionally-robust-optimal-execution-trajectory.md)
+
+### RK371. Wasserstein distributionally robust Hawkes execution ⛔
+
+Optimise execution against the worst Hawkes order-flow model within a Wasserstein ball. No study found.
+
+* **Fit:** Small orders; nothing to schedule.
+* **Against:** Arbitrary radius; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-hawkes-point-process-execution.md](algorithms/wasserstein-distributionally-robust-hawkes-point-process-execution.md)
+
+### RK372. PPO reinforcement-learning trader 🧪 (A1) · ❌ (as a trader)
+
+Proximal policy optimisation clips each policy update to stay near the previous policy, with advantages from generalised advantage estimation; it is the default on-policy algorithm in most RL libraries. FinRL's ensemble beat the Dow in its authors' back-test (Yang et al. 2020); many DRL profits are back-test overfitting (Gort et al. 2022).
+
+* **Fit:** Rejected for now (A1); V13 already makes the size decision with fewer parameters.
+* **Against:** Back-test overfitting; seed and reward sensitivity.
+* **Built:** `rl_agents.ppo_clip_loss`, `gae` (A1).
+* **Details:** [docs/algorithms/ppo-reinforcement-learning-trader.md](algorithms/ppo-reinforcement-learning-trader.md)
+
+### RK373. Generative moment matching network (GMMN) portfolio simulator ⏳ (stress-test tool)
+
+MMD-trained generators sample dependent risks; with quasi-random inputs they cut the variance of tail estimates such as expected shortfall (Hofert, Prasad & Zhu 2021).
+
+* **Fit:** A risk-sampling tool; this book's risk is one instrument.
+* **Against:** Cannot exceed the sample's dependence.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/generative-moment-matching-network-gmmn-portfolio-simulator.md](algorithms/generative-moment-matching-network-gmmn-portfolio-simulator.md)
+
+### RK374. Physics-informed (PINN) Burgers volatility model ⛔
+
+Fit volatility with a PINN for the Burgers equation. PINNs exist (Raissi et al. 2019); no volatility study or mechanism.
+
+* **Fit:** No mechanism or evidence.
+* **Against:** No mechanism.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/physics-informed-neural-network-pinn-burgers-volatility-model.md](algorithms/physics-informed-neural-network-pinn-burgers-volatility-model.md)
+
+### RK375. Quantum support vector regression return predictor ⛔
+
+Predict returns with support vector regression on a quantum kernel. Demonstrated only on toy problems; no finance study found.
+
+* **Fit:** Hardware not ready; no evidence.
+* **Against:** Toy demonstrations only.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-support-vector-regression-qsvr-return-predictor.md](algorithms/quantum-support-vector-regression-qsvr-return-predictor.md)
+
+### RK376. Deep Koopman market-dynamics predictor ⛔
+
+Deep-autoencoder Koopman coordinates to forecast markets. Established for physical systems (Lusch et al. 2018); no peer-reviewed market study.
+
+* **Fit:** No evidence for market forecasting.
+* **Against:** Fits noise; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/deep-koopman-operator-market-dynamics-predictor.md](algorithms/deep-koopman-operator-market-dynamics-predictor.md)
+
+### RK377. Neural SDE stochastic-volatility arbitrage ⛔
+
+Neural-network SDEs calibrated to options give robust price bounds and hedges (Gierjatowicz et al.); trading outside the bounds is model risk, not arbitrage.
+
+* **Fit:** Options excluded.
+* **Against:** Wide bounds; model risk.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-sde-controlled-stochastic-volatility-arbitrage.md](algorithms/neural-sde-controlled-stochastic-volatility-arbitrage.md)
+
+### RK378. Tabular diffusion (TabDDPM) trajectory generator ⛔
+
+Diffusion model for mixed-type tables (Kotelnikov et al. 2023); generates rows, not paths, so it cannot produce market trajectories.
+
+* **Fit:** Not a trajectory generator.
+* **Against:** No temporal dependence.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/generative-diffusion-model-trajectory-generator-tabddpm.md](algorithms/generative-diffusion-model-trajectory-generator-tabddpm.md)
+
+### RK379. Fractional Brownian motion volatility-surface arbitrage ⛔
+
+Trade option quotes against a rough-volatility surface; rough volatility is well supported (Gatheral et al. 2018), but deviations are model risk.
+
+* **Fit:** Options excluded.
+* **Against:** Model risk, not arbitrage.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/fractional-brownian-motion-fbm-volatility-surface-arbitrage.md](algorithms/fractional-brownian-motion-fbm-volatility-surface-arbitrage.md)
+
+### RK380. Dynamic latent factor graph neural network (FactorGNN) ⛔
+
+Joint latent factors and stock graph for return forecasts. No paper of this name; nearest is FactorVAE (Duan et al. 2022).
+
+* **Fit:** Stock selection; no stock universe here.
+* **Against:** Unidentified latent structure; self-reported.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/dynamic-latent-factor-graph-neural-network-factorgnn.md](algorithms/dynamic-latent-factor-graph-neural-network-factorgnn.md)
+
+### RK381. Hyperbolic graph neural network stock selection ⛔
+
+Graph attention in hyperbolic space for stock selection; HyperStockGAT reports higher profit and Sharpe than Euclidean models on four markets (Sawhney et al. 2021, self-reported).
+
+* **Fit:** Stock selection; no stock universe here.
+* **Against:** Self-reported; snapshot relations.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/hyperbolic-graph-neural-networks-for-stock-pricing.md](algorithms/hyperbolic-graph-neural-networks-for-stock-pricing.md)
+
+### RK382. Contractive autoencoder latent-factor anomaly detection ⛔
+
+Flag returns a contractive autoencoder cannot reconstruct. Plain autoencoders found biased moves after abnormal prices (Gotou & Suzuki 2016); no contractive version in finance found.
+
+* **Fit:** A stock-level method; a simpler data-quality check suffices.
+* **Against:** Flags volatility; refits.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/contractive-autoencoder-latent-factor-anomaly-detection.md](algorithms/contractive-autoencoder-latent-factor-anomaly-detection.md)
+
+### RK383. Conditional WGAN-GP yield-curve synthesizer ⛔
+
+Conditional WGAN-GP for yield-curve scenarios; on US curves it ties historical simulation and GARCH rather than beating them (Guo 2024).
+
+* **Fit:** No use for this book.
+* **Against:** Ties simpler methods.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/conditional-wasserstein-gan-gp-yield-curve-synthesizer.md](algorithms/conditional-wasserstein-gan-gp-yield-curve-synthesizer.md)
+
+### RK384. Geometric deep learning non-Euclidean alpha predictor ⛔
+
+Non-Euclidean networks for cross-sectional alpha; the only study found is hyperbolic graph attention (RK381).
+
+* **Fit:** Stock selection; no stock universe here.
+* **Against:** Self-reported; ungrounded geometry.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/geometric-deep-learning-non-euclidean-alpha-predictor.md](algorithms/geometric-deep-learning-non-euclidean-alpha-predictor.md)
+
+### RK385. Graph-attention supply-chain contagion stock predictor ⛔
+
+Predict returns from supplier and customer moves with a graph attention network. The effect is documented: customer momentum earned about 1.55% a month (Cohen & Frazzini 2008); no evidence the GNN adds to it.
+
+* **Fit:** Single-stock long-short; out of scope for an index ETF.
+* **Against:** Licensed supply-chain data; short leg.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/graph-attention-network-gat-supply-chain-contagion-stock-predictor.md](algorithms/graph-attention-network-gat-supply-chain-contagion-stock-predictor.md)
+
+### RK386. Transfer-entropy graph neural network alpha model ⛔
+
+A GNN over a transfer-entropy graph of stocks. No study found.
+
+* **Fit:** Stock selection; no stock universe here.
+* **Against:** Noisy graph; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/information-theoretic-transfer-entropy-graph-neural-network-alpha-model.md](algorithms/information-theoretic-transfer-entropy-graph-neural-network-alpha-model.md)
+
+### RK387. Quantum-kernel SVM cross-sectional alpha ⛔
+
+Classify stocks' next-period returns with a support vector machine on a quantum kernel. Demonstrated only on toy problems; no finance study found.
+
+* **Fit:** Hardware not ready; no evidence.
+* **Against:** Toy demonstrations only.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-kernel-based-svm-cross-sectional-alpha-predictor.md](algorithms/quantum-kernel-based-svm-cross-sectional-alpha-predictor.md)
+
+### RK388. Dynamic copula-quantile regression neural network alpha ⛔
+
+Quantile neural networks for return distributions, joined by a copula, to rank stocks. Quantile networks beat standard models out of sample (Baruník et al.); the copula combination is untested.
+
+* **Fit:** Stock-level alpha; no stock universe here.
+* **Against:** Extra estimation error; untested combination.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/dynamic-copula-quantile-regression-neural-network-alpha-model.md](algorithms/dynamic-copula-quantile-regression-neural-network-alpha-model.md)
+
+### RK389. Quantum annealing entropic value-at-risk optimisation ⛔
+
+EVaR portfolio minimisation on a quantum annealer. No study found; EVaR is convex and solves classically.
+
+* **Fit:** No portfolio problem here.
+* **Against:** Classically solvable; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-annealing-entropic-value-at-risk-portfolio-optimization.md](algorithms/quantum-annealing-entropic-value-at-risk-portfolio-optimization.md)
+
+### RK390. Neural-operator flow-matching alpha forecaster ⛔
+
+Flow matching on a neural operator to forecast the cross-section. No study found.
+
+* **Fit:** Stock selection; no stock universe here.
+* **Against:** Untested; low signal-to-noise.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-operator-flow-matching-cross-sectional-alpha-forecaster.md](algorithms/neural-operator-flow-matching-cross-sectional-alpha-forecaster.md)
+
+### RK391. Rough-volatility signature deep hedging ⛔
+
+Deep hedging under rough volatility with signature inputs; studied by Horvath, Teichmann & Žurič (2021).
+
+* **Fit:** Options excluded.
+* **Against:** Feature blow-up; simulator-dependent.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-rough-volatility-fractional-signature-deep-hedging.md](algorithms/neural-rough-volatility-fractional-signature-deep-hedging.md)
+
+### RK392. Fractional-order VAR macro allocator ⛔
+
+Asset allocation from a fractionally integrated macro VAR. No allocation study found.
+
+* **Fit:** A multi-asset allocator with no evidence.
+* **Against:** Imprecise long-memory estimates.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/fractional-order-vector-autoregressive-var-macro-allocator.md](algorithms/fractional-order-vector-autoregressive-var-macro-allocator.md)
+
+### RK393. Quantum neural network volatility-surface forecaster ⛔
+
+Forecast implied-volatility surfaces with a parameterised quantum circuit. Demonstrated only on toy problems; no finance study found.
+
+* **Fit:** Hardware not ready; no evidence.
+* **Against:** Toy demonstrations only.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-neural-network-qnn-volatility-surface-forecaster.md](algorithms/quantum-neural-network-qnn-volatility-surface-forecaster.md)
+
+### RK394. Graph diffusion convolutional network stock alpha ⛔
+
+Diffusion convolutions over a stock graph to forecast returns. The architecture comes from traffic forecasting; no stock study found.
+
+* **Fit:** Stock selection; no stock universe here.
+* **Against:** Untested; snapshot relations.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/graph-diffusion-convolutional-network-cross-sectional-alpha.md](algorithms/graph-diffusion-convolutional-network-cross-sectional-alpha.md)
+
+### RK395. Score-based diffusion macro-factor synthesizer ⏳ (stress-test tool)
+
+Diffusion-generated macro-factor scenarios for stress tests; factor-structured diffusion has recent theory (Chen et al. 2025), no macro application found.
+
+* **Fit:** RK200's tool on a different panel.
+* **Against:** Short macro samples.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/generative-score-based-diffusion-macro-factor-synthesizer.md](algorithms/generative-score-based-diffusion-macro-factor-synthesizer.md)
+
+### RK396. Riemannian graph-diffusion covariance estimator ⛔
+
+Smooth covariance estimates by diffusing them over an asset graph while respecting the geometry of positive-definite matrices. Untested; shrinkage is the baseline.
+
+* **Fit:** A multi-asset input; the engine trades one symbol.
+* **Against:** Must beat shrinkage; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/riemannian-manifold-metric-graph-diffusion-covariance-estimator.md](algorithms/riemannian-manifold-metric-graph-diffusion-covariance-estimator.md)
+
+### RK397. Quantum-annealing GNN covariance shrinkage ⛔
+
+Choose covariance shrinkage targets with a graph neural network and optimise them on a quantum annealer. Untested; shrinkage is the baseline.
+
+* **Fit:** A multi-asset input; the engine trades one symbol.
+* **Against:** Must beat shrinkage; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/quantum-annealing-graph-neural-network-covariance-shrinkage.md](algorithms/quantum-annealing-graph-neural-network-covariance-shrinkage.md)
+
+### RK398. Persistent-homology Betti-2 landscape macro contagion ⛔
+
+Betti-2 persistence landscapes as a contagion warning. Landscape norms rose before two crashes (Gidea & Katz 2018); nothing for Betti-2.
+
+* **Fit:** RK255 first.
+* **Against:** Rare, noisy features.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/persistent-homology-betti-2-persistence-landscape-macro-contagion.md](algorithms/persistent-homology-betti-2-persistence-landscape-macro-contagion.md)
+
+### RK399. Score-based diffusion cross-sectional factor synthesizer ⛔
+
+Factor-structured diffusion for synthetic cross-sections of returns (Chen, Xu, Xu & Zhang 2025).
+
+* **Fit:** Cross-sectional; no stock universe here.
+* **Against:** Hard to validate.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/generative-score-based-diffusion-cross-sectional-factor-synthesizer.md](algorithms/generative-score-based-diffusion-cross-sectional-factor-synthesizer.md)
+
+### RK400. Graph-attention Riemannian covariance shrinkage ⛔
+
+Shrink covariance matrices with graph attention while keeping them on the positive-definite manifold. Untested; shrinkage is the baseline.
+
+* **Fit:** A multi-asset input; the engine trades one symbol.
+* **Against:** Must beat shrinkage; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/graph-attention-network-riemannian-manifold-covariance-shrinkage.md](algorithms/graph-attention-network-riemannian-manifold-covariance-shrinkage.md)
+
 ### Research gaps
 
 Ranks 4–100 were researched from what web search could reach (full texts
@@ -3264,7 +4264,14 @@ be about something else, were not used.
 Ranks 200–300 were researched the same way on 2026-10-27. Many of them
 cite an arXiv ID with a sequential-digit pattern (2103.01234, 2106.09876,
 1908.01234 and similar) that names no relevant paper; the pages say where
-the CSV's reference looks like a placeholder. What remains:
+the CSV's reference looks like a placeholder.
+
+Ranks 301–400 were researched on 2026-10-28. The same placeholder IDs
+recur, and several real IDs are attached to the wrong entry (arXiv
+2009.08295, Morrill et al.'s neural rough differential equations, is cited
+for four pricing and hedging entries). The entries marked "Needs more
+info" in this range cite an ID or reference that looks real but could not
+be identified. What remains:
 
 | Status | Meaning |
 |---|---|
@@ -3340,6 +4347,61 @@ the CSV's reference looks like a placeholder. What remains:
 | RK288 | [Neural Controlled Differential Equation (Neural CDE) Point Process Execution](algorithms/neural-controlled-differential-equation-neural-cde-point-process-execution.md) | Unable to find more details | No study applying neural controlled differential equations to order execution found. |
 | RK289 | [Neural Operator Delay-Differential Hawkes Microstructure Predictor](algorithms/neural-operator-delay-differential-hawkes-microstructure-predictor.md) | Unable to find more details | No study combining neural operators with delay-differential Hawkes processes for microstructure found. |
 | RK297 | [Fractional Hurst-Driven Adaptive Bandwidth Mean Reversion](algorithms/fractional-hurst-driven-adaptive-bandwidth-mean-reversion.md) | Unable to find more details | No study of Hurst-adaptive band widths found. |
+| RK304 | [Recurrent Neural Hawkes Point Process Volatility Jump Forecaster](algorithms/recurrent-neural-hawkes-point-process-volatility-jump-forecaster.md) | Unable to find more details | No study applying neural Hawkes processes to volatility jumps found; the CSV's arXiv 2104.09876 looks like a placeholder. |
+| RK307 | [Cross-Exchange Market Making (XEMM)](algorithms/cross-exchange-market-making-xemm.md) | Unable to find more details | No performance study of cross-exchange market making found; only the Hummingbot documentation. |
+| RK315 | [Empirical Mode Decomposition (EMD) Hilbert-Huang Intraday Scalper](algorithms/empirical-mode-decomposition-emd-hilbert-huang-intraday-scalper.md) | Unable to find more details | No out-of-sample test of an EMD or Hilbert-Huang trading rule found; studies use EMD for denoising or as ML features. |
+| RK320 | [Koopman Operator Non-Linear Volatility Surface Interpolator](algorithms/koopman-operator-non-linear-volatility-surface-interpolator.md) | Unable to find more details | No volatility-surface application of Koopman operators found; the CSV's arXiv 2004.05678 looks like a placeholder. |
+| RK321 | [Koopman Operator Non-Linear Volatility Surface Pricing Model](algorithms/koopman-operator-non-linear-volatility-surface-pricing-model.md) | Unable to find more details | No volatility-surface application of Koopman operators found; the CSV's arXiv 2004.05678 looks like a placeholder. |
+| RK323 | [Physics-Informed Neural Operator (FNO) Yield Curve Dynamics](algorithms/physics-informed-neural-operator-fno-yield-curve-dynamics.md) | Unable to find more details | No yield-curve application of neural operators found. |
+| RK325 | [Neural Operator Controlled Portfolio Dynamic Hedging](algorithms/neural-operator-controlled-portfolio-dynamic-hedging.md) | Unable to find more details | No hedging application of neural operators found. |
+| RK326 | [Neural Operator Functional Gradient Boosting Cross-Sectional Alpha](algorithms/neural-operator-functional-gradient-boosting-cross-sectional-alpha.md) | Unable to find more details | No cross-sectional alpha study using neural operators found. |
+| RK330 | [Neural Rough Path Signature Delay-Differential Portfolio Control](algorithms/neural-rough-path-signature-delay-differential-portfolio-control.md) | Unable to find more details | No study of signature-driven delay-differential portfolio control found. |
+| RK331 | [Neural Rough Differential Equation (Neural RDE) LOB Forecaster](algorithms/neural-rough-differential-equation-neural-rde-lob-forecaster.md) | Needs more info | No neural-RDE order-book study found; the CSV's arXiv 2005.08320 could not be identified. |
+| RK332 | [Generative Score-Based Flow Matching Order Flow Generator](algorithms/generative-score-based-flow-matching-order-flow-generator.md) | Unable to find more details | No order-flow application of flow matching found. |
+| RK333 | [Neural Jump-Diffusion Hawkes Point Process Shock Detector](algorithms/neural-jump-diffusion-hawkes-point-process-shock-detector.md) | Unable to find more details | No market application of neural jump SDEs found; the CSV's arXiv 2104.09876 looks like a placeholder. |
+| RK334 | [Neural Controlled Differential Equation LOB Trend Anticipator](algorithms/neural-controlled-differential-equation-lob-trend-anticipator.md) | Unable to find more details | No order-book study using neural controlled differential equations found. |
+| RK335 | [Wasserstein Distributionally Robust RL Market Making](algorithms/wasserstein-distributionally-robust-rl-market-making.md) | Unable to find more details | No Wasserstein-robust RL market-making study found; the CSV's arXiv 2110.09876 looks like a placeholder. |
+| RK337 | [Neural Controlled Jump Diffusion Order Book Pricing Model](algorithms/neural-controlled-jump-diffusion-order-book-pricing-model.md) | Unable to find more details | No order-book study using neural controlled differential equations found. |
+| RK338 | [Recurrent Neural Hawkes Point Process Liquidity Shock Detector](algorithms/recurrent-neural-hawkes-point-process-liquidity-shock-detector.md) | Unable to find more details | No study applying neural Hawkes processes to liquidity shocks found; the CSV's arXiv 2104.09876 looks like a placeholder. |
+| RK339 | [Multi-Agent Reinforcement Learning Nash Market Maker](algorithms/multi-agent-reinforcement-learning-nash-market-maker.md) | Unable to find more details | No performance study of Nash-equilibrium multi-agent market makers found. |
+| RK340 | [Fractional Order Cointegration Vector Error Correction Neural Network](algorithms/fractional-order-cointegration-vector-error-correction-neural-network.md) | Unable to find more details | No study of a neural fractionally cointegrated VECM found (as RK239); the CSV's arXiv 1809.02345 looks like a placeholder. |
+| RK341 | [Multi-Agent Reinforcement Learning Stackelberg Market Maker](algorithms/multi-agent-reinforcement-learning-stackelberg-market-maker.md) | Unable to find more details | No market-making performance study using Stackelberg multi-agent RL found. |
+| RK342 | [Neural Rough Path Signature Hawkes Point Process Forecaster](algorithms/neural-rough-path-signature-hawkes-point-process-forecaster.md) | Unable to find more details | No study combining path signatures with Hawkes intensity forecasting found; the CSV's arXiv 2102.05678 looks like a placeholder. |
+| RK344 | [Multi-Agent Reinforcement Learning Stackelberg Market Maker Equilibrium](algorithms/multi-agent-reinforcement-learning-stackelberg-market-maker-equilibrium.md) | Unable to find more details | No market-making performance study using Stackelberg multi-agent RL found. |
+| RK345 | [Multi-Agent Reinforcement Learning Stackelberg Spread Capture](algorithms/multi-agent-reinforcement-learning-stackelberg-spread-capture.md) | Unable to find more details | No market-making performance study using Stackelberg multi-agent RL found. |
+| RK348 | [Phase Space Reconstructed Neural ODE (PSR-NODE)](algorithms/phase-space-reconstructed-neural-ode-psr-node.md) | Needs more info | No finance study of phase-space-reconstructed neural ODEs found; the CSV's NeurIPS proceedings reference (doi 10.5555/3540261.3546083) could not be identified. |
+| RK350 | [Physics-Informed Deep Learning Schrödinger Volatility Solver](algorithms/physics-informed-deep-learning-schrodinger-volatility-solver.md) | Unable to find more details | No study modelling volatility with the Schrödinger equation found. |
+| RK353 | [Recurrent Neural Hawkes Point Process Execution Timing](algorithms/recurrent-neural-hawkes-point-process-execution-timing.md) | Unable to find more details | No execution study using neural Hawkes processes found; the CSV's arXiv 2104.09876 looks like a placeholder. |
+| RK354 | [Multi-Agent Reinforcement Learning Evolutionary Market Maker](algorithms/multi-agent-reinforcement-learning-evolutionary-market-maker.md) | Unable to find more details | No study of evolutionary multi-agent market makers found. |
+| RK355 | [Recurrent Neural Hawkes Point Process Toxic Flow Execution](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-execution.md) | Unable to find more details | No execution study using neural Hawkes processes found; the CSV's arXiv 2104.09876 looks like a placeholder. |
+| RK356 | [Recurrent Neural Hawkes Point Process Dynamic Inventory Market Maker](algorithms/recurrent-neural-hawkes-point-process-dynamic-inventory-market-maker.md) | Unable to find more details | No market-making study using neural Hawkes order-flow forecasts found; the CSV's arXiv 2104.09876 looks like a placeholder. |
+| RK357 | [Recurrent Neural Hawkes Point Process Toxic Flow Execution Pauser](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-execution-pauser.md) | Unable to find more details | No execution study using neural Hawkes processes found; the CSV's arXiv 2104.09876 looks like a placeholder. |
+| RK358 | [Multi-Agent Reinforcement Learning Evolutionary Execution Routing](algorithms/multi-agent-reinforcement-learning-evolutionary-execution-routing.md) | Unable to find more details | No study of evolutionary multi-agent RL execution found. |
+| RK359 | [Multi-Agent Reinforcement Learning Evolutionary Market Making Equilibrium](algorithms/multi-agent-reinforcement-learning-evolutionary-market-making-equilibrium.md) | Unable to find more details | No study of evolutionary multi-agent market makers found. |
+| RK360 | [Multi-Agent Reinforcement Learning Evolutionary Execution Allocator](algorithms/multi-agent-reinforcement-learning-evolutionary-execution-allocator.md) | Unable to find more details | No study of evolutionary multi-agent RL execution found. |
+| RK362 | [Koopman Operator Model Predictive Control Execution](algorithms/koopman-operator-model-predictive-control-execution.md) | Unable to find more details | No study of Koopman-operator MPC execution found; the CSV's arXiv 2004.05678 looks like a placeholder. |
+| RK365 | [POV / Percent-of-Volume Execution](algorithms/pov-percent-of-volume-execution.md) | Unable to find more details | No academic performance study of percent-of-volume execution found; it appears in practitioner and BIS descriptions only. |
+| RK369 | [Multi-Agent Mean-Field Game Optimal Execution Routing](algorithms/multi-agent-mean-field-game-optimal-execution-routing.md) | Unable to find more details | No study applying mean-field games to order routing found; the CSV's arXiv 2005.02345 looks like a placeholder. |
+| RK370 | [Wasserstein Distributionally Robust Optimal Execution Trajectory](algorithms/wasserstein-distributionally-robust-optimal-execution-trajectory.md) | Unable to find more details | No Wasserstein distributionally robust execution study found; the CSV's arXiv 1908.01234 looks like a placeholder. |
+| RK371 | [Wasserstein Distributionally Robust Hawkes Point Process Execution](algorithms/wasserstein-distributionally-robust-hawkes-point-process-execution.md) | Unable to find more details | No Wasserstein distributionally robust execution study found; the CSV's arXiv 1908.01234 looks like a placeholder. |
+| RK374 | [Physics-Informed Neural Network (PINN) Burgers Volatility Model](algorithms/physics-informed-neural-network-pinn-burgers-volatility-model.md) | Unable to find more details | No study modelling volatility with the Burgers equation found. |
+| RK375 | [Quantum Support Vector Regression (QSVR) Return Predictor](algorithms/quantum-support-vector-regression-qsvr-return-predictor.md) | Unable to find more details | No study showing quantum support vector regression predicting returns found. |
+| RK376 | [Deep Koopman Operator Market Dynamics Predictor](algorithms/deep-koopman-operator-market-dynamics-predictor.md) | Needs more info | No peer-reviewed market-forecasting study using deep Koopman models found; the CSV's arXiv 2102.12086 could not be identified. |
+| RK380 | [Dynamic Latent Factor Graph Neural Network (FactorGNN)](algorithms/dynamic-latent-factor-graph-neural-network-factorgnn.md) | Unable to find more details | No paper describing a FactorGNN for stocks found (nearest: FactorVAE); the CSV's arXiv 2206.01234 looks like a placeholder. |
+| RK382 | [Contractive Autoencoder Latent Factor Anomaly Detection](algorithms/contractive-autoencoder-latent-factor-anomaly-detection.md) | Needs more info | No finance study using contractive autoencoders found; the CSV's arXiv 1105.3911 could not be identified. |
+| RK384 | [Geometric Deep Learning Non-Euclidean Alpha Predictor](algorithms/geometric-deep-learning-non-euclidean-alpha-predictor.md) | Unable to find more details | Beyond HyperStockGAT (RK381), no non-Euclidean alpha study found; the CSV's arXiv 2106.09876 looks like a placeholder. |
+| RK386 | [Information-Theoretic Transfer Entropy Graph Neural Network Alpha Model](algorithms/information-theoretic-transfer-entropy-graph-neural-network-alpha-model.md) | Unable to find more details | No study using transfer-entropy graphs in a graph neural network for alpha found. |
+| RK387 | [Quantum Kernel-Based SVM Cross-Sectional Alpha Predictor](algorithms/quantum-kernel-based-svm-cross-sectional-alpha-predictor.md) | Unable to find more details | No cross-sectional alpha study using quantum-kernel SVMs found. |
+| RK388 | [Dynamic Copula-Quantile Regression Neural Network Alpha Model](algorithms/dynamic-copula-quantile-regression-neural-network-alpha-model.md) | Unable to find more details | No study combining quantile neural networks with a dynamic copula for alpha found; the CSV's arXiv 2001.05432 looks like a placeholder. |
+| RK389 | [Quantum Annealing Entropic Value-at-Risk Portfolio Optimization](algorithms/quantum-annealing-entropic-value-at-risk-portfolio-optimization.md) | Unable to find more details | No quantum-annealing EVaR study found; the CSV's arXiv 2103.01234 looks like a placeholder. |
+| RK390 | [Neural Operator Flow-Matching Cross-Sectional Alpha Forecaster](algorithms/neural-operator-flow-matching-cross-sectional-alpha-forecaster.md) | Unable to find more details | No study combining neural operators and flow matching for return forecasting found. |
+| RK392 | [Fractional Order Vector AutoRegressive (VAR) Macro Allocator](algorithms/fractional-order-vector-autoregressive-var-macro-allocator.md) | Unable to find more details | No allocation study using a fractional VAR found; the CSV's arXiv 1809.02345 looks like a placeholder. |
+| RK393 | [Quantum Neural Network (QNN) Volatility Surface Forecaster](algorithms/quantum-neural-network-qnn-volatility-surface-forecaster.md) | Unable to find more details | No volatility-surface study using quantum neural networks found; the CSV's arXiv 2103.01234 looks like a placeholder. |
+| RK394 | [Graph Diffusion Convolutional Network Cross-Sectional Alpha](algorithms/graph-diffusion-convolutional-network-cross-sectional-alpha.md) | Unable to find more details | No stock-return study using diffusion convolutional networks found; the CSV's arXiv 2103.01234 looks like a placeholder. |
+| RK396 | [Riemannian Manifold Metric Graph Diffusion Covariance Estimator](algorithms/riemannian-manifold-metric-graph-diffusion-covariance-estimator.md) | Unable to find more details | No study of this combination found. |
+| RK397 | [Quantum Annealing Graph Neural Network Covariance Shrinkage](algorithms/quantum-annealing-graph-neural-network-covariance-shrinkage.md) | Unable to find more details | No study of this combination found. |
+| RK398 | [Persistent Homology Betti-2 Persistence Landscape Macro Contagion](algorithms/persistent-homology-betti-2-persistence-landscape-macro-contagion.md) | Unable to find more details | No study using Betti-2 persistence landscapes for contagion found; the CSV's arXiv 2004.01234 looks like a placeholder. |
+| RK400 | [Graph Attention Network Riemannian Manifold Covariance Shrinkage](algorithms/graph-attention-network-riemannian-manifold-covariance-shrinkage.md) | Needs more info | No study of this combination found; the GNN covariance leads (arXiv 2604.24486 and a 2026 Politecnico di Torino thesis) were not read. |
 
 ### The list
 
@@ -3349,9 +4411,9 @@ the CSV's reference looks like a placeholder. What remains:
 
 | Rows | Algorithms | Yes | Research code | Partial | No |
 |---|---|---|---|---|---|
-| Specific (ranks 1–425) | 425 | 13 | 48 | 41 | 323 |
+| Specific (ranks 1–425) | 425 | 13 | 49 | 41 | 322 |
 | Title-reconstructed (ranks 426–14,225) | 13,800 | 0 | 0 | 0 | 13,800 |
-| All | 14,225 | 13 | 48 | 41 | 14,123 |
+| All | 14,225 | 13 | 49 | 41 | 14,122 |
 
 #### Specific algorithms
 
@@ -3657,106 +4719,106 @@ the CSV's reference looks like a placeholder. What remains:
 | 298 | AMM / CLOB Cross-Venue Arbitrage | Crypto / decentralized market structure | 142 | 133 | No | RK298 | [**researched**](algorithms/amm-clob-cross-venue-arbitrage.md) |
 | 299 | Dynamic AMM Liquidity Provision / Liquidity Mining | Crypto / liquidity provision | 331 | 959 | No | RK299 | [**researched**](algorithms/dynamic-amm-liquidity-provision-liquidity-mining.md) |
 | 300 | Fractional Differentiation Feature Pipeline | ML / time-series preprocessing | 151 | 136 | Research code | RK300, C-ML5 | [**researched**](algorithms/fractional-differentiation-feature-pipeline.md) |
-| 301 | Temporal Fusion Transformer Forecasting | ML / time-series forecasting | 277 | 249 | No | — | [card](algorithms/temporal-fusion-transformer-forecasting.md) |
-| 302 | Physics-Informed Deep Galerkin Method (DGM) Option Solver | Physics-informed neural networks / Options pricing | 281 | 283 | No | — | [card](algorithms/physics-informed-deep-galerkin-method-dgm-option-solver.md) |
-| 303 | Neural Jump-Diffusion Rough Heston Smile Predictor | Stochastic volatility / Deep learning / Derivatives pricing | 379 | 10661 | No | — | [card](algorithms/neural-jump-diffusion-rough-heston-smile-predictor.md) |
-| 304 | Recurrent Neural Hawkes Point Process Volatility Jump Forecaster | Point processes / Recurrent neural networks / Volatility forecasting | 5371 | 10657 | No | — | [card](algorithms/recurrent-neural-hawkes-point-process-volatility-jump-forecaster.md) |
-| 305 | Quantum Annealing Binary Quadratic Portfolio Rebalancing | Quantum computing / Quadratic programming / Portfolio optimization | 260 | 242 | No | — | [card](algorithms/quantum-annealing-binary-quadratic-portfolio-rebalancing.md) |
-| 306 | Microprice / Queue-Imbalance Signal | Market microstructure / alpha | 303 | 9812 | Research code | C-MS2 | [card](algorithms/microprice-queue-imbalance-signal.md) |
-| 307 | Cross-Exchange Market Making (XEMM) | Market microstructure / market making | 226 | 2117 | No | — | [card](algorithms/cross-exchange-market-making-xemm.md) |
-| 308 | Dividend Capture Window Strategy | Equity event / income | 96 | 95 | No | — | [card](algorithms/dividend-capture-window-strategy.md) |
-| 309 | Gamma Scalping / Long-Gamma Rebalancing | Options / delta hedging | 208 | 237 | No | — | [card](algorithms/gamma-scalping-long-gamma-rebalancing.md) |
-| 310 | Multi-Agent RL Execution / Liquidation | Reinforcement learning / execution | 368 | 7421 | No | — | [card](algorithms/multi-agent-rl-execution-liquidation.md) |
-| 311 | FinBERT Sentiment-Driven Event Arbitrage | NLP / Machine learning / Event-driven | 213 | 98 | No | — | [card](algorithms/finbert-sentiment-driven-event-arbitrage.md) |
-| 312 | Deep Q-Network (DQN) Liquidation Agent | Reinforcement learning / Execution | 376 | 10163 | No | — | [card](algorithms/deep-q-network-dqn-liquidation-agent.md) |
-| 313 | Adaptive Mesh Reinforcement Learning Market Maker (RL-MM) | Reinforcement learning / Market making | 5368 | 11671 | No | — | [card](algorithms/adaptive-mesh-reinforcement-learning-market-maker-rl-mm.md) |
-| 314 | Hawkes-Jump Diffusion Multivariate Event Detection | Point process / Event-driven microstructure | 344 | 7557 | No | — | [card](algorithms/hawkes-jump-diffusion-multivariate-event-detection.md) |
-| 315 | Empirical Mode Decomposition (EMD) Hilbert-Huang Intraday Scalper | Signal Processing / Technical Analysis | 71 | 75 | No | — | [card](algorithms/empirical-mode-decomposition-emd-hilbert-huang-intraday-scalper.md) |
-| 316 | Temporal CNN / TCN Forecasting | Machine learning | 108 | 128 | No | — | [card](algorithms/temporal-cnn-tcn-forecasting.md) |
-| 317 | Meta-Labeling Primary Signals | Machine learning / signal filtering | 253 | 107 | Yes | V13 | [card](algorithms/meta-labeling-primary-signals.md) |
-| 318 | Graph Convolutional Network (GCN) Cross-Sectional Stock Ranking | Graph machine learning / Quantitative equity | 173 | 108 | No | — | [card](algorithms/graph-convolutional-network-gcn-cross-sectional-stock-ranking.md) |
-| 319 | Vol-Harvesting Dynamic Asymmetric Grid | Grid trading / Inventory management / Volatility harvesting | 70 | 46 | Yes | V3, V5, C-G3 | [card](algorithms/vol-harvesting-dynamic-asymmetric-grid.md) |
-| 320 | Koopman Operator Non-Linear Volatility Surface Interpolator | Operator theory / Volatility derivatives | 347 | 10446 | No | — | [card](algorithms/koopman-operator-non-linear-volatility-surface-interpolator.md) |
-| 321 | Koopman Operator Non-Linear Volatility Surface Pricing Model | Operator theory / Volatility derivatives / Options pricing | 350 | 10447 | No | — | [card](algorithms/koopman-operator-non-linear-volatility-surface-pricing-model.md) |
-| 322 | Order-Book Imbalance Signal | Market microstructure / alpha | 330 | 9811 | Research code | C-MS2 | [card](algorithms/order-book-imbalance-signal.md) |
-| 323 | Physics-Informed Neural Operator (FNO) Yield Curve Dynamics | Physics-informed ML / Fourier Neural Operators / Fixed income | 280 | 188 | No | — | [card](algorithms/physics-informed-neural-operator-fno-yield-curve-dynamics.md) |
-| 324 | Wasserstein Distributionally Robust Neural SDE Hedging | Robust statistics / Neural SDEs / Derivatives hedging | 338 | 287 | No | — | [card](algorithms/wasserstein-distributionally-robust-neural-sde-hedging.md) |
-| 325 | Neural Operator Controlled Portfolio Dynamic Hedging | Neural operators / Stochastic control / Derivatives hedging | 293 | 289 | No | — | [card](algorithms/neural-operator-controlled-portfolio-dynamic-hedging.md) |
-| 326 | Neural Operator Functional Gradient Boosting Cross-Sectional Alpha | Neural operators / Functional data analysis / Quantitative equity | 319 | 172 | No | — | [card](algorithms/neural-operator-functional-gradient-boosting-cross-sectional-alpha.md) |
-| 327 | Domain-Adversarial Neural Network (DANN) Cross-Market Alpha Transfer | Domain adaptation / Transfer learning / Quantitative equity | 282 | 26 | No | — | [card](algorithms/domain-adversarial-neural-network-dann-cross-market-alpha-transfer.md) |
-| 328 | Neural Rough Volatility Path Signature Factor Model | Rough path theory / Signature methods / Quantitative equity | 309 | 961 | No | — | [card](algorithms/neural-rough-volatility-path-signature-factor-model.md) |
-| 329 | Wasserstein Distributionally Robust Neural Rough Volatility Hedging | Robust statistics / Rough path theory / Derivatives hedging | 288 | 299 | No | — | [card](algorithms/wasserstein-distributionally-robust-neural-rough-volatility-hedging.md) |
-| 330 | Neural Rough Path Signature Delay-Differential Portfolio Control | Rough path theory / Delay differential equations / Portfolio control | 251 | 278 | No | — | [card](algorithms/neural-rough-path-signature-delay-differential-portfolio-control.md) |
-| 331 | Neural Rough Differential Equation (Neural RDE) LOB Forecaster | Rough path theory / Deep learning / Microstructure | 986 | 10282 | No | — | [card](algorithms/neural-rough-differential-equation-neural-rde-lob-forecaster.md) |
-| 332 | Generative Score-Based Flow Matching Order Flow Generator | Generative machine learning / Flow matching / Microstructure | 9256 | 10333 | No | — | [card](algorithms/generative-score-based-flow-matching-order-flow-generator.md) |
-| 333 | Neural Jump-Diffusion Hawkes Point Process Shock Detector | Point process / Neural SDEs / Market microstructure | 1876 | 7558 | No | — | [card](algorithms/neural-jump-diffusion-hawkes-point-process-shock-detector.md) |
-| 334 | Neural Controlled Differential Equation LOB Trend Anticipator | Rough path theory / Neural CDEs / Microstructure | 382 | 10444 | No | — | [card](algorithms/neural-controlled-differential-equation-lob-trend-anticipator.md) |
-| 335 | Wasserstein Distributionally Robust RL Market Making | Reinforcement learning / Robust statistics / Market making | 2038 | 10229 | No | — | [card](algorithms/wasserstein-distributionally-robust-rl-market-making.md) |
-| 336 | Score-Based Generative Diffusion Limit Order Book Simulator | Generative AI / Diffusion models / Market microstructure | 5370 | 10335 | No | — | [card](algorithms/score-based-generative-diffusion-limit-order-book-simulator.md) |
-| 337 | Neural Controlled Jump Diffusion Order Book Pricing Model | Neural CDEs / Jump diffusion / Microstructure | 3189 | 9359 | No | — | [card](algorithms/neural-controlled-jump-diffusion-order-book-pricing-model.md) |
-| 338 | Recurrent Neural Hawkes Point Process Liquidity Shock Detector | Point processes / Recurrent neural networks / Microstructure | 693 | 10231 | No | — | [card](algorithms/recurrent-neural-hawkes-point-process-liquidity-shock-detector.md) |
-| 339 | Multi-Agent Reinforcement Learning Nash Market Maker | Multi-agent reinforcement learning / Game theory / Market making | 987 | 10336 | No | — | [card](algorithms/multi-agent-reinforcement-learning-nash-market-maker.md) |
-| 340 | Fractional Order Cointegration Vector Error Correction Neural Network | Fractional time series / Neural networks / Cointegration | 284 | 232 | No | — | [card](algorithms/fractional-order-cointegration-vector-error-correction-neural-network.md) |
-| 341 | Multi-Agent Reinforcement Learning Stackelberg Market Maker | Multi-agent reinforcement learning / Game theory / Market making | 988 | 10338 | No | — | [card](algorithms/multi-agent-reinforcement-learning-stackelberg-market-maker.md) |
-| 342 | Neural Rough Path Signature Hawkes Point Process Forecaster | Rough path theory / Point processes / Microstructure | 990 | 10448 | No | — | [card](algorithms/neural-rough-path-signature-hawkes-point-process-forecaster.md) |
-| 343 | Generative Score-Based Diffusion Limit Order Book Flow Synthesizer | Generative AI / Diffusion models / Microstructure | 700 | 7429 | No | — | [card](algorithms/generative-score-based-diffusion-limit-order-book-flow-synthesizer.md) |
-| 344 | Multi-Agent Reinforcement Learning Stackelberg Market Maker Equilibrium | Multi-agent reinforcement learning / Game theory / Market making | 991 | 10341 | No | — | [card](algorithms/multi-agent-reinforcement-learning-stackelberg-market-maker-equilibrium.md) |
-| 345 | Multi-Agent Reinforcement Learning Stackelberg Spread Capture | Multi-agent reinforcement learning / Game theory / Market making | 993 | 10343 | No | — | [card](algorithms/multi-agent-reinforcement-learning-stackelberg-spread-capture.md) |
-| 346 | SAC Continuous-Action Trading Agent | Reinforcement learning | 166 | 256 | Research code | A1 | [card](algorithms/sac-continuous-action-trading-agent.md) |
-| 347 | DDPG / TD3 Continuous-Control Trader | Reinforcement learning | 256 | 247 | Research code | A1 | [card](algorithms/ddpg-td3-continuous-control-trader.md) |
-| 348 | Phase Space Reconstructed Neural ODE (PSR-NODE) | Continuous-time deep learning / Physics-informed ML | 375 | 10218 | No | — | [card](algorithms/phase-space-reconstructed-neural-ode-psr-node.md) |
-| 349 | Time-Series Generative Adversarial Network (TimeGAN) | Generative machine learning / Data augmentation | 314 | 268 | No | — | [card](algorithms/time-series-generative-adversarial-network-timegan.md) |
-| 350 | Physics-Informed Deep Learning Schrödinger Volatility Solver | Physics-informed neural networks (PINN) / Derivatives pricing | 697 | 10223 | No | — | [card](algorithms/physics-informed-deep-learning-schrodinger-volatility-solver.md) |
-| 351 | Multi-Agent Deep Deterministic Policy Gradient (MADDPG) Portfolio Allocation | Reinforcement learning / Multi-agent allocation | 308 | 140 | No | — | [card](algorithms/multi-agent-deep-deterministic-policy-gradient-maddpg-portfolio-allocation.md) |
-| 352 | Deep Hedging with Transaction Costs and Friction | Deep reinforcement learning / Derivatives hedging | 357 | 282 | No | — | [card](algorithms/deep-hedging-with-transaction-costs-and-friction.md) |
-| 353 | Recurrent Neural Hawkes Point Process Execution Timing | Point processes / Recurrent neural networks / Execution | 1879 | 10337 | No | — | [card](algorithms/recurrent-neural-hawkes-point-process-execution-timing.md) |
-| 354 | Multi-Agent Reinforcement Learning Evolutionary Market Maker | Multi-agent reinforcement learning / Evolutionary algorithms / Market making | 384 | 10232 | No | — | [card](algorithms/multi-agent-reinforcement-learning-evolutionary-market-maker.md) |
-| 355 | Recurrent Neural Hawkes Point Process Toxic Flow Execution | Point processes / Recurrent neural networks / Execution | 694 | 10233 | No | — | [card](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-execution.md) |
-| 356 | Recurrent Neural Hawkes Point Process Dynamic Inventory Market Maker | Point processes / Recurrent neural networks / Market making | 1880 | 10340 | No | — | [card](algorithms/recurrent-neural-hawkes-point-process-dynamic-inventory-market-maker.md) |
-| 357 | Recurrent Neural Hawkes Point Process Toxic Flow Execution Pauser | Point processes / Recurrent neural networks / Execution | 695 | 10234 | No | — | [card](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-execution-pauser.md) |
-| 358 | Multi-Agent Reinforcement Learning Evolutionary Execution Routing | Multi-agent reinforcement learning / Evolutionary algorithms / Execution | 385 | 10235 | No | — | [card](algorithms/multi-agent-reinforcement-learning-evolutionary-execution-routing.md) |
-| 359 | Multi-Agent Reinforcement Learning Evolutionary Market Making Equilibrium | Multi-agent reinforcement learning / Evolutionary algorithms / Market making | 386 | 10236 | No | — | [card](algorithms/multi-agent-reinforcement-learning-evolutionary-market-making-equilibrium.md) |
-| 360 | Multi-Agent Reinforcement Learning Evolutionary Execution Allocator | Multi-agent reinforcement learning / Evolutionary algorithms / Execution | 387 | 10237 | No | — | [card](algorithms/multi-agent-reinforcement-learning-evolutionary-execution-allocator.md) |
-| 361 | Deep Reinforcement Learning Order Book Market Maker (Marl-MM) | Multi-agent reinforcement learning / Market making | 381 | 10226 | No | — | [card](algorithms/deep-reinforcement-learning-order-book-market-maker-marl-mm.md) |
-| 362 | Koopman Operator Model Predictive Control Execution | Operator theory / Model predictive control / Execution | 345 | 7426 | No | — | [card](algorithms/koopman-operator-model-predictive-control-execution.md) |
-| 363 | TWAP Execution | Execution / market microstructure | 301 | 5928 | No | — | [card](algorithms/twap-execution.md) |
-| 364 | VWAP Execution | Execution / market microstructure | 329 | 10281 | No | — | [card](algorithms/vwap-execution.md) |
-| 365 | POV / Percent-of-Volume Execution | Execution / market microstructure | 339 | 5929 | No | — | [card](algorithms/pov-percent-of-volume-execution.md) |
-| 366 | Implementation-Shortfall / Almgren–Chriss | Execution / market microstructure | 224 | 9810 | Research code | — | [card](algorithms/implementation-shortfall-almgren-chriss.md) |
-| 367 | Hawkes-Driven Optimal Execution with Transitory Price Impact | Market microstructure / Optimal execution | 372 | 10331 | No | — | [card](algorithms/hawkes-driven-optimal-execution-with-transitory-price-impact.md) |
-| 368 | Continuous-Time Mean-Field Control Execution | Optimal execution / Mean-field games | 690 | 2120 | No | — | [card](algorithms/continuous-time-mean-field-control-execution.md) |
-| 369 | Multi-Agent Mean-Field Game Optimal Execution Routing | Mean-field games / Execution routing / Optimal execution | 692 | 7427 | No | — | [card](algorithms/multi-agent-mean-field-game-optimal-execution-routing.md) |
-| 370 | Wasserstein Distributionally Robust Optimal Execution Trajectory | Robust statistics / Optimal execution / Institutional execution | 348 | 10164 | No | — | [card](algorithms/wasserstein-distributionally-robust-optimal-execution-trajectory.md) |
-| 371 | Wasserstein Distributionally Robust Hawkes Point Process Execution | Robust statistics / Point processes / Optimal execution | 989 | 10339 | No | — | [card](algorithms/wasserstein-distributionally-robust-hawkes-point-process-execution.md) |
-| 372 | PPO Reinforcement-Learning Trader | Reinforcement learning | 276 | 255 | Research code | A1 | [card](algorithms/ppo-reinforcement-learning-trader.md) |
-| 373 | Generative Moment Matching Network (GMMN) Portfolio Simulator | Generative Machine Learning / Portfolio Stress Testing | 215 | 166 | No | — | [card](algorithms/generative-moment-matching-network-gmmn-portfolio-simulator.md) |
-| 374 | Physics-Informed Neural Network (PINN) Burgers Volatility Model | Physics-Informed Deep Learning / Derivatives | 216 | 270 | No | — | [card](algorithms/physics-informed-neural-network-pinn-burgers-volatility-model.md) |
-| 375 | Quantum Support Vector Regression (QSVR) Return Predictor | Quantum Machine Learning / Predictive Alpha | 341 | 229 | No | — | [card](algorithms/quantum-support-vector-regression-qsvr-return-predictor.md) |
-| 376 | Deep Koopman Operator Market Dynamics Predictor | Operator theory / Deep learning / Dynamical systems | 698 | 10484 | No | — | [card](algorithms/deep-koopman-operator-market-dynamics-predictor.md) |
-| 377 | Neural SDE Controlled Stochastic Volatility Arbitrage | Stochastic differential equations / Deep learning | 359 | 425 | No | — | [card](algorithms/neural-sde-controlled-stochastic-volatility-arbitrage.md) |
-| 378 | Generative Diffusion Model Trajectory Generator (TabDDPM) | Generative machine learning / Scenario generation | 371 | 10225 | No | — | [card](algorithms/generative-diffusion-model-trajectory-generator-tabddpm.md) |
-| 379 | Fractional Brownian Motion (fBm) Volatility Surface Arbitrage | Fractional calculus / Derivatives pricing | 238 | 2121 | No | — | [card](algorithms/fractional-brownian-motion-fbm-volatility-surface-arbitrage.md) |
-| 380 | Dynamic Latent Factor Graph Neural Network (FactorGNN) | Graph neural networks / Quantitative equity | 279 | 271 | No | — | [card](algorithms/dynamic-latent-factor-graph-neural-network-factorgnn.md) |
-| 381 | Hyperbolic Graph Neural Networks for Stock Pricing | Graph machine learning / Hyperbolic geometry / Quantitative equity | 333 | 272 | No | — | [card](algorithms/hyperbolic-graph-neural-networks-for-stock-pricing.md) |
-| 382 | Contractive Autoencoder Latent Factor Anomaly Detection | Deep learning / Contractive autoencoders / Anomaly detection | 354 | 7425 | No | — | [card](algorithms/contractive-autoencoder-latent-factor-anomaly-detection.md) |
-| 383 | Conditional Wasserstein GAN-GP Yield Curve Synthesizer | Generative Machine Learning / Fixed Income | 334 | 273 | No | — | [card](algorithms/conditional-wasserstein-gan-gp-yield-curve-synthesizer.md) |
-| 384 | Geometric Deep Learning Non-Euclidean Alpha Predictor | Geometric deep learning / Riemannian manifolds / Quantitative equity | 242 | 189 | No | — | [card](algorithms/geometric-deep-learning-non-euclidean-alpha-predictor.md) |
-| 385 | Graph Attention Network (GAT) Supply Chain Contagion Stock Predictor | Graph neural networks / Attention mechanisms / Quantitative equity | 179 | 274 | No | — | [card](algorithms/graph-attention-network-gat-supply-chain-contagion-stock-predictor.md) |
-| 386 | Information-Theoretic Transfer Entropy Graph Neural Network Alpha Model | Information theory / Graph neural networks / Alpha generation | 335 | 7559 | No | — | [card](algorithms/information-theoretic-transfer-entropy-graph-neural-network-alpha-model.md) |
-| 387 | Quantum Kernel-Based SVM Cross-Sectional Alpha Predictor | Quantum machine learning / Support vector machines / Alpha generation | 367 | 230 | No | — | [card](algorithms/quantum-kernel-based-svm-cross-sectional-alpha-predictor.md) |
-| 388 | Dynamic Copula-Quantile Regression Neural Network Alpha Model | Econometric copulas / Quantile regression / Deep learning | 243 | 167 | No | — | [card](algorithms/dynamic-copula-quantile-regression-neural-network-alpha-model.md) |
-| 389 | Quantum Annealing Entropic Value-at-Risk Portfolio Optimization | Quantum computing / Tail risk optimization | 346 | 231 | No | — | [card](algorithms/quantum-annealing-entropic-value-at-risk-portfolio-optimization.md) |
-| 390 | Neural Operator Flow-Matching Cross-Sectional Alpha Forecaster | Neural operators / Generative modeling / Equity alpha | 246 | 111 | No | — | [card](algorithms/neural-operator-flow-matching-cross-sectional-alpha-forecaster.md) |
-| 391 | Neural Rough Volatility Fractional signature Deep Hedging | Rough path theory / Neural SDEs / Derivatives hedging | 699 | 10284 | No | — | [card](algorithms/neural-rough-volatility-fractional-signature-deep-hedging.md) |
-| 392 | Fractional Order Vector AutoRegressive (VAR) Macro Allocator | Fractional time series / Vector autoregression / Macro strategy | 231 | 34 | No | — | [card](algorithms/fractional-order-vector-autoregressive-var-macro-allocator.md) |
-| 393 | Quantum Neural Network (QNN) Volatility Surface Forecaster | Quantum machine learning / Derivatives forecasting | 3190 | 10700 | No | — | [card](algorithms/quantum-neural-network-qnn-volatility-surface-forecaster.md) |
-| 394 | Graph Diffusion Convolutional Network Cross-Sectional Alpha | Graph neural networks / Graph diffusion / Quantitative equity | 183 | 275 | No | — | [card](algorithms/graph-diffusion-convolutional-network-cross-sectional-alpha.md) |
-| 395 | Generative Score-Based Diffusion Macro Factor Synthesizer | Generative AI / Diffusion models / Macroeconomic factor modeling | 285 | 206 | No | — | [card](algorithms/generative-score-based-diffusion-macro-factor-synthesizer.md) |
-| 396 | Riemannian Manifold Metric Graph Diffusion Covariance Estimator | Geometric deep learning / Graph diffusion / Covariance estimation | 267 | 173 | No | — | [card](algorithms/riemannian-manifold-metric-graph-diffusion-covariance-estimator.md) |
-| 397 | Quantum Annealing Graph Neural Network Covariance Shrinkage | Quantum computing / Graph neural networks / Covariance estimation | 343 | 294 | No | — | [card](algorithms/quantum-annealing-graph-neural-network-covariance-shrinkage.md) |
-| 398 | Persistent Homology Betti-2 Persistence Landscape Macro Contagion | Topological data analysis / Persistence landscapes / Macro risk | 126 | 209 | No | — | [card](algorithms/persistent-homology-betti-2-persistence-landscape-macro-contagion.md) |
-| 399 | Generative Score-Based Diffusion Cross-Sectional Factor Synthesizer | Generative AI / Diffusion models / Quantitative equity | 188 | 174 | No | — | [card](algorithms/generative-score-based-diffusion-cross-sectional-factor-synthesizer.md) |
-| 400 | Graph Attention Network Riemannian Manifold Covariance Shrinkage | Graph neural networks / Riemannian geometry / Covariance estimation | 270 | 175 | No | — | [card](algorithms/graph-attention-network-riemannian-manifold-covariance-shrinkage.md) |
+| 301 | Temporal Fusion Transformer Forecasting | ML / time-series forecasting | 277 | 249 | No | RK301 | [**researched**](algorithms/temporal-fusion-transformer-forecasting.md) |
+| 302 | Physics-Informed Deep Galerkin Method (DGM) Option Solver | Physics-informed neural networks / Options pricing | 281 | 283 | No | RK302 | [**researched**](algorithms/physics-informed-deep-galerkin-method-dgm-option-solver.md) |
+| 303 | Neural Jump-Diffusion Rough Heston Smile Predictor | Stochastic volatility / Deep learning / Derivatives pricing | 379 | 10661 | No | RK303 | [**researched**](algorithms/neural-jump-diffusion-rough-heston-smile-predictor.md) |
+| 304 | Recurrent Neural Hawkes Point Process Volatility Jump Forecaster | Point processes / Recurrent neural networks / Volatility forecasting | 5371 | 10657 | No | RK304 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-volatility-jump-forecaster.md) |
+| 305 | Quantum Annealing Binary Quadratic Portfolio Rebalancing | Quantum computing / Quadratic programming / Portfolio optimization | 260 | 242 | No | RK305 | [**researched**](algorithms/quantum-annealing-binary-quadratic-portfolio-rebalancing.md) |
+| 306 | Microprice / Queue-Imbalance Signal | Market microstructure / alpha | 303 | 9812 | Research code | RK306, C-MS2 | [**researched**](algorithms/microprice-queue-imbalance-signal.md) |
+| 307 | Cross-Exchange Market Making (XEMM) | Market microstructure / market making | 226 | 2117 | No | RK307 | [**researched**](algorithms/cross-exchange-market-making-xemm.md) |
+| 308 | Dividend Capture Window Strategy | Equity event / income | 96 | 95 | No | RK308 | [**researched**](algorithms/dividend-capture-window-strategy.md) |
+| 309 | Gamma Scalping / Long-Gamma Rebalancing | Options / delta hedging | 208 | 237 | No | RK309 | [**researched**](algorithms/gamma-scalping-long-gamma-rebalancing.md) |
+| 310 | Multi-Agent RL Execution / Liquidation | Reinforcement learning / execution | 368 | 7421 | No | RK310 | [**researched**](algorithms/multi-agent-rl-execution-liquidation.md) |
+| 311 | FinBERT Sentiment-Driven Event Arbitrage | NLP / Machine learning / Event-driven | 213 | 98 | No | RK311 | [**researched**](algorithms/finbert-sentiment-driven-event-arbitrage.md) |
+| 312 | Deep Q-Network (DQN) Liquidation Agent | Reinforcement learning / Execution | 376 | 10163 | No | RK312 | [**researched**](algorithms/deep-q-network-dqn-liquidation-agent.md) |
+| 313 | Adaptive Mesh Reinforcement Learning Market Maker (RL-MM) | Reinforcement learning / Market making | 5368 | 11671 | No | RK313 | [**researched**](algorithms/adaptive-mesh-reinforcement-learning-market-maker-rl-mm.md) |
+| 314 | Hawkes-Jump Diffusion Multivariate Event Detection | Point process / Event-driven microstructure | 344 | 7557 | No | RK314 | [**researched**](algorithms/hawkes-jump-diffusion-multivariate-event-detection.md) |
+| 315 | Empirical Mode Decomposition (EMD) Hilbert-Huang Intraday Scalper | Signal Processing / Technical Analysis | 71 | 75 | No | RK315 | [**researched**](algorithms/empirical-mode-decomposition-emd-hilbert-huang-intraday-scalper.md) |
+| 316 | Temporal CNN / TCN Forecasting | Machine learning | 108 | 128 | No | RK316 | [**researched**](algorithms/temporal-cnn-tcn-forecasting.md) |
+| 317 | Meta-Labeling Primary Signals | Machine learning / signal filtering | 253 | 107 | Yes | RK317, V13, C-ML1 | [**researched**](algorithms/meta-labeling-primary-signals.md) |
+| 318 | Graph Convolutional Network (GCN) Cross-Sectional Stock Ranking | Graph machine learning / Quantitative equity | 173 | 108 | No | RK318 | [**researched**](algorithms/graph-convolutional-network-gcn-cross-sectional-stock-ranking.md) |
+| 319 | Vol-Harvesting Dynamic Asymmetric Grid | Grid trading / Inventory management / Volatility harvesting | 70 | 46 | Yes | RK319, V3, V5, C-G3 | [**researched**](algorithms/vol-harvesting-dynamic-asymmetric-grid.md) |
+| 320 | Koopman Operator Non-Linear Volatility Surface Interpolator | Operator theory / Volatility derivatives | 347 | 10446 | No | RK320 | [**researched**](algorithms/koopman-operator-non-linear-volatility-surface-interpolator.md) |
+| 321 | Koopman Operator Non-Linear Volatility Surface Pricing Model | Operator theory / Volatility derivatives / Options pricing | 350 | 10447 | No | RK321 | [**researched**](algorithms/koopman-operator-non-linear-volatility-surface-pricing-model.md) |
+| 322 | Order-Book Imbalance Signal | Market microstructure / alpha | 330 | 9811 | Research code | RK322, C-MS2 | [**researched**](algorithms/order-book-imbalance-signal.md) |
+| 323 | Physics-Informed Neural Operator (FNO) Yield Curve Dynamics | Physics-informed ML / Fourier Neural Operators / Fixed income | 280 | 188 | No | RK323 | [**researched**](algorithms/physics-informed-neural-operator-fno-yield-curve-dynamics.md) |
+| 324 | Wasserstein Distributionally Robust Neural SDE Hedging | Robust statistics / Neural SDEs / Derivatives hedging | 338 | 287 | No | RK324 | [**researched**](algorithms/wasserstein-distributionally-robust-neural-sde-hedging.md) |
+| 325 | Neural Operator Controlled Portfolio Dynamic Hedging | Neural operators / Stochastic control / Derivatives hedging | 293 | 289 | No | RK325 | [**researched**](algorithms/neural-operator-controlled-portfolio-dynamic-hedging.md) |
+| 326 | Neural Operator Functional Gradient Boosting Cross-Sectional Alpha | Neural operators / Functional data analysis / Quantitative equity | 319 | 172 | No | RK326 | [**researched**](algorithms/neural-operator-functional-gradient-boosting-cross-sectional-alpha.md) |
+| 327 | Domain-Adversarial Neural Network (DANN) Cross-Market Alpha Transfer | Domain adaptation / Transfer learning / Quantitative equity | 282 | 26 | No | RK327 | [**researched**](algorithms/domain-adversarial-neural-network-dann-cross-market-alpha-transfer.md) |
+| 328 | Neural Rough Volatility Path Signature Factor Model | Rough path theory / Signature methods / Quantitative equity | 309 | 961 | No | RK328 | [**researched**](algorithms/neural-rough-volatility-path-signature-factor-model.md) |
+| 329 | Wasserstein Distributionally Robust Neural Rough Volatility Hedging | Robust statistics / Rough path theory / Derivatives hedging | 288 | 299 | No | RK329 | [**researched**](algorithms/wasserstein-distributionally-robust-neural-rough-volatility-hedging.md) |
+| 330 | Neural Rough Path Signature Delay-Differential Portfolio Control | Rough path theory / Delay differential equations / Portfolio control | 251 | 278 | No | RK330 | [**researched**](algorithms/neural-rough-path-signature-delay-differential-portfolio-control.md) |
+| 331 | Neural Rough Differential Equation (Neural RDE) LOB Forecaster | Rough path theory / Deep learning / Microstructure | 986 | 10282 | No | RK331 | [**researched**](algorithms/neural-rough-differential-equation-neural-rde-lob-forecaster.md) |
+| 332 | Generative Score-Based Flow Matching Order Flow Generator | Generative machine learning / Flow matching / Microstructure | 9256 | 10333 | No | RK332 | [**researched**](algorithms/generative-score-based-flow-matching-order-flow-generator.md) |
+| 333 | Neural Jump-Diffusion Hawkes Point Process Shock Detector | Point process / Neural SDEs / Market microstructure | 1876 | 7558 | No | RK333 | [**researched**](algorithms/neural-jump-diffusion-hawkes-point-process-shock-detector.md) |
+| 334 | Neural Controlled Differential Equation LOB Trend Anticipator | Rough path theory / Neural CDEs / Microstructure | 382 | 10444 | No | RK334 | [**researched**](algorithms/neural-controlled-differential-equation-lob-trend-anticipator.md) |
+| 335 | Wasserstein Distributionally Robust RL Market Making | Reinforcement learning / Robust statistics / Market making | 2038 | 10229 | No | RK335 | [**researched**](algorithms/wasserstein-distributionally-robust-rl-market-making.md) |
+| 336 | Score-Based Generative Diffusion Limit Order Book Simulator | Generative AI / Diffusion models / Market microstructure | 5370 | 10335 | No | RK336 | [**researched**](algorithms/score-based-generative-diffusion-limit-order-book-simulator.md) |
+| 337 | Neural Controlled Jump Diffusion Order Book Pricing Model | Neural CDEs / Jump diffusion / Microstructure | 3189 | 9359 | No | RK337 | [**researched**](algorithms/neural-controlled-jump-diffusion-order-book-pricing-model.md) |
+| 338 | Recurrent Neural Hawkes Point Process Liquidity Shock Detector | Point processes / Recurrent neural networks / Microstructure | 693 | 10231 | No | RK338 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-liquidity-shock-detector.md) |
+| 339 | Multi-Agent Reinforcement Learning Nash Market Maker | Multi-agent reinforcement learning / Game theory / Market making | 987 | 10336 | No | RK339 | [**researched**](algorithms/multi-agent-reinforcement-learning-nash-market-maker.md) |
+| 340 | Fractional Order Cointegration Vector Error Correction Neural Network | Fractional time series / Neural networks / Cointegration | 284 | 232 | No | RK340 | [**researched**](algorithms/fractional-order-cointegration-vector-error-correction-neural-network.md) |
+| 341 | Multi-Agent Reinforcement Learning Stackelberg Market Maker | Multi-agent reinforcement learning / Game theory / Market making | 988 | 10338 | No | RK341 | [**researched**](algorithms/multi-agent-reinforcement-learning-stackelberg-market-maker.md) |
+| 342 | Neural Rough Path Signature Hawkes Point Process Forecaster | Rough path theory / Point processes / Microstructure | 990 | 10448 | No | RK342 | [**researched**](algorithms/neural-rough-path-signature-hawkes-point-process-forecaster.md) |
+| 343 | Generative Score-Based Diffusion Limit Order Book Flow Synthesizer | Generative AI / Diffusion models / Microstructure | 700 | 7429 | No | RK343 | [**researched**](algorithms/generative-score-based-diffusion-limit-order-book-flow-synthesizer.md) |
+| 344 | Multi-Agent Reinforcement Learning Stackelberg Market Maker Equilibrium | Multi-agent reinforcement learning / Game theory / Market making | 991 | 10341 | No | RK344 | [**researched**](algorithms/multi-agent-reinforcement-learning-stackelberg-market-maker-equilibrium.md) |
+| 345 | Multi-Agent Reinforcement Learning Stackelberg Spread Capture | Multi-agent reinforcement learning / Game theory / Market making | 993 | 10343 | No | RK345 | [**researched**](algorithms/multi-agent-reinforcement-learning-stackelberg-spread-capture.md) |
+| 346 | SAC Continuous-Action Trading Agent | Reinforcement learning | 166 | 256 | Research code | RK346, A1 | [**researched**](algorithms/sac-continuous-action-trading-agent.md) |
+| 347 | DDPG / TD3 Continuous-Control Trader | Reinforcement learning | 256 | 247 | Research code | RK347, A1 | [**researched**](algorithms/ddpg-td3-continuous-control-trader.md) |
+| 348 | Phase Space Reconstructed Neural ODE (PSR-NODE) | Continuous-time deep learning / Physics-informed ML | 375 | 10218 | No | RK348 | [**researched**](algorithms/phase-space-reconstructed-neural-ode-psr-node.md) |
+| 349 | Time-Series Generative Adversarial Network (TimeGAN) | Generative machine learning / Data augmentation | 314 | 268 | No | RK349 | [**researched**](algorithms/time-series-generative-adversarial-network-timegan.md) |
+| 350 | Physics-Informed Deep Learning Schrödinger Volatility Solver | Physics-informed neural networks (PINN) / Derivatives pricing | 697 | 10223 | No | RK350 | [**researched**](algorithms/physics-informed-deep-learning-schrodinger-volatility-solver.md) |
+| 351 | Multi-Agent Deep Deterministic Policy Gradient (MADDPG) Portfolio Allocation | Reinforcement learning / Multi-agent allocation | 308 | 140 | No | RK351 | [**researched**](algorithms/multi-agent-deep-deterministic-policy-gradient-maddpg-portfolio-allocation.md) |
+| 352 | Deep Hedging with Transaction Costs and Friction | Deep reinforcement learning / Derivatives hedging | 357 | 282 | No | RK352 | [**researched**](algorithms/deep-hedging-with-transaction-costs-and-friction.md) |
+| 353 | Recurrent Neural Hawkes Point Process Execution Timing | Point processes / Recurrent neural networks / Execution | 1879 | 10337 | No | RK353 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-execution-timing.md) |
+| 354 | Multi-Agent Reinforcement Learning Evolutionary Market Maker | Multi-agent reinforcement learning / Evolutionary algorithms / Market making | 384 | 10232 | No | RK354 | [**researched**](algorithms/multi-agent-reinforcement-learning-evolutionary-market-maker.md) |
+| 355 | Recurrent Neural Hawkes Point Process Toxic Flow Execution | Point processes / Recurrent neural networks / Execution | 694 | 10233 | No | RK355 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-execution.md) |
+| 356 | Recurrent Neural Hawkes Point Process Dynamic Inventory Market Maker | Point processes / Recurrent neural networks / Market making | 1880 | 10340 | No | RK356 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-dynamic-inventory-market-maker.md) |
+| 357 | Recurrent Neural Hawkes Point Process Toxic Flow Execution Pauser | Point processes / Recurrent neural networks / Execution | 695 | 10234 | No | RK357 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-execution-pauser.md) |
+| 358 | Multi-Agent Reinforcement Learning Evolutionary Execution Routing | Multi-agent reinforcement learning / Evolutionary algorithms / Execution | 385 | 10235 | No | RK358 | [**researched**](algorithms/multi-agent-reinforcement-learning-evolutionary-execution-routing.md) |
+| 359 | Multi-Agent Reinforcement Learning Evolutionary Market Making Equilibrium | Multi-agent reinforcement learning / Evolutionary algorithms / Market making | 386 | 10236 | No | RK359 | [**researched**](algorithms/multi-agent-reinforcement-learning-evolutionary-market-making-equilibrium.md) |
+| 360 | Multi-Agent Reinforcement Learning Evolutionary Execution Allocator | Multi-agent reinforcement learning / Evolutionary algorithms / Execution | 387 | 10237 | No | RK360 | [**researched**](algorithms/multi-agent-reinforcement-learning-evolutionary-execution-allocator.md) |
+| 361 | Deep Reinforcement Learning Order Book Market Maker (Marl-MM) | Multi-agent reinforcement learning / Market making | 381 | 10226 | No | RK361 | [**researched**](algorithms/deep-reinforcement-learning-order-book-market-maker-marl-mm.md) |
+| 362 | Koopman Operator Model Predictive Control Execution | Operator theory / Model predictive control / Execution | 345 | 7426 | No | RK362 | [**researched**](algorithms/koopman-operator-model-predictive-control-execution.md) |
+| 363 | TWAP Execution | Execution / market microstructure | 301 | 5928 | Research code | RK363 | [**researched**](algorithms/twap-execution.md) |
+| 364 | VWAP Execution | Execution / market microstructure | 329 | 10281 | No | RK364 | [**researched**](algorithms/vwap-execution.md) |
+| 365 | POV / Percent-of-Volume Execution | Execution / market microstructure | 339 | 5929 | No | RK365 | [**researched**](algorithms/pov-percent-of-volume-execution.md) |
+| 366 | Implementation-Shortfall / Almgren–Chriss | Execution / market microstructure | 224 | 9810 | Research code | RK366 | [**researched**](algorithms/implementation-shortfall-almgren-chriss.md) |
+| 367 | Hawkes-Driven Optimal Execution with Transitory Price Impact | Market microstructure / Optimal execution | 372 | 10331 | No | RK367 | [**researched**](algorithms/hawkes-driven-optimal-execution-with-transitory-price-impact.md) |
+| 368 | Continuous-Time Mean-Field Control Execution | Optimal execution / Mean-field games | 690 | 2120 | No | RK368 | [**researched**](algorithms/continuous-time-mean-field-control-execution.md) |
+| 369 | Multi-Agent Mean-Field Game Optimal Execution Routing | Mean-field games / Execution routing / Optimal execution | 692 | 7427 | No | RK369 | [**researched**](algorithms/multi-agent-mean-field-game-optimal-execution-routing.md) |
+| 370 | Wasserstein Distributionally Robust Optimal Execution Trajectory | Robust statistics / Optimal execution / Institutional execution | 348 | 10164 | No | RK370 | [**researched**](algorithms/wasserstein-distributionally-robust-optimal-execution-trajectory.md) |
+| 371 | Wasserstein Distributionally Robust Hawkes Point Process Execution | Robust statistics / Point processes / Optimal execution | 989 | 10339 | No | RK371 | [**researched**](algorithms/wasserstein-distributionally-robust-hawkes-point-process-execution.md) |
+| 372 | PPO Reinforcement-Learning Trader | Reinforcement learning | 276 | 255 | Research code | RK372, A1 | [**researched**](algorithms/ppo-reinforcement-learning-trader.md) |
+| 373 | Generative Moment Matching Network (GMMN) Portfolio Simulator | Generative Machine Learning / Portfolio Stress Testing | 215 | 166 | No | RK373 | [**researched**](algorithms/generative-moment-matching-network-gmmn-portfolio-simulator.md) |
+| 374 | Physics-Informed Neural Network (PINN) Burgers Volatility Model | Physics-Informed Deep Learning / Derivatives | 216 | 270 | No | RK374 | [**researched**](algorithms/physics-informed-neural-network-pinn-burgers-volatility-model.md) |
+| 375 | Quantum Support Vector Regression (QSVR) Return Predictor | Quantum Machine Learning / Predictive Alpha | 341 | 229 | No | RK375 | [**researched**](algorithms/quantum-support-vector-regression-qsvr-return-predictor.md) |
+| 376 | Deep Koopman Operator Market Dynamics Predictor | Operator theory / Deep learning / Dynamical systems | 698 | 10484 | No | RK376 | [**researched**](algorithms/deep-koopman-operator-market-dynamics-predictor.md) |
+| 377 | Neural SDE Controlled Stochastic Volatility Arbitrage | Stochastic differential equations / Deep learning | 359 | 425 | No | RK377 | [**researched**](algorithms/neural-sde-controlled-stochastic-volatility-arbitrage.md) |
+| 378 | Generative Diffusion Model Trajectory Generator (TabDDPM) | Generative machine learning / Scenario generation | 371 | 10225 | No | RK378 | [**researched**](algorithms/generative-diffusion-model-trajectory-generator-tabddpm.md) |
+| 379 | Fractional Brownian Motion (fBm) Volatility Surface Arbitrage | Fractional calculus / Derivatives pricing | 238 | 2121 | No | RK379 | [**researched**](algorithms/fractional-brownian-motion-fbm-volatility-surface-arbitrage.md) |
+| 380 | Dynamic Latent Factor Graph Neural Network (FactorGNN) | Graph neural networks / Quantitative equity | 279 | 271 | No | RK380 | [**researched**](algorithms/dynamic-latent-factor-graph-neural-network-factorgnn.md) |
+| 381 | Hyperbolic Graph Neural Networks for Stock Pricing | Graph machine learning / Hyperbolic geometry / Quantitative equity | 333 | 272 | No | RK381 | [**researched**](algorithms/hyperbolic-graph-neural-networks-for-stock-pricing.md) |
+| 382 | Contractive Autoencoder Latent Factor Anomaly Detection | Deep learning / Contractive autoencoders / Anomaly detection | 354 | 7425 | No | RK382 | [**researched**](algorithms/contractive-autoencoder-latent-factor-anomaly-detection.md) |
+| 383 | Conditional Wasserstein GAN-GP Yield Curve Synthesizer | Generative Machine Learning / Fixed Income | 334 | 273 | No | RK383 | [**researched**](algorithms/conditional-wasserstein-gan-gp-yield-curve-synthesizer.md) |
+| 384 | Geometric Deep Learning Non-Euclidean Alpha Predictor | Geometric deep learning / Riemannian manifolds / Quantitative equity | 242 | 189 | No | RK384 | [**researched**](algorithms/geometric-deep-learning-non-euclidean-alpha-predictor.md) |
+| 385 | Graph Attention Network (GAT) Supply Chain Contagion Stock Predictor | Graph neural networks / Attention mechanisms / Quantitative equity | 179 | 274 | No | RK385 | [**researched**](algorithms/graph-attention-network-gat-supply-chain-contagion-stock-predictor.md) |
+| 386 | Information-Theoretic Transfer Entropy Graph Neural Network Alpha Model | Information theory / Graph neural networks / Alpha generation | 335 | 7559 | No | RK386 | [**researched**](algorithms/information-theoretic-transfer-entropy-graph-neural-network-alpha-model.md) |
+| 387 | Quantum Kernel-Based SVM Cross-Sectional Alpha Predictor | Quantum machine learning / Support vector machines / Alpha generation | 367 | 230 | No | RK387 | [**researched**](algorithms/quantum-kernel-based-svm-cross-sectional-alpha-predictor.md) |
+| 388 | Dynamic Copula-Quantile Regression Neural Network Alpha Model | Econometric copulas / Quantile regression / Deep learning | 243 | 167 | No | RK388 | [**researched**](algorithms/dynamic-copula-quantile-regression-neural-network-alpha-model.md) |
+| 389 | Quantum Annealing Entropic Value-at-Risk Portfolio Optimization | Quantum computing / Tail risk optimization | 346 | 231 | No | RK389 | [**researched**](algorithms/quantum-annealing-entropic-value-at-risk-portfolio-optimization.md) |
+| 390 | Neural Operator Flow-Matching Cross-Sectional Alpha Forecaster | Neural operators / Generative modeling / Equity alpha | 246 | 111 | No | RK390 | [**researched**](algorithms/neural-operator-flow-matching-cross-sectional-alpha-forecaster.md) |
+| 391 | Neural Rough Volatility Fractional signature Deep Hedging | Rough path theory / Neural SDEs / Derivatives hedging | 699 | 10284 | No | RK391 | [**researched**](algorithms/neural-rough-volatility-fractional-signature-deep-hedging.md) |
+| 392 | Fractional Order Vector AutoRegressive (VAR) Macro Allocator | Fractional time series / Vector autoregression / Macro strategy | 231 | 34 | No | RK392 | [**researched**](algorithms/fractional-order-vector-autoregressive-var-macro-allocator.md) |
+| 393 | Quantum Neural Network (QNN) Volatility Surface Forecaster | Quantum machine learning / Derivatives forecasting | 3190 | 10700 | No | RK393 | [**researched**](algorithms/quantum-neural-network-qnn-volatility-surface-forecaster.md) |
+| 394 | Graph Diffusion Convolutional Network Cross-Sectional Alpha | Graph neural networks / Graph diffusion / Quantitative equity | 183 | 275 | No | RK394 | [**researched**](algorithms/graph-diffusion-convolutional-network-cross-sectional-alpha.md) |
+| 395 | Generative Score-Based Diffusion Macro Factor Synthesizer | Generative AI / Diffusion models / Macroeconomic factor modeling | 285 | 206 | No | RK395 | [**researched**](algorithms/generative-score-based-diffusion-macro-factor-synthesizer.md) |
+| 396 | Riemannian Manifold Metric Graph Diffusion Covariance Estimator | Geometric deep learning / Graph diffusion / Covariance estimation | 267 | 173 | No | RK396 | [**researched**](algorithms/riemannian-manifold-metric-graph-diffusion-covariance-estimator.md) |
+| 397 | Quantum Annealing Graph Neural Network Covariance Shrinkage | Quantum computing / Graph neural networks / Covariance estimation | 343 | 294 | No | RK397 | [**researched**](algorithms/quantum-annealing-graph-neural-network-covariance-shrinkage.md) |
+| 398 | Persistent Homology Betti-2 Persistence Landscape Macro Contagion | Topological data analysis / Persistence landscapes / Macro risk | 126 | 209 | No | RK398 | [**researched**](algorithms/persistent-homology-betti-2-persistence-landscape-macro-contagion.md) |
+| 399 | Generative Score-Based Diffusion Cross-Sectional Factor Synthesizer | Generative AI / Diffusion models / Quantitative equity | 188 | 174 | No | RK399 | [**researched**](algorithms/generative-score-based-diffusion-cross-sectional-factor-synthesizer.md) |
+| 400 | Graph Attention Network Riemannian Manifold Covariance Shrinkage | Graph neural networks / Riemannian geometry / Covariance estimation | 270 | 175 | No | RK400 | [**researched**](algorithms/graph-attention-network-riemannian-manifold-covariance-shrinkage.md) |
 | 401 | Persistent Homology Betti-1 Cyclical Persistence Landscape Contagion | Topological data analysis / Persistence landscapes / Macro risk | 129 | 212 | No | — | [card](algorithms/persistent-homology-betti-1-cyclical-persistence-landscape-contagion.md) |
 | 402 | Generative Score-Based Diffusion Cross-Sectional Alpha Synthesizer | Generative AI / Diffusion models / Quantitative equity | 189 | 176 | No | — | [card](algorithms/generative-score-based-diffusion-cross-sectional-alpha-synthesizer.md) |
 | 403 | Persistent Homology Betti-2 Persistence Landscape Macro Fragility | Topological data analysis / Persistence landscapes / Macro risk | 164 | 213 | No | — | [card](algorithms/persistent-homology-betti-2-persistence-landscape-macro-fragility.md) |
