@@ -87,6 +87,15 @@ CREATE TABLE IF NOT EXISTS ledger_meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- Which book a lot belongs to, apart from ledger_lots so an existing ledger
+-- gains it with no migration of the lots themselves. A lot with no row is
+-- the current algorithm's; "legacy" is a lot an earlier algorithm bought,
+-- left to exit at its own target when the algorithm was switched.
+CREATE TABLE IF NOT EXISTS ledger_lot_owners (
+    order_id TEXT PRIMARY KEY,
+    owner    TEXT NOT NULL
+);
 """
 
 
@@ -349,6 +358,36 @@ class LedgerStore:
             conn.execute(
                 "INSERT OR REPLACE INTO ledger_meta (key, value) VALUES (?, ?)", (key, value)
             )
+            return revision
+
+    def lot_owners(self) -> dict[str, str]:
+        """Every lot with a recorded owner, by order id."""
+        rows = self._conn.execute("SELECT order_id, owner FROM ledger_lot_owners").fetchall()
+        return {row["order_id"]: row["owner"] for row in rows}
+
+    def set_lot_owners(self, order_ids: list[str], owner: str) -> int | None:
+        """Record `owner` for these lots, atomic with one revision row. None
+        when there was nothing to record."""
+        if not order_ids:
+            return None
+        with self._transaction() as conn:
+            revision = self._next_revision(
+                conn, "lot_owners", None, f"{owner}: {len(order_ids)} lot(s)"
+            )
+            conn.executemany(
+                "INSERT OR REPLACE INTO ledger_lot_owners (order_id, owner) VALUES (?, ?)",
+                [(order_id, owner) for order_id in order_ids],
+            )
+            return revision
+
+    def clear_lot_owners(self) -> int | None:
+        """Forget every recorded owner: all the lots are the current algorithm's
+        again. None when there was nothing recorded."""
+        if not self.lot_owners():
+            return None
+        with self._transaction() as conn:
+            revision = self._next_revision(conn, "lot_owners", None, "cleared")
+            conn.execute("DELETE FROM ledger_lot_owners")
             return revision
 
     def load_last_buy_price(self) -> float | None:

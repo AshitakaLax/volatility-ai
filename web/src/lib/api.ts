@@ -28,6 +28,7 @@ import type {
   SubmitResponse,
   Validation,
 } from "@/types/backtest";
+import type { AlgorithmLibrary, Candidate, CandidateRequest, TrialRequest } from "@/types/algorithms";
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
 import type {
   AlgorithmView,
@@ -80,6 +81,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "POST", body: JSON.stringify(body) });
+
+const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
 const query = (params: Record<string, string | number | null | undefined>) =>
   new URLSearchParams(
@@ -283,6 +286,23 @@ export const api = {
   /** Dry-run a switch: the trader's reasons to refuse it, or its impact. */
   checkAlgorithm: (id: string, body: ChangeRequest) =>
     post<ChangeCheck>(`/api/live/deployments/${encodeURIComponent(id)}/algorithm/check`, body),
+
+  /** The algorithm library (server/algorithms.py): candidates and where each stands. */
+  algorithms: () => request<AlgorithmLibrary>("/api/algorithms"),
+  addCandidate: (body: CandidateRequest) => post<Candidate>("/api/algorithms/candidates", body),
+  deleteCandidate: (id: string) =>
+    del<{ deleted: string }>(`/api/algorithms/candidates/${encodeURIComponent(id)}`),
+  startTrial: (id: string, body: TrialRequest) =>
+    post<Candidate & { warning?: string | null }>(
+      `/api/algorithms/${encodeURIComponent(id)}/trial`,
+      body,
+    ),
+  evaluateTrial: (id: string) =>
+    post<Candidate>(`/api/algorithms/${encodeURIComponent(id)}/evaluate`, {}),
+  signOff: (id: string, body: { reason: string; operator: string; confirm: string }) =>
+    post<Candidate>(`/api/algorithms/${encodeURIComponent(id)}/override`, body),
+  publishCandidate: (id: string, body: { operator: string; confirm: string }) =>
+    post<Candidate>(`/api/algorithms/${encodeURIComponent(id)}/publish`, body),
 
   /** A Fidelity deployment's bridge host's journal, oldest first: connects,
    * disconnects (with why), sign-outs, the trading switch, checks. */

@@ -95,6 +95,11 @@ services:
       - "${VAI_WEB_BIND:-127.0.0.1}:8000:8000"
     volumes:
       - ./config:/app/config:ro
+      # The one writable corner of config/: the Algorithms tab publishes a
+      # promoted candidate here (server/algorithms.py). The traders mount the
+      # same folder read-only through their own ./config mount, and the
+      # operator reviews and commits what lands.
+      - ./config/live_profiles:/app/config/live_profiles
       # Bars for every backtest; sweeps record their results here.
       - ./warehouse:/app/warehouse
       # Run history, the durable queue, shard caches.

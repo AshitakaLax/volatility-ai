@@ -1,4 +1,12 @@
-import { Activity, ArrowRight, BarChart3, Database, FlaskConical, LineChart } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  BarChart3,
+  Database,
+  FlaskConical,
+  LineChart,
+  ListChecks,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ActiveRuns } from "@/components/backtest/ActiveRuns";
@@ -6,6 +14,7 @@ import { BacktestResult } from "@/components/backtest/BacktestResult";
 import { ParameterForm } from "@/components/backtest/ParameterForm";
 import { RunHistory } from "@/components/backtest/RunHistory";
 import { ShardPanel } from "@/components/backtest/ShardPanel";
+import { AlgorithmsTab } from "@/components/algorithms/AlgorithmsTab";
 import { LiveTab } from "@/components/live/LiveTab";
 import { ModelInsights } from "@/components/ml/ModelInsights";
 import { WarehouseTab } from "@/components/warehouse/WarehouseTab";
@@ -29,7 +38,7 @@ import { DEFAULT_FILTERS, type ExecutionFilters, type Report } from "@/types/bac
  * is no run, so the page is useful before the API is up, which is also
  * how it was developed.
  */
-type Tab = "backtest" | "result" | "live" | "ml" | "warehouse";
+type Tab = "backtest" | "result" | "live" | "algorithms" | "ml" | "warehouse";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("backtest");
@@ -89,6 +98,7 @@ export default function App() {
                 { id: "backtest", label: "Backtesting", icon: LineChart },
                 { id: "result", label: "Backtest result", icon: BarChart3 },
                 { id: "live", label: "Live", icon: Activity },
+                { id: "algorithms", label: "Algorithms", icon: ListChecks },
                 { id: "ml", label: "Model research", icon: FlaskConical },
                 { id: "warehouse", label: "Warehouse", icon: Database },
               ] as const
@@ -125,6 +135,8 @@ export default function App() {
       <main className="mx-auto max-w-[1600px] space-y-4 px-6 py-6">
         {tab === "live" ? (
           <LiveTab />
+        ) : tab === "algorithms" ? (
+          <AlgorithmsTab />
         ) : tab === "ml" ? (
           <ModelInsights />
         ) : tab === "warehouse" ? (

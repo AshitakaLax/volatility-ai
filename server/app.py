@@ -47,6 +47,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from server import (
+    algorithms,
     backtest,
     deployment,
     history,
@@ -109,6 +110,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(live.router)
 app.include_router(live_control.router)
+app.include_router(algorithms.router)
 # THE BACKTEST ROUTES COME FROM ONE PLACE OR THE OTHER, NEVER BOTH.
 #
 # With VAI_BACKTEST_UPSTREAM set this host forwards them and never

@@ -34,6 +34,7 @@ offered to deployments trading one of them.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -43,6 +44,8 @@ from typing import Any
 import yaml
 
 from engine.core.exceptions import ConfigurationError
+
+logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DIR = _REPO_ROOT / "config" / "live_profiles"
@@ -77,7 +80,10 @@ class Profile:
         """The paper promotion evaluation it names, read -- None when it names
         none or the file is missing or unreadable."""
         named = self.evidence.get("promotion")
-        if not named or self.path is None:
+        # A path to the evaluation. Anything else (the word PASSING, a mapping
+        # written inline) names none: a gate that opens on a hand-typed value
+        # is not a gate, and it must not stop the profile list either.
+        if not isinstance(named, str) or not named or self.path is None:
             return None
         path = Path(named)
         if not path.is_absolute():
@@ -87,6 +93,13 @@ class Profile:
         except (OSError, ValueError):
             return None
         return data if isinstance(data, dict) else None
+
+    def promotion_kind(self) -> str | None:
+        """ "manual" for the owner's own sign-off, "paper" for a trial's pass,
+        None when it is not promoted."""
+        if not self.promoted():
+            return None
+        return "manual" if (self.promotion() or {}).get("manual") is True else "paper"
 
     def promoted(self) -> bool:
         """Whether it carries a PASSING paper promotion -- what real money needs."""
@@ -101,6 +114,7 @@ class Profile:
             **self.change(),
             "evidence": {key: value for key, value in self.evidence.items() if key != "promotion"},
             "promoted": self.promoted(),
+            "promotion_kind": self.promotion_kind(),
         }
 
 
@@ -141,15 +155,20 @@ def _profile(path: Path) -> Profile:
 
 
 def load_profiles() -> dict[str, Profile]:
-    """Every profile, by id. A malformed file is an error, not a skip: a
-    profile that silently vanished from the list would be a decision made
-    by accident."""
+    """Every well-formed profile, by id. A malformed file is logged and
+    skipped, so one bad file can't take the others off the Live page; the
+    profile it would have been is simply not offered. `get` still refuses
+    an id that is not here."""
     directory = profiles_dir()
     if not directory.is_dir():
         return {}
     profiles: dict[str, Profile] = {}
     for path in sorted(directory.glob("*.yaml")):
-        profile = _profile(path)
+        try:
+            profile = _profile(path)
+        except (ConfigurationError, yaml.YAMLError, OSError, ValueError) as exc:
+            logger.warning(f"Skipping malformed live profile {path.name}: {exc}")
+            continue
         profiles[profile.id] = profile
     return profiles
 

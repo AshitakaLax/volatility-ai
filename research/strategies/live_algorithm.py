@@ -68,6 +68,12 @@ _MAX_TEXT = 200
 _OMIT = object()
 
 
+# What a switch does with the lots held at the time: leave them selling at
+# their own targets, sell them as soon as they clear cost, or (switching only
+# when flat) nothing, as there are none.
+LEGACY_MODES = ("keep", "exit_at_cost", "wait")
+
+
 def override_path(state_db: str | Path) -> Path:
     """Beside the live state database, with the order journal."""
     return Path(state_db).with_name(OVERRIDE_FILENAME)
@@ -353,6 +359,11 @@ class AlgorithmControl:
         config.validate()
         return config
 
+    def transition(self) -> dict | None:
+        """The override in force, for the loop to apply what the switch said
+        to do with the lots then held; None when the YAML's algorithm trades."""
+        return self.read_override() if self._applies_override else None
+
     def override_info(self) -> dict | None:
         """Who changed it, how and when -- None when the YAML's is traded."""
         override = self.read_override() if self._applies_override else None
@@ -611,15 +622,18 @@ class AlgorithmControl:
         }
 
 
-def impact(current: dict, change: dict, lots: list[dict]) -> dict:
+def impact(current: dict, change: dict, lots: list[dict], legacy_lots: str = "keep") -> dict:
     """What a switch from `current` to `change` does to the open book.
 
     `lots` are the ledger's open lots ({"px", "qty", "target"} as server/
-    live.py's state_payload serves them). Every lot keeps the target it was
-    bought at -- registered at the buy, never moved by a switch -- so only
-    NEW lots use the new grid. What a switch can change for the old ones is
-    whether a signal exit (the Ultimate family's regime exit) still applies.
+    live.py's state_payload serves them). A lot keeps the target it was
+    bought at, and `legacy_lots` says whose it is afterwards: "keep" leaves
+    them as the legacy book, exiting at those targets and out of the new
+    algorithm's reach (so a regime exit does not apply to them);
+    "exit_at_cost" also moves their targets to the smallest gain that clears
+    cost; "wait" is a switch made when flat.
     """
+    from engine.core.ledger import EXIT_AT_COST_TARGET
     from research.strategies.strategy_registry import SIGNAL_EXIT_STRATEGIES
 
     count = len(lots)
@@ -627,17 +641,29 @@ def impact(current: dict, change: dict, lots: list[dict]) -> dict:
     exit_before = current.get("strategy_id") in SIGNAL_EXIT_STRATEGIES
     exit_after = change.get("strategy_id") in SIGNAL_EXIT_STRATEGIES
     notes = []
-    if count:
+    if count and legacy_lots == "keep":
+        notes.append(
+            f"{count} open lot{'' if count == 1 else 's'} become the legacy book: they exit at "
+            "the targets they were bought at, and the new algorithm neither sees, retargets "
+            "nor sells them. Its grid starts from the price at the switch."
+        )
+    elif count and legacy_lots == "exit_at_cost":
+        notes.append(
+            f"{count} open lot{'' if count == 1 else 's'} become the legacy book with their "
+            f"target moved to {EXIT_AT_COST_TARGET:.2%}, so each sells as soon as it clears "
+            "cost; a lot below cost waits. The new algorithm does not see them."
+        )
+    elif count:
         notes.append(
             f"{count} open lot{'' if count == 1 else 's'} carry over with the targets they were "
             "bought at; only new lots use the new step and target."
         )
-    if exit_before and not exit_after:
+    if exit_before and not exit_after and count:
         notes.append(
             f"The regime exit stops: lots opened under {current.get('strategy_id')} then exit "
             "only at their own targets, through any downturn."
         )
-    if exit_after and not exit_before and count:
+    if exit_after and not exit_before and count and legacy_lots == "wait":
         notes.append(
             f"{change.get('strategy_id')}'s regime exit will apply to the lots already open, "
             "including ones bought by the old algorithm."
@@ -654,6 +680,7 @@ def impact(current: dict, change: dict, lots: list[dict]) -> dict:
         ),
         "signal_exit_before": exit_before,
         "signal_exit_after": exit_after,
+        "legacy_lots": legacy_lots,
         "notes": notes,
     }
 
@@ -775,6 +802,12 @@ def algorithm_handlers(
                 key: args.get(key)
                 for key in ("strategy_id", "strategy_params", "step", "profit_target")
             }
+        # What to do with the lots held now (engine/trading/live_trading_loop.py
+        # _apply_transition): the old algorithm's lots keep selling by default.
+        mode = args.get("legacy_lots") or "keep"
+        if mode not in LEGACY_MODES:
+            raise CommandRejected(f"legacy_lots must be one of {', '.join(LEGACY_MODES)}")
+        provenance["legacy_lots"] = mode
         try:
             result = control.set(change, channel="web", provenance=provenance)
         except (ConfigurationError, PermissionError) as exc:

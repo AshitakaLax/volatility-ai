@@ -11,6 +11,7 @@ an unreadable one is an error rather than silently ignored.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -508,6 +509,39 @@ def test_the_impact_of_a_switch_on_the_book():
     assert result["lots_at_new_target"] == 1
     assert result["signal_exit_before"] and not result["signal_exit_after"]
     assert any("regime exit stops" in note for note in result["notes"])
+
+
+def test_the_impact_says_what_becomes_of_the_lots_held():
+    from research.strategies.live_algorithm import impact
+
+    lots = [{"px": 50.0, "qty": 2.0, "target": 0.3}]
+    current, change = {"strategy_id": "fixed"}, {"strategy_id": "ultimate", "profit_target": 0.3}
+    keep = impact(current, change, lots, "keep")
+    assert keep["legacy_lots"] == "keep"
+    assert any("legacy book" in note and "neither sees" in note for note in keep["notes"])
+    assert not any("regime exit will apply" in note for note in keep["notes"])
+    at_cost = impact(current, change, lots, "exit_at_cost")
+    assert any("sells as soon as it clears cost" in note for note in at_cost["notes"])
+    wait = impact(current, change, lots, "wait")
+    assert any("regime exit will apply" in note for note in wait["notes"])
+
+
+def test_a_switch_carries_what_to_do_with_the_lots_held(tmp_path):
+    from engine.trading.operator_control import CommandRejected
+
+    control = _control(tmp_path, allowed=False, web_allowed=True)
+    handlers = _handlers(control)
+
+    def command(**extra):
+        return SimpleNamespace(operator="tester", reason="trial", args={**_change(), **extra})
+
+    handlers["switch_algorithm"](command(legacy_lots="exit_at_cost"))
+    assert control.read_override()["legacy_lots"] == "exit_at_cost"
+    assert control.transition()["legacy_lots"] == "exit_at_cost"
+    with pytest.raises(CommandRejected, match="legacy_lots"):
+        handlers["switch_algorithm"](command(legacy_lots="sell-everything"))
+    handlers["switch_algorithm"](command())  # unstated: the old algorithm's lots keep selling
+    assert control.read_override()["legacy_lots"] == "keep"
 
 
 # -- what an algorithm does, in a line ---------------------------------------------

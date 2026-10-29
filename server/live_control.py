@@ -47,7 +47,7 @@ from engine.core.exceptions import ConfigurationError
 from engine.data.dashboard_data import DashboardError, load_state
 from engine.trading.control_inbox import Command, InvalidCommand
 from research.strategies import live_profiles
-from research.strategies.live_algorithm import AlgorithmControl, impact
+from research.strategies.live_algorithm import LEGACY_MODES, AlgorithmControl, impact
 from research.strategies.param_schema import describe_params
 from research.strategies.strategy_registry import STRATEGIES
 from server import live_registry
@@ -163,9 +163,10 @@ def _checked_args(body: CommandRequest, deployment: Deployment) -> dict[str, Any
         result = check_change(deployment, args)
         if not result["ok"]:
             raise HTTPException(status_code=422, detail="; ".join(result["errors"]))
+        legacy = {"legacy_lots": result["legacy_lots"]}
         if "profile_id" in args:
-            return {"profile_id": str(args["profile_id"])}
-        return result["change"]
+            return {"profile_id": str(args["profile_id"]), **legacy}
+        return {**result["change"], **legacy}
     if body.type == "disable":
         mode = args.get("mode", "now")
         if mode not in ("now", "wind_down"):
@@ -356,6 +357,9 @@ def check_change(deployment: Deployment, args: dict[str, Any]) -> dict[str, Any]
     if not caps.algorithm_changes:
         return {"ok": False, "errors": ["its config does not grant live.control.algorithm_changes"]}
     control = algorithm_control(deployment)
+    legacy_lots = args.get("legacy_lots") or "keep"
+    if legacy_lots not in LEGACY_MODES:
+        return {"ok": False, "errors": [f"legacy_lots must be one of {', '.join(LEGACY_MODES)}"]}
     profile_id = args.get("profile_id")
     if profile_id:
         try:
@@ -383,7 +387,8 @@ def check_change(deployment: Deployment, args: dict[str, Any]) -> dict[str, Any]
         "errors": [],
         "change": change,
         "current": current,
-        "impact": impact(current, change, _open_lots_detail(deployment)),
+        "legacy_lots": legacy_lots,
+        "impact": impact(current, change, _open_lots_detail(deployment), legacy_lots),
         "typed": confirmation_needed(deployment, "switch_algorithm", change),
     }
 
@@ -432,6 +437,8 @@ class ChangeRequest(BaseModel):
     strategy_params: dict[str, Any] = Field(default_factory=dict)
     step: float | None = None
     profit_target: float | None = None
+    # What to do with the lots held at the switch (live_algorithm.LEGACY_MODES).
+    legacy_lots: Literal["keep", "exit_at_cost", "wait"] = "keep"
 
 
 @router.post("/{deployment_id}/algorithm/check", dependencies=[Depends(same_origin)])
@@ -440,7 +447,7 @@ def algorithm_check(deployment_id: str, body: ChangeRequest) -> dict[str, Any]:
     it would do to the book. Writes nothing and queues nothing."""
     deployment = _deployment(deployment_id)
     args = (
-        {"profile_id": body.profile_id}
+        {"profile_id": body.profile_id, "legacy_lots": body.legacy_lots}
         if body.profile_id
         else body.model_dump(exclude={"profile_id"})
     )
