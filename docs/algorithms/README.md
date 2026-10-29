@@ -7,16 +7,16 @@ every row, whether volatility-ai implements it and link here.
 
 | Path | What it is | Written by |
 |---|---|---|
-| `<slug>.md` without a `generated` first line | A **researched** page: the rule, evidence for and against, fit with the project's constraints, what the repository already has, and how to test it here. Ledger IDs RK1–RK100 and RK200–RK400 (the same ranks). | hand |
+| `<slug>.md` without a `generated` first line | A **researched** page: the rule, evidence for and against, fit with the project's constraints, what the repository already has, and how to test it here. Ledger IDs RK1–RK100 and RK200–RK425 (the same ranks). | hand |
 | `<slug>.md` with a `generated` first line | A **card** for one of the 425 specific algorithms (ranks 1–425): the CSV's own text plus the implementation status. | `tools/build_algorithm_ledger.py` |
-| `concepts/<slug>.md` | One page per description shared by the 13,800 title-reconstructed rows (ranks 426–14,225): the description, every variant of the other fields its members carry, and the members. [Index](concepts/README.md). | the build |
+| `concepts/<slug>.md` | One page per description shared by the 13,800 title-reconstructed rows (ranks 426–14,225): the description, every variant of the other fields its members carry, and the members. [Index](concepts/README.md). A concept page without a `generated` first line is **researched**: the 34 concepts of ranks 426–700 are. | the build; researched ones by hand |
 | `ranked/ranks-*.md` | The title-reconstructed rows by rank, 1,000 per page, each linked to its concept page. | the build |
 | `implementation_status.csv` | Which algorithms have code here: status, ledger IDs, code references, a note. Not listed means not implemented. | hand |
 | `source/*.csv.xz` | The import itself, every field of every row (`xz -dk` to read it). | the import |
 
 ## Researched so far
 
-Ranks 1–100 and 200–400, one page each (101–199 are not yet researched). Each page says what its sources are and how far
+Ranks 1–100 and 200–425, one page each (101–199 are not yet researched). Each page says what its sources are and how far
 they could be checked (full texts could not be opened from the research environment).
 
 | ID | Algorithm | Rank | Implemented |
@@ -322,12 +322,82 @@ they could be checked (full texts could not be opened from the research environm
 | RK398 | [Persistent Homology Betti-2 Persistence Landscape Macro Contagion](persistent-homology-betti-2-persistence-landscape-macro-contagion.md) | 398 | No |
 | RK399 | [Generative Score-Based Diffusion Cross-Sectional Factor Synthesizer](generative-score-based-diffusion-cross-sectional-factor-synthesizer.md) | 399 | No |
 | RK400 | [Graph Attention Network Riemannian Manifold Covariance Shrinkage](graph-attention-network-riemannian-manifold-covariance-shrinkage.md) | 400 | No |
+| RK401 | [Persistent Homology Betti-1 Cyclical Persistence Landscape Contagion](persistent-homology-betti-1-cyclical-persistence-landscape-contagion.md) | 401 | No |
+| RK402 | [Generative Score-Based Diffusion Cross-Sectional Alpha Synthesizer](generative-score-based-diffusion-cross-sectional-alpha-synthesizer.md) | 402 | No |
+| RK403 | [Persistent Homology Betti-2 Persistence Landscape Macro Fragility](persistent-homology-betti-2-persistence-landscape-macro-fragility.md) | 403 | No |
+| RK404 | [Graph Attention Network Riemannian Manifold Covariance Diffusion](graph-attention-network-riemannian-manifold-covariance-diffusion.md) | 404 | No |
+| RK405 | [Generative Score-Based Diffusion Cross-Sectional Ranking Synthesizer](generative-score-based-diffusion-cross-sectional-ranking-synthesizer.md) | 405 | No |
+| RK406 | [Graph Attention Network Riemannian Manifold Covariance Regularization](graph-attention-network-riemannian-manifold-covariance-regularization.md) | 406 | No |
+| RK407 | [Spiking Neural Network (SNN) Event-Driven Microstructure Scalper](spiking-neural-network-snn-event-driven-microstructure-scalper.md) | 407 | No |
+| RK408 | [Neural Jump ODE (NJ-ODE) High-Frequency Price Predictor](neural-jump-ode-nj-ode-high-frequency-price-predictor.md) | 408 | No |
+| RK409 | [Wasserstein Distributionally Robust Koopman Model Predictive Control](wasserstein-distributionally-robust-koopman-model-predictive-control.md) | 409 | No |
+| RK410 | [Wasserstein Distributionally Robust Neural Operator Optimal Execution](wasserstein-distributionally-robust-neural-operator-optimal-execution.md) | 410 | No |
+| RK411 | [Recurrent Neural Hawkes Point Process Dynamic Hedging Scheduler](recurrent-neural-hawkes-point-process-dynamic-hedging-scheduler.md) | 411 | No |
+| RK412 | [Recurrent Neural Hawkes Point Process Toxic Flow Hedging Allocator](recurrent-neural-hawkes-point-process-toxic-flow-hedging-allocator.md) | 412 | No |
+| RK413 | [Temporal Fusion Transformer (TFT) Multi-Horizon Price Forecaster](temporal-fusion-transformer-tft-multi-horizon-price-forecaster.md) | 413 | No |
+| RK414 | [Attention-Based Recurrent Neural Hawkes Point Process Alpha](attention-based-recurrent-neural-hawkes-point-process-alpha.md) | 414 | No |
+| RK415 | [Koopman Operator Model Predictive Control Portfolio Rebalancing](koopman-operator-model-predictive-control-portfolio-rebalancing.md) | 415 | No |
+| RK416 | [Koopman Operator Model Predictive Control Dynamic Hedging](koopman-operator-model-predictive-control-dynamic-hedging.md) | 416 | No |
+| RK417 | [Koopman Operator Model Predictive Control Yield Curve Control](koopman-operator-model-predictive-control-yield-curve-control.md) | 417 | No |
+| RK418 | [Koopman Operator Model Predictive Control Spread Hedging](koopman-operator-model-predictive-control-spread-hedging.md) | 418 | No |
+| RK419 | [Reinforcement Learning with Expert Guidance (RLEG) Execution](reinforcement-learning-with-expert-guidance-rleg-execution.md) | 419 | No |
+| RK420 | [Quantum Annealing Optimal Execution Trajectory Solver](quantum-annealing-optimal-execution-trajectory-solver.md) | 420 | No |
+| RK421 | [Wasserstein Distributionally Robust RL Execution](wasserstein-distributionally-robust-rl-execution.md) | 421 | No |
+| RK422 | [Multi-Agent Deep Deterministic Reinforcement Learning Cross-Venue Execution](multi-agent-deep-deterministic-reinforcement-learning-cross-venue-execution.md) | 422 | No |
+| RK423 | [Multi-Agent Reinforcement Learning Stackelberg Execution Broker](multi-agent-reinforcement-learning-stackelberg-execution-broker.md) | 423 | No |
+| RK424 | [Wasserstein Distributionally Robust Hawkes Jump-Diffusion Optimal Execution](wasserstein-distributionally-robust-hawkes-jump-diffusion-optimal-execution.md) | 424 | No |
+| RK425 | [Deep Recurrent Attentive Execution Agent (DR-Attn-Exec)](deep-recurrent-attentive-execution-agent-dr-attn-exec.md) | 425 | No |
+
+## Researched concepts (ranks 426–700)
+
+The 275 title-reconstructed rows in ranks 426–700 share 34 descriptions,
+researched one page per concept (the ledger's §8C "Researched concepts"
+explains why). Members of the same concepts further down the list link
+to the same pages.
+
+| Concept | Task | Members in 426–700 / all | Verdict | Evidence |
+|---|---|---|---|---|
+| [Model for tail-risk hedging and allocation](concepts/model-for-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 6 / 142 | 🔬 the project's equivalent is the regime exit (V17, N5) | Evidence found |
+| [Robust approach to factor risk-parity allocation](concepts/robust-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 3 / 18 | ⏳ for a multi-ETF book · no method-specific evidence | Unable to find more details |
+| [Attention-weighted approach to factor risk-parity allocation](concepts/attention-weighted-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 2 / 10 | ⛔ (no evidence) | Unable to find more details |
+| [Stochastic-process-based approach to momentum/trend forecasting](concepts/stochastic-process-based-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 28 / 72 | ⏳ as a long-or-cash overlay (as RK1) · ⛔ for stock members | Evidence found |
+| [Adaptive approach to momentum/trend forecasting](concepts/adaptive-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 30 / 73 | ⏳ as a long-or-cash overlay (as RK1) · ⛔ for stock members | Evidence found |
+| [Dynamical-systems/geometric approach to factor risk-parity allocation](concepts/dynamical-systems-geometric-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 2 / 11 | ⛔ (no evidence) | Unable to find more details |
+| [Markov-state-based approach to momentum/trend forecasting](concepts/markov-state-based-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 30 / 74 | 🧪 the regime models exist (C-R3) · ⏳ as a regime input | Evidence found |
+| [Dynamical-systems/geometric approach to covariance estimation for portfolio risk](concepts/dynamical-systems-geometric-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 5 / 63 | ⛔ (no evidence) | Unable to find more details |
+| [Conformal-prediction-based approach to momentum/trend forecasting](concepts/conformal-prediction-based-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 25 / 62 | 🧪 conformal sizing exists · ⏳ as an uncertainty wrapper | Evidence found |
+| [Robust approach to covariance estimation for portfolio risk](concepts/robust-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 4 / 68 | ⏳ for a multi-ETF book | Evidence found |
+| [Spectral approach to momentum/trend forecasting](concepts/spectral-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 25 / 66 | ⛔ (no evidence over plain momentum) | Unable to find more details |
+| [Attention-weighted approach to covariance estimation for portfolio risk](concepts/attention-weighted-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 4 / 63 | ⛔ (thin evidence) | Needs more info |
+| [Copula-based approach to factor risk-parity allocation](concepts/copula-based-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 9 / 69 | ⏳ for a multi-ETF book (CVaR budgets) | Evidence found |
+| [Nonlinear approach to factor risk-parity allocation](concepts/nonlinear-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 8 / 62 | ⛔ (no evidence) | Unable to find more details |
+| [Variational approach to factor risk-parity allocation](concepts/variational-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 8 / 62 | ⛔ (no evidence) | Unable to find more details |
+| [Geometry-aware approach to factor risk-parity allocation](concepts/geometry-aware-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 8 / 63 | ⛔ (no evidence) | Unable to find more details |
+| [Path-signature-based approach to factor risk-parity allocation](concepts/path-signature-based-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 13 / 63 | ⛔ (no evidence) | Unable to find more details |
+| [Kernel-based approach to factor risk-parity allocation](concepts/kernel-based-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 12 / 62 | ⛔ (no evidence) | Unable to find more details |
+| [Evolutionary-optimization-based approach to factor risk-parity allocation](concepts/evolutionary-optimization-based-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 12 / 62 | ⛔ (risk parity is convex; nothing to search) | Unable to find more details |
+| [Model for sector allocation](concepts/model-for-sector-allocation.md) | Sector allocation | 2 / 13 | 🧪 relative-strength rotation is built (X3) · unmeasured | Evidence found |
+| [Model for regime-aware allocation](concepts/model-for-regime-aware-allocation.md) | Regime-aware allocation | 1 / 12 | 🔬 this is the project's own regime work (V17, N5, N6, C-R3) | Evidence found |
+| [Bayesian approach to momentum/trend forecasting](concepts/bayesian-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 5 / 5 | ⏳ via the trend-filter literature · no method-specific evidence | Unable to find more details |
+| [Robust approach to momentum/trend forecasting](concepts/robust-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 5 / 7 | ⏳ in principle · no method-specific evidence | Unable to find more details |
+| [Copula-based approach to momentum/trend forecasting](concepts/copula-based-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 5 / 7 | ⛔ (no evidence) | Unable to find more details |
+| [Nonlinear approach to momentum/trend forecasting](concepts/nonlinear-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 2 / 4 | ⏳ via the trend-filter literature · ⛔ for ML variants | Evidence found |
+| [Model for covariance estimation for portfolio risk](concepts/model-for-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 2 / 6 | ⏳ for a multi-ETF book (use shrinkage) | Evidence found |
+| [Wavelet-based approach to tail-risk hedging and allocation](concepts/wavelet-based-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 4 / 135 | ⛔ (no evidence) | Unable to find more details |
+| [Fractional-order approach to momentum/trend forecasting](concepts/fractional-order-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 2 / 78 | 🧪 the Hurst diagnostic exists (C-MR4) · ⛔ as a forecast | Unable to find more details |
+| [Koopman-operator-based approach to factor risk-parity allocation](concepts/koopman-operator-based-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 2 / 10 | ⛔ (no evidence) | Unable to find more details |
+| [Dynamical-systems/geometric approach to tail-risk hedging and allocation](concepts/dynamical-systems-geometric-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 4 / 136 | ⛔ (no evidence) | Unable to find more details |
+| [Recursive approach to tail-risk hedging and allocation](concepts/recursive-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 3 / 139 | ⏳ as an alternative exit trigger · test against N5 | Evidence found |
+| [Diffusion-model-based approach to momentum/trend forecasting](concepts/diffusion-model-based-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 2 / 62 | ⛔ (no evidence) | Unable to find more details |
+| [Koopman-operator-based approach to covariance estimation for portfolio risk](concepts/koopman-operator-based-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 1 / 62 | ⛔ (no evidence) | Unable to find more details |
+| [Topology-aware approach to momentum/trend forecasting](concepts/topology-aware-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 1 / 62 | ⛔ (no evidence) | Unable to find more details |
 
 ### Research gaps
 
 **Needs more info** (a reference is cited or likely exists but could not
 be identified or read): RK31, RK44, RK68, RK93; RK219, RK232, RK235,
-RK250, RK256, RK259, RK267, RK286; RK331, RK348, RK376, RK382, RK400.
+RK250, RK256, RK259, RK267, RK286; RK331, RK348, RK376, RK382, RK400;
+RK406, RK408.
 
 **Unable to find more details** (no published evaluation found by two
 searches): RK38, RK64, RK69, RK77, RK78, RK86, RK92, RK94, RK95, RK97,
@@ -340,7 +410,12 @@ RK323, RK325, RK326, RK330, RK332, RK333, RK334, RK335, RK337, RK338,
 RK339, RK340, RK341, RK342, RK344, RK345, RK350, RK353, RK354, RK355,
 RK356, RK357, RK358, RK359, RK360, RK362, RK365, RK369, RK370, RK371,
 RK374, RK375, RK380, RK384, RK386, RK387, RK388, RK389, RK390, RK392,
-RK393, RK394, RK396, RK397, RK398.
+RK393, RK394, RK396, RK397, RK398; RK401, RK403, RK404, RK409, RK410,
+RK411, RK412, RK414, RK415, RK416, RK417, RK418, RK421, RK422, RK423,
+RK424, RK425.
+
+For the concepts of ranks 426–700, the Evidence column above gives the
+status: 1 needs more info, 21 unable to find more details.
 
 [The ledger's table](../algorithm_ledger.md#research-gaps) says what each
 one lacks.

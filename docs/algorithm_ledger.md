@@ -14,7 +14,8 @@ code for every remaining entry, in-scope or not. Section 8C (2026-10-27)
 adds a ranked list of 14,225 algorithms from a CSV import, each with
 whether it is implemented here and a link to its documentation in
 [`docs/algorithms/`](algorithms/README.md); ranks 1–100 (RK1–RK100) and
-200–400 (RK200–RK400) are researched, and §8C lists the research gaps that remain.*
+200–425 (RK200–RK425) are researched one by one, ranks 426–700 through the 34 concepts they
+share, and §8C lists the research gaps that remain.*
 
 ---
 
@@ -483,8 +484,33 @@ entries also have reference code in `research/catalog/`, unwired.
 | RK398 | Persistent-homology Betti-2 landscape macro contagion | ranked list #398 | Topological data analysis | ⛔ | None |
 | RK399 | Score-based diffusion cross-sectional factor synthesizer | ranked list #399; Chen et al. 2025 | Generative scenarios | ⛔ | None |
 | RK400 | Graph-attention Riemannian covariance shrinkage | ranked list #400 | Covariance estimation | ⛔ | None |
+| RK401 | Persistent-homology Betti-1 landscape contagion | ranked list #401 | Topological data analysis | ⛔ | None |
+| RK402 | Score-based diffusion cross-sectional alpha synthesizer | ranked list #402; Chen et al. 2025 | Generative scenarios | ⛔ | None |
+| RK403 | Persistent-homology Betti-2 landscape macro fragility | ranked list #403 | Topological data analysis | ⛔ | None |
+| RK404 | Graph-attention Riemannian covariance diffusion | ranked list #404 | Covariance estimation | ⛔ | None |
+| RK405 | Score-based diffusion cross-sectional ranking synthesizer | ranked list #405; Chen et al. 2025 | Generative scenarios | ⛔ | None |
+| RK406 | Graph-attention Riemannian covariance regularization | ranked list #406 | Covariance estimation | ⛔ | None |
+| RK407 | Spiking neural network event-driven microstructure scalper | ranked list #407; arXiv 2512.05868 | Neuromorphic AI | ⛔ | None |
+| RK408 | Neural jump ODE (NJ-ODE) high-frequency price predictor | ranked list #408 | Continuous-time deep learning | ⛔ | None |
+| RK409 | Wasserstein distributionally robust Koopman MPC | ranked list #409 | Koopman / MPC | ⛔ | None |
+| RK410 | Wasserstein distributionally robust neural-operator execution | ranked list #410 | Execution / robust optimisation | ⛔ | None |
+| RK411 | Recurrent neural Hawkes dynamic hedging scheduler | ranked list #411 | Derivatives hedging / point processes | ⛔ | None |
+| RK412 | Recurrent neural Hawkes toxic-flow hedging allocator | ranked list #412 | Derivatives hedging / point processes | ⛔ | None |
+| RK413 | Temporal Fusion Transformer multi-horizon price forecaster | ranked list #413; Lim et al. 2021 | Deep forecasting | ⛔ | None |
+| RK414 | Attention-based neural Hawkes alpha | ranked list #414 | Point processes / attention | ⛔ | None |
+| RK415 | Koopman-operator MPC portfolio rebalancing | ranked list #415 | Koopman / MPC | ⛔ | None |
+| RK416 | Koopman-operator MPC dynamic hedging | ranked list #416 | Koopman / MPC hedging | ⛔ | None |
+| RK417 | Koopman-operator MPC yield-curve control | ranked list #417 | Koopman / MPC | ⛔ | None |
+| RK418 | Koopman-operator MPC spread hedging | ranked list #418 | Koopman / MPC hedging | ⛔ | None |
+| RK419 | RL with expert guidance (RLEG) execution | ranked list #419; Fang et al. 2021 | RL execution | ⛔ | None |
+| RK420 | Quantum annealing optimal execution trajectory | ranked list #420; Rosenberg et al. 2016 | Quantum optimisation / execution | ⛔ | None |
+| RK421 | Wasserstein distributionally robust RL execution | ranked list #421 | Execution / robust optimisation | ⛔ | None |
+| RK422 | MADDPG cross-venue execution | ranked list #422 | RL execution | ⛔ | None |
+| RK423 | Multi-agent RL Stackelberg execution broker | ranked list #423 | RL execution | ⛔ | None |
+| RK424 | Wasserstein distributionally robust Hawkes jump-diffusion execution | ranked list #424 | Execution / robust optimisation | ⛔ | None |
+| RK425 | Deep recurrent attentive execution agent | ranked list #425 | RL execution | ⛔ | None |
 
-The remaining 13,924 rows of the ranked list are tabled in §8C, not here. Ranks 1–100 and 200–400 are researched (ranks 101–199 are not yet); the ones whose sources could not be found or checked are listed in §8C under "Research gaps".
+The remaining 13,899 rows of the ranked list are tabled in §8C, not here. Ranks 1–100 and 200–425 are researched one by one, and ranks 426–700 through the 34 concepts they share (ranks 101–199 are not yet); the ones whose sources could not be found or checked are listed in §8C under "Research gaps".
 
 ---
 
@@ -4251,6 +4277,282 @@ Shrink covariance matrices with graph attention while keeping them on the positi
 * **Built:** Nothing.
 * **Details:** [docs/algorithms/graph-attention-network-riemannian-manifold-covariance-shrinkage.md](algorithms/graph-attention-network-riemannian-manifold-covariance-shrinkage.md)
 
+### RK401. Persistent-homology Betti-1 landscape contagion ⛔
+
+Track one-dimensional loops (Betti-1) in persistence landscapes of rolling multi-asset correlation point clouds. Landscape norms rose before two crashes (Gidea & Katz 2018); nothing for this dimension alone.
+
+* **Fit:** RK255 first.
+* **Against:** Rare, noisy features; free parameters.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/persistent-homology-betti-1-cyclical-persistence-landscape-contagion.md](algorithms/persistent-homology-betti-1-cyclical-persistence-landscape-contagion.md)
+
+### RK402. Score-based diffusion cross-sectional alpha synthesizer ⛔
+
+Diffusion-generated alpha-signal scenarios from panels of stock factors; factor-structured diffusion has recent theory (Chen et al. 2025).
+
+* **Fit:** Cross-sectional; no stock universe here.
+* **Against:** Inherits regimes; hard to validate.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/generative-score-based-diffusion-cross-sectional-alpha-synthesizer.md](algorithms/generative-score-based-diffusion-cross-sectional-alpha-synthesizer.md)
+
+### RK403. Persistent-homology Betti-2 landscape macro fragility ⛔
+
+Track two-dimensional voids (Betti-2) in persistence landscapes of rolling cross-asset correlations. Landscape norms rose before two crashes (Gidea & Katz 2018); nothing for this dimension alone.
+
+* **Fit:** RK255 first.
+* **Against:** Rare, noisy features; free parameters.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/persistent-homology-betti-2-persistence-landscape-macro-fragility.md](algorithms/persistent-homology-betti-2-persistence-landscape-macro-fragility.md)
+
+### RK404. Graph-attention Riemannian covariance diffusion ⛔
+
+Diffuse covariance estimates over an asset graph with graph attention while keeping them on the manifold of positive-definite matrices. Untested; shrinkage is the baseline.
+
+* **Fit:** A multi-asset input; the engine trades one symbol.
+* **Against:** Must beat shrinkage; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/graph-attention-network-riemannian-manifold-covariance-diffusion.md](algorithms/graph-attention-network-riemannian-manifold-covariance-diffusion.md)
+
+### RK405. Score-based diffusion cross-sectional ranking synthesizer ⛔
+
+Diffusion-generated ranking scenarios from panels of stock rankings; factor-structured diffusion has recent theory (Chen et al. 2025).
+
+* **Fit:** Cross-sectional; no stock universe here.
+* **Against:** Inherits regimes; hard to validate.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/generative-score-based-diffusion-cross-sectional-ranking-synthesizer.md](algorithms/generative-score-based-diffusion-cross-sectional-ranking-synthesizer.md)
+
+### RK406. Graph-attention Riemannian covariance regularization ⛔
+
+Clip and regularise covariance eigenvalues with graph attention on the positive-definite manifold. Untested; shrinkage is the baseline.
+
+* **Fit:** A multi-asset input; the engine trades one symbol.
+* **Against:** Must beat shrinkage; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/graph-attention-network-riemannian-manifold-covariance-regularization.md](algorithms/graph-attention-network-riemannian-manifold-covariance-regularization.md)
+
+### RK407. Spiking neural network event-driven microstructure scalper ⛔
+
+Spiking networks on order-book event streams; one 2025 preprint reports 76.8% against 42.5% in a simple, cost-free backtest.
+
+* **Fit:** Tick scalping; no order-book data.
+* **Against:** One unreviewed, cost-free backtest.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/spiking-neural-network-snn-event-driven-microstructure-scalper.md](algorithms/spiking-neural-network-snn-event-driven-microstructure-scalper.md)
+
+### RK408. Neural jump ODE (NJ-ODE) high-frequency price predictor ⛔
+
+Neural jump ODEs predict between irregular observations, provably optimally (Herrera, Krach & Teichmann 2021); no high-frequency price study found.
+
+* **Fit:** Tick prediction; no tick data.
+* **Against:** Little to predict in a near-martingale.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/neural-jump-ode-nj-ode-high-frequency-price-predictor.md](algorithms/neural-jump-ode-nj-ode-high-frequency-price-predictor.md)
+
+### RK409. Wasserstein distributionally robust Koopman MPC ⛔
+
+Run Koopman-linearised model predictive control for multi-period portfolio decisions inside a Wasserstein ambiguity set to guard against model error. No study found.
+
+* **Fit:** No evidence; out of scope.
+* **Against:** Approximate linearisation; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-koopman-model-predictive-control.md](algorithms/wasserstein-distributionally-robust-koopman-model-predictive-control.md)
+
+### RK410. Wasserstein distributionally robust neural-operator execution ⛔
+
+Solve execution control in function space with a neural operator, against the worst market-impact curve in a Wasserstein ball. No study found.
+
+* **Fit:** Small orders; nothing to schedule.
+* **Against:** Arbitrary radius; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-neural-operator-optimal-execution.md](algorithms/wasserstein-distributionally-robust-neural-operator-optimal-execution.md)
+
+### RK411. Recurrent neural Hawkes dynamic hedging scheduler ⛔
+
+Schedule option delta-hedge rebalances by neural Hawkes forecasts of order-flow bursts and volatility jumps. No study found.
+
+* **Fit:** Options excluded.
+* **Against:** Event data; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/recurrent-neural-hawkes-point-process-dynamic-hedging-scheduler.md](algorithms/recurrent-neural-hawkes-point-process-dynamic-hedging-scheduler.md)
+
+### RK412. Recurrent neural Hawkes toxic-flow hedging allocator ⛔
+
+Allocate option-hedging capital by neural Hawkes forecasts of toxic order-flow surges. No study found.
+
+* **Fit:** Options excluded.
+* **Against:** Event data; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/recurrent-neural-hawkes-point-process-toxic-flow-hedging-allocator.md](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-hedging-allocator.md)
+
+### RK413. Temporal Fusion Transformer multi-horizon price forecaster ⛔
+
+TFT for multi-horizon returns and volatility, as RK301; below LightGBM in Qlib's own benchmark.
+
+* **Fit:** As RK301.
+* **Against:** Accuracy is not profit.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/temporal-fusion-transformer-tft-multi-horizon-price-forecaster.md](algorithms/temporal-fusion-transformer-tft-multi-horizon-price-forecaster.md)
+
+### RK414. Attention-based neural Hawkes alpha ⛔
+
+Self-attention Hawkes intensities for short-term alpha. The model class exists (Zuo et al. 2020); no alpha study found.
+
+* **Fit:** Needs event data; out of scope.
+* **Against:** Event data; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/attention-based-recurrent-neural-hawkes-point-process-alpha.md](algorithms/attention-based-recurrent-neural-hawkes-point-process-alpha.md)
+
+### RK415. Koopman-operator MPC portfolio rebalancing ⛔
+
+Linearise multi-asset dynamics with a Koopman dictionary and plan multi-period rebalancing under turnover limits with MPC. No study found.
+
+* **Fit:** A multi-asset allocator with no evidence.
+* **Against:** Approximate linearisation; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-model-predictive-control-portfolio-rebalancing.md](algorithms/koopman-operator-model-predictive-control-portfolio-rebalancing.md)
+
+### RK416. Koopman-operator MPC dynamic hedging ⛔
+
+Linearise an option book's Greek dynamics with a Koopman dictionary and plan hedges with MPC. No study found.
+
+* **Fit:** No evidence; out of scope.
+* **Against:** Approximate linearisation; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-model-predictive-control-dynamic-hedging.md](algorithms/koopman-operator-model-predictive-control-dynamic-hedging.md)
+
+### RK417. Koopman-operator MPC yield-curve control ⛔
+
+Linearise yield-curve dynamics with a Koopman dictionary and plan bond positions with MPC. No study found.
+
+* **Fit:** No evidence; out of scope.
+* **Against:** Approximate linearisation; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-model-predictive-control-yield-curve-control.md](algorithms/koopman-operator-model-predictive-control-yield-curve-control.md)
+
+### RK418. Koopman-operator MPC spread hedging ⛔
+
+Linearise spread-option Greek dynamics with a Koopman dictionary and plan hedges with MPC. No study found.
+
+* **Fit:** No evidence; out of scope.
+* **Against:** Approximate linearisation; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/koopman-operator-model-predictive-control-spread-hedging.md](algorithms/koopman-operator-model-predictive-control-spread-hedging.md)
+
+### RK419. RL with expert guidance (RLEG) execution ⛔
+
+RL execution guided by expert or oracle schedules; oracle policy distillation beat strong baselines (Fang et al. 2021).
+
+* **Fit:** No large orders here; RL rejected for now (A1).
+* **Against:** Teacher bias; small gains.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/reinforcement-learning-with-expert-guidance-rleg-execution.md](algorithms/reinforcement-learning-with-expert-guidance-rleg-execution.md)
+
+### RK420. Quantum annealing optimal execution trajectory ⛔
+
+Liquidation trajectories as QUBOs on a quantum annealer; solved for small instances (Rosenberg et al. 2016), while the continuous problem has a closed form.
+
+* **Fit:** No large orders; the classical path exists (RK366).
+* **Against:** Harder than the closed form; hardware-limited.
+* **Built:** Nothing; the classical path is RK366's research code.
+* **Details:** [docs/algorithms/quantum-annealing-optimal-execution-trajectory-solver.md](algorithms/quantum-annealing-optimal-execution-trajectory-solver.md)
+
+### RK421. Wasserstein distributionally robust RL execution ⛔
+
+Train an RL execution agent against the worst transition model in a Wasserstein ball of market-impact models. No study found.
+
+* **Fit:** Small orders; nothing to schedule.
+* **Against:** Arbitrary radius; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-rl-execution.md](algorithms/wasserstein-distributionally-robust-rl-execution.md)
+
+### RK422. MADDPG cross-venue execution ⛔
+
+Coordinate order splitting across fragmented venues with multi-agent DDPG agents. No study of this form found; RL execution in general has evidence (Ning et al. 2021; Fang et al. 2021).
+
+* **Fit:** No large orders here; RL rejected for now (A1).
+* **Against:** Replay ignores own impact; untested form.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-deep-deterministic-reinforcement-learning-cross-venue-execution.md](algorithms/multi-agent-deep-deterministic-reinforcement-learning-cross-venue-execution.md)
+
+### RK423. Multi-agent RL Stackelberg execution broker ⛔
+
+Model execution as a Stackelberg game with the RL execution agent leading and market-impact followers reacting. No study of this form found; RL execution in general has evidence (Ning et al. 2021; Fang et al. 2021).
+
+* **Fit:** No large orders here; RL rejected for now (A1).
+* **Against:** Replay ignores own impact; untested form.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-agent-reinforcement-learning-stackelberg-execution-broker.md](algorithms/multi-agent-reinforcement-learning-stackelberg-execution-broker.md)
+
+### RK424. Wasserstein distributionally robust Hawkes jump-diffusion execution ⛔
+
+Minimise worst-case execution cost over a Wasserstein ball of Hawkes jump-diffusion order-arrival models. No study found.
+
+* **Fit:** Small orders; nothing to schedule.
+* **Against:** Arbitrary radius; untested.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-hawkes-jump-diffusion-optimal-execution.md](algorithms/wasserstein-distributionally-robust-hawkes-jump-diffusion-optimal-execution.md)
+
+### RK425. Deep recurrent attentive execution agent ⛔
+
+Schedule liquidation with a recurrent RL agent that attends over multi-level order-book depth. No study of this form found; RL execution in general has evidence (Ning et al. 2021; Fang et al. 2021).
+
+* **Fit:** No large orders here; RL rejected for now (A1).
+* **Against:** Replay ignores own impact; untested form.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/deep-recurrent-attentive-execution-agent-dr-attn-exec.md](algorithms/deep-recurrent-attentive-execution-agent-dr-attn-exec.md)
+
+### Researched concepts (ranks 426–700)
+
+Ranks 426–14,225 are what the CSV calls title-reconstructed rows:
+generated names ("Adaptive Scholarly Stock Momentum Predictor Ref-302")
+over a few hundred shared descriptions, rated low-confidence by the CSV
+itself, with references it reviews as unrelated. The 275 rows in ranks
+426–700 share 34 descriptions, so they are researched as concepts: each
+page below takes the task the description names (momentum forecasting,
+factor risk parity, covariance estimation, tail-risk hedging, sector or
+regime allocation) and the method its title names, and asks what
+evidence exists. Members beyond rank 700 that share a concept link to
+the same page. 12 concepts have evidence for the task, 21 have none for
+the method on that task, and 1 has leads that could not be read.
+
+| Concept | Task | Members in 426–700 / all | Verdict | Evidence |
+|---|---|---|---|---|
+| [Model for tail-risk hedging and allocation](algorithms/concepts/model-for-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 6 / 142 | 🔬 the project's equivalent is the regime exit (V17, N5) | Evidence found |
+| [Robust approach to factor risk-parity allocation](algorithms/concepts/robust-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 3 / 18 | ⏳ for a multi-ETF book · no method-specific evidence | Unable to find more details |
+| [Attention-weighted approach to factor risk-parity allocation](algorithms/concepts/attention-weighted-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 2 / 10 | ⛔ (no evidence) | Unable to find more details |
+| [Stochastic-process-based approach to momentum/trend forecasting](algorithms/concepts/stochastic-process-based-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 28 / 72 | ⏳ as a long-or-cash overlay (as RK1) · ⛔ for stock members | Evidence found |
+| [Adaptive approach to momentum/trend forecasting](algorithms/concepts/adaptive-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 30 / 73 | ⏳ as a long-or-cash overlay (as RK1) · ⛔ for stock members | Evidence found |
+| [Dynamical-systems/geometric approach to factor risk-parity allocation](algorithms/concepts/dynamical-systems-geometric-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 2 / 11 | ⛔ (no evidence) | Unable to find more details |
+| [Markov-state-based approach to momentum/trend forecasting](algorithms/concepts/markov-state-based-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 30 / 74 | 🧪 the regime models exist (C-R3) · ⏳ as a regime input | Evidence found |
+| [Dynamical-systems/geometric approach to covariance estimation for portfolio risk](algorithms/concepts/dynamical-systems-geometric-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 5 / 63 | ⛔ (no evidence) | Unable to find more details |
+| [Conformal-prediction-based approach to momentum/trend forecasting](algorithms/concepts/conformal-prediction-based-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 25 / 62 | 🧪 conformal sizing exists · ⏳ as an uncertainty wrapper | Evidence found |
+| [Robust approach to covariance estimation for portfolio risk](algorithms/concepts/robust-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 4 / 68 | ⏳ for a multi-ETF book | Evidence found |
+| [Spectral approach to momentum/trend forecasting](algorithms/concepts/spectral-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 25 / 66 | ⛔ (no evidence over plain momentum) | Unable to find more details |
+| [Attention-weighted approach to covariance estimation for portfolio risk](algorithms/concepts/attention-weighted-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 4 / 63 | ⛔ (thin evidence) | Needs more info |
+| [Copula-based approach to factor risk-parity allocation](algorithms/concepts/copula-based-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 9 / 69 | ⏳ for a multi-ETF book (CVaR budgets) | Evidence found |
+| [Nonlinear approach to factor risk-parity allocation](algorithms/concepts/nonlinear-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 8 / 62 | ⛔ (no evidence) | Unable to find more details |
+| [Variational approach to factor risk-parity allocation](algorithms/concepts/variational-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 8 / 62 | ⛔ (no evidence) | Unable to find more details |
+| [Geometry-aware approach to factor risk-parity allocation](algorithms/concepts/geometry-aware-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 8 / 63 | ⛔ (no evidence) | Unable to find more details |
+| [Path-signature-based approach to factor risk-parity allocation](algorithms/concepts/path-signature-based-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 13 / 63 | ⛔ (no evidence) | Unable to find more details |
+| [Kernel-based approach to factor risk-parity allocation](algorithms/concepts/kernel-based-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 12 / 62 | ⛔ (no evidence) | Unable to find more details |
+| [Evolutionary-optimization-based approach to factor risk-parity allocation](algorithms/concepts/evolutionary-optimization-based-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 12 / 62 | ⛔ (risk parity is convex; nothing to search) | Unable to find more details |
+| [Model for sector allocation](algorithms/concepts/model-for-sector-allocation.md) | Sector allocation | 2 / 13 | 🧪 relative-strength rotation is built (X3) · unmeasured | Evidence found |
+| [Model for regime-aware allocation](algorithms/concepts/model-for-regime-aware-allocation.md) | Regime-aware allocation | 1 / 12 | 🔬 this is the project's own regime work (V17, N5, N6, C-R3) | Evidence found |
+| [Bayesian approach to momentum/trend forecasting](algorithms/concepts/bayesian-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 5 / 5 | ⏳ via the trend-filter literature · no method-specific evidence | Unable to find more details |
+| [Robust approach to momentum/trend forecasting](algorithms/concepts/robust-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 5 / 7 | ⏳ in principle · no method-specific evidence | Unable to find more details |
+| [Copula-based approach to momentum/trend forecasting](algorithms/concepts/copula-based-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 5 / 7 | ⛔ (no evidence) | Unable to find more details |
+| [Nonlinear approach to momentum/trend forecasting](algorithms/concepts/nonlinear-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 2 / 4 | ⏳ via the trend-filter literature · ⛔ for ML variants | Evidence found |
+| [Model for covariance estimation for portfolio risk](algorithms/concepts/model-for-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 2 / 6 | ⏳ for a multi-ETF book (use shrinkage) | Evidence found |
+| [Wavelet-based approach to tail-risk hedging and allocation](algorithms/concepts/wavelet-based-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 4 / 135 | ⛔ (no evidence) | Unable to find more details |
+| [Fractional-order approach to momentum/trend forecasting](algorithms/concepts/fractional-order-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 2 / 78 | 🧪 the Hurst diagnostic exists (C-MR4) · ⛔ as a forecast | Unable to find more details |
+| [Koopman-operator-based approach to factor risk-parity allocation](algorithms/concepts/koopman-operator-based-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 2 / 10 | ⛔ (no evidence) | Unable to find more details |
+| [Dynamical-systems/geometric approach to tail-risk hedging and allocation](algorithms/concepts/dynamical-systems-geometric-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 4 / 136 | ⛔ (no evidence) | Unable to find more details |
+| [Recursive approach to tail-risk hedging and allocation](algorithms/concepts/recursive-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 3 / 139 | ⏳ as an alternative exit trigger · test against N5 | Evidence found |
+| [Diffusion-model-based approach to momentum/trend forecasting](algorithms/concepts/diffusion-model-based-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 2 / 62 | ⛔ (no evidence) | Unable to find more details |
+| [Koopman-operator-based approach to covariance estimation for portfolio risk](algorithms/concepts/koopman-operator-based-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 1 / 62 | ⛔ (no evidence) | Unable to find more details |
+| [Topology-aware approach to momentum/trend forecasting](algorithms/concepts/topology-aware-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 1 / 62 | ⛔ (no evidence) | Unable to find more details |
+
 ### Research gaps
 
 Ranks 4–100 were researched from what web search could reach (full texts
@@ -4273,7 +4575,8 @@ it could resolve are real papers on unrelated subjects: black-hole physics
 (2106.09876). The pages now name them; the rest could not be identified.
 Several real IDs are attached to the wrong entry: arXiv 2009.08295,
 Morrill et al.'s neural rough differential equations, is cited for four
-pricing and hedging entries. What remains:
+pricing and hedging entries. For ranks 426–700, the Evidence column of
+"Researched concepts" above gives each concept's status. What remains:
 
 | Status | Meaning |
 |---|---|
@@ -4404,6 +4707,25 @@ pricing and hedging entries. What remains:
 | RK397 | [Quantum Annealing Graph Neural Network Covariance Shrinkage](algorithms/quantum-annealing-graph-neural-network-covariance-shrinkage.md) | Unable to find more details | No study of this combination found. |
 | RK398 | [Persistent Homology Betti-2 Persistence Landscape Macro Contagion](algorithms/persistent-homology-betti-2-persistence-landscape-macro-contagion.md) | Unable to find more details | No study using Betti-2 persistence landscapes for contagion found; the CSV's arXiv 2004.01234 could not be identified. |
 | RK400 | [Graph Attention Network Riemannian Manifold Covariance Shrinkage](algorithms/graph-attention-network-riemannian-manifold-covariance-shrinkage.md) | Needs more info | No study of this combination found; the GNN covariance leads (arXiv 2604.24486 and a 2026 Politecnico di Torino thesis) were not read. |
+| RK401 | [Persistent Homology Betti-1 Cyclical Persistence Landscape Contagion](algorithms/persistent-homology-betti-1-cyclical-persistence-landscape-contagion.md) | Unable to find more details | No study using this Betti dimension's persistence landscapes as a warning signal found; the CSV's arXiv 2004.01234 could not be identified. |
+| RK403 | [Persistent Homology Betti-2 Persistence Landscape Macro Fragility](algorithms/persistent-homology-betti-2-persistence-landscape-macro-fragility.md) | Unable to find more details | No study using this Betti dimension's persistence landscapes as a warning signal found; the CSV's arXiv 2004.01234 could not be identified. |
+| RK404 | [Graph Attention Network Riemannian Manifold Covariance Diffusion](algorithms/graph-attention-network-riemannian-manifold-covariance-diffusion.md) | Unable to find more details | No study combining graph attention with Riemannian covariance diffusion found. |
+| RK406 | [Graph Attention Network Riemannian Manifold Covariance Regularization](algorithms/graph-attention-network-riemannian-manifold-covariance-regularization.md) | Needs more info | No study of this combination found; the GNN covariance leads (arXiv 2604.24486 and a 2026 Politecnico di Torino thesis) were not read. |
+| RK408 | [Neural Jump ODE (NJ-ODE) High-Frequency Price Predictor](algorithms/neural-jump-ode-nj-ode-high-frequency-price-predictor.md) | Needs more info | No high-frequency price-prediction study using neural jump ODEs found; the CSV's arXiv 2006.05221 could not be identified (the method paper is 2006.04727). |
+| RK409 | [Wasserstein Distributionally Robust Koopman Model Predictive Control](algorithms/wasserstein-distributionally-robust-koopman-model-predictive-control.md) | Unable to find more details | No study of this Koopman/MPC application found; the CSV's arXiv 2004.05678 is a mathematical-physics paper, unrelated to trading. |
+| RK410 | [Wasserstein Distributionally Robust Neural Operator Optimal Execution](algorithms/wasserstein-distributionally-robust-neural-operator-optimal-execution.md) | Unable to find more details | No Wasserstein distributionally robust execution study of this form found. |
+| RK411 | [Recurrent Neural Hawkes Point Process Dynamic Hedging Scheduler](algorithms/recurrent-neural-hawkes-point-process-dynamic-hedging-scheduler.md) | Unable to find more details | No hedging study using neural Hawkes processes found; the CSV's arXiv 2104.09876 is a heat-pump health-monitoring paper, unrelated to trading. |
+| RK412 | [Recurrent Neural Hawkes Point Process Toxic Flow Hedging Allocator](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-hedging-allocator.md) | Unable to find more details | No hedging study using neural Hawkes processes found; the CSV's arXiv 2104.09876 is a heat-pump health-monitoring paper, unrelated to trading. |
+| RK414 | [Attention-Based Recurrent Neural Hawkes Point Process Alpha](algorithms/attention-based-recurrent-neural-hawkes-point-process-alpha.md) | Unable to find more details | No alpha study using attention-based Hawkes processes found; the CSV's arXiv 2104.09876 is a heat-pump health-monitoring paper, unrelated to trading. |
+| RK415 | [Koopman Operator Model Predictive Control Portfolio Rebalancing](algorithms/koopman-operator-model-predictive-control-portfolio-rebalancing.md) | Unable to find more details | No study of this Koopman/MPC application found; the CSV's arXiv 2004.05678 is a mathematical-physics paper, unrelated to trading. |
+| RK416 | [Koopman Operator Model Predictive Control Dynamic Hedging](algorithms/koopman-operator-model-predictive-control-dynamic-hedging.md) | Unable to find more details | No study of this Koopman/MPC application found; the CSV's arXiv 2004.05678 is a mathematical-physics paper, unrelated to trading. |
+| RK417 | [Koopman Operator Model Predictive Control Yield Curve Control](algorithms/koopman-operator-model-predictive-control-yield-curve-control.md) | Unable to find more details | No study of this Koopman/MPC application found; the CSV's arXiv 2004.05678 is a mathematical-physics paper, unrelated to trading. |
+| RK418 | [Koopman Operator Model Predictive Control Spread Hedging](algorithms/koopman-operator-model-predictive-control-spread-hedging.md) | Unable to find more details | No study of this Koopman/MPC application found; the CSV's arXiv 2004.05678 is a mathematical-physics paper, unrelated to trading. |
+| RK421 | [Wasserstein Distributionally Robust RL Execution](algorithms/wasserstein-distributionally-robust-rl-execution.md) | Unable to find more details | No Wasserstein distributionally robust execution study of this form found; the CSV's arXiv 2110.09876 is a particle-physics review, unrelated to trading. |
+| RK422 | [Multi-Agent Deep Deterministic Reinforcement Learning Cross-Venue Execution](algorithms/multi-agent-deep-deterministic-reinforcement-learning-cross-venue-execution.md) | Unable to find more details | No study of this RL execution form found. |
+| RK423 | [Multi-Agent Reinforcement Learning Stackelberg Execution Broker](algorithms/multi-agent-reinforcement-learning-stackelberg-execution-broker.md) | Unable to find more details | No study of this RL execution form found. |
+| RK424 | [Wasserstein Distributionally Robust Hawkes Jump-Diffusion Optimal Execution](algorithms/wasserstein-distributionally-robust-hawkes-jump-diffusion-optimal-execution.md) | Unable to find more details | No Wasserstein distributionally robust execution study of this form found. |
+| RK425 | [Deep Recurrent Attentive Execution Agent (DR-Attn-Exec)](algorithms/deep-recurrent-attentive-execution-agent-dr-attn-exec.md) | Unable to find more details | No study of this RL execution form found; the CSV's arXiv 2105.04321 could not be identified. |
 
 ### The list
 
@@ -4821,35 +5143,35 @@ pricing and hedging entries. What remains:
 | 398 | Persistent Homology Betti-2 Persistence Landscape Macro Contagion | Topological data analysis / Persistence landscapes / Macro risk | 126 | 209 | No | RK398 | [**researched**](algorithms/persistent-homology-betti-2-persistence-landscape-macro-contagion.md) |
 | 399 | Generative Score-Based Diffusion Cross-Sectional Factor Synthesizer | Generative AI / Diffusion models / Quantitative equity | 188 | 174 | No | RK399 | [**researched**](algorithms/generative-score-based-diffusion-cross-sectional-factor-synthesizer.md) |
 | 400 | Graph Attention Network Riemannian Manifold Covariance Shrinkage | Graph neural networks / Riemannian geometry / Covariance estimation | 270 | 175 | No | RK400 | [**researched**](algorithms/graph-attention-network-riemannian-manifold-covariance-shrinkage.md) |
-| 401 | Persistent Homology Betti-1 Cyclical Persistence Landscape Contagion | Topological data analysis / Persistence landscapes / Macro risk | 129 | 212 | No | — | [card](algorithms/persistent-homology-betti-1-cyclical-persistence-landscape-contagion.md) |
-| 402 | Generative Score-Based Diffusion Cross-Sectional Alpha Synthesizer | Generative AI / Diffusion models / Quantitative equity | 189 | 176 | No | — | [card](algorithms/generative-score-based-diffusion-cross-sectional-alpha-synthesizer.md) |
-| 403 | Persistent Homology Betti-2 Persistence Landscape Macro Fragility | Topological data analysis / Persistence landscapes / Macro risk | 164 | 213 | No | — | [card](algorithms/persistent-homology-betti-2-persistence-landscape-macro-fragility.md) |
-| 404 | Graph Attention Network Riemannian Manifold Covariance Diffusion | Graph neural networks / Riemannian geometry / Covariance estimation | 273 | 177 | No | — | [card](algorithms/graph-attention-network-riemannian-manifold-covariance-diffusion.md) |
-| 405 | Generative Score-Based Diffusion Cross-Sectional Ranking Synthesizer | Generative AI / Diffusion models / Quantitative equity | 190 | 178 | No | — | [card](algorithms/generative-score-based-diffusion-cross-sectional-ranking-synthesizer.md) |
-| 406 | Graph Attention Network Riemannian Manifold Covariance Regularization | Graph neural networks / Riemannian geometry / Covariance estimation | 274 | 179 | No | — | [card](algorithms/graph-attention-network-riemannian-manifold-covariance-regularization.md) |
-| 407 | Spiking Neural Network (SNN) Event-Driven Microstructure Scalper | Neuromorphic AI / Event-based trading | 3188 | 10332 | No | — | [card](algorithms/spiking-neural-network-snn-event-driven-microstructure-scalper.md) |
-| 408 | Neural Jump ODE (NJ-ODE) High-Frequency Price Predictor | Continuous-Time Deep Learning / Microstructure | 373 | 10224 | No | — | [card](algorithms/neural-jump-ode-nj-ode-high-frequency-price-predictor.md) |
-| 409 | Wasserstein Distributionally Robust Koopman Model Predictive Control | Robust statistics / Operator theory / Model predictive control | 232 | 152 | No | — | [card](algorithms/wasserstein-distributionally-robust-koopman-model-predictive-control.md) |
-| 410 | Wasserstein Distributionally Robust Neural Operator Optimal Execution | Robust statistics / Neural operators / Optimal execution | 377 | 7430 | No | — | [card](algorithms/wasserstein-distributionally-robust-neural-operator-optimal-execution.md) |
-| 411 | Recurrent Neural Hawkes Point Process Dynamic Hedging Scheduler | Point processes / Recurrent neural networks / Derivatives hedging | 1881 | 10497 | No | — | [card](algorithms/recurrent-neural-hawkes-point-process-dynamic-hedging-scheduler.md) |
-| 412 | Recurrent Neural Hawkes Point Process Toxic Flow Hedging Allocator | Point processes / Recurrent neural networks / Derivatives hedging | 1883 | 10499 | No | — | [card](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-hedging-allocator.md) |
-| 413 | Temporal Fusion Transformer (TFT) Multi-Horizon Price Forecaster | Deep learning / Time-series forecasting | 237 | 238 | No | — | [card](algorithms/temporal-fusion-transformer-tft-multi-horizon-price-forecaster.md) |
-| 414 | Attention-Based Recurrent Neural Hawkes Point Process Alpha | Recurrent neural networks / Attention / Point processes | 1878 | 10662 | No | — | [card](algorithms/attention-based-recurrent-neural-hawkes-point-process-alpha.md) |
-| 415 | Koopman Operator Model Predictive Control Portfolio Rebalancing | Operator theory / Model predictive control / Portfolio rebalancing | 122 | 202 | No | — | [card](algorithms/koopman-operator-model-predictive-control-portfolio-rebalancing.md) |
-| 416 | Koopman Operator Model Predictive Control Dynamic Hedging | Operator theory / Model predictive control / Derivatives hedging | 286 | 295 | No | — | [card](algorithms/koopman-operator-model-predictive-control-dynamic-hedging.md) |
-| 417 | Koopman Operator Model Predictive Control Yield Curve Control | Operator theory / Model predictive control / Fixed income | 272 | 214 | No | — | [card](algorithms/koopman-operator-model-predictive-control-yield-curve-control.md) |
-| 418 | Koopman Operator Model Predictive Control Spread Hedging | Operator theory / Model predictive control / Derivatives hedging | 289 | 300 | No | — | [card](algorithms/koopman-operator-model-predictive-control-spread-hedging.md) |
-| 419 | Reinforcement Learning with Expert Guidance (RLEG) Execution | Reinforcement learning / Optimal execution | 369 | 8378 | No | — | [card](algorithms/reinforcement-learning-with-expert-guidance-rleg-execution.md) |
-| 420 | Quantum Annealing Optimal Execution Trajectory Solver | Quantum optimization / Execution | 380 | 8379 | No | — | [card](algorithms/quantum-annealing-optimal-execution-trajectory-solver.md) |
-| 421 | Wasserstein Distributionally Robust RL Execution | Reinforcement learning / Robust statistics / Optimal execution | 691 | 7423 | No | — | [card](algorithms/wasserstein-distributionally-robust-rl-execution.md) |
-| 422 | Multi-Agent Deep Deterministic Reinforcement Learning Cross-Venue Execution | Reinforcement learning / Multi-agent systems / Optimal execution | 383 | 10228 | No | — | [card](algorithms/multi-agent-deep-deterministic-reinforcement-learning-cross-venue-execution.md) |
-| 423 | Multi-Agent Reinforcement Learning Stackelberg Execution Broker | Reinforcement learning / Game theory / Optimal execution | 370 | 7428 | No | — | [card](algorithms/multi-agent-reinforcement-learning-stackelberg-execution-broker.md) |
-| 424 | Wasserstein Distributionally Robust Hawkes Jump-Diffusion Optimal Execution | Robust statistics / Point processes / Optimal execution | 992 | 10342 | No | — | [card](algorithms/wasserstein-distributionally-robust-hawkes-jump-diffusion-optimal-execution.md) |
-| 425 | Deep Recurrent Attentive Execution Agent (DR-Attn-Exec) | Reinforcement learning / Attention mechanisms / Optimal execution | 5369 | 10334 | No | — | [card](algorithms/deep-recurrent-attentive-execution-agent-dr-attn-exec.md) |
+| 401 | Persistent Homology Betti-1 Cyclical Persistence Landscape Contagion | Topological data analysis / Persistence landscapes / Macro risk | 129 | 212 | No | RK401 | [**researched**](algorithms/persistent-homology-betti-1-cyclical-persistence-landscape-contagion.md) |
+| 402 | Generative Score-Based Diffusion Cross-Sectional Alpha Synthesizer | Generative AI / Diffusion models / Quantitative equity | 189 | 176 | No | RK402 | [**researched**](algorithms/generative-score-based-diffusion-cross-sectional-alpha-synthesizer.md) |
+| 403 | Persistent Homology Betti-2 Persistence Landscape Macro Fragility | Topological data analysis / Persistence landscapes / Macro risk | 164 | 213 | No | RK403 | [**researched**](algorithms/persistent-homology-betti-2-persistence-landscape-macro-fragility.md) |
+| 404 | Graph Attention Network Riemannian Manifold Covariance Diffusion | Graph neural networks / Riemannian geometry / Covariance estimation | 273 | 177 | No | RK404 | [**researched**](algorithms/graph-attention-network-riemannian-manifold-covariance-diffusion.md) |
+| 405 | Generative Score-Based Diffusion Cross-Sectional Ranking Synthesizer | Generative AI / Diffusion models / Quantitative equity | 190 | 178 | No | RK405 | [**researched**](algorithms/generative-score-based-diffusion-cross-sectional-ranking-synthesizer.md) |
+| 406 | Graph Attention Network Riemannian Manifold Covariance Regularization | Graph neural networks / Riemannian geometry / Covariance estimation | 274 | 179 | No | RK406 | [**researched**](algorithms/graph-attention-network-riemannian-manifold-covariance-regularization.md) |
+| 407 | Spiking Neural Network (SNN) Event-Driven Microstructure Scalper | Neuromorphic AI / Event-based trading | 3188 | 10332 | No | RK407 | [**researched**](algorithms/spiking-neural-network-snn-event-driven-microstructure-scalper.md) |
+| 408 | Neural Jump ODE (NJ-ODE) High-Frequency Price Predictor | Continuous-Time Deep Learning / Microstructure | 373 | 10224 | No | RK408 | [**researched**](algorithms/neural-jump-ode-nj-ode-high-frequency-price-predictor.md) |
+| 409 | Wasserstein Distributionally Robust Koopman Model Predictive Control | Robust statistics / Operator theory / Model predictive control | 232 | 152 | No | RK409 | [**researched**](algorithms/wasserstein-distributionally-robust-koopman-model-predictive-control.md) |
+| 410 | Wasserstein Distributionally Robust Neural Operator Optimal Execution | Robust statistics / Neural operators / Optimal execution | 377 | 7430 | No | RK410 | [**researched**](algorithms/wasserstein-distributionally-robust-neural-operator-optimal-execution.md) |
+| 411 | Recurrent Neural Hawkes Point Process Dynamic Hedging Scheduler | Point processes / Recurrent neural networks / Derivatives hedging | 1881 | 10497 | No | RK411 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-dynamic-hedging-scheduler.md) |
+| 412 | Recurrent Neural Hawkes Point Process Toxic Flow Hedging Allocator | Point processes / Recurrent neural networks / Derivatives hedging | 1883 | 10499 | No | RK412 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-hedging-allocator.md) |
+| 413 | Temporal Fusion Transformer (TFT) Multi-Horizon Price Forecaster | Deep learning / Time-series forecasting | 237 | 238 | No | RK413 | [**researched**](algorithms/temporal-fusion-transformer-tft-multi-horizon-price-forecaster.md) |
+| 414 | Attention-Based Recurrent Neural Hawkes Point Process Alpha | Recurrent neural networks / Attention / Point processes | 1878 | 10662 | No | RK414 | [**researched**](algorithms/attention-based-recurrent-neural-hawkes-point-process-alpha.md) |
+| 415 | Koopman Operator Model Predictive Control Portfolio Rebalancing | Operator theory / Model predictive control / Portfolio rebalancing | 122 | 202 | No | RK415 | [**researched**](algorithms/koopman-operator-model-predictive-control-portfolio-rebalancing.md) |
+| 416 | Koopman Operator Model Predictive Control Dynamic Hedging | Operator theory / Model predictive control / Derivatives hedging | 286 | 295 | No | RK416 | [**researched**](algorithms/koopman-operator-model-predictive-control-dynamic-hedging.md) |
+| 417 | Koopman Operator Model Predictive Control Yield Curve Control | Operator theory / Model predictive control / Fixed income | 272 | 214 | No | RK417 | [**researched**](algorithms/koopman-operator-model-predictive-control-yield-curve-control.md) |
+| 418 | Koopman Operator Model Predictive Control Spread Hedging | Operator theory / Model predictive control / Derivatives hedging | 289 | 300 | No | RK418 | [**researched**](algorithms/koopman-operator-model-predictive-control-spread-hedging.md) |
+| 419 | Reinforcement Learning with Expert Guidance (RLEG) Execution | Reinforcement learning / Optimal execution | 369 | 8378 | No | RK419 | [**researched**](algorithms/reinforcement-learning-with-expert-guidance-rleg-execution.md) |
+| 420 | Quantum Annealing Optimal Execution Trajectory Solver | Quantum optimization / Execution | 380 | 8379 | No | RK420 | [**researched**](algorithms/quantum-annealing-optimal-execution-trajectory-solver.md) |
+| 421 | Wasserstein Distributionally Robust RL Execution | Reinforcement learning / Robust statistics / Optimal execution | 691 | 7423 | No | RK421 | [**researched**](algorithms/wasserstein-distributionally-robust-rl-execution.md) |
+| 422 | Multi-Agent Deep Deterministic Reinforcement Learning Cross-Venue Execution | Reinforcement learning / Multi-agent systems / Optimal execution | 383 | 10228 | No | RK422 | [**researched**](algorithms/multi-agent-deep-deterministic-reinforcement-learning-cross-venue-execution.md) |
+| 423 | Multi-Agent Reinforcement Learning Stackelberg Execution Broker | Reinforcement learning / Game theory / Optimal execution | 370 | 7428 | No | RK423 | [**researched**](algorithms/multi-agent-reinforcement-learning-stackelberg-execution-broker.md) |
+| 424 | Wasserstein Distributionally Robust Hawkes Jump-Diffusion Optimal Execution | Robust statistics / Point processes / Optimal execution | 992 | 10342 | No | RK424 | [**researched**](algorithms/wasserstein-distributionally-robust-hawkes-jump-diffusion-optimal-execution.md) |
+| 425 | Deep Recurrent Attentive Execution Agent (DR-Attn-Exec) | Reinforcement learning / Attention mechanisms / Optimal execution | 5369 | 10334 | No | RK425 | [**researched**](algorithms/deep-recurrent-attentive-execution-agent-dr-attn-exec.md) |
 
 #### Title-reconstructed algorithms
 
-Listed by rank on the pages below; each row links to one of 378 [concept pages](algorithms/concepts/README.md).
+Listed by rank on the pages below; each row links to one of 378 [concept pages](algorithms/concepts/README.md), 34 of them researched.
 
 | Ranks | Algorithms | Page |
 |---|---|---|
