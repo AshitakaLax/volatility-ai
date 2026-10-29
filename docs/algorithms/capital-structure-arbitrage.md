@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 205 (1 = easiest) |
 | Retail advantage rank | 130 (1 = strongest) |
 | Fit with this project | ⛔ (CDS, bonds, short legs) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `creditgrades_spread`, `capital_structure_signal`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK80 |
 
 ## In one paragraph

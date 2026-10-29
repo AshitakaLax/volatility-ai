@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 67 (1 = easiest) |
 | Retail advantage rank | 120 (1 = strongest) |
 | Fit with this project | ⛔ as a long/short futures strategy · ⏳ long-only via a roll-optimised commodity ETF |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `roll_yield`, `basis_factor`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK8, RK42, RK4 |
 
 ## In one paragraph

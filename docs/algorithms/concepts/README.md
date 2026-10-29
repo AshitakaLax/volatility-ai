@@ -2,44 +2,44 @@
 
 # Concepts of the title-reconstructed algorithms
 
-The 13,800 title-reconstructed rows of the [ranked algorithm list](../../algorithm_ledger.md#8c-the-ranked-algorithm-list-csv-import) share 378 descriptions. Each page below holds one description, every variant of the other fields its members carry, and the members themselves.
+The 13,800 title-reconstructed rows of the [ranked algorithm list](../../algorithm_ledger.md#8c-the-ranked-algorithm-list-csv-import) share 378 descriptions. Each page below holds one description, every variant of the other fields its members carry, and the members themselves. 34 of them are researched by hand.
 
 | Concept | Members | Best rank |
 |---|---|---|
-| [Model for tail-risk hedging and allocation](model-for-tail-risk-hedging-and-allocation.md) | 142 | 426 |
-| [Robust approach to factor risk-parity allocation](robust-approach-to-factor-risk-parity-allocation.md) | 18 | 428 |
-| [Attention-weighted approach to factor risk-parity allocation](attention-weighted-approach-to-factor-risk-parity-allocation.md) | 10 | 429 |
-| [Stochastic-process-based approach to momentum/trend forecasting](stochastic-process-based-approach-to-momentum-trend-forecasting.md) | 72 | 430 |
-| [Adaptive approach to momentum/trend forecasting](adaptive-approach-to-momentum-trend-forecasting.md) | 73 | 431 |
-| [Dynamical-systems/geometric approach to factor risk-parity allocation](dynamical-systems-geometric-approach-to-factor-risk-parity-allocation.md) | 11 | 432 |
-| [Markov-state-based approach to momentum/trend forecasting](markov-state-based-approach-to-momentum-trend-forecasting.md) | 74 | 433 |
-| [Dynamical-systems/geometric approach to covariance estimation for portfolio risk](dynamical-systems-geometric-approach-to-covariance-estimation-for-portfolio-risk.md) | 63 | 441 |
-| [Conformal-prediction-based approach to momentum/trend forecasting](conformal-prediction-based-approach-to-momentum-trend-forecasting.md) | 62 | 442 |
-| [Robust approach to covariance estimation for portfolio risk](robust-approach-to-covariance-estimation-for-portfolio-risk.md) | 68 | 443 |
-| [Spectral approach to momentum/trend forecasting](spectral-approach-to-momentum-trend-forecasting.md) | 66 | 444 |
-| [Attention-weighted approach to covariance estimation for portfolio risk](attention-weighted-approach-to-covariance-estimation-for-portfolio-risk.md) | 63 | 445 |
-| [Copula-based approach to factor risk-parity allocation](copula-based-approach-to-factor-risk-parity-allocation.md) | 69 | 463 |
-| [Nonlinear approach to factor risk-parity allocation](nonlinear-approach-to-factor-risk-parity-allocation.md) | 62 | 465 |
-| [Variational approach to factor risk-parity allocation](variational-approach-to-factor-risk-parity-allocation.md) | 62 | 466 |
-| [Geometry-aware approach to factor risk-parity allocation](geometry-aware-approach-to-factor-risk-parity-allocation.md) | 63 | 467 |
-| [Path-signature-based approach to factor risk-parity allocation](path-signature-based-approach-to-factor-risk-parity-allocation.md) | 63 | 513 |
-| [Kernel-based approach to factor risk-parity allocation](kernel-based-approach-to-factor-risk-parity-allocation.md) | 62 | 515 |
-| [Evolutionary-optimization-based approach to factor risk-parity allocation](evolutionary-optimization-based-approach-to-factor-risk-parity-allocation.md) | 62 | 517 |
-| [Model for sector allocation](model-for-sector-allocation.md) | 13 | 587 |
-| [Model for regime-aware allocation](model-for-regime-aware-allocation.md) | 12 | 588 |
-| [Bayesian approach to momentum/trend forecasting](bayesian-approach-to-momentum-trend-forecasting.md) | 5 | 590 |
-| [Robust approach to momentum/trend forecasting](robust-approach-to-momentum-trend-forecasting.md) | 7 | 591 |
-| [Copula-based approach to momentum/trend forecasting](copula-based-approach-to-momentum-trend-forecasting.md) | 7 | 592 |
-| [Nonlinear approach to momentum/trend forecasting](nonlinear-approach-to-momentum-trend-forecasting.md) | 4 | 674 |
-| [Model for covariance estimation for portfolio risk](model-for-covariance-estimation-for-portfolio-risk.md) | 6 | 675 |
-| [Wavelet-based approach to tail-risk hedging and allocation](wavelet-based-approach-to-tail-risk-hedging-and-allocation.md) | 135 | 678 |
-| [Fractional-order approach to momentum/trend forecasting](fractional-order-approach-to-momentum-trend-forecasting.md) | 78 | 679 |
-| [Koopman-operator-based approach to factor risk-parity allocation](koopman-operator-based-approach-to-factor-risk-parity-allocation.md) | 10 | 681 |
-| [Dynamical-systems/geometric approach to tail-risk hedging and allocation](dynamical-systems-geometric-approach-to-tail-risk-hedging-and-allocation.md) | 136 | 682 |
-| [Recursive approach to tail-risk hedging and allocation](recursive-approach-to-tail-risk-hedging-and-allocation.md) | 139 | 683 |
-| [Diffusion-model-based approach to momentum/trend forecasting](diffusion-model-based-approach-to-momentum-trend-forecasting.md) | 62 | 693 |
-| [Koopman-operator-based approach to covariance estimation for portfolio risk](koopman-operator-based-approach-to-covariance-estimation-for-portfolio-risk.md) | 62 | 694 |
-| [Topology-aware approach to momentum/trend forecasting](topology-aware-approach-to-momentum-trend-forecasting.md) | 62 | 696 |
+| [Model for tail-risk hedging and allocation](model-for-tail-risk-hedging-and-allocation.md) · **researched** | 142 | 426 |
+| [Robust approach to factor risk-parity allocation](robust-approach-to-factor-risk-parity-allocation.md) · **researched** | 18 | 428 |
+| [Attention-weighted approach to factor risk-parity allocation](attention-weighted-approach-to-factor-risk-parity-allocation.md) · **researched** | 10 | 429 |
+| [Stochastic-process-based approach to momentum/trend forecasting](stochastic-process-based-approach-to-momentum-trend-forecasting.md) · **researched** | 72 | 430 |
+| [Adaptive approach to momentum/trend forecasting](adaptive-approach-to-momentum-trend-forecasting.md) · **researched** | 73 | 431 |
+| [Dynamical-systems/geometric approach to factor risk-parity allocation](dynamical-systems-geometric-approach-to-factor-risk-parity-allocation.md) · **researched** | 11 | 432 |
+| [Markov-state-based approach to momentum/trend forecasting](markov-state-based-approach-to-momentum-trend-forecasting.md) · **researched** | 74 | 433 |
+| [Dynamical-systems/geometric approach to covariance estimation for portfolio risk](dynamical-systems-geometric-approach-to-covariance-estimation-for-portfolio-risk.md) · **researched** | 63 | 441 |
+| [Conformal-prediction-based approach to momentum/trend forecasting](conformal-prediction-based-approach-to-momentum-trend-forecasting.md) · **researched** | 62 | 442 |
+| [Robust approach to covariance estimation for portfolio risk](robust-approach-to-covariance-estimation-for-portfolio-risk.md) · **researched** | 68 | 443 |
+| [Spectral approach to momentum/trend forecasting](spectral-approach-to-momentum-trend-forecasting.md) · **researched** | 66 | 444 |
+| [Attention-weighted approach to covariance estimation for portfolio risk](attention-weighted-approach-to-covariance-estimation-for-portfolio-risk.md) · **researched** | 63 | 445 |
+| [Copula-based approach to factor risk-parity allocation](copula-based-approach-to-factor-risk-parity-allocation.md) · **researched** | 69 | 463 |
+| [Nonlinear approach to factor risk-parity allocation](nonlinear-approach-to-factor-risk-parity-allocation.md) · **researched** | 62 | 465 |
+| [Variational approach to factor risk-parity allocation](variational-approach-to-factor-risk-parity-allocation.md) · **researched** | 62 | 466 |
+| [Geometry-aware approach to factor risk-parity allocation](geometry-aware-approach-to-factor-risk-parity-allocation.md) · **researched** | 63 | 467 |
+| [Path-signature-based approach to factor risk-parity allocation](path-signature-based-approach-to-factor-risk-parity-allocation.md) · **researched** | 63 | 513 |
+| [Kernel-based approach to factor risk-parity allocation](kernel-based-approach-to-factor-risk-parity-allocation.md) · **researched** | 62 | 515 |
+| [Evolutionary-optimization-based approach to factor risk-parity allocation](evolutionary-optimization-based-approach-to-factor-risk-parity-allocation.md) · **researched** | 62 | 517 |
+| [Model for sector allocation](model-for-sector-allocation.md) · **researched** | 13 | 587 |
+| [Model for regime-aware allocation](model-for-regime-aware-allocation.md) · **researched** | 12 | 588 |
+| [Bayesian approach to momentum/trend forecasting](bayesian-approach-to-momentum-trend-forecasting.md) · **researched** | 5 | 590 |
+| [Robust approach to momentum/trend forecasting](robust-approach-to-momentum-trend-forecasting.md) · **researched** | 7 | 591 |
+| [Copula-based approach to momentum/trend forecasting](copula-based-approach-to-momentum-trend-forecasting.md) · **researched** | 7 | 592 |
+| [Nonlinear approach to momentum/trend forecasting](nonlinear-approach-to-momentum-trend-forecasting.md) · **researched** | 4 | 674 |
+| [Model for covariance estimation for portfolio risk](model-for-covariance-estimation-for-portfolio-risk.md) · **researched** | 6 | 675 |
+| [Wavelet-based approach to tail-risk hedging and allocation](wavelet-based-approach-to-tail-risk-hedging-and-allocation.md) · **researched** | 135 | 678 |
+| [Fractional-order approach to momentum/trend forecasting](fractional-order-approach-to-momentum-trend-forecasting.md) · **researched** | 78 | 679 |
+| [Koopman-operator-based approach to factor risk-parity allocation](koopman-operator-based-approach-to-factor-risk-parity-allocation.md) · **researched** | 10 | 681 |
+| [Dynamical-systems/geometric approach to tail-risk hedging and allocation](dynamical-systems-geometric-approach-to-tail-risk-hedging-and-allocation.md) · **researched** | 136 | 682 |
+| [Recursive approach to tail-risk hedging and allocation](recursive-approach-to-tail-risk-hedging-and-allocation.md) · **researched** | 139 | 683 |
+| [Diffusion-model-based approach to momentum/trend forecasting](diffusion-model-based-approach-to-momentum-trend-forecasting.md) · **researched** | 62 | 693 |
+| [Koopman-operator-based approach to covariance estimation for portfolio risk](koopman-operator-based-approach-to-covariance-estimation-for-portfolio-risk.md) · **researched** | 62 | 694 |
+| [Topology-aware approach to momentum/trend forecasting](topology-aware-approach-to-momentum-trend-forecasting.md) · **researched** | 62 | 696 |
 | [Neural-network-based approach to factor risk-parity allocation](neural-network-based-approach-to-factor-risk-parity-allocation.md) | 68 | 769 |
 | [Model for momentum/trend forecasting](model-for-momentum-trend-forecasting.md) | 13 | 844 |
 | [Model for statistical-arbitrage basket construction](model-for-statistical-arbitrage-basket-construction.md) | 6 | 846 |

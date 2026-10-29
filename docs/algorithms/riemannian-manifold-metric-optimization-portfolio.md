@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 245 (1 = easiest) |
 | Retail advantage rank | 195 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence; multi-asset allocator) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.spd_covariance`: `riemannian_min_variance`, `karcher_mean`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK231, RK233, RK237, RK266 |
 
 ## In one paragraph
@@ -22,8 +22,8 @@ geometry. Portfolio weights do not live on the SPD manifold; the
 covariance matrix does. A Riemannian method can estimate or smooth the
 covariance, after which the allocation is an ordinary optimisation. I
 found no study applying this to portfolios. The CSV's reference, arXiv
-2106.09876, looks like a placeholder ID (like arXiv 1908.01234 on RK97)
-and could not be identified.
+2106.09876, is a general graph anomaly-detection paper ("Anomaly
+Detection in Dynamic Graphs via Transformer"), not a finance one.
 
 ## Evidence
 

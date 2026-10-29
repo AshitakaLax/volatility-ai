@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 233 (1 = easiest) |
 | Retail advantage rank | 154 (1 = strongest) |
 | Fit with this project | ⛔ (no peer-reviewed evidence; multi-asset allocator) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.koopman`: `koopman_mpc_allocation`, `edmd`, `linear_mpc`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK273, RK261 |
 
 ## In one paragraph
@@ -25,8 +25,8 @@ is its standard data-driven approximation. Model predictive control
 re-plans each step. I found no peer-reviewed out-of-sample study of
 Koopman/MPC trading or allocation; the nearest is a DMD trading paper
 whose windows were tuned in sample. The CSV's reference, arXiv
-2004.05678, looks like a placeholder ID (like arXiv 1908.01234 on RK97)
-and could not be identified.
+2004.05678, is a mathematical-physics paper ("Stable polynomials and
+crystalline measures"), unrelated to trading.
 
 ## Evidence
 
@@ -68,4 +68,5 @@ says what was checked.
   1643–1655. <https://arxiv.org/abs/1508.04487>. Abstract.
 * Colbrook, M. J. Koopman operator review.
   <https://arxiv.org/abs/2312.00137>. Abstract.
-* The CSV's references: PyKoopman; arXiv 2004.05678 (not identified).
+* The CSV's references: PyKoopman; arXiv 2004.05678 (mathematical
+  physics; unrelated).

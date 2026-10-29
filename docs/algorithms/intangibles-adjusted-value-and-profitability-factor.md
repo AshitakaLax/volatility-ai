@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 46 (1 = easiest) |
 | Retail advantage rank | 60 (1 = strongest) |
 | Fit with this project | ⏳ long-only stock basket (needs R&D and statement data) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `intangibles_adjusted`, `intangible_capital`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK48, RK12, RK13 |
 
 ## In one paragraph

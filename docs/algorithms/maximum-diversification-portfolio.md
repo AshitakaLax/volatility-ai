@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 60 (1 = easiest) |
 | Retail advantage rank | 42 (1 = strongest) |
 | Fit with this project | ⏳ long-only weights for a multi-ETF book |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `max_diversification_weights`, `diversification_ratio`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | A5, RK56, RK60, RK61 |
 
 ## In one paragraph

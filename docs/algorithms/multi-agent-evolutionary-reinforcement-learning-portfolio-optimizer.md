@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 265 (1 = easiest) |
 | Retail advantage rank | 99 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.deep_rl`: `evolve_portfolio_agents`, `genetic_search`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK220, RK234 |
 
 ## In one paragraph
@@ -20,8 +20,7 @@ Evolve populations of reinforcement-learning portfolio agents with
 genetic algorithms to find allocations robust across regimes.
 Evolutionary search and multi-agent RL are each common in finance
 papers; I found no out-of-sample study of this combination. The CSV's
-reference, arXiv 2006.09876, looks like a placeholder ID (like arXiv
-1908.01234 on RK97) and could not be identified.
+reference, arXiv 2006.09876, could not be identified.
 
 ## Evidence
 

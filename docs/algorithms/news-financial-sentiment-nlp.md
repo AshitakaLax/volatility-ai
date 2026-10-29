@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 300 (1 = easiest) |
 | Retail advantage rank | 223 (1 = strongest) |
 | Fit with this project | ⏳ as a risk input (market-level pessimism) · ⛔ as a stock-level news trade |
-| Implemented in volatility-ai | **No.** The only sentiment series is the University of Michigan consumer survey (a registered FRED input), not text. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `lexicon_score`, `pessimism_index`, `tetlock_positions`; tested on synthetic data, not wired into the engine. The only sentiment series is the University of Michigan consumer survey (a registered FRED input), not text. |
 | Related ledger entries | RK211, V6 |
 
 ## In one paragraph

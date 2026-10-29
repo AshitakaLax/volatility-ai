@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 117 (1 = easiest) |
 | Retail advantage rank | 194 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.topology`: `diagram_clusters`, `diagram_distance`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK254, RK255, RK262, RK268, RK269 |
 
 ## In one paragraph
@@ -20,7 +20,9 @@ Cluster rolling persistence diagrams by Wasserstein distance and alert
 when the cluster structure changes abruptly. The core evidence is Gidea
 and Katz (2018): landscape norms of four US indices' returns grew before
 the dot-com and Lehman crashes. That is two events, in sample. The CSV's
-reference (arXiv 1904.04044) could not be identified.
+reference (arXiv 1904.04044) is a set of pure-mathematics lecture notes
+on persistence ("Topological Persistence in Geometry and Analysis"), not
+a finance study.
 
 ## Evidence
 
@@ -52,4 +54,5 @@ says what was checked.
 
 * Gidea, M., Katz, Y. (2018). *Physica A* 491, 820–834.
   <https://arxiv.org/abs/1703.04385>. Abstract.
-* The CSV's references: giotto-tda; arXiv 1904.04044 (not identified).
+* The CSV's references: giotto-tda; arXiv 1904.04044 (persistence
+  lecture notes; not finance).

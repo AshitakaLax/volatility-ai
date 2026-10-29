@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 79 (1 = easiest) |
 | Retail advantage rank | 48 (1 = strongest) |
 | Fit with this project | ⛔ (rates forecasting; no direct use here) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `fpca`, `fpca_forecast`, `dns_forecast`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK86, RK28, RK224 |
 
 ## In one paragraph

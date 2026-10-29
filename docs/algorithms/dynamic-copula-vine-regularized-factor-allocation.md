@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 244 (1 = easiest) |
 | Retail advantage rank | 168 (1 = strongest) |
 | Fit with this project | ⏳ for a multi-asset book (CVaR allocation) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `vine_cvar_weights`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK74, RK94, RK53 |
 
 ## In one paragraph
@@ -32,8 +32,9 @@ for larger portfolios.
   and economic measures for larger portfolios. (Abstract.)
 * **Stübinger, Mangold & Krauss (2018):** vine copulas in statistical
   arbitrage (see RK74).
-* The CSV's reference is arXiv 1908.01234, the same unidentified ID as
-  RK97's.
+* The CSV's reference, arXiv 1908.01234 (also cited for RK97), is a
+  biomedical-engineering paper on an electromagnetic bioreactor,
+  unrelated to trading.
 
 ## Against, and failure modes
 

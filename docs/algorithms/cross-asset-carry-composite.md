@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 68 (1 = easiest) |
 | Retail advantage rank | 131 (1 = strongest) |
 | Fit with this project | ⛔ (futures, forwards and short legs across asset classes) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `carry_composite`, `fx_carry`, `roll_yield`, `bond_carry_rolldown`, `rank_weights`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK28, RK30, RK32, RK42 |
 
 ## In one paragraph

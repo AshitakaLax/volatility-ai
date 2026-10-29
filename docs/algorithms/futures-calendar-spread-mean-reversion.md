@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 54 (1 = easiest) |
 | Retail advantage rank | 83 (1 = strongest) |
 | Fit with this project | ⛔ (futures, a short leg in every spread) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `calendar_spread_positions`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK8, RK32, RK42 |
 
 ## In one paragraph

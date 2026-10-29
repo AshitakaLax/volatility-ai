@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 266 (1 = easiest) |
 | Retail advantage rank | 197 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence; multi-asset allocator) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.spd_covariance`: `metric_diffusion_risk_parity`, `geodesic_smoothed_covariances`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK230, RK60 |
 
 ## In one paragraph
@@ -21,9 +21,9 @@ risk-parity weights evolve smoothly through the cycle. Portfolio weights
 do not live on the SPD manifold; the covariance matrix does. A
 Riemannian method can estimate or smooth the covariance, after which the
 allocation is an ordinary optimisation. I found no study applying this
-to portfolios. The CSV's reference, arXiv 2106.09876, looks like a
-placeholder ID (like arXiv 1908.01234 on RK97) and could not be
-identified.
+to portfolios. The CSV's reference, arXiv 2106.09876, is a general graph
+anomaly-detection paper ("Anomaly Detection in Dynamic Graphs via
+Transformer"), not a finance one.
 
 ## Evidence
 

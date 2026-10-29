@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 257 (1 = easiest) |
 | Retail advantage rank | 239 (1 = strongest) |
 | Fit with this project | ⛔ (no portfolio problem to solve here) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.quantum`: `mps_portfolio`, `mps_minimize`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK238, RK229, RK236 |
 
 ## In one paragraph
@@ -21,8 +21,7 @@ state and solve it with tensor-network contractions, a quantum-inspired
 method that runs on classical hardware. One study tested it alongside
 quantum annealers and VQE on 52 assets; the tensor networks and the
 hybrid annealer handled the largest instances. The CSV's reference,
-arXiv 2103.02345, looks like a placeholder ID (like arXiv 1908.01234 on
-RK97) and could not be identified.
+arXiv 2103.02345, could not be identified.
 
 ## Evidence
 

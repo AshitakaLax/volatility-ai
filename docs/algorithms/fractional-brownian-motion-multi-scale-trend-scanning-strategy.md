@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 317 (1 = easiest) |
 | Retail advantage rank | 304 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence for the combination) |
-| Implemented in volatility-ai | **No.** Trend-scanning labels (RK213) and Hurst/variance-ratio diagnostics (C-MR4) exist separately. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.information`: `fbm_trend_positions`, `trend_scan`, `hurst_dfa`; tested on synthetic data, not wired into the engine. Trend-scanning labels (RK213) and Hurst/variance-ratio diagnostics (C-MR4) exist separately. |
 | Related ledger entries | RK213, RK297, C-MR4 |
 
 ## In one paragraph

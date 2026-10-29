@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 241 (1 = easiest) |
 | Retail advantage rank | 146 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.neural_models`: `SpikingGCN`, `SpikingLayer`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK264, RK262 |
 
 ## In one paragraph
@@ -20,7 +20,7 @@ Fuse spiking neural networks with graph convolutional networks to model
 asynchronous shock propagation across a network of companies. Spiking
 networks are neuromorphic models built for event-driven hardware; I
 found no finance study of them for contagion, and the CSV's reference
-(arXiv 2111.05678) looks like a placeholder ID.
+(arXiv 2111.05678) could not be identified.
 
 ## Evidence
 

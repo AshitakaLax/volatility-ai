@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 25 (1 = easiest) |
 | Retail advantage rank | 14 (1 = strongest) |
 | Fit with this project | ⛔ (long/short commodity futures) |
-| Implemented in volatility-ai | **No.** GLD is the only commodity holding considered (X9). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `double_sort`, `roll_yield`; tested on synthetic data, not wired into the engine. GLD is the only commodity holding considered (X9). |
 | Related ledger entries | RK1, RK32, RK42, X9 |
 
 ## In one paragraph

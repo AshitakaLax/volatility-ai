@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 168 (1 = easiest) |
 | Retail advantage rank | 30 (1 = strongest) |
 | Fit with this project | ⛔ as a levered curve trade · ⏳ long-only: choosing a bond ETF's maturity by carry + roll-down |
-| Implemented in volatility-ai | **No.** Idle cash earns a historical money-market yield (`research/optimization/money_market_yield.py`); no bond holdings. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `bond_carry_rolldown`; tested on synthetic data, not wired into the engine. Idle cash earns a historical money-market yield (`research/optimization/money_market_yield.py`); no bond holdings. |
 | Related ledger entries | RK4, RK20, RK86, X5 |
 
 ## In one paragraph

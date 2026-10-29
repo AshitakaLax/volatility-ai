@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 5,372 (1 = easiest) |
 | Retail advantage rank | 9,360 (1 = strongest) |
 | Fit with this project | ⛔ (execution on event data; no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.neural_models`: `CDEIntensityExecution`, `NeuralCDE`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK277, RK289, RK250 |
 
 ## In one paragraph

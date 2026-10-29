@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 111 (1 = easiest) |
 | Retail advantage rank | 118 (1 = strongest) |
 | Fit with this project | ⏳ long-only event basket · ⛔ with the short side |
-| Implemented in volatility-ai | **No.** No earnings or consensus data in the warehouse. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `sue`; tested on synthetic data, not wired into the engine. No earnings or consensus data in the warehouse. |
 | Related ledger entries | RK45, RK40, V6 |
 
 ## In one paragraph

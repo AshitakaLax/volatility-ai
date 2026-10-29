@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 294 (1 = easiest) |
 | Retail advantage rank | 7,422 (1 = strongest) |
 | Fit with this project | ⏳ as a regime input (crash early warning) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.topology`: `landscape_norm_series`, `stress_alert`, `tda_exposure`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK255, RK262, RK268, RK269 |
 
 ## In one paragraph
@@ -20,8 +20,9 @@ Build Vietoris–Rips complexes from rolling multi-asset point clouds and
 track persistence diagrams (Betti numbers) as a crash warning. The core
 evidence is Gidea and Katz (2018): landscape norms of four US indices'
 returns grew before the dot-com and Lehman crashes. That is two events,
-in sample. The CSV's reference (arXiv 1904.04044) could not be
-identified.
+in sample. The CSV's reference (arXiv 1904.04044) is a set of
+pure-mathematics lecture notes on persistence ("Topological Persistence
+in Geometry and Analysis"), not a finance study.
 
 ## Evidence
 
@@ -61,4 +62,5 @@ says what was checked.
 
 * Gidea, M., Katz, Y. (2018). *Physica A* 491, 820–834.
   <https://arxiv.org/abs/1703.04385>. Abstract.
-* The CSV's references: giotto-tda; arXiv 1904.04044 (not identified).
+* The CSV's references: giotto-tda; arXiv 1904.04044 (persistence
+  lecture notes; not finance).

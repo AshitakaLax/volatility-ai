@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 182 (1 = easiest) |
 | Retail advantage rank | 171 (1 = strongest) |
 | Fit with this project | ⛔ (multi-asset allocator; thin evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.spd_covariance`: `gat_spectral_covariance`, `rmt_clip`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK232, RK235 |
 
 ## In one paragraph
@@ -21,9 +21,8 @@ rolling covariance matrices (the job random-matrix-theory cleaning
 does). Shrinkage (Ledoit–Wolf) and eigenvalue clipping from random
 matrix theory are the classical answers to noisy covariance matrices.
 GNN versions exist only as a thesis and an arXiv comparison that I could
-not read. The CSV's reference, arXiv 2103.01234, looks like a
-placeholder ID (like arXiv 1908.01234 on RK97) and could not be
-identified.
+not read. The CSV's reference, arXiv 2103.01234, is a black-hole physics
+paper ("Hidden Symmetry of Vanishing Love"), unrelated to trading.
 
 ## Evidence
 

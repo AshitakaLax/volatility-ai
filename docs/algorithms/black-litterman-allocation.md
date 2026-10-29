@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 43 (1 = easiest) |
 | Retail advantage rank | 67 (1 = strongest) |
 | Fit with this project | ⏳ (an allocation framework; needs explicit views) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `black_litterman`, `black_litterman_weights`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | Q13, RK60 |
 
 ## In one paragraph

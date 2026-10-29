@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 135 (1 = easiest) |
 | Retail advantage rank | 180 (1 = strongest) |
 | Fit with this project | ⏳ long-only (avoid high-accrual stocks) · ⛔ long/short; evidence says the edge is gone |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `accruals`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK11, RK51 |
 
 ## In one paragraph

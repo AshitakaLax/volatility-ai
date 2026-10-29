@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 254 (1 = easiest) |
 | Retail advantage rank | 226 (1 = strongest) |
 | Fit with this project | ⛔ (market-neutral stock book) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `AutoencoderFactors`, `ou_s_score`, `s_score_positions`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK76, RK96, RK33 |
 
 ## In one paragraph

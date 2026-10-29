@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 1,882 (1 = easiest) |
 | Retail advantage rank | 10,498 (1 = strongest) |
 | Fit with this project | ⛔ (options hedging; event data) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.point_processes`: `NeuralHawkes`, `neural_hawkes_hedge_trigger`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK277, RK259, RK283 |
 
 ## In one paragraph
@@ -20,9 +20,8 @@ Combine a recurrent network with a multivariate Hawkes process (a
 "neural Hawkes" model) to forecast surges of toxic order flow and
 trigger defensive option-hedge rebalances. The neural Hawkes model is
 established in machine learning; I found no finance study of this use,
-and the CSV's reference, arXiv 2104.09876, looks like a placeholder ID
-(sequential digits, like the CSV's arXiv 1908.01234 on RK97) and could
-not be identified.
+and the CSV's reference, arXiv 2104.09876, is a heat-pump
+health-monitoring paper, unrelated to trading.
 
 ## Evidence
 
@@ -47,4 +46,5 @@ says what was checked.
 
 * Mei, H., Eisner, J. (2017). "The Neural Hawkes Process." NeurIPS. Not
   re-checked.
-* The CSV's references: hawkeslib; arXiv 2104.09876 (not identified).
+* The CSV's references: hawkeslib; arXiv 2104.09876 (heat-pump
+  monitoring; unrelated).

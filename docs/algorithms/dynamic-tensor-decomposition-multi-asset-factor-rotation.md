@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 77 (1 = easiest) |
 | Retail advantage rank | 32 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence for factor rotation) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `cp_als`, `tensor_factor_rotation`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK7, RK19 |
 
 ## In one paragraph
@@ -20,8 +20,8 @@ Arrange returns as a tensor (time × asset × factor or characteristic),
 decompose it (CP/PARAFAC or Tucker), and rotate across sectors by the
 time-varying loadings. Tensor factor models are established in
 statistics; I found no study applying them to factor or sector rotation.
-The CSV's reference, arXiv 2001.00012, looks like a placeholder ID (like
-arXiv 1908.01234 on RK97) and could not be identified.
+The CSV's reference, arXiv 2001.00012, is a student paper on
+differentially private wavelet mechanisms, unrelated to trading.
 
 ## Evidence
 

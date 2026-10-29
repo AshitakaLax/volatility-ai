@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 211 (1 = easiest) |
 | Retail advantage rank | 59 (1 = strongest) |
 | Fit with this project | ⏳ (an allocator; long-only weights) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `cvar_weights`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK53, RK97 |
 
 ## In one paragraph

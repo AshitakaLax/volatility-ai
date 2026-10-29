@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 307 (1 = easiest) |
 | Retail advantage rank | 6,474 (1 = strongest) |
 | Fit with this project | ⛔ (not needed at this book's order sizes) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.execution`: `iceberg_fills`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK244, RK250 |
 
 ## In one paragraph

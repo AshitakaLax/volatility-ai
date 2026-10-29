@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 161 (1 = easiest) |
 | Retail advantage rank | 86 (1 = strongest) |
 | Fit with this project | ⛔ (rates forecasting; no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `LatentForceGP`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK226, RK287 |
 
 ## In one paragraph
@@ -20,9 +20,8 @@ Latent force models put Gaussian-process priors on the unobserved
 drivers of a differential-equation model; here they would drive a
 term-structure model's latent macro factors. The method comes from
 machine learning (Álvarez, Luengo and Lawrence); I found no
-interest-rate application. The CSV's reference, arXiv 1802.04321, looks
-like a placeholder ID (like arXiv 1908.01234 on RK97) and could not be
-identified.
+interest-rate application. The CSV's reference, arXiv 1802.04321, could
+not be identified.
 
 ## Evidence
 

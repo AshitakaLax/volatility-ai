@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 88 (1 = easiest) |
 | Retail advantage rank | 252 (1 = strongest) |
 | Fit with this project | ⛔ as a long/short factor portfolio · ⏳ as an **attribution tool** for this project's own returns |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `two_by_three_factor`, `factor_regression`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK13, RK15, RK48, RK58 |
 
 ## In one paragraph

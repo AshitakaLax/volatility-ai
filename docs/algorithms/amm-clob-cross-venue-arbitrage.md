@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 142 (1 = easiest) |
 | Retail advantage rank | 133 (1 = strongest) |
 | Fit with this project | ❌ (crypto) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.defi`: `optimal_arbitrage`, `simulate_arbitrage`, `lvr_rate`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK299, RK278 |
 
 ## In one paragraph

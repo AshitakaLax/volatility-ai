@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 310 (1 = easiest) |
 | Retail advantage rank | 87 (1 = strongest) |
 | Fit with this project | ⛔ (rates forecasting; no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `NeuralDelayCurve`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK224, RK226, RK289 |
 
 ## In one paragraph
@@ -19,8 +19,8 @@ researched 2026-10-27
 Combine neural delay-differential equations with Fourier neural
 operators to model time-lagged propagation across the term structure. I
 found no study of this for interest rates. The CSV's reference, arXiv
-2106.09876, looks like a placeholder ID (like arXiv 1908.01234 on RK97)
-and could not be identified.
+2106.09876, is a general graph anomaly-detection paper ("Anomaly
+Detection in Dynamic Graphs via Transformer"), not a finance one.
 
 ## Evidence
 

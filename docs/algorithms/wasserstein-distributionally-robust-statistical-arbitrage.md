@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 278 (1 = easiest) |
 | Retail advantage rank | 960 (1 = strongest) |
 | Fit with this project | ⛔ (short leg) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `wdro_threshold`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK37, RK88, RK75 |
 
 ## In one paragraph
@@ -22,7 +22,8 @@ one, rather than under the fitted model alone. The aim is thresholds
 that survive parameter uncertainty and structural breaks. The robust
 optimisation machinery is established (RK88), but I found no paper that
 applies it to stat-arb thresholds. The CSV's reference, arXiv
-1908.01234, could not be identified.
+1908.01234, is a biomedical-engineering paper on an electromagnetic
+bioreactor and cell tensegrity, unrelated to trading.
 
 ## The rule
 
@@ -59,6 +60,7 @@ says what was checked.
   robust optimization using the Wasserstein metric." *Mathematical
   Programming* 171, 115–166. (See RK88.)
 * Bertram, W. K. (2010). *Physica A* 389(11), 2234–2243. Abstract.
-* The CSV's references: cvxpy; arXiv 1908.01234 (not identified; the
-  owner-supplied Gemini answer says it is a cell-mechanics paper, which
-  could not be confirmed).
+* The CSV's references: cvxpy; arXiv 1908.01234 ("Field models and
+  numerical dosimetry inside an extremely-low-frequency electromagnetic
+  bioreactor", a biomedical-engineering paper; confirmed by title search
+  on 2026-10-29, as the owner-supplied Gemini answer said).

@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 112 (1 = easiest) |
 | Retail advantage rank | 20 (1 = strongest) |
 | Fit with this project | ⏳ long-only stock basket (needs earnings data) · ⛔ long/short |
-| Implemented in volatility-ai | **No.** The earnings calendar exists only to size grid lots on top-holding earnings days (V6). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `price_earnings_momentum`, `sue`; tested on synthetic data, not wired into the engine. The earnings calendar exists only to size grid lots on top-holding earnings days (V6). |
 | Related ledger entries | RK6, RK40, RK45, V6 |
 
 ## In one paragraph

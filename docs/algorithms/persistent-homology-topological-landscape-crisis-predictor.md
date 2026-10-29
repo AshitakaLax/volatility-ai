@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 296 (1 = easiest) |
 | Retail advantage rank | 7,424 (1 = strongest) |
 | Fit with this project | ⏳ as a regime input (crash early warning) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.topology`: `persistence_landscape`, `landscape_norm_series`, `stress_alert`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK254, RK262, RK268, RK269 |
 
 ## In one paragraph
@@ -21,7 +21,9 @@ point clouds; growing landscape norms signal fragility before a crash.
 This is Gidea and Katz's method. The core evidence is Gidea and Katz
 (2018): landscape norms of four US indices' returns grew before the
 dot-com and Lehman crashes. That is two events, in sample. The CSV's
-reference (arXiv 1904.04044) could not be identified.
+reference (arXiv 1904.04044) is a set of pure-mathematics lecture notes
+on persistence ("Topological Persistence in Geometry and Analysis"), not
+a finance study.
 
 ## Evidence
 
@@ -61,4 +63,5 @@ says what was checked.
 
 * Gidea, M., Katz, Y. (2018). *Physica A* 491, 820–834.
   <https://arxiv.org/abs/1703.04385>. Abstract.
-* The CSV's references: giotto-tda; arXiv 1904.04044 (not identified).
+* The CSV's references: giotto-tda; arXiv 1904.04044 (persistence
+  lecture notes; not finance).

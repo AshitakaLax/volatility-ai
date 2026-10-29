@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 193 (1 = easiest) |
 | Retail advantage rank | 427 (1 = strongest) |
 | Fit with this project | ⛔ (short leg) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `fit_pair_copula`, `copula_positions`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK37, RK72, RK94 |
 
 ## In one paragraph

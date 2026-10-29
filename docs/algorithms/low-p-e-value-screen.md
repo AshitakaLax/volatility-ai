@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 72 (1 = easiest) |
 | Retail advantage rank | 244 (1 = strongest) |
 | Fit with this project | ⏳ long-only stock basket or value ETF |
-| Implemented in volatility-ai | **No.** (COWZ, a free-cash-flow-yield ETF, is traded by the grid as an instrument only.) |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `low_pe_screen`; tested on synthetic data, not wired into the engine. (COWZ, a free-cash-flow-yield ETF, is traded by the grid as an instrument only.) |
 | Related ledger entries | RK48, RK5 |
 
 ## In one paragraph

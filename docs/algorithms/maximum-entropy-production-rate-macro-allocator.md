@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 239 (1 = easiest) |
 | Retail advantage rank | 144 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `maxent_weights`, `mep_rebalance`, `entropy_production_rate`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK41, RK257 |
 
 ## In one paragraph
@@ -20,8 +20,8 @@ Treat capital flows between macro asset classes as a non-equilibrium
 thermodynamic system and allocate to maximise the rate of entropy
 production. The maximum-entropy-production principle is a contested
 hypothesis in physics; I found no finance study applying it to
-allocation, and the CSV's reference (arXiv 1709.08765) looks like a
-placeholder ID.
+allocation, and the CSV's reference (arXiv 1709.08765) could not be
+identified.
 
 ## Evidence
 

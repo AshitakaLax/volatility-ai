@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 170 (1 = easiest) |
 | Retail advantage rank | 227 (1 = strongest) |
 | Fit with this project | ⛔ (repo leverage, institutional access) · the cash-yield question it raises is in scope |
-| Implemented in volatility-ai | **No** as a trade. SOFR and ON RRP volume (`RRPONTSYD`) are registered FRED inputs (`research/ml/sources.py`), and idle cash accrues a money-market yield in backtests (`research/optimization/money_market_yield.py`). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `cash_venue`; tested on synthetic data, not wired into the engine. Not traded. SOFR and ON RRP volume (`RRPONTSYD`) are registered FRED inputs (`research/ml/sources.py`), and idle cash accrues a money-market yield in backtests (`research/optimization/money_market_yield.py`). |
 | Related ledger entries | RK28 |
 
 ## In one paragraph

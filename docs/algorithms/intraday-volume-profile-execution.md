@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 102 (1 = easiest) |
 | Retail advantage rank | 250 (1 = strongest) |
 | Fit with this project | ⛔ (orders are price-triggered, not scheduled) |
-| Implemented in volatility-ai | **No.** The intraday *volatility* profile exists (`engine/data/intraday_profile.py`, used by V9); there is no volume-curve scheduler. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.execution`: `bdf_volume_forecast`, `static_volume_profile`; tested on synthetic data, not wired into the engine. The intraday *volatility* profile exists (`engine/data/intraday_profile.py`, used by V9); the engine has no volume-curve scheduler. |
 | Related ledger entries | RK256, V9, RK244 |
 
 ## In one paragraph

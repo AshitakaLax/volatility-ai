@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 269 (1 = easiest) |
 | Retail advantage rank | 153 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence; basket trading) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `NeuralFCVECM`, `fcvecm_allocation`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK36, RK93, RK297 |
 
 ## In one paragraph
@@ -20,8 +20,7 @@ Keep the fractional integration orders of a fractionally cointegrated
 VAR (FCVAR) but replace the linear error-correction term with a neural
 network, and allocate across the cointegrated basket. The FCVAR model is
 established econometrics; I found no study of the neural variant. The
-CSV's reference, arXiv 1809.02345, looks like a placeholder ID (like
-arXiv 1908.01234 on RK97) and could not be identified.
+CSV's reference, arXiv 1809.02345, could not be identified.
 
 ## Evidence
 

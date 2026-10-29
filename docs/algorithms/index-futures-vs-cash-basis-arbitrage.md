@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 141 (1 = easiest) |
 | Retail advantage rank | 2,759 (1 = strongest) |
 | Fit with this project | ⛔ (futures, short legs, institutional execution) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `index_fair_value`, `basis_signal`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK24, RK26 |
 
 ## In one paragraph

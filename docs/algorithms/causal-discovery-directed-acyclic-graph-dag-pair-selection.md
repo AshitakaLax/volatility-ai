@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 324 (1 = easiest) |
 | Retail advantage rank | 6,478 (1 = strongest) |
 | Fit with this project | ⛔ (pairs need a short leg) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `pc_skeleton`, `orient_v_structures`, `causal_pairs`, `lagged_causal_links`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK37, RK72 |
 
 ## In one paragraph

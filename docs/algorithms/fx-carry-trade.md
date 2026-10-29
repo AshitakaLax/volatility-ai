@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 38 (1 = easiest) |
 | Retail advantage rank | 101 (1 = strongest) |
 | Fit with this project | ⛔ (FX forwards, a short funding currency) |
-| Implemented in volatility-ai | **No.** (Q6, the Oil Money krone/Brent study, is the only FX code, and it is rejected.) |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `fx_carry_portfolio`, `fx_carry`; tested on synthetic data, not wired into the engine. (Q6, the Oil Money krone/Brent study, is the only other FX code, and it is rejected.) |
 | Related ledger entries | RK4, Q6 |
 
 ## In one paragraph

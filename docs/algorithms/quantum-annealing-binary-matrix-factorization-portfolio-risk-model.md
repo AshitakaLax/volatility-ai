@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 261 (1 = easiest) |
 | Retail advantage rank | 243 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.quantum`: `binary_matrix_factorization`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK260, RK229 |
 
 ## In one paragraph
@@ -20,8 +20,8 @@ Factorise a risk-factor covariance into binary matrices by posing it as
 a quadratic binary problem for a quantum annealer, to isolate latent
 crash drivers. Binary matrix factorisation on annealers has been
 explored in machine learning; I found no finance study. The CSV's
-reference, arXiv 2103.01234, looks like a placeholder ID (like arXiv
-1908.01234 on RK97) and could not be identified.
+reference, arXiv 2103.01234, is a black-hole physics paper ("Hidden
+Symmetry of Vanishing Love"), unrelated to trading.
 
 ## Evidence
 

@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 34 (1 = easiest) |
 | Retail advantage rank | 29 (1 = strongest) |
 | Fit with this project | ⏳ long-only stock basket (needs stocks and factor returns) · ⛔ long/short |
-| Implemented in volatility-ai | **No.** The closest code computes ETF-residual s-scores for mean reversion (C-MR2), the opposite sign of trade. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `residual_momentum`; tested on synthetic data, not wired into the engine. The closest code computes ETF-residual s-scores for mean reversion (C-MR2), the opposite sign of trade. |
 | Related ledger entries | RK6, C-MR2 |
 
 ## In one paragraph

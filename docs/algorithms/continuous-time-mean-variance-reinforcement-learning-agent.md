@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 174 (1 = easiest) |
 | Retail advantage rank | 187 (1 = strongest) |
 | Fit with this project | ⏳ for a multi-asset book · no use for the single-instrument grid |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.deep_rl`: `EMVAgent`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK227, RK234 |
 
 ## In one paragraph

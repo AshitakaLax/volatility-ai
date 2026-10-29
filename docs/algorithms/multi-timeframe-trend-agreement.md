@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 16 (1 = easiest) |
 | Retail advantage rank | 181 (1 = strongest) |
 | Fit with this project | ⏳ as a long-or-cash confirmation layer · ⛔ with a short side |
-| Implemented in volatility-ai | **No.** The pieces exist (daily regimes in `trend_regimes.py`, intraday gates in `entry_gates.py`), but nothing requires them to agree. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `multi_timeframe_trend`; tested on synthetic data, not wired into the engine. The pieces exist (daily regimes in `trend_regimes.py`, intraday gates in `entry_gates.py`), but nothing in the engine requires them to agree. |
 | Related ledger entries | RK1, RK2, RK17, L1 |
 
 ## In one paragraph

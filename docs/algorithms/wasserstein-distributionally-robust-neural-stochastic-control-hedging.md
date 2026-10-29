@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 287 (1 = easiest) |
 | Retail advantage rank | 296 (1 = strongest) |
 | Fit with this project | ⛔ (derivatives hedging) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `DeepHedger`, `worst_case_sampler`, `gbm_paths`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK97, RK88, RK240 |
 
 ## In one paragraph
@@ -20,8 +20,8 @@ Learn an option-hedging policy that minimises the worst-case replication
 error over a Wasserstein ball of volatility paths, trained
 adversarially. Deep hedging (learning hedges with neural networks under
 frictions) is established; I found no study of the Wasserstein-robust
-variant, and the CSV's reference, arXiv 2009.08295, could not be
-identified.
+variant, and the CSV's reference, arXiv 2009.08295, is Morrill et al.'s
+neural rough differential equations paper, a general time-series method.
 
 ## Evidence
 
@@ -49,4 +49,5 @@ says what was checked.
 
 * Buehler, H., Gonon, L., Teichmann, J., Wood, B. (2019). "Deep
   hedging." *Quantitative Finance* 19(8). Not re-checked.
-* The CSV's references: torchsde; arXiv 2009.08295 (not identified).
+* The CSV's references: torchsde; arXiv 2009.08295 (neural rough
+  differential equations; general method).

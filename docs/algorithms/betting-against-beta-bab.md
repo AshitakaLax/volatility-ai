@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 90 (1 = easiest) |
 | Retail advantage rank | 233 (1 = strongest) |
 | Fit with this project | ⛔ (shorting and leverage are the strategy) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `bab_betas`, `bab_weights`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK18 |
 
 ## In one paragraph
