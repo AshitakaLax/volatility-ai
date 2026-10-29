@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 117 (1 = easiest) |
 | Retail advantage rank | 194 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.topology`: `diagram_clusters`, `diagram_distance`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK254, RK255, RK262, RK268, RK269 |
 
 ## In one paragraph

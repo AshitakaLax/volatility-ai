@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 345 (1 = easiest) |
 | Retail advantage rank | 7,426 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.koopman`: `koopman_execution`, `linear_mpc`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK201, RK366 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 308 (1 = easiest) |
 | Retail advantage rank | 140 (1 = strongest) |
 | Fit with this project | ⛔ (multi-asset allocator; weak evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.deep_rl`: `MADDPGAllocator`, `MADDPG`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK227, RK346 |
 
 ## In one paragraph

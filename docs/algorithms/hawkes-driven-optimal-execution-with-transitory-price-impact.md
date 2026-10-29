@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 372 (1 = easiest) |
 | Retail advantage rank | 10,331 (1 = strongest) |
 | Fit with this project | ⛔ (large-order execution; event data) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.point_processes`: `hawkes_execution_schedule`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK366, RK248, RK371 |
 
 ## In one paragraph

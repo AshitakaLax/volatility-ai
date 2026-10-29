@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 690 (1 = easiest) |
 | Retail advantage rank | 2,120 (1 = strongest) |
 | Fit with this project | ⛔ (large-order execution theory) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.execution`: `mean_field_execution`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK369, RK366 |
 
 ## In one paragraph

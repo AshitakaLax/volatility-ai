@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 285 (1 = easiest) |
 | Retail advantage rank | 206 (1 = strongest) |
 | Fit with this project | ⏳ as a stress-test generator (RK200) · not a strategy |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.generative`: `FactorDiffusion`, `DDPM`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK200, RK399 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 386 (1 = easiest) |
 | Retail advantage rank | 10,236 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.market_making`: `replicator_dynamics`, `duopoly_payoffs`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK354, RK339 |
 
 ## In one paragraph

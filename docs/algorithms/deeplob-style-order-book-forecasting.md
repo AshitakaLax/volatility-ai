@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 353 (1 = easiest) |
 | Retail advantage rank | 10,329 (1 = strongest) |
 | Fit with this project | ⛔ (needs licensed depth history; seconds horizon) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.neural_models`: `DeepLOB`, `lob_labels`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK252, RK276 |
 
 ## In one paragraph

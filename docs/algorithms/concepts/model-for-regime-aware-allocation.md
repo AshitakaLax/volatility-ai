@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Regime-aware allocation |
 | Method | Unspecified model |
 | Fit with this project | 🔬 this is the project's own regime work (V17, N5, N6, C-R3) |
-| Implemented in volatility-ai | The NATR regime with liquidation on the flip (V17; causal version N5), regime sleeves (N6) and HMM regimes (C-R3). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `regime_allocation`; tested on synthetic data, not wired into the engine. Related code already here: The NATR regime with liquidation on the flip (V17; causal version N5), regime sleeves (N6) and HMM regimes (C-R3). |
 | Evidence | Evidence found (for the task; see the page for the method) |
 | Related ledger entries | V17, N5, N6, C-R3, RK1 |
 

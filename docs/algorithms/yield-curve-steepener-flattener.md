@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 235 (1 = easiest) |
 | Retail advantage rank | 236 (1 = strongest) |
 | Fit with this project | ⛔ (one leg is always short duration) · the curve slope is usable as data |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `dv01`, `steepener_notionals`, `steepener_pnl`, `slope_signal`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK28, RK20 |
 
 ## In one paragraph

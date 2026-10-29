@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 179 (1 = easiest) |
 | Retail advantage rank | 274 (1 = strongest) |
 | Fit with this project | ⛔ (stock-level long-short; the economic effect is real) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.cross_section`: `SupplyChainGAT`, `customer_momentum`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK318, RK204, RK7 |
 
 ## In one paragraph

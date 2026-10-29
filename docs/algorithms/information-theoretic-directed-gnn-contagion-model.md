@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 218 (1 = easiest) |
 | Retail advantage rank | 149 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.information`: `TEContagionModel`, `te_matrix`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK221, RK258 |
 
 ## In one paragraph

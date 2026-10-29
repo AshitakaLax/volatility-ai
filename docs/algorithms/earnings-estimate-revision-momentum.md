@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 74 (1 = easiest) |
 | Retail advantage rank | 21 (1 = strongest) |
 | Fit with this project | ⏳ (long-only basket, licensed data) |
-| Implemented in volatility-ai | **No.** No analyst-estimate data. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `revision_score`; tested on synthetic data, not wired into the engine. No analyst-estimate data. |
 | Related ledger entries | RK45, RK6 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-29
 | AI implementability rank | 3,188 (1 = easiest) |
 | Retail advantage rank | 10,332 (1 = strongest) |
 | Fit with this project | ⛔ (tick-level scalping; one unreviewed backtest) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.neural_models`: `SpikingScalper`, `delta_spike_encode`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK258, RK306 |
 
 ## In one paragraph

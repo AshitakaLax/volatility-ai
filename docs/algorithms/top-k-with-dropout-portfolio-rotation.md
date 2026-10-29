@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 104 (1 = easiest) |
 | Retail advantage rank | 24 (1 = strongest) |
 | Fit with this project | ⏳ as a turnover rule for a rotation |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `topk_dropout`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK214, X3, RK7 |
 
 ## In one paragraph

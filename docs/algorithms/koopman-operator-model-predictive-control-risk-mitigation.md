@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 230 (1 = easiest) |
 | Retail advantage rank | 192 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence; the NATR regime fills the role) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.koopman`: `koopman_risk_scale`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK206, RK23 |
 
 ## In one paragraph

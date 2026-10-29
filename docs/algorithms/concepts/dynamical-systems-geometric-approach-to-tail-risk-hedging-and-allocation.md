@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Tail-risk hedging and allocation |
 | Method | Dynamical-systems / geometric methods |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | The tail-risk response is the regime exit (V17, N5) and drawdown throttle (V11); no hedge allocation. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `critical_slowing_down`, `early_warning_exposure`; tested on synthetic data, not wired into the engine. Related code already here: The tail-risk response is the regime exit (V17, N5) and drawdown throttle (V11); no hedge allocation. |
 | Evidence | Unable to find more details (no study of this method on this task) |
 | Related ledger entries | V17, N5, V11, X5, X8, RK23 |
 

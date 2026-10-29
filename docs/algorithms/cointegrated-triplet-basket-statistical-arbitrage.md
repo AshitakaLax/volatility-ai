@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 158 (1 = easiest) |
 | Retail advantage rank | 251 (1 = strongest) |
 | Fit with this project | ⛔ (short legs) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `cointegrated_triplets`, `johansen_basket`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK36, RK37 |
 
 ## In one paragraph

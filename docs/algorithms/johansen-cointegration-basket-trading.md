@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 203 (1 = easiest) |
 | Retail advantage rank | 266 (1 = strongest) |
 | Fit with this project | ⛔ (short legs) |
-| Implemented in volatility-ai | **No.** `pairs.engle_granger` covers two-asset cointegration only. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `johansen_basket`, `band_positions`; tested on synthetic data, not wired into the engine. `pairs.engle_granger` covers the two-asset case. |
 | Related ledger entries | Q2, RK37, RK93, C-MR4 |
 
 ## In one paragraph

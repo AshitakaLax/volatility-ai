@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 1,882 (1 = easiest) |
 | Retail advantage rank | 10,498 (1 = strongest) |
 | Fit with this project | ⛔ (options hedging; event data) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.point_processes`: `NeuralHawkes`, `neural_hawkes_hedge_trigger`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK277, RK259, RK283 |
 
 ## In one paragraph

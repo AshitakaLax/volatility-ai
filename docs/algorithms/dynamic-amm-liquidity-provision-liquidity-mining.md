@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 331 (1 = easiest) |
 | Retail advantage rank | 959 (1 = strongest) |
 | Fit with this project | ❌ (crypto) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.defi`: `v3_amounts`, `v3_liquidity`, `lp_backtest`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK298 |
 
 ## In one paragraph

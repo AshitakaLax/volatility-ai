@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 39 (1 = easiest) |
 | Retail advantage rank | 50 (1 = strongest) |
 | Fit with this project | ⏳ (long-only sector ETFs; a separate book) |
-| Implemented in volatility-ai | **No.** The rotation harness ranks ETFs by trailing *strength* (X3), not weakness. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `industry_reversal`; tested on synthetic data, not wired into the engine. The rotation harness ranks ETFs by trailing *strength* (X3), not weakness. |
 | Related ledger entries | X3, RK19, RK7 |
 
 ## In one paragraph

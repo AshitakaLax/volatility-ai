@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 342 (1 = easiest) |
 | Retail advantage rank | 292 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence; no portfolio problem here) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.quantum`: `gnn_adiabatic_portfolio`, `sgc_scores`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK229, RK232 |
 
 ## In one paragraph

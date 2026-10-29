@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 379 (1 = easiest) |
 | Retail advantage rank | 10,661 (1 = strongest) |
 | Fit with this project | ⛔ (options) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `rough_heston_cf`, `rough_heston_smile`, `fit_smile`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK379, RK391, RK377 |
 
 ## In one paragraph

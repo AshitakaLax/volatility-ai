@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 98 (1 = easiest) |
 | Retail advantage rank | 257 (1 = strongest) |
 | Fit with this project | ⛔ (options) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `implied_correlation`, `realized_correlation`, `dispersion_pnl`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK21 |
 
 ## In one paragraph

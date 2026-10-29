@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Factor risk-parity allocation |
 | Method | Attention networks |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | No factor risk parity; HRP is built (`hrp.hrp_weights`, A5) and minimum variance is research code (Q13). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `attention_factor_risk_parity`, `attention_budgets`; tested on synthetic data, not wired into the engine. Related code already here: No factor risk parity; HRP is built (`hrp.hrp_weights`, A5) and minimum variance is research code (Q13). |
 | Evidence | Unable to find more details (no study of this method on this task) |
 | Related ledger entries | RK61, A5, RK60 |
 

@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Momentum / trend forecasting |
 | Method | Conformal prediction intervals around the forecast |
 | Fit with this project | 🧪 conformal sizing exists · ⏳ as an uncertainty wrapper |
-| Implemented in volatility-ai | Split-conformal intervals and conformal long-only sizing are research code (`position_sizing.split_conformal_interval`, `conformal_long_size`; see RK99). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `adaptive_conformal_positions`; tested on synthetic data, not wired into the engine. Related code already here: Split-conformal intervals and conformal long-only sizing are research code (`position_sizing.split_conformal_interval`, `conformal_long_size`; see RK99). |
 | Evidence | Evidence found (for the task; see the page for the method) |
 | Related ledger entries | RK99, V13, RK1 |
 

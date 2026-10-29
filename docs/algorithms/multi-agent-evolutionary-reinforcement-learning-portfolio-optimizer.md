@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 265 (1 = easiest) |
 | Retail advantage rank | 99 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.deep_rl`: `evolve_portfolio_agents`, `genetic_search`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK220, RK234 |
 
 ## In one paragraph

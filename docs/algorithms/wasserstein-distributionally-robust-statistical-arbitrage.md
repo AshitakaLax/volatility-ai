@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 278 (1 = easiest) |
 | Retail advantage rank | 960 (1 = strongest) |
 | Fit with this project | ⛔ (short leg) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `wdro_threshold`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK37, RK88, RK75 |
 
 ## In one paragraph

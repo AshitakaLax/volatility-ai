@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 227 (1 = easiest) |
 | Retail advantage rank | 303 (1 = strongest) |
 | Fit with this project | ⛔ as a trading signal (no out-of-sample evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.koopman`: `dmd`, `dmd_forecast`, `dmd_signal`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK201, RK206 |
 
 ## In one paragraph

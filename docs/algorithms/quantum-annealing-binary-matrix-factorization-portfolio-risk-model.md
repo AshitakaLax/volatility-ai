@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 261 (1 = easiest) |
 | Retail advantage rank | 243 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.quantum`: `binary_matrix_factorization`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK260, RK229 |
 
 ## In one paragraph

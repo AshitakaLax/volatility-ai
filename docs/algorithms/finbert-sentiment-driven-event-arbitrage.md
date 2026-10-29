@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 213 (1 = easiest) |
 | Retail advantage rank | 98 (1 = strongest) |
 | Fit with this project | ⏳ as a market-level input (RK293) · ⛔ as a stock-level event trade |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `SentenceClassifier`, `event_sentiment_trades`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK293, V6, RK45 |
 
 ## In one paragraph

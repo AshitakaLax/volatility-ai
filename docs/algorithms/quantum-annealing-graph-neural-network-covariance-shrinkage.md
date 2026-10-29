@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 343 (1 = easiest) |
 | Retail advantage rank | 294 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.quantum`: `covariance_mask_qubo`, `masked_covariance`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK232, RK236 |
 
 ## In one paragraph

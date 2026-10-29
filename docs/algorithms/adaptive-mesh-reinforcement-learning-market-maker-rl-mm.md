@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 5,368 (1 = easiest) |
 | Retail advantage rank | 11,671 (1 = strongest) |
 | Fit with this project | ⛔ (two-sided quoting; simulator-only evidence) |
-| Implemented in volatility-ai | **No.** Avellaneda-Stoikov and GLFT quotes exist as research code (C-MM1, C-MM2). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.market_making`: `train_rl_market_maker`, `simulate_market_maker`, `as_quotes`; tested on synthetic data, not wired into the engine. Avellaneda-Stoikov and GLFT quotes exist as research code (C-MM1, C-MM2). |
 | Related ledger entries | RK274, RK361, A1 |
 
 ## In one paragraph

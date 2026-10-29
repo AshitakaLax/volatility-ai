@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 126 (1 = easiest) |
 | Retail advantage rank | 209 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.topology`: `landscape_norm_series`, `betti2_macro_stress`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK265, RK255, RK268 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 309 (1 = easiest) |
 | Retail advantage rank | 961 (1 = strongest) |
 | Fit with this project | ⏳ in principle (path-signature strategies have a framework) · ⛔ as a factor model here |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.cross_section`: `signature_trading`, `rough_hurst`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK342, RK391, RK330 |
 
 ## In one paragraph

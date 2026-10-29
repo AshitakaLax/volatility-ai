@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 58 (1 = easiest) |
 | Retail advantage rank | 38 (1 = strongest) |
 | Fit with this project | ⏳ as a slow risk-on (re-entry) input |
-| Implemented in volatility-ai | **No.** No constituent breadth data in the warehouse. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `zweig_breadth_thrust`; tested on synthetic data, not wired into the engine. No constituent breadth data in the warehouse. |
 | Related ledger entries | L12, RK17, RK21 |
 
 ## In one paragraph

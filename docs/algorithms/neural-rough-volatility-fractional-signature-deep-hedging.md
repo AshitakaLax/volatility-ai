@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 699 (1 = easiest) |
 | Retail advantage rank | 10,284 (1 = strongest) |
 | Fit with this project | ⛔ (options hedging) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `DeepHedger`, `rough_bergomi_paths`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK352, RK303, RK328 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 696 (1 = easiest) |
 | Retail advantage rank | 10,285 (1 = strongest) |
 | Fit with this project | ⛔ (event data; no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.point_processes`: `delay_hawkes_intensity`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK277, RK288, RK240 |
 
 ## In one paragraph

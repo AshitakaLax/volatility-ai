@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Factor risk-parity allocation |
 | Method | Robust estimation of the factor covariance |
 | Fit with this project | ⏳ for a multi-ETF book · no method-specific evidence |
-| Implemented in volatility-ai | No factor risk parity; HRP is built (`hrp.hrp_weights`, A5) and minimum variance is research code (Q13). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `robust_factor_risk_parity`, `factor_risk_parity`; tested on synthetic data, not wired into the engine. Related code already here: No factor risk parity; HRP is built (`hrp.hrp_weights`, A5) and minimum variance is research code (Q13). |
 | Evidence | Unable to find more details (no study of this method on this task) |
 | Related ledger entries | RK61, A5, RK60 |
 

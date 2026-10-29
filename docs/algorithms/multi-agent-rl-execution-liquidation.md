@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 368 (1 = easiest) |
 | Retail advantage rank | 7,421 (1 = strongest) |
 | Fit with this project | ⛔ (large-order liquidation; RL rejected for now, A1) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.execution`: `train_multi_agent_liquidation`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK312, RK358, A1 |
 
 ## In one paragraph

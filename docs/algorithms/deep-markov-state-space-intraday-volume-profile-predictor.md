@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 1,877 (1 = easiest) |
 | Retail advantage rank | 10,496 (1 = strongest) |
 | Fit with this project | ⛔ (execution-volume forecasting not needed here) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.execution`: `DeepMarkovVolume`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK251 |
 
 ## In one paragraph

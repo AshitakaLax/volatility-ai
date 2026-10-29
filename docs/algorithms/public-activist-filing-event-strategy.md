@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 62 (1 = easiest) |
 | Retail advantage rank | 90 (1 = strongest) |
 | Fit with this project | ⏳ (long-only event basket; a separate book) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `activist_score`, `market_model_car`, `event_drift_trades`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK39 |
 
 ## In one paragraph

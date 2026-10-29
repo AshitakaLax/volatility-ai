@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 701 (1 = easiest) |
 | Retail advantage rank | 10,286 (1 = strongest) |
 | Fit with this project | ⛔ (options pricing) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `NeuralCalibrator`, `heston_call`, `delay_sv_call`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK289, RK283 |
 
 ## In one paragraph

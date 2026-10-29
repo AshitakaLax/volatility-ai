@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 113 (1 = easiest) |
 | Retail advantage rank | 23 (1 = strongest) |
 | Fit with this project | ⏳ long-only top-k over an ETF or stock universe · ⛔ long-short |
-| Implemented in volatility-ai | **No.** The repository's LightGBM models size grid lots (V13, V14); none ranks assets. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `train_ranker`, `rank_select`, `relevance_labels`; tested on synthetic data, not wired into the engine. The engine's LightGBM models size grid lots (V13, V14); none of them ranks assets. |
 | Related ledger entries | RK291, RK216, RK7 |
 
 ## In one paragraph

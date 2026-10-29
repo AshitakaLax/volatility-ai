@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 378 (1 = easiest) |
 | Retail advantage rank | 10,227 (1 = strongest) |
 | Fit with this project | ⛔ (market-making halt; needs event data) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.point_processes`: `toxicity_score`, `halt_quoting`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK247, RK248, RK277 |
 
 ## In one paragraph

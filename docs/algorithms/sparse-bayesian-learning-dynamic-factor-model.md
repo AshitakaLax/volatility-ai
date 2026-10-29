@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 76 (1 = easiest) |
 | Retail advantage rank | 109 (1 = strongest) |
 | Fit with this project | ⏳ as a factor-selection method for a stock book |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `ard_factor_loadings`, `dynamic_ard_loadings`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK9, RK205 |
 
 ## In one paragraph

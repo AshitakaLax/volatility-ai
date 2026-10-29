@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 238 (1 = easiest) |
 | Retail advantage rank | 2,121 (1 = strongest) |
 | Fit with this project | ⛔ (options) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `rough_vol_surface`, `surface_relative_value`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK303, RK297 |
 
 ## In one paragraph

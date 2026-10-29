@@ -11,7 +11,7 @@ researched 2026-10-29
 | AI implementability rank | 383 (1 = easiest) |
 | Retail advantage rank | 10,228 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.execution`: `train_maddpg_router`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK351, RK358 |
 
 ## In one paragraph

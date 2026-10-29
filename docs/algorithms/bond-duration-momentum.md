@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 69 (1 = easiest) |
 | Retail advantage rank | 84 (1 = strongest) |
 | Fit with this project | ⛔ as published (long/short bond futures) · ⏳ long-or-cash on a Treasury ETF, as a rotation leg |
-| Implemented in volatility-ai | **No.** TLT as a hedge was rejected (X5: it fell with stocks in 2022). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `duration_momentum`; tested on synthetic data, not wired into the engine. TLT as a hedge was rejected (X5: it fell with stocks in 2022). |
 | Related ledger entries | X5, X2, RK1 |
 
 ## In one paragraph

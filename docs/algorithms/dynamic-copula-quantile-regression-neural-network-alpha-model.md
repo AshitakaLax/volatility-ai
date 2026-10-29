@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 243 (1 = easiest) |
 | Retail advantage rank | 167 (1 = strongest) |
 | Fit with this project | ⛔ (stock-level alpha) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.cross_section`: `QuantileNetwork`, `copula_quantile_rank`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK296, RK94 |
 
 ## In one paragraph

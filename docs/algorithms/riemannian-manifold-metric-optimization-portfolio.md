@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 245 (1 = easiest) |
 | Retail advantage rank | 195 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence; multi-asset allocator) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.spd_covariance`: `riemannian_min_variance`, `karcher_mean`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK231, RK233, RK237, RK266 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 329 (1 = easiest) |
 | Retail advantage rank | 10,281 (1 = strongest) |
 | Fit with this project | ⛔ (not needed; the VWAP is used as a gate instead, C-MS3) |
-| Implemented in volatility-ai | **No** VWAP execution. The session VWAP is computed as a gate (`intraday_gates.session_vwap`, C-MS3). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.execution`: `vwap_schedule`, `static_volume_profile`; tested on synthetic data, not wired into the engine. The engine has no VWAP execution. The session VWAP is computed as a gate (`intraday_gates.session_vwap`, C-MS3). |
 | Related ledger entries | RK251, RK363, C-MS3 |
 
 ## In one paragraph

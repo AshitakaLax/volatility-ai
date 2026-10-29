@@ -31,4 +31,49 @@ entry has none). The modules:
   leads                the catalog's gap-analysis leads
   excluded             IB HFT pairs, stock/bond mix, inverse and long-vol
                        sleeves, martingale, creation/redemption arbitrage
+
+The ranked list of section 8C (RK entries and the concepts of ranks
+426-700), built on two shared foundations -- `autodiff` (a small
+reverse-mode autodiff with Adam, MLP and LSTM, since torch is not
+installed) and `econometrics` (GARCH, DCC, Kalman, Johansen/VECM,
+fractional differencing, VAR, copulas and C-vines):
+
+  factors              equity factor scores, Fama-French sorts, BAB,
+                       SUE/PEAD, event studies, index and dividend events
+  carry_rates          carry measures, commodity sorts, basis, duration
+                       momentum, steepeners, curve models
+  allocation           CVaR and robust allocators, Black-Litterman,
+                       risk budgets, tensor rotation, top-K dropout
+  spd_covariance       Riemannian (SPD) covariance, graph attention and
+                       graph diffusion estimators
+  stat_arb             Johansen baskets, distance and copula pairs,
+                       PC-algorithm pairs, merger/convertible/capital-
+                       structure/closed-end-fund arbitrage
+  point_processes      Hawkes processes, neural Hawkes, signatures,
+                       Hawkes-driven execution
+  koopman              DMD, EDMD, Koopman MPC, deep Koopman
+  topology             Vietoris-Rips persistence, landscapes, diagram
+                       distances
+  quantum              QUBOs, annealing, QAOA, adiabatic and tensor-
+                       network solvers, quantum kernels, a QNN
+  information          transfer entropy, fBm trend scanning
+  deep_rl              DQN, MADDPG, genetic search, EMV and robust
+                       portfolio agents
+  market_making        Avellaneda-Stoikov simulator and the RL, robust,
+                       Nash, Stackelberg and evolutionary quoters
+  execution            schedules, volume models, RL/mean-field/robust/
+                       operator execution
+  neural_models        TCN, TFT, DeepLOB, neural CDE/RDE/ODE/jump ODE,
+                       spiking networks, wavelet scalper
+  cross_section        graph and hyperbolic rankers, FactorVAE, domain-
+                       adversarial training, quantile networks,
+                       signature trading
+  generative           DDPM, flow matching, factor diffusion, TimeGAN,
+                       GMMN, conditional WGAN-GP
+  derivatives          dispersion, iron condors, gamma scalping, Heston and
+                       rough Heston, deep hedging, DGM/PINN, neural SDEs
+  technical_ml         Supertrend, breakouts, breadth thrust, LambdaRank,
+                       causal impact, sequential bootstrap, sentiment, EMD
+  defi                 constant-product arbitrage, concentrated liquidity
+  concepts             the 34 researched concepts of ranks 426-700
 """

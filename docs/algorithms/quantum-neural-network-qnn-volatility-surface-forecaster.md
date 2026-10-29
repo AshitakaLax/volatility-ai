@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 3,190 (1 = easiest) |
 | Retail advantage rank | 10,700 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.quantum`: `QNNRegressor`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK375, RK387 |
 
 ## In one paragraph

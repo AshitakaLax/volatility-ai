@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 116 (1 = easiest) |
 | Retail advantage rank | 193 (1 = strongest) |
 | Fit with this project | ⛔ (simpler correlation measures do the same job) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.topology`: `betti0_contagion`, `correlation_distance`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK254, RK255, RK268, RK269 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 202 (1 = easiest) |
 | Retail advantage rank | 162 (1 = strongest) |
 | Fit with this project | ⏳ for a multi-ETF book; not applicable to the single-instrument grid |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `cvar_weights`, `portfolio_cvar`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | A5, RK60, RK88, RK95 |
 
 ## In one paragraph

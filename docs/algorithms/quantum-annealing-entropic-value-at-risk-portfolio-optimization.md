@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 346 (1 = easiest) |
 | Retail advantage rank | 231 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.quantum`: `evar_selection`, `evar`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK305, RK53 |
 
 ## In one paragraph

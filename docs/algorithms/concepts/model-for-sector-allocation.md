@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Sector allocation |
 | Method | Unspecified model |
 | Fit with this project | 🧪 relative-strength rotation is built (X3) · unmeasured |
-| Implemented in volatility-ai | `tools/rotation.py --mode relative_strength` (X3) rotates across a small ETF universe; HRP mode (A5). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `sector_momentum`; tested on synthetic data, not wired into the engine. Related code already here: `tools/rotation.py --mode relative_strength` (X3) rotates across a small ETF universe; HRP mode (A5). |
 | Evidence | Evidence found (for the task; see the page for the method) |
 | Related ledger entries | X3, RK7, RK3, A5 |
 

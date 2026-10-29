@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 160 (1 = easiest) |
 | Retail advantage rank | 139 (1 = strongest) |
 | Fit with this project | ⛔ (long/short commodity futures, direction hedged) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `basis_factor`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK32, RK8, RK4 |
 
 ## In one paragraph

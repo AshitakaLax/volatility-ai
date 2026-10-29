@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 269 (1 = easiest) |
 | Retail advantage rank | 153 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence; basket trading) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `NeuralFCVECM`, `fcvecm_allocation`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK36, RK93, RK297 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 57 (1 = easiest) |
 | Retail advantage rank | 8 (1 = strongest) |
 | Fit with this project | ⏳ long-only (a stock basket, or value and momentum ETFs) · ⛔ long/short |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `value_momentum_composite`, `rank_z`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK6, RK48, RK65, X3, A5 |
 
 ## In one paragraph

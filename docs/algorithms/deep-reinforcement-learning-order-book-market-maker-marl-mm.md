@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 381 (1 = easiest) |
 | Retail advantage rank | 10,226 (1 = strongest) |
 | Fit with this project | ⛔ (two-sided quoting; simulator-only evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.market_making`: `train_competing_dqn_makers`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK313, RK339 |
 
 ## In one paragraph

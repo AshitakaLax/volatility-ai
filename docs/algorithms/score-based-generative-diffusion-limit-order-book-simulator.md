@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 5,370 (1 = easiest) |
 | Retail advantage rank | 10,335 (1 = strongest) |
 | Fit with this project | ⛔ (needs order-book data; a simulator for execution research) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.generative`: `DDPM`, `order_messages`, `decode_messages`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK343, RK332, RK200 |
 
 ## In one paragraph

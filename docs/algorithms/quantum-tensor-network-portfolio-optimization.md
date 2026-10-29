@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 257 (1 = easiest) |
 | Retail advantage rank | 239 (1 = strongest) |
 | Fit with this project | ⛔ (no portfolio problem to solve here) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.quantum`: `mps_portfolio`, `mps_minimize`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK238, RK229, RK236 |
 
 ## In one paragraph

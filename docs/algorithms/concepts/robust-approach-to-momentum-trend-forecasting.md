@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Momentum / trend forecasting |
 | Method | Robust (outlier-resistant) estimation |
 | Fit with this project | ⏳ in principle · no method-specific evidence |
-| Implemented in volatility-ai | Time-series momentum weights exist as research code (`trend_following.tsmom_weights`, RK1); relative-strength rotation is built (X3). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `robust_momentum`; tested on synthetic data, not wired into the engine. Related code already here: Time-series momentum weights exist as research code (`trend_following.tsmom_weights`, RK1); relative-strength rotation is built (X3). |
 | Evidence | Unable to find more details (no study of this method on this task) |
 | Related ledger entries | RK1, RK2, RK7, X3 |
 

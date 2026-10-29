@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 988 (1 = easiest) |
 | Retail advantage rank | 10,338 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.market_making`: `stackelberg_spread`, `trader_demand_response`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK344, RK345, RK339 |
 
 ## In one paragraph

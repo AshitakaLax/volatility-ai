@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 96 (1 = easiest) |
 | Retail advantage rank | 95 (1 = strongest) |
 | Fit with this project | ⛔ (TQQQ's dividend is negligible; the anomaly is small and tax-bound) |
-| Implemented in volatility-ai | **No.** Dividends are recorded in the warehouse and live history, not traded. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `dividend_capture`; tested on synthetic data, not wired into the engine. Dividends are recorded in the warehouse and live history, not traded. |
 | Related ledger entries | RK52 |
 
 ## In one paragraph

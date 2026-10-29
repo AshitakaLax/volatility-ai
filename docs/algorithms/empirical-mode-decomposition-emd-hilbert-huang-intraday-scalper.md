@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 71 (1 = easiest) |
 | Retail advantage rank | 75 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence for a trading rule; end effects leak the future) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `emd`, `instantaneous_phase`, `emd_scalper_positions`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK75, C-MR4 |
 
 ## In one paragraph

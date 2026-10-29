@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Momentum / trend forecasting |
 | Method | Hidden Markov / regime-switching states |
 | Fit with this project | 🧪 the regime models exist (C-R3) · ⏳ as a regime input |
-| Implemented in volatility-ai | Causal HMM and Gaussian-mixture regimes are research code (`regime_models.GaussianHMM`, `causal_turbulence`, ledger C-R3); not wired as a trend forecast. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `hmm_trend`; tested on synthetic data, not wired into the engine. Related code already here: Causal HMM and Gaussian-mixture regimes are research code (`regime_models.GaussianHMM`, `causal_turbulence`, ledger C-R3); not wired as a trend forecast. |
 | Evidence | Evidence found (for the task; see the page for the method) |
 | Related ledger entries | C-R3, V17, N5, RK1 |
 

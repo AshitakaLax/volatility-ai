@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 334 (1 = easiest) |
 | Retail advantage rank | 273 (1 = strongest) |
 | Fit with this project | ⛔ (rates scenarios; no use here) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.generative`: `ConditionalWGANGP`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK226, RK349 |
 
 ## In one paragraph

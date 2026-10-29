@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 692 (1 = easiest) |
 | Retail advantage rank | 7,427 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.execution`: `mfg_venue_split`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK368, RK358 |
 
 ## In one paragraph

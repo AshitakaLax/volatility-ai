@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 97 (1 = easiest) |
 | Retail advantage rank | 96 (1 = strongest) |
 | Fit with this project | ⛔ (single-stock front-running) · note only |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `predict_index_changes`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK24, RK91 |
 
 ## In one paragraph

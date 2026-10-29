@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 333 (1 = easiest) |
 | Retail advantage rank | 272 (1 = strongest) |
 | Fit with this project | ⛔ (stock selection; no stock universe here) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.cross_section`: `HyperbolicGCN`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK318, RK384, RK230 |
 
 ## In one paragraph

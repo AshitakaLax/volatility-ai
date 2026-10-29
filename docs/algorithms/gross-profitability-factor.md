@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 167 (1 = easiest) |
 | Retail advantage rank | 106 (1 = strongest) |
 | Fit with this project | ⏳ long-only stock basket (needs fundamentals) · ⛔ long/short |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `gross_profitability`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK12, RK48, RK5 |
 
 ## In one paragraph

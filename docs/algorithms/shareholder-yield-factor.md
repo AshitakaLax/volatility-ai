@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 75 (1 = easiest) |
 | Retail advantage rank | 58 (1 = strongest) |
 | Fit with this project | ⏳ long-only stock basket or shareholder-yield ETF |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `shareholder_yield`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK35, RK52 |
 
 ## In one paragraph

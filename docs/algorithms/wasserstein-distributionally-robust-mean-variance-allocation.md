@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 78 (1 = easiest) |
 | Retail advantage rank | 147 (1 = strongest) |
 | Fit with this project | ⏳ for a multi-ETF book (long-only weights) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `wdro_mean_variance`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK88, RK233, RK61 |
 
 ## In one paragraph

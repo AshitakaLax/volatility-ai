@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 123 (1 = easiest) |
 | Retail advantage rank | 204 (1 = strongest) |
 | Fit with this project | ⏳ as a regime input (crash early warning) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.topology`: `multiscale_rips_score`, `rips_persistence`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK254, RK255, RK262, RK269 |
 
 ## In one paragraph

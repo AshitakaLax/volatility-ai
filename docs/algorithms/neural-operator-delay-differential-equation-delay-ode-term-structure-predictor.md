@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 310 (1 = easiest) |
 | Retail advantage rank | 87 (1 = strongest) |
 | Fit with this project | ⛔ (rates forecasting; no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `NeuralDelayCurve`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK224, RK226, RK289 |
 
 ## In one paragraph

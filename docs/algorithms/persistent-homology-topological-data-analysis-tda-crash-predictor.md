@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 294 (1 = easiest) |
 | Retail advantage rank | 7,422 (1 = strongest) |
 | Fit with this project | ⏳ as a regime input (crash early warning) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.topology`: `landscape_norm_series`, `stress_alert`, `tda_exposure`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK255, RK262, RK268, RK269 |
 
 ## In one paragraph

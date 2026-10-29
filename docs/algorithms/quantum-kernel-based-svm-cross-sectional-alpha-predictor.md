@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 367 (1 = easiest) |
 | Retail advantage rank | 230 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.quantum`: `qsvm_predict`, `quantum_kernel`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK375, RK393 |
 
 ## In one paragraph

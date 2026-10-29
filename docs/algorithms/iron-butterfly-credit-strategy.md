@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 145 (1 = easiest) |
 | Retail advantage rank | 267 (1 = strongest) |
 | Fit with this project | ⛔ (options) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `iron_strikes`, `iron_credit`, `iron_backtest`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK285, RK282 |
 
 ## In one paragraph

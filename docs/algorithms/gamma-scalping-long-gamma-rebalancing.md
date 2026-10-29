@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 208 (1 = easiest) |
 | Retail advantage rank | 237 (1 = strongest) |
 | Fit with this project | ⛔ (options; and long gamma pays the volatility risk premium) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `gamma_scalp_pnl`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK352, Q12 |
 
 ## In one paragraph

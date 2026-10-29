@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 291 (1 = easiest) |
 | Retail advantage rank | 9,358 (1 = strongest) |
 | Fit with this project | ⛔ (short leg) |
-| Implemented in volatility-ai | **No.** There is no GARCH or copula code in the repository. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `copula_garch_positions`; tested on synthetic data, not wired into the engine. GARCH, DCC and the copula tools it uses are in `research.catalog.econometrics`. |
 | Related ledger entries | RK74 |
 
 ## In one paragraph

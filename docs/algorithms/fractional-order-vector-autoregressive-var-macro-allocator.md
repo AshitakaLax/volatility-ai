@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 231 (1 = easiest) |
 | Retail advantage rank | 34 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `fractional_var_allocation`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK340, RK239, RK41 |
 
 ## In one paragraph

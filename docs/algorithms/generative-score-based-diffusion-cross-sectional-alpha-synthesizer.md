@@ -11,7 +11,7 @@ researched 2026-10-29
 | AI implementability rank | 189 (1 = easiest) |
 | Retail advantage rank | 176 (1 = strongest) |
 | Fit with this project | ⛔ (cross-sectional; no stock universe here) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.generative`: `DDPM`, `FactorDiffusion`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK399, RK395, RK200 |
 
 ## In one paragraph

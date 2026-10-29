@@ -11,7 +11,7 @@ researched 2026-10-29
 | AI implementability rank | 164 (1 = easiest) |
 | Retail advantage rank | 213 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.topology`: `landscape_norm_series`, `tda_exposure`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK398, RK265, RK401 |
 
 ## In one paragraph

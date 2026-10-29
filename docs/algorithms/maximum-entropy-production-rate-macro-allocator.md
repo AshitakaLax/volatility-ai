@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 239 (1 = easiest) |
 | Retail advantage rank | 144 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `maxent_weights`, `mep_rebalance`, `entropy_production_rate`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK41, RK257 |
 
 ## In one paragraph

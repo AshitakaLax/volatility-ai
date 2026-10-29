@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 319 (1 = easiest) |
 | Retail advantage rank | 172 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.cross_section`: `operator_boosting`, `spectral_features`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK390, RK287 |
 
 ## In one paragraph

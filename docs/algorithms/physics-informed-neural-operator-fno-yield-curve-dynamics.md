@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 280 (1 = easiest) |
 | Retail advantage rank | 188 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `fit_musiela_pinn`, `musiela_curve`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK226, RK287 |
 
 ## In one paragraph

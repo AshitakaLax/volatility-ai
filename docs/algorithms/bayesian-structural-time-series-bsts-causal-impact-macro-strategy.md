@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 236 (1 = easiest) |
 | Retail advantage rank | 186 (1 = strongest) |
 | Fit with this project | ⏳ as an event-study tool · not a trading rule |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `causal_impact`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK211 |
 
 ## In one paragraph

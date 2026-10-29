@@ -11,7 +11,7 @@ researched 2026-10-29
 | AI implementability rank | 373 (1 = easiest) |
 | Retail advantage rank | 10,224 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.neural_models`: `NeuralJumpODE`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK333, RK334 |
 
 ## In one paragraph

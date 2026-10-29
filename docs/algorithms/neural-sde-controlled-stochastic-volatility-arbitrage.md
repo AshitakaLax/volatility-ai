@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 359 (1 = easiest) |
 | Retail advantage rank | 425 (1 = strongest) |
 | Fit with this project | ⛔ (options; robust bounds, not an arbitrage) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `NeuralLocalVol`, `robust_price_bounds`, `bounds_signal`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK324, RK329, RK303 |
 
 ## In one paragraph

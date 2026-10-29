@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Covariance estimation for portfolio risk |
 | Method | Koopman operators |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | Nothing dedicated; HRP's correlation clustering is built (A5) and the minimum-variance weights use the sample covariance (Q13). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `koopman_covariance`; tested on synthetic data, not wired into the engine. Related code already here: HRP's correlation clustering is built (A5) and the minimum-variance weights use the sample covariance (Q13). |
 | Evidence | Unable to find more details (no study of this method on this task) |
 | Related ledger entries | RK206, RK241 |
 

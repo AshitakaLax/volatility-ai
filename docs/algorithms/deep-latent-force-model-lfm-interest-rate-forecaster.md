@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 161 (1 = easiest) |
 | Retail advantage rank | 86 (1 = strongest) |
 | Fit with this project | ⛔ (rates forecasting; no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.carry_rates`: `LatentForceGP`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK226, RK287 |
 
 ## In one paragraph

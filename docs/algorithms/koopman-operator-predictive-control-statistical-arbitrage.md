@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 220 (1 = easiest) |
 | Retail advantage rank | 426 (1 = strongest) |
 | Fit with this project | ⛔ (stat arb with a short leg; no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.koopman`: `koopman_spread_position`, `edmd`, `koopman_predict`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK203, RK36, RK75 |
 
 ## In one paragraph

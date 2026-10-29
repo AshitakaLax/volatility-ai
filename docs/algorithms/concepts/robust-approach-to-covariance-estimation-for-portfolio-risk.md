@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Covariance estimation for portfolio risk |
 | Method | Robust (M- and S-) estimators |
 | Fit with this project | ⏳ for a multi-ETF book |
-| Implemented in volatility-ai | Nothing dedicated; HRP's correlation clustering is built (A5) and the minimum-variance weights use the sample covariance (Q13). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `robust_covariance`, `tyler_shape`; tested on synthetic data, not wired into the engine. Related code already here: HRP's correlation clustering is built (A5) and the minimum-variance weights use the sample covariance (Q13). |
 | Evidence | Evidence found (for the task; see the page for the method) |
 | Related ledger entries | RK60, A5 |
 

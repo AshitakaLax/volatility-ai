@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 185 (1 = easiest) |
 | Retail advantage rank | 113 (1 = strongest) |
 | Fit with this project | ⛔ (multi-asset allocator; thin evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.spd_covariance`: `gat_dynamic_allocation`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK232, RK267 |
 
 ## In one paragraph

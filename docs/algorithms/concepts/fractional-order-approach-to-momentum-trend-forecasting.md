@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Momentum / trend forecasting |
 | Method | Fractional integration / long memory |
 | Fit with this project | 🧪 the Hurst diagnostic exists (C-MR4) · ⛔ as a forecast |
-| Implemented in volatility-ai | `mean_reversion.hurst_exponent` (C-MR4) and fractional differentiation (`info_bars.frac_diff_ffd`, RK300) are research code. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `arfima_forecast`; tested on synthetic data, not wired into the engine. Related code already here: `mean_reversion.hurst_exponent` (C-MR4) and fractional differentiation (`info_bars.frac_diff_ffd`, RK300) are research code. |
 | Evidence | Unable to find more details (no study of this method on this task) |
 | Related ledger entries | RK202, RK297, RK300, C-MR4 |
 

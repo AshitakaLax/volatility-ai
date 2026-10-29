@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Momentum / trend forecasting |
 | Method | Adaptive lookback / speed selection |
 | Fit with this project | ⏳ as a long-or-cash overlay (as RK1) · ⛔ for stock members |
-| Implemented in volatility-ai | Time-series momentum weights exist as research code (`trend_following.tsmom_weights`, RK1); relative-strength rotation is built (X3). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `kama`, `cycle_blended_momentum`; tested on synthetic data, not wired into the engine. Related code already here: Time-series momentum weights exist as research code (`trend_following.tsmom_weights`, RK1); relative-strength rotation is built (X3). |
 | Evidence | Evidence found (for the task; see the page for the method) |
 | Related ledger entries | RK1, RK2, RK7, X3 |
 

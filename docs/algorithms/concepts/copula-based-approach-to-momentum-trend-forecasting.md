@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Momentum / trend forecasting |
 | Method | Copula models of dependence |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | Nothing. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `copula_momentum_positions`, `clayton_lower_tail`; tested on synthetic data, not wired into the engine. |
 | Evidence | Unable to find more details (no study of this method on this task) |
 | Related ledger entries | RK1, RK94, RK296 |
 

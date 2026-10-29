@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 281 (1 = easiest) |
 | Retail advantage rank | 283 (1 = strongest) |
 | Fit with this project | ⛔ (options pricing) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `dgm_black_scholes`, `FDResidualNet`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK350, RK374 |
 
 ## In one paragraph

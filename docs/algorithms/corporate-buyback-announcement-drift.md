@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 143 (1 = easiest) |
 | Retail advantage rank | 71 (1 = strongest) |
 | Fit with this project | ⏳ long-only event basket |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `event_drift_trades`, `market_model_car`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK27, RK35 |
 
 ## In one paragraph

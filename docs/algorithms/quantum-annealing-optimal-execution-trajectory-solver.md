@@ -11,7 +11,7 @@ researched 2026-10-29
 | AI implementability rank | 380 (1 = easiest) |
 | Retail advantage rank | 8,379 (1 = strongest) |
 | Fit with this project | ⛔ (large-order execution; hardware-limited) |
-| Implemented in volatility-ai | **No.** The classical Almgren-Chriss path is research code (RK366). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.quantum`: `annealed_execution`, `execution_qubo`; tested on synthetic data, not wired into the engine. The classical Almgren-Chriss path is research code (RK366). |
 | Related ledger entries | RK366, RK229, RK305 |
 
 ## In one paragraph

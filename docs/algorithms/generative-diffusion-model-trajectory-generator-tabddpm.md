@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 371 (1 = easiest) |
 | Retail advantage rank | 10,225 (1 = strongest) |
 | Fit with this project | ⛔ (tabular, not sequential) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.generative`: `DDPM`, `encode_tabular`, `decode_tabular`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK200, RK349 |
 
 ## In one paragraph

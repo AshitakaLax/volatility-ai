@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 5,371 (1 = easiest) |
 | Retail advantage rank | 10,657 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.point_processes`: `NeuralHawkes`, `neural_hawkes_alert`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK338, RK280, RK314 |
 
 ## In one paragraph

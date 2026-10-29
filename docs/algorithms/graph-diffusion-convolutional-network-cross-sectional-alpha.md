@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 183 (1 = easiest) |
 | Retail advantage rank | 275 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.cross_section`: `diffusion_conv_alpha`, `diffusion_features`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK318, RK386 |
 
 ## In one paragraph

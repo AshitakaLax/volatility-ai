@@ -11,7 +11,7 @@ researched 2026-10-29
 | AI implementability rank | 273 (1 = easiest) |
 | Retail advantage rank | 177 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.spd_covariance`: `gat_graph_diffusion_covariance`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK396, RK400, RK232 |
 
 ## In one paragraph

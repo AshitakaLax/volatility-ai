@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 175 (1 = easiest) |
 | Retail advantage rank | 25 (1 = strongest) |
 | Fit with this project | ⏳ (in principle, as a long-only ranking) · not a priority |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.cross_section`: `DomainAdversarialForecaster`, `momentum_features`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK7, RK1 |
 
 ## In one paragraph

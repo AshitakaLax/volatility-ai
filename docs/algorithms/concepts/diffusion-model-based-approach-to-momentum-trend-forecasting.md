@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Momentum / trend forecasting |
 | Method | Generative diffusion models |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | Nothing. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `diffusion_trend`; tested on synthetic data, not wired into the engine. |
 | Evidence | Unable to find more details (no study of this method on this task) |
 | Related ledger entries | RK200, RK395 |
 

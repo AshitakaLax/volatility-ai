@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 320 (1 = easiest) |
 | Retail advantage rank | 298 (1 = strongest) |
 | Fit with this project | ⏳ as a stress-test scenario generator · not a strategy |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.generative`: `DDPM`, `scenario_portfolio`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK228, RK21 |
 
 ## In one paragraph

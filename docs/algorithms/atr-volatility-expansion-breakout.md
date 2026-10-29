@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 14 (1 = easiest) |
 | Retail advantage rank | 91 (1 = strongest) |
 | Fit with this project | ⛔ as a breakout trade (stops) · the volatility half is already this project's regime |
-| Implemented in volatility-ai | **No** as a breakout trade. Its downside break is the N1 Dual Thrust gate; its "volatility is expanding" measure is the NATR regime of the Ultimate design. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `volatility_expansion_breakout`, `williams_breakout`; tested on synthetic data, not wired into the engine. Not traded as a breakout. Its downside break is the N1 Dual Thrust gate; its "volatility is expanding" measure is the NATR regime of the Ultimate design. |
 | Related ledger entries | N1, RK68, RK43, RK44, L1, L6 |
 
 ## In one paragraph

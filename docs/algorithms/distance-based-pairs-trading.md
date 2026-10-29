@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 134 (1 = easiest) |
 | Retail advantage rank | 220 (1 = strongest) |
 | Fit with this project | ⛔ (short leg) |
-| Implemented in volatility-ai | **No.** The cointegration form and a long-only spread signal are research code (RK37). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `ggr_pairs`, `ggr_positions`; tested on synthetic data, not wired into the engine. The cointegration form and a long-only spread signal are research code (RK37). |
 | Related ledger entries | Q2, RK37, RK73, RK74 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 162 (1 = easiest) |
 | Retail advantage rank | 148 (1 = strongest) |
 | Fit with this project | ⛔ (no peer-reviewed evidence; multi-asset allocator) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.koopman`: `DeepKoopman`, `deep_koopman_allocation`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK206, RK261 |
 
 ## In one paragraph

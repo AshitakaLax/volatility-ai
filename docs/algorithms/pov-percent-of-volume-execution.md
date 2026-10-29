@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 339 (1 = easiest) |
 | Retail advantage rank | 5,929 (1 = strongest) |
 | Fit with this project | ⛔ (not needed) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.execution`: `pov_schedule`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK364, RK363 |
 
 ## In one paragraph

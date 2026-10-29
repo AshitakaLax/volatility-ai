@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 282 (1 = easiest) |
 | Retail advantage rank | 26 (1 = strongest) |
 | Fit with this project | ⛔ (cross-market stock alpha; accuracy-only evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.cross_section`: `DomainAdversarialForecaster`, `grad_reverse`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK98 |
 
 ## In one paragraph

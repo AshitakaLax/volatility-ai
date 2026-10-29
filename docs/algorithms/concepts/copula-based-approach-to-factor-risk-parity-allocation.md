@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Factor risk-parity allocation |
 | Method | Copulas / tail-risk budgets |
 | Fit with this project | ⏳ for a multi-ETF book (CVaR budgets) |
-| Implemented in volatility-ai | No factor risk parity; HRP is built (`hrp.hrp_weights`, A5) and minimum variance is research code (Q13). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `copula_factor_risk_parity`; tested on synthetic data, not wired into the engine. Related code already here: No factor risk parity; HRP is built (`hrp.hrp_weights`, A5) and minimum variance is research code (Q13). |
 | Evidence | Evidence found (for the task; see the page for the method) |
 | Related ledger entries | RK61, A5, RK60, RK296, RK53 |
 

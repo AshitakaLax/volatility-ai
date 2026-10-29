@@ -10,7 +10,7 @@ researched 2026-10-29
 | Task | Covariance estimation for portfolio risk |
 | Method | Attention / graph attention networks |
 | Fit with this project | ⛔ (thin evidence) |
-| Implemented in volatility-ai | Nothing dedicated; HRP's correlation clustering is built (A5) and the minimum-variance weights use the sample covariance (Q13). |
+| Implemented in volatility-ai | **Research code** in `research.catalog.concepts`: `attention_covariance`; tested on synthetic data, not wired into the engine. Related code already here: HRP's correlation clustering is built (A5) and the minimum-variance weights use the sample covariance (Q13). |
 | Evidence | Needs more info (leads exist but could not be read) |
 | Related ledger entries | RK232, RK235, RK267 |
 

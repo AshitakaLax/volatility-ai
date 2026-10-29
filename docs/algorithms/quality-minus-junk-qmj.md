@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 234 (1 = easiest) |
 | Retail advantage rank | 301 (1 = strongest) |
 | Fit with this project | ⛔ as published (long/short) · ⏳ long-only quality basket or ETF |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `quality_score`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK12, RK13, RK58 |
 
 ## In one paragraph

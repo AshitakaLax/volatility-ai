@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 344 (1 = easiest) |
 | Retail advantage rank | 7,557 (1 = strongest) |
 | Fit with this project | ⏳ as a daily stress gauge (jump intensity) · ⛔ at event frequency |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.point_processes`: `detect_jumps`, `mutually_exciting_jump_intensity`, `fit_jump_excitation`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK248, RK277, RK333 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 332 (1 = easiest) |
 | Retail advantage rank | 10,217 (1 = strongest) |
 | Fit with this project | ⛔ (needs event-level order data) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.point_processes`: `order_flow_forecast`, `fit_multivariate_hawkes`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK277, RK259, RK289 |
 
 ## In one paragraph

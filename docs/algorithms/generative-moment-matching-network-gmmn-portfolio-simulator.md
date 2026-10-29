@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 215 (1 = easiest) |
 | Retail advantage rank | 166 (1 = strongest) |
 | Fit with this project | ⏳ as a stress-test sampler · not a strategy |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.generative`: `GMMN`, `mmd2`, `expected_shortfall`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK349, RK200, RK53 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-29
 | AI implementability rank | 190 (1 = easiest) |
 | Retail advantage rank | 178 (1 = strongest) |
 | Fit with this project | ⛔ (cross-sectional; no stock universe here) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.generative`: `synthesize_rankings`, `ranks_to_scores`, `scores_to_ranks`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK399, RK395, RK200 |
 
 ## In one paragraph

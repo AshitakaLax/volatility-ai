@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 277 (1 = easiest) |
 | Retail advantage rank | 249 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence it beats the LightGBM baseline) |
-| Implemented in volatility-ai | **No.** The deep-forecaster collection (C-RJ4) and an LSTM forecaster exist as rejected catalog code; no TFT. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.neural_models`: `TemporalFusionTransformer`; tested on synthetic data, not wired into the engine. The deep-forecaster collection (C-RJ4) and an LSTM forecaster exist as rejected catalog code. |
 | Related ledger entries | RK292, RK316, C-RJ4, V14 |
 
 ## In one paragraph

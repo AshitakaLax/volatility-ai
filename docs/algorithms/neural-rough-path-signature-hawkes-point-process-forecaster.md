@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 990 (1 = easiest) |
 | Retail advantage rank | 10,448 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.point_processes`: `path_signature_features`, `signature_hawkes_forecast`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK328, RK248 |
 
 ## In one paragraph

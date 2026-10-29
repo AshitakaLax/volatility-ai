@@ -2,103 +2,103 @@ algorithm,status,ledger,code,note
 Time-Series Momentum (TSMOM),research,RK1; X7; X3,research.catalog.trend_following:tsmom_weights; tools/rotation.py,"The Moskowitz-Ooi-Pedersen long/short futures form is research code (X7, out of scope). Long-or-cash absolute momentum on one ETF has no harness mode; X3 applies it to the best asset of a rotation universe. See RK1."
 Volatility-Scaled Trend Following,research,RK2; S2; X7; S4,research.catalog.trend_following:tsmom_weights; research.catalog.trend_following:pytrendfollow_position; research.strategies.gated_local_reference_sizing:GatedLocalReferenceSizing,"Vol-scaled trend positions exist as research code (MOP 40%/sigma weights, Carver 12.5% vol target). Volatility targeting alone is wired on the grid (S4 vol_target). See RK2."
 Dual Momentum (Absolute + Relative),yes,RK3; X3,tools/rotation.py,"tools/rotation.py --mode relative_strength: best trailing --rs-days return over --universe, cash when even the best is negative. Absolute momentum is tested against zero, not T-bills. Unmeasured. See RK3."
-Cross-Asset Carry Composite,no,RK4,,
-Value-Momentum Composite,no,RK5,,
-12–1 Momentum (Skip-Month),no,RK6,,Stock universe not in the warehouse; X3 ranks ETFs without a skip month.
+Cross-Asset Carry Composite,research,RK4,research.catalog.carry_rates:carry_composite; research.catalog.carry_rates:fx_carry; research.catalog.carry_rates:roll_yield; research.catalog.carry_rates:bond_carry_rolldown; research.catalog.carry_rates:rank_weights,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
+Value-Momentum Composite,research,RK5,research.catalog.factors:value_momentum_composite; research.catalog.factors:rank_z,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+12–1 Momentum (Skip-Month),research,RK6,research.catalog.factors:momentum_12_1; research.catalog.factors:quantile_weights,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine. Stock universe not in the warehouse; X3 ranks ETFs without a skip month."
 Cross-Sectional Momentum,partial,RK7; X3,tools/rotation.py,X3 picks the top-1 of a small ETF universe by trailing return; no top-k basket or short side.
-Commodity Momentum + Term Structure,no,RK8,,
-Fama–French Five-Factor Model Portfolio,no,RK9,,
+Commodity Momentum + Term Structure,research,RK8,research.catalog.carry_rates:double_sort; research.catalog.carry_rates:roll_yield,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
+Fama–French Five-Factor Model Portfolio,research,RK9,research.catalog.factors:two_by_three_factor; research.catalog.factors:factor_regression,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
 State-Filtered Momentum,partial,RK10,research.strategies.natr_regime:calm_by_date; tools/rotation.py,Regime maps and a relative-strength rotation exist separately; the rotation cannot yet be switched off by a regime.
-Quality Minus Junk (QMJ),no,RK11,,
-Quality / Profitability Factor,no,RK12,,
-Gross Profitability Factor,no,RK13,,
+Quality Minus Junk (QMJ),research,RK11,research.catalog.factors:quality_score,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Quality / Profitability Factor,research,RK12,research.catalog.factors:operating_profitability; research.catalog.factors:quantile_weights,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Gross Profitability Factor,research,RK13,research.catalog.factors:gross_profitability,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
 52-Week High Momentum,partial,RK14,research.strategies.ultimate_sizing:UltimateSizing,"Distance from the one-year high gates the Ultimate strategy's calm re-entry (bear_dd, bear_window); no cross-sectional ranking."
-Conservative Investment Factor,no,RK15,,
-Residual Momentum,no,RK16,,
+Conservative Investment Factor,research,RK15,research.catalog.factors:asset_growth; research.catalog.factors:two_by_three_factor,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Residual Momentum,research,RK16,research.catalog.factors:residual_momentum,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
 10-Month Moving-Average Risk Filter,yes,RK17; V16; C-E2,research.strategies.trend_regimes:sma_risk_on; research.strategies.tactical_allocation:faber_targets,--regime sma (200-day) on tools/leverage_stepdown.py and tools/rotation.py; Faber's monthly 10-month rule is research code (C-E2).
 Low-Volatility Equity,partial,RK18; X2,tools/rotation.py,USMV and SPLV are candidate holdings in X2's defensive rotation; no low-volatility factor construction.
 Sector Momentum Rotation,partial,RK19; X3,tools/rotation.py,X3's harness runs it if --universe is a list of sector ETFs; not run.
-Bond Duration Momentum,no,RK20,,X5 rejected TLT as an ungated hedge (it fell with stocks in 2022).
+Bond Duration Momentum,research,RK20,research.catalog.carry_rates:duration_momentum,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine. X5 rejected TLT as an ungated hedge (it fell with stocks in 2022)."
 VIX-Regime Conditional Equity Exposure,yes,RK21; V12,research.strategies.vix_bands:vix_band; research.catalog.leads:vix_term_structure_regime,V12 scales lots by an implied-vol series (VIXY as proxy) in the champion; VIX bands (catalog R4) and the VIX/VIX3M term-structure lead are research code.
 Volatility Targeting / Risk Scaling,yes,RK22; S4; V18; S3,research.strategies.gated_local_reference_sizing:GatedLocalReferenceSizing; research.strategies.volatility_estimators:SessionVolatility,hf_entry_gated vol_target (Yang-Zhang realized vol). Unmeasured on the grid; V18 measured it on RSP.
 Drawdown-Aware De-Risking Governor,yes,RK23; V11,research.strategies.position_sizing:DrawdownLadder; research.catalog.leads:cppi_path; research.catalog.leads:grossman_zhou_multiplier,"dd_throttle_* on the champion (V11, measured in ultimate-algorithm.md L4); the tiered ladder with a halt tier, CPPI and Grossman-Zhou are research code."
 ETF NAV / Creation-Redemption Arbitrage,research,RK24; C-RJ6,research.catalog.excluded:creation_redemption_action,Out of scope: needs authorized-participant access.
-Index Futures vs Cash Basis Arbitrage,no,RK25,,
+Index Futures vs Cash Basis Arbitrage,research,RK25,research.catalog.carry_rates:index_fair_value; research.catalog.carry_rates:basis_signal,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
 Futures Cash-and-Carry Basis Trading,partial,RK26,research.catalog.crypto:funding_carry_positions,"Only a crypto relative exists: the spot-perpetual funding carry (C-RJ2, rejected), timed on funding thresholds rather than the futures basis."
-Shareholder Yield Factor,no,RK27,,
-Fixed-Income Carry and Roll-Down,no,RK28,,
-Price + Earnings Momentum,no,RK29,,
-FX Carry Trade,no,RK30,,
-Intangibles-Adjusted Value and Profitability Factor,no,RK31,,
-Commodity Futures Roll Yield,no,RK32,,
+Shareholder Yield Factor,research,RK27,research.catalog.factors:shareholder_yield,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Fixed-Income Carry and Roll-Down,research,RK28,research.catalog.carry_rates:bond_carry_rolldown,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
+Price + Earnings Momentum,research,RK29,research.catalog.factors:price_earnings_momentum; research.catalog.factors:sue,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+FX Carry Trade,research,RK30,research.catalog.carry_rates:fx_carry_portfolio; research.catalog.carry_rates:fx_carry,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
+Intangibles-Adjusted Value and Profitability Factor,research,RK31,research.catalog.factors:intangibles_adjusted; research.catalog.factors:intangible_capital,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Commodity Futures Roll Yield,research,RK32,research.catalog.carry_rates:roll_yield; research.catalog.carry_rates:basis_factor,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
 Market-Neutral Residual Mean Reversion,research,RK33; C-MR2,research.strategies.mean_reversion:s_score; research.strategies.mean_reversion:s_score_long_signal,Avellaneda-Lee ETF-residual s-score; the short leg is dropped.
-Futures Calendar-Spread Mean Reversion,no,RK34,,
-Net Stock Issuance Anomaly,no,RK35,,
-Johansen Cointegration Basket Trading,no,RK36,,
+Futures Calendar-Spread Mean Reversion,research,RK34,research.catalog.carry_rates:calendar_spread_positions,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
+Net Stock Issuance Anomaly,research,RK35,research.catalog.factors:net_issuance,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Johansen Cointegration Basket Trading,research,RK36,research.catalog.stat_arb:johansen_basket; research.catalog.stat_arb:band_positions,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
 Cointegration-Based Pairs Trading,research,RK37; Q2,research.catalog.je_suis_tm:pair_trading_signals; research.strategies.pairs:engle_granger,"Engle-Granger pairs as published (short leg, out of scope); a long-only spread signal exists."
 Chandelier Exit Trend Following,partial,RK38; V10; Q8,research.optimization.trailing_target:TrailingTargetPolicy; research.strategies.grid_lifecycle:psar_profit_exits,"Profit-only trailing exits exist (V10, PSAR exit); no ATR chandelier, and the stop form is out of scope."
-Merger Arbitrage,no,RK39,,
-Earnings Estimate Revision Momentum,no,RK40,,
-Inflation-Regime Asset Rotation,no,RK41,,"FRED fetchers, the warehouse's lagged macro join and the rotation harness exist; the inflation regime itself is not built."
-Cross-Asset Commodity Futures Term-Structure Carry & Roll Yield,no,RK42,,
+Merger Arbitrage,research,RK39,research.catalog.stat_arb:merger_arb_return; research.catalog.stat_arb:merger_implied_probability,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
+Earnings Estimate Revision Momentum,research,RK40,research.catalog.factors:revision_score,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Inflation-Regime Asset Rotation,research,RK41,research.catalog.carry_rates:inflation_regimes; research.catalog.carry_rates:regime_rotation,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine. FRED fetchers, the warehouse's lagged macro join and the rotation harness exist; the inflation regime itself is not built."
+Cross-Asset Commodity Futures Term-Structure Carry & Roll Yield,research,RK42,research.catalog.carry_rates:basis_factor,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
 Donchian / Turtle Channel Breakout,research,RK43; C-G5,research.catalog.trend_following:turtle_original_trades; research.strategies.position_sizing:TurtlePyramid,Full Turtle trade with stops is research code; the scale-in pyramid is the in-scope part (C-G5).
-Supertrend ATR-Band Trend Following,no,RK44,,
-Post-Earnings Announcement Drift (PEAD),no,RK45; V6,,"V6 (earnings-day lot boost) uses the same event calendar for sizing, not a surprise signal."
+Supertrend ATR-Band Trend Following,research,RK44,research.catalog.technical_ml:supertrend; research.catalog.technical_ml:atr,"Research code (research.catalog.technical_ml), tested on synthetic data; not wired into the engine."
+Post-Earnings Announcement Drift (PEAD),research,RK45; V6,research.catalog.factors:sue; research.catalog.factors:event_drift_trades,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine. V6 (earnings-day lot boost) uses the same event calendar for sizing, not a surprise signal."
 MACD Signal-Line Crossover,yes,RK46; Q1,research.strategies.trend_regimes:macd_risk_on; research.catalog.je_suis_tm:macd_crossover,--regime macd on the step-down and rotation harnesses. Causal step-down Calmar 0.12-0.26 (ultimate-algorithm.md L1).
-Public Activist-Filing Event Strategy,no,RK47,,
-Book-to-Market Value,no,RK48,,"COWZ, a free-cash-flow-yield ETF, is traded by the grid as an instrument only."
-Betting Against Beta (BAB),no,RK49,,
-Accrual Anomaly,no,RK50,,
-Asset-Growth Anomaly,no,RK51,,
+Public Activist-Filing Event Strategy,research,RK47,research.catalog.factors:activist_score; research.catalog.factors:market_model_car; research.catalog.factors:event_drift_trades,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Book-to-Market Value,research,RK48,research.catalog.factors:two_by_three_factor; research.catalog.factors:quantile_weights,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine. COWZ, a free-cash-flow-yield ETF, is traded by the grid as an instrument only."
+Betting Against Beta (BAB),research,RK49,research.catalog.factors:bab_betas; research.catalog.factors:bab_weights,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Accrual Anomaly,research,RK50,research.catalog.factors:accruals,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Asset-Growth Anomaly,research,RK51,research.catalog.factors:asset_growth,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
 Dividend Yield / Dividend Growth,partial,RK52,research.ml.regime_scaled_sizing:MLRegimeScaledSizing; research.ml.reachability_sizing:MLReachabilitySizing,SPYD (S&P 500 High Dividend ETF) is one of the funds the grid and ML sizing are researched on; no dividend selection rule.
-CVaR / Expected-Shortfall Optimization,no,RK53,,
+CVaR / Expected-Shortfall Optimization,research,RK53,research.catalog.allocation:cvar_weights; research.catalog.allocation:portfolio_cvar,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
 Volatility-Managed Factor Portfolio,partial,RK54; S4,research.strategies.gated_local_reference_sizing:GatedLocalReferenceSizing,"Volatility scaling exists for the grid, not for factor portfolios."
 ADX-Filtered Trend Following,partial,RK55; V15,research.strategies.indicator_library,ADX is one of the TA-Lib momentum indicators screened as an above/below-median regime flag in the V15 sweep; no ADX-gated trend trade.
 Hierarchical Risk Parity (HRP),yes,RK56; A5; Q13,research.strategies.hrp:hrp_weights; tools/rotation.py,tools/rotation.py --mode hrp. Unmeasured.
-Low P/E Value Screen,no,RK57,,
-Small-Cap Size Premium,no,RK58,,
+Low P/E Value Screen,research,RK57,research.catalog.factors:low_pe_screen,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Small-Cap Size Premium,research,RK58,research.catalog.factors:size_with_quality,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
 Liquidity Factor,partial,RK59,research.strategies.microstructure:amihud_illiquidity; research.strategies.microstructure:kyle_lambda,Amihud illiquidity and other bar-based liquidity measures exist as research code (C-MS5); no liquidity-sorted portfolio.
 Global Minimum-Variance Portfolio,research,RK60; Q13,research.catalog.je_suis_tm_projects:markowitz_weights,"min_variance weights, long-only and fully invested (Q13's notebook); not wired."
 Risk Parity / Equal Risk Contribution,partial,RK61; A5,research.strategies.hrp:hrp_weights,HRP only; equal risk contribution is not built.
 Dual Moving Average Crossover,research,RK62; Q1; C-E2,research.catalog.je_suis_tm:macd_crossover; research.strategies.tactical_allocation:faber_targets,quant-trading's 'MACD oscillator' is a short/long SMA crossover (research code); the wired Q1 regime is EMA-MACD.
-Black–Litterman Allocation,no,RK63,,
+Black–Litterman Allocation,research,RK63,research.catalog.allocation:black_litterman; research.catalog.allocation:black_litterman_weights,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
 Triple EMA / Moving-Average Ribbon,partial,RK64; V15,research.strategies.indicator_library,TEMA and the other TA-Lib moving averages are screened singly in the V15 sweep; no ribbon alignment rule.
-Cross-Sectional Factor Momentum Rotation,no,RK65,,X3's harness would run it with factor ETFs as --universe; not run.
-Maximum-Diversification Portfolio,no,RK66,,
+Cross-Sectional Factor Momentum Rotation,research,RK65,research.catalog.factors:factor_momentum,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine. X3's harness would run it with factor ETFs as --universe; not run."
+Maximum-Diversification Portfolio,research,RK66,research.catalog.allocation:max_diversification_weights; research.catalog.allocation:diversification_ratio,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
 ATR-Based Position Sizing,research,RK67; C-G5,research.strategies.position_sizing:turtle_unit_shares; research.strategies.position_sizing:turtle_atr,Turtle ATR units. V7 (vol-ratio lot scaling) is the wired relative.
 Dual Thrust Breakout,research,RK68; Q7; N1,research.catalog.je_suis_tm:dual_thrust_trades; research.strategies.entry_gates:BreakdownGate,"The trade (long/short, flat at the close) is research code; its lower band is wired as the N1 buy gate."
 London Session Breakout,research,RK69; Q4; N2; N3,research.catalog.je_suis_tm:london_breakout_trades; research.strategies.entry_gates:BreakdownGate,The trade is research code; the range-break idea is wired as the N2/N3 buy gates.
 Parabolic SAR Trend / Stop,yes,RK70; Q8,research.strategies.trend_regimes:psar_risk_on; research.strategies.grid_lifecycle:psar_profit_exits,--regime psar; a profit-only PSAR exit is research code. The stop use is out of scope. Causal step-down Calmar 0.06-0.17 (L1).
 Heikin-Ashi Trend Filter,yes,RK71; Q3,research.strategies.trend_regimes:heikin_ashi_risk_on,--regime heikin_ashi on the step-down and rotation harnesses. Causal step-down Calmar -0.09-0.11 (L1).
-Distance-Based Pairs Trading,no,RK72,,
+Distance-Based Pairs Trading,research,RK72,research.catalog.stat_arb:ggr_pairs; research.catalog.stat_arb:ggr_positions,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
 Kalman-Filter Dynamic-Hedge Pairs,research,RK73; Q2,research.strategies.pairs:KalmanHedgeRatio; research.strategies.pairs:spread_long_signal,"Catalog MR3 variant: Kalman hedge ratio, long-only spread signal."
-Copula-Based Pairs Trading,no,RK74,,
+Copula-Based Pairs Trading,research,RK74,research.catalog.stat_arb:fit_pair_copula; research.catalog.stat_arb:copula_positions,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
 Ornstein–Uhlenbeck Spread Trading,research,RK75; C-MR2; C-MR4,research.strategies.mean_reversion:s_score; research.strategies.mean_reversion:half_life,OU s-score and half-life.
 PCA Residual Statistical Arbitrage,partial,RK76; C-MR2,research.strategies.mean_reversion:s_score,The s-score is built on ETF residuals; Avellaneda-Lee's PCA factor variant is not.
-ATR Volatility-Expansion Breakout,no,RK77; N1; N5,,Relatives: the N1 Dual Thrust buy gate and the causal NATR regime (N5).
-Multi-Timeframe Trend Agreement,no,RK78,,
+ATR Volatility-Expansion Breakout,research,RK77; N1; N5,research.catalog.technical_ml:volatility_expansion_breakout; research.catalog.technical_ml:williams_breakout,"Research code (research.catalog.technical_ml), tested on synthetic data; not wired into the engine. Relatives: the N1 Dual Thrust buy gate and the causal NATR regime (N5)."
+Multi-Timeframe Trend Agreement,research,RK78,research.catalog.technical_ml:multi_timeframe_trend,"Research code (research.catalog.technical_ml), tested on synthetic data; not wired into the engine."
 Opening Gap Continuation,partial,RK79; N3; X1,research.strategies.entry_gates:BreakdownGate; research.strategies.entry_gates:IntradayMomentumGate,The prior-low gap gate (N3) and the intraday-momentum gate (X1) block buys after a gap down or a weak first half hour; no gap-continuation trade.
-Convertible Bond Arbitrage,no,RK80,,
-Capital Structure Arbitrage,no,RK81,,
-Closed-End Fund Discount Reversion,no,RK82,,
+Convertible Bond Arbitrage,research,RK80,research.catalog.stat_arb:convertible_price,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
+Capital Structure Arbitrage,research,RK81,research.catalog.stat_arb:creditgrades_spread; research.catalog.stat_arb:capital_structure_signal,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
+Closed-End Fund Discount Reversion,research,RK82,research.catalog.stat_arb:cef_discount; research.catalog.stat_arb:cef_positions,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
 Triangular FX Arbitrage,research,RK83; A7,research.catalog.crypto:find_arbitrage_cycle; research.catalog.crypto:conversion_rates,Bellman-Ford negative-cycle search over conversion rates (written for crypto venues).
 Crypto Perpetual Funding-Rate Capture,research,RK84; C-RJ2,research.catalog.crypto:funding_carry_positions; research.catalog.crypto:funding_carry_pnl,Rejected: crypto-specific.
 Spot-Perpetual Basis Arbitrage,partial,RK85; C-RJ2,research.catalog.crypto:funding_carry_positions,"Long spot / short perpetual timed on funding thresholds (C-RJ2, rejected as crypto-specific); the basis entry and convergence exit are not built."
-Yield Curve Steepener / Flattener,no,RK86,,
-Option Dispersion Trading,no,RK87,,
-Distributionally Robust CVaR Allocation,no,RK88,,
-Autoencoder Latent-Factor Statistical Arbitrage,no,RK89,,
-Long-Term Industry Reversal with Valuation Confirmation,no,RK90,,
+Yield Curve Steepener / Flattener,research,RK86,research.catalog.carry_rates:dv01; research.catalog.carry_rates:steepener_notionals; research.catalog.carry_rates:steepener_pnl; research.catalog.carry_rates:slope_signal,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
+Option Dispersion Trading,research,RK87,research.catalog.derivatives:implied_correlation; research.catalog.derivatives:realized_correlation; research.catalog.derivatives:dispersion_pnl,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Distributionally Robust CVaR Allocation,research,RK88,research.catalog.allocation:cvar_weights,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
+Autoencoder Latent-Factor Statistical Arbitrage,research,RK89,research.catalog.stat_arb:AutoencoderFactors; research.catalog.stat_arb:ou_s_score; research.catalog.stat_arb:s_score_positions,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
+Long-Term Industry Reversal with Valuation Confirmation,research,RK90,research.catalog.factors:industry_reversal,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
 iNAV Dislocation ETF Arbitrage,partial,RK91; C-RJ6,research.catalog.excluded:creation_redemption_action,Only the creation/redemption decision; no iNAV estimate or intraday dislocation trade.
-FED OTC Liquidity Sweep & Reverse Repo Arbitrage,no,RK92,,
-Cointegrated Triplet Basket Statistical Arbitrage,no,RK93,,
-Dynamic Copula-GARCH Multivariate Pair Trading,no,RK94,,
-Asymmetric Tail-Risk Parity Allocation,no,RK95,,
+FED OTC Liquidity Sweep & Reverse Repo Arbitrage,research,RK92,research.catalog.carry_rates:cash_venue,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
+Cointegrated Triplet Basket Statistical Arbitrage,research,RK93,research.catalog.stat_arb:cointegrated_triplets; research.catalog.stat_arb:johansen_basket,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
+Dynamic Copula-GARCH Multivariate Pair Trading,research,RK94,research.catalog.stat_arb:copula_garch_positions,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
+Asymmetric Tail-Risk Parity Allocation,research,RK95,research.catalog.allocation:downside_risk_parity; research.catalog.allocation:cvar_risk_parity,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
 Principal Component Analysis (PCA) Eigenportfolios Statistical Arbitrage,partial,RK96; C-MR2,research.strategies.mean_reversion:s_score,ETF-residual s-score only; no eigenportfolios.
-Wasserstein Distributionally Robust Statistical Arbitrage,no,RK97,,
-Adversarial Domain Generalization Cross-Market Momentum,no,RK98,,
+Wasserstein Distributionally Robust Statistical Arbitrage,research,RK97,research.catalog.stat_arb:wdro_threshold,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
+Adversarial Domain Generalization Cross-Market Momentum,research,RK98,research.catalog.cross_section:DomainAdversarialForecaster; research.catalog.cross_section:momentum_features,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
 Conformally Constrained Risk Parity Portfolio,partial,RK99,research.strategies.position_sizing:split_conformal_interval; research.strategies.position_sizing:conformal_long_size,Split-conformal intervals and long sizing exist (catalog S5); no ERC and no combination.
-Causal Discovery Directed Acyclic Graph (DAG) Pair Selection,no,RK100,,
+Causal Discovery Directed Acyclic Graph (DAG) Pair Selection,research,RK100,research.catalog.stat_arb:pc_skeleton; research.catalog.stat_arb:orient_v_structures; research.catalog.stat_arb:causal_pairs; research.catalog.stat_arb:lagged_causal_links,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
 Hidden Markov Model Regime Switching,research,C-R3,research.strategies.regime_models:GaussianHMM; research.strategies.regime_models:GaussianMixture,Causal Gaussian HMM and mixture regimes; not wired as a --regime.
 Hurst-Exponent Trend / Mean-Reversion Regime Gate,research,C-MR4,research.strategies.mean_reversion:hurst_exponent; research.strategies.mean_reversion:variance_ratio,Diagnostics only; not wired as a gate.
 Intraday ETF Relative-Value Arbitrage,research,A6,research.catalog.excluded:ib_hft_signals; research.catalog.excluded:ib_pairs_long_only,jamesmawm's intraday IB pairs model; the long-only form is research code.
@@ -123,229 +123,229 @@ Bollinger Band Mean Reversion,partial,Q9; X4,research.strategies.entry_gates:Bol
 Stochastic Oscillator Reversal,partial,V15,research.strategies.indicator_library,STOCH outputs are screened as above/below-median regime flags in the V15 sweep.
 Grid / Price-Ladder Trading,yes,V1; V2; V3; V4; V5; C-G2; C-G3; C-G4,research.strategies.high_frequency_sizing:HighFrequencyLocalReferenceSizing,"The platform's core: the champion grid (V5) and its predecessors, each lot exited only at a profit."
 VIX Futures Term-Structure Strategy,partial,,research.catalog.leads:vix_term_structure_regime,VIX/VIX3M term structure as a data-only regime input (a gap-analysis lead); trading VIX futures is out of scope.
-Generative Score-Based Diffusion Multi-Asset Scenario Synthesizer,no,RK200,,
-Koopman Operator Predictive Control Statistical Arbitrage,no,RK201,,
-Fractional Brownian Motion Multi-Scale Trend Scanning Strategy,no,RK202,,
-Koopman Operator Model Predictive Control Spread Equilibrium,no,RK203,,
+Generative Score-Based Diffusion Multi-Asset Scenario Synthesizer,research,RK200,research.catalog.generative:DDPM; research.catalog.generative:scenario_portfolio,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Koopman Operator Predictive Control Statistical Arbitrage,research,RK201,research.catalog.koopman:koopman_spread_position; research.catalog.koopman:edmd; research.catalog.koopman:koopman_predict,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
+Fractional Brownian Motion Multi-Scale Trend Scanning Strategy,research,RK202,research.catalog.information:fbm_trend_positions; research.catalog.information:trend_scan; research.catalog.information:hurst_dfa,"Research code (research.catalog.information), tested on synthetic data; not wired into the engine."
+Koopman Operator Model Predictive Control Spread Equilibrium,research,RK203,research.catalog.koopman:koopman_spread_position,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
 Lead-Lag Cross-Asset Predictive Trading,research,RK204,research.catalog.leads:lagged_cross_correlation; research.catalog.leads:hy_lead_lag,Gap-analysis lead: Nasdaq-100 futures to ETF lead-lag (Hayashi-Yoshida).
-Dynamic Tensor Decomposition Multi-Asset Factor Rotation,no,RK205,,
-Koopman Operator Model Predictive Control Multi-Asset Allocation,no,RK206,,
-Standardized Unexpected Earnings (SUE),no,RK207,,
+Dynamic Tensor Decomposition Multi-Asset Factor Rotation,research,RK205,research.catalog.allocation:cp_als; research.catalog.allocation:tensor_factor_rotation,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
+Koopman Operator Model Predictive Control Multi-Asset Allocation,research,RK206,research.catalog.koopman:koopman_mpc_allocation; research.catalog.koopman:edmd; research.catalog.koopman:linear_mpc,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
+Standardized Unexpected Earnings (SUE),research,RK207,research.catalog.factors:sue,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
 Anchored VWAP Reclaim / Rejection,partial,RK208; C-MS3,research.strategies.intraday_gates:session_vwap; research.strategies.intraday_gates:VwapGate,Session-anchored VWAP only (C-MS3); no event anchors.
-Corporate Buyback Announcement Drift,no,RK209,,
-Index Reconstitution / Rebalance Event Trading,no,RK210,,
+Corporate Buyback Announcement Drift,research,RK209,research.catalog.factors:event_drift_trades; research.catalog.factors:market_model_car,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Index Reconstitution / Rebalance Event Trading,research,RK210,research.catalog.factors:predict_index_changes,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
 Macro Surprise / Economic Release Strategy,partial,RK211; V6,research.strategies.high_frequency_sizing:HighFrequencyLocalReferenceSizing,V6 sizes up on FOMC decision days from a hand-verified calendar; no surprise (actual minus consensus) measure or release trade.
-Market Breadth Thrust,no,RK212,,
+Market Breadth Thrust,research,RK212,research.catalog.technical_ml:zweig_breadth_thrust,"Research code (research.catalog.technical_ml), tested on synthetic data; not wired into the engine."
 Trend-Scanning Label Model,research,RK213; C-ML1,research.ml.barrier_labels:trend_scanning_labels,Labels only; no model trained on them.
-XGBoost Cross-Sectional Ranking,no,RK214,,
+XGBoost Cross-Sectional Ranking,research,RK214,research.catalog.technical_ml:train_ranker; research.catalog.technical_ml:rank_select; research.catalog.technical_ml:relevance_labels,"Research code (research.catalog.technical_ml), tested on synthetic data; not wired into the engine."
 Cross-Sectional Reversal with Risk Neutralization,partial,RK215; C-MR1,research.strategies.mean_reversion:contrarian_weights; research.strategies.mean_reversion:decayed_reversal_scores,Contrarian weights and decayed reversal scores (C-MR1) without risk neutralization.
-Top-K with Dropout Portfolio Rotation,no,RK216,,
-Bayesian Structural Time Series (BSTS) Causal Impact Macro Strategy,no,RK217,,
-Sparse Bayesian Learning Dynamic Factor Model,no,RK218,,
-Dynamic Mode Decomposition (DMD) Market Mode Predictor,no,RK219,,
-Continuous-Time Mean-Variance Reinforcement Learning Agent,no,RK220,,
-Information-Theoretic Transfer Entropy Lead-Lag Strategy,no,RK221,,
-Maximum Entropy Production Rate Macro Allocator,no,RK222,,
-Quantum Tensor Network Portfolio Optimization,no,RK223,,
-Deep Latent Force Model (LFM) Interest Rate Forecaster,no,RK224,,
-Wasserstein Distributionally Robust Mean-Variance Allocation,no,RK225,,
-Functional Principal Component Analysis (FPCA) Yield Curve Forecaster,no,RK226,,
-Multi-Agent Evolutionary Reinforcement Learning Portfolio Optimizer,no,RK227,,
-Deep Generative Flow Matching Portfolio Generator,no,RK228,,
-Quantum Adiabatic Optimal Portfolio Rebalancing,no,RK229,,
-Riemannian Manifold Metric Optimization Portfolio,no,RK230,,
-Riemannian Manifold Metric Diffusion Portfolio Allocation,no,RK231,,
-Graph Attention Network Covariance Shrinkage Estimator,no,RK232,,
-Riemannian Manifold Metric Wasserstein Robust Allocation,no,RK233,,
-Wasserstein Distributionally Robust Reinforcement Learning Portfolio Agent,no,RK234,,
-Graph Attention Network Covariance Matrix Shrinkage Dynamic Allocation,no,RK235,,
-Quantum Adiabatic Graph Neural Network Portfolio Optimization,no,RK236,,
-Riemannian Manifold Metric Graph Attention Portfolio Allocation,no,RK237,,
-Quantum Adiabatic Tensor Network Portfolio Optimization,no,RK238,,
-Fractional Order Vector Error Correction Neural Network Portfolio Allocator,no,RK239,,
-Neural Operator Delay-Differential Stochastic Volatility Calibrator,no,RK240,,
-Koopman Operator Multi-Factor Equity Risk Factor Tracking,no,RK241,,
+Top-K with Dropout Portfolio Rotation,research,RK216,research.catalog.allocation:topk_dropout,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
+Bayesian Structural Time Series (BSTS) Causal Impact Macro Strategy,research,RK217,research.catalog.technical_ml:causal_impact,"Research code (research.catalog.technical_ml), tested on synthetic data; not wired into the engine."
+Sparse Bayesian Learning Dynamic Factor Model,research,RK218,research.catalog.allocation:ard_factor_loadings; research.catalog.allocation:dynamic_ard_loadings,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
+Dynamic Mode Decomposition (DMD) Market Mode Predictor,research,RK219,research.catalog.koopman:dmd; research.catalog.koopman:dmd_forecast; research.catalog.koopman:dmd_signal,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
+Continuous-Time Mean-Variance Reinforcement Learning Agent,research,RK220,research.catalog.deep_rl:EMVAgent,"Research code (research.catalog.deep_rl), tested on synthetic data; not wired into the engine."
+Information-Theoretic Transfer Entropy Lead-Lag Strategy,research,RK221,research.catalog.information:te_lead_lag_positions; research.catalog.information:transfer_entropy,"Research code (research.catalog.information), tested on synthetic data; not wired into the engine."
+Maximum Entropy Production Rate Macro Allocator,research,RK222,research.catalog.allocation:maxent_weights; research.catalog.allocation:mep_rebalance; research.catalog.allocation:entropy_production_rate,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
+Quantum Tensor Network Portfolio Optimization,research,RK223,research.catalog.quantum:mps_portfolio; research.catalog.quantum:mps_minimize,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Deep Latent Force Model (LFM) Interest Rate Forecaster,research,RK224,research.catalog.carry_rates:LatentForceGP,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
+Wasserstein Distributionally Robust Mean-Variance Allocation,research,RK225,research.catalog.allocation:wdro_mean_variance,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
+Functional Principal Component Analysis (FPCA) Yield Curve Forecaster,research,RK226,research.catalog.carry_rates:fpca; research.catalog.carry_rates:fpca_forecast; research.catalog.carry_rates:dns_forecast,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
+Multi-Agent Evolutionary Reinforcement Learning Portfolio Optimizer,research,RK227,research.catalog.deep_rl:evolve_portfolio_agents; research.catalog.deep_rl:genetic_search,"Research code (research.catalog.deep_rl), tested on synthetic data; not wired into the engine."
+Deep Generative Flow Matching Portfolio Generator,research,RK228,research.catalog.generative:FlowMatching; research.catalog.generative:scenario_portfolio,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Quantum Adiabatic Optimal Portfolio Rebalancing,research,RK229,research.catalog.quantum:rebalance_qubo; research.catalog.quantum:adiabatic_evolution,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Riemannian Manifold Metric Optimization Portfolio,research,RK230,research.catalog.spd_covariance:riemannian_min_variance; research.catalog.spd_covariance:karcher_mean,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Riemannian Manifold Metric Diffusion Portfolio Allocation,research,RK231,research.catalog.spd_covariance:metric_diffusion_risk_parity; research.catalog.spd_covariance:geodesic_smoothed_covariances,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Graph Attention Network Covariance Shrinkage Estimator,research,RK232,research.catalog.spd_covariance:GATShrinkage,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Riemannian Manifold Metric Wasserstein Robust Allocation,research,RK233,research.catalog.spd_covariance:riemannian_wdro_weights; research.catalog.spd_covariance:gelbrich_worst_variance,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Wasserstein Distributionally Robust Reinforcement Learning Portfolio Agent,research,RK234,research.catalog.deep_rl:train_wdro_policy,"Research code (research.catalog.deep_rl), tested on synthetic data; not wired into the engine."
+Graph Attention Network Covariance Matrix Shrinkage Dynamic Allocation,research,RK235,research.catalog.spd_covariance:gat_dynamic_allocation,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Quantum Adiabatic Graph Neural Network Portfolio Optimization,research,RK236,research.catalog.quantum:gnn_adiabatic_portfolio; research.catalog.quantum:sgc_scores,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Riemannian Manifold Metric Graph Attention Portfolio Allocation,research,RK237,research.catalog.spd_covariance:riemannian_gat_weights,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Quantum Adiabatic Tensor Network Portfolio Optimization,research,RK238,research.catalog.quantum:mps_portfolio; research.catalog.quantum:adiabatic_evolution,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Fractional Order Vector Error Correction Neural Network Portfolio Allocator,research,RK239,research.catalog.stat_arb:NeuralFCVECM; research.catalog.stat_arb:fcvecm_allocation,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
+Neural Operator Delay-Differential Stochastic Volatility Calibrator,research,RK240,research.catalog.derivatives:NeuralCalibrator; research.catalog.derivatives:heston_call; research.catalog.derivatives:delay_sv_call,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Koopman Operator Multi-Factor Equity Risk Factor Tracking,research,RK241,research.catalog.koopman:koopman_factor_drift,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
 Long-Volatility Breakout (Options),research,RK242; Q12,research.catalog.options:straddle_entry; research.catalog.options:straddle_pnl_at_expiry,quant-trading's options straddle; options are out of scope.
 Price/Volume Anomaly Detection,partial,RK243; A8,research.catalog.forecasting:ewm_anomalies,Exponentially weighted anomaly bands; not used to filter trades.
 Liquidity-Aware Adaptive Execution,partial,RK244,engine.execution.limit_pricing:grid_buy; engine.execution.limit_pricing:marketable_buy,Live grid buys skip while the spread exceeds live.orders.max_spread; must-fill orders cap their premium. No slicing or adaptive aggressiveness.
 Pure Passive Market Making,research,RK245; C-MM1; C-MM2,research.strategies.inventory_control:as_quotes; research.strategies.inventory_control:glft_quotes,"Quote models; the platform's grid is the buy-side, long-only relative."
 Inventory-Skewed Market Making,research,RK246; C-G2; C-MM1,research.strategies.inventory_control:inventory_skewed_level; research.strategies.inventory_control:as_reservation_price,Buy-side skew only: sell rungs cannot move below cost.
 VPIN Flow-Toxicity Filter,research,RK247; C-MM4,research.strategies.microstructure:vpin,Bulk-classified VPIN from bars; disputed evidence.
-Hawkes-Process Order-Flow Forecast,no,RK248,,
-Iceberg / Reserve-Order Execution,no,RK249,,
+Hawkes-Process Order-Flow Forecast,research,RK248,research.catalog.point_processes:order_flow_forecast; research.catalog.point_processes:fit_multivariate_hawkes,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Iceberg / Reserve-Order Execution,research,RK249,research.catalog.execution:iceberg_fills,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
 Arrival-Price Adaptive Limit-vs-Market Execution,partial,RK250,engine.execution.limit_pricing:grid_buy; engine.execution.limit_pricing:marketable_buy,"Orders are priced by purpose (grid buy at its trigger, must-fill orders across the quote within a cap); no arrival-price or urgency model."
-Intraday Volume-Profile Execution,no,RK251,,
+Intraday Volume-Profile Execution,research,RK251,research.catalog.execution:bdf_volume_forecast; research.catalog.execution:static_volume_profile,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
 Order-Flow Imbalance (OFI) Cross-Sectional Alpha Predictor,partial,RK252; C-MS1,research.strategies.microstructure:ofi; research.strategies.microstructure:ofi_events,Single-instrument OFI (needs L1 quotes); no cross-sectional model.
 Information-Driven Volume Clock Imbalance Momentum,partial,RK253; C-ML5,research.ml.info_bars:volume_bars; research.ml.info_bars:tick_imbalance_bars,Volume and imbalance bars only; no momentum rule.
-Persistent Homology Topological Data Analysis (TDA) Crash Predictor,no,RK254,,
-Persistent Homology Topological Landscape Crisis Predictor,no,RK255,,
-Deep Markov State-Space Intraday Volume Profile Predictor,no,RK256,,
-Information-Theoretic Causality Flow Macro Asset Allocator,no,RK257,,
-Spiking Graph Convolutional Network (SGCN) Contagion Predictor,no,RK258,,
-Hawkes-Driven Non-Parametric Order Flow Toxicity Filter,no,RK259,,
-Quantum Approximate State Preparation Risk Mapping,no,RK260,,
-Koopman Operator Model Predictive Control Risk Mitigation,no,RK261,,
-Persistent Homology Betti-0 Connected Component Contagion Detector,no,RK262,,
-Topological Persistence Diagram Clustering Crisis Detector,no,RK263,,
-Information-Theoretic Directed GNN Contagion Model,no,RK264,,
-Persistent Homology Betti-2 3D Void Macro Stress Predictor,no,RK265,,
-Riemannian Manifold Metric Entropic Risk Portfolio,no,RK266,,
-Graph Attention Network Covariance Matrix Spectral Regularization,no,RK267,,
-Persistent Homology Multi-Scale Vietoris-Rips Filtration Risk Scoring,no,RK268,,
+Persistent Homology Topological Data Analysis (TDA) Crash Predictor,research,RK254,research.catalog.topology:landscape_norm_series; research.catalog.topology:stress_alert; research.catalog.topology:tda_exposure,"Research code (research.catalog.topology), tested on synthetic data; not wired into the engine."
+Persistent Homology Topological Landscape Crisis Predictor,research,RK255,research.catalog.topology:persistence_landscape; research.catalog.topology:landscape_norm_series; research.catalog.topology:stress_alert,"Research code (research.catalog.topology), tested on synthetic data; not wired into the engine."
+Deep Markov State-Space Intraday Volume Profile Predictor,research,RK256,research.catalog.execution:DeepMarkovVolume,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Information-Theoretic Causality Flow Macro Asset Allocator,research,RK257,research.catalog.information:te_macro_allocation,"Research code (research.catalog.information), tested on synthetic data; not wired into the engine."
+Spiking Graph Convolutional Network (SGCN) Contagion Predictor,research,RK258,research.catalog.neural_models:SpikingGCN; research.catalog.neural_models:SpikingLayer,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
+Hawkes-Driven Non-Parametric Order Flow Toxicity Filter,research,RK259,research.catalog.point_processes:toxicity_score; research.catalog.point_processes:halt_quoting,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Quantum Approximate State Preparation Risk Mapping,research,RK260,research.catalog.quantum:quantum_var; research.catalog.quantum:amplitude_estimate,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Koopman Operator Model Predictive Control Risk Mitigation,research,RK261,research.catalog.koopman:koopman_risk_scale,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
+Persistent Homology Betti-0 Connected Component Contagion Detector,research,RK262,research.catalog.topology:betti0_contagion; research.catalog.topology:correlation_distance,"Research code (research.catalog.topology), tested on synthetic data; not wired into the engine."
+Topological Persistence Diagram Clustering Crisis Detector,research,RK263,research.catalog.topology:diagram_clusters; research.catalog.topology:diagram_distance,"Research code (research.catalog.topology), tested on synthetic data; not wired into the engine."
+Information-Theoretic Directed GNN Contagion Model,research,RK264,research.catalog.information:TEContagionModel; research.catalog.information:te_matrix,"Research code (research.catalog.information), tested on synthetic data; not wired into the engine."
+Persistent Homology Betti-2 3D Void Macro Stress Predictor,research,RK265,research.catalog.topology:betti2_macro_stress; research.catalog.topology:delay_embedding,"Research code (research.catalog.topology), tested on synthetic data; not wired into the engine."
+Riemannian Manifold Metric Entropic Risk Portfolio,research,RK266,research.catalog.spd_covariance:riemannian_entropic_weights; research.catalog.spd_covariance:entropic_risk,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Graph Attention Network Covariance Matrix Spectral Regularization,research,RK267,research.catalog.spd_covariance:gat_spectral_covariance; research.catalog.spd_covariance:rmt_clip,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Persistent Homology Multi-Scale Vietoris-Rips Filtration Risk Scoring,research,RK268,research.catalog.topology:multiscale_rips_score; research.catalog.topology:rips_persistence,"Research code (research.catalog.topology), tested on synthetic data; not wired into the engine."
 Persistent Homology Betti-0 Multiscale Filtration Contagion Clustering,partial,RK269; A5,research.strategies.hrp:hrp_weights,Single-linkage clustering (Betti-0 persistence) is built inside HRP; no contagion detector.
-Quantum Annealing Binary Matrix Factorization Portfolio Risk Model,no,RK270,,
-Sequential Bootstrapping Sample Weights,no,RK271,,Purged k-fold and CPCV exist (C-ML3); no uniqueness weights or sequential bootstrap.
-Wavelet-Neural Network Hybrid Intraday Trend Scalper,no,RK272,,
-Deep Koopman-Inspired Spectral Asset Allocation,no,RK273,,
+Quantum Annealing Binary Matrix Factorization Portfolio Risk Model,research,RK270,research.catalog.quantum:binary_matrix_factorization,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Sequential Bootstrapping Sample Weights,research,RK271,research.catalog.technical_ml:sequential_bootstrap; research.catalog.technical_ml:average_uniqueness; research.catalog.technical_ml:indicator_matrix,"Research code (research.catalog.technical_ml), tested on synthetic data; not wired into the engine. Purged k-fold and CPCV exist (C-ML3); no uniqueness weights or sequential bootstrap."
+Wavelet-Neural Network Hybrid Intraday Trend Scalper,research,RK272,research.catalog.neural_models:WaveletScalper; research.catalog.neural_models:causal_haar,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
+Deep Koopman-Inspired Spectral Asset Allocation,research,RK273,research.catalog.koopman:DeepKoopman; research.catalog.koopman:deep_koopman_allocation,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
 Avellaneda–Stoikov Market Making,research,RK274; C-MM1,research.strategies.inventory_control:as_quotes; research.strategies.inventory_control:as_reservation_price,Reservation price and optimal spread; buy-side use only.
-DeepLOB-Style Order-Book Forecasting,no,RK275,,
+DeepLOB-Style Order-Book Forecasting,research,RK275,research.catalog.neural_models:DeepLOB; research.catalog.neural_models:lob_labels,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
 Queue-Reactive Market Making,partial,RK276; C-MM5,research.strategies.microstructure:QueuePositionEstimator,Queue-position fill model only (needs L2).
-Hawkes Process Multi-Dimensional Order Flow Intensity Model,no,RK277,,
+Hawkes Process Multi-Dimensional Order Flow Intensity Model,research,RK277,research.catalog.point_processes:fit_multivariate_hawkes; research.catalog.point_processes:simulate_multivariate_hawkes; research.catalog.point_processes:multivariate_intensity,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
 Cross-Venue Crypto Triangular Arbitrage,research,RK278; A7,research.catalog.crypto:find_arbitrage_cycle,Rejected: crypto.
 Asynchronous Multi-Exchange Spatial Arbitrage Graph,research,RK279; A7,research.catalog.crypto:depth_arbitrage; research.catalog.crypto:find_arbitrage_cycle,Cross-venue spread and cycle detection; no min-cost-flow solver. Rejected: crypto.
-Recurrent Neural Hawkes Point Process Toxic Flow Hedging Trigger,no,RK280,,
+Recurrent Neural Hawkes Point Process Toxic Flow Hedging Trigger,research,RK280,research.catalog.point_processes:NeuralHawkes; research.catalog.point_processes:neural_hawkes_hedge_trigger,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
 Covered Call / Buy-Write,research,RK281; S1,research.catalog.options:wheel_calls_to_write,The call leg of ThetaGang's wheel; options are out of scope.
 Put-Write / Cash-Secured Put,research,RK282; S1,research.catalog.options:wheel_should_write; research.catalog.options:wheel_select_contract,The put leg of ThetaGang's wheel; options are out of scope.
-Wasserstein Distributionally Robust Neural Stochastic Control Hedging,no,RK283,,
+Wasserstein Distributionally Robust Neural Stochastic Control Hedging,research,RK283,research.catalog.derivatives:DeepHedger; research.catalog.derivatives:worst_case_sampler; research.catalog.derivatives:gbm_paths,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
 Options Wheel,research,RK284; S1,research.catalog.options:wheel_select_contract; research.catalog.options:wheel_should_roll,ThetaGang; options are out of scope.
-Iron Condor / Short Premium Range Strategy,no,RK285,,
-Iron Butterfly Credit Strategy,no,RK286,,
-Neural Operator Delay Differential Equation (Delay-ODE) Term Structure Predictor,no,RK287,,
-Neural Controlled Differential Equation (Neural CDE) Point Process Execution,no,RK288,,
-Neural Operator Delay-Differential Hawkes Microstructure Predictor,no,RK289,,
-Random Forest Return Classification,no,RK290,,
+Iron Condor / Short Premium Range Strategy,research,RK285,research.catalog.derivatives:iron_strikes; research.catalog.derivatives:iron_credit; research.catalog.derivatives:iron_payoff; research.catalog.derivatives:iron_backtest,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Iron Butterfly Credit Strategy,research,RK286,research.catalog.derivatives:iron_strikes; research.catalog.derivatives:iron_credit; research.catalog.derivatives:iron_backtest,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Neural Operator Delay Differential Equation (Delay-ODE) Term Structure Predictor,research,RK287,research.catalog.carry_rates:NeuralDelayCurve,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
+Neural Controlled Differential Equation (Neural CDE) Point Process Execution,research,RK288,research.catalog.neural_models:CDEIntensityExecution; research.catalog.neural_models:NeuralCDE,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
+Neural Operator Delay-Differential Hawkes Microstructure Predictor,research,RK289,research.catalog.point_processes:delay_hawkes_intensity,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Random Forest Return Classification,research,RK290,research.catalog.technical_ml:random_forest_signal; research.catalog.technical_ml:lag_feature_matrix,"Research code (research.catalog.technical_ml), tested on synthetic data; not wired into the engine."
 Gradient-Boosted Trees Return Prediction,yes,RK291; V13; V14,research.ml.reachability_sizing:MLReachabilitySizing; research.ml.regime_scaled_sizing:MLRegimeScaledSizing,"LightGBM models size grid lots (ml_reachability_*, ml_regime_*); they score target reachability and crash risk rather than predict returns. Measured AUCs 0.52-0.63 (docs/ml_plan.md)."
 LSTM Sequence Forecasting,research,RK292; C-RJ4,research.catalog.forecasting:LSTMForecaster,Rejected: no trading evidence.
-News / Financial Sentiment NLP,no,RK293,,
+News / Financial Sentiment NLP,research,RK293,research.catalog.technical_ml:lexicon_score; research.catalog.technical_ml:pessimism_index; research.catalog.technical_ml:tetlock_positions,"Research code (research.catalog.technical_ml), tested on synthetic data; not wired into the engine."
 Triple-Barrier Labeled ML Strategy,partial,RK294; C-ML1,research.ml.barrier_labels:triple_barrier_labels,Labels only; no classifier trained on them.
 Conformal Prediction Uncertainty Wrapper (CP-MAPIE),research,RK295; V13,research.strategies.position_sizing:split_conformal_interval; research.strategies.position_sizing:conformal_long_size,Split-conformal intervals and long sizing (catalog S5 variant).
-Dynamic Copula-Vine Regularized Factor Allocation,no,RK296,,
+Dynamic Copula-Vine Regularized Factor Allocation,research,RK296,research.catalog.allocation:vine_cvar_weights,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
 Fractional Hurst-Driven Adaptive Bandwidth Mean Reversion,partial,RK297; C-MR4,research.strategies.mean_reversion:hurst_exponent,Hurst-exponent diagnostic only (C-MR4); no wavelet estimator or adaptive bands.
-AMM / CLOB Cross-Venue Arbitrage,no,RK298,,
-Dynamic AMM Liquidity Provision / Liquidity Mining,no,RK299,,
+AMM / CLOB Cross-Venue Arbitrage,research,RK298,research.catalog.defi:optimal_arbitrage; research.catalog.defi:simulate_arbitrage; research.catalog.defi:lvr_rate,"Research code (research.catalog.defi), tested on synthetic data; not wired into the engine."
+Dynamic AMM Liquidity Provision / Liquidity Mining,research,RK299,research.catalog.defi:v3_amounts; research.catalog.defi:v3_liquidity; research.catalog.defi:lp_backtest,"Research code (research.catalog.defi), tested on synthetic data; not wired into the engine."
 Fractional Differentiation Feature Pipeline,research,RK300; C-ML5,research.ml.info_bars:frac_diff_ffd,Fixed-width-window fractional differencing.
-Temporal Fusion Transformer Forecasting,no,RK301,,
-Physics-Informed Deep Galerkin Method (DGM) Option Solver,no,RK302,,
-Neural Jump-Diffusion Rough Heston Smile Predictor,no,RK303,,
-Recurrent Neural Hawkes Point Process Volatility Jump Forecaster,no,RK304,,
-Quantum Annealing Binary Quadratic Portfolio Rebalancing,no,RK305,,
+Temporal Fusion Transformer Forecasting,research,RK301,research.catalog.neural_models:TemporalFusionTransformer,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
+Physics-Informed Deep Galerkin Method (DGM) Option Solver,research,RK302,research.catalog.derivatives:dgm_black_scholes; research.catalog.derivatives:FDResidualNet,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Neural Jump-Diffusion Rough Heston Smile Predictor,research,RK303,research.catalog.derivatives:rough_heston_cf; research.catalog.derivatives:rough_heston_smile; research.catalog.derivatives:fit_smile,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Recurrent Neural Hawkes Point Process Volatility Jump Forecaster,research,RK304,research.catalog.point_processes:NeuralHawkes; research.catalog.point_processes:neural_hawkes_alert,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Quantum Annealing Binary Quadratic Portfolio Rebalancing,research,RK305,research.catalog.quantum:rebalance_qubo; research.catalog.quantum:simulated_annealing; research.catalog.quantum:qaoa,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
 Microprice / Queue-Imbalance Signal,research,RK306; C-MS2,research.strategies.microstructure:micro_price; research.strategies.microstructure:depth_imbalance,Needs L1/L2 data.
-Cross-Exchange Market Making (XEMM),no,RK307,,
-Dividend Capture Window Strategy,no,RK308,,
-Gamma Scalping / Long-Gamma Rebalancing,no,RK309,,
-Multi-Agent RL Execution / Liquidation,no,RK310,,
-FinBERT Sentiment-Driven Event Arbitrage,no,RK311,,
-Deep Q-Network (DQN) Liquidation Agent,no,RK312,,
-Adaptive Mesh Reinforcement Learning Market Maker (RL-MM),no,RK313,,
-Hawkes-Jump Diffusion Multivariate Event Detection,no,RK314,,
-Empirical Mode Decomposition (EMD) Hilbert-Huang Intraday Scalper,no,RK315,,
-Temporal CNN / TCN Forecasting,no,RK316,,
+Cross-Exchange Market Making (XEMM),research,RK307,research.catalog.market_making:xemm_quotes; research.catalog.market_making:xemm_fill_pnl,"Research code (research.catalog.market_making), tested on synthetic data; not wired into the engine."
+Dividend Capture Window Strategy,research,RK308,research.catalog.factors:dividend_capture,"Research code (research.catalog.factors), tested on synthetic data; not wired into the engine."
+Gamma Scalping / Long-Gamma Rebalancing,research,RK309,research.catalog.derivatives:gamma_scalp_pnl,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Multi-Agent RL Execution / Liquidation,research,RK310,research.catalog.execution:train_multi_agent_liquidation,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+FinBERT Sentiment-Driven Event Arbitrage,research,RK311,research.catalog.technical_ml:SentenceClassifier; research.catalog.technical_ml:event_sentiment_trades,"Research code (research.catalog.technical_ml), tested on synthetic data; not wired into the engine."
+Deep Q-Network (DQN) Liquidation Agent,research,RK312,research.catalog.execution:train_dqn_liquidation; research.catalog.execution:LiquidationEnv,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Adaptive Mesh Reinforcement Learning Market Maker (RL-MM),research,RK313,research.catalog.market_making:train_rl_market_maker; research.catalog.market_making:simulate_market_maker; research.catalog.market_making:as_quotes,"Research code (research.catalog.market_making), tested on synthetic data; not wired into the engine."
+Hawkes-Jump Diffusion Multivariate Event Detection,research,RK314,research.catalog.point_processes:detect_jumps; research.catalog.point_processes:mutually_exciting_jump_intensity; research.catalog.point_processes:fit_jump_excitation,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Empirical Mode Decomposition (EMD) Hilbert-Huang Intraday Scalper,research,RK315,research.catalog.technical_ml:emd; research.catalog.technical_ml:instantaneous_phase; research.catalog.technical_ml:emd_scalper_positions,"Research code (research.catalog.technical_ml), tested on synthetic data; not wired into the engine."
+Temporal CNN / TCN Forecasting,research,RK316,research.catalog.neural_models:TCNForecaster,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
 Meta-Labeling Primary Signals,yes,RK317; V13; C-ML1,research.ml.reachability_sizing:MLReachabilitySizing,V13 scores whether each grid trigger's target is reachable and sizes it: meta-labelling the grid's own triggers (catalog ML2).
-Graph Convolutional Network (GCN) Cross-Sectional Stock Ranking,no,RK318,,
+Graph Convolutional Network (GCN) Cross-Sectional Stock Ranking,research,RK318,research.catalog.cross_section:GCNRanker,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
 Vol-Harvesting Dynamic Asymmetric Grid,yes,RK319; V3; V5; C-G3,research.strategies.high_frequency_sizing:HighFrequencyLocalReferenceSizing; research.strategies.harvest_sleeve_sizing:HarvestSleeveSizing,"This is volatility-ai's own design: independent lots, per-lot targets, never sold below cost (no_loss_guard). RSI-scaled lots are V3; volatility-scaled steps are C-G3."
-Koopman Operator Non-Linear Volatility Surface Interpolator,no,RK320,,
-Koopman Operator Non-Linear Volatility Surface Pricing Model,no,RK321,,
+Koopman Operator Non-Linear Volatility Surface Interpolator,research,RK320,research.catalog.koopman:koopman_surface_forecast,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
+Koopman Operator Non-Linear Volatility Surface Pricing Model,research,RK321,research.catalog.koopman:koopman_surface_price,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
 Order-Book Imbalance Signal,research,RK322; C-MS2,research.strategies.microstructure:depth_imbalance,Needs L2 depth.
-Physics-Informed Neural Operator (FNO) Yield Curve Dynamics,no,RK323,,
-Wasserstein Distributionally Robust Neural SDE Hedging,no,RK324,,
-Neural Operator Controlled Portfolio Dynamic Hedging,no,RK325,,
-Neural Operator Functional Gradient Boosting Cross-Sectional Alpha,no,RK326,,
-Domain-Adversarial Neural Network (DANN) Cross-Market Alpha Transfer,no,RK327,,
-Neural Rough Volatility Path Signature Factor Model,no,RK328,,
-Wasserstein Distributionally Robust Neural Rough Volatility Hedging,no,RK329,,
-Neural Rough Path Signature Delay-Differential Portfolio Control,no,RK330,,
-Neural Rough Differential Equation (Neural RDE) LOB Forecaster,no,RK331,,
-Generative Score-Based Flow Matching Order Flow Generator,no,RK332,,
-Neural Jump-Diffusion Hawkes Point Process Shock Detector,no,RK333,,
-Neural Controlled Differential Equation LOB Trend Anticipator,no,RK334,,
-Wasserstein Distributionally Robust RL Market Making,no,RK335,,
-Score-Based Generative Diffusion Limit Order Book Simulator,no,RK336,,
-Neural Controlled Jump Diffusion Order Book Pricing Model,no,RK337,,
-Recurrent Neural Hawkes Point Process Liquidity Shock Detector,no,RK338,,
-Multi-Agent Reinforcement Learning Nash Market Maker,no,RK339,,
-Fractional Order Cointegration Vector Error Correction Neural Network,no,RK340,,
-Multi-Agent Reinforcement Learning Stackelberg Market Maker,no,RK341,,
-Neural Rough Path Signature Hawkes Point Process Forecaster,no,RK342,,
-Generative Score-Based Diffusion Limit Order Book Flow Synthesizer,no,RK343,,
-Multi-Agent Reinforcement Learning Stackelberg Market Maker Equilibrium,no,RK344,,
-Multi-Agent Reinforcement Learning Stackelberg Spread Capture,no,RK345,,
+Physics-Informed Neural Operator (FNO) Yield Curve Dynamics,research,RK323,research.catalog.carry_rates:fit_musiela_pinn; research.catalog.carry_rates:musiela_curve,"Research code (research.catalog.carry_rates), tested on synthetic data; not wired into the engine."
+Wasserstein Distributionally Robust Neural SDE Hedging,research,RK324,research.catalog.derivatives:DeepHedger; research.catalog.derivatives:worst_case_sampler; research.catalog.derivatives:NeuralLocalVol,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Neural Operator Controlled Portfolio Dynamic Hedging,research,RK325,research.catalog.derivatives:DeepHedger,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Neural Operator Functional Gradient Boosting Cross-Sectional Alpha,research,RK326,research.catalog.cross_section:operator_boosting; research.catalog.cross_section:spectral_features,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
+Domain-Adversarial Neural Network (DANN) Cross-Market Alpha Transfer,research,RK327,research.catalog.cross_section:DomainAdversarialForecaster; research.catalog.cross_section:grad_reverse,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
+Neural Rough Volatility Path Signature Factor Model,research,RK328,research.catalog.cross_section:signature_trading; research.catalog.cross_section:rough_hurst,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
+Wasserstein Distributionally Robust Neural Rough Volatility Hedging,research,RK329,research.catalog.derivatives:DeepHedger; research.catalog.derivatives:worst_case_sampler; research.catalog.derivatives:rough_bergomi_paths,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Neural Rough Path Signature Delay-Differential Portfolio Control,research,RK330,research.catalog.cross_section:signature_trading; research.catalog.cross_section:signature_feature_panel,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
+Neural Rough Differential Equation (Neural RDE) LOB Forecaster,research,RK331,research.catalog.neural_models:CDEClassifier; research.catalog.neural_models:log_signature_steps,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
+Generative Score-Based Flow Matching Order Flow Generator,research,RK332,research.catalog.generative:FlowMatching; research.catalog.generative:order_messages; research.catalog.generative:decode_messages,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Neural Jump-Diffusion Hawkes Point Process Shock Detector,research,RK333,research.catalog.point_processes:NeuralHawkes; research.catalog.point_processes:neural_jump_sde_path,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Neural Controlled Differential Equation LOB Trend Anticipator,research,RK334,research.catalog.neural_models:CDEClassifier; research.catalog.neural_models:NeuralCDE,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
+Wasserstein Distributionally Robust RL Market Making,research,RK335,research.catalog.market_making:train_rl_market_maker,"Research code (research.catalog.market_making), tested on synthetic data; not wired into the engine."
+Score-Based Generative Diffusion Limit Order Book Simulator,research,RK336,research.catalog.generative:DDPM; research.catalog.generative:order_messages; research.catalog.generative:decode_messages,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Neural Controlled Jump Diffusion Order Book Pricing Model,research,RK337,research.catalog.neural_models:CDEJumpPricer,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
+Recurrent Neural Hawkes Point Process Liquidity Shock Detector,research,RK338,research.catalog.point_processes:NeuralHawkes; research.catalog.point_processes:neural_hawkes_alert,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Multi-Agent Reinforcement Learning Nash Market Maker,research,RK339,research.catalog.market_making:duopoly_payoffs; research.catalog.market_making:fictitious_play; research.catalog.market_making:nash_spread,"Research code (research.catalog.market_making), tested on synthetic data; not wired into the engine."
+Fractional Order Cointegration Vector Error Correction Neural Network,research,RK340,research.catalog.stat_arb:NeuralFCVECM; research.catalog.stat_arb:fcvecm_allocation,"Research code (research.catalog.stat_arb), tested on synthetic data; not wired into the engine."
+Multi-Agent Reinforcement Learning Stackelberg Market Maker,research,RK341,research.catalog.market_making:stackelberg_spread; research.catalog.market_making:trader_demand_response,"Research code (research.catalog.market_making), tested on synthetic data; not wired into the engine."
+Neural Rough Path Signature Hawkes Point Process Forecaster,research,RK342,research.catalog.point_processes:path_signature_features; research.catalog.point_processes:signature_hawkes_forecast,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Generative Score-Based Diffusion Limit Order Book Flow Synthesizer,research,RK343,research.catalog.generative:DDPM; research.catalog.generative:order_messages,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Multi-Agent Reinforcement Learning Stackelberg Market Maker Equilibrium,research,RK344,research.catalog.market_making:stackelberg_spread; research.catalog.market_making:undercutting_follower,"Research code (research.catalog.market_making), tested on synthetic data; not wired into the engine."
+Multi-Agent Reinforcement Learning Stackelberg Spread Capture,research,RK345,research.catalog.market_making:stackelberg_spread; research.catalog.market_making:trader_demand_response,"Research code (research.catalog.market_making), tested on synthetic data; not wired into the engine."
 SAC Continuous-Action Trading Agent,research,RK346; A1,research.catalog.rl_agents:sac_target,Update rule only; rejected for now with the other deep RL agents.
 DDPG / TD3 Continuous-Control Trader,research,RK347; A1,research.catalog.rl_agents:ddpg_target; research.catalog.rl_agents:td3_target,Update rules only; rejected for now.
-Phase Space Reconstructed Neural ODE (PSR-NODE),no,RK348,,
-Time-Series Generative Adversarial Network (TimeGAN),no,RK349,,
-Physics-Informed Deep Learning Schrödinger Volatility Solver,no,RK350,,
-Multi-Agent Deep Deterministic Policy Gradient (MADDPG) Portfolio Allocation,no,RK351,,
-Deep Hedging with Transaction Costs and Friction,no,RK352,,
-Recurrent Neural Hawkes Point Process Execution Timing,no,RK353,,
-Multi-Agent Reinforcement Learning Evolutionary Market Maker,no,RK354,,
-Recurrent Neural Hawkes Point Process Toxic Flow Execution,no,RK355,,
-Recurrent Neural Hawkes Point Process Dynamic Inventory Market Maker,no,RK356,,
-Recurrent Neural Hawkes Point Process Toxic Flow Execution Pauser,no,RK357,,
-Multi-Agent Reinforcement Learning Evolutionary Execution Routing,no,RK358,,
-Multi-Agent Reinforcement Learning Evolutionary Market Making Equilibrium,no,RK359,,
-Multi-Agent Reinforcement Learning Evolutionary Execution Allocator,no,RK360,,
-Deep Reinforcement Learning Order Book Market Maker (Marl-MM),no,RK361,,
-Koopman Operator Model Predictive Control Execution,no,RK362,,
+Phase Space Reconstructed Neural ODE (PSR-NODE),research,RK348,research.catalog.neural_models:PSRNeuralODE,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
+Time-Series Generative Adversarial Network (TimeGAN),research,RK349,research.catalog.generative:TimeGAN,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Physics-Informed Deep Learning Schrödinger Volatility Solver,research,RK350,research.catalog.derivatives:fit_pinn; research.catalog.derivatives:schrodinger_residual; research.catalog.derivatives:modulus,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Multi-Agent Deep Deterministic Policy Gradient (MADDPG) Portfolio Allocation,research,RK351,research.catalog.deep_rl:MADDPGAllocator; research.catalog.deep_rl:MADDPG,"Research code (research.catalog.deep_rl), tested on synthetic data; not wired into the engine."
+Deep Hedging with Transaction Costs and Friction,research,RK352,research.catalog.derivatives:DeepHedger,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Recurrent Neural Hawkes Point Process Execution Timing,research,RK353,research.catalog.point_processes:hawkes_timed_slices,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Multi-Agent Reinforcement Learning Evolutionary Market Maker,research,RK354,research.catalog.market_making:evolve_market_maker,"Research code (research.catalog.market_making), tested on synthetic data; not wired into the engine."
+Recurrent Neural Hawkes Point Process Toxic Flow Execution,research,RK355,research.catalog.point_processes:toxic_flow_execution,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Recurrent Neural Hawkes Point Process Dynamic Inventory Market Maker,research,RK356,research.catalog.point_processes:hawkes_inventory_quotes,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Recurrent Neural Hawkes Point Process Toxic Flow Execution Pauser,research,RK357,research.catalog.point_processes:toxic_flow_execution,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Multi-Agent Reinforcement Learning Evolutionary Execution Routing,research,RK358,research.catalog.execution:evolve_execution; research.catalog.execution:venue_cost,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Multi-Agent Reinforcement Learning Evolutionary Market Making Equilibrium,research,RK359,research.catalog.market_making:replicator_dynamics; research.catalog.market_making:duopoly_payoffs,"Research code (research.catalog.market_making), tested on synthetic data; not wired into the engine."
+Multi-Agent Reinforcement Learning Evolutionary Execution Allocator,research,RK360,research.catalog.execution:evolve_execution,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Deep Reinforcement Learning Order Book Market Maker (Marl-MM),research,RK361,research.catalog.market_making:train_competing_dqn_makers,"Research code (research.catalog.market_making), tested on synthetic data; not wired into the engine."
+Koopman Operator Model Predictive Control Execution,research,RK362,research.catalog.koopman:koopman_execution; research.catalog.koopman:linear_mpc,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
 TWAP Execution,research,RK363,research.catalog.leads:almgren_chriss,The straight-line (TWAP) path is almgren_chriss with risk_aversion=0; no live slicing.
-VWAP Execution,no,RK364,,
-POV / Percent-of-Volume Execution,no,RK365,,
+VWAP Execution,research,RK364,research.catalog.execution:vwap_schedule; research.catalog.execution:static_volume_profile,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+POV / Percent-of-Volume Execution,research,RK365,research.catalog.execution:pov_schedule,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
 Implementation-Shortfall / Almgren–Chriss,research,RK366,research.catalog.leads:almgren_chriss,Gap-analysis lead (Cartea-Jaimungal-Penalva / Guéant books).
-Hawkes-Driven Optimal Execution with Transitory Price Impact,no,RK367,,
-Continuous-Time Mean-Field Control Execution,no,RK368,,
-Multi-Agent Mean-Field Game Optimal Execution Routing,no,RK369,,
-Wasserstein Distributionally Robust Optimal Execution Trajectory,no,RK370,,
-Wasserstein Distributionally Robust Hawkes Point Process Execution,no,RK371,,
+Hawkes-Driven Optimal Execution with Transitory Price Impact,research,RK367,research.catalog.point_processes:hawkes_execution_schedule,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Continuous-Time Mean-Field Control Execution,research,RK368,research.catalog.execution:mean_field_execution,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Multi-Agent Mean-Field Game Optimal Execution Routing,research,RK369,research.catalog.execution:mfg_venue_split,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Wasserstein Distributionally Robust Optimal Execution Trajectory,research,RK370,research.catalog.execution:wdro_execution,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Wasserstein Distributionally Robust Hawkes Point Process Execution,research,RK371,research.catalog.point_processes:robust_hawkes_schedule,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
 PPO Reinforcement-Learning Trader,research,RK372; A1,research.catalog.rl_agents:ppo_clip_loss; research.catalog.rl_agents:gae,Update rules only; rejected for now.
-Generative Moment Matching Network (GMMN) Portfolio Simulator,no,RK373,,
-Physics-Informed Neural Network (PINN) Burgers Volatility Model,no,RK374,,
-Quantum Support Vector Regression (QSVR) Return Predictor,no,RK375,,
-Deep Koopman Operator Market Dynamics Predictor,no,RK376,,
-Neural SDE Controlled Stochastic Volatility Arbitrage,no,RK377,,
-Generative Diffusion Model Trajectory Generator (TabDDPM),no,RK378,,
-Fractional Brownian Motion (fBm) Volatility Surface Arbitrage,no,RK379,,
-Dynamic Latent Factor Graph Neural Network (FactorGNN),no,RK380,,
-Hyperbolic Graph Neural Networks for Stock Pricing,no,RK381,,
-Contractive Autoencoder Latent Factor Anomaly Detection,no,RK382,,
-Conditional Wasserstein GAN-GP Yield Curve Synthesizer,no,RK383,,
-Geometric Deep Learning Non-Euclidean Alpha Predictor,no,RK384,,
-Graph Attention Network (GAT) Supply Chain Contagion Stock Predictor,no,RK385,,
-Information-Theoretic Transfer Entropy Graph Neural Network Alpha Model,no,RK386,,
-Quantum Kernel-Based SVM Cross-Sectional Alpha Predictor,no,RK387,,
-Dynamic Copula-Quantile Regression Neural Network Alpha Model,no,RK388,,
-Quantum Annealing Entropic Value-at-Risk Portfolio Optimization,no,RK389,,
-Neural Operator Flow-Matching Cross-Sectional Alpha Forecaster,no,RK390,,
-Neural Rough Volatility Fractional signature Deep Hedging,no,RK391,,
-Fractional Order Vector AutoRegressive (VAR) Macro Allocator,no,RK392,,
-Quantum Neural Network (QNN) Volatility Surface Forecaster,no,RK393,,
-Graph Diffusion Convolutional Network Cross-Sectional Alpha,no,RK394,,
-Generative Score-Based Diffusion Macro Factor Synthesizer,no,RK395,,
-Riemannian Manifold Metric Graph Diffusion Covariance Estimator,no,RK396,,
-Quantum Annealing Graph Neural Network Covariance Shrinkage,no,RK397,,
-Persistent Homology Betti-2 Persistence Landscape Macro Contagion,no,RK398,,
-Generative Score-Based Diffusion Cross-Sectional Factor Synthesizer,no,RK399,,
-Graph Attention Network Riemannian Manifold Covariance Shrinkage,no,RK400,,
-Persistent Homology Betti-1 Cyclical Persistence Landscape Contagion,no,RK401,,
-Generative Score-Based Diffusion Cross-Sectional Alpha Synthesizer,no,RK402,,
-Persistent Homology Betti-2 Persistence Landscape Macro Fragility,no,RK403,,
-Graph Attention Network Riemannian Manifold Covariance Diffusion,no,RK404,,
-Generative Score-Based Diffusion Cross-Sectional Ranking Synthesizer,no,RK405,,
-Graph Attention Network Riemannian Manifold Covariance Regularization,no,RK406,,
-Spiking Neural Network (SNN) Event-Driven Microstructure Scalper,no,RK407,,
-Neural Jump ODE (NJ-ODE) High-Frequency Price Predictor,no,RK408,,
-Wasserstein Distributionally Robust Koopman Model Predictive Control,no,RK409,,
-Wasserstein Distributionally Robust Neural Operator Optimal Execution,no,RK410,,
-Recurrent Neural Hawkes Point Process Dynamic Hedging Scheduler,no,RK411,,
-Recurrent Neural Hawkes Point Process Toxic Flow Hedging Allocator,no,RK412,,
-Temporal Fusion Transformer (TFT) Multi-Horizon Price Forecaster,no,RK413,,
-Attention-Based Recurrent Neural Hawkes Point Process Alpha,no,RK414,,
-Koopman Operator Model Predictive Control Portfolio Rebalancing,no,RK415,,
-Koopman Operator Model Predictive Control Dynamic Hedging,no,RK416,,
-Koopman Operator Model Predictive Control Yield Curve Control,no,RK417,,
-Koopman Operator Model Predictive Control Spread Hedging,no,RK418,,
-Reinforcement Learning with Expert Guidance (RLEG) Execution,no,RK419,,
-Quantum Annealing Optimal Execution Trajectory Solver,no,RK420,,
-Wasserstein Distributionally Robust RL Execution,no,RK421,,
-Multi-Agent Deep Deterministic Reinforcement Learning Cross-Venue Execution,no,RK422,,
-Multi-Agent Reinforcement Learning Stackelberg Execution Broker,no,RK423,,
-Wasserstein Distributionally Robust Hawkes Jump-Diffusion Optimal Execution,no,RK424,,
-Deep Recurrent Attentive Execution Agent (DR-Attn-Exec),no,RK425,,
+Generative Moment Matching Network (GMMN) Portfolio Simulator,research,RK373,research.catalog.generative:GMMN; research.catalog.generative:mmd2; research.catalog.generative:expected_shortfall,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Physics-Informed Neural Network (PINN) Burgers Volatility Model,research,RK374,research.catalog.derivatives:fit_pinn; research.catalog.derivatives:burgers_residual,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Quantum Support Vector Regression (QSVR) Return Predictor,research,RK375,research.catalog.quantum:qsvr_predict; research.catalog.quantum:quantum_kernel,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Deep Koopman Operator Market Dynamics Predictor,research,RK376,research.catalog.koopman:DeepKoopman,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
+Neural SDE Controlled Stochastic Volatility Arbitrage,research,RK377,research.catalog.derivatives:NeuralLocalVol; research.catalog.derivatives:robust_price_bounds; research.catalog.derivatives:bounds_signal,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Generative Diffusion Model Trajectory Generator (TabDDPM),research,RK378,research.catalog.generative:DDPM; research.catalog.generative:encode_tabular; research.catalog.generative:decode_tabular,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Fractional Brownian Motion (fBm) Volatility Surface Arbitrage,research,RK379,research.catalog.derivatives:rough_vol_surface; research.catalog.derivatives:surface_relative_value,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Dynamic Latent Factor Graph Neural Network (FactorGNN),research,RK380,research.catalog.cross_section:FactorVAE,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
+Hyperbolic Graph Neural Networks for Stock Pricing,research,RK381,research.catalog.cross_section:HyperbolicGCN,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
+Contractive Autoencoder Latent Factor Anomaly Detection,research,RK382,research.catalog.cross_section:ContractiveAutoencoder,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
+Conditional Wasserstein GAN-GP Yield Curve Synthesizer,research,RK383,research.catalog.generative:ConditionalWGANGP,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Geometric Deep Learning Non-Euclidean Alpha Predictor,research,RK384,research.catalog.cross_section:HyperbolicGCN; research.catalog.cross_section:expmap0; research.catalog.cross_section:logmap0,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
+Graph Attention Network (GAT) Supply Chain Contagion Stock Predictor,research,RK385,research.catalog.cross_section:SupplyChainGAT; research.catalog.cross_section:customer_momentum,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
+Information-Theoretic Transfer Entropy Graph Neural Network Alpha Model,research,RK386,research.catalog.information:te_graph_alpha; research.catalog.information:te_matrix,"Research code (research.catalog.information), tested on synthetic data; not wired into the engine."
+Quantum Kernel-Based SVM Cross-Sectional Alpha Predictor,research,RK387,research.catalog.quantum:qsvm_predict; research.catalog.quantum:quantum_kernel,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Dynamic Copula-Quantile Regression Neural Network Alpha Model,research,RK388,research.catalog.cross_section:QuantileNetwork; research.catalog.cross_section:copula_quantile_rank,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
+Quantum Annealing Entropic Value-at-Risk Portfolio Optimization,research,RK389,research.catalog.quantum:evar_selection; research.catalog.quantum:evar,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Neural Operator Flow-Matching Cross-Sectional Alpha Forecaster,research,RK390,research.catalog.generative:operator_flow_alpha; research.catalog.generative:FlowMatching,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Neural Rough Volatility Fractional signature Deep Hedging,research,RK391,research.catalog.derivatives:DeepHedger; research.catalog.derivatives:rough_bergomi_paths,"Research code (research.catalog.derivatives), tested on synthetic data; not wired into the engine."
+Fractional Order Vector AutoRegressive (VAR) Macro Allocator,research,RK392,research.catalog.allocation:fractional_var_allocation,"Research code (research.catalog.allocation), tested on synthetic data; not wired into the engine."
+Quantum Neural Network (QNN) Volatility Surface Forecaster,research,RK393,research.catalog.quantum:QNNRegressor,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Graph Diffusion Convolutional Network Cross-Sectional Alpha,research,RK394,research.catalog.cross_section:diffusion_conv_alpha; research.catalog.cross_section:diffusion_features,"Research code (research.catalog.cross_section), tested on synthetic data; not wired into the engine."
+Generative Score-Based Diffusion Macro Factor Synthesizer,research,RK395,research.catalog.generative:FactorDiffusion; research.catalog.generative:DDPM,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Riemannian Manifold Metric Graph Diffusion Covariance Estimator,research,RK396,research.catalog.spd_covariance:graph_diffusion_covariance,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Quantum Annealing Graph Neural Network Covariance Shrinkage,research,RK397,research.catalog.quantum:covariance_mask_qubo; research.catalog.quantum:masked_covariance,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Persistent Homology Betti-2 Persistence Landscape Macro Contagion,research,RK398,research.catalog.topology:landscape_norm_series; research.catalog.topology:betti2_macro_stress,"Research code (research.catalog.topology), tested on synthetic data; not wired into the engine."
+Generative Score-Based Diffusion Cross-Sectional Factor Synthesizer,research,RK399,research.catalog.generative:FactorDiffusion,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Graph Attention Network Riemannian Manifold Covariance Shrinkage,research,RK400,research.catalog.spd_covariance:gat_riemannian_shrinkage,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Persistent Homology Betti-1 Cyclical Persistence Landscape Contagion,research,RK401,research.catalog.topology:landscape_norm_series; research.catalog.topology:persistence_landscape,"Research code (research.catalog.topology), tested on synthetic data; not wired into the engine."
+Generative Score-Based Diffusion Cross-Sectional Alpha Synthesizer,research,RK402,research.catalog.generative:DDPM; research.catalog.generative:FactorDiffusion,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Persistent Homology Betti-2 Persistence Landscape Macro Fragility,research,RK403,research.catalog.topology:landscape_norm_series; research.catalog.topology:tda_exposure,"Research code (research.catalog.topology), tested on synthetic data; not wired into the engine."
+Graph Attention Network Riemannian Manifold Covariance Diffusion,research,RK404,research.catalog.spd_covariance:gat_graph_diffusion_covariance,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Generative Score-Based Diffusion Cross-Sectional Ranking Synthesizer,research,RK405,research.catalog.generative:synthesize_rankings; research.catalog.generative:ranks_to_scores; research.catalog.generative:scores_to_ranks,"Research code (research.catalog.generative), tested on synthetic data; not wired into the engine."
+Graph Attention Network Riemannian Manifold Covariance Regularization,research,RK406,research.catalog.spd_covariance:gat_log_spectral_covariance; research.catalog.spd_covariance:log_spectral_shrinkage,"Research code (research.catalog.spd_covariance), tested on synthetic data; not wired into the engine."
+Spiking Neural Network (SNN) Event-Driven Microstructure Scalper,research,RK407,research.catalog.neural_models:SpikingScalper; research.catalog.neural_models:delta_spike_encode,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
+Neural Jump ODE (NJ-ODE) High-Frequency Price Predictor,research,RK408,research.catalog.neural_models:NeuralJumpODE,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
+Wasserstein Distributionally Robust Koopman Model Predictive Control,research,RK409,research.catalog.koopman:robust_koopman_mpc,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
+Wasserstein Distributionally Robust Neural Operator Optimal Execution,research,RK410,research.catalog.execution:NeuralOperatorExecution,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Recurrent Neural Hawkes Point Process Dynamic Hedging Scheduler,research,RK411,research.catalog.point_processes:hedge_rebalance_times,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Recurrent Neural Hawkes Point Process Toxic Flow Hedging Allocator,research,RK412,research.catalog.point_processes:hedge_budget_allocation,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Temporal Fusion Transformer (TFT) Multi-Horizon Price Forecaster,research,RK413,research.catalog.neural_models:TemporalFusionTransformer,"Research code (research.catalog.neural_models), tested on synthetic data; not wired into the engine."
+Attention-Based Recurrent Neural Hawkes Point Process Alpha,research,RK414,research.catalog.point_processes:NeuralHawkes,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Koopman Operator Model Predictive Control Portfolio Rebalancing,research,RK415,research.catalog.koopman:koopman_mpc_allocation,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
+Koopman Operator Model Predictive Control Dynamic Hedging,research,RK416,research.catalog.koopman:koopman_hedge_path,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
+Koopman Operator Model Predictive Control Yield Curve Control,research,RK417,research.catalog.koopman:koopman_curve_control,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
+Koopman Operator Model Predictive Control Spread Hedging,research,RK418,research.catalog.koopman:koopman_spread_position; research.catalog.koopman:koopman_hedge_path,"Research code (research.catalog.koopman), tested on synthetic data; not wired into the engine."
+Reinforcement Learning with Expert Guidance (RLEG) Execution,research,RK419,research.catalog.execution:train_dqn_liquidation,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Quantum Annealing Optimal Execution Trajectory Solver,research,RK420,research.catalog.quantum:annealed_execution; research.catalog.quantum:execution_qubo,"Research code (research.catalog.quantum), tested on synthetic data; not wired into the engine."
+Wasserstein Distributionally Robust RL Execution,research,RK421,research.catalog.execution:train_dqn_liquidation,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Multi-Agent Deep Deterministic Reinforcement Learning Cross-Venue Execution,research,RK422,research.catalog.execution:train_maddpg_router,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Multi-Agent Reinforcement Learning Stackelberg Execution Broker,research,RK423,research.catalog.execution:stackelberg_execution,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."
+Wasserstein Distributionally Robust Hawkes Jump-Diffusion Optimal Execution,research,RK424,research.catalog.point_processes:robust_hawkes_schedule; research.catalog.point_processes:robust_branching,"Research code (research.catalog.point_processes), tested on synthetic data; not wired into the engine."
+Deep Recurrent Attentive Execution Agent (DR-Attn-Exec),research,RK425,research.catalog.execution:AttentiveExecutionPolicy,"Research code (research.catalog.execution), tested on synthetic data; not wired into the engine."

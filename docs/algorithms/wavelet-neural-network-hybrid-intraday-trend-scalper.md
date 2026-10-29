@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 322 (1 = easiest) |
 | Retail advantage rank | 2,828 (1 = strongest) |
 | Fit with this project | ⏳ only with causal (trailing) wavelets · ⛔ as an intraday scalper |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.neural_models`: `WaveletScalper`, `causal_haar`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK292, RK219 |
 
 ## In one paragraph

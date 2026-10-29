@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 338 (1 = easiest) |
 | Retail advantage rank | 287 (1 = strongest) |
 | Fit with this project | ⛔ (options hedging) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `DeepHedger`, `worst_case_sampler`, `NeuralLocalVol`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK377, RK352, RK391 |
 
 ## In one paragraph

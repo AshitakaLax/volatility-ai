@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 260 (1 = easiest) |
 | Retail advantage rank | 242 (1 = strongest) |
 | Fit with this project | ⛔ (no portfolio problem to solve here) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.quantum`: `rebalance_qubo`, `simulated_annealing`, `qaoa`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK229, RK389, RK223 |
 
 ## In one paragraph

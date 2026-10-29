@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 226 (1 = easiest) |
 | Retail advantage rank | 2,117 (1 = strongest) |
 | Fit with this project | ⛔ (two venues, two-sided quoting, mostly crypto) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.market_making`: `xemm_quotes`, `xemm_fill_pnl`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK245, RK279, A7 |
 
 ## In one paragraph

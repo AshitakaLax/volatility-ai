@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 287 (1 = easiest) |
 | Retail advantage rank | 296 (1 = strongest) |
 | Fit with this project | ⛔ (derivatives hedging) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.derivatives`: `DeepHedger`, `worst_case_sampler`, `gbm_paths`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK97, RK88, RK240 |
 
 ## In one paragraph

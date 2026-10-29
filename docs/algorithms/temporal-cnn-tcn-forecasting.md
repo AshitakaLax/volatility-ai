@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 108 (1 = easiest) |
 | Retail advantage rank | 128 (1 = strongest) |
 | Fit with this project | ⛔ (no evidence it beats the LightGBM baseline) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.neural_models`: `TCNForecaster`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK301, RK292, C-RJ4 |
 
 ## In one paragraph

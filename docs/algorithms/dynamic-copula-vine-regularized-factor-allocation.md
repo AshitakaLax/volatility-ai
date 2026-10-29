@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 244 (1 = easiest) |
 | Retail advantage rank | 168 (1 = strongest) |
 | Fit with this project | ⏳ for a multi-asset book (CVaR allocation) |
-| Implemented in volatility-ai | **No.** |
+| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `vine_cvar_weights`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK74, RK94, RK53 |
 
 ## In one paragraph

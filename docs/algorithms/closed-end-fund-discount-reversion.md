@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 4 (1 = easiest) |
 | Retail advantage rank | 57 (1 = strongest) |
 | Fit with this project | ⏳ (a long-only basket of listed funds; a separate book) |
-| Implemented in volatility-ai | **No.** The warehouse has no closed-end fund prices or NAV history. |
+| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `cef_discount`, `cef_positions`; tested on synthetic data, not wired into the engine. The warehouse has no closed-end fund prices or NAV history. |
 | Related ledger entries | RK24 |
 
 ## In one paragraph
