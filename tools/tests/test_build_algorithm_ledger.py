@@ -177,6 +177,27 @@ def test_a_researched_page_is_linked_and_never_overwritten(small):
     assert "[**researched**](algorithms/beta-reversion.md)" in out[small["ledger"]]
 
 
+def test_a_researched_concept_page_is_kept_and_linked_from_its_members(small):
+    concepts = small["pages"] / "concepts"
+    concepts.mkdir()
+    page = concepts / "pair-model.md"
+    page.write_text("# Pair model\n\nResearched by hand.\n", encoding="utf-8")
+    out = _build(small)
+    assert page not in out
+    shard = out[small["pages"] / "ranked" / "ranks-00003-00005.md"]
+    assert "| 3 | Gamma Scholarly Pair MK-1 |" in shard
+    assert "[**researched** concept](../concepts/pair-model.md)" in shard
+    assert "[concept](../concepts/basket-model.md)" in shard
+    index = out[concepts / "README.md"]
+    assert "[Pair model](pair-model.md) · **researched** |" in index
+    assert "1 of them are researched by hand." in index
+    assert (
+        "2 [concept pages](algorithms/concepts/README.md), 1 of them researched."
+        in out[small["ledger"]]
+    )
+    assert stale_generated(small["pages"], out) == []
+
+
 def test_marked_pages_the_import_no_longer_produces_are_stale(small):
     gone = small["pages"] / "dropped-algorithm.md"
     gone.write_text(f"{GENERATED_MARK} from x. -->\n", encoding="utf-8")

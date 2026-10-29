@@ -43,7 +43,10 @@ Every page this writes starts with GENERATED_MARK. A page without it is
 hand-written research (docs/algorithms/time-series-momentum-tsmom.md is
 one): the build links to it as "researched" and never overwrites it. To
 research an algorithm, replace its generated page and delete the mark
-line. A marked page that the import no longer produces is deleted.
+line. Concept pages work the same way: a concepts/<slug>.md without the
+mark is research on the concept every member shares, and the shards and
+the concept index link to it as researched. A marked page that the
+import no longer produces is deleted.
 """
 
 from __future__ import annotations
@@ -387,7 +390,9 @@ def render_concept(
     return "\n".join(lines) + "\n"
 
 
-def render_concept_index(concepts: list[tuple[str, str, list[Algorithm]]], src: str) -> str:
+def render_concept_index(
+    concepts: list[tuple[str, str, list[Algorithm]]], src: str, researched: frozenset[str]
+) -> str:
     lines = [
         mark(src),
         "",
@@ -396,13 +401,17 @@ def render_concept_index(concepts: list[tuple[str, str, list[Algorithm]]], src: 
         f"The {sum(len(m) for _, _, m in concepts):,} title-reconstructed rows of the "
         f"[ranked algorithm list](../../algorithm_ledger.md#{LEDGER_ANCHOR}) share "
         f"{len(concepts):,} descriptions. Each page below holds one description, every "
-        "variant of the other fields its members carry, and the members themselves.",
+        "variant of the other fields its members carry, and the members themselves. "
+        f"{len(researched):,} of them are researched by hand.",
         "",
         "| Concept | Members | Best rank |",
         "|---|---|---|",
     ]
     for slug, title, members in concepts:
-        lines.append(f"| [{cell(title)}]({slug}.md) | {len(members):,} | {members[0].rank:,} |")
+        done = " · **researched**" if slug in researched else ""
+        lines.append(
+            f"| [{cell(title)}]({slug}.md){done} | {len(members):,} | {members[0].rank:,} |"
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -412,6 +421,7 @@ def render_shard(
     status: dict[str, dict[str, str]],
     total: int,
     src: str,
+    researched: frozenset[str],
 ) -> str:
     lo, hi = rows[0].rank, rows[-1].rank
     lines = [
@@ -429,9 +439,11 @@ def render_shard(
     ]
     for a in rows:
         state = status_label(status.get(a.name, NOT_MAPPED))
+        slug = concept_of[a.name]
+        doc = "**researched** concept" if slug in researched else "concept"
         lines.append(
             f"| {a.rank} | {cell(a.name)} | {cell(a.family)} | {a.ai_rank} | {a.retail_rank} "
-            f"| {state} | [concept](../concepts/{concept_of[a.name]}.md) |"
+            f"| {state} | [{doc}](../concepts/{slug}.md) |"
         )
     return "\n".join(lines) + "\n"
 
@@ -442,6 +454,7 @@ def render_ledger_block(
     page_of: dict[str, tuple[str, bool]],
     shards: list[tuple[str, list[Algorithm]]],
     n_concepts: int,
+    n_researched: int,
     status: dict[str, dict[str, str]],
     src: str,
 ) -> str:
@@ -485,7 +498,7 @@ def render_ledger_block(
         "#### Title-reconstructed algorithms",
         "",
         f"Listed by rank on the pages below; each row links to one of {n_concepts:,} "
-        "[concept pages](algorithms/concepts/README.md).",
+        f"[concept pages](algorithms/concepts/README.md), {n_researched:,} of them researched.",
         "",
         "| Ranks | Algorithms | Page |",
         "|---|---|---|",
@@ -534,19 +547,25 @@ def build(
     titles = [concept_title(m[0].description) for m in groups]
     concepts = list(zip(unique_slugs(titles), titles, groups, strict=True))
     concept_of = {a.name: slug for slug, _, members in concepts for a in members}
+    researched_concepts = set()
     for slug, title, members in concepts:
-        out[pages / "concepts" / f"{slug}.md"] = render_concept(
-            title, members, status, total, src, date
-        )
+        path = pages / "concepts" / f"{slug}.md"
+        if path.is_file() and not is_generated(path):
+            researched_concepts.add(slug)
+        else:
+            out[path] = render_concept(title, members, status, total, src, date)
+    researched = frozenset(researched_concepts)
     if concepts:
-        out[pages / "concepts" / "README.md"] = render_concept_index(concepts, src)
+        out[pages / "concepts" / "README.md"] = render_concept_index(concepts, src, researched)
 
     shards = []
     for i in range(0, len(reconstructed), SHARD_SIZE):
         chunk = reconstructed[i : i + SHARD_SIZE]
         name = f"ranks-{chunk[0].rank:05d}-{chunk[-1].rank:05d}.md"
         shards.append((name, chunk))
-        out[pages / "ranked" / name] = render_shard(chunk, concept_of, status, total, src)
+        out[pages / "ranked" / name] = render_shard(
+            chunk, concept_of, status, total, src, researched
+        )
 
     current = ledger.read_text(encoding="utf-8")
     if current.count(BEGIN) != 1 or current.count(END) != 1:
@@ -554,7 +573,7 @@ def build(
     head, rest = current.split(BEGIN)
     tail = rest.split(END, 1)[1]
     block = render_ledger_block(
-        specific, reconstructed, page_of, shards, len(concepts), status, src
+        specific, reconstructed, page_of, shards, len(concepts), len(researched), status, src
     )
     out[ledger] = head + block + tail
     return out
