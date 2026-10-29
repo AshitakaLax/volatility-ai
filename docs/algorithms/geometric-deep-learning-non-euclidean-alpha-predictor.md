@@ -19,8 +19,9 @@ researched 2026-10-28
 Forecast the cross-section of returns with networks on curved spaces
 (hyperbolic or Riemannian manifolds). The one finance study found is
 hyperbolic graph attention for stock selection (RK381); the CSV's
-reference, arXiv 2106.09876, looks like a placeholder ID (sequential
-digits, like arXiv 1908.01234 on RK97) and could not be identified.
+reference, arXiv 2106.09876, is a general graph anomaly-detection paper
+("Anomaly Detection in Dynamic Graphs via Transformer"), not a finance
+one.
 
 ## Evidence
 

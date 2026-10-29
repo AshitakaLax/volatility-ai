@@ -21,8 +21,8 @@ price-impact and volatility model in a Wasserstein ball around the
 estimated one. Robust execution with model uncertainty has a literature,
 and Wasserstein robustness has portfolio results (RK225); I found no
 Wasserstein-robust execution study, and the CSV's reference, arXiv
-1908.01234, looks like a placeholder ID (sequential digits, like arXiv
-1908.01234 on RK97) and could not be identified.
+1908.01234, is a biomedical-engineering paper on an electromagnetic
+bioreactor, unrelated to trading.
 
 ## Evidence
 

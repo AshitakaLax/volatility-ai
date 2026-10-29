@@ -32,8 +32,9 @@ for larger portfolios.
   and economic measures for larger portfolios. (Abstract.)
 * **Stübinger, Mangold & Krauss (2018):** vine copulas in statistical
   arbitrage (see RK74).
-* The CSV's reference is arXiv 1908.01234, the same unidentified ID as
-  RK97's.
+* The CSV's reference, arXiv 1908.01234 (also cited for RK97), is a
+  biomedical-engineering paper on an electromagnetic bioreactor,
+  unrelated to trading.
 
 ## Against, and failure modes
 

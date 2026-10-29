@@ -21,8 +21,7 @@ distribution within a Wasserstein ball around the empirical one.
 Blanchet, Chen and Zhou show this is empirical variance minimisation
 plus a regularisation term, with the ball's radius chosen from data;
 their S&P 500 back-tests compare it with Fama-French and Black-Litterman
-benchmarks. The CSV's reference, arXiv 1805.08765, looks like a
-placeholder ID (like arXiv 1908.01234 on RK97) and could not be
+benchmarks. The CSV's reference, arXiv 1805.08765, could not be
 identified.
 
 ## The rule

@@ -20,8 +20,7 @@ Price the volatility surface with a fractional (rough) volatility model
 and trade where market quotes deviate from it. Rough volatility is well
 supported as a description of volatility; deviations from a model
 surface are relative value, not arbitrage. The CSV's reference, arXiv
-1801.03456, looks like a placeholder ID (sequential digits, like arXiv
-1908.01234 on RK97) and could not be identified.
+1801.03456, could not be identified.
 
 ## Evidence
 

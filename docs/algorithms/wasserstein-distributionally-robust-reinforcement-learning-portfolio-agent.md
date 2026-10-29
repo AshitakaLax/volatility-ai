@@ -20,8 +20,8 @@ Train a deep reinforcement-learning portfolio agent against the worst
 state-transition model in a Wasserstein ball, so its policy survives
 regime shifts. Distributionally robust RL is an active research area; I
 found no portfolio study with out-of-sample results. The CSV's
-reference, arXiv 2110.09876, looks like a placeholder ID (like arXiv
-1908.01234 on RK97) and could not be identified.
+reference, arXiv 2110.09876, is a particle-physics review ("Light
+Sterile Neutrinos"), unrelated to trading.
 
 ## Evidence
 

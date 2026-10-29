@@ -20,8 +20,7 @@ Evolve populations of reinforcement-learning portfolio agents with
 genetic algorithms to find allocations robust across regimes.
 Evolutionary search and multi-agent RL are each common in finance
 papers; I found no out-of-sample study of this combination. The CSV's
-reference, arXiv 2006.09876, looks like a placeholder ID (like arXiv
-1908.01234 on RK97) and could not be identified.
+reference, arXiv 2006.09876, could not be identified.
 
 ## Evidence
 

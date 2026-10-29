@@ -20,9 +20,8 @@ Generate yield-curve scenarios conditioned on the current curve with a
 Wasserstein GAN with gradient penalty. A comparison on historical US
 yield curves found historical simulation, GARCH and a conditional
 Wasserstein GAN the best performers, so the GAN matched simple methods
-rather than beating them. The CSV's reference, arXiv 2003.02345, looks
-like a placeholder ID (sequential digits, like arXiv 1908.01234 on RK97)
-and could not be identified.
+rather than beating them. The CSV's reference, arXiv 2003.02345, could
+not be identified.
 
 ## Evidence
 

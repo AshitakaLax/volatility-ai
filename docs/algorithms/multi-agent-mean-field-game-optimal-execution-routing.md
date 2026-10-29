@@ -18,9 +18,8 @@ researched 2026-10-28
 
 Route child orders across venues using a mean-field game of many routing
 agents. Mean-field liquidation has theory (RK368); I found no routing
-study, and the CSV's reference, arXiv 2005.02345, looks like a
-placeholder ID (sequential digits, like arXiv 1908.01234 on RK97) and
-could not be identified.
+study, and the CSV's reference, arXiv 2005.02345, could not be
+identified.
 
 ## Evidence
 

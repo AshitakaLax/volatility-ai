@@ -19,9 +19,7 @@ researched 2026-10-28
 A fractionally cointegrated VAR (FCVAR) with a neural error-correction
 term, allocating across the cointegrated basket. It is the same entry as
 RK239: FCVAR is established econometrics, the neural variant untested.
-The CSV's reference, arXiv 1809.02345, looks like a placeholder ID
-(sequential digits, like arXiv 1908.01234 on RK97) and could not be
-identified.
+The CSV's reference, arXiv 1809.02345, could not be identified.
 
 ## Evidence
 

@@ -20,9 +20,9 @@ Price options from a volatility surface whose dynamics are linearised
 with a Koopman dictionary. The Koopman/MPC entries in the ranked list
 have no trading evidence (RK201, RK206, RK219); the nearest finance
 paper tuned its DMD windows in sample (Mann & Kutz 2016). I found no
-volatility-surface study, and the CSV's reference, arXiv 2004.05678,
-looks like a placeholder ID (sequential digits, like arXiv 1908.01234 on
-RK97) and could not be identified.
+volatility-surface study, and the CSV's reference, arXiv 2004.05678, is
+a mathematical-physics paper ("Stable polynomials and crystalline
+measures"), unrelated to trading.
 
 ## Evidence
 

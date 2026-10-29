@@ -23,9 +23,9 @@ anomalies: investors react slowly to news about a firm's economic
 partners, and a strategy long firms whose customers rose and short those
 whose customers fell earned about 1.55% a month (Cohen and Frazzini). A
 graph network is one way to use it; there is no evidence it adds to the
-simple rule. The CSV's reference, arXiv 2103.01234, looks like a
-placeholder ID (sequential digits, like arXiv 1908.01234 on RK97) and
-could not be identified.
+simple rule. The CSV's reference, arXiv 2103.01234, is a black-hole
+physics paper ("Hidden Symmetry of Vanishing Love"), unrelated to
+trading.
 
 ## Evidence
 

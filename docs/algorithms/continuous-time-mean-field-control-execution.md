@@ -20,8 +20,7 @@ Treat many traders liquidating similar positions as a mean-field
 population: each one's cost depends on the crowd's aggregate trading
 through permanent impact, and the equilibrium speed has a closed form.
 The finding is to follow the crowd but not too fast. The CSV's
-reference, arXiv 2005.02345, looks like a placeholder ID (sequential
-digits, like arXiv 1908.01234 on RK97) and could not be identified.
+reference, arXiv 2005.02345, could not be identified.
 
 ## Evidence
 

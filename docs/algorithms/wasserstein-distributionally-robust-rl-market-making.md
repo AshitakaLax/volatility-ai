@@ -20,9 +20,8 @@ Train a market-making agent against the worst order-flow model inside a
 Wasserstein ball around the estimated one, so its quotes survive regime
 shifts. Robust market making has closed-form relatives (ambiguity-averse
 Avellaneda-Stoikov variants); I found no Wasserstein-robust RL market
-maker, and the CSV's reference, arXiv 2110.09876, looks like a
-placeholder ID (sequential digits, like arXiv 1908.01234 on RK97) and
-could not be identified.
+maker, and the CSV's reference, arXiv 2110.09876, is a particle-physics
+review ("Light Sterile Neutrinos"), unrelated to trading.
 
 ## Evidence
 

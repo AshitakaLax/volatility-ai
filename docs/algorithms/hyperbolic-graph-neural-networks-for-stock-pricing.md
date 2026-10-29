@@ -20,8 +20,7 @@ Embed the stock-relation graph in hyperbolic space, whose geometry suits
 the scale-free, hub-dominated networks that stock correlations form, and
 run graph attention there for stock selection. The one study found
 reports gains over Euclidean graph models on four markets. The CSV's
-reference, arXiv 2205.01234, looks like a placeholder ID (sequential
-digits, like arXiv 1908.01234 on RK97) and could not be identified.
+reference, arXiv 2205.01234, could not be identified.
 
 ## Evidence
 

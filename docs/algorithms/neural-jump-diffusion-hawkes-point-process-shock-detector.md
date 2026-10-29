@@ -19,10 +19,9 @@ researched 2026-10-28
 Learn a latent state that evolves continuously and jumps at events whose
 intensity is a neural network (a neural jump SDE), and flag shocks when
 the intensity spikes. The model class is established; I found no market
-application, and the CSV's reference, arXiv 2104.09876, looks like a
-placeholder ID (sequential digits, like arXiv 1908.01234 on RK97) and
-could not be identified. Classical mutually exciting jumps in index
-returns are documented (RK314).
+application, and the CSV's reference, arXiv 2104.09876, is a heat-pump
+health-monitoring paper, unrelated to trading. Classical mutually
+exciting jumps in index returns are documented (RK314).
 
 ## Evidence
 

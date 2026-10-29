@@ -20,8 +20,8 @@ Factorise a risk-factor covariance into binary matrices by posing it as
 a quadratic binary problem for a quantum annealer, to isolate latent
 crash drivers. Binary matrix factorisation on annealers has been
 explored in machine learning; I found no finance study. The CSV's
-reference, arXiv 2103.01234, looks like a placeholder ID (like arXiv
-1908.01234 on RK97) and could not be identified.
+reference, arXiv 2103.01234, is a black-hole physics paper ("Hidden
+Symmetry of Vanishing Love"), unrelated to trading.
 
 ## Evidence
 

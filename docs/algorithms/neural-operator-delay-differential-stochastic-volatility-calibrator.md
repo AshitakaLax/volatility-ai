@@ -21,8 +21,9 @@ with a neural operator that also handles delay terms. Neural-network
 calibration of (rough) volatility models is an established research line
 that speeds calibration by orders of magnitude; the delay-differential
 neural-operator variant is not something I found published, and the
-CSV's reference, arXiv 2106.09876, looks like a placeholder ID (like the
-CSV's arXiv 1908.01234 on RK97) and could not be identified.
+CSV's reference, arXiv 2106.09876, is a general graph anomaly-detection
+paper ("Anomaly Detection in Dynamic Graphs via Transformer"), not a
+finance one.
 
 ## Evidence
 
@@ -51,5 +52,5 @@ says what was checked.
 
 * Horvath, B., Muguruza, A., Tomas, M. (2021). "Deep learning
   volatility." *Quantitative Finance* 21(1). Not re-checked.
-* The CSV's references: neuraloperator; arXiv 2106.09876 (not
-  identified).
+* The CSV's references: neuraloperator; arXiv 2106.09876 (graph anomaly
+  detection; not finance).

@@ -20,8 +20,8 @@ Model how shocks diffuse across a stock network with diffusion
 convolutions (random walks on the graph), the architecture built for
 traffic forecasting, and predict the cross-section of returns. I found
 no stock-return study of it, and the CSV's reference, arXiv 2103.01234,
-looks like a placeholder ID (sequential digits, like arXiv 1908.01234 on
-RK97) and could not be identified.
+is a black-hole physics paper ("Hidden Symmetry of Vanishing Love"),
+unrelated to trading.
 
 ## Evidence
 

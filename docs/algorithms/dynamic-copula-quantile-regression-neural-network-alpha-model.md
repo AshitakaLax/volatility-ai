@@ -21,9 +21,8 @@ networks and tie the margins together with a dynamic copula to rank
 stocks. Quantile networks for return distributions have recent support:
 across US and international markets, the means and variances they imply
 beat standard models out of sample. I found no study adding the copula
-layer for alpha, and the CSV's reference, arXiv 2001.05432, looks like a
-placeholder ID (sequential digits, like arXiv 1908.01234 on RK97) and
-could not be identified.
+layer for alpha, and the CSV's reference, arXiv 2001.05432, could not be
+identified.
 
 ## Evidence
 

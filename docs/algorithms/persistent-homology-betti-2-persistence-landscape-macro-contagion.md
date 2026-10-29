@@ -20,8 +20,7 @@ Track two-dimensional holes (Betti-2) in persistence landscapes of
 multi-asset point clouds as a macro contagion warning. It combines RK265
 (Betti-2) and RK255 (landscapes). The landscape evidence covers two
 crashes in sample; I found nothing for Betti-2, and the CSV's reference,
-arXiv 2004.01234, looks like a placeholder ID (sequential digits, like
-arXiv 1908.01234 on RK97) and could not be identified.
+arXiv 2004.01234, could not be identified.
 
 ## Evidence
 

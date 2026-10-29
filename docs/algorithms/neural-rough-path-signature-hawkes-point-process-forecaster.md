@@ -20,9 +20,8 @@ Summarise the order-flow path with its signature (iterated integrals
 from rough path theory) and use the features to forecast Hawkes event
 intensities. Signature features of the order book have improved
 mid-price forecasts in one study; I found no signature-Hawkes
-forecaster, and the CSV's reference, arXiv 2102.05678, looks like a
-placeholder ID (sequential digits, like arXiv 1908.01234 on RK97) and
-could not be identified.
+forecaster, and the CSV's reference, arXiv 2102.05678, is an
+astrophysics paper on supernova dust laws, unrelated to trading.
 
 ## Evidence
 

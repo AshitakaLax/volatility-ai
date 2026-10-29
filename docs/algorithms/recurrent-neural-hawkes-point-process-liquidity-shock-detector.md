@@ -19,10 +19,9 @@ researched 2026-10-28
 Detect liquidity shocks (spread blow-outs, depth withdrawals) from the
 intensity of a neural Hawkes process over order-book events. The model
 is established in machine learning (Mei and Eisner); I found no market
-application of this kind, and the CSV's reference, arXiv 2104.09876,
-looks like a placeholder ID (sequential digits, like arXiv 1908.01234 on
-RK97) and could not be identified. Classical Hawkes models of market
-events are well studied (RK248).
+application of this kind, and the CSV's reference, arXiv 2104.09876, is
+a heat-pump health-monitoring paper, unrelated to trading. Classical
+Hawkes models of market events are well studied (RK248).
 
 ## Evidence
 

@@ -21,9 +21,9 @@ produce a nonlinearly shrunk covariance matrix for Markowitz
 optimisation. Shrinkage (Ledoit–Wolf) and eigenvalue clipping from
 random matrix theory are the classical answers to noisy covariance
 matrices. GNN versions exist only as a thesis and an arXiv comparison
-that I could not read. The CSV's reference, arXiv 2103.01234, looks like
-a placeholder ID (like arXiv 1908.01234 on RK97) and could not be
-identified.
+that I could not read. The CSV's reference, arXiv 2103.01234, is a
+black-hole physics paper ("Hidden Symmetry of Vanishing Love"),
+unrelated to trading.
 
 ## Evidence
 

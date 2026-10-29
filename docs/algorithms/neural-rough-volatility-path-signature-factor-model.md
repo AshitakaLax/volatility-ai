@@ -22,9 +22,8 @@ those features as factors. The firmest result in this direction is
 signature trading: a strategy linear in the signature of the joint
 signal-price path, with an explicit dynamic mean-variance solution that
 can include drawdown control, tested on synthetic and market data. The
-CSV's reference, arXiv 2102.05678, looks like a placeholder ID
-(sequential digits, like arXiv 1908.01234 on RK97) and could not be
-identified.
+CSV's reference, arXiv 2102.05678, is an astrophysics paper on supernova
+dust laws, unrelated to trading.
 
 ## Evidence
 

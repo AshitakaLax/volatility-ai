@@ -20,8 +20,8 @@ Arrange returns as a tensor (time × asset × factor or characteristic),
 decompose it (CP/PARAFAC or Tucker), and rotate across sectors by the
 time-varying loadings. Tensor factor models are established in
 statistics; I found no study applying them to factor or sector rotation.
-The CSV's reference, arXiv 2001.00012, looks like a placeholder ID (like
-arXiv 1908.01234 on RK97) and could not be identified.
+The CSV's reference, arXiv 2001.00012, is a student paper on
+differentially private wavelet mechanisms, unrelated to trading.
 
 ## Evidence
 

@@ -20,8 +20,8 @@ Deep hedging under rough volatility, with signature features of the path
 as the network's inputs. Deep hedging has been studied under rough
 volatility directly: the original architecture struggles with
 non-Markovian paths and needs path-aware designs. The CSV's reference,
-arXiv 2102.05678, looks like a placeholder ID (sequential digits, like
-arXiv 1908.01234 on RK97) and could not be identified.
+arXiv 2102.05678, is an astrophysics paper on supernova dust laws,
+unrelated to trading.
 
 ## Evidence
 

@@ -20,8 +20,8 @@ Treat capital flows between macro asset classes as a non-equilibrium
 thermodynamic system and allocate to maximise the rate of entropy
 production. The maximum-entropy-production principle is a contested
 hypothesis in physics; I found no finance study applying it to
-allocation, and the CSV's reference (arXiv 1709.08765) looks like a
-placeholder ID.
+allocation, and the CSV's reference (arXiv 1709.08765) could not be
+identified.
 
 ## Evidence
 

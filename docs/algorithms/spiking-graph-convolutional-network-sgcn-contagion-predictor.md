@@ -20,7 +20,7 @@ Fuse spiking neural networks with graph convolutional networks to model
 asynchronous shock propagation across a network of companies. Spiking
 networks are neuromorphic models built for event-driven hardware; I
 found no finance study of them for contagion, and the CSV's reference
-(arXiv 2111.05678) looks like a placeholder ID.
+(arXiv 2111.05678) could not be identified.
 
 ## Evidence
 

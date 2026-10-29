@@ -19,9 +19,7 @@ researched 2026-10-28
 Model macro series with a fractionally integrated VAR, so each can have
 long memory, and allocate across asset classes from its forecasts.
 Fractional VARs are established; I found no allocation study, and the
-CSV's reference, arXiv 1809.02345, looks like a placeholder ID
-(sequential digits, like arXiv 1908.01234 on RK97) and could not be
-identified.
+CSV's reference, arXiv 1809.02345, could not be identified.
 
 ## Evidence
 

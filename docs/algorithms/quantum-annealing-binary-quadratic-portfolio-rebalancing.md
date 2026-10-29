@@ -19,9 +19,8 @@ researched 2026-10-28
 Pose rebalancing as a binary quadratic (QUBO) problem and solve it on a
 quantum annealer. This duplicates RK229: it has been done on real data
 with D-Wave hybrid solvers, without a claimed advantage over classical
-methods. The CSV's reference, arXiv 2103.01234, looks like a placeholder
-ID (sequential digits, like arXiv 1908.01234 on RK97) and could not be
-identified.
+methods. The CSV's reference, arXiv 2103.01234, is a black-hole physics
+paper ("Hidden Symmetry of Vanishing Love"), unrelated to trading.
 
 ## Evidence
 

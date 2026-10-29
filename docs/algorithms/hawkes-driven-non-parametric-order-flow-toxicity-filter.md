@@ -21,9 +21,8 @@ streams, turn them into a real-time toxicity score, and stop market
 making when it is high. Non-parametric Hawkes estimation exists, and
 VPIN is the best-known toxicity score; the VPIN dispute suggests such
 scores may add little beyond volume and volatility. I found no study of
-this combination, and the CSV's reference, arXiv 2002.09876, looks like
-a placeholder ID (sequential digits, like the CSV's arXiv 1908.01234 on
-RK97) and could not be identified.
+this combination, and the CSV's reference, arXiv 2002.09876, could not
+be identified.
 
 ## Evidence
 

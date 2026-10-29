@@ -20,9 +20,8 @@ Latent force models put Gaussian-process priors on the unobserved
 drivers of a differential-equation model; here they would drive a
 term-structure model's latent macro factors. The method comes from
 machine learning (Álvarez, Luengo and Lawrence); I found no
-interest-rate application. The CSV's reference, arXiv 1802.04321, looks
-like a placeholder ID (like arXiv 1908.01234 on RK97) and could not be
-identified.
+interest-rate application. The CSV's reference, arXiv 1802.04321, could
+not be identified.
 
 ## Evidence
 

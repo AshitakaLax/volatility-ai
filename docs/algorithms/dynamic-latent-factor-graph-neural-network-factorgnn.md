@@ -20,9 +20,8 @@ Learn latent factors and a time-varying stock graph jointly and forecast
 returns from both. I found no paper of this name for stocks. The nearest
 is FactorVAE, a dynamic factor model inside a variational autoencoder
 that predicts returns and their variance and reports beating baselines
-on Chinese stocks. The CSV's reference, arXiv 2206.01234, looks like a
-placeholder ID (sequential digits, like arXiv 1908.01234 on RK97) and
-could not be identified.
+on Chinese stocks. The CSV's reference, arXiv 2206.01234, could not be
+identified.
 
 ## Evidence
 

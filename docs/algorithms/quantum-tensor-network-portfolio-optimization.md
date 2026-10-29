@@ -21,8 +21,7 @@ state and solve it with tensor-network contractions, a quantum-inspired
 method that runs on classical hardware. One study tested it alongside
 quantum annealers and VQE on 52 assets; the tensor networks and the
 hybrid annealer handled the largest instances. The CSV's reference,
-arXiv 2103.02345, looks like a placeholder ID (like arXiv 1908.01234 on
-RK97) and could not be identified.
+arXiv 2103.02345, could not be identified.
 
 ## Evidence
 

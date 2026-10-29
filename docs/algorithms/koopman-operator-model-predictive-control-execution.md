@@ -19,9 +19,9 @@ researched 2026-10-28
 Linearise price and order-flow dynamics with a Koopman dictionary and
 plan child orders with model predictive control. The Koopman/MPC entries
 elsewhere in the list have no trading evidence (RK201, RK206); I found
-none for execution, and the CSV's reference, arXiv 2004.05678, looks
-like a placeholder ID (sequential digits, like arXiv 1908.01234 on RK97)
-and could not be identified.
+none for execution, and the CSV's reference, arXiv 2004.05678, is a
+mathematical-physics paper ("Stable polynomials and crystalline
+measures"), unrelated to trading.
 
 ## Evidence
 

@@ -20,8 +20,8 @@ Learn an option-hedging policy that minimises the worst-case replication
 error over a Wasserstein ball of volatility paths, trained
 adversarially. Deep hedging (learning hedges with neural networks under
 frictions) is established; I found no study of the Wasserstein-robust
-variant, and the CSV's reference, arXiv 2009.08295, could not be
-identified.
+variant, and the CSV's reference, arXiv 2009.08295, is Morrill et al.'s
+neural rough differential equations paper, a general time-series method.
 
 ## Evidence
 
@@ -49,4 +49,5 @@ says what was checked.
 
 * Buehler, H., Gonon, L., Teichmann, J., Wood, B. (2019). "Deep
   hedging." *Quantitative Finance* 19(8). Not re-checked.
-* The CSV's references: torchsde; arXiv 2009.08295 (not identified).
+* The CSV's references: torchsde; arXiv 2009.08295 (neural rough
+  differential equations; general method).

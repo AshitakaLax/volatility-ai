@@ -19,8 +19,7 @@ researched 2026-10-27
 Combine matrix-product-state tensor networks with adiabatic quantum
 evolution to solve large allocation problems. Mugel et al. tested tensor
 networks and annealing side by side, not together; I found no study of
-the combination. The CSV's reference, arXiv 2103.02345, looks like a
-placeholder ID (like arXiv 1908.01234 on RK97) and could not be
+the combination. The CSV's reference, arXiv 2103.02345, could not be
 identified.
 
 ## Evidence

@@ -21,9 +21,9 @@ unconstrained binary optimisation (QUBO) and solve it on a quantum
 annealer. It has been tried: a D-Wave hybrid annealer solved dynamic
 portfolio problems on real data, and optimal trading trajectories were
 posed on early annealers. None of the abstracts claims an advantage over
-classical optimisation. The CSV's reference, arXiv 2103.01234, looks
-like a placeholder ID (like arXiv 1908.01234 on RK97) and could not be
-identified.
+classical optimisation. The CSV's reference, arXiv 2103.01234, is a
+black-hole physics paper ("Hidden Symmetry of Vanishing Love"),
+unrelated to trading.
 
 ## The rule
 

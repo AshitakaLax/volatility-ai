@@ -20,8 +20,8 @@ Optimise execution against the worst Hawkes order-flow model within a
 Wasserstein ball. Robust execution with model uncertainty has a
 literature, and Wasserstein robustness has portfolio results (RK225); I
 found no Wasserstein-robust execution study, and the CSV's reference,
-arXiv 1908.01234, looks like a placeholder ID (sequential digits, like
-arXiv 1908.01234 on RK97) and could not be identified.
+arXiv 1908.01234, is a biomedical-engineering paper on an
+electromagnetic bioreactor, unrelated to trading.
 
 ## Evidence
 

@@ -20,9 +20,8 @@ Forecast implied-volatility surfaces with a parameterised quantum
 circuit. Quantum kernels have been demonstrated on toy problems built to
 suit them; a survey of quantum computing for finance finds speed-ups
 possible in principle but far from practical, and I found no study of
-this use. The CSV's reference, arXiv 2103.01234, looks like a
-placeholder ID (sequential digits, like arXiv 1908.01234 on RK97) and
-could not be identified.
+this use. The CSV's reference, arXiv 2103.01234, is a black-hole physics
+paper ("Hidden Symmetry of Vanishing Love"), unrelated to trading.
 
 ## Evidence
 

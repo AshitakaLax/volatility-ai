@@ -20,9 +20,7 @@ Forecast intraday volume curves with a deep Markov (variational
 state-space) model, for execution scheduling. Classical intraday volume
 models (dynamic market-plus-stock decompositions, Kalman filters) are
 the baseline. I found no study of the deep variant, and the CSV's
-reference, arXiv 2006.12345, looks like a placeholder ID (sequential
-digits, like the CSV's arXiv 1908.01234 on RK97) and could not be
-identified.
+reference, arXiv 2006.12345, could not be identified.
 
 ## Evidence
 

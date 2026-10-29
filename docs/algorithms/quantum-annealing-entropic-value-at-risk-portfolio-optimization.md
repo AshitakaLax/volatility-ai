@@ -19,8 +19,8 @@ researched 2026-10-28
 Minimise entropic value-at-risk, a coherent tail-risk measure tighter
 than CVaR, with a quantum annealer. EVaR is a sound risk measure; I
 found no quantum EVaR study, and the CSV's reference, arXiv 2103.01234,
-looks like a placeholder ID (sequential digits, like arXiv 1908.01234 on
-RK97) and could not be identified.
+is a black-hole physics paper ("Hidden Symmetry of Vanishing Love"),
+unrelated to trading.
 
 ## Evidence
 

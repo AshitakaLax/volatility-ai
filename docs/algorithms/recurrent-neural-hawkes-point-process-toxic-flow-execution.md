@@ -20,8 +20,8 @@ Slow or reroute execution when a neural Hawkes model forecasts a burst
 of informed (toxic) order flow. Hawkes order flow has execution theory
 (RK367) and the neural Hawkes model exists (Mei and Eisner); I found no
 execution study using the neural form, and the CSV's reference, arXiv
-2104.09876, looks like a placeholder ID (sequential digits, like arXiv
-1908.01234 on RK97) and could not be identified.
+2104.09876, is a heat-pump health-monitoring paper, unrelated to
+trading.
 
 ## Evidence
 

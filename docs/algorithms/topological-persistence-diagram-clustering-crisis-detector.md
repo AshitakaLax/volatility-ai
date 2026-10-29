@@ -20,7 +20,9 @@ Cluster rolling persistence diagrams by Wasserstein distance and alert
 when the cluster structure changes abruptly. The core evidence is Gidea
 and Katz (2018): landscape norms of four US indices' returns grew before
 the dot-com and Lehman crashes. That is two events, in sample. The CSV's
-reference (arXiv 1904.04044) could not be identified.
+reference (arXiv 1904.04044) is a set of pure-mathematics lecture notes
+on persistence ("Topological Persistence in Geometry and Analysis"), not
+a finance study.
 
 ## Evidence
 
@@ -52,4 +54,5 @@ says what was checked.
 
 * Gidea, M., Katz, Y. (2018). *Physica A* 491, 820–834.
   <https://arxiv.org/abs/1703.04385>. Abstract.
-* The CSV's references: giotto-tda; arXiv 1904.04044 (not identified).
+* The CSV's references: giotto-tda; arXiv 1904.04044 (persistence
+  lecture notes; not finance).

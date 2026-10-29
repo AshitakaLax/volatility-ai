@@ -20,8 +20,8 @@ Forecast buy and sell order arrivals with a neural Hawkes process and
 widen or skew quotes against inventory as the predicted flow turns
 one-sided. Hawkes order arrivals have been built into market-making
 models; the neural version has no market-making study, and the CSV's
-reference, arXiv 2104.09876, looks like a placeholder ID (sequential
-digits, like arXiv 1908.01234 on RK97) and could not be identified.
+reference, arXiv 2104.09876, is a heat-pump health-monitoring paper,
+unrelated to trading.
 
 ## Evidence
 
