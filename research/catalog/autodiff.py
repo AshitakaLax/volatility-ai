@@ -452,16 +452,22 @@ class LSTM:
         self.w = param((n_in + n_hidden, 4 * n_hidden), rng)
         self.b = Tensor(np.r_[np.zeros(n_hidden), np.ones(n_hidden), np.zeros(2 * n_hidden)], True)
 
+    def cell(self, x_t: Tensor, h: Tensor, c: Tensor) -> tuple[Tensor, Tensor]:
+        """One step, for loops whose next input depends on the last output."""
+        z = concat([x_t, h]) @ self.w + self.b
+        i, f = z[: self.n].sigmoid(), z[self.n : 2 * self.n].sigmoid()
+        o, g = z[2 * self.n : 3 * self.n].sigmoid(), z[3 * self.n :].tanh()
+        c = f * c + i * g
+        return o * c.tanh(), c
+
+    def zero_state(self) -> tuple[Tensor, Tensor]:
+        return Tensor(np.zeros(self.n)), Tensor(np.zeros(self.n))
+
     def __call__(self, x: Tensor) -> Tensor:
-        h = Tensor(np.zeros(self.n))
-        c = Tensor(np.zeros(self.n))
+        h, c = self.zero_state()
         outs = []
         for t in range(x.shape[0]):
-            z = concat([x[t], h]) @ self.w + self.b
-            i, f = z[: self.n].sigmoid(), z[self.n : 2 * self.n].sigmoid()
-            o, g = z[2 * self.n : 3 * self.n].sigmoid(), z[3 * self.n :].tanh()
-            c = f * c + i * g
-            h = o * c.tanh()
+            h, c = self.cell(x[t], h, c)
             outs.append(h)
         return stack(outs, axis=0)
 
