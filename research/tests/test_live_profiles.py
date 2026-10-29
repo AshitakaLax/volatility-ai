@@ -55,14 +55,18 @@ def _write(directory, name, text):
     (directory / name).write_text(text)
 
 
-def test_a_malformed_profile_is_an_error_not_a_skip(tmp_path, monkeypatch):
+def test_a_malformed_profile_is_skipped_and_the_rest_still_load(tmp_path, monkeypatch, caplog):
     monkeypatch.setenv("VAI_LIVE_PROFILES", str(tmp_path))
-    _write(tmp_path, "a.yaml", "id: b\nsymbols: [TQQQ]\nstrategy_id: fixed\n")
-    with pytest.raises(ConfigurationError, match="named after its id"):
-        live_profiles.load_profiles()
-    (tmp_path / "a.yaml").write_text("id: a\nsymbols: []\nstrategy_id: fixed\n")
-    with pytest.raises(ConfigurationError, match="symbols"):
-        live_profiles.load_profiles()
+    _write(tmp_path, "a.yaml", "id: b\nsymbols: [TQQQ]\nstrategy_id: fixed\n")  # wrong name
+    _write(tmp_path, "b.yaml", "id: b\nsymbols: []\nstrategy_id: fixed\n")  # no symbols
+    _write(tmp_path, "c.yaml", "id: [unclosed\n")  # not YAML
+    _write(tmp_path, "d.yaml", "id: d\nsymbols: [TQQQ]\nstrategy_id: fixed\n")
+    with caplog.at_level("WARNING"):
+        assert list(live_profiles.load_profiles()) == ["d"]
+    for name in ("a.yaml", "b.yaml", "c.yaml"):
+        assert f"Skipping malformed live profile {name}" in caplog.text
+    with pytest.raises(ConfigurationError, match="No algorithm profile 'b'"):
+        live_profiles.get("b")
 
 
 def test_promotion_must_be_a_passing_evaluation(tmp_path, monkeypatch):
@@ -78,3 +82,21 @@ def test_promotion_must_be_a_passing_evaluation(tmp_path, monkeypatch):
     (tmp_path / "e.json").write_text('{"passed": true}')
     assert live_profiles.get("p").promoted()
     assert "promotion" not in live_profiles.get("p").to_wire()["evidence"]
+
+
+def test_a_promotion_that_is_not_a_path_names_none_and_breaks_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAI_LIVE_PROFILES", str(tmp_path))
+    for value in ("PASSING", {"passed": True}, ["x"], 3):
+        profile = tmp_path / "p.yaml"
+        profile.write_text(
+            yaml.safe_dump(
+                {
+                    "id": "p",
+                    "symbols": ["TQQQ"],
+                    "strategy_id": "fixed",
+                    "evidence": {"promotion": value},
+                }
+            )
+        )
+        assert live_profiles.get("p").promotion() is None
+        assert not live_profiles.get("p").promoted()

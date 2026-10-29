@@ -35,6 +35,12 @@ from dataclasses import dataclass, field
 SHARE_EPSILON = 1e-9
 
 
+# A legacy lot's target when a switch asks them to exit at cost: the smallest
+# gain that still clears cost, so the no-loss guard (which stays the only
+# check on a sale) passes. A lot below cost waits, as it always has.
+EXIT_AT_COST_TARGET = 0.0005
+
+
 @dataclass(eq=False)
 class Lot:
     """A single open or closed position lot.

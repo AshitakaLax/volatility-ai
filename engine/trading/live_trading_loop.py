@@ -152,7 +152,7 @@ from decimal import ROUND_FLOOR, Decimal
 from engine.core.config import BacktestConfig
 from engine.core.exceptions import BrokerUnavailableError, ConfigurationError, PersistenceError
 from engine.core.idempotency import compute_decision_id
-from engine.core.ledger import SHARE_EPSILON
+from engine.core.ledger import EXIT_AT_COST_TARGET, SHARE_EPSILON
 from engine.core.market_context import MarketContext
 from engine.core.retry_policy import AmbiguousSubmissionError
 from engine.core.venue_sessions import AFTER_HOURS, PRE_MARKET, REGULAR
@@ -222,6 +222,12 @@ _META_PEAK_EQUITY = "live.peak_equity"
 _META_LAST_TICK = "live.last_tick"
 _META_OPEN_ORDERS = "live.open_orders"
 _META_PARAMETERS = "live.parameters"
+# The algorithm switch whose "what to do with the lots held" has been applied
+# (its changedAt stamp), so a restart does not apply it twice.
+_META_TRANSITION = "live.transition"
+# The owner of lots an earlier algorithm bought and a switch left to exit at
+# their own targets (persistence: ledger_lot_owners).
+LEGACY_OWNER = "legacy"
 
 
 def seed_fresh_ledger(store, cash: float) -> None:
@@ -514,8 +520,13 @@ class LiveTradingLoop:
         calendar=None,
         order_listener: Callable[[dict], None] | None = None,
         now: Callable[[], datetime] | None = None,
+        transition: dict | None = None,
     ) -> None:
         """Assemble the loop and load durable state.
+
+        transition is the algorithm override in force (the Live page's switch):
+        its `legacy_lots` says what to do with the lots held at the switch,
+        applied once (`_apply_transition`).
 
         tick_listener, if given, is told what each tick of run_forever
         did -- {"at", "reason", ...} -- so whatever supervises the loop
@@ -654,12 +665,67 @@ class LiveTradingLoop:
         )
         self._restore_settlement(store.get_meta(_META_UNSETTLED))
         self._restore_open_orders(store.get_meta(_META_OPEN_ORDERS))
+        self._legacy: set[str] = {
+            order_id for order_id, owner in store.lot_owners().items() if owner == LEGACY_OWNER
+        }
+        self._apply_transition(transition)
         self.replayed_bars = self._prepare_strategy(history_provider)
         logger.info(
             f"LiveTradingLoop ready: symbol={self.symbol} step={self.step} "
             f"profit_target={self.profit_target} cash={self.state.cash:.2f} "
             f"open_lots={len(self.ledger.open_lots)} history_bars={self.replayed_bars}"
         )
+
+    def _apply_transition(self, override: dict | None) -> None:
+        """What a switch does with the lots held when it was made, once.
+
+        "keep" (the default for a switch): they are the legacy book. They
+        stay and exit at their own targets, but the new algorithm neither
+        sees nor retargets nor liquidates them, and its grid starts from the
+        price now rather than the old algorithm's last buy. "exit_at_cost"
+        does the same and moves their targets to the smallest gain that
+        clears cost. Anything else (a switch made when flat, a revert) is a
+        no-op.
+        """
+        if override is None and self._legacy:
+            # Reverted to the config file's algorithm: the lots it left
+            # selling are its own again.
+            self.store.clear_lot_owners()
+            logger.info(f"Reverted: {len(self._legacy)} legacy lot(s) are the algorithm's again")
+            self._legacy.clear()
+            self.store.set_meta(_META_TRANSITION, None)
+            return
+        mode = (override or {}).get("legacy_lots")
+        stamp = (override or {}).get("changedAt")
+        if mode not in ("keep", "exit_at_cost") or not stamp:
+            return
+        if self.store.get_meta(_META_TRANSITION) == stamp:
+            return
+        held = [lot for lot in self.ledger.open_lots if lot.order_id not in self._legacy]
+        if mode == "exit_at_cost":
+            for lot in held:
+                if lot.profit_target > EXIT_AT_COST_TARGET:
+                    lot.retarget(EXIT_AT_COST_TARGET)
+                    self.store.record_open_lot(lot)
+        if held:
+            self.store.set_lot_owners([lot.order_id for lot in held], LEGACY_OWNER)
+            self._legacy.update(lot.order_id for lot in held)
+            self.state.last_buy_price = None
+            self.store.set_meta("last_buy_price", None)
+            logger.info(
+                f"Algorithm switch ({mode}): {len(held)} lot(s) kept as the legacy book, "
+                "exiting at their own targets; the new grid starts from the price now"
+            )
+        self.store.set_meta(_META_TRANSITION, str(stamp))
+
+    @property
+    def legacy_lots(self) -> list:
+        """The open lots an earlier algorithm bought (see `_apply_transition`)."""
+        return [lot for lot in self.ledger.open_lots if lot.order_id in self._legacy]
+
+    def _own_lots(self) -> list:
+        """The open lots the algorithm now trading may see: not the legacy book."""
+        return [lot for lot in self.ledger.open_lots if lot.order_id not in self._legacy]
 
     def _prepare_strategy(self, history_provider) -> int:
         """Replay the history the strategy asks for, then hand it the
@@ -709,7 +775,7 @@ class LiveTradingLoop:
             resume = getattr(strategy, "resume", None)
             if callable(resume):
                 try:
-                    resume(list(self.ledger.open_lots))
+                    resume(self._own_lots())
                 except Exception as exc:
                     if strategy is self.strategy:
                         raise
@@ -1558,7 +1624,7 @@ class LiveTradingLoop:
         try:
             # What switching back would do to the book now: the lots the
             # shadow's own exit would sell on this bar.
-            lots = list(self.ledger.open_lots)
+            lots = self._own_lots()
             liquidate = getattr(self.shadow, "lots_to_liquidate", None)
             selling = list(liquidate(lots, context)) if callable(liquidate) else []
             self.shadow_state = {
@@ -1921,7 +1987,10 @@ class LiveTradingLoop:
         # would leave our ledger and the broker's live order disagreeing
         # about one lot's price.
         retargeted = decision_cycle.adjust_open_lot_targets(
-            self.strategy, self.ledger, context, skip_order_ids=self.state.sells_in_flight
+            self.strategy,
+            self.ledger,
+            context,
+            skip_order_ids=self.state.sells_in_flight | self._legacy,
         )
         # Persist immediately, before any sell is submitted off the new
         # target. A crash between retargeting and the durable write would
@@ -1941,7 +2010,7 @@ class LiveTradingLoop:
             self.ledger,
             context,
             allow_signal_exit=self.config.execution.allow_signal_exit,
-            skip_order_ids=self.state.sells_in_flight,
+            skip_order_ids=self.state.sells_in_flight | self._legacy,
         )
         if liquidations:
             condemned = {lot.order_id for lot in liquidations}

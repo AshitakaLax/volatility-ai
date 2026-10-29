@@ -248,7 +248,7 @@ export function BacktestResult({
   return (
     <>
       {selectedConfig && selected ? (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
           <ProfileProposal report={report} ticker={selected} cell={selectedConfig} />
         </div>
       ) : null}

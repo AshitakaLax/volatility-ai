@@ -23,6 +23,8 @@ Two more things live here that are not `BacktestConfig`s:
   Real money takes only a profile whose `evidence.promotion` names a
   passing paper promotion. `research/tests/test_live_profiles.py` requires
   every profile to trade on some deployment it fits.
+  The Algorithms tab can publish one into this folder (it is the one folder `web` may write); the
+  file lands uncommitted, for you to review and commit.
 - `proposed_profiles/<id>.yaml` — profiles kept for later that no committed
   deployment can trade yet (nothing loads this directory). Move one into
   `live_profiles/` once a deployment trading its symbol is committed.

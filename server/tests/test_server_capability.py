@@ -84,6 +84,7 @@ ALL_MODULES = (
     "live.py",
     "live_control.py",
     "live_registry.py",
+    "algorithms.py",
     "backtest.py",
     "jobs.py",
     "app.py",
@@ -429,3 +430,31 @@ class TestWarehouseStatusIsReadOnly:
             "set_shard_schedule",
             "set_shards_paused",
         }
+
+
+class TestAlgorithmsWritesOnlyItsOwnPlaces:
+    """server/algorithms.py is the one server module that writes profiles; it
+    must not reach a ledger, a shell or a trader's inbox, and no route may
+    take a path."""
+
+    def test_it_reaches_no_ledger_shell_or_inbox(self):
+        imported = imported_modules(module_ast("algorithms.py"))
+        assert not imported & {"LedgerStore", "CircuitBreaker", "sqlite3", "subprocess"}, imported
+        called = called_names(module_ast("algorithms.py"))
+        assert not called & (QUEUE_CALLS - {"cancel"}), sorted(called & QUEUE_CALLS)
+
+    def test_no_route_takes_a_path(self):
+        from server import algorithms
+
+        for route in algorithms.router.routes:
+            assert "path" not in route.path.replace("/api/algorithms", ""), route.path
+            assert "{path" not in route.path and "{file" not in route.path, route.path
+
+    def test_it_writes_only_beneath_the_library_and_the_profiles_folder(self):
+        source = (SERVER / "algorithms.py").read_text(encoding="utf-8")
+        for call in ("write_text(", "write_bytes(", "unlink(", "rmdir(", "os.replace("):
+            for line in source.splitlines():
+                if call in line:
+                    assert "path" in line or "temporary" in line or "profile_path" in line, (
+                        f"unexpected write: {line.strip()}"
+                    )

@@ -1,7 +1,9 @@
-import { FileCode } from "lucide-react";
+import { FileCode, ListPlus } from "lucide-react";
 import { useState } from "react";
 
 import { Button, Dialog } from "@/components/ui/primitives";
+import { api } from "@/lib/api";
+import { rememberedOperator, rememberOperator } from "@/lib/control";
 import { profileId, profileYaml } from "@/lib/profileYaml";
 import type { Cell, Report } from "@/types/backtest";
 
@@ -25,6 +27,7 @@ export function ProfileProposal({
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [added, setAdded] = useState<string | null>(null);
   const text = profileYaml(report, ticker, cell);
   const id = profileId(report.model ?? "unknown", ticker);
 
@@ -39,8 +42,31 @@ export function ProfileProposal({
     }
   };
 
+  const addCandidate = async () => {
+    const cells = report.funds[ticker]?.cells ?? [];
+    const operator = rememberedOperator() || window.prompt("Your name (recorded with the candidate)") || "";
+    if (!operator.trim()) return;
+    rememberOperator(operator.trim());
+    try {
+      const candidate = await api.addCandidate({
+        run: report.id,
+        ticker,
+        cell: Math.max(0, cells.indexOf(cell)),
+        operator: operator.trim(),
+      });
+      setAdded(`Added ${candidate.id}: see the Algorithms tab.`);
+    } catch (cause) {
+      setAdded(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
   return (
     <>
+      {added ? <span className="self-center text-xs text-muted-foreground">{added}</span> : null}
+      <Button variant="outline" onClick={() => void addCandidate()}>
+        <ListPlus className="size-3.5" />
+        Add as candidate
+      </Button>
       <Button variant="outline" onClick={() => setOpen(true)}>
         <FileCode className="size-3.5" />
         Copy as live profile

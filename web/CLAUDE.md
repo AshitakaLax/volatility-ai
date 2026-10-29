@@ -17,7 +17,7 @@ npm run build          # tsc -b && vite build -> dist/ (mounted by server/app.py
 
 ```
 src/
-├── App.tsx                # tab shell: "backtest" | "result" | "live" | "ml" | "warehouse" — that order is deliberate
+├── App.tsx                # tab shell: "backtest" | "result" | "live" | "algorithms" | "ml" | "warehouse" — that order is deliberate
 ├── components/
 │   ├── backtest/          # ParameterForm/ActiveRuns/ShardPanel/RunHistory live on "backtest"; BacktestResult
 │   │                      #   (chart, trade log, sweep matrix, fund comparison) is the "result" tab
@@ -27,6 +27,7 @@ src/
 │   │                      #   ConnectionTimeline -- lib/fidelity.ts), ControlBar (commands -> server/live_control.py),
 │   │                      #   AlgorithmPanel, LivePriceChart (the TRADER's bars + its fills), TradesCard,
 │   │                      #   LiveOrderLedger, CommandLog, DeploymentHealth (trader's build), ActivityCard
+│   ├── algorithms/         # AlgorithmsTab: candidates -> paper trial -> promoted -> live profile (server/algorithms.py; lib/algorithms.ts)
 │   ├── ml/                 # ModelInsights — reads server/ml_insights.py's read-only artifacts
 │   ├── warehouse/          # WarehouseTab (polls server/warehouse_status.py): funds, sweeps, storage, server
 │   └── ui/primitives.tsx  # shadcn/ui-style primitives

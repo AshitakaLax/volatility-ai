@@ -1,5 +1,48 @@
 # Changelog
 
+## Feat: algorithm management, and a switch that leaves the old lots selling
+
+**A finished backtest could not become a live profile from the app.** The page
+showed YAML to copy and commit by hand, nothing wrote the promotion file real
+money needs, and a switch silently put every open lot under the new algorithm.
+
+- **The Algorithms tab** (`server/algorithms.py`, `web/src/components/algorithms/`):
+  - *Add as candidate* on a backtest result keeps one cell of a stored run
+    (`output/algorithms/<id>/candidate.json`); its figures are read from the
+    run, never sent by the browser.
+  - A **paper trial** switches a paper deployment trading that fund to it,
+    through the Live page's own switch command, and counts from then.
+    *Evaluate* judges it by `engine/promotion.py`'s criteria from the trader's
+    journals (`engine/promotion_record.py`). The incident counters (accounting
+    discrepancies, duplicate orders, no-loss violations, unhandled exceptions)
+    are **not journaled anywhere yet**, so they are listed as unmeasured and a
+    paper trial cannot pass until the trader records them. Nothing is guessed
+    as zero.
+  - **Owner sign-off** promotes without a trial: a reason and the id typed
+    back, written `manual: true`, shown as such on the Live page.
+  - **Publish** writes `config/live_profiles/<id>.yaml` and
+    `promotions/<id>.json`, checks the loader accepts it as promoted (and
+    removes both if not), and leaves them uncommitted for review. Only that
+    folder is mounted read-write into `web`; `config/` stays read-only.
+  - Real money is unchanged: a promoted profile, the typed deployment id, one
+    switch a day.
+- **A switch says what becomes of the lots held** (`live_lots`: `keep`,
+  `exit_at_cost`, or `wait` for a switch made when flat):
+  - *Keep* (the default): they become the **legacy book**
+    (`ledger_lot_owners`, a table of its own so no migration touches
+    `ledger_lots`). They exit at the targets they were bought at; the new
+    algorithm neither sees, retargets nor liquidates them; its grid starts from
+    the price at the switch. A revert gives them back.
+  - *Exit at cost*: the same, with each target moved to 0.05 %, the smallest
+    gain that clears cost. The no-loss guard is unchanged; a lot below cost waits.
+  - Applied once per switch (`live.transition` holds its `changedAt`).
+  - Not done: two strategy objects in one loop, a price-based dry run (lots
+    above and below cost), and a loss-realising liquidation of the legacy book.
+- **Fixed:** a profile whose `evidence.promotion` was not a path (the word
+  `PASSING`, or a mapping written inline) raised `TypeError` from the Live
+  page's profile list. It now names no promotion, and a malformed profile file
+  is skipped with a warning instead of hiding every profile.
+
 ## Feat: trading windows, an engine ready before its broker, and limit orders proven filled
 
 **Fidelity takes limit orders from 07:00 ET (05:00 Mountain) and after the

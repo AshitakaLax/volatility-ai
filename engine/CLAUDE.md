@@ -19,7 +19,7 @@ other engine package at import time.
 | `warehouse/` | `connection.py`, `schema.py`, `hashing.py`, `ingest.py`, `duckdb_sink.py`, `result_writer.py`, `queries.py`, `bars.py`, `inventory.py`, `lake.py` | the DuckDB/Polars analytical warehouse: bars, sweep results, macro series, `ASOF` joins — see caveat below. **`bars.py` is the only read path a simulation uses**; `inventory.py` reads through it for the UI's Warehouse tab. `lake.py` is how `tools/refresh_warehouse.py` keeps the bars current: the Parquet files read and written directly, never the catalog, each year (or a whole fund) swapped in with one rename. |
 | `brokers/` | `alpaca_broker.py`, `broker_selection.py` | the Alpaca `LiveBroker`; `broker_selection` imports each SDK **inside** `build_broker()` so picking one never loads the other (Fidelity lives in `fidelity_gateway/`) |
 | `ui/` | `dashboard.py` | Streamlit view of a running deployment |
-| `promotion.py` | | the paper→live gate |
+| `promotion.py`, `promotion_record.py` | | the paper→live gate, and a paper trial's record read from the trader's journals (counters nobody journals are *unmeasured* and fail it) |
 | `tests/` | | this section's own suite — see `tests/CLAUDE.md` for what stays here versus moves to the root `tests/` |
 
 ## The canonical decision cycle (`trading/decision_cycle.py`)

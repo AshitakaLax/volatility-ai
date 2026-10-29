@@ -525,6 +525,8 @@ export interface ProfileRow extends Algorithm {
   evidence: Record<string, unknown>;
   /** Carries a passing paper promotion: what real money needs. */
   promoted: boolean;
+  /** How it was promoted: a paper trial's pass, or the owner's own sign-off. */
+  promotion_kind?: "paper" | "manual" | null;
   usable: boolean;
   why: string | null;
 }
@@ -559,8 +561,12 @@ export interface AlgorithmView {
 
 /** What a switch does to the open book. Lots keep the targets they were
  * bought at; what can change for them is whether a signal exit applies. */
+export type LegacyLots = "keep" | "exit_at_cost" | "wait";
+
 export interface Impact {
   open_lots: number;
+  /** What the dry run assumed for the lots held now. */
+  legacy_lots?: LegacyLots;
   cost: number;
   lots_at_new_target: number;
   signal_exit_before: boolean;
@@ -576,6 +582,7 @@ export interface ChangeCheck {
   impact?: Impact;
   /** Why the id must be typed back to send it, or null. */
   typed?: string | null;
+  legacy_lots?: LegacyLots;
 }
 
 /** A switch to check or send: a committed profile, or (paper) the change. */
@@ -585,4 +592,6 @@ export interface ChangeRequest {
   strategy_params?: Record<string, ParamValue>;
   step?: number;
   profit_target?: number;
+  /** What to do with the lots held at the switch. Default keep. */
+  legacy_lots?: LegacyLots;
 }

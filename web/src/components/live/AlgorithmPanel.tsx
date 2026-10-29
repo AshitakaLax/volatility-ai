@@ -34,6 +34,7 @@ import type {
   ChangeRequest,
   CommandType,
   DeploymentSummary,
+  LegacyLots,
   Timing,
 } from "@/types/control";
 
@@ -460,6 +461,19 @@ function seedFor(specs: ParamSpec[], current: Algorithm | null): Record<string, 
   return out;
 }
 
+const LEGACY_CHOICES: { id: LegacyLots; label: string; help: string }[] = [
+  {
+    id: "keep",
+    label: "Keep selling them",
+    help: "The old lots stay and exit at the targets they were bought at. The new algorithm does not see or retarget them, and its grid starts from the price now.",
+  },
+  {
+    id: "exit_at_cost",
+    label: "Sell them as soon as they clear cost",
+    help: "As above, with each target moved to the smallest gain that clears cost. A lot below cost waits.",
+  },
+];
+
 const TIMINGS: { id: Timing; label: string; help: string }[] = [
   {
     id: "now",
@@ -507,6 +521,7 @@ function SwitchForm({
   const [check, setCheck] = useState<ChangeCheck | null>(null);
   const [checking, setChecking] = useState(false);
   const [timing, setTiming] = useState<Timing>("now");
+  const [legacyLots, setLegacyLots] = useState<LegacyLots>("keep");
   const [reason, setReason] = useState("");
   const [operator, setOperator] = useState(rememberedOperator);
   const [confirm, setConfirm] = useState("");
@@ -529,21 +544,22 @@ function SwitchForm({
       );
     });
 
-  const request = (): ChangeRequest =>
+  const request = (legacy: LegacyLots = legacyLots): ChangeRequest =>
     source === "profile"
-      ? { profile_id: profileId }
+      ? { profile_id: profileId, legacy_lots: legacy }
       : {
+          legacy_lots: legacy,
           strategy_id: strategyId,
           strategy_params: buildStrategyParams(specs, values) as Record<string, string | number | boolean>,
           step: Number(step),
           profit_target: Number(target),
         };
 
-  const runCheck = async () => {
+  const runCheck = async (legacy: LegacyLots = legacyLots) => {
     setChecking(true);
     setError(null);
     try {
-      const result = await api.checkAlgorithm(deployment.id, request());
+      const result = await api.checkAlgorithm(deployment.id, request(legacy));
       setCheck(result);
       if (result.ok) setTiming(defaultTiming(result.impact));
     } catch (cause) {
@@ -566,10 +582,12 @@ function SwitchForm({
     try {
       await api.sendCommand(deployment.id, {
         type: "switch_algorithm",
-        args:
-          source === "profile"
+        args: {
+          ...(source === "profile"
             ? { profile_id: profileId }
-            : (check.change as unknown as Record<string, unknown>),
+            : (check.change as unknown as Record<string, unknown>)),
+          legacy_lots: timing === "when_flat" ? "wait" : legacyLots,
+        },
         timing,
         reason: reason.trim(),
         operator: operator.trim(),
@@ -635,7 +653,11 @@ function SwitchForm({
                 <span className="font-medium">{profile.label}</span>
                 <span className="block text-xs text-muted-foreground">
                   {algorithmLabel(profile)} · {profile.symbols.join(", ")}
-                  {profile.promoted ? " · promoted" : ""}
+                  {profile.promoted
+                    ? profile.promotion_kind === "manual"
+                      ? " · promoted (owner sign-off)"
+                      : " · promoted"
+                    : ""}
                 </span>
                 {typeof profile.evidence.note === "string" ? (
                   <span className="block text-xs text-muted-foreground">
@@ -748,6 +770,30 @@ function SwitchForm({
 
       {check?.ok ? (
         <div className="space-y-3">
+          {(check.impact?.open_lots ?? 0) > 0 && timing !== "when_flat" ? (
+            <div className="space-y-1 text-xs">
+              <p className="font-medium">
+                The {check.impact?.open_lots} lot{check.impact?.open_lots === 1 ? "" : "s"} held now
+              </p>
+              {LEGACY_CHOICES.map((choice) => (
+                <label key={choice.id} className="flex items-start gap-2 rounded border border-border p-2">
+                  <input
+                    type="radio"
+                    checked={legacyLots === choice.id}
+                    onChange={() => {
+                      setLegacyLots(choice.id);
+                      void runCheck(choice.id);
+                    }}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium">{choice.label}</span>
+                    <span className="block text-muted-foreground">{choice.help}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          ) : null}
           <div className="grid gap-2 sm:grid-cols-3">
             {TIMINGS.map((option) => (
               <label key={option.id} className="flex items-start gap-2 rounded border border-border p-2 text-xs">

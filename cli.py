@@ -1266,6 +1266,7 @@ class _EngineFirst:
             history_provider=self.history,
             shadow=_shadow_for(config, self.algorithm, self.inbox, self.registry),
             calendar=self.calendar,
+            transition=self.algorithm.transition() if self.algorithm is not None else None,
         )
         if self.inbox is not None and self.loop.recent_bars:
             self.inbox.record_bars(self.loop.recent_bars, keep_past=True)
@@ -1554,6 +1555,7 @@ def _run_trading_loop(
             fill_listener=on_fill,
             calendar=calendar,
             order_listener=on_order,
+            transition=algorithm.transition() if algorithm is not None else None,
         )
         if inbox is not None and loop.recent_bars:
             # The sessions before this one, for the Live page's chart: the
