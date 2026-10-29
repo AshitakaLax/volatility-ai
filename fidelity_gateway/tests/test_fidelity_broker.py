@@ -539,25 +539,29 @@ def test_the_core_money_market_sweep_is_not_a_position():
     assert _broker(session).snapshot().positions == {"TQQQ": 5.0}
 
 
-@pytest.mark.parametrize(
-    "row",
-    [
-        {"symbol": "X", "quantity": 1.0, "securityDetail": {"isCash": True}},
-        {"symbol": "X", "quantity": 1.0, "securityType": "Core"},
-        {"symbol": "X", "quantity": 1.0, "securityDetail": {"brokerageHoldingType": "Cash"}},
-    ],
-)
-def test_cash_is_excluded_on_any_of_its_three_markers(row):
-    """Any one marker could be renamed; cash misreported as a position is
-    the failure that matters, so this errs toward excluding."""
+# A real ETF row from a cash IRA (10-29), less its account fields: it
+# carries isCash and brokerageHoldingType "Cash" exactly as SPAXX does.
+RSP_ROW = {
+    "symbol": "RSP",
+    "securityType": "Exchange Traded",
+    "securitySubType": "Exchange Traded Fund",
+    "quantity": 9,
+    "securityDetail": {"brokerageHoldingType": "Cash", "isCash": True, "isEligibleForLots": True},
+}
+
+
+def test_a_holding_in_the_cash_side_of_the_account_is_a_position():
+    """isCash and brokerageHoldingType "Cash" name where a holding sits,
+    not that it is cash. Read as cash, the 9 shares the engine bought
+    vanished from the snapshot and reconciliation halted the deployment."""
     session = FakeSession(
         {
             "/ftgw/digital/activityapi/api/v1/transactions/pending": _pending([]),
-            "/ftgw/digital/trade-equity/positions": [row],
+            "/ftgw/digital/trade-equity/positions": [SPAXX_ROW, RSP_ROW],
             "/ftgw/digital/trade-equity/balance": {},
         }
     )
-    assert _broker(session).snapshot().positions == {}
+    assert _broker(session).snapshot().positions == {"RSP": 9.0}
 
 
 def test_the_quote_reads_fidelitys_own_field_names():

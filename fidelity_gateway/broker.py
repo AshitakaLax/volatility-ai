@@ -713,7 +713,7 @@ class FidelityBroker:
         """Share positions for this account. CASH IS NOT A POSITION.
 
         The core money-market fund appears here as an ordinary row --
-        SPAXX, 27,336.03 "shares", securityType "Core", isCash true.
+        SPAXX, 27,336.03 "shares", securityType "Core".
         Counting it would tell reconciliation the account holds tens of
         thousands of shares of something the strategy has never traded,
         which is worse than reporting nothing at all.
@@ -802,17 +802,14 @@ def _find_all_with_key(node: Any, key: str) -> list[dict]:
 def _is_cash_row(row: dict) -> bool:
     """True for the core money-market sweep, which is cash, not a holding.
 
-    Three independent markers, because any one could be renamed: the
-    explicit isCash flag, securityType "Core", and brokerageHoldingType.
-    Cash misreported as a position is the failure that matters, so this
-    errs toward excluding.
+    securityType "Core" is the marker. isCash and brokerageHoldingType
+    "Cash" are NOT: they say the holding sits in the account's cash (not
+    margin) side, and every holding in a cash IRA carries them -- the
+    first real RSP position came back with both (10-29), was dropped as
+    cash, and reconciliation halted on 9 shares the broker "did not
+    report".
     """
-    detail = row.get("securityDetail") or {}
-    if detail.get("isCash") is True:
-        return True
-    if str(row.get("securityType", "")).strip().lower() == "core":
-        return True
-    return str(detail.get("brokerageHoldingType", "")).strip().lower() == "cash"
+    return str(row.get("securityType", "")).strip().lower() == "core"
 
 
 def _account_matches(row: dict, account: str) -> bool:
