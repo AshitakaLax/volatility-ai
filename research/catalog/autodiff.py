@@ -454,14 +454,16 @@ class LSTM:
 
     def cell(self, x_t: Tensor, h: Tensor, c: Tensor) -> tuple[Tensor, Tensor]:
         """One step, for loops whose next input depends on the last output."""
-        z = concat([x_t, h]) @ self.w + self.b
-        i, f = z[: self.n].sigmoid(), z[self.n : 2 * self.n].sigmoid()
-        o, g = z[2 * self.n : 3 * self.n].sigmoid(), z[3 * self.n :].tanh()
+        z = concat([x_t, h]) @ self.w + self.b  # works for one step (n,) or a batch (B, n)
+        n = self.n
+        i, f = z[..., :n].sigmoid(), z[..., n : 2 * n].sigmoid()
+        o, g = z[..., 2 * n : 3 * n].sigmoid(), z[..., 3 * n :].tanh()
         c = f * c + i * g
         return o * c.tanh(), c
 
-    def zero_state(self) -> tuple[Tensor, Tensor]:
-        return Tensor(np.zeros(self.n)), Tensor(np.zeros(self.n))
+    def zero_state(self, batch: int | None = None) -> tuple[Tensor, Tensor]:
+        shape = (self.n,) if batch is None else (batch, self.n)
+        return Tensor(np.zeros(shape)), Tensor(np.zeros(shape))
 
     def __call__(self, x: Tensor) -> Tensor:
         h, c = self.zero_state()
