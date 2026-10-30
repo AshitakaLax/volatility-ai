@@ -13,9 +13,11 @@ were built the same day. Section 8B (2026-10-03) adds `research/catalog/`,
 code for every remaining entry, in-scope or not. Section 8C (2026-10-27)
 adds a ranked list of 14,225 algorithms from a CSV import, each with
 whether it is implemented here and a link to its documentation in
-[`docs/algorithms/`](algorithms/README.md); ranks 1–100 (RK1–RK100) and
-200–425 (RK200–RK425) are researched one by one, ranks 426–700 through the 34 concepts they
-share, and §8C lists the research gaps that remain. On 2026-10-29 every researched entry
+[`docs/algorithms/`](algorithms/README.md); ranks 1–425 (RK1–RK425) are researched one
+by one, ranks 426–14,225 through the 378 concepts they share, and §8C lists the research
+gaps that remain. Ranks 101–199 and the 344 concepts beyond rank 700 were researched on
+2026-10-30 as a usefulness triage: each page says whether the algorithm is in use, worth
+testing, reference only or not useful here (§8C, "Usefulness triage"). On 2026-10-29 every researched entry
 without code got standalone research code in `research/catalog/` (as §8B did for its
 entries): tested on synthetic data, not wired into the engine, and no change to any verdict.*
 
@@ -285,6 +287,105 @@ entries also have reference code in `research/catalog/`, unwired.
 | RK98 | Adversarial domain-generalisation cross-market momentum | ranked list #98; Arjovsky et al. 2019; Gulrajani & Lopez-Paz 2021 | ML momentum | ⏳ (in principle) · not a priority | None |
 | RK99 | Conformally constrained risk parity | ranked list #99; Kato 2024; Schmitt 2026 | Portfolio construction | ⏳ | Low |
 | RK100 | Causal-discovery (DAG) pair selection | ranked list #100; Stübinger 2019 | Causal inference | ⛔ | None |
+| RK101 | Dynamic copula-EVT tail-risk relative-value arbitrage | ranked list #101 | Options / tail risk | ⛔ | None |
+| RK102 | Hidden Markov model regime switching | ranked list #102 | Regime / machine learning | ⏳ | Medium |
+| RK103 | Hurst-exponent trend / mean-reversion regime gate | ranked list #103 | Regime filter | 🧪 | None |
+| RK104 | Bayesian online changepoint regime gate | ranked list #104 | Regime detection / Bayesian | ⏳ | Low–medium |
+| RK105 | Adaptive range breakout with volatility filter | ranked list #105 | Trend / breakout | ⛔ | None |
+| RK106 | Hierarchical hidden Markov model regime switcher | ranked list #106 | Probabilistic regime / HMM | ⏳ | Low |
+| RK107 | Entropy-based portfolio diversification | ranked list #107 | Information theory / portfolio | ⛔ | None |
+| RK108 | Intraday ETF relative-value arbitrage | ranked list #108 | Statistical arbitrage / intraday | ⛔ | None |
+| RK109 | Sparse graphical-lasso cross-asset spillover predictor | ranked list #109 | Graphical models / risk | ⛔ | None |
+| RK110 | Opening range breakout (ORB) | ranked list #110 | Trend / breakout | 🧪 | None |
+| RK111 | Ichimoku cloud trend filter | ranked list #111 | Trend / breakout | ⛔ | None |
+| RK112 | Kaufman adaptive moving average (KAMA) trend | ranked list #112 | Adaptive trend | 🧪 | None |
+| RK113 | Wavelet-denoised breakout system | ranked list #113 | Signal processing / technical | ⛔ | None |
+| RK114 | Volatility risk premium (short vol + tail hedge) | ranked list #114 | Options / volatility | ⛔ | None |
+| RK115 | EMA pullback continuation | ranked list #115 | Trend / pullback | 🧪 | None |
+| RK116 | Markowitz mean-variance optimisation | ranked list #116 | Portfolio construction | ⛔ | None |
+| RK117 | Equal-weight rebalancing | ranked list #117 | Portfolio construction | 🧪 | None |
+| RK118 | Minimum-correlation portfolio | ranked list #118 | Portfolio optimisation | ⛔ | None |
+| RK119 | Hierarchical equal risk contribution (HERC) | ranked list #119 | Portfolio optimisation / clustering | ⛔ | None |
+| RK120 | Nested cluster optimisation (NCO) | ranked list #120 | Portfolio optimisation / clustering | ⛔ | None |
+| RK121 | Benchmark-tracking enhanced indexing | ranked list #121 | Portfolio optimisation / index | ⛔ | None |
+| RK122 | Wasserstein distributionally robust portfolio optimisation | ranked list #122 | Portfolio optimisation / robust statistics | ⛔ | None |
+| RK123 | Adversarial robust Wasserstein portfolio optimisation | ranked list #123 | Portfolio optimisation / robust statistics | ⛔ | None |
+| RK124 | Optimal-transport Wasserstein barycenter allocation | ranked list #124 | Optimal transport / portfolio | ⛔ | None |
+| RK125 | Continuous-time mean-field portfolio game | ranked list #125 | Game theory / mean-field games | ⛔ | None |
+| RK126 | Entropic risk measure portfolio optimisation | ranked list #126 | Risk-sensitive optimisation | ⛔ | None |
+| RK127 | Conformal-prediction risk-bounded alpha stacking | ranked list #127 | Conformal prediction / ensembles | ⏳ | Low–medium |
+| RK128 | Fractional-order cointegration residual mean reversion | ranked list #128 | Fractional cointegration / statistical arbitrage | ⛔ | None |
+| RK129 | Inverse-volatility allocation | ranked list #129 | Portfolio construction / risk scaling | ✅ | Medium |
+| RK130 | Extreme value theory dynamic tail-risk hedge | ranked list #130 | Risk management / tail risk | ⏳ | Low–medium |
+| RK131 | Markov-switching VECM arbitrage | ranked list #131 | Econometric / regime-switching cointegration | ⛔ | None |
+| RK132 | Conformal risk-bounded dynamic portfolio allocation | ranked list #132 | Conformal prediction / risk | ⏳ | Low–medium |
+| RK133 | Protective put / collar | ranked list #133 | Options / hedging | ⛔ | None |
+| RK134 | Fractional Kelly position sizing | ranked list #134 | Position sizing | ⏳ | Low–medium |
+| RK135 | Fractional-order cointegration VAR strategy | ranked list #135 | Fractional cointegration / statistical arbitrage | ⛔ | None |
+| RK136 | Graph-attention dynamic cointegration basket selection | ranked list #136 | Graph neural networks / stat arb | ⛔ | None |
+| RK137 | Fractional cointegration Hawkes lead-lag arbitrage | ranked list #137 | Fractional cointegration / statistical arbitrage | ⛔ | None |
+| RK138 | Fractional-order VECM cointegration strategy | ranked list #138 | Fractional cointegration / statistical arbitrage | ⛔ | None |
+| RK139 | Fractional cointegration dynamic copula trading system | ranked list #139 | Fractional cointegration / statistical arbitrage | ⛔ | None |
+| RK140 | Neural rough-path signature delay-differential cointegration spread model | ranked list #140 | Rough paths / neural delay ODEs / stat arb | ⛔ | None |
+| RK141 | Fractional cointegration Hawkes point-process statistical arbitrage | ranked list #141 | Fractional cointegration / statistical arbitrage | ⛔ | None |
+| RK142 | Fractional cointegration VECM Hawkes strategy | ranked list #142 | Fractional cointegration / statistical arbitrage | ⛔ | None |
+| RK143 | Fractional cointegration Hawkes jump-diffusion arbitrage | ranked list #143 | Fractional cointegration / statistical arbitrage | ⛔ | None |
+| RK144 | Alpha stacking / ensemble portfolio optimiser | ranked list #144 | Portfolio construction / ensembles | 🧪 | None |
+| RK145 | Multi-scale wavelet LSTM cross-sectional alpha ranker | ranked list #145 | Signal processing / RNN / equity | ⛔ | None |
+| RK146 | Connors RSI-2 mean reversion | ranked list #146 | Mean reversion | ⏳ | Low–medium |
+| RK147 | Moving-average z-score reversion | ranked list #147 | Mean reversion | 🧪 | None |
+| RK148 | Williams %R reversal | ranked list #148 | Mean reversion | ⛔ | None |
+| RK149 | Gap-fade strategy | ranked list #149 | Mean reversion / intraday | ⛔ | None |
+| RK150 | VWAP reversion | ranked list #150 | Mean reversion / intraday | 🧪 | None |
+| RK151 | Short-term stock reversal | ranked list #151 | Mean reversion / cross-sectional | ⛔ | None |
+| RK152 | Same-calendar-month seasonality | ranked list #152 | Seasonality / event | ⛔ | None |
+| RK153 | Turn-of-the-month effect | ranked list #153 | Seasonality / event | ⏳ | Medium |
+| RK154 | Overnight equity anomaly | ranked list #154 | Seasonality / intraday | 🧪 | None |
+| RK155 | Wasserstein distributionally robust neural-operator portfolio optimisation | ranked list #155 | Robust statistics / neural operators / portfolio | ⛔ | None |
+| RK156 | Neural-operator delay-differential stochastic-control portfolio optimisation | ranked list #156 | Neural operators / stochastic control | ⛔ | None |
+| RK157 | Wasserstein distributionally robust neural-operator optimal portfolio | ranked list #157 | Robust statistics / neural operators / portfolio | ⛔ | None |
+| RK158 | Fractional cointegration multiscale wavelet arbitrage | ranked list #158 | Fractional cointegration / statistical arbitrage | ⛔ | None |
+| RK159 | Koopman-operator nonlinear cointegration spread strategy | ranked list #159 | Operator theory / stat arb | ⛔ | None |
+| RK160 | RSI oversold/overbought reversion | ranked list #160 | Mean reversion | ✅ | Medium |
+| RK161 | Bollinger band mean reversion | ranked list #161 | Mean reversion | 🧪 | None |
+| RK162 | Stochastic oscillator reversal | ranked list #162 | Mean reversion | ⛔ | None |
+| RK163 | FX mean-reversion / momentum hybrid | ranked list #163 | Mean reversion / FX | ⛔ | None |
+| RK164 | Grid / price-ladder trading | ranked list #164 | Mean reversion / inventory | ✅ | High |
+| RK165 | Fractional cointegration dynamic copula portfolio optimiser | ranked list #165 | Fractional cointegration / statistical arbitrage | ⛔ | None |
+| RK166 | Calendar / diagonal spread | ranked list #166 | Options / volatility | ⛔ | None |
+| RK167 | Delta-hedged volatility arbitrage | ranked list #167 | Options / volatility | ⛔ | None |
+| RK168 | VIX futures term-structure strategy | ranked list #168 | Options / volatility | ⏳ | Low–medium |
+| RK169 | Volatility skew risk premium | ranked list #169 | Options / volatility risk premium | ⛔ | None |
+| RK170 | Earnings volatility crush / delta-hedged event options | ranked list #170 | Options / event volatility | ⛔ | None |
+| RK171 | Put-call parity conversion / reversal arbitrage | ranked list #171 | Options / no-arbitrage | ⛔ | None |
+| RK172 | Box-spread financing arbitrage | ranked list #172 | Options / synthetic lending | ⛔ | None |
+| RK173 | Broken-wing butterfly | ranked list #173 | Options / asymmetric convexity | ⛔ | None |
+| RK174 | Put debit spread momentum | ranked list #174 | Options / directional | ⛔ | None |
+| RK175 | QAOA allocation | ranked list #175 | Quantum computing / portfolio | ⛔ | None |
+| RK176 | Rough Heston stochastic-volatility calibration | ranked list #176 | Mathematical finance / volatility | ⛔ | None |
+| RK177 | VAE latent yield-curve arbitrage | ranked list #177 | Deep learning / fixed-income relative value | ⛔ | None |
+| RK178 | Manifold-learning diffusion-map statistical arbitrage | ranked list #178 | Manifold learning / stat arb | ⛔ | None |
+| RK179 | Fractional-order Kalman filter dynamic hedging | ranked list #179 | Fractional calculus / state space | ⛔ | None |
+| RK180 | Persistent-homology Betti-1 topological momentum | ranked list #180 | Topological data analysis / momentum | ⛔ | None |
+| RK181 | Wasserstein distributionally robust mean-CVaR dynamic allocation | ranked list #181 | Robust statistics / tail-risk allocation | ⛔ | None |
+| RK182 | Quantum-annealing graph-partitioning statistical arbitrage | ranked list #182 | Quantum computing / statistical arbitrage | ⛔ | None |
+| RK183 | Persistent-homology Betti-0 multiscale clustering arbitrage | ranked list #183 | Topological data analysis / statistical arbitrage | ⛔ | None |
+| RK184 | QAOA Max-Cut statistical arbitrage | ranked list #184 | Quantum computing / statistical arbitrage | ⛔ | None |
+| RK185 | Riemannian-manifold hierarchical risk parity | ranked list #185 | Riemannian geometry / portfolio | ⛔ | None |
+| RK186 | Quantum-annealing binary matrix factorisation statistical arbitrage | ranked list #186 | Quantum computing / statistical arbitrage | ⛔ | None |
+| RK187 | Persistent-homology Betti-0 connected-component risk parity | ranked list #187 | Topological data analysis / risk parity | ⛔ | None |
+| RK188 | Riemannian-manifold persistent-homology risk parity | ranked list #188 | Riemannian geometry / TDA | ⛔ | None |
+| RK189 | Persistent-homology Betti-1 cyclical landscape arbitrage | ranked list #189 | Topological data analysis / statistical arbitrage | ⛔ | None |
+| RK190 | Neural rough-path signature Hawkes jump-diffusion spread arbitrage | ranked list #190 | Rough paths / point processes / stat arb | ⛔ | None |
+| RK191 | Graph-attention Riemannian-manifold dynamic risk parity | ranked list #191 | GNN / Riemannian / risk parity | ⛔ | None |
+| RK192 | Quantum-annealing maximum-independent-set statistical arbitrage | ranked list #192 | Quantum computing / statistical arbitrage | ⛔ | None |
+| RK193 | Persistent-homology Betti-0 landscape clustering arbitrage | ranked list #193 | Topological data analysis / statistical arbitrage | ⛔ | None |
+| RK194 | Fixed fractional / fixed dollar risk | ranked list #194 | Position sizing | ✅ | Medium |
+| RK195 | GARCH volatility forecast for mean-reversion bands | ranked list #195 | Econometric / volatility | ⏳ | Low–medium |
+| RK196 | Randomised matrix-pencil lead-lag cross-asset predictor | ranked list #196 | Signal processing / lead-lag | ⛔ | None |
+| RK197 | Topological Betti-curve macro regime switcher | ranked list #197 | Topological data analysis / regime | ⛔ | None |
+| RK198 | Wasserstein GAN multi-asset allocation (WGAN-MA) | ranked list #198 | Generative ML / portfolio | ⛔ | None |
+| RK199 | Persistent-homology Betti-1 persistence-landscape arbitrage | ranked list #199 | Topological data analysis / statistical arbitrage | ⛔ | None |
 | RK200 | Score-based diffusion multi-asset scenario synthesizer | ranked list #200; Takahashi & Mizuno 2024 | Generative scenarios | ⏳ (stress-test tool) | Low |
 | RK201 | Koopman-operator MPC statistical arbitrage | ranked list #201; Mann & Kutz 2016 | Koopman / MPC | ⛔ | None |
 | RK202 | Fractional Brownian motion multi-scale trend scanning | ranked list #202; Lo 1991 | Fractional trend detection | ⛔ | None |
@@ -512,7 +613,7 @@ entries also have reference code in `research/catalog/`, unwired.
 | RK424 | Wasserstein distributionally robust Hawkes jump-diffusion execution | ranked list #424 | Execution / robust optimisation | ⛔ | None |
 | RK425 | Deep recurrent attentive execution agent | ranked list #425 | RL execution | ⛔ | None |
 
-The remaining 13,899 rows of the ranked list are tabled in §8C, not here. Ranks 1–100 and 200–425 are researched one by one, and ranks 426–700 through the 34 concepts they share (ranks 101–199 are not yet); the ones whose sources could not be found or checked are listed in §8C under "Research gaps".
+The remaining 13,800 rows of the ranked list (ranks 426–14,225, all title-reconstructed) are tabled in §8C, not here. Ranks 1–425 are researched one by one (ranks 101–199 on 2026-10-30, as a usefulness triage), ranks 426–700 through the 34 concepts they share, and ranks 701–14,225 through the 344 concepts that remained (also a usefulness triage, 2026-10-30); the ones whose sources could not be found or checked are listed in §8C under "Research gaps".
 
 ---
 
@@ -2466,6 +2567,996 @@ Select pairs or leader–follower trades from a causal graph (PC, NOTEARS, PCMCI
 * **Against:** Confounders and sampling frequency change the graph; low power.
 * **Built:** research code, `research/catalog/stat_arb.py` — pc_skeleton, orient_v_structures, causal_pairs, lagged_causal_links (tested on synthetic data; not wired into the engine).
 * **Details:** [docs/algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md)
+
+### RK101. Dynamic copula-EVT tail-risk relative-value arbitrage ⛔
+
+Trade index-option tails against a copula-EVT model of tail risk. Options are excluded and no trading study was found.
+
+* **Useful:** **Not useful.** An index-options relative-value trade (options are excluded) with no study found.
+* **Fit:** Out of scope: index options.
+* **Against:** Tail 'mispricing' is mostly the variance risk premium.
+* **Built:** research code, `research/catalog/concepts.py` — pot_var_es; `research/catalog/econometrics.py` — fit_cvine.
+* **Details:** [docs/algorithms/dynamic-copula-evt-tail-risk-relative-value-arbitrage.md](algorithms/dynamic-copula-evt-tail-risk-relative-value-arbitrage.md)
+
+### RK102. Hidden Markov model regime switching ⏳
+
+Switch exposure by hidden-Markov regime. Out-of-sample regime forecasts beat static allocation (Kritzman et al. 2012); the causal HMM is built here.
+
+* **Useful:** **Worth testing.** A regime input to compare against the NATR regime; the Gaussian HMM is already built (C-R3).
+* **Fit:** Candidate regime input against the NATR regime.
+* **Against:** States lag turning points and largely rediscover a volatility threshold.
+* **Built:** research code, `research/strategies/regime_models.py` — GaussianHMM, GaussianMixture.
+* **Details:** [docs/algorithms/hidden-markov-model-regime-switching.md](algorithms/hidden-markov-model-regime-switching.md)
+
+### RK103. Hurst-exponent trend / mean-reversion regime gate 🧪
+
+Gate trend versus mean-reversion trades on a rolling Hurst exponent. The estimator exists here; the gate has no study beyond a student paper.
+
+* **Useful:** **Reference only.** The estimator is built (C-MR4) but too noisy on short windows to gate trades, and no study supports the gate.
+* **Fit:** Diagnostic only.
+* **Against:** Hurst estimates on short windows are too noisy to gate.
+* **Built:** research code, `research/strategies/mean_reversion.py` — hurst_exponent, variance_ratio.
+* **Details:** [docs/algorithms/hurst-exponent-trend-mean-reversion-regime-gate.md](algorithms/hurst-exponent-trend-mean-reversion-regime-gate.md)
+
+### RK104. Bayesian online changepoint regime gate ⏳
+
+Pause or adapt when an online Bayesian changepoint posterior signals a regime change. Exact and causal; no trading study found.
+
+* **Useful:** **Worth testing.** A causal changepoint probability is a cheap alternative trigger for the regime exit; no trading study exists, so it must be tested here.
+* **Fit:** Candidate regime-exit trigger, untested.
+* **Against:** Hazard rate and model are free parameters; overlaps the NATR regime.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/bayesian-online-changepoint-regime-gate.md](algorithms/bayesian-online-changepoint-regime-gate.md)
+
+### RK105. Adaptive range breakout with volatility filter ⛔
+
+Trade range breakouts only when volatility and trend filters agree. Contradicts the grid's entries; its filter is already the NATR regime.
+
+* **Useful:** **Not useful.** A breakout entry is the opposite of the grid's buy-the-drop entry, and its volatility filter is already the NATR regime.
+* **Fit:** Contradicts the grid's buy-the-drop entries.
+* **Against:** Stacked filters overfit; 3x ETFs whipsaw at range edges.
+* **Built:** research code, `research/catalog/technical_ml.py` — volatility_expansion_breakout.
+* **Details:** [docs/algorithms/adaptive-range-breakout-with-volatility-filter.md](algorithms/adaptive-range-breakout-with-volatility-filter.md)
+
+### RK106. Hierarchical hidden Markov model regime switcher ⏳
+
+A nested HMM: bull/bear on top, high/low volatility below. It separates trends from swings (Oelschläger & Adam 2023); no trading results.
+
+* **Useful:** **Worth testing.** A two-level bull/bear and volatility regime is plausible, but test it only after the plain HMM (RK102) earns its place.
+* **Fit:** Second-step regime input after RK102.
+* **Against:** Twice the parameters; few regime switches to judge it on.
+* **Built:** research code, `research/strategies/regime_models.py` — GaussianHMM.
+* **Details:** [docs/algorithms/hierarchical-hidden-markov-model-hhmm-regime-switcher.md](algorithms/hierarchical-hidden-markov-model-hhmm-regime-switcher.md)
+
+### RK107. Entropy-based portfolio diversification ⛔
+
+Maximise the entropy of weights or risk contributions. A multi-asset rule; built as research code.
+
+* **Useful:** **Not useful.** A multi-asset weighting rule; this book holds one instrument.
+* **Fit:** Multi-asset only.
+* **Against:** Rewards spreading weight, not risk.
+* **Built:** research code, `research/catalog/allocation.py` — maxent_weights.
+* **Details:** [docs/algorithms/entropy-based-portfolio-diversification-optimization.md](algorithms/entropy-based-portfolio-diversification-optimization.md)
+
+### RK108. Intraday ETF relative-value arbitrage ⛔
+
+Trade intraday divergences between twin ETFs. Gross-profitable in 2001–2010 (Marshall et al. 2013); a short-leg speed trade.
+
+* **Useful:** **Not useful.** A seconds-to-minutes short-leg trade between twin ETFs; needs quotes, shorting and speed.
+* **Fit:** Out of scope: short leg, tick data.
+* **Against:** Gross of fees; needs 15-second execution.
+* **Built:** research code, `research/catalog/excluded.py` — ib_hft_signals, ib_pairs_long_only.
+* **Details:** [docs/algorithms/intraday-etf-relative-value-arbitrage.md](algorithms/intraday-etf-relative-value-arbitrage.md)
+
+### RK109. Sparse graphical-lasso cross-asset spillover predictor ⛔
+
+Map spillovers with a sparse graphical-lasso network. A risk tool with no trading evidence.
+
+* **Useful:** **Not useful.** A multi-asset risk-network estimator with no forecasting evidence for trading.
+* **Fit:** Multi-asset risk tool.
+* **Against:** Unstable in the penalty and window.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/sparse-graphical-lasso-cross-asset-spillover-predictor.md](algorithms/sparse-graphical-lasso-cross-asset-spillover-predictor.md)
+
+### RK110. Opening range breakout (ORB) 🧪
+
+Trade the break of the opening range. Net-profitable on news stocks (authors' claim); net zero on indices in a replication.
+
+* **Useful:** **Reference only.** A day-trading rule; the index replications are net zero after costs, and the research code and gate form exist (C-M2, N2).
+* **Fit:** Researched; no more work.
+* **Against:** Index edge does not survive costs.
+* **Built:** research code, `research/catalog/trend_following.py` — orb_trade; `research/strategies/entry_gates.py` — BreakdownGate.
+* **Details:** [docs/algorithms/opening-range-breakout-orb.md](algorithms/opening-range-breakout-orb.md)
+
+### RK111. Ichimoku cloud trend filter ⛔
+
+A multi-line Ichimoku trend filter. Not consistently profitable in careful tests; redundant here.
+
+* **Useful:** **Not useful.** Parameter-sensitive and redundant with the trend filters already researched; the evidence does not favour it.
+* **Fit:** Redundant trend filter.
+* **Against:** Many parameters; inconsistent results.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/ichimoku-cloud-trend-filter.md](algorithms/ichimoku-cloud-trend-filter.md)
+
+### RK112. Kaufman adaptive moving average (KAMA) trend 🧪
+
+An efficiency-ratio adaptive moving average. Built as an indicator; no evidence it beats a simple average.
+
+* **Useful:** **Reference only.** Available as an indicator (V15) and research code; no evidence it beats a plain moving average.
+* **Fit:** Indicator only.
+* **Against:** Three more parameters, no better evidence.
+* **Built:** research code, `research/strategies/indicator_library.py`.
+* **Details:** [docs/algorithms/kaufman-adaptive-moving-average-kama-trend.md](algorithms/kaufman-adaptive-moving-average-kama-trend.md)
+
+### RK113. Wavelet-denoised breakout system ⛔
+
+Breakouts on a wavelet-denoised price. Denoising does not help causally; non-causal versions leak the future.
+
+* **Useful:** **Not useful.** Denoising has not been shown to help, and whole-series transforms leak the future.
+* **Fit:** Contradicts the grid.
+* **Against:** Causal smoothing is a lagged average.
+* **Built:** research code, `research/catalog/neural_models.py` — causal_haar.
+* **Details:** [docs/algorithms/wavelet-transform-denoised-breakout-system.md](algorithms/wavelet-transform-denoised-breakout-system.md)
+
+### RK114. Volatility risk premium (short vol + tail hedge) ⛔
+
+Harvest the variance risk premium by selling options, with tail protection. A real premium, but options are excluded.
+
+* **Useful:** **Not useful.** Selling options is outside the instrument rule; the premium is real but so are its crashes.
+* **Fit:** Out of scope: options.
+* **Against:** Loses in the same sell-offs as the grid.
+* **Built:** research code, `research/catalog/options.py` — wheel_select_contract, tail_hedge_entry_allowed.
+* **Details:** [docs/algorithms/volatility-risk-premium-short-vol-tail-hedge.md](algorithms/volatility-risk-premium-short-vol-tail-hedge.md)
+
+### RK115. EMA pullback continuation 🧪
+
+Buy pullbacks to an EMA within an uptrend. The grid already buys pullbacks; no study found.
+
+* **Useful:** **Reference only.** The grid already buys pullbacks; a trend-confirmed pullback is at most a gate on it, and no study supports one.
+* **Fit:** Covered by the grid and its trend gates.
+* **Against:** Waits for the bounce, buying higher.
+* **Built:** research code, `research/strategies/entry_gates.py`.
+* **Details:** [docs/algorithms/ema-pullback-continuation.md](algorithms/ema-pullback-continuation.md)
+
+### RK116. Markowitz mean-variance optimisation ⛔
+
+Mean-variance optimal weights. Estimation error swamps the gain out of sample (DeMiguel et al. 2009).
+
+* **Useful:** **Not useful.** A multi-asset rule whose estimation error beats its benefit out of sample.
+* **Fit:** Multi-asset; poor out of sample.
+* **Against:** Chases noisy means.
+* **Built:** research code, `research/catalog/je_suis_tm_projects.py` — markowitz_weights.
+* **Details:** [docs/algorithms/markowitz-mean-variance-optimization.md](algorithms/markowitz-mean-variance-optimization.md)
+
+### RK117. Equal-weight rebalancing 🧪
+
+Equal weights with periodic rebalancing; the benchmark optimisers fail to beat.
+
+* **Useful:** **Reference only.** The right benchmark for any multi-ETF book this project might add; not a strategy for one instrument.
+* **Fit:** Benchmark for a future multi-ETF book.
+* **Against:** Equal weight is unequal risk for leveraged ETFs.
+* **Built:** research code, `research/catalog/excluded.py` — rebalanced_mix.
+* **Details:** [docs/algorithms/equal-weight-rebalancing.md](algorithms/equal-weight-rebalancing.md)
+
+### RK118. Minimum-correlation portfolio ⛔
+
+Weight assets by low average correlation. A heuristic with only its authors' tests.
+
+* **Useful:** **Not useful.** A multi-asset heuristic with only its authors' backtests behind it.
+* **Fit:** Multi-asset only.
+* **Against:** Correlations converge in crises.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/minimum-correlation-portfolio.md](algorithms/minimum-correlation-portfolio.md)
+
+### RK119. Hierarchical equal risk contribution (HERC) ⛔
+
+Hierarchical clustering with equal risk contributions per cluster. A multi-asset extension of HRP.
+
+* **Useful:** **Not useful.** A multi-asset allocator; HRP (A5) is already the built hierarchical method.
+* **Fit:** Multi-asset; HRP already built.
+* **Against:** Cluster choices drive the weights.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/hierarchical-equal-risk-contribution-herc.md](algorithms/hierarchical-equal-risk-contribution-herc.md)
+
+### RK120. Nested cluster optimisation (NCO) ⛔
+
+Optimise within clusters, then across them. Simulated gains by its author; not confirmed empirically.
+
+* **Useful:** **Not useful.** A multi-asset optimiser whose gains are simulated by its author and not confirmed independently.
+* **Fit:** Multi-asset only.
+* **Against:** Gains are simulated.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/nested-cluster-optimization-nco.md](algorithms/nested-cluster-optimization-nco.md)
+
+### RK121. Benchmark-tracking enhanced indexing ⛔
+
+Signal tilts within a tracking-error budget. Needs a stock universe and alpha signals.
+
+* **Useful:** **Not useful.** It tilts a stock universe against an index; the project has no universe or alpha signals to tilt with.
+* **Fit:** Out of scope: stock universe.
+* **Against:** Without alpha it is the index plus costs.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/benchmark-tracking-enhanced-indexing.md](algorithms/benchmark-tracking-enhanced-indexing.md)
+
+### RK122. Wasserstein distributionally robust portfolio optimisation ⛔
+
+Worst-case-optimal weights over a Wasserstein ball. Strong theory; a multi-asset tool.
+
+* **Useful:** **Not useful.** A multi-asset optimiser; the robust machinery is built but there is nothing to allocate across.
+* **Fit:** Multi-asset only.
+* **Against:** The radius decides the answer.
+* **Built:** research code, `research/catalog/allocation.py` — wdro_mean_variance, cvar_weights.
+* **Details:** [docs/algorithms/robust-wasserstein-distributionally-robust-portfolio-optimization.md](algorithms/robust-wasserstein-distributionally-robust-portfolio-optimization.md)
+
+### RK123. Adversarial robust Wasserstein portfolio optimisation ⛔
+
+Worst-case-optimal weights over a Wasserstein ball. Strong theory; a multi-asset tool.
+
+* **Useful:** **Not useful.** A multi-asset optimiser; the robust machinery is built but there is nothing to allocate across.
+* **Fit:** Multi-asset only.
+* **Against:** The radius decides the answer.
+* **Built:** research code, `research/catalog/allocation.py` — wdro_mean_variance, cvar_weights.
+* **Details:** [docs/algorithms/adversarial-robust-wasserstein-portfolio-optimization.md](algorithms/adversarial-robust-wasserstein-portfolio-optimization.md)
+
+### RK124. Optimal-transport Wasserstein barycenter allocation ⛔
+
+Allocate against the Wasserstein barycenter of scenario distributions. One preprint; multi-asset.
+
+* **Useful:** **Not useful.** A multi-asset scenario-blending tool with one preprint behind it.
+* **Fit:** Multi-asset only.
+* **Against:** Only as good as its scenarios.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/optimal-transport-wasserstein-barycenter-asset-allocation.md](algorithms/optimal-transport-wasserstein-barycenter-asset-allocation.md)
+
+### RK125. Continuous-time mean-field portfolio game ⛔
+
+Equilibrium allocations among peer-benchmarked managers. Theory, not a rule.
+
+* **Useful:** **Not useful.** A theory of competing fund managers, not a trading rule.
+* **Fit:** Theory only.
+* **Against:** No peer benchmark for a private book.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/continuous-time-mean-field-portfolio-game-with-competition.md](algorithms/continuous-time-mean-field-portfolio-game-with-competition.md)
+
+### RK126. Entropic risk measure portfolio optimisation ⛔
+
+Optimise the entropic (exponential-utility) risk measure. Multi-asset; no empirical study found.
+
+* **Useful:** **Not useful.** A multi-asset objective; for one instrument it reduces to choosing exposure, which the regime exit already does.
+* **Fit:** Multi-asset only.
+* **Against:** θ is just risk aversion.
+* **Built:** research code, `research/catalog/spd_covariance.py` — entropic_weights.
+* **Details:** [docs/algorithms/entropic-risk-measure-portfolio-optimization.md](algorithms/entropic-risk-measure-portfolio-optimization.md)
+
+### RK127. Conformal-prediction risk-bounded alpha stacking ⏳
+
+Size an ensemble of alpha forecasts by conformal intervals. Conformal lot sizing is researched (V13); stacking needs more alphas.
+
+* **Useful:** **Worth testing.** Conformal sizing is already researched for grid lots (V13); stacking needs several alpha sources the project does not have.
+* **Fit:** Conformal sizing fits; stacking waits.
+* **Against:** Coverage needs exchangeability.
+* **Built:** research code, `research/strategies/position_sizing.py` — conformal_long_size; `research/catalog/forecasting.py` — stack_forecasts.
+* **Details:** [docs/algorithms/conformal-prediction-risk-bounded-alpha-stacking.md](algorithms/conformal-prediction-risk-bounded-alpha-stacking.md)
+
+### RK128. Fractional-order cointegration residual mean reversion ⛔
+
+Fractionally difference a cointegrated spread to isolate its long-memory mean reversion and trade the residual. No trading study of the fractional variant was found.
+
+* **Useful:** **Not useful.** A short-leg spread trade with no tested evidence for the fractional variant.
+* **Fit:** Out of scope: a short-leg spread trade.
+* **Against:** Long-memory estimates are imprecise; spreads can drift for months.
+* **Built:** research code, `research/catalog/econometrics.py` — fracdiff; `research/catalog/stat_arb.py` — band_positions.
+* **Details:** [docs/algorithms/fractional-order-cointegration-residual-mean-reversion.md](algorithms/fractional-order-cointegration-residual-mean-reversion.md)
+
+### RK129. Inverse-volatility allocation ✅
+
+Weight inversely to volatility. In single-asset form this is the grid's volatility target (S4).
+
+* **Useful:** **In use.** For one instrument it is volatility targeting, which the grid already applies (S4 vol_target).
+* **Fit:** In use as S4 vol_target.
+* **Against:** Ignores correlations; lags.
+* **Built:** research code, `research/strategies/hrp.py` — hrp_weights.
+* **Details:** [docs/algorithms/inverse-volatility-allocation.md](algorithms/inverse-volatility-allocation.md)
+
+### RK130. Extreme value theory dynamic tail-risk hedge ⏳
+
+Forecast tail risk with GARCH-EVT and hedge with puts. Puts are excluded; the forecast is a candidate exposure governor.
+
+* **Useful:** **Worth testing.** The put-buying hedge is excluded, but an EVT expected-shortfall forecast is a candidate exposure governor next to the NATR regime.
+* **Fit:** Forecast only, as an exposure governor.
+* **Against:** Few crashes to fit; puts are costly.
+* **Built:** research code, `research/catalog/concepts.py` — pot_var_es, tail_budget_exposure.
+* **Details:** [docs/algorithms/extreme-value-theory-evt-dynamic-tail-risk-hedge.md](algorithms/extreme-value-theory-evt-dynamic-tail-risk-hedge.md)
+
+### RK131. Markov-switching VECM arbitrage ⛔
+
+Cointegrated baskets with regime-switching vectors. Macro applications only; short legs.
+
+* **Useful:** **Not useful.** A short-leg basket trade (on crypto coins in the CSV's wording) with no trading study.
+* **Fit:** Out of scope: short legs, crypto.
+* **Against:** More parameters on a fragile spread.
+* **Built:** research code, `research/catalog/econometrics.py` — fit_vecm; `research/strategies/regime_models.py` — GaussianHMM.
+* **Details:** [docs/algorithms/markov-switching-vector-error-correction-model-ms-vecm-arbitrage.md](algorithms/markov-switching-vector-error-correction-model-ms-vecm-arbitrage.md)
+
+### RK132. Conformal risk-bounded dynamic portfolio allocation ⏳
+
+Scale leverage by conformal bounds on a return forecast. Conformal lot sizing is researched here (V13).
+
+* **Useful:** **Worth testing.** Conformal lot sizing is already researched (V13); this is its leverage-control form, worth a walk-forward test.
+* **Fit:** Part of the V13 conformal sizing line.
+* **Against:** Needs adaptive intervals under shift.
+* **Built:** research code, `research/strategies/position_sizing.py` — conformal_long_size.
+* **Details:** [docs/algorithms/conformal-risk-bounded-dynamic-portfolio-allocation.md](algorithms/conformal-risk-bounded-dynamic-portfolio-allocation.md)
+
+### RK133. Protective put / collar ⛔
+
+Hedge with puts or collars. Options are excluded, and holding less equity protects better (Israelov 2019).
+
+* **Useful:** **Not useful.** Options are excluded, and the evidence says holding less equity protects better per unit of return.
+* **Fit:** Out of scope; the regime exit is the cheaper equivalent.
+* **Against:** Pays the volatility premium.
+* **Built:** research code, `research/catalog/options.py` — tail_hedge_slice_budget, tail_hedge_harvest.
+* **Details:** [docs/algorithms/protective-put-collar.md](algorithms/protective-put-collar.md)
+
+### RK134. Fractional Kelly position sizing ⏳
+
+Size to a fraction of the Kelly bet. Growth-optimal in theory, fragile to edge estimates.
+
+* **Useful:** **Worth testing.** A principled cap on lot size or total exposure; the research code exists (C-S2).
+* **Fit:** Candidate exposure cap.
+* **Against:** Edge estimates drive it; TQQQ is already 3x.
+* **Built:** research code, `research/strategies/position_sizing.py` — kelly_portfolio, kelly_leverage.
+* **Details:** [docs/algorithms/fractional-kelly-position-sizing.md](algorithms/fractional-kelly-position-sizing.md)
+
+### RK135. Fractional-order cointegration VAR strategy ⛔
+
+Fit a VAR to fractionally differenced cointegrated baskets and trade the long-memory spread. No trading study of the fractional variant was found.
+
+* **Useful:** **Not useful.** A short-leg spread trade with no tested evidence for the fractional variant.
+* **Fit:** Out of scope: a short-leg spread trade.
+* **Against:** Long-memory estimates are imprecise; spreads can drift for months.
+* **Built:** research code, `research/catalog/allocation.py` — fractional_var_allocation.
+* **Details:** [docs/algorithms/fractional-order-cointegration-vector-autoregressive-var-strategy.md](algorithms/fractional-order-cointegration-vector-autoregressive-var-strategy.md)
+
+### RK136. Graph-attention dynamic cointegration basket selection ⛔
+
+Pick cointegrated baskets with graph attention. Only a non-neural graph-matching study exists.
+
+* **Useful:** **Not useful.** A short-leg basket trade with no study of the graph-attention selector.
+* **Fit:** Out of scope: short legs.
+* **Against:** Noisy graphs; more parameters.
+* **Built:** research code, `research/catalog/stat_arb.py` — cointegrated_triplets; `research/catalog/spd_covariance.py` — GATShrinkage.
+* **Details:** [docs/algorithms/graph-attention-network-dynamic-cointegration-basket-selection.md](algorithms/graph-attention-network-dynamic-cointegration-basket-selection.md)
+
+### RK137. Fractional cointegration Hawkes lead-lag arbitrage ⛔
+
+Pair fractional cointegration with multivariate Hawkes processes to catch bursty lead-lag price transmission at high frequency. No trading study of the fractional variant was found.
+
+* **Useful:** **Not useful.** A short-leg spread trade with no tested evidence for the fractional variant.
+* **Fit:** Out of scope: a short-leg spread trade.
+* **Against:** Long-memory estimates are imprecise; spreads can drift for months.
+* **Built:** research code, `research/catalog/point_processes.py` — fit_multivariate_hawkes.
+* **Details:** [docs/algorithms/fractional-cointegration-hawkes-process-lead-lag-arbitrage.md](algorithms/fractional-cointegration-hawkes-process-lead-lag-arbitrage.md)
+
+### RK138. Fractional-order VECM cointegration strategy ⛔
+
+Add fractional integration orders to a vector error-correction model of a cointegrated basket. No trading study of the fractional variant was found.
+
+* **Useful:** **Not useful.** A short-leg spread trade with no tested evidence for the fractional variant.
+* **Fit:** Out of scope: a short-leg spread trade.
+* **Against:** Long-memory estimates are imprecise; spreads can drift for months.
+* **Built:** research code, `research/catalog/stat_arb.py` — NeuralFCVECM.
+* **Details:** [docs/algorithms/fractional-order-vector-error-correction-model-vecm-cointegration-strategy.md](algorithms/fractional-order-vector-error-correction-model-vecm-cointegration-strategy.md)
+
+### RK139. Fractional cointegration dynamic copula trading system ⛔
+
+Model a fractionally cointegrated spread's distribution with time-varying copulas and trade its extremes. No trading study of the fractional variant was found.
+
+* **Useful:** **Not useful.** A short-leg spread trade with no tested evidence for the fractional variant.
+* **Fit:** Out of scope: a short-leg spread trade.
+* **Against:** Long-memory estimates are imprecise; spreads can drift for months.
+* **Built:** research code, `research/catalog/stat_arb.py` — copula_garch_positions.
+* **Details:** [docs/algorithms/fractional-order-cointegration-dynamic-copula-trading-system.md](algorithms/fractional-order-cointegration-dynamic-copula-trading-system.md)
+
+### RK140. Neural rough-path signature delay-differential cointegration spread model ⛔
+
+Signature features and neural delay ODEs for spreads. No study of the combination.
+
+* **Useful:** **Not useful.** A short-leg spread model stacking three untested methods.
+* **Fit:** Out of scope: short legs.
+* **Against:** Too many layers for the data.
+* **Built:** research code, `research/catalog/cross_section.py` — signature_trading.
+* **Details:** [docs/algorithms/neural-rough-path-signature-delay-differential-cointegration-spread-model.md](algorithms/neural-rough-path-signature-delay-differential-cointegration-spread-model.md)
+
+### RK141. Fractional cointegration Hawkes point-process statistical arbitrage ⛔
+
+Combine a slowly mean-reverting fractional spread with Hawkes models of bursty order arrivals. No trading study of the fractional variant was found.
+
+* **Useful:** **Not useful.** A short-leg spread trade with no tested evidence for the fractional variant.
+* **Fit:** Out of scope: a short-leg spread trade.
+* **Against:** Long-memory estimates are imprecise; spreads can drift for months.
+* **Built:** research code, `research/catalog/point_processes.py` — fit_multivariate_hawkes; `research/catalog/econometrics.py` — fracdiff.
+* **Details:** [docs/algorithms/fractional-order-cointegration-hawkes-point-process-statistical-arbitrage.md](algorithms/fractional-order-cointegration-hawkes-point-process-statistical-arbitrage.md)
+
+### RK142. Fractional cointegration VECM Hawkes strategy ⛔
+
+Drive a fractional VECM's spread adjustments with multivariate Hawkes order-arrival intensities. No trading study of the fractional variant was found.
+
+* **Useful:** **Not useful.** A short-leg spread trade with no tested evidence for the fractional variant.
+* **Fit:** Out of scope: a short-leg spread trade.
+* **Against:** Long-memory estimates are imprecise; spreads can drift for months.
+* **Built:** research code, `research/catalog/point_processes.py` — fit_multivariate_hawkes; `research/catalog/econometrics.py` — fracdiff.
+* **Details:** [docs/algorithms/fractional-order-cointegration-vector-error-correction-hawkes-strategy.md](algorithms/fractional-order-cointegration-vector-error-correction-hawkes-strategy.md)
+
+### RK143. Fractional cointegration Hawkes jump-diffusion arbitrage ⛔
+
+Add Hawkes-driven jumps to a fractionally cointegrated spread and trade its reversion. No trading study of the fractional variant was found.
+
+* **Useful:** **Not useful.** A short-leg spread trade with no tested evidence for the fractional variant.
+* **Fit:** Out of scope: a short-leg spread trade.
+* **Against:** Long-memory estimates are imprecise; spreads can drift for months.
+* **Built:** research code, `research/catalog/point_processes.py` — fit_multivariate_hawkes; `research/catalog/econometrics.py` — fracdiff.
+* **Details:** [docs/algorithms/fractional-order-cointegration-hawkes-jump-diffusion-arbitrage.md](algorithms/fractional-order-cointegration-hawkes-jump-diffusion-arbitrage.md)
+
+### RK144. Alpha stacking / ensemble portfolio optimiser 🧪
+
+Combine alpha forecasts by stacking. Combination works; the project has little to combine yet.
+
+* **Useful:** **Reference only.** Forecast combination has real evidence, but the project has one signal family to combine; keep it for when it has several.
+* **Fit:** Reference for combining regime signals.
+* **Against:** Fitted stacking weights over-fit.
+* **Built:** research code, `research/catalog/forecasting.py` — stack_forecasts.
+* **Details:** [docs/algorithms/alpha-stacking-ensemble-portfolio-optimizer.md](algorithms/alpha-stacking-ensemble-portfolio-optimizer.md)
+
+### RK145. Multi-scale wavelet LSTM cross-sectional alpha ranker ⛔
+
+Rank stocks with per-wavelet-band LSTMs. No study; needs a stock universe.
+
+* **Useful:** **Not useful.** A stock-ranking model; the project has no stock universe.
+* **Fit:** Out of scope: stock universe.
+* **Against:** Wavelet leakage; deep rankers trail trees.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/multi-scale-wavelet-lstm-cross-sectional-alpha-ranker.md](algorithms/multi-scale-wavelet-lstm-cross-sectional-alpha-ranker.md)
+
+### RK146. Connors RSI-2 mean reversion ⏳
+
+Buy 2-period-RSI oversold dips above the 200-day average. Long-only and grid-aligned; evidence is in-sample.
+
+* **Useful:** **Worth testing.** A long-only, single-index dip-buying rule, aligned with the grid; cheap to test as a buy gate, but its evidence is in-sample only.
+* **Fit:** Candidate buy gate or lot boost.
+* **Against:** In-sample evidence; data-mining risk.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/connors-rsi-2-mean-reversion.md](algorithms/connors-rsi-2-mean-reversion.md)
+
+### RK147. Moving-average z-score reversion 🧪
+
+Fade extreme z-scores from a moving average. The Bollinger gates cover it.
+
+* **Useful:** **Reference only.** The grid's band gates already use this signal (Q9 Bollinger, X4).
+* **Fit:** Covered by existing gates.
+* **Against:** Falling knives without a regime filter.
+* **Built:** research code, `research/catalog/je_suis_tm.py` — bollinger_bands.
+* **Details:** [docs/algorithms/moving-average-z-score-reversion.md](algorithms/moving-average-z-score-reversion.md)
+
+### RK148. Williams %R reversal ⛔
+
+Fade range extremes on Williams %R. No specific evidence; redundant.
+
+* **Useful:** **Not useful.** An oscillator with no specific evidence; available via the indicator library but not worth a dedicated test.
+* **Fit:** Redundant oscillator.
+* **Against:** Oversold all the way down a trend.
+* **Built:** research code, `research/strategies/indicator_library.py`.
+* **Details:** [docs/algorithms/williams-r-reversal.md](algorithms/williams-r-reversal.md)
+
+### RK149. Gap-fade strategy ⛔
+
+Fade opening gaps intraday. The reversal has faded in large caps; the grid handles gaps already.
+
+* **Useful:** **Not useful.** A day trade whose edge has faded in large caps; gaps on TQQQ are better handled by the grid's resting orders.
+* **Fit:** Covered by the grid.
+* **Against:** Big gaps rarely fill.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/gap-fade-strategy.md](algorithms/gap-fade-strategy.md)
+
+### RK150. VWAP reversion 🧪
+
+Fade deviations from session VWAP. Researched as a gate here; no academic evidence.
+
+* **Useful:** **Reference only.** Session VWAP is already researched as a buy gate (C-MS3); there is no academic evidence for VWAP fades as a strategy.
+* **Fit:** Researched as a gate.
+* **Against:** Costs consume the edge.
+* **Built:** research code, `research/strategies/intraday_gates.py` — VwapGate, session_vwap.
+* **Details:** [docs/algorithms/vwap-reversion.md](algorithms/vwap-reversion.md)
+
+### RK151. Short-term stock reversal ⛔
+
+Buy recent losers, sell recent winners. Pays for liquidity provision (Nagel 2012); a stock long-short trade.
+
+* **Useful:** **Not useful.** A cross-sectional stock trade with a short leg; its returns are payment for liquidity provision, which a single ETF cannot collect.
+* **Fit:** Out of scope: stock universe, short leg.
+* **Against:** Turnover in illiquid names.
+* **Built:** research code, `research/strategies/mean_reversion.py` — contrarian_weights, decayed_reversal_scores.
+* **Details:** [docs/algorithms/short-term-stock-reversal.md](algorithms/short-term-stock-reversal.md)
+
+### RK152. Same-calendar-month seasonality ⛔
+
+Rank stocks on same-month historical returns. A cross-sectional effect (Heston & Sadka 2008); no single-ETF form.
+
+* **Useful:** **Not useful.** The documented effect is cross-sectional across stocks; there is no single-index version with evidence.
+* **Fit:** Out of scope: stock universe.
+* **Against:** Cross-sectional only.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/same-calendar-month-seasonality.md](algorithms/same-calendar-month-seasonality.md)
+
+### RK153. Turn-of-the-month effect ⏳
+
+Concentrate exposure in the four turn-of-month days. Strong 1926–2005 (McConnell & Xu 2008); may have faded since.
+
+* **Useful:** **Worth testing.** An index-level, long-only calendar effect with long-run evidence; a cheap test as a lot-size boost or buy gate on TQQQ.
+* **Fit:** Candidate lot boost or buy gate.
+* **Against:** May have faded since publication.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/turn-of-the-month-effect.md](algorithms/turn-of-the-month-effect.md)
+
+### RK154. Overnight equity anomaly 🧪
+
+Hold only overnight. Overnight returns dominate US equities; measured here, but conflicts with the grid as a strategy.
+
+* **Useful:** **Reference only.** The overnight/intraday split is already measured (leads.overnight_intraday); as a close-to-open strategy it conflicts with the grid's hold-to-target lots.
+* **Fit:** Measurement only.
+* **Against:** Costs; gap risk on a 3x ETF.
+* **Built:** research code, `research/catalog/leads.py` — overnight_intraday.
+* **Details:** [docs/algorithms/overnight-equity-anomaly.md](algorithms/overnight-equity-anomaly.md)
+
+### RK155. Wasserstein distributionally robust neural-operator portfolio optimisation ⛔
+
+Wasserstein-robust allocation with neural operators. No portfolio study; multi-asset.
+
+* **Useful:** **Not useful.** A multi-asset optimiser stacking two methods with no portfolio study.
+* **Fit:** Multi-asset only.
+* **Against:** Parameters without data.
+* **Built:** research code, `research/catalog/allocation.py` — wdro_mean_variance; `research/catalog/execution.py` — NeuralOperatorExecution.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-neural-operator-portfolio-optimization.md](algorithms/wasserstein-distributionally-robust-neural-operator-portfolio-optimization.md)
+
+### RK156. Neural-operator delay-differential stochastic-control portfolio optimisation ⛔
+
+Neural-operator delay-ODE portfolio control. No study found.
+
+* **Useful:** **Not useful.** A multi-period allocator with no study and nothing to allocate across here.
+* **Fit:** Multi-asset only.
+* **Against:** Over-parameterised.
+* **Built:** research code, `research/catalog/carry_rates.py` — NeuralDelayCurve.
+* **Details:** [docs/algorithms/neural-operator-delay-differential-stochastic-control-portfolio-optimization.md](algorithms/neural-operator-delay-differential-stochastic-control-portfolio-optimization.md)
+
+### RK157. Wasserstein distributionally robust neural-operator optimal portfolio ⛔
+
+Wasserstein-robust allocation with neural operators. No portfolio study; multi-asset.
+
+* **Useful:** **Not useful.** A multi-asset optimiser stacking two methods with no portfolio study.
+* **Fit:** Multi-asset only.
+* **Against:** Parameters without data.
+* **Built:** research code, `research/catalog/allocation.py` — wdro_mean_variance; `research/catalog/execution.py` — NeuralOperatorExecution.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-neural-operator-optimal-portfolio.md](algorithms/wasserstein-distributionally-robust-neural-operator-optimal-portfolio.md)
+
+### RK158. Fractional cointegration multiscale wavelet arbitrage ⛔
+
+Test fractional cointegration and trade the mean-reverting spread components band by band after a wavelet decomposition. No trading study of the fractional variant was found.
+
+* **Useful:** **Not useful.** A short-leg spread trade with no tested evidence for the fractional variant.
+* **Fit:** Out of scope: a short-leg spread trade.
+* **Against:** Long-memory estimates are imprecise; spreads can drift for months.
+* **Built:** research code, `research/catalog/econometrics.py` — fracdiff; `research/catalog/neural_models.py` — causal_haar.
+* **Details:** [docs/algorithms/fractional-cointegration-multiscale-wavelet-arbitrage.md](algorithms/fractional-cointegration-multiscale-wavelet-arbitrage.md)
+
+### RK159. Koopman-operator nonlinear cointegration spread strategy ⛔
+
+Trade spreads in Koopman-lifted coordinates. No trading evidence.
+
+* **Useful:** **Not useful.** A short-leg spread trade; Koopman methods have no out-of-sample trading evidence.
+* **Fit:** Out of scope: short legs.
+* **Against:** Approximate linearisation.
+* **Built:** research code, `research/catalog/koopman.py` — koopman_spread_position.
+* **Details:** [docs/algorithms/koopman-operator-non-linear-cointegration-spread-strategy.md](algorithms/koopman-operator-non-linear-cointegration-spread-strategy.md)
+
+### RK160. RSI oversold/overbought reversion ✅
+
+Trade RSI extremes. RSI sizes the grid's lots already (V3).
+
+* **Useful:** **In use.** RSI already sizes the grid's lots (V3, a registered strategy) and is researched as a gate (Q10).
+* **Fit:** In use (V3).
+* **Against:** Tuned thresholds; oversold persists.
+* **Built:** `research/strategies/size_calculators.py` — RsiMomentumSizing; `research/catalog/je_suis_tm.py` — rsi_overbought_oversold.
+* **Details:** [docs/algorithms/rsi-oversold-overbought-reversion.md](algorithms/rsi-oversold-overbought-reversion.md)
+
+### RK161. Bollinger band mean reversion 🧪
+
+Fade Bollinger-band excursions. Researched as a grid gate (X4).
+
+* **Useful:** **Reference only.** Researched as a grid buy gate (X4); the plain rule fails after costs, the contrarian one does better.
+* **Fit:** Researched as a gate.
+* **Against:** Bands widen in crises.
+* **Built:** research code, `research/strategies/entry_gates.py` — BollingerWGate; `research/catalog/je_suis_tm.py` — bollinger_w_trades.
+* **Details:** [docs/algorithms/bollinger-band-mean-reversion.md](algorithms/bollinger-band-mean-reversion.md)
+
+### RK162. Stochastic oscillator reversal ⛔
+
+Trade stochastic-oscillator crossovers. No specific evidence; redundant.
+
+* **Useful:** **Not useful.** No specific evidence; available as an indicator but redundant with RSI and Bollinger gates.
+* **Fit:** Redundant oscillator.
+* **Against:** Whipsaws in trends.
+* **Built:** research code, `research/strategies/indicator_library.py`.
+* **Details:** [docs/algorithms/stochastic-oscillator-reversal.md](algorithms/stochastic-oscillator-reversal.md)
+
+### RK163. FX mean-reversion / momentum hybrid ⛔
+
+Switch FX between momentum and reversion by state. Currencies are out of scope.
+
+* **Useful:** **Not useful.** Currencies are outside the instrument rule.
+* **Fit:** Out of scope: FX.
+* **Against:** A state model on noisy signals.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/fx-mean-reversion-momentum-hybrid.md](algorithms/fx-mean-reversion-momentum-hybrid.md)
+
+### RK164. Grid / price-ladder trading ✅
+
+Recycle inventory on a price ladder. This is the project's champion (V5).
+
+* **Useful:** **In use.** This is the project: the champion is a volatility-scaled grid on TQQQ (V5).
+* **Fit:** In use: the core strategy.
+* **Against:** One-way declines strand lots; the regime exit bounds that.
+* **Built:** `research/strategies/high_frequency_sizing.py` — HighFrequencyLocalReferenceSizing.
+* **Details:** [docs/algorithms/grid-price-ladder-trading.md](algorithms/grid-price-ladder-trading.md)
+
+### RK165. Fractional cointegration dynamic copula portfolio optimiser ⛔
+
+Model tail dependence across fractionally cointegrated assets with time-varying copulas and optimise a portfolio on it. No trading study of the fractional variant was found.
+
+* **Useful:** **Not useful.** A short-leg spread trade with no tested evidence for the fractional variant.
+* **Fit:** Out of scope: a short-leg spread trade.
+* **Against:** Long-memory estimates are imprecise; spreads can drift for months.
+* **Built:** research code, `research/catalog/allocation.py` — vine_cvar_weights.
+* **Details:** [docs/algorithms/fractional-order-cointegration-dynamic-copula-portfolio-optimizer.md](algorithms/fractional-order-cointegration-dynamic-copula-portfolio-optimizer.md)
+
+### RK166. Calendar / diagonal spread ⛔
+
+Sell a near expiry and buy a far one (diagonals also change strike) to trade the term structure, time decay or direction. Options are out of scope.
+
+* **Useful:** **Not useful.** Options are outside the instrument rule.
+* **Fit:** Out of scope: options.
+* **Against:** Needs option data; pays or collects the premium.
+* **Built:** research code, `research/catalog/options.py` — bs_price.
+* **Details:** [docs/algorithms/calendar-diagonal-spread.md](algorithms/calendar-diagonal-spread.md)
+
+### RK167. Delta-hedged volatility arbitrage ⛔
+
+Buy options whose implied volatility is low against a forecast of realised volatility and sell those where it is high, delta-hedging in the underlying. Options are out of scope.
+
+* **Useful:** **Not useful.** Options are outside the instrument rule.
+* **Fit:** Out of scope: options.
+* **Against:** Needs option data; pays or collects the premium.
+* **Built:** research code, `research/catalog/options.py` — bs_price.
+* **Details:** [docs/algorithms/delta-hedged-volatility-arbitrage.md](algorithms/delta-hedged-volatility-arbitrage.md)
+
+### RK168. VIX futures term-structure strategy ⏳
+
+Trade VIX futures on the basis. Futures are excluded; the term structure is a candidate regime input.
+
+* **Useful:** **Worth testing.** Trading VIX futures is excluded, but the term structure itself is a candidate regime input; the research code exists.
+* **Fit:** Signal only, as a regime input.
+* **Against:** Short-vol blowups.
+* **Built:** research code, `research/catalog/leads.py` — vix_term_structure_regime.
+* **Details:** [docs/algorithms/vix-futures-term-structure-strategy.md](algorithms/vix-futures-term-structure-strategy.md)
+
+### RK169. Volatility skew risk premium ⛔
+
+Trade the richness of downside against upside implied volatility with risk reversals, put spreads or delta-hedged options. Options are out of scope.
+
+* **Useful:** **Not useful.** Options are outside the instrument rule.
+* **Fit:** Out of scope: options.
+* **Against:** Needs option data; pays or collects the premium.
+* **Built:** research code, `research/catalog/options.py` — bs_price.
+* **Details:** [docs/algorithms/volatility-skew-risk-premium.md](algorithms/volatility-skew-risk-premium.md)
+
+### RK170. Earnings volatility crush / delta-hedged event options ⛔
+
+Buy or sell options around earnings against a forecast of the announcement move. Options are out of scope.
+
+* **Useful:** **Not useful.** Options are outside the instrument rule.
+* **Fit:** Out of scope: options.
+* **Against:** Needs option data; pays or collects the premium.
+* **Built:** research code, `research/catalog/options.py` — bs_price.
+* **Details:** [docs/algorithms/earnings-volatility-crush-delta-hedged-event-options.md](algorithms/earnings-volatility-crush-delta-hedged-event-options.md)
+
+### RK171. Put-call parity conversion / reversal arbitrage ⛔
+
+Combine a call, a put, the underlying and financing to capture deviations from put-call parity. Options are out of scope.
+
+* **Useful:** **Not useful.** Options are outside the instrument rule.
+* **Fit:** Out of scope: options.
+* **Against:** Needs option data; pays or collects the premium.
+* **Built:** research code, `research/catalog/options.py` — bs_price.
+* **Details:** [docs/algorithms/put-call-parity-conversion-reversal-arbitrage.md](algorithms/put-call-parity-conversion-reversal-arbitrage.md)
+
+### RK172. Box-spread financing arbitrage ⛔
+
+Build a four-leg box that pays a fixed amount at expiry and compare its implied rate with Treasury bills. Options are out of scope.
+
+* **Useful:** **Not useful.** Options are outside the instrument rule.
+* **Fit:** Out of scope: options.
+* **Against:** Needs option data; pays or collects the premium.
+* **Built:** research code, `research/catalog/options.py` — bs_price.
+* **Details:** [docs/algorithms/box-spread-financing-arbitrage.md](algorithms/box-spread-financing-arbitrage.md)
+
+### RK173. Broken-wing butterfly ⛔
+
+Use unequal wing widths in a butterfly to tilt it directionally or reduce its cost. Options are out of scope.
+
+* **Useful:** **Not useful.** Options are outside the instrument rule.
+* **Fit:** Out of scope: options.
+* **Against:** Needs option data; pays or collects the premium.
+* **Built:** research code, `research/catalog/options.py` — bs_price.
+* **Details:** [docs/algorithms/broken-wing-butterfly.md](algorithms/broken-wing-butterfly.md)
+
+### RK174. Put debit spread momentum ⛔
+
+Buy a put and sell a lower-strike put to bet on downside momentum with defined risk. Options are out of scope.
+
+* **Useful:** **Not useful.** Options are outside the instrument rule.
+* **Fit:** Out of scope: options.
+* **Against:** Needs option data; pays or collects the premium.
+* **Built:** research code, `research/catalog/options.py` — bs_price.
+* **Details:** [docs/algorithms/put-debit-spread-momentum.md](algorithms/put-debit-spread-momentum.md)
+
+### RK175. QAOA allocation ⛔
+
+Portfolio selection by QAOA. No advantage shown.
+
+* **Useful:** **Not useful.** A quantum solver for an allocation problem this book does not have, with no shown advantage.
+* **Fit:** Multi-asset; no advantage.
+* **Against:** Toy sizes only.
+* **Built:** research code, `research/catalog/quantum.py` — qaoa, portfolio_qubo.
+* **Details:** [docs/algorithms/quantum-approximate-optimization-algorithm-qaoa-allocation.md](algorithms/quantum-approximate-optimization-algorithm-qaoa-allocation.md)
+
+### RK176. Rough Heston stochastic-volatility calibration ⛔
+
+Calibrate rough Heston to smiles with neural surrogates. Options pricing; out of scope.
+
+* **Useful:** **Not useful.** An option-pricing model; options are excluded.
+* **Fit:** Out of scope: options.
+* **Against:** Calibration is not an edge.
+* **Built:** research code, `research/catalog/derivatives.py` — rough_heston_smile, NeuralCalibrator.
+* **Details:** [docs/algorithms/rough-heston-stochastic-volatility-calibration.md](algorithms/rough-heston-stochastic-volatility-calibration.md)
+
+### RK177. VAE latent yield-curve arbitrage ⛔
+
+Trade curve points against a VAE reconstruction. A levered bond relative-value trade; out of scope.
+
+* **Useful:** **Not useful.** Treasury relative value needs leveraged bond positions; out of scope.
+* **Fit:** Out of scope.
+* **Against:** Needs leverage and financing.
+* **Built:** research code, `research/catalog/concepts.py` — vae_factors.
+* **Details:** [docs/algorithms/variational-autoencoder-vae-latent-yield-curve-arbitrage.md](algorithms/variational-autoencoder-vae-latent-yield-curve-arbitrage.md)
+
+### RK178. Manifold-learning diffusion-map statistical arbitrage ⛔
+
+Residual mean reversion in diffusion-map coordinates. No trading study.
+
+* **Useful:** **Not useful.** A stock-universe residual trade with no study found.
+* **Fit:** Out of scope: stock universe.
+* **Against:** Unstable embeddings; short legs.
+* **Built:** Nothing.
+* **Details:** [docs/algorithms/manifold-learning-diffusion-map-statistical-arbitrage.md](algorithms/manifold-learning-diffusion-map-statistical-arbitrage.md)
+
+### RK179. Fractional-order Kalman filter dynamic hedging ⛔
+
+Kalman hedge ratios with fractional noise. No study; a pairs tool.
+
+* **Useful:** **Not useful.** A pairs hedge-ratio filter (short leg) with no study of the fractional form.
+* **Fit:** Out of scope: short leg.
+* **Against:** No closed-form recursion.
+* **Built:** research code, `research/catalog/econometrics.py` — kalman_hedge_ratio.
+* **Details:** [docs/algorithms/fractional-order-kalman-filter-dynamic-hedging.md](algorithms/fractional-order-kalman-filter-dynamic-hedging.md)
+
+### RK180. Persistent-homology Betti-1 topological momentum ⛔
+
+Momentum from Betti-1 loops. No study; topology's evidence is as a crash warning.
+
+* **Useful:** **Not useful.** No study of loop counts as a momentum signal; topology's evidence is as a crash warning (RK255).
+* **Fit:** No; see RK255.
+* **Against:** Noise-dominated loop counts.
+* **Built:** research code, `research/catalog/topology.py` — betti_curve.
+* **Details:** [docs/algorithms/persistent-homology-betti-1-loop-topological-momentum-strategy.md](algorithms/persistent-homology-betti-1-loop-topological-momentum-strategy.md)
+
+### RK181. Wasserstein distributionally robust mean-CVaR dynamic allocation ⛔
+
+Worst-case CVaR allocation over a Wasserstein ball. Built; multi-asset only.
+
+* **Useful:** **Not useful.** A multi-asset allocator; the robust CVaR programme is built but there is nothing to allocate.
+* **Fit:** Multi-asset only.
+* **Against:** Radius-driven; few tail days.
+* **Built:** research code, `research/catalog/allocation.py` — cvar_weights.
+* **Details:** [docs/algorithms/wasserstein-distributionally-robust-mean-cvar-dynamic-allocation.md](algorithms/wasserstein-distributionally-robust-mean-cvar-dynamic-allocation.md)
+
+### RK182. Quantum-annealing graph-partitioning statistical arbitrage ⛔
+
+Partition a stock cointegration network into market-neutral clusters by solving Max-Cut QUBOs on a quantum annealer. No advantage shown; needs short legs and a universe.
+
+* **Useful:** **Not useful.** A short-leg stock-universe trade on hardware with no demonstrated advantage.
+* **Fit:** Out of scope.
+* **Against:** No quantum advantage; classical solvers suffice.
+* **Built:** research code, `research/catalog/quantum.py` — simulated_annealing.
+* **Details:** [docs/algorithms/quantum-annealing-graph-partitioning-statistical-arbitrage.md](algorithms/quantum-annealing-graph-partitioning-statistical-arbitrage.md)
+
+### RK183. Persistent-homology Betti-0 multiscale clustering arbitrage ⛔
+
+Track connected-component persistence across distance thresholds in asset return spaces to spot transient relative-value mispricings. No relative-value study found.
+
+* **Useful:** **Not useful.** A short-leg relative-value trade; topology has crash-warning evidence only.
+* **Fit:** Out of scope: short legs.
+* **Against:** Noisy summaries with many free choices.
+* **Built:** research code, `research/catalog/topology.py` — landscape_norm_series, rips_persistence.
+* **Details:** [docs/algorithms/persistent-homology-betti-0-multiscale-clustering-arbitrage.md](algorithms/persistent-homology-betti-0-multiscale-clustering-arbitrage.md)
+
+### RK184. QAOA Max-Cut statistical arbitrage ⛔
+
+Split a cointegration graph into market-neutral clusters by Max-Cut, solved with QAOA (Farhi et al., the CSV's reference). No advantage shown; needs short legs and a universe.
+
+* **Useful:** **Not useful.** A short-leg stock-universe trade on hardware with no demonstrated advantage.
+* **Fit:** Out of scope.
+* **Against:** No quantum advantage; classical solvers suffice.
+* **Built:** research code, `research/catalog/quantum.py` — qaoa.
+* **Details:** [docs/algorithms/quantum-approximate-optimization-algorithm-qaoa-max-cut-statistical-arbitrage.md](algorithms/quantum-approximate-optimization-algorithm-qaoa-max-cut-statistical-arbitrage.md)
+
+### RK185. Riemannian-manifold hierarchical risk parity ⛔
+
+HRP on the SPD manifold. No study; multi-asset.
+
+* **Useful:** **Not useful.** A multi-asset allocator; HRP is built and the Riemannian variant has no study.
+* **Fit:** Multi-asset only.
+* **Against:** Changes the dendrogram, not the error.
+* **Built:** research code, `research/strategies/hrp.py` — hrp_weights; `research/catalog/spd_covariance.py` — karcher_mean.
+* **Details:** [docs/algorithms/riemannian-manifold-metric-hierarchical-risk-parity.md](algorithms/riemannian-manifold-metric-hierarchical-risk-parity.md)
+
+### RK186. Quantum-annealing binary matrix factorisation statistical arbitrage ⛔
+
+Factor a stock return matrix into binary factor memberships by QUBOs on an annealer and trade the independent latent factors (O'Malley et al.'s factorisation, RK270). No advantage shown; needs short legs and a universe.
+
+* **Useful:** **Not useful.** A short-leg stock-universe trade on hardware with no demonstrated advantage.
+* **Fit:** Out of scope.
+* **Against:** No quantum advantage; classical solvers suffice.
+* **Built:** research code, `research/catalog/quantum.py` — binary_matrix_factorization.
+* **Details:** [docs/algorithms/quantum-annealing-binary-matrix-factorization-statistical-arbitrage.md](algorithms/quantum-annealing-binary-matrix-factorization-statistical-arbitrage.md)
+
+### RK187. Persistent-homology Betti-0 connected-component risk parity ⛔
+
+Risk parity across Betti-0 clusters. That is HRP's single linkage under another name.
+
+* **Useful:** **Not useful.** A multi-asset allocator; TDA portfolio results are the authors' own and none is risk parity.
+* **Fit:** Multi-asset; equivalent to HRP.
+* **Against:** No new information.
+* **Built:** research code, `research/catalog/topology.py` — betti0_contagion; `research/strategies/hrp.py` — hrp_weights.
+* **Details:** [docs/algorithms/persistent-homology-betti-0-connected-component-risk-parity.md](algorithms/persistent-homology-betti-0-connected-component-risk-parity.md)
+
+### RK188. Riemannian-manifold persistent-homology risk parity ⛔
+
+Topological clusters plus Riemannian risk parity. No study.
+
+* **Useful:** **Not useful.** A multi-asset allocator combining two methods without a study.
+* **Fit:** Multi-asset only.
+* **Against:** Two layers of free choices.
+* **Built:** research code, `research/catalog/spd_covariance.py` — metric_diffusion_risk_parity.
+* **Details:** [docs/algorithms/riemannian-manifold-metric-persistent-homology-risk-parity.md](algorithms/riemannian-manifold-metric-persistent-homology-risk-parity.md)
+
+### RK189. Persistent-homology Betti-1 cyclical landscape arbitrage ⛔
+
+Trade relative value when Betti-1 persistence-landscape norms of rolling correlation clouds leave their usual range. No relative-value study found.
+
+* **Useful:** **Not useful.** A short-leg relative-value trade; topology has crash-warning evidence only.
+* **Fit:** Out of scope: short legs.
+* **Against:** Noisy summaries with many free choices.
+* **Built:** research code, `research/catalog/topology.py` — landscape_norm_series, rips_persistence.
+* **Details:** [docs/algorithms/persistent-homology-betti-1-cyclical-persistence-landscape-arbitrage.md](algorithms/persistent-homology-betti-1-cyclical-persistence-landscape-arbitrage.md)
+
+### RK190. Neural rough-path signature Hawkes jump-diffusion spread arbitrage ⛔
+
+Signatures and Hawkes jumps for spreads. No study.
+
+* **Useful:** **Not useful.** A short-leg spread model stacking untested methods.
+* **Fit:** Out of scope.
+* **Against:** Too few jumps to fit.
+* **Built:** research code, `research/catalog/point_processes.py` — signature_hawkes_forecast.
+* **Details:** [docs/algorithms/neural-rough-path-signature-hawkes-jump-diffusion-spread-arbitrage.md](algorithms/neural-rough-path-signature-hawkes-jump-diffusion-spread-arbitrage.md)
+
+### RK191. Graph-attention Riemannian-manifold dynamic risk parity ⛔
+
+Graph-attention risk parity on the SPD manifold. No study.
+
+* **Useful:** **Not useful.** A multi-asset allocator with no study.
+* **Fit:** Multi-asset only.
+* **Against:** Over-fits.
+* **Built:** research code, `research/catalog/spd_covariance.py` — riemannian_gat_weights.
+* **Details:** [docs/algorithms/graph-attention-network-riemannian-manifold-dynamic-risk-parity.md](algorithms/graph-attention-network-riemannian-manifold-dynamic-risk-parity.md)
+
+### RK192. Quantum-annealing maximum-independent-set statistical arbitrage ⛔
+
+Select mutually uncorrelated baskets as a maximum independent set of the cointegration graph, solved on Rydberg-atom arrays. No advantage shown; needs short legs and a universe.
+
+* **Useful:** **Not useful.** A short-leg stock-universe trade on hardware with no demonstrated advantage.
+* **Fit:** Out of scope.
+* **Against:** No quantum advantage; classical solvers suffice.
+* **Built:** research code, `research/catalog/quantum.py` — simulated_annealing.
+* **Details:** [docs/algorithms/quantum-annealing-maximum-independent-set-statistical-arbitrage.md](algorithms/quantum-annealing-maximum-independent-set-statistical-arbitrage.md)
+
+### RK193. Persistent-homology Betti-0 landscape clustering arbitrage ⛔
+
+Trade relative value when Betti-0 persistence-landscape cluster norms of sliding correlation spaces deviate. No relative-value study found.
+
+* **Useful:** **Not useful.** A short-leg relative-value trade; topology has crash-warning evidence only.
+* **Fit:** Out of scope: short legs.
+* **Against:** Noisy summaries with many free choices.
+* **Built:** research code, `research/catalog/topology.py` — landscape_norm_series, rips_persistence.
+* **Details:** [docs/algorithms/persistent-homology-betti-0-persistence-landscape-clustering-arbitrage.md](algorithms/persistent-homology-betti-0-persistence-landscape-clustering-arbitrage.md)
+
+### RK194. Fixed fractional / fixed dollar risk ✅
+
+Risk a fixed fraction or dollar amount per trade. In use as the grid's base sizing (V1).
+
+* **Useful:** **In use.** Fixed-fraction sizing is the grid's base sizing (V1); stop-distance sizing does not apply, since the grid uses no stops.
+* **Fit:** In use (V1).
+* **Against:** Lots shrink near the bottom.
+* **Built:** `research/strategies/size_calculators.py` — FixedPortfolioPercentage.
+* **Details:** [docs/algorithms/fixed-fractional-fixed-dollar-risk.md](algorithms/fixed-fractional-fixed-dollar-risk.md)
+
+### RK195. GARCH volatility forecast for mean-reversion bands ⏳
+
+Scale mean-reversion bands by a GARCH forecast. A candidate forecaster for the grid's volatility-scaled step.
+
+* **Useful:** **Worth testing.** The grid's step already scales with volatility; GARCH is a candidate forecaster for that step, and it is hard to beat.
+* **Fit:** Candidate step forecaster.
+* **Against:** Small expected difference from realised volatility.
+* **Built:** research code, `research/catalog/econometrics.py` — garch11_fit, garch11_forecast.
+* **Details:** [docs/algorithms/garch-volatility-forecasting-with-mean-reversion-channel.md](algorithms/garch-volatility-forecasting-with-mean-reversion-channel.md)
+
+### RK196. Randomised matrix-pencil lead-lag cross-asset predictor ⛔
+
+Lead-lag from a randomised matrix pencil. No finance study.
+
+* **Useful:** **Not useful.** No finance study of the method, and lead-lag trading needs a second traded asset and speed.
+* **Fit:** No.
+* **Against:** The model fits noise.
+* **Built:** research code, `research/catalog/leads.py` — hy_lead_lag.
+* **Details:** [docs/algorithms/randomized-matrix-pencil-lead-lag-cross-asset-predictor.md](algorithms/randomized-matrix-pencil-lead-lag-cross-asset-predictor.md)
+
+### RK197. Topological Betti-curve macro regime switcher ⛔
+
+Switch regimes on Betti curves. No study; RK255's landscape norm is the evidenced version.
+
+* **Useful:** **Not useful.** Betti curves as a regime trigger have no study; if topology is tried, RK255's landscape norm is the one with evidence.
+* **Fit:** No; see RK255.
+* **Against:** Noise-dominated step functions.
+* **Built:** research code, `research/catalog/topology.py` — betti_curve, stress_alert.
+* **Details:** [docs/algorithms/topological-persistent-betti-curve-macro-regime-switcher.md](algorithms/topological-persistent-betti-curve-macro-regime-switcher.md)
+
+### RK198. Wasserstein GAN multi-asset allocation (WGAN-MA) ⛔
+
+Allocate over WGAN-generated scenarios. Methods only; multi-asset.
+
+* **Useful:** **Not useful.** A multi-asset allocator over generated scenarios; no performance evidence was found.
+* **Fit:** Multi-asset only.
+* **Against:** Scenarios inherit the training regime.
+* **Built:** research code, `research/catalog/generative.py` — ConditionalWGANGP, scenario_portfolio.
+* **Details:** [docs/algorithms/wasserstein-generative-adversarial-network-multi-asset-allocation-wgan-ma.md](algorithms/wasserstein-generative-adversarial-network-multi-asset-allocation-wgan-ma.md)
+
+### RK199. Persistent-homology Betti-1 persistence-landscape arbitrage ⛔
+
+Trade relative value on divergences of Betti-1 persistence-landscape norms in rolling correlation point clouds. No relative-value study found.
+
+* **Useful:** **Not useful.** A short-leg relative-value trade; topology has crash-warning evidence only.
+* **Fit:** Out of scope: short legs.
+* **Against:** Noisy summaries with many free choices.
+* **Built:** research code, `research/catalog/topology.py` — landscape_norm_series, rips_persistence.
+* **Details:** [docs/algorithms/persistent-homology-betti-1-persistence-landscape-arbitrage.md](algorithms/persistent-homology-betti-1-persistence-landscape-arbitrage.md)
 
 ### RK200. Score-based diffusion multi-asset scenario synthesizer ⏳ (stress-test tool)
 
@@ -4557,6 +5648,445 @@ concept's method is research code in `research/catalog/concepts.py`
 | [Koopman-operator-based approach to covariance estimation for portfolio risk](algorithms/concepts/koopman-operator-based-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 1 / 62 | ⛔ (no evidence) | Unable to find more details |
 | [Topology-aware approach to momentum/trend forecasting](algorithms/concepts/topology-aware-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 1 / 62 | ⛔ (no evidence) | Unable to find more details |
 
+### Usefulness triage (ranks 101–199 and 701–14,225)
+
+The 344 concepts not researched with ranks 426–700 hold 11,897 of the
+13,800 title-reconstructed rows, all ranked beyond 700; the 34
+researched concepts hold the other 1,903, so every row of the ranked
+list now has a researched page. The 344 were researched on 2026-10-30 as
+a usefulness triage, one page each: each page names the task (from the
+shared description) and the method (from the title), gives the evidence
+for the task and for the method on it, and adds a "Useful for
+volatility-ai" verdict. A task that cannot run under the owner's rules
+or on this book (short legs, options, a stock universe, execution at
+size, quantum hardware) is Not useful whatever the method. On a task
+that fits, a method with published evidence on that task is Worth
+testing, or In use when the project already does it; an established
+method without such evidence is Reference only; and a method with no
+evidence in finance (quantum, topological, Koopman, diffusion,
+path-signature, attention and other exotic methods) is Not useful. The
+verdicts: 2 in use, 11 worth testing, 80 reference only and 251 not
+useful; the in-use and worth-testing concepts hold 310 rows, the
+reference-only ones 2,406 and the not-useful ones 9,181. Ranks 101–199
+got the same verdicts on their own pages (4 in use, 11 worth testing, 10
+reference only, 74 not useful). No code was added for the triage; the
+Implemented row of each page names what already exists.
+
+The entries to act on, In use first, then Worth testing (each page has the test):
+
+| Entry | Verdict | Why |
+|---|---|---|
+| RK129 [Inverse-volatility allocation](algorithms/inverse-volatility-allocation.md) | ✅ In use | For one instrument it is volatility targeting, which the grid already applies (S4 vol_target). |
+| RK160 [RSI oversold/overbought reversion](algorithms/rsi-oversold-overbought-reversion.md) | ✅ In use | RSI already sizes the grid's lots (V3, a registered strategy) and is researched as a gate (Q10). |
+| RK164 [Grid / price-ladder trading](algorithms/grid-price-ladder-trading.md) | ✅ In use | This is the project: the champion is a volatility-scaled grid on TQQQ (V5). |
+| RK194 [Fixed fractional / fixed dollar risk](algorithms/fixed-fractional-fixed-dollar-risk.md) | ✅ In use | Fixed-fraction sizing is the grid's base sizing (V1); stop-distance sizing does not apply, since the grid uses no stops. |
+| [Adaptive approach to regime-aware allocation](algorithms/concepts/adaptive-approach-to-regime-aware-allocation.md) (concept, 2 rows) | ✅ In use | The project's regime exit already is one: NATR measured against its own trailing median, an adaptive threshold (V17, causal N5). |
+| [Adaptive approach to tail-risk hedging and allocation](algorithms/concepts/adaptive-approach-to-tail-risk-hedging-and-allocation.md) (concept, 1 row) | ✅ In use | Volatility targeting is the adaptive form, and the project already runs it (V18, RK22); Harvey et al. (2018) find it shrinks equities' left tail. |
+| RK102 [Hidden Markov model regime switching](algorithms/hidden-markov-model-regime-switching.md) | ⏳ Worth testing | A regime input to compare against the NATR regime; the Gaussian HMM is already built (C-R3). |
+| RK104 [Bayesian online changepoint regime gate](algorithms/bayesian-online-changepoint-regime-gate.md) | ⏳ Worth testing | A causal changepoint probability is a cheap alternative trigger for the regime exit; no trading study exists, so it must be tested here. |
+| RK106 [Hierarchical hidden Markov model regime switcher](algorithms/hierarchical-hidden-markov-model-hhmm-regime-switcher.md) | ⏳ Worth testing | A two-level bull/bear and volatility regime is plausible, but test it only after the plain HMM (RK102) earns its place. |
+| RK127 [Conformal-prediction risk-bounded alpha stacking](algorithms/conformal-prediction-risk-bounded-alpha-stacking.md) | ⏳ Worth testing | Conformal sizing is already researched for grid lots (V13); stacking needs several alpha sources the project does not have. |
+| RK130 [Extreme value theory dynamic tail-risk hedge](algorithms/extreme-value-theory-evt-dynamic-tail-risk-hedge.md) | ⏳ Worth testing | The put-buying hedge is excluded, but an EVT expected-shortfall forecast is a candidate exposure governor next to the NATR regime. |
+| RK132 [Conformal risk-bounded dynamic portfolio allocation](algorithms/conformal-risk-bounded-dynamic-portfolio-allocation.md) | ⏳ Worth testing | Conformal lot sizing is already researched (V13); this is its leverage-control form, worth a walk-forward test. |
+| RK134 [Fractional Kelly position sizing](algorithms/fractional-kelly-position-sizing.md) | ⏳ Worth testing | A principled cap on lot size or total exposure; the research code exists (C-S2). |
+| RK146 [Connors RSI-2 mean reversion](algorithms/connors-rsi-2-mean-reversion.md) | ⏳ Worth testing | A long-only, single-index dip-buying rule, aligned with the grid; cheap to test as a buy gate, but its evidence is in-sample only. |
+| RK153 [Turn-of-the-month effect](algorithms/turn-of-the-month-effect.md) | ⏳ Worth testing | An index-level, long-only calendar effect with long-run evidence; a cheap test as a lot-size boost or buy gate on TQQQ. |
+| RK168 [VIX futures term-structure strategy](algorithms/vix-futures-term-structure-strategy.md) | ⏳ Worth testing | Trading VIX futures is excluded, but the term structure itself is a candidate regime input; the research code exists. |
+| RK195 [GARCH volatility forecast for mean-reversion bands](algorithms/garch-volatility-forecasting-with-mean-reversion-channel.md) | ⏳ Worth testing | The grid's step already scales with volatility; GARCH is a candidate forecaster for that step, and it is hard to beat. |
+| [Model for momentum/trend forecasting](algorithms/concepts/model-for-momentum-trend-forecasting.md) (concept, 13 rows) | ⏳ Worth testing | Time-series momentum as a long-or-cash overlay on TQQQ (RK1) is the documented form; test it as a regime input against the NATR exit. |
+| [Multi-scale approach to momentum/trend forecasting](algorithms/concepts/multi-scale-approach-to-momentum-trend-forecasting.md) (concept, 2 rows) | ⏳ Worth testing | Blending lookbacks (as Goulding et al. and Keller's 13612W momentum do) is the documented fix for single-lookback lag, and cheap to test. |
+| [Multi-scale approach to sector allocation](algorithms/concepts/multi-scale-approach-to-sector-allocation.md) (concept, 64 rows) | ⏳ Worth testing | Multi-lookback industry momentum is the documented signal in a form X3 can already run; measure it there. |
+| [High-frequency approach to momentum/trend forecasting](algorithms/concepts/high-frequency-approach-to-momentum-trend-forecasting.md) (concept, 4 rows) | ⏳ Worth testing | The first half-hour return predicts the last half-hour on SPY (Gao et al. 2018); built here as an intraday gate (X1), not yet measured. |
+| [Multi-scale approach to tail-risk hedging and allocation](algorithms/concepts/multi-scale-approach-to-tail-risk-hedging-and-allocation.md) (concept, 2 rows) | ⏳ Worth testing | HAR-RV, a daily-weekly-monthly volatility model, is a well-tested forecaster (Corsi 2009); test it as the volatility input to the existing targeting and regime rules. |
+| [Bayesian approach to regime-aware allocation](algorithms/concepts/bayesian-approach-to-regime-aware-allocation.md) (concept, 136 rows) | ⏳ Worth testing | Bayesian online changepoint detection (RK104) is a cheap, causal regime gate to test against the NATR regime. |
+| [Multi-scale approach to ETF rotation](algorithms/concepts/multi-scale-approach-to-etf-rotation.md) (concept, 67 rows) | ⏳ Worth testing | 13612W-style multi-lookback momentum (Keller and Keuning) is the documented refinement of single-lookback rotation; X3 can run it. |
+| [Model for leveraged-ETF exposure rebalancing](algorithms/concepts/model-for-leveraged-etf-exposure-rebalancing.md) (concept, 4 rows) | ⏳ Worth testing | The task is the project's own: a target-exposure rule for TQQQ is a sizing lever to measure beside V18 and N7. |
+| [Model for ETF rotation](algorithms/concepts/model-for-etf-rotation.md) (concept, 5 rows) | ⏳ Worth testing | Long-only ETF rotation with a defensive asset is documented (Faber; Antonacci) and built here (X3, RK3); what is missing is the measurement. |
+| [Markov-state-based approach to regime-aware allocation](algorithms/concepts/markov-state-based-approach-to-regime-aware-allocation.md) (concept, 5 rows) | ⏳ Worth testing | HMM regimes forecast out of sample in the literature (Kritzman et al. 2012) and are built here (C-R3, RK102); test them against the NATR regime. |
+| [Adaptive approach to leveraged-ETF exposure rebalancing](algorithms/concepts/adaptive-approach-to-leveraged-etf-exposure-rebalancing.md) (concept, 5 rows) | ⏳ Worth testing | Scale leverage with recent volatility, which the decay result and the volatility-targeting literature both support and N7 and V18 already implement; measure it on the grid. |
+
+Verdicts by task, for the 344 concepts:
+
+| Task | In use | Worth testing | Reference only | Not useful | Rows |
+|---|---|---|---|---|---|
+| Regime-aware allocation | 1 | 2 | 5 | 4 | 572 |
+| Momentum / trend forecasting |  | 3 | 2 | 1 | 28 |
+| ETF rotation |  | 2 | 8 | 8 | 582 |
+| Leveraged-ETF exposure rebalancing |  | 2 | 5 | 12 | 577 |
+| Tail-risk hedging and allocation | 1 | 1 | 4 | 3 | 32 |
+| Sector allocation |  | 1 | 9 | 9 | 569 |
+| Macro-driven index allocation |  |  | 13 | 8 | 577 |
+| Covariance estimation for portfolio risk |  |  | 8 | 5 | 322 |
+| Delay-aware portfolio allocation |  |  | 7 | 8 | 567 |
+| Liquidity-shock detection and response |  |  | 7 | 8 | 583 |
+| Factor risk-parity allocation |  |  | 5 | 2 | 90 |
+| Cross-asset / sector contagion analysis |  |  | 3 | 1 | 542 |
+| Index portfolio rebalancing |  |  | 3 | 1 | 16 |
+| Robust portfolio optimisation |  |  | 1 |  | 2 |
+| Benchmark index tracking |  |  |  | 11 | 576 |
+| Candidate alpha-signal generation |  |  |  | 16 | 567 |
+| Cointegration / pairs trading |  |  |  | 7 | 17 |
+| Cross-sectional stock ranking |  |  |  | 26 | 585 |
+| Dependence-aware cointegration / relative-value analysis |  |  |  | 8 | 568 |
+| Index / ETF constituent arbitrage |  |  |  | 14 | 582 |
+| Neural-operator forecasting |  |  |  | 12 | 542 |
+| Path-signature time-series forecasting |  |  |  | 11 | 567 |
+| Quantum-circuit or quantum-inspired optimisation |  |  |  | 12 | 542 |
+| Statistical-arbitrage basket construction |  |  |  | 15 | 583 |
+| Topological-feature portfolio allocation |  |  |  | 8 | 542 |
+| Trade-execution optimisation |  |  |  | 19 | 584 |
+| Volatility-surface forecasting |  |  |  | 22 | 583 |
+| **All 344** | **2** | **11** | **80** | **251** | **11,897** |
+
+### Triaged concepts (ranks 701–14,225)
+
+| Concept | Task | Rows | Best rank | Useful | Evidence |
+|---|---|---|---|---|---|
+| [Neural-network-based approach to factor risk-parity allocation](algorithms/concepts/neural-network-based-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 68 | 769 | ⛔ Not useful | Unable to find more details |
+| [Model for momentum/trend forecasting](algorithms/concepts/model-for-momentum-trend-forecasting.md) | Momentum / trend forecasting | 13 | 844 | ⏳ Worth testing | Evidence found |
+| [Model for statistical-arbitrage basket construction](algorithms/concepts/model-for-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 6 | 846 | ⛔ Not useful | Unable to find more details |
+| [Attention-weighted approach to statistical-arbitrage basket construction](algorithms/concepts/attention-weighted-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 7 | 848 | ⛔ Not useful | Unable to find more details |
+| [Spectral approach to statistical-arbitrage basket construction](algorithms/concepts/spectral-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 78 | 849 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to statistical-arbitrage basket construction](algorithms/concepts/multi-scale-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 5 | 850 | ⛔ Not useful | Unable to find more details |
+| [Neural-network-based approach to momentum/trend forecasting](algorithms/concepts/neural-network-based-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 5 | 851 | ⛔ Not useful | Evidence found |
+| [Geometry-aware approach to statistical-arbitrage basket construction](algorithms/concepts/geometry-aware-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 5 | 852 | ⛔ Not useful | Unable to find more details |
+| [Hawkes-process-based approach to statistical-arbitrage basket construction](algorithms/concepts/hawkes-process-based-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 5 | 854 | ⛔ Not useful | Unable to find more details |
+| [Hawkes-process-based approach to dependence-aware cointegration / relative-value analysis](algorithms/concepts/hawkes-process-based-approach-to-dependence-aware-cointegration-relative-value-a.md) | Dependence-aware cointegration / relative-value analysis | 142 | 883 | ⛔ Not useful | Unable to find more details |
+| [Quantum/quantum-inspired approach to dependence-aware cointegration / relative-value analysis](algorithms/concepts/quantum-quantum-inspired-approach-to-dependence-aware-cointegration-relative-val.md) | Dependence-aware cointegration / relative-value analysis | 136 | 885 | ⛔ Not useful | Unable to find more details |
+| [Conformal-prediction-based approach to statistical-arbitrage basket construction](algorithms/concepts/conformal-prediction-based-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 73 | 886 | ⛔ Not useful | Unable to find more details |
+| [Integrated approach to dependence-aware cointegration / relative-value analysis](algorithms/concepts/integrated-approach-to-dependence-aware-cointegration-relative-value-analysis.md) | Dependence-aware cointegration / relative-value analysis | 135 | 889 | ⛔ Not useful | Unable to find more details |
+| [Bayesian approach to dependence-aware cointegration / relative-value analysis](algorithms/concepts/bayesian-approach-to-dependence-aware-cointegration-relative-value-analysis.md) | Dependence-aware cointegration / relative-value analysis | 135 | 892 | ⛔ Not useful | Unable to find more details |
+| [Stochastic-process-based approach to statistical-arbitrage basket construction](algorithms/concepts/stochastic-process-based-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 64 | 906 | ⛔ Not useful | Unable to find more details |
+| [Adaptive approach to statistical-arbitrage basket construction](algorithms/concepts/adaptive-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 64 | 910 | ⛔ Not useful | Unable to find more details |
+| [Markov-state-based approach to statistical-arbitrage basket construction](algorithms/concepts/markov-state-based-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 63 | 913 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to momentum/trend forecasting](algorithms/concepts/multi-scale-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 2 | 1,188 | ⏳ Worth testing | Evidence found |
+| [Hierarchical approach to momentum/trend forecasting](algorithms/concepts/hierarchical-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 2 | 1,191 | ⏳ Reference only | Unable to find more details |
+| [Kernel-based approach to sector allocation](algorithms/concepts/kernel-based-approach-to-sector-allocation.md) | Sector allocation | 10 | 1,199 | ⏳ Reference only | Unable to find more details |
+| [Evolutionary-optimization-based approach to sector allocation](algorithms/concepts/evolutionary-optimization-based-approach-to-sector-allocation.md) | Sector allocation | 10 | 1,200 | ⛔ Not useful | Unable to find more details |
+| [Kernel-based approach to delay-aware portfolio allocation](algorithms/concepts/kernel-based-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 11 | 1,201 | ⏳ Reference only | Unable to find more details |
+| [Path-signature-based approach to sector allocation](algorithms/concepts/path-signature-based-approach-to-sector-allocation.md) | Sector allocation | 15 | 1,203 | ⛔ Not useful | Unable to find more details |
+| [Evolutionary-optimization-based approach to delay-aware portfolio allocation](algorithms/concepts/evolutionary-optimization-based-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 16 | 1,204 | ⛔ Not useful | Unable to find more details |
+| [Path-signature-based approach to delay-aware portfolio allocation](algorithms/concepts/path-signature-based-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 10 | 1,207 | ⛔ Not useful | Unable to find more details |
+| [Kernel-based approach to cross-sectional stock ranking](algorithms/concepts/kernel-based-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 63 | 1,221 | ⛔ Not useful | Unable to find more details |
+| [Path-signature-based approach to volatility-surface forecasting](algorithms/concepts/path-signature-based-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 61 | 1,223 | ⛔ Not useful | Unable to find more details |
+| [Attention-weighted approach to leveraged-ETF exposure rebalancing](algorithms/concepts/attention-weighted-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 65 | 1,224 | ⛔ Not useful | Unable to find more details |
+| [Evolutionary-optimization-based approach to cross-sectional stock ranking](algorithms/concepts/evolutionary-optimization-based-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 62 | 1,225 | ⛔ Not useful | Unable to find more details |
+| [Dynamical-systems/geometric approach to ETF rotation](algorithms/concepts/dynamical-systems-geometric-approach-to-etf-rotation.md) | ETF rotation | 62 | 1,227 | ⛔ Not useful | Unable to find more details |
+| [Path-signature-based approach to cross-sectional stock ranking](algorithms/concepts/path-signature-based-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 68 | 1,228 | ⛔ Not useful | Unable to find more details |
+| [Robust approach to ETF rotation](algorithms/concepts/robust-approach-to-etf-rotation.md) | ETF rotation | 64 | 1,231 | ⏳ Reference only | Unable to find more details |
+| [Kernel-based approach to volatility-surface forecasting](algorithms/concepts/kernel-based-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 63 | 1,232 | ⛔ Not useful | Unable to find more details |
+| [Dynamical-systems/geometric approach to leveraged-ETF exposure rebalancing](algorithms/concepts/dynamical-systems-geometric-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 62 | 1,233 | ⛔ Not useful | Unable to find more details |
+| [Attention-weighted approach to ETF rotation](algorithms/concepts/attention-weighted-approach-to-etf-rotation.md) | ETF rotation | 69 | 1,235 | ⛔ Not useful | Unable to find more details |
+| [Evolutionary-optimization-based approach to volatility-surface forecasting](algorithms/concepts/evolutionary-optimization-based-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 63 | 1,236 | ⛔ Not useful | Unable to find more details |
+| [Robust approach to leveraged-ETF exposure rebalancing](algorithms/concepts/robust-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 62 | 1,237 | ⏳ Reference only | Unable to find more details |
+| [Multi-scale approach to delay-aware portfolio allocation](algorithms/concepts/multi-scale-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 63 | 1,291 | ⏳ Reference only | Unable to find more details |
+| [Adversarially robust approach to sector allocation](algorithms/concepts/adversarially-robust-approach-to-sector-allocation.md) | Sector allocation | 63 | 1,292 | ⛔ Not useful | Unable to find more details |
+| [Entropy-regularized approach to delay-aware portfolio allocation](algorithms/concepts/entropy-regularized-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 62 | 1,294 | ⏳ Reference only | Unable to find more details |
+| [Multi-scale approach to sector allocation](algorithms/concepts/multi-scale-approach-to-sector-allocation.md) | Sector allocation | 64 | 1,295 | ⏳ Worth testing | Evidence found |
+| [Graph-based approach to delay-aware portfolio allocation](algorithms/concepts/graph-based-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 68 | 1,298 | ⏳ Reference only | Unable to find more details |
+| [Entropy-regularized approach to sector allocation](algorithms/concepts/entropy-regularized-approach-to-sector-allocation.md) | Sector allocation | 62 | 1,299 | ⏳ Reference only | Unable to find more details |
+| [Adversarially robust approach to delay-aware portfolio allocation](algorithms/concepts/adversarially-robust-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 62 | 1,301 | ⛔ Not useful | Unable to find more details |
+| [Graph-based approach to sector allocation](algorithms/concepts/graph-based-approach-to-sector-allocation.md) | Sector allocation | 63 | 1,302 | ⏳ Reference only | Unable to find more details |
+| [Robust approach to delay-aware portfolio allocation](algorithms/concepts/robust-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 62 | 1,399 | ⏳ Reference only | Unable to find more details |
+| [Dynamical-systems/geometric approach to sector allocation](algorithms/concepts/dynamical-systems-geometric-approach-to-sector-allocation.md) | Sector allocation | 63 | 1,400 | ⛔ Not useful | Unable to find more details |
+| [Attention-weighted approach to delay-aware portfolio allocation](algorithms/concepts/attention-weighted-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 62 | 1,403 | ⛔ Not useful | Unable to find more details |
+| [Robust approach to sector allocation](algorithms/concepts/robust-approach-to-sector-allocation.md) | Sector allocation | 63 | 1,404 | ⏳ Reference only | Unable to find more details |
+| [Attention-weighted approach to sector allocation](algorithms/concepts/attention-weighted-approach-to-sector-allocation.md) | Sector allocation | 62 | 1,406 | ⛔ Not useful | Unable to find more details |
+| [Dynamical-systems/geometric approach to delay-aware portfolio allocation](algorithms/concepts/dynamical-systems-geometric-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 63 | 1,408 | ⛔ Not useful | Unable to find more details |
+| [Model for factor risk-parity allocation](algorithms/concepts/model-for-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 7 | 1,538 | ⏳ Reference only | Evidence found |
+| [Topology-aware approach to statistical-arbitrage basket construction](algorithms/concepts/topology-aware-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 74 | 1,539 | ⛔ Not useful | Unable to find more details |
+| [Diffusion-model-based approach to statistical-arbitrage basket construction](algorithms/concepts/diffusion-model-based-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 73 | 1,540 | ⛔ Not useful | Unable to find more details |
+| [Fractional-order approach to statistical-arbitrage basket construction](algorithms/concepts/fractional-order-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 63 | 1,546 | ⛔ Not useful | Unable to find more details |
+| [High-frequency approach to momentum/trend forecasting](algorithms/concepts/high-frequency-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 4 | 1,598 | ⏳ Worth testing | Evidence found |
+| [Distributionally robust approach to momentum/trend forecasting](algorithms/concepts/distributionally-robust-approach-to-momentum-trend-forecasting.md) | Momentum / trend forecasting | 2 | 1,601 | ⏳ Reference only | Unable to find more details |
+| [Multi-scale approach to factor risk-parity allocation](algorithms/concepts/multi-scale-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 1 | 1,604 | ⏳ Reference only | Unable to find more details |
+| [Model for index portfolio rebalancing](algorithms/concepts/model-for-index-portfolio-rebalancing.md) | Index portfolio rebalancing | 5 | 1,605 | ⏳ Reference only | Evidence found |
+| [Spectral approach to index portfolio rebalancing](algorithms/concepts/spectral-approach-to-index-portfolio-rebalancing.md) | Index portfolio rebalancing | 4 | 1,613 | ⏳ Reference only | Unable to find more details |
+| [Distributionally robust approach to tail-risk hedging and allocation](algorithms/concepts/distributionally-robust-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 2 | 1,614 | ⏳ Reference only | Unable to find more details |
+| [Spectral approach to covariance estimation for portfolio risk](algorithms/concepts/spectral-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 4 | 1,619 | ⏳ Reference only | Unable to find more details |
+| [Nonlinear approach to index portfolio rebalancing](algorithms/concepts/nonlinear-approach-to-index-portfolio-rebalancing.md) | Index portfolio rebalancing | 4 | 1,621 | ⏳ Reference only | Unable to find more details |
+| [Model for cross-sectional stock ranking](algorithms/concepts/model-for-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 9 | 1,622 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to tail-risk hedging and allocation](algorithms/concepts/multi-scale-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 2 | 1,623 | ⏳ Worth testing | Evidence found |
+| [Hierarchical approach to factor risk-parity allocation](algorithms/concepts/hierarchical-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 2 | 1,624 | ⏳ Reference only | Evidence found |
+| [Nonlinear approach to covariance estimation for portfolio risk](algorithms/concepts/nonlinear-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 13 | 1,629 | ⏳ Reference only | Unable to find more details |
+| [Model for index/ETF constituent arbitrage](algorithms/concepts/model-for-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 6 | 1,630 | ⛔ Not useful | Unable to find more details |
+| [Recursive approach to candidate alpha-signal generation](algorithms/concepts/recursive-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 5 | 1,658 | ⛔ Not useful | Unable to find more details |
+| [Copula-based approach to covariance estimation for portfolio risk](algorithms/concepts/copula-based-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 15 | 1,659 | ⏳ Reference only | Unable to find more details |
+| [Koopman-operator-based approach to index/ETF constituent arbitrage](algorithms/concepts/koopman-operator-based-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 5 | 1,660 | ⛔ Not useful | Unable to find more details |
+| [Quantum/quantum-inspired approach to candidate alpha-signal generation](algorithms/concepts/quantum-quantum-inspired-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 5 | 1,661 | ⛔ Not useful | Unable to find more details |
+| [Bayesian approach to covariance estimation for portfolio risk](algorithms/concepts/bayesian-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 5 | 1,662 | ⏳ Reference only | Unable to find more details |
+| [Diffusion-model-based approach to index/ETF constituent arbitrage](algorithms/concepts/diffusion-model-based-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 5 | 1,663 | ⛔ Not useful | Unable to find more details |
+| [Koopman-operator-based approach to candidate alpha-signal generation](algorithms/concepts/koopman-operator-based-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 16 | 1,664 | ⛔ Not useful | Unable to find more details |
+| [Adversarially robust approach to index/ETF constituent arbitrage](algorithms/concepts/adversarially-robust-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 5 | 1,666 | ⛔ Not useful | Unable to find more details |
+| [Diffusion-model-based approach to candidate alpha-signal generation](algorithms/concepts/diffusion-model-based-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 5 | 1,667 | ⛔ Not useful | Unable to find more details |
+| [Recursive approach to index/ETF constituent arbitrage](algorithms/concepts/recursive-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 7 | 1,668 | ⛔ Not useful | Unable to find more details |
+| [Adversarially robust approach to candidate alpha-signal generation](algorithms/concepts/adversarially-robust-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 5 | 1,669 | ⛔ Not useful | Unable to find more details |
+| [Quantum/quantum-inspired approach to index/ETF constituent arbitrage](algorithms/concepts/quantum-quantum-inspired-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 138 | 1,670 | ⛔ Not useful | Unable to find more details |
+| [Conformal-prediction-based approach to macro-driven index allocation](algorithms/concepts/conformal-prediction-based-approach-to-macro-driven-index-allocation.md) | Macro-driven index allocation | 73 | 1,724 | ⏳ Reference only | Unable to find more details |
+| [Evolutionary-optimization-based approach to trade-execution optimization](algorithms/concepts/evolutionary-optimization-based-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 11 | 1,725 | ⛔ Not useful | Unable to find more details |
+| [Graph-based approach to cross-asset/sector contagion analysis](algorithms/concepts/graph-based-approach-to-cross-asset-sector-contagion-analysis.md) | Cross-asset / sector contagion analysis | 135 | 1,726 | ⏳ Reference only | Unable to find more details |
+| [Stochastic-process-based approach to liquidity-shock detection and response](algorithms/concepts/stochastic-process-based-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 76 | 1,727 | ⏳ Reference only | Unable to find more details |
+| [Dynamical-systems/geometric approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/dynamical-systems-geometric-approach-to-quantum-circuit-or-quantum-inspired-opti.md) | Quantum-circuit or quantum-inspired optimisation | 10 | 1,728 | ⛔ Not useful | Unable to find more details |
+| [Bayesian approach to regime-aware allocation](algorithms/concepts/bayesian-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 136 | 1,729 | ⏳ Worth testing | Evidence found |
+| [Neural-network-based approach to delay-aware portfolio allocation](algorithms/concepts/neural-network-based-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 10 | 1,730 | ⛔ Not useful | Unable to find more details |
+| [Recursive approach to benchmark index tracking](algorithms/concepts/recursive-approach-to-benchmark-index-tracking.md) | Benchmark index tracking | 135 | 1,732 | ⛔ Not useful | Unable to find more details |
+| [Markov-state-based approach to path-signature time-series forecasting](algorithms/concepts/markov-state-based-approach-to-path-signature-time-series-forecasting.md) | Path-signature time-series forecasting | 78 | 1,733 | ⛔ Not useful | Unable to find more details |
+| [Variational approach to covariance estimation for portfolio risk](algorithms/concepts/variational-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 11 | 1,737 | ⛔ Not useful | Unable to find more details |
+| [Integrated approach to index/ETF constituent arbitrage](algorithms/concepts/integrated-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 136 | 1,738 | ⛔ Not useful | Unable to find more details |
+| [Spectral approach to macro-driven index allocation](algorithms/concepts/spectral-approach-to-macro-driven-index-allocation.md) | Macro-driven index allocation | 74 | 1,740 | ⏳ Reference only | Unable to find more details |
+| [Path-signature-based approach to trade-execution optimization](algorithms/concepts/path-signature-based-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 11 | 1,741 | ⛔ Not useful | Unable to find more details |
+| [Dynamical-systems/geometric approach to cross-asset/sector contagion analysis](algorithms/concepts/dynamical-systems-geometric-approach-to-cross-asset-sector-contagion-analysis.md) | Cross-asset / sector contagion analysis | 135 | 1,742 | ⛔ Not useful | Unable to find more details |
+| [Adaptive approach to liquidity-shock detection and response](algorithms/concepts/adaptive-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 74 | 1,743 | ⏳ Reference only | Unable to find more details |
+| [Robust approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/robust-approach-to-quantum-circuit-or-quantum-inspired-optimization.md) | Quantum-circuit or quantum-inspired optimisation | 10 | 1,745 | ⛔ Not useful | Unable to find more details |
+| [Hawkes-process-based approach to regime-aware allocation](algorithms/concepts/hawkes-process-based-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 136 | 1,746 | ⛔ Not useful | Unable to find more details |
+| [Wavelet-based approach to benchmark index tracking](algorithms/concepts/wavelet-based-approach-to-benchmark-index-tracking.md) | Benchmark index tracking | 139 | 1,748 | ⛔ Not useful | Unable to find more details |
+| [Dynamical-systems/geometric approach to candidate alpha-signal generation](algorithms/concepts/dynamical-systems-geometric-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 11 | 1,749 | ⛔ Not useful | Unable to find more details |
+| [Bayesian approach to index/ETF constituent arbitrage](algorithms/concepts/bayesian-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 136 | 1,753 | ⛔ Not useful | Unable to find more details |
+| [Recursive approach to cross-asset/sector contagion analysis](algorithms/concepts/recursive-approach-to-cross-asset-sector-contagion-analysis.md) | Cross-asset / sector contagion analysis | 136 | 1,755 | ⏳ Reference only | Unable to find more details |
+| [Markov-state-based approach to liquidity-shock detection and response](algorithms/concepts/markov-state-based-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 72 | 1,756 | ⏳ Reference only | Unable to find more details |
+| [Attention-weighted approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/attention-weighted-approach-to-quantum-circuit-or-quantum-inspired-optimization.md) | Quantum-circuit or quantum-inspired optimisation | 11 | 1,757 | ⛔ Not useful | Unable to find more details |
+| [Quantum/quantum-inspired approach to regime-aware allocation](algorithms/concepts/quantum-quantum-inspired-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 136 | 1,758 | ⛔ Not useful | Unable to find more details |
+| [Model for benchmark index tracking](algorithms/concepts/model-for-benchmark-index-tracking.md) | Benchmark index tracking | 140 | 1,760 | ⛔ Not useful | Unable to find more details |
+| [Stochastic-process-based approach to path-signature time-series forecasting](algorithms/concepts/stochastic-process-based-approach-to-path-signature-time-series-forecasting.md) | Path-signature time-series forecasting | 73 | 1,761 | ⛔ Not useful | Unable to find more details |
+| [Robust approach to candidate alpha-signal generation](algorithms/concepts/robust-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 10 | 1,762 | ⛔ Not useful | Unable to find more details |
+| [Hawkes-process-based approach to index/ETF constituent arbitrage](algorithms/concepts/hawkes-process-based-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 135 | 1,765 | ⛔ Not useful | Unable to find more details |
+| [Kernel-based approach to trade-execution optimization](algorithms/concepts/kernel-based-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 10 | 1,766 | ⛔ Not useful | Unable to find more details |
+| [Wavelet-based approach to cross-asset/sector contagion analysis](algorithms/concepts/wavelet-based-approach-to-cross-asset-sector-contagion-analysis.md) | Cross-asset / sector contagion analysis | 136 | 1,767 | ⏳ Reference only | Unable to find more details |
+| [Neural-network-based approach to sector allocation](algorithms/concepts/neural-network-based-approach-to-sector-allocation.md) | Sector allocation | 11 | 1,768 | ⛔ Not useful | Unable to find more details |
+| [Koopman-operator-based approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/koopman-operator-based-approach-to-quantum-circuit-or-quantum-inspired-optimizat.md) | Quantum-circuit or quantum-inspired optimisation | 10 | 1,769 | ⛔ Not useful | Unable to find more details |
+| [Integrated approach to regime-aware allocation](algorithms/concepts/integrated-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 139 | 1,770 | ⏳ Reference only | Unable to find more details |
+| [Dynamical-systems/geometric approach to benchmark index tracking](algorithms/concepts/dynamical-systems-geometric-approach-to-benchmark-index-tracking.md) | Benchmark index tracking | 136 | 1,772 | ⛔ Not useful | Unable to find more details |
+| [Adaptive approach to path-signature time-series forecasting](algorithms/concepts/adaptive-approach-to-path-signature-time-series-forecasting.md) | Path-signature time-series forecasting | 73 | 1,773 | ⛔ Not useful | Unable to find more details |
+| [Attention-weighted approach to candidate alpha-signal generation](algorithms/concepts/attention-weighted-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 10 | 1,774 | ⛔ Not useful | Unable to find more details |
+| [Geometry-aware approach to covariance estimation for portfolio risk](algorithms/concepts/geometry-aware-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 10 | 1,776 | ⛔ Not useful | Unable to find more details |
+| [Markov-state-based approach to macro-driven index allocation](algorithms/concepts/markov-state-based-approach-to-macro-driven-index-allocation.md) | Macro-driven index allocation | 63 | 1,840 | ⏳ Reference only | Unable to find more details |
+| [Spectral approach to path-signature time-series forecasting](algorithms/concepts/spectral-approach-to-path-signature-time-series-forecasting.md) | Path-signature time-series forecasting | 63 | 1,842 | ⛔ Not useful | Unable to find more details |
+| [Neural-network-based approach to neural-operator forecasting](algorithms/concepts/neural-network-based-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 63 | 1,843 | ⛔ Not useful | Unable to find more details |
+| [Koopman-operator-based approach to ETF rotation](algorithms/concepts/koopman-operator-based-approach-to-etf-rotation.md) | ETF rotation | 63 | 1,845 | ⛔ Not useful | Unable to find more details |
+| [Kernel-based approach to neural-operator forecasting](algorithms/concepts/kernel-based-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 62 | 1,854 | ⛔ Not useful | Unable to find more details |
+| [Neural-network-based approach to volatility-surface forecasting](algorithms/concepts/neural-network-based-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 62 | 1,856 | ⛔ Not useful | Unable to find more details |
+| [Koopman-operator-based approach to leveraged-ETF exposure rebalancing](algorithms/concepts/koopman-operator-based-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 63 | 1,858 | ⛔ Not useful | Unable to find more details |
+| [Conformal-prediction-based approach to liquidity-shock detection and response](algorithms/concepts/conformal-prediction-based-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 63 | 1,863 | ⏳ Reference only | Unable to find more details |
+| [Stochastic-process-based approach to macro-driven index allocation](algorithms/concepts/stochastic-process-based-approach-to-macro-driven-index-allocation.md) | Macro-driven index allocation | 63 | 1,866 | ⏳ Reference only | Unable to find more details |
+| [Evolutionary-optimization-based approach to neural-operator forecasting](algorithms/concepts/evolutionary-optimization-based-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 62 | 1,868 | ⛔ Not useful | Unable to find more details |
+| [Spectral approach to liquidity-shock detection and response](algorithms/concepts/spectral-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 62 | 1,874 | ⏳ Reference only | Unable to find more details |
+| [Neural-network-based approach to cross-sectional stock ranking](algorithms/concepts/neural-network-based-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 63 | 1,875 | ⛔ Not useful | Unable to find more details |
+| [Adaptive approach to macro-driven index allocation](algorithms/concepts/adaptive-approach-to-macro-driven-index-allocation.md) | Macro-driven index allocation | 67 | 1,878 | ⏳ Reference only | Unable to find more details |
+| [Conformal-prediction-based approach to path-signature time-series forecasting](algorithms/concepts/conformal-prediction-based-approach-to-path-signature-time-series-forecasting.md) | Path-signature time-series forecasting | 62 | 1,880 | ⛔ Not useful | Unable to find more details |
+| [Path-signature-based approach to neural-operator forecasting](algorithms/concepts/path-signature-based-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 63 | 1,881 | ⛔ Not useful | Unable to find more details |
+| [Nonlinear approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/nonlinear-approach-to-quantum-circuit-or-quantum-inspired-optimization.md) | Quantum-circuit or quantum-inspired optimisation | 63 | 2,043 | ⛔ Not useful | Unable to find more details |
+| [Graph-based approach to trade-execution optimization](algorithms/concepts/graph-based-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 61 | 2,048 | ⛔ Not useful | Unable to find more details |
+| [Geometry-aware approach to candidate alpha-signal generation](algorithms/concepts/geometry-aware-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 63 | 2,050 | ⛔ Not useful | Unable to find more details |
+| [Variational approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/variational-approach-to-quantum-circuit-or-quantum-inspired-optimization.md) | Quantum-circuit or quantum-inspired optimisation | 63 | 2,054 | ⛔ Not useful | Unable to find more details |
+| [Adversarially robust approach to trade-execution optimization](algorithms/concepts/adversarially-robust-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 63 | 2,062 | ⛔ Not useful | Unable to find more details |
+| [Copula-based approach to candidate alpha-signal generation](algorithms/concepts/copula-based-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 63 | 2,064 | ⛔ Not useful | Unable to find more details |
+| [Geometry-aware approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/geometry-aware-approach-to-quantum-circuit-or-quantum-inspired-optimization.md) | Quantum-circuit or quantum-inspired optimisation | 62 | 2,067 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to trade-execution optimization](algorithms/concepts/multi-scale-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 70 | 2,075 | ⛔ Not useful | Unable to find more details |
+| [Nonlinear approach to candidate alpha-signal generation](algorithms/concepts/nonlinear-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 62 | 2,078 | ⛔ Not useful | Unable to find more details |
+| [Copula-based approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/copula-based-approach-to-quantum-circuit-or-quantum-inspired-optimization.md) | Quantum-circuit or quantum-inspired optimisation | 63 | 2,082 | ⛔ Not useful | Unable to find more details |
+| [Entropy-regularized approach to trade-execution optimization](algorithms/concepts/entropy-regularized-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 63 | 2,089 | ⛔ Not useful | Unable to find more details |
+| [Variational approach to candidate alpha-signal generation](algorithms/concepts/variational-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 62 | 2,092 | ⛔ Not useful | Unable to find more details |
+| [Adversarially robust approach to covariance estimation for portfolio risk](algorithms/concepts/adversarially-robust-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 63 | 2,480 | ⛔ Not useful | Unable to find more details |
+| [Attention-weighted approach to trade-execution optimization](algorithms/concepts/attention-weighted-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 68 | 2,482 | ⛔ Not useful | Unable to find more details |
+| [Evolutionary-optimization-based approach to candidate alpha-signal generation](algorithms/concepts/evolutionary-optimization-based-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 63 | 2,484 | ⛔ Not useful | Unable to find more details |
+| [Kernel-based approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/kernel-based-approach-to-quantum-circuit-or-quantum-inspired-optimization.md) | Quantum-circuit or quantum-inspired optimisation | 62 | 2,489 | ⛔ Not useful | Unable to find more details |
+| [Graph-based approach to covariance estimation for portfolio risk](algorithms/concepts/graph-based-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 63 | 2,494 | ⏳ Reference only | Unable to find more details |
+| [Path-signature-based approach to candidate alpha-signal generation](algorithms/concepts/path-signature-based-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 62 | 2,497 | ⛔ Not useful | Unable to find more details |
+| [Evolutionary-optimization-based approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/evolutionary-optimization-based-approach-to-quantum-circuit-or-quantum-inspired.md) | Quantum-circuit or quantum-inspired optimisation | 63 | 2,502 | ⛔ Not useful | Unable to find more details |
+| [Entropy-regularized approach to covariance estimation for portfolio risk](algorithms/concepts/entropy-regularized-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 62 | 2,507 | ⏳ Reference only | Unable to find more details |
+| [Dynamical-systems/geometric approach to trade-execution optimization](algorithms/concepts/dynamical-systems-geometric-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 62 | 2,509 | ⛔ Not useful | Unable to find more details |
+| [Neural-network-based approach to candidate alpha-signal generation](algorithms/concepts/neural-network-based-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 62 | 2,511 | ⛔ Not useful | Unable to find more details |
+| [Koopman-operator-based approach to delay-aware portfolio allocation](algorithms/concepts/koopman-operator-based-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 63 | 2,513 | ⛔ Not useful | Unable to find more details |
+| [Path-signature-based approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/path-signature-based-approach-to-quantum-circuit-or-quantum-inspired-optimizatio.md) | Quantum-circuit or quantum-inspired optimisation | 63 | 2,515 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to covariance estimation for portfolio risk](algorithms/concepts/multi-scale-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 62 | 2,521 | ⏳ Reference only | Unable to find more details |
+| [Robust approach to trade-execution optimization](algorithms/concepts/robust-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 65 | 2,523 | ⛔ Not useful | Unable to find more details |
+| [Kernel-based approach to candidate alpha-signal generation](algorithms/concepts/kernel-based-approach-to-candidate-alpha-signal-generation.md) | Candidate alpha-signal generation | 63 | 2,525 | ⛔ Not useful | Unable to find more details |
+| [Neural-network-based approach to quantum-circuit or quantum-inspired optimization](algorithms/concepts/neural-network-based-approach-to-quantum-circuit-or-quantum-inspired-optimizatio.md) | Quantum-circuit or quantum-inspired optimisation | 62 | 2,529 | ⛔ Not useful | Unable to find more details |
+| [Koopman-operator-based approach to sector allocation](algorithms/concepts/koopman-operator-based-approach-to-sector-allocation.md) | Sector allocation | 62 | 2,532 | ⛔ Not useful | Unable to find more details |
+| [Hierarchical approach to hierarchical macro-driven etf allocator ver-14](algorithms/concepts/hierarchical-approach-to-hierarchical-macro-driven-etf-allocator-ver-14.md) | Macro-driven ETF allocation (one generated name) | 1 | 3,169 | ⏳ Reference only | Unable to find more details |
+| [Copula-based approach to copula-based macro-driven etf allocator ver-34](algorithms/concepts/copula-based-approach-to-copula-based-macro-driven-etf-allocator-ver-34.md) | Macro-driven ETF allocation (one generated name) | 1 | 3,170 | ⏳ Reference only | Unable to find more details |
+| [Robust approach to robust macro-driven etf allocator ver-54](algorithms/concepts/robust-approach-to-robust-macro-driven-etf-allocator-ver-54.md) | Macro-driven ETF allocation (one generated name) | 1 | 3,171 | ⏳ Reference only | Unable to find more details |
+| [Model for transformer-based macro-driven etf allocator ver-94](algorithms/concepts/model-for-transformer-based-macro-driven-etf-allocator-ver-94.md) | Macro-driven ETF allocation (one generated name) | 1 | 3,172 | ⛔ Not useful | Unable to find more details |
+| [Hierarchical approach to hierarchical macro-driven etf allocator ver-114](algorithms/concepts/hierarchical-approach-to-hierarchical-macro-driven-etf-allocator-ver-114.md) | Macro-driven ETF allocation (one generated name) | 1 | 3,173 | ⏳ Reference only | Unable to find more details |
+| [Copula-based approach to copula-based macro-driven etf allocator ver-134](algorithms/concepts/copula-based-approach-to-copula-based-macro-driven-etf-allocator-ver-134.md) | Macro-driven ETF allocation (one generated name) | 1 | 3,174 | ⏳ Reference only | Unable to find more details |
+| [Robust approach to robust macro-driven etf allocator ver-154](algorithms/concepts/robust-approach-to-robust-macro-driven-etf-allocator-ver-154.md) | Macro-driven ETF allocation (one generated name) | 1 | 3,175 | ⏳ Reference only | Unable to find more details |
+| [Model for transformer-based macro-driven etf allocator ver-194](algorithms/concepts/model-for-transformer-based-macro-driven-etf-allocator-ver-194.md) | Macro-driven ETF allocation (one generated name) | 1 | 3,176 | ⛔ Not useful | Unable to find more details |
+| [Topology-aware approach to tail-risk hedging and allocation](algorithms/concepts/topology-aware-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 2 | 3,651 | ⛔ Not useful | Evidence found |
+| [Adaptive approach to regime-aware allocation](algorithms/concepts/adaptive-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 2 | 3,652 | ✅ In use | Evidence found |
+| [Distributionally robust approach to factor risk-parity allocation](algorithms/concepts/distributionally-robust-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 2 | 3,654 | ⏳ Reference only | Unable to find more details |
+| [High-frequency approach to covariance estimation for portfolio risk](algorithms/concepts/high-frequency-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 4 | 3,656 | ⏳ Reference only | Evidence found |
+| [Adaptive approach to sector allocation](algorithms/concepts/adaptive-approach-to-sector-allocation.md) | Sector allocation | 2 | 3,658 | ⏳ Reference only | Unable to find more details |
+| [Adaptive approach to tail-risk hedging and allocation](algorithms/concepts/adaptive-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 1 | 3,659 | ✅ In use | Evidence found |
+| [Nonlinear approach to benchmark index tracking](algorithms/concepts/nonlinear-approach-to-benchmark-index-tracking.md) | Benchmark index tracking | 2 | 3,673 | ⛔ Not useful | Unable to find more details |
+| [Model for liquidity-shock detection and response](algorithms/concepts/model-for-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 5 | 3,674 | ⏳ Reference only | Evidence found |
+| [High-frequency approach to index portfolio rebalancing](algorithms/concepts/high-frequency-approach-to-index-portfolio-rebalancing.md) | Index portfolio rebalancing | 3 | 3,676 | ⛔ Not useful | Unable to find more details |
+| [Spectral approach to benchmark index tracking](algorithms/concepts/spectral-approach-to-benchmark-index-tracking.md) | Benchmark index tracking | 2 | 3,677 | ⛔ Not useful | Unable to find more details |
+| [Neural-network-based approach to tail-risk hedging and allocation](algorithms/concepts/neural-network-based-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 5 | 3,687 | ⛔ Not useful | Unable to find more details |
+| [Diffusion-model-based approach to volatility-surface forecasting](algorithms/concepts/diffusion-model-based-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 5 | 3,689 | ⛔ Not useful | Unable to find more details |
+| [Fractional-order approach to tail-risk hedging and allocation](algorithms/concepts/fractional-order-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 5 | 3,690 | ⛔ Not useful | Unable to find more details |
+| [Adversarially robust approach to volatility-surface forecasting](algorithms/concepts/adversarially-robust-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 15 | 3,692 | ⛔ Not useful | Unable to find more details |
+| [Copula-based approach to tail-risk hedging and allocation](algorithms/concepts/copula-based-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 5 | 3,693 | ⏳ Reference only | Unable to find more details |
+| [Fractional-order approach to factor risk-parity allocation](algorithms/concepts/fractional-order-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 5 | 3,694 | ⛔ Not useful | Unable to find more details |
+| [Recursive approach to volatility-surface forecasting](algorithms/concepts/recursive-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 5 | 3,695 | ⛔ Not useful | Unable to find more details |
+| [Bayesian approach to tail-risk hedging and allocation](algorithms/concepts/bayesian-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 5 | 3,696 | ⏳ Reference only | Unable to find more details |
+| [Quantum/quantum-inspired approach to volatility-surface forecasting](algorithms/concepts/quantum-quantum-inspired-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 5 | 3,698 | ⛔ Not useful | Unable to find more details |
+| [Neural-network-based approach to covariance estimation for portfolio risk](algorithms/concepts/neural-network-based-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 5 | 3,699 | ⛔ Not useful | Unable to find more details |
+| [Robust approach to tail-risk hedging and allocation](algorithms/concepts/robust-approach-to-tail-risk-hedging-and-allocation.md) | Tail-risk hedging and allocation | 5 | 3,700 | ⏳ Reference only | Unable to find more details |
+| [Bayesian approach to factor risk-parity allocation](algorithms/concepts/bayesian-approach-to-factor-risk-parity-allocation.md) | Factor risk-parity allocation | 5 | 3,701 | ⏳ Reference only | Unable to find more details |
+| [Koopman-operator-based approach to volatility-surface forecasting](algorithms/concepts/koopman-operator-based-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 5 | 3,702 | ⛔ Not useful | Unable to find more details |
+| [Fractional-order approach to covariance estimation for portfolio risk](algorithms/concepts/fractional-order-approach-to-covariance-estimation-for-portfolio-risk.md) | Covariance estimation for portfolio risk | 5 | 3,703 | ⛔ Not useful | Unable to find more details |
+| [Nonlinear approach to leveraged-ETF exposure rebalancing](algorithms/concepts/nonlinear-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 11 | 3,774 | ⏳ Reference only | Unable to find more details |
+| [Multi-scale approach to volatility-surface forecasting](algorithms/concepts/multi-scale-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 11 | 3,776 | ⛔ Not useful | Unable to find more details |
+| [Variational approach to ETF rotation](algorithms/concepts/variational-approach-to-etf-rotation.md) | ETF rotation | 10 | 3,780 | ⛔ Not useful | Unable to find more details |
+| [Entropy-regularized approach to neural-operator forecasting](algorithms/concepts/entropy-regularized-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 10 | 3,784 | ⛔ Not useful | Unable to find more details |
+| [Diffusion-model-based approach to topological-feature portfolio allocation](algorithms/concepts/diffusion-model-based-approach-to-topological-feature-portfolio-allocation.md) | Topological-feature portfolio allocation | 73 | 3,785 | ⛔ Not useful | Unable to find more details |
+| [Graph-based approach to cross-sectional stock ranking](algorithms/concepts/graph-based-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 11 | 3,791 | ⛔ Not useful | Unable to find more details |
+| [Copula-based approach to leveraged-ETF exposure rebalancing](algorithms/concepts/copula-based-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 11 | 3,794 | ⛔ Not useful | Unable to find more details |
+| [Nonlinear approach to ETF rotation](algorithms/concepts/nonlinear-approach-to-etf-rotation.md) | ETF rotation | 10 | 3,800 | ⏳ Reference only | Unable to find more details |
+| [Multi-scale approach to neural-operator forecasting](algorithms/concepts/multi-scale-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 11 | 3,804 | ⛔ Not useful | Unable to find more details |
+| [Topology-aware approach to topological-feature portfolio allocation](algorithms/concepts/topology-aware-approach-to-topological-feature-portfolio-allocation.md) | Topological-feature portfolio allocation | 74 | 3,805 | ⛔ Not useful | Unable to find more details |
+| [Fractional-order approach to path-signature time-series forecasting](algorithms/concepts/fractional-order-approach-to-path-signature-time-series-forecasting.md) | Path-signature time-series forecasting | 73 | 3,809 | ⛔ Not useful | Unable to find more details |
+| [Entropy-regularized approach to cross-sectional stock ranking](algorithms/concepts/entropy-regularized-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 10 | 3,812 | ⛔ Not useful | Unable to find more details |
+| [Diffusion-model-based approach to macro-driven index allocation](algorithms/concepts/diffusion-model-based-approach-to-macro-driven-index-allocation.md) | Macro-driven index allocation | 73 | 3,813 | ⛔ Not useful | Unable to find more details |
+| [Neural-network-based approach to trade-execution optimization](algorithms/concepts/neural-network-based-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 10 | 3,814 | ⛔ Not useful | Unable to find more details |
+| [Geometry-aware approach to leveraged-ETF exposure rebalancing](algorithms/concepts/geometry-aware-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 10 | 3,817 | ⛔ Not useful | Unable to find more details |
+| [Graph-based approach to volatility-surface forecasting](algorithms/concepts/graph-based-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 10 | 3,819 | ⛔ Not useful | Unable to find more details |
+| [Copula-based approach to ETF rotation](algorithms/concepts/copula-based-approach-to-etf-rotation.md) | ETF rotation | 13 | 3,823 | ⏳ Reference only | Unable to find more details |
+| [Adversarially robust approach to neural-operator forecasting](algorithms/concepts/adversarially-robust-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 11 | 3,827 | ⛔ Not useful | Unable to find more details |
+| [Conformal-prediction-based approach to topological-feature portfolio allocation](algorithms/concepts/conformal-prediction-based-approach-to-topological-feature-portfolio-allocation.md) | Topological-feature portfolio allocation | 73 | 3,828 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to cross-sectional stock ranking](algorithms/concepts/multi-scale-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 10 | 3,834 | ⛔ Not useful | Unable to find more details |
+| [Topology-aware approach to macro-driven index allocation](algorithms/concepts/topology-aware-approach-to-macro-driven-index-allocation.md) | Macro-driven index allocation | 77 | 3,836 | ⛔ Not useful | Unable to find more details |
+| [Variational approach to leveraged-ETF exposure rebalancing](algorithms/concepts/variational-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 10 | 3,839 | ⛔ Not useful | Unable to find more details |
+| [Fractional-order approach to liquidity-shock detection and response](algorithms/concepts/fractional-order-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 73 | 3,840 | ⛔ Not useful | Unable to find more details |
+| [Entropy-regularized approach to volatility-surface forecasting](algorithms/concepts/entropy-regularized-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 11 | 3,842 | ⛔ Not useful | Unable to find more details |
+| [Geometry-aware approach to ETF rotation](algorithms/concepts/geometry-aware-approach-to-etf-rotation.md) | ETF rotation | 16 | 3,846 | ⛔ Not useful | Unable to find more details |
+| [Graph-based approach to neural-operator forecasting](algorithms/concepts/graph-based-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 10 | 3,850 | ⛔ Not useful | Unable to find more details |
+| [Spectral approach to topological-feature portfolio allocation](algorithms/concepts/spectral-approach-to-topological-feature-portfolio-allocation.md) | Topological-feature portfolio allocation | 72 | 3,851 | ⛔ Not useful | Unable to find more details |
+| [Adversarially robust approach to cross-sectional stock ranking](algorithms/concepts/adversarially-robust-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 10 | 3,857 | ⛔ Not useful | Unable to find more details |
+| [Diffusion-model-based approach to liquidity-shock detection and response](algorithms/concepts/diffusion-model-based-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 68 | 3,951 | ⛔ Not useful | Unable to find more details |
+| [Adaptive approach to topological-feature portfolio allocation](algorithms/concepts/adaptive-approach-to-topological-feature-portfolio-allocation.md) | Topological-feature portfolio allocation | 63 | 3,962 | ⛔ Not useful | Unable to find more details |
+| [Topology-aware approach to liquidity-shock detection and response](algorithms/concepts/topology-aware-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 65 | 3,972 | ⛔ Not useful | Unable to find more details |
+| [Fractional-order approach to macro-driven index allocation](algorithms/concepts/fractional-order-approach-to-macro-driven-index-allocation.md) | Macro-driven index allocation | 62 | 3,976 | ⛔ Not useful | Unable to find more details |
+| [Diffusion-model-based approach to path-signature time-series forecasting](algorithms/concepts/diffusion-model-based-approach-to-path-signature-time-series-forecasting.md) | Path-signature time-series forecasting | 63 | 3,981 | ⛔ Not useful | Unable to find more details |
+| [Markov-state-based approach to topological-feature portfolio allocation](algorithms/concepts/markov-state-based-approach-to-topological-feature-portfolio-allocation.md) | Topological-feature portfolio allocation | 61 | 3,985 | ⛔ Not useful | Unable to find more details |
+| [Topology-aware approach to path-signature time-series forecasting](algorithms/concepts/topology-aware-approach-to-path-signature-time-series-forecasting.md) | Path-signature time-series forecasting | 62 | 4,002 | ⛔ Not useful | Unable to find more details |
+| [Fractional-order approach to topological-feature portfolio allocation](algorithms/concepts/fractional-order-approach-to-topological-feature-portfolio-allocation.md) | Topological-feature portfolio allocation | 63 | 4,006 | ⛔ Not useful | Unable to find more details |
+| [Stochastic-process-based approach to topological-feature portfolio allocation](algorithms/concepts/stochastic-process-based-approach-to-topological-feature-portfolio-allocation.md) | Topological-feature portfolio allocation | 63 | 4,026 | ⛔ Not useful | Unable to find more details |
+| [Variational approach to neural-operator forecasting](algorithms/concepts/variational-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 63 | 5,027 | ⛔ Not useful | Unable to find more details |
+| [Entropy-regularized approach to ETF rotation](algorithms/concepts/entropy-regularized-approach-to-etf-rotation.md) | ETF rotation | 63 | 5,029 | ⏳ Reference only | Unable to find more details |
+| [Geometry-aware approach to volatility-surface forecasting](algorithms/concepts/geometry-aware-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 62 | 5,033 | ⛔ Not useful | Unable to find more details |
+| [Graph-based approach to leveraged-ETF exposure rebalancing](algorithms/concepts/graph-based-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 67 | 5,036 | ⛔ Not useful | Unable to find more details |
+| [Copula-based approach to cross-sectional stock ranking](algorithms/concepts/copula-based-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 62 | 5,040 | ⛔ Not useful | Unable to find more details |
+| [Nonlinear approach to neural-operator forecasting](algorithms/concepts/nonlinear-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 63 | 5,047 | ⛔ Not useful | Unable to find more details |
+| [Koopman-operator-based approach to trade-execution optimization](algorithms/concepts/koopman-operator-based-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 62 | 5,048 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to ETF rotation](algorithms/concepts/multi-scale-approach-to-etf-rotation.md) | ETF rotation | 67 | 5,050 | ⏳ Worth testing | Evidence found |
+| [Variational approach to volatility-surface forecasting](algorithms/concepts/variational-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 62 | 5,054 | ⛔ Not useful | Unable to find more details |
+| [Entropy-regularized approach to leveraged-ETF exposure rebalancing](algorithms/concepts/entropy-regularized-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 63 | 5,057 | ⛔ Not useful | Unable to find more details |
+| [Geometry-aware approach to cross-sectional stock ranking](algorithms/concepts/geometry-aware-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 63 | 5,061 | ⛔ Not useful | Unable to find more details |
+| [Copula-based approach to neural-operator forecasting](algorithms/concepts/copula-based-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 62 | 5,069 | ⛔ Not useful | Unable to find more details |
+| [Adversarially robust approach to ETF rotation](algorithms/concepts/adversarially-robust-approach-to-etf-rotation.md) | ETF rotation | 62 | 5,071 | ⛔ Not useful | Unable to find more details |
+| [Nonlinear approach to volatility-surface forecasting](algorithms/concepts/nonlinear-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 63 | 5,075 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to leveraged-ETF exposure rebalancing](algorithms/concepts/multi-scale-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 63 | 5,079 | ⏳ Reference only | Unable to find more details |
+| [Variational approach to cross-sectional stock ranking](algorithms/concepts/variational-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 63 | 5,084 | ⛔ Not useful | Unable to find more details |
+| [Geometry-aware approach to neural-operator forecasting](algorithms/concepts/geometry-aware-approach-to-neural-operator-forecasting.md) | Neural-operator forecasting | 62 | 5,091 | ⛔ Not useful | Unable to find more details |
+| [Graph-based approach to ETF rotation](algorithms/concepts/graph-based-approach-to-etf-rotation.md) | ETF rotation | 63 | 5,093 | ⏳ Reference only | Unable to find more details |
+| [Copula-based approach to volatility-surface forecasting](algorithms/concepts/copula-based-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 64 | 5,097 | ⛔ Not useful | Unable to find more details |
+| [Adversarially robust approach to leveraged-ETF exposure rebalancing](algorithms/concepts/adversarially-robust-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 62 | 5,100 | ⛔ Not useful | Unable to find more details |
+| [Nonlinear approach to cross-sectional stock ranking](algorithms/concepts/nonlinear-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 67 | 5,105 | ⛔ Not useful | Unable to find more details |
+| [Attention-weighted approach to index/ETF constituent arbitrage](algorithms/concepts/attention-weighted-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 2 | 6,100 | ⛔ Not useful | Unable to find more details |
+| [Quantum-inspired approach to statistical-arbitrage basket construction](algorithms/concepts/quantum-inspired-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 1 | 6,101 | ⛔ Not useful | Unable to find more details |
+| [Attention-weighted approach to liquidity-shock detection and response](algorithms/concepts/attention-weighted-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 1 | 6,102 | ⛔ Not useful | Unable to find more details |
+| [Model for cointegration/pairs trading](algorithms/concepts/model-for-cointegration-pairs-trading.md) | Cointegration / pairs trading | 6 | 6,106 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to regime-aware allocation](algorithms/concepts/multi-scale-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 2 | 6,110 | ⏳ Reference only | Unable to find more details |
+| [Quantum-inspired approach to cointegration/pairs trading](algorithms/concepts/quantum-inspired-approach-to-cointegration-pairs-trading.md) | Cointegration / pairs trading | 2 | 6,111 | ⛔ Not useful | Unable to find more details |
+| [Recursive approach to statistical-arbitrage basket construction](algorithms/concepts/recursive-approach-to-statistical-arbitrage-basket-construction.md) | Statistical-arbitrage basket construction | 2 | 6,112 | ⛔ Not useful | Unable to find more details |
+| [Attention-weighted approach to cointegration/pairs trading](algorithms/concepts/attention-weighted-approach-to-cointegration-pairs-trading.md) | Cointegration / pairs trading | 2 | 6,114 | ⛔ Not useful | Unable to find more details |
+| [Model for generative macro-driven etf allocator ver-74](algorithms/concepts/model-for-generative-macro-driven-etf-allocator-ver-74.md) | Macro-driven ETF allocation (one generated name) | 1 | 6,116 | ⛔ Not useful | Unable to find more details |
+| [Stochastic-process-based approach to cointegration/pairs trading](algorithms/concepts/stochastic-process-based-approach-to-cointegration-pairs-trading.md) | Cointegration / pairs trading | 2 | 6,118 | ⛔ Not useful | Unable to find more details |
+| [Distributionally robust approach to regime-aware allocation](algorithms/concepts/distributionally-robust-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 2 | 6,120 | ⏳ Reference only | Unable to find more details |
+| [Model for generative macro-driven etf allocator ver-174](algorithms/concepts/model-for-generative-macro-driven-etf-allocator-ver-174.md) | Macro-driven ETF allocation (one generated name) | 1 | 6,131 | ⛔ Not useful | Unable to find more details |
+| [Geometry-aware approach to dependence-aware cointegration / relative-value analysis](algorithms/concepts/geometry-aware-approach-to-dependence-aware-cointegration-relative-value-analysi.md) | Dependence-aware cointegration / relative-value analysis | 5 | 6,136 | ⛔ Not useful | Unable to find more details |
+| [Geometry-aware approach to trade-execution optimization](algorithms/concepts/geometry-aware-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 5 | 6,139 | ⛔ Not useful | Unable to find more details |
+| [Attention-weighted approach to dependence-aware cointegration / relative-value analysis](algorithms/concepts/attention-weighted-approach-to-dependence-aware-cointegration-relative-value-ana.md) | Dependence-aware cointegration / relative-value analysis | 5 | 6,140 | ⛔ Not useful | Unable to find more details |
+| [Hawkes-process-based approach to trade-execution optimization](algorithms/concepts/hawkes-process-based-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 5 | 6,141 | ⛔ Not useful | Unable to find more details |
+| [Spectral approach to dependence-aware cointegration / relative-value analysis](algorithms/concepts/spectral-approach-to-dependence-aware-cointegration-relative-value-analysis.md) | Dependence-aware cointegration / relative-value analysis | 5 | 6,142 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to dependence-aware cointegration / relative-value analysis](algorithms/concepts/multi-scale-approach-to-dependence-aware-cointegration-relative-value-analysis.md) | Dependence-aware cointegration / relative-value analysis | 5 | 6,144 | ⛔ Not useful | Unable to find more details |
+| [Spectral approach to trade-execution optimization](algorithms/concepts/spectral-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 5 | 6,145 | ⛔ Not useful | Unable to find more details |
+| [Recursive approach to regime-aware allocation](algorithms/concepts/recursive-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 2 | 7,406 | ⏳ Reference only | Unable to find more details |
+| [Recursive approach to sector allocation](algorithms/concepts/recursive-approach-to-sector-allocation.md) | Sector allocation | 1 | 7,408 | ⏳ Reference only | Unable to find more details |
+| [Copula-based approach to trade-execution optimization](algorithms/concepts/copula-based-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 2 | 7,411 | ⛔ Not useful | Unable to find more details |
+| [Attention-weighted approach to volatility-surface forecasting](algorithms/concepts/attention-weighted-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 2 | 7,413 | ⛔ Not useful | Unable to find more details |
+| [Model for trade-execution optimization](algorithms/concepts/model-for-trade-execution-optimization.md) | Trade-execution optimisation | 8 | 7,414 | ⛔ Not useful | Unable to find more details |
+| [High-frequency approach to benchmark index tracking](algorithms/concepts/high-frequency-approach-to-benchmark-index-tracking.md) | Benchmark index tracking | 2 | 7,415 | ⛔ Not useful | Unable to find more details |
+| [Stochastic-process-based approach to volatility-surface forecasting](algorithms/concepts/stochastic-process-based-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 2 | 7,416 | ⛔ Not useful | Unable to find more details |
+| [Model for volatility-surface forecasting](algorithms/concepts/model-for-volatility-surface-forecasting.md) | Volatility-surface forecasting | 6 | 7,418 | ⛔ Not useful | Unable to find more details |
+| [Hierarchical approach to trade-execution optimization](algorithms/concepts/hierarchical-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 2 | 7,419 | ⛔ Not useful | Unable to find more details |
+| [Evolutionary-optimization-based approach to macro-driven index allocation](algorithms/concepts/evolutionary-optimization-based-approach-to-macro-driven-index-allocation.md) | Macro-driven index allocation | 5 | 7,431 | ⛔ Not useful | Unable to find more details |
+| [Graph-based approach to macro-driven index allocation](algorithms/concepts/graph-based-approach-to-macro-driven-index-allocation.md) | Macro-driven index allocation | 5 | 7,433 | ⏳ Reference only | Unable to find more details |
+| [Wavelet-based approach to macro-driven index allocation](algorithms/concepts/wavelet-based-approach-to-macro-driven-index-allocation.md) | Macro-driven index allocation | 5 | 7,434 | ⏳ Reference only | Unable to find more details |
+| [Hierarchical approach to cointegration/pairs trading](algorithms/concepts/hierarchical-approach-to-cointegration-pairs-trading.md) | Cointegration / pairs trading | 2 | 8,387 | ⛔ Not useful | Unable to find more details |
+| [Robust approach to volatility-surface forecasting](algorithms/concepts/robust-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 2 | 8,388 | ⛔ Not useful | Unable to find more details |
+| [Quantum-inspired approach to index/ETF constituent arbitrage](algorithms/concepts/quantum-inspired-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 2 | 8,389 | ⛔ Not useful | Unable to find more details |
+| [Hierarchical approach to volatility-surface forecasting](algorithms/concepts/hierarchical-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 2 | 8,392 | ⛔ Not useful | Unable to find more details |
+| [Topology-aware approach to regime-aware allocation](algorithms/concepts/topology-aware-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 2 | 8,393 | ⛔ Not useful | Unable to find more details |
+| [Quantum-inspired approach to liquidity-shock detection and response](algorithms/concepts/quantum-inspired-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 2 | 8,395 | ⛔ Not useful | Unable to find more details |
+| [Copula-based approach to cointegration/pairs trading](algorithms/concepts/copula-based-approach-to-cointegration-pairs-trading.md) | Cointegration / pairs trading | 2 | 8,397 | ⛔ Not useful | Unable to find more details |
+| [Hierarchical approach to ETF rotation](algorithms/concepts/hierarchical-approach-to-etf-rotation.md) | ETF rotation | 1 | 8,399 | ⏳ Reference only | Evidence found |
+| [Topology-aware approach to sector allocation](algorithms/concepts/topology-aware-approach-to-sector-allocation.md) | Sector allocation | 1 | 8,400 | ⛔ Not useful | Unable to find more details |
+| [Robust approach to cointegration/pairs trading](algorithms/concepts/robust-approach-to-cointegration-pairs-trading.md) | Cointegration / pairs trading | 1 | 8,402 | ⛔ Not useful | Unable to find more details |
+| [Stochastic-process-based approach to index/ETF constituent arbitrage](algorithms/concepts/stochastic-process-based-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 1 | 8,404 | ⛔ Not useful | Unable to find more details |
+| [Recursive approach to cross-sectional stock ranking](algorithms/concepts/recursive-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 2 | 8,417 | ⛔ Not useful | Unable to find more details |
+| [Adaptive approach to index/ETF constituent arbitrage](algorithms/concepts/adaptive-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 2 | 8,418 | ⛔ Not useful | Unable to find more details |
+| [Model for cross-sectional quantitative stock selector ver-7](algorithms/concepts/model-for-cross-sectional-quantitative-stock-selector-ver-7.md) | Quantitative stock selection (one generated name) | 1 | 8,419 | ⛔ Not useful | Unable to find more details |
+| [Stochastic-process-based approach to leveraged-ETF exposure rebalancing](algorithms/concepts/stochastic-process-based-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 2 | 8,420 | ⏳ Reference only | Evidence found |
+| [Quantum-inspired approach to volatility-surface forecasting](algorithms/concepts/quantum-inspired-approach-to-volatility-surface-forecasting.md) | Volatility-surface forecasting | 2 | 8,423 | ⛔ Not useful | Unable to find more details |
+| [Model for dynamic quantitative stock selector ver-27](algorithms/concepts/model-for-dynamic-quantitative-stock-selector-ver-27.md) | Quantitative stock selection (one generated name) | 1 | 8,426 | ⛔ Not useful | Unable to find more details |
+| [Model for leveraged-ETF exposure rebalancing](algorithms/concepts/model-for-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 4 | 8,427 | ⏳ Worth testing | Evidence found |
+| [Stochastic-process-based approach to ETF rotation](algorithms/concepts/stochastic-process-based-approach-to-etf-rotation.md) | ETF rotation | 2 | 8,429 | ⏳ Reference only | Unable to find more details |
+| [Topology-aware approach to cross-sectional stock ranking](algorithms/concepts/topology-aware-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 2 | 8,430 | ⛔ Not useful | Unable to find more details |
+| [Distributionally robust approach to robust portfolio optimization](algorithms/concepts/distributionally-robust-approach-to-robust-portfolio-optimization.md) | Robust portfolio optimisation | 2 | 8,432 | ⏳ Reference only | Evidence found |
+| [Model for ETF rotation](algorithms/concepts/model-for-etf-rotation.md) | ETF rotation | 5 | 8,435 | ⏳ Worth testing | Evidence found |
+| [Topology-aware approach to index/ETF constituent arbitrage](algorithms/concepts/topology-aware-approach-to-index-etf-constituent-arbitrage.md) | Index / ETF constituent arbitrage | 2 | 8,436 | ⛔ Not useful | Unable to find more details |
+| [Model for convolutional quantitative stock selector ver-67](algorithms/concepts/model-for-convolutional-quantitative-stock-selector-ver-67.md) | Quantitative stock selection (one generated name) | 1 | 8,437 | ⛔ Not useful | Unable to find more details |
+| [Quantum-inspired approach to leveraged-ETF exposure rebalancing](algorithms/concepts/quantum-inspired-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 2 | 8,438 | ⛔ Not useful | Unable to find more details |
+| [Distributionally robust approach to sector allocation](algorithms/concepts/distributionally-robust-approach-to-sector-allocation.md) | Sector allocation | 2 | 8,439 | ⏳ Reference only | Unable to find more details |
+| [Adaptive approach to cross-sectional stock ranking](algorithms/concepts/adaptive-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 2 | 8,441 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to multi-scale quantitative stock selector ver-87](algorithms/concepts/multi-scale-approach-to-multi-scale-quantitative-stock-selector-ver-87.md) | Quantitative stock selection (one generated name) | 1 | 8,442 | ⛔ Not useful | Unable to find more details |
+| [Quantum-inspired approach to ETF rotation](algorithms/concepts/quantum-inspired-approach-to-etf-rotation.md) | ETF rotation | 2 | 8,445 | ⛔ Not useful | Unable to find more details |
+| [Model for cross-sectional quantitative stock selector ver-107](algorithms/concepts/model-for-cross-sectional-quantitative-stock-selector-ver-107.md) | Quantitative stock selection (one generated name) | 1 | 8,448 | ⛔ Not useful | Unable to find more details |
+| [Model for dynamic quantitative stock selector ver-127](algorithms/concepts/model-for-dynamic-quantitative-stock-selector-ver-127.md) | Quantitative stock selection (one generated name) | 1 | 8,455 | ⛔ Not useful | Unable to find more details |
+| [Model for convolutional quantitative stock selector ver-167](algorithms/concepts/model-for-convolutional-quantitative-stock-selector-ver-167.md) | Quantitative stock selection (one generated name) | 1 | 8,466 | ⛔ Not useful | Unable to find more details |
+| [Multi-scale approach to multi-scale quantitative stock selector ver-187](algorithms/concepts/multi-scale-approach-to-multi-scale-quantitative-stock-selector-ver-187.md) | Quantitative stock selection (one generated name) | 1 | 8,471 | ⛔ Not useful | Unable to find more details |
+| [Nonlinear approach to sector allocation](algorithms/concepts/nonlinear-approach-to-sector-allocation.md) | Sector allocation | 5 | 8,475 | ⏳ Reference only | Unable to find more details |
+| [Hawkes-process-based approach to ETF rotation](algorithms/concepts/hawkes-process-based-approach-to-etf-rotation.md) | ETF rotation | 5 | 8,478 | ⛔ Not useful | Unable to find more details |
+| [Adversarially robust approach to liquidity-shock detection and response](algorithms/concepts/adversarially-robust-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 5 | 8,479 | ⛔ Not useful | Unable to find more details |
+| [Adaptive approach to delay-aware portfolio allocation](algorithms/concepts/adaptive-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 5 | 8,480 | ⏳ Reference only | Unable to find more details |
+| [Integrated approach to sector allocation](algorithms/concepts/integrated-approach-to-sector-allocation.md) | Sector allocation | 5 | 8,482 | ⏳ Reference only | Unable to find more details |
+| [Wavelet-based approach to leveraged-ETF exposure rebalancing](algorithms/concepts/wavelet-based-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 5 | 8,483 | ⏳ Reference only | Unable to find more details |
+| [Nonlinear approach to path-signature time-series forecasting](algorithms/concepts/nonlinear-approach-to-path-signature-time-series-forecasting.md) | Path-signature time-series forecasting | 5 | 8,484 | ⛔ Not useful | Unable to find more details |
+| [Graph-based approach to benchmark index tracking](algorithms/concepts/graph-based-approach-to-benchmark-index-tracking.md) | Benchmark index tracking | 5 | 8,486 | ⛔ Not useful | Unable to find more details |
+| [Recursive approach to liquidity-shock detection and response](algorithms/concepts/recursive-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 7 | 8,487 | ⏳ Reference only | Unable to find more details |
+| [Topology-aware approach to delay-aware portfolio allocation](algorithms/concepts/topology-aware-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 5 | 8,488 | ⛔ Not useful | Unable to find more details |
+| [Path-signature-based approach to regime-aware allocation](algorithms/concepts/path-signature-based-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 5 | 8,489 | ⛔ Not useful | Unable to find more details |
+| [Evolutionary-optimization-based approach to leveraged-ETF exposure rebalancing](algorithms/concepts/evolutionary-optimization-based-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 5 | 8,491 | ⛔ Not useful | Unable to find more details |
+| [Integrated approach to path-signature time-series forecasting](algorithms/concepts/integrated-approach-to-path-signature-time-series-forecasting.md) | Path-signature time-series forecasting | 5 | 8,492 | ⛔ Not useful | Unable to find more details |
+| [Spectral approach to ETF rotation](algorithms/concepts/spectral-approach-to-etf-rotation.md) | ETF rotation | 5 | 8,493 | ⏳ Reference only | Unable to find more details |
+| [Quantum/quantum-inspired approach to liquidity-shock detection and response](algorithms/concepts/quantum-quantum-inspired-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 5 | 8,495 | ⛔ Not useful | Unable to find more details |
+| [Markov-state-based approach to regime-aware allocation](algorithms/concepts/markov-state-based-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 5 | 8,497 | ⏳ Worth testing | Evidence found |
+| [Adaptive approach to leveraged-ETF exposure rebalancing](algorithms/concepts/adaptive-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 5 | 8,500 | ⏳ Worth testing | Evidence found |
+| [Path-signature-based approach to path-signature time-series forecasting](algorithms/concepts/path-signature-based-approach-to-path-signature-time-series-forecasting.md) | Path-signature time-series forecasting | 10 | 8,501 | ⛔ Not useful | Unable to find more details |
+| [Evolutionary-optimization-based approach to benchmark index tracking](algorithms/concepts/evolutionary-optimization-based-approach-to-benchmark-index-tracking.md) | Benchmark index tracking | 5 | 8,503 | ⛔ Not useful | Unable to find more details |
+| [Koopman-operator-based approach to liquidity-shock detection and response](algorithms/concepts/koopman-operator-based-approach-to-liquidity-shock-detection-and-response.md) | Liquidity-shock detection and response | 5 | 8,504 | ⛔ Not useful | Unable to find more details |
+| [Wavelet-based approach to delay-aware portfolio allocation](algorithms/concepts/wavelet-based-approach-to-delay-aware-portfolio-allocation.md) | Delay-aware portfolio allocation | 5 | 8,505 | ⏳ Reference only | Unable to find more details |
+| [Nonlinear approach to regime-aware allocation](algorithms/concepts/nonlinear-approach-to-regime-aware-allocation.md) | Regime-aware allocation | 5 | 8,506 | ⏳ Reference only | Unable to find more details |
+| [Markov-state-based approach to sector allocation](algorithms/concepts/markov-state-based-approach-to-sector-allocation.md) | Sector allocation | 5 | 8,507 | ⛔ Not useful | Evidence found |
+| [Topology-aware approach to leveraged-ETF exposure rebalancing](algorithms/concepts/topology-aware-approach-to-leveraged-etf-exposure-rebalancing.md) | Leveraged-ETF exposure rebalancing | 5 | 8,508 | ⛔ Not useful | Unable to find more details |
+| [Adaptive approach to benchmark index tracking](algorithms/concepts/adaptive-approach-to-benchmark-index-tracking.md) | Benchmark index tracking | 5 | 8,511 | ⛔ Not useful | Unable to find more details |
+| [Distributionally robust approach to trade-execution optimization](algorithms/concepts/distributionally-robust-approach-to-trade-execution-optimization.md) | Trade-execution optimisation | 1 | 13,833 | ⛔ Not useful | Unable to find more details |
+| [Topology-aware approach to benchmark index tracking](algorithms/concepts/topology-aware-approach-to-benchmark-index-tracking.md) | Benchmark index tracking | 5 | 13,846 | ⛔ Not useful | Unable to find more details |
+| [Markov-state-based approach to cross-sectional stock ranking](algorithms/concepts/markov-state-based-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 5 | 13,848 | ⛔ Not useful | Unable to find more details |
+| [Integrated approach to cross-sectional stock ranking](algorithms/concepts/integrated-approach-to-cross-sectional-stock-ranking.md) | Cross-sectional stock ranking | 5 | 13,850 | ⛔ Not useful | Unable to find more details |
+
 ### Research gaps
 
 Ranks 4–100 were researched from what web search could reach (full texts
@@ -4579,8 +6109,10 @@ it could resolve are real papers on unrelated subjects: black-hole physics
 (2106.09876). The pages now name them; the rest could not be identified.
 Several real IDs are attached to the wrong entry: arXiv 2009.08295,
 Morrill et al.'s neural rough differential equations, is cited for four
-pricing and hedging entries. For ranks 426–700, the Evidence column of
-"Researched concepts" above gives each concept's status. What remains:
+pricing and hedging entries. Ranks 101–199 were researched the same way on 2026-10-30. For ranks
+426–700 the Evidence column of "Researched concepts" above gives each
+concept's status, and for ranks 701–14,225 the Evidence column of
+"Triaged concepts". What remains:
 
 | Status | Meaning |
 |---|---|
@@ -4606,6 +6138,60 @@ pricing and hedging entries. For ranks 426–700, the Evidence column of
 | RK98 | [Adversarial Domain Generalization Cross-Market Momentum](algorithms/adversarial-domain-generalization-cross-market-momentum.md) | Unable to find more details | Any application of adversarial domain generalisation to momentum. |
 | RK99 | [Conformally Constrained Risk Parity Portfolio](algorithms/conformally-constrained-risk-parity-portfolio.md) | Unable to find more details | Any method combining equal risk contribution with conformal bounds. |
 | RK100 | [Causal Discovery Directed Acyclic Graph (DAG) Pair Selection](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md) | Unable to find more details | Any study using PC or NOTEARS causal discovery for pair selection. |
+| RK101 | [Dynamic Copula-EVT Tail Risk Relative Value Arbitrage](algorithms/dynamic-copula-evt-tail-risk-relative-value-arbitrage.md) | Unable to find more details | No study of copula-EVT option relative value. |
+| RK103 | [Hurst-Exponent Trend / Mean-Reversion Regime Gate](algorithms/hurst-exponent-trend-mean-reversion-regime-gate.md) | Unable to find more details | No peer-reviewed test of a Hurst gate. |
+| RK104 | [Bayesian Online Changepoint Regime Gate](algorithms/bayesian-online-changepoint-regime-gate.md) | Unable to find more details | No trading study of a changepoint gate. |
+| RK105 | [Adaptive Range-Breakout with Volatility Filter](algorithms/adaptive-range-breakout-with-volatility-filter.md) | Unable to find more details | No study of the filtered breakout as specified. |
+| RK109 | [Sparse Graphical Lasso Cross-Asset Spillover Predictor](algorithms/sparse-graphical-lasso-cross-asset-spillover-predictor.md) | Unable to find more details | No trading study of glasso spillovers. |
+| RK113 | [Wavelet Transform Denoised Breakout System](algorithms/wavelet-transform-denoised-breakout-system.md) | Unable to find more details | No causal test of the breakout system. |
+| RK115 | [EMA Pullback Continuation](algorithms/ema-pullback-continuation.md) | Unable to find more details | No study of EMA pullback entries. |
+| RK118 | [Minimum-Correlation Portfolio](algorithms/minimum-correlation-portfolio.md) | Unable to find more details | No independent out-of-sample test seen. |
+| RK119 | [Hierarchical Equal Risk Contribution (HERC)](algorithms/hierarchical-equal-risk-contribution-herc.md) | Unable to find more details | Only the author's out-of-sample claims seen. |
+| RK124 | [Optimal Transport Wasserstein Barycenter Asset Allocation](algorithms/optimal-transport-wasserstein-barycenter-asset-allocation.md) | Unable to find more details | Only a 2024 preprint found. |
+| RK126 | [Entropic Risk Measure Portfolio Optimization](algorithms/entropic-risk-measure-portfolio-optimization.md) | Unable to find more details | No empirical portfolio study. |
+| RK128 | [Fractional Order Cointegration Residual Mean-Reversion](algorithms/fractional-order-cointegration-residual-mean-reversion.md) | Unable to find more details | No study of this fractional-cointegration strategy. |
+| RK131 | [Markov-Switching Vector Error Correction Model (MS-VECM) Arbitrage](algorithms/markov-switching-vector-error-correction-model-ms-vecm-arbitrage.md) | Unable to find more details | No trading study of MS-VECM arbitrage. |
+| RK135 | [Fractional Order Cointegration Vector AutoRegressive (VAR) Strategy](algorithms/fractional-order-cointegration-vector-autoregressive-var-strategy.md) | Unable to find more details | No study of this fractional-cointegration strategy. |
+| RK136 | [Graph Attention Network Dynamic Cointegration Basket Selection](algorithms/graph-attention-network-dynamic-cointegration-basket-selection.md) | Unable to find more details | No GNN cointegration study. |
+| RK137 | [Fractional Cointegration Hawkes Process Lead-Lag Arbitrage](algorithms/fractional-cointegration-hawkes-process-lead-lag-arbitrage.md) | Unable to find more details | No study of this fractional-cointegration strategy. |
+| RK138 | [Fractional Order Vector Error Correction Model (VECM) Cointegration Strategy](algorithms/fractional-order-vector-error-correction-model-vecm-cointegration-strategy.md) | Unable to find more details | No study of this fractional-cointegration strategy. |
+| RK139 | [Fractional Order Cointegration Dynamic Copula Trading System](algorithms/fractional-order-cointegration-dynamic-copula-trading-system.md) | Unable to find more details | No study of this fractional-cointegration strategy. |
+| RK140 | [Neural Rough Path Signature Delay-Differential Cointegration Spread Model](algorithms/neural-rough-path-signature-delay-differential-cointegration-spread-model.md) | Unable to find more details | No study of the combination. |
+| RK141 | [Fractional Order Cointegration Hawkes Point Process Statistical Arbitrage](algorithms/fractional-order-cointegration-hawkes-point-process-statistical-arbitrage.md) | Unable to find more details | No study of this fractional-cointegration strategy. |
+| RK142 | [Fractional Order Cointegration Vector Error Correction Hawkes Strategy](algorithms/fractional-order-cointegration-vector-error-correction-hawkes-strategy.md) | Unable to find more details | No study of this fractional-cointegration strategy. |
+| RK143 | [Fractional Order Cointegration Hawkes Jump-Diffusion Arbitrage](algorithms/fractional-order-cointegration-hawkes-jump-diffusion-arbitrage.md) | Unable to find more details | No study of this fractional-cointegration strategy. |
+| RK145 | [Multi-Scale Wavelet LSTM Cross-Sectional Alpha Ranker](algorithms/multi-scale-wavelet-lstm-cross-sectional-alpha-ranker.md) | Unable to find more details | No study of the architecture. |
+| RK146 | [Connors RSI-2 Mean Reversion](algorithms/connors-rsi-2-mean-reversion.md) | Unable to find more details | No independent out-of-sample test found. |
+| RK148 | [Williams %R Reversal](algorithms/williams-r-reversal.md) | Unable to find more details | No study specific to Williams %R. |
+| RK150 | [VWAP Reversion](algorithms/vwap-reversion.md) | Unable to find more details | No peer-reviewed test of VWAP reversion. |
+| RK155 | [Wasserstein Distributionally Robust Neural Operator Portfolio Optimization](algorithms/wasserstein-distributionally-robust-neural-operator-portfolio-optimization.md) | Unable to find more details | No portfolio study of the combination. |
+| RK156 | [Neural Operator Delay-Differential Stochastic Control Portfolio Optimization](algorithms/neural-operator-delay-differential-stochastic-control-portfolio-optimization.md) | Unable to find more details | No study found. |
+| RK157 | [Wasserstein Distributionally Robust Neural Operator Optimal Portfolio](algorithms/wasserstein-distributionally-robust-neural-operator-optimal-portfolio.md) | Unable to find more details | No portfolio study of the combination. |
+| RK158 | [Fractional Cointegration Multiscale Wavelet Arbitrage](algorithms/fractional-cointegration-multiscale-wavelet-arbitrage.md) | Unable to find more details | No study of this fractional-cointegration strategy. |
+| RK159 | [Koopman Operator Non-Linear Cointegration Spread Strategy](algorithms/koopman-operator-non-linear-cointegration-spread-strategy.md) | Unable to find more details | No study found. |
+| RK162 | [Stochastic Oscillator Reversal](algorithms/stochastic-oscillator-reversal.md) | Unable to find more details | No study specific to the stochastic oscillator. |
+| RK165 | [Fractional Order Cointegration Dynamic Copula Portfolio Optimizer](algorithms/fractional-order-cointegration-dynamic-copula-portfolio-optimizer.md) | Unable to find more details | No study of this fractional-cointegration strategy. |
+| RK173 | [Broken-Wing Butterfly](algorithms/broken-wing-butterfly.md) | Unable to find more details | No study found. |
+| RK174 | [Put Debit Spread Momentum](algorithms/put-debit-spread-momentum.md) | Unable to find more details | No study found. |
+| RK177 | [Variational Autoencoder (VAE) Latent Yield Curve Arbitrage](algorithms/variational-autoencoder-vae-latent-yield-curve-arbitrage.md) | Unable to find more details | No trading study found. |
+| RK178 | [Manifold Learning Diffusion Map Statistical Arbitrage](algorithms/manifold-learning-diffusion-map-statistical-arbitrage.md) | Unable to find more details | No trading study found. |
+| RK179 | [Fractional Order Kalman Filter Dynamic Hedging](algorithms/fractional-order-kalman-filter-dynamic-hedging.md) | Unable to find more details | No study of the fractional form. |
+| RK180 | [Persistent Homology Betti-1 Loop Topological Momentum Strategy](algorithms/persistent-homology-betti-1-loop-topological-momentum-strategy.md) | Unable to find more details | No study found. |
+| RK182 | [Quantum Annealing Graph Partitioning Statistical Arbitrage](algorithms/quantum-annealing-graph-partitioning-statistical-arbitrage.md) | Unable to find more details | No trading study of the quantum formulation. |
+| RK183 | [Persistent Homology Betti-0 Multiscale Clustering Arbitrage](algorithms/persistent-homology-betti-0-multiscale-clustering-arbitrage.md) | Unable to find more details | No study of topological relative-value trading. |
+| RK184 | [Quantum Approximate Optimization Algorithm (QAOA) Max-Cut Statistical Arbitrage](algorithms/quantum-approximate-optimization-algorithm-qaoa-max-cut-statistical-arbitrage.md) | Unable to find more details | No trading study of the quantum formulation. |
+| RK185 | [Riemannian Manifold Metric Hierarchical Risk Parity](algorithms/riemannian-manifold-metric-hierarchical-risk-parity.md) | Unable to find more details | No study found. |
+| RK186 | [Quantum Annealing Binary Matrix Factorization Statistical Arbitrage](algorithms/quantum-annealing-binary-matrix-factorization-statistical-arbitrage.md) | Unable to find more details | No trading study of the quantum formulation. |
+| RK188 | [Riemannian Manifold Metric Persistent Homology Risk Parity](algorithms/riemannian-manifold-metric-persistent-homology-risk-parity.md) | Unable to find more details | No study found. |
+| RK189 | [Persistent Homology Betti-1 Cyclical Persistence Landscape Arbitrage](algorithms/persistent-homology-betti-1-cyclical-persistence-landscape-arbitrage.md) | Unable to find more details | No study of topological relative-value trading. |
+| RK190 | [Neural Rough Path Signature Hawkes Jump-Diffusion Spread Arbitrage](algorithms/neural-rough-path-signature-hawkes-jump-diffusion-spread-arbitrage.md) | Unable to find more details | No study found. |
+| RK191 | [Graph Attention Network Riemannian Manifold Dynamic Risk Parity](algorithms/graph-attention-network-riemannian-manifold-dynamic-risk-parity.md) | Unable to find more details | No study found. |
+| RK192 | [Quantum Annealing Maximum Independent Set Statistical Arbitrage](algorithms/quantum-annealing-maximum-independent-set-statistical-arbitrage.md) | Unable to find more details | No trading study of the quantum formulation. |
+| RK193 | [Persistent Homology Betti-0 Persistence Landscape Clustering Arbitrage](algorithms/persistent-homology-betti-0-persistence-landscape-clustering-arbitrage.md) | Unable to find more details | No study of topological relative-value trading. |
+| RK196 | [Randomized Matrix Pencil Lead-Lag Cross-Asset Predictor](algorithms/randomized-matrix-pencil-lead-lag-cross-asset-predictor.md) | Unable to find more details | No finance study of the matrix pencil. |
+| RK197 | [Topological Persistent Betti Curve Macro Regime Switcher](algorithms/topological-persistent-betti-curve-macro-regime-switcher.md) | Unable to find more details | No study of Betti-curve regime switching. |
+| RK198 | [Wasserstein Generative Adversarial Network Multi-Asset Allocation (WGAN-MA)](algorithms/wasserstein-generative-adversarial-network-multi-asset-allocation-wgan-ma.md) | Unable to find more details | No allocation results seen. |
+| RK199 | [Persistent Homology Betti-1 Persistence Landscape Arbitrage](algorithms/persistent-homology-betti-1-persistence-landscape-arbitrage.md) | Unable to find more details | No study of topological relative-value trading. |
 | RK201 | [Koopman Operator Predictive Control Statistical Arbitrage](algorithms/koopman-operator-predictive-control-statistical-arbitrage.md) | Unable to find more details | No peer-reviewed out-of-sample study of Koopman/MPC trading found; the CSV's reference, arXiv 2004.05678, is a mathematical-physics paper ("Stable polynomials and crystalline measures"), unrelated to trading. |
 | RK202 | [Fractional Brownian Motion Multi-Scale Trend Scanning Strategy](algorithms/fractional-brownian-motion-multi-scale-trend-scanning-strategy.md) | Unable to find more details | No study of combining fractional-Brownian-motion tests with multi-horizon trend scanning as a strategy found. |
 | RK203 | [Koopman Operator Model Predictive Control Spread Equilibrium](algorithms/koopman-operator-model-predictive-control-spread-equilibrium.md) | Unable to find more details | No peer-reviewed out-of-sample study of Koopman/MPC trading found; the CSV's reference, arXiv 2004.05678, is a mathematical-physics paper ("Stable polynomials and crystalline measures"), unrelated to trading. |
@@ -4739,9 +6325,9 @@ pricing and hedging entries. For ranks 426–700, the Evidence column of
 
 | Rows | Algorithms | Yes | Research code | Partial | No |
 |---|---|---|---|---|---|
-| Specific (ranks 1–425) | 425 | 13 | 295 | 41 | 76 |
+| Specific (ranks 1–425) | 425 | 15 | 353 | 41 | 16 |
 | Title-reconstructed (ranks 426–14,225) | 13,800 | 0 | 0 | 0 | 13,800 |
-| All | 14,225 | 13 | 295 | 41 | 13,876 |
+| All | 14,225 | 15 | 353 | 41 | 13,816 |
 
 #### Specific algorithms
 
@@ -4847,105 +6433,105 @@ pricing and hedging entries. For ranks 426–700, the Evidence column of
 | 98 | Adversarial Domain Generalization Cross-Market Momentum | Domain adaptation / Machine learning momentum | 175 | 25 | Research code | RK98 | [**researched**](algorithms/adversarial-domain-generalization-cross-market-momentum.md) |
 | 99 | Conformally Constrained Risk Parity Portfolio | Conformal prediction / Portfolio construction | 18 | 47 | Partial | RK99 | [**researched**](algorithms/conformally-constrained-risk-parity-portfolio.md) |
 | 100 | Causal Discovery Directed Acyclic Graph (DAG) Pair Selection | Causal inference / Statistical arbitrage | 324 | 6478 | Research code | RK100 | [**researched**](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md) |
-| 101 | Dynamic Copula-EVT Tail Risk Relative Value Arbitrage | Extreme value theory / Copulas / Relative value | 355 | 10445 | No | — | [card](algorithms/dynamic-copula-evt-tail-risk-relative-value-arbitrage.md) |
-| 102 | Hidden Markov Model Regime Switching | Regime / machine learning | 290 | 127 | Research code | C-R3 | [card](algorithms/hidden-markov-model-regime-switching.md) |
-| 103 | Hurst-Exponent Trend / Mean-Reversion Regime Gate | Regime filter | 52 | 93 | Research code | C-MR4 | [card](algorithms/hurst-exponent-trend-mean-reversion-regime-gate.md) |
-| 104 | Bayesian Online Changepoint Regime Gate | Regime detection / Bayesian | 212 | 258 | No | — | [card](algorithms/bayesian-online-changepoint-regime-gate.md) |
-| 105 | Adaptive Range-Breakout with Volatility Filter | Trend / breakout | 17 | 85 | No | — | [card](algorithms/adaptive-range-breakout-with-volatility-filter.md) |
-| 106 | Hierarchical Hidden Markov Model (HHMM) Regime Switcher | Probabilistic regime / Hidden Markov Model | 106 | 259 | No | — | [card](algorithms/hierarchical-hidden-markov-model-hhmm-regime-switcher.md) |
-| 107 | Entropy-Based Portfolio Diversification Optimization | Information Theory / Portfolio Construction | 63 | 76 | No | — | [card](algorithms/entropy-based-portfolio-diversification-optimization.md) |
-| 108 | Intraday ETF Relative-Value Arbitrage | Statistical arbitrage / intraday | 195 | 279 | Research code | A6 | [card](algorithms/intraday-etf-relative-value-arbitrage.md) |
-| 109 | Sparse Graphical Lasso Cross-Asset Spillover Predictor | Graphical models / Econometrics / Risk management | 64 | 145 | No | — | [card](algorithms/sparse-graphical-lasso-cross-asset-spillover-predictor.md) |
-| 110 | Opening Range Breakout (ORB) | Trend / breakout | 131 | 218 | Research code | C-M2, N2 | [card](algorithms/opening-range-breakout-orb.md) |
-| 111 | Ichimoku Cloud Trend Filter | Trend / breakout | 21 | 88 | No | — | [card](algorithms/ichimoku-cloud-trend-filter.md) |
-| 112 | Kaufman Adaptive Moving Average (KAMA) Trend | Adaptive trend | 51 | 92 | Partial | V15 | [card](algorithms/kaufman-adaptive-moving-average-kama-trend.md) |
-| 113 | Wavelet Transform Denoised Breakout System | Signal processing / Technical trend | 255 | 7556 | No | — | [card](algorithms/wavelet-transform-denoised-breakout-system.md) |
-| 114 | Volatility Risk Premium (Short Vol + Tail Hedge) | Options / volatility | 40 | 246 | Research code | S1 | [card](algorithms/volatility-risk-premium-short-vol-tail-hedge.md) |
-| 115 | EMA Pullback Continuation | Trend / pullback | 1 | 234 | No | — | [card](algorithms/ema-pullback-continuation.md) |
-| 116 | Markowitz Mean-Variance Optimization | Portfolio construction | 42 | 66 | Research code | Q13 | [card](algorithms/markowitz-mean-variance-optimization.md) |
-| 117 | Equal-Weight Rebalancing | Portfolio construction | 59 | 22 | Partial | X5 | [card](algorithms/equal-weight-rebalancing.md) |
-| 118 | Minimum-Correlation Portfolio | Portfolio optimization | 6 | 43 | No | — | [card](algorithms/minimum-correlation-portfolio.md) |
-| 119 | Hierarchical Equal Risk Contribution (HERC) | Portfolio optimization / clustering | 7 | 44 | No | — | [card](algorithms/hierarchical-equal-risk-contribution-herc.md) |
-| 120 | Nested Cluster Optimization (NCO) | Portfolio optimization / clustering | 147 | 45 | No | — | [card](algorithms/nested-cluster-optimization-nco.md) |
-| 121 | Benchmark-Tracking Enhanced Indexing | Portfolio optimization / index enhancement | 148 | 72 | No | — | [card](algorithms/benchmark-tracking-enhanced-indexing.md) |
-| 122 | Robust Wasserstein Distributionally Robust Portfolio Optimization | Portfolio optimization / Robust statistics | 114 | 184 | No | — | [card](algorithms/robust-wasserstein-distributionally-robust-portfolio-optimization.md) |
-| 123 | Adversarial Robust Wasserstein Portfolio Optimization | Portfolio optimization / Robust statistics | 115 | 185 | No | — | [card](algorithms/adversarial-robust-wasserstein-portfolio-optimization.md) |
-| 124 | Optimal Transport Wasserstein Barycenter Asset Allocation | Optimal Transport / Portfolio Construction | 228 | 142 | No | — | [card](algorithms/optimal-transport-wasserstein-barycenter-asset-allocation.md) |
-| 125 | Continuous-Time Mean-Field Portfolio Game with Competition | Game Theory / Mean-field games / Portfolio theory | 176 | 77 | No | — | [card](algorithms/continuous-time-mean-field-portfolio-game-with-competition.md) |
-| 126 | Entropic Risk Measure Portfolio Optimization | Risk-sensitive optimization / Portfolio construction | 65 | 79 | No | — | [card](algorithms/entropic-risk-measure-portfolio-optimization.md) |
-| 127 | Conformal Prediction Risk-Bounded Alpha Stacking | Conformal prediction / Ensemble modeling / Portfolio construction | 217 | 49 | No | — | [card](algorithms/conformal-prediction-risk-bounded-alpha-stacking.md) |
-| 128 | Fractional Order Cointegration Residual Mean-Reversion | Statistical arbitrage / Fractional time series | 171 | 228 | No | — | [card](algorithms/fractional-order-cointegration-residual-mean-reversion.md) |
-| 129 | Inverse-Volatility Allocation | Portfolio construction / risk scaling | 146 | 41 | Partial | A5 | [card](algorithms/inverse-volatility-allocation.md) |
-| 130 | Extreme Value Theory (EVT) Dynamic Tail-Risk Hedge | Quantitative risk management / Tail risk | 214 | 260 | No | — | [card](algorithms/extreme-value-theory-evt-dynamic-tail-risk-hedge.md) |
-| 131 | Markov-Switching Vector Error Correction Model (MS-VECM) Arbitrage | Econometric / Regime-switching cointegration | 172 | 19 | No | — | [card](algorithms/markov-switching-vector-error-correction-model-ms-vecm-arbitrage.md) |
-| 132 | Conformal Risk-Bounded Dynamic Portfolio Allocation | Conformal prediction / Risk management | 157 | 143 | Partial | V13 | [card](algorithms/conformal-risk-bounded-dynamic-portfolio-allocation.md) |
-| 133 | Protective Put / Collar | Options / hedging | 252 | 121 | Research code | S1 | [card](algorithms/protective-put-collar.md) |
-| 134 | Fractional Kelly Position Sizing | Position sizing | 47 | 70 | Research code | C-S2 | [card](algorithms/fractional-kelly-position-sizing.md) |
-| 135 | Fractional Order Cointegration Vector AutoRegressive (VAR) Strategy | Statistical arbitrage / Fractional time series / Econometrics | 178 | 285 | No | — | [card](algorithms/fractional-order-cointegration-vector-autoregressive-var-strategy.md) |
-| 136 | Graph Attention Network Dynamic Cointegration Basket Selection | Graph neural networks / Cointegration / Statistical arbitrage | 292 | 305 | No | — | [card](algorithms/graph-attention-network-dynamic-cointegration-basket-selection.md) |
-| 137 | Fractional Cointegration Hawkes Process Lead-Lag Arbitrage | Fractional time series / Point processes / Statistical arbitrage | 311 | 9361 | No | — | [card](algorithms/fractional-cointegration-hawkes-process-lead-lag-arbitrage.md) |
-| 138 | Fractional Order Vector Error Correction Model (VECM) Cointegration Strategy | Fractional time series / Cointegration / Statistical arbitrage | 184 | 291 | No | — | [card](algorithms/fractional-order-vector-error-correction-model-vecm-cointegration-strategy.md) |
-| 139 | Fractional Order Cointegration Dynamic Copula Trading System | Fractional time series / Copulas / Statistical arbitrage | 187 | 293 | No | — | [card](algorithms/fractional-order-cointegration-dynamic-copula-trading-system.md) |
-| 140 | Neural Rough Path Signature Delay-Differential Cointegration Spread Model | Rough path theory / Delay differential equations / Statistical arbitrage | 351 | 6479 | No | — | [card](algorithms/neural-rough-path-signature-delay-differential-cointegration-spread-model.md) |
-| 141 | Fractional Order Cointegration Hawkes Point Process Statistical Arbitrage | Fractional time series / Point processes / Statistical arbitrage | 360 | 10658 | No | — | [card](algorithms/fractional-order-cointegration-hawkes-point-process-statistical-arbitrage.md) |
-| 142 | Fractional Order Cointegration Vector Error Correction Hawkes Strategy | Fractional time series / Point processes / Statistical arbitrage | 361 | 10659 | No | — | [card](algorithms/fractional-order-cointegration-vector-error-correction-hawkes-strategy.md) |
-| 143 | Fractional Order Cointegration Hawkes Jump-Diffusion Arbitrage | Fractional time series / Point processes / Statistical arbitrage | 299 | 10165 | No | — | [card](algorithms/fractional-order-cointegration-hawkes-jump-diffusion-arbitrage.md) |
-| 144 | Alpha Stacking / Ensemble Portfolio Optimizer | Portfolio construction / ensemble | 149 | 73 | Partial | C-RJ4 | [card](algorithms/alpha-stacking-ensemble-portfolio-optimizer.md) |
-| 145 | Multi-Scale Wavelet LSTM Cross-Sectional Alpha Ranker | Signal processing / Recurrent neural networks / Equity factor modeling | 297 | 240 | No | — | [card](algorithms/multi-scale-wavelet-lstm-cross-sectional-alpha-ranker.md) |
-| 146 | Connors RSI-2 Mean Reversion | Mean reversion | 11 | 116 | No | — | [card](algorithms/connors-rsi-2-mean-reversion.md) |
-| 147 | Moving-Average Z-Score Reversion | Mean reversion | 30 | 156 | Partial | Q9 | [card](algorithms/moving-average-z-score-reversion.md) |
-| 148 | Williams %R Reversal | Mean reversion | 86 | 16 | Partial | V15 | [card](algorithms/williams-r-reversal.md) |
-| 149 | Gap-Fade Strategy | Mean reversion / intraday | 133 | 157 | No | — | [card](algorithms/gap-fade-strategy.md) |
-| 150 | VWAP Reversion | Mean reversion / intraday | 222 | 424 | Research code | C-MS3 | [card](algorithms/vwap-reversion.md) |
-| 151 | Short-Term Stock Reversal | Mean reversion / cross-sectional | 12 | 62 | Research code | C-MR1 | [card](algorithms/short-term-stock-reversal.md) |
-| 152 | Same-Calendar-Month Seasonality | Seasonality / event | 36 | 119 | No | — | [card](algorithms/same-calendar-month-seasonality.md) |
-| 153 | Turn-of-the-Month Effect | Seasonality / event | 37 | 65 | No | — | [card](algorithms/turn-of-the-month-effect.md) |
-| 154 | Overnight Equity Anomaly | Seasonality / intraday | 91 | 160 | Research code | — | [card](algorithms/overnight-equity-anomaly.md) |
-| 155 | Wasserstein Distributionally Robust Neural Operator Portfolio Optimization | Robust statistics / Neural operators / Portfolio optimization | 336 | 198 | No | — | [card](algorithms/wasserstein-distributionally-robust-neural-operator-portfolio-optimization.md) |
-| 156 | Neural Operator Delay-Differential Stochastic Control Portfolio Optimization | Neural operators / Stochastic control / Portfolio optimization | 318 | 276 | No | — | [card](algorithms/neural-operator-delay-differential-stochastic-control-portfolio-optimization.md) |
-| 157 | Wasserstein Distributionally Robust Neural Operator Optimal Portfolio | Robust statistics / Neural operators / Portfolio optimization | 337 | 215 | No | — | [card](algorithms/wasserstein-distributionally-robust-neural-operator-optimal-portfolio.md) |
-| 158 | Fractional Cointegration Multiscale Wavelet Arbitrage | Fractional calculus / Wavelets / Statistical arbitrage | 316 | 10283 | No | — | [card](algorithms/fractional-cointegration-multiscale-wavelet-arbitrage.md) |
-| 159 | Koopman Operator Non-Linear Cointegration Spread Strategy | Operator theory / Cointegration / Statistical arbitrage | 180 | 288 | No | — | [card](algorithms/koopman-operator-non-linear-cointegration-spread-strategy.md) |
-| 160 | RSI Oversold/Overbought Reversion | Mean reversion | 28 | 61 | Research code | Q10, V3 | [card](algorithms/rsi-oversold-overbought-reversion.md) |
-| 161 | Bollinger Band Mean Reversion | Mean reversion | 29 | 89 | Partial | Q9, X4 | [card](algorithms/bollinger-band-mean-reversion.md) |
-| 162 | Stochastic Oscillator Reversal | Mean reversion | 85 | 80 | Partial | V15 | [card](algorithms/stochastic-oscillator-reversal.md) |
-| 163 | FX Mean-Reversion / Momentum Hybrid | Mean reversion / FX | 87 | 63 | No | — | [card](algorithms/fx-mean-reversion-momentum-hybrid.md) |
-| 164 | Grid / Price-Ladder Trading | Mean reversion / inventory | 33 | 64 | Yes | V1, V2, V3, V4, V5, C-G2, C-G3, C-G4 | [card](algorithms/grid-price-ladder-trading.md) |
-| 165 | Fractional Order Cointegration Dynamic Copula Portfolio Optimizer | Fractional time series / Copulas / Portfolio construction | 250 | 155 | No | — | [card](algorithms/fractional-order-cointegration-dynamic-copula-portfolio-optimizer.md) |
-| 166 | Calendar / Diagonal Spread | Options / volatility | 201 | 253 | No | — | [card](algorithms/calendar-diagonal-spread.md) |
-| 167 | Delta-Hedged Volatility Arbitrage | Options / volatility | 328 | 6473 | No | — | [card](algorithms/delta-hedged-volatility-arbitrage.md) |
-| 168 | VIX Futures Term-Structure Strategy | Options / volatility | 92 | 265 | Partial | — | [card](algorithms/vix-futures-term-structure-strategy.md) |
-| 169 | Volatility Skew Risk Premium | Options / volatility risk premium | 99 | 39 | No | — | [card](algorithms/volatility-skew-risk-premium.md) |
-| 170 | Earnings Volatility Crush / Delta-Hedged Event Options | Options / event volatility | 169 | 165 | No | — | [card](algorithms/earnings-volatility-crush-delta-hedged-event-options.md) |
-| 171 | Put-Call Parity Conversion / Reversal Arbitrage | Options / no-arbitrage | 100 | 224 | No | — | [card](algorithms/put-call-parity-conversion-reversal-arbitrage.md) |
-| 172 | Box-Spread Financing Arbitrage | Options / synthetic lending | 209 | 134 | No | — | [card](algorithms/box-spread-financing-arbitrage.md) |
-| 173 | Broken-Wing Butterfly | Options / asymmetric convexity | 210 | 225 | No | — | [card](algorithms/broken-wing-butterfly.md) |
-| 174 | Put Debit Spread Momentum | Options / directional risk-defined | 101 | 40 | No | — | [card](algorithms/put-debit-spread-momentum.md) |
-| 175 | Quantum Approximate Optimization Algorithm (QAOA) Allocation | Quantum computing / Portfolio optimization | 219 | 183 | No | — | [card](algorithms/quantum-approximate-optimization-algorithm-qaoa-allocation.md) |
-| 176 | Rough Heston Stochastic Volatility Calibration | Econometric volatility / Mathematical finance | 358 | 2119 | No | — | [card](algorithms/rough-heston-stochastic-volatility-calibration.md) |
-| 177 | Variational Autoencoder (VAE) Latent Yield Curve Arbitrage | Deep Learning / Fixed Income Relative Value | 264 | 110 | No | — | [card](algorithms/variational-autoencoder-vae-latent-yield-curve-arbitrage.md) |
-| 178 | Manifold Learning Diffusion Map Statistical Arbitrage | Manifold learning / Statistical arbitrage | 295 | 10219 | No | — | [card](algorithms/manifold-learning-diffusion-map-statistical-arbitrage.md) |
-| 179 | Fractional Order Kalman Filter Dynamic Hedging | Fractional calculus / State-space models / Statistical arbitrage | 325 | 10230 | No | — | [card](algorithms/fractional-order-kalman-filter-dynamic-hedging.md) |
-| 180 | Persistent Homology Betti-1 Loop Topological Momentum Strategy | Topological data analysis / Momentum / Cycle detection | 118 | 33 | No | — | [card](algorithms/persistent-homology-betti-1-loop-topological-momentum-strategy.md) |
-| 181 | Wasserstein Distributionally Robust Mean-CVaR Dynamic Allocation | Robust statistics / Tail risk allocation | 283 | 169 | No | — | [card](algorithms/wasserstein-distributionally-robust-mean-cvar-dynamic-allocation.md) |
-| 182 | Quantum Annealing Graph Partitioning Statistical Arbitrage | Quantum computing / Graph partitioning / Statistical arbitrage | 326 | 1809 | No | — | [card](algorithms/quantum-annealing-graph-partitioning-statistical-arbitrage.md) |
-| 183 | Persistent Homology Betti-0 Multiscale Clustering Arbitrage | Topological data analysis / Clustering / Statistical arbitrage | 120 | 199 | No | — | [card](algorithms/persistent-homology-betti-0-multiscale-clustering-arbitrage.md) |
-| 184 | Quantum Approximate Optimization Algorithm (QAOA) Max-Cut Statistical Arbitrage | Quantum computing / Max-Cut / Statistical arbitrage | 327 | 1707 | No | — | [card](algorithms/quantum-approximate-optimization-algorithm-qaoa-max-cut-statistical-arbitrage.md) |
-| 185 | Riemannian Manifold Metric Hierarchical Risk Parity | Geometric deep learning / Riemannian geometry / Portfolio construction | 249 | 205 | No | — | [card](algorithms/riemannian-manifold-metric-hierarchical-risk-parity.md) |
-| 186 | Quantum Annealing Binary Matrix Factorization Statistical Arbitrage | Quantum computing / Matrix factorization / Statistical arbitrage | 323 | 290 | No | — | [card](algorithms/quantum-annealing-binary-matrix-factorization-statistical-arbitrage.md) |
-| 187 | Persistent Homology Betti-0 Connected Component Risk Parity | Topological data analysis / Risk parity / Portfolio construction | 124 | 207 | No | — | [card](algorithms/persistent-homology-betti-0-connected-component-risk-parity.md) |
-| 188 | Riemannian Manifold Metric Persistent Homology Risk Parity | Geometric deep learning / Riemannian geometry / Topological risk parity | 186 | 151 | No | — | [card](algorithms/riemannian-manifold-metric-persistent-homology-risk-parity.md) |
-| 189 | Persistent Homology Betti-1 Cyclical Persistence Landscape Arbitrage | Topological data analysis / Statistical arbitrage / Persistence landscapes | 125 | 208 | No | — | [card](algorithms/persistent-homology-betti-1-cyclical-persistence-landscape-arbitrage.md) |
-| 190 | Neural Rough Path Signature Hawkes Jump-Diffusion Spread Arbitrage | Rough path theory / Point processes / Statistical arbitrage | 352 | 6480 | No | — | [card](algorithms/neural-rough-path-signature-hawkes-jump-diffusion-spread-arbitrage.md) |
-| 191 | Graph Attention Network Riemannian Manifold Dynamic Risk Parity | Graph neural networks / Riemannian geometry / Risk parity | 271 | 115 | No | — | [card](algorithms/graph-attention-network-riemannian-manifold-dynamic-risk-parity.md) |
-| 192 | Quantum Annealing Maximum Independent Set Statistical Arbitrage | Quantum computing / Maximum independent set / Statistical arbitrage | 298 | 277 | No | — | [card](algorithms/quantum-annealing-maximum-independent-set-statistical-arbitrage.md) |
-| 193 | Persistent Homology Betti-0 Persistence Landscape Clustering Arbitrage | Topological data analysis / Persistence landscapes / Statistical arbitrage | 130 | 216 | No | — | [card](algorithms/persistent-homology-betti-0-persistence-landscape-clustering-arbitrage.md) |
-| 194 | Fixed Fractional / Fixed Dollar Risk | Position sizing | 93 | 254 | No | — | [card](algorithms/fixed-fractional-fixed-dollar-risk.md) |
-| 195 | GARCH Volatility Forecasting with Mean-Reversion Channel | Econometric / Volatility modeling | 263 | 6475 | No | — | [card](algorithms/garch-volatility-forecasting-with-mean-reversion-channel.md) |
-| 196 | Randomized Matrix Pencil Lead-Lag Cross-Asset Predictor | Signal processing / Matrix pencil / Lead-lag arbitrage | 229 | 2829 | No | — | [card](algorithms/randomized-matrix-pencil-lead-lag-cross-asset-predictor.md) |
-| 197 | Topological Persistent Betti Curve Macro Regime Switcher | Topological data analysis / Regime switching / Macro strategy | 177 | 190 | No | — | [card](algorithms/topological-persistent-betti-curve-macro-regime-switcher.md) |
-| 198 | Wasserstein Generative Adversarial Network Multi-Asset Allocation (WGAN-MA) | Generative machine learning / Robust portfolio allocation | 315 | 191 | No | — | [card](algorithms/wasserstein-generative-adversarial-network-multi-asset-allocation-wgan-ma.md) |
-| 199 | Persistent Homology Betti-1 Persistence Landscape Arbitrage | Topological data analysis / Persistence landscapes / Statistical arbitrage | 121 | 201 | No | — | [card](algorithms/persistent-homology-betti-1-persistence-landscape-arbitrage.md) |
+| 101 | Dynamic Copula-EVT Tail Risk Relative Value Arbitrage | Extreme value theory / Copulas / Relative value | 355 | 10445 | Research code | RK101 | [**researched**](algorithms/dynamic-copula-evt-tail-risk-relative-value-arbitrage.md) |
+| 102 | Hidden Markov Model Regime Switching | Regime / machine learning | 290 | 127 | Research code | RK102, C-R3 | [**researched**](algorithms/hidden-markov-model-regime-switching.md) |
+| 103 | Hurst-Exponent Trend / Mean-Reversion Regime Gate | Regime filter | 52 | 93 | Research code | RK103, C-MR4 | [**researched**](algorithms/hurst-exponent-trend-mean-reversion-regime-gate.md) |
+| 104 | Bayesian Online Changepoint Regime Gate | Regime detection / Bayesian | 212 | 258 | No | RK104 | [**researched**](algorithms/bayesian-online-changepoint-regime-gate.md) |
+| 105 | Adaptive Range-Breakout with Volatility Filter | Trend / breakout | 17 | 85 | Research code | RK105 | [**researched**](algorithms/adaptive-range-breakout-with-volatility-filter.md) |
+| 106 | Hierarchical Hidden Markov Model (HHMM) Regime Switcher | Probabilistic regime / Hidden Markov Model | 106 | 259 | Research code | RK106 | [**researched**](algorithms/hierarchical-hidden-markov-model-hhmm-regime-switcher.md) |
+| 107 | Entropy-Based Portfolio Diversification Optimization | Information Theory / Portfolio Construction | 63 | 76 | Research code | RK107 | [**researched**](algorithms/entropy-based-portfolio-diversification-optimization.md) |
+| 108 | Intraday ETF Relative-Value Arbitrage | Statistical arbitrage / intraday | 195 | 279 | Research code | RK108, A6 | [**researched**](algorithms/intraday-etf-relative-value-arbitrage.md) |
+| 109 | Sparse Graphical Lasso Cross-Asset Spillover Predictor | Graphical models / Econometrics / Risk management | 64 | 145 | No | RK109 | [**researched**](algorithms/sparse-graphical-lasso-cross-asset-spillover-predictor.md) |
+| 110 | Opening Range Breakout (ORB) | Trend / breakout | 131 | 218 | Research code | RK110, C-M2, N2 | [**researched**](algorithms/opening-range-breakout-orb.md) |
+| 111 | Ichimoku Cloud Trend Filter | Trend / breakout | 21 | 88 | No | RK111 | [**researched**](algorithms/ichimoku-cloud-trend-filter.md) |
+| 112 | Kaufman Adaptive Moving Average (KAMA) Trend | Adaptive trend | 51 | 92 | Partial | RK112, V15 | [**researched**](algorithms/kaufman-adaptive-moving-average-kama-trend.md) |
+| 113 | Wavelet Transform Denoised Breakout System | Signal processing / Technical trend | 255 | 7556 | Research code | RK113 | [**researched**](algorithms/wavelet-transform-denoised-breakout-system.md) |
+| 114 | Volatility Risk Premium (Short Vol + Tail Hedge) | Options / volatility | 40 | 246 | Research code | RK114, S1 | [**researched**](algorithms/volatility-risk-premium-short-vol-tail-hedge.md) |
+| 115 | EMA Pullback Continuation | Trend / pullback | 1 | 234 | Research code | RK115 | [**researched**](algorithms/ema-pullback-continuation.md) |
+| 116 | Markowitz Mean-Variance Optimization | Portfolio construction | 42 | 66 | Research code | RK116, Q13 | [**researched**](algorithms/markowitz-mean-variance-optimization.md) |
+| 117 | Equal-Weight Rebalancing | Portfolio construction | 59 | 22 | Partial | RK117, X5 | [**researched**](algorithms/equal-weight-rebalancing.md) |
+| 118 | Minimum-Correlation Portfolio | Portfolio optimization | 6 | 43 | No | RK118 | [**researched**](algorithms/minimum-correlation-portfolio.md) |
+| 119 | Hierarchical Equal Risk Contribution (HERC) | Portfolio optimization / clustering | 7 | 44 | No | RK119 | [**researched**](algorithms/hierarchical-equal-risk-contribution-herc.md) |
+| 120 | Nested Cluster Optimization (NCO) | Portfolio optimization / clustering | 147 | 45 | No | RK120 | [**researched**](algorithms/nested-cluster-optimization-nco.md) |
+| 121 | Benchmark-Tracking Enhanced Indexing | Portfolio optimization / index enhancement | 148 | 72 | No | RK121 | [**researched**](algorithms/benchmark-tracking-enhanced-indexing.md) |
+| 122 | Robust Wasserstein Distributionally Robust Portfolio Optimization | Portfolio optimization / Robust statistics | 114 | 184 | Research code | RK122 | [**researched**](algorithms/robust-wasserstein-distributionally-robust-portfolio-optimization.md) |
+| 123 | Adversarial Robust Wasserstein Portfolio Optimization | Portfolio optimization / Robust statistics | 115 | 185 | Research code | RK123 | [**researched**](algorithms/adversarial-robust-wasserstein-portfolio-optimization.md) |
+| 124 | Optimal Transport Wasserstein Barycenter Asset Allocation | Optimal Transport / Portfolio Construction | 228 | 142 | No | RK124 | [**researched**](algorithms/optimal-transport-wasserstein-barycenter-asset-allocation.md) |
+| 125 | Continuous-Time Mean-Field Portfolio Game with Competition | Game Theory / Mean-field games / Portfolio theory | 176 | 77 | No | RK125 | [**researched**](algorithms/continuous-time-mean-field-portfolio-game-with-competition.md) |
+| 126 | Entropic Risk Measure Portfolio Optimization | Risk-sensitive optimization / Portfolio construction | 65 | 79 | Research code | RK126 | [**researched**](algorithms/entropic-risk-measure-portfolio-optimization.md) |
+| 127 | Conformal Prediction Risk-Bounded Alpha Stacking | Conformal prediction / Ensemble modeling / Portfolio construction | 217 | 49 | Research code | RK127 | [**researched**](algorithms/conformal-prediction-risk-bounded-alpha-stacking.md) |
+| 128 | Fractional Order Cointegration Residual Mean-Reversion | Statistical arbitrage / Fractional time series | 171 | 228 | Research code | RK128 | [**researched**](algorithms/fractional-order-cointegration-residual-mean-reversion.md) |
+| 129 | Inverse-Volatility Allocation | Portfolio construction / risk scaling | 146 | 41 | Partial | RK129, A5 | [**researched**](algorithms/inverse-volatility-allocation.md) |
+| 130 | Extreme Value Theory (EVT) Dynamic Tail-Risk Hedge | Quantitative risk management / Tail risk | 214 | 260 | Research code | RK130 | [**researched**](algorithms/extreme-value-theory-evt-dynamic-tail-risk-hedge.md) |
+| 131 | Markov-Switching Vector Error Correction Model (MS-VECM) Arbitrage | Econometric / Regime-switching cointegration | 172 | 19 | Research code | RK131 | [**researched**](algorithms/markov-switching-vector-error-correction-model-ms-vecm-arbitrage.md) |
+| 132 | Conformal Risk-Bounded Dynamic Portfolio Allocation | Conformal prediction / Risk management | 157 | 143 | Partial | RK132, V13 | [**researched**](algorithms/conformal-risk-bounded-dynamic-portfolio-allocation.md) |
+| 133 | Protective Put / Collar | Options / hedging | 252 | 121 | Research code | RK133, S1 | [**researched**](algorithms/protective-put-collar.md) |
+| 134 | Fractional Kelly Position Sizing | Position sizing | 47 | 70 | Research code | RK134, C-S2 | [**researched**](algorithms/fractional-kelly-position-sizing.md) |
+| 135 | Fractional Order Cointegration Vector AutoRegressive (VAR) Strategy | Statistical arbitrage / Fractional time series / Econometrics | 178 | 285 | Research code | RK135 | [**researched**](algorithms/fractional-order-cointegration-vector-autoregressive-var-strategy.md) |
+| 136 | Graph Attention Network Dynamic Cointegration Basket Selection | Graph neural networks / Cointegration / Statistical arbitrage | 292 | 305 | Research code | RK136 | [**researched**](algorithms/graph-attention-network-dynamic-cointegration-basket-selection.md) |
+| 137 | Fractional Cointegration Hawkes Process Lead-Lag Arbitrage | Fractional time series / Point processes / Statistical arbitrage | 311 | 9361 | Research code | RK137 | [**researched**](algorithms/fractional-cointegration-hawkes-process-lead-lag-arbitrage.md) |
+| 138 | Fractional Order Vector Error Correction Model (VECM) Cointegration Strategy | Fractional time series / Cointegration / Statistical arbitrage | 184 | 291 | Research code | RK138 | [**researched**](algorithms/fractional-order-vector-error-correction-model-vecm-cointegration-strategy.md) |
+| 139 | Fractional Order Cointegration Dynamic Copula Trading System | Fractional time series / Copulas / Statistical arbitrage | 187 | 293 | Research code | RK139 | [**researched**](algorithms/fractional-order-cointegration-dynamic-copula-trading-system.md) |
+| 140 | Neural Rough Path Signature Delay-Differential Cointegration Spread Model | Rough path theory / Delay differential equations / Statistical arbitrage | 351 | 6479 | Research code | RK140 | [**researched**](algorithms/neural-rough-path-signature-delay-differential-cointegration-spread-model.md) |
+| 141 | Fractional Order Cointegration Hawkes Point Process Statistical Arbitrage | Fractional time series / Point processes / Statistical arbitrage | 360 | 10658 | Research code | RK141 | [**researched**](algorithms/fractional-order-cointegration-hawkes-point-process-statistical-arbitrage.md) |
+| 142 | Fractional Order Cointegration Vector Error Correction Hawkes Strategy | Fractional time series / Point processes / Statistical arbitrage | 361 | 10659 | Research code | RK142 | [**researched**](algorithms/fractional-order-cointegration-vector-error-correction-hawkes-strategy.md) |
+| 143 | Fractional Order Cointegration Hawkes Jump-Diffusion Arbitrage | Fractional time series / Point processes / Statistical arbitrage | 299 | 10165 | Research code | RK143 | [**researched**](algorithms/fractional-order-cointegration-hawkes-jump-diffusion-arbitrage.md) |
+| 144 | Alpha Stacking / Ensemble Portfolio Optimizer | Portfolio construction / ensemble | 149 | 73 | Partial | RK144, C-RJ4 | [**researched**](algorithms/alpha-stacking-ensemble-portfolio-optimizer.md) |
+| 145 | Multi-Scale Wavelet LSTM Cross-Sectional Alpha Ranker | Signal processing / Recurrent neural networks / Equity factor modeling | 297 | 240 | No | RK145 | [**researched**](algorithms/multi-scale-wavelet-lstm-cross-sectional-alpha-ranker.md) |
+| 146 | Connors RSI-2 Mean Reversion | Mean reversion | 11 | 116 | No | RK146 | [**researched**](algorithms/connors-rsi-2-mean-reversion.md) |
+| 147 | Moving-Average Z-Score Reversion | Mean reversion | 30 | 156 | Partial | RK147, Q9 | [**researched**](algorithms/moving-average-z-score-reversion.md) |
+| 148 | Williams %R Reversal | Mean reversion | 86 | 16 | Partial | RK148, V15 | [**researched**](algorithms/williams-r-reversal.md) |
+| 149 | Gap-Fade Strategy | Mean reversion / intraday | 133 | 157 | No | RK149 | [**researched**](algorithms/gap-fade-strategy.md) |
+| 150 | VWAP Reversion | Mean reversion / intraday | 222 | 424 | Research code | RK150, C-MS3 | [**researched**](algorithms/vwap-reversion.md) |
+| 151 | Short-Term Stock Reversal | Mean reversion / cross-sectional | 12 | 62 | Research code | RK151, C-MR1 | [**researched**](algorithms/short-term-stock-reversal.md) |
+| 152 | Same-Calendar-Month Seasonality | Seasonality / event | 36 | 119 | No | RK152 | [**researched**](algorithms/same-calendar-month-seasonality.md) |
+| 153 | Turn-of-the-Month Effect | Seasonality / event | 37 | 65 | No | RK153 | [**researched**](algorithms/turn-of-the-month-effect.md) |
+| 154 | Overnight Equity Anomaly | Seasonality / intraday | 91 | 160 | Research code | RK154 | [**researched**](algorithms/overnight-equity-anomaly.md) |
+| 155 | Wasserstein Distributionally Robust Neural Operator Portfolio Optimization | Robust statistics / Neural operators / Portfolio optimization | 336 | 198 | Research code | RK155 | [**researched**](algorithms/wasserstein-distributionally-robust-neural-operator-portfolio-optimization.md) |
+| 156 | Neural Operator Delay-Differential Stochastic Control Portfolio Optimization | Neural operators / Stochastic control / Portfolio optimization | 318 | 276 | Research code | RK156 | [**researched**](algorithms/neural-operator-delay-differential-stochastic-control-portfolio-optimization.md) |
+| 157 | Wasserstein Distributionally Robust Neural Operator Optimal Portfolio | Robust statistics / Neural operators / Portfolio optimization | 337 | 215 | Research code | RK157 | [**researched**](algorithms/wasserstein-distributionally-robust-neural-operator-optimal-portfolio.md) |
+| 158 | Fractional Cointegration Multiscale Wavelet Arbitrage | Fractional calculus / Wavelets / Statistical arbitrage | 316 | 10283 | Research code | RK158 | [**researched**](algorithms/fractional-cointegration-multiscale-wavelet-arbitrage.md) |
+| 159 | Koopman Operator Non-Linear Cointegration Spread Strategy | Operator theory / Cointegration / Statistical arbitrage | 180 | 288 | Research code | RK159 | [**researched**](algorithms/koopman-operator-non-linear-cointegration-spread-strategy.md) |
+| 160 | RSI Oversold/Overbought Reversion | Mean reversion | 28 | 61 | Yes | RK160, Q10, V3 | [**researched**](algorithms/rsi-oversold-overbought-reversion.md) |
+| 161 | Bollinger Band Mean Reversion | Mean reversion | 29 | 89 | Partial | RK161, Q9, X4 | [**researched**](algorithms/bollinger-band-mean-reversion.md) |
+| 162 | Stochastic Oscillator Reversal | Mean reversion | 85 | 80 | Partial | RK162, V15 | [**researched**](algorithms/stochastic-oscillator-reversal.md) |
+| 163 | FX Mean-Reversion / Momentum Hybrid | Mean reversion / FX | 87 | 63 | No | RK163 | [**researched**](algorithms/fx-mean-reversion-momentum-hybrid.md) |
+| 164 | Grid / Price-Ladder Trading | Mean reversion / inventory | 33 | 64 | Yes | RK164, V1, V2, V3, V4, V5, C-G2, C-G3, C-G4 | [**researched**](algorithms/grid-price-ladder-trading.md) |
+| 165 | Fractional Order Cointegration Dynamic Copula Portfolio Optimizer | Fractional time series / Copulas / Portfolio construction | 250 | 155 | Research code | RK165 | [**researched**](algorithms/fractional-order-cointegration-dynamic-copula-portfolio-optimizer.md) |
+| 166 | Calendar / Diagonal Spread | Options / volatility | 201 | 253 | Research code | RK166 | [**researched**](algorithms/calendar-diagonal-spread.md) |
+| 167 | Delta-Hedged Volatility Arbitrage | Options / volatility | 328 | 6473 | Research code | RK167 | [**researched**](algorithms/delta-hedged-volatility-arbitrage.md) |
+| 168 | VIX Futures Term-Structure Strategy | Options / volatility | 92 | 265 | Partial | RK168 | [**researched**](algorithms/vix-futures-term-structure-strategy.md) |
+| 169 | Volatility Skew Risk Premium | Options / volatility risk premium | 99 | 39 | Research code | RK169 | [**researched**](algorithms/volatility-skew-risk-premium.md) |
+| 170 | Earnings Volatility Crush / Delta-Hedged Event Options | Options / event volatility | 169 | 165 | Research code | RK170 | [**researched**](algorithms/earnings-volatility-crush-delta-hedged-event-options.md) |
+| 171 | Put-Call Parity Conversion / Reversal Arbitrage | Options / no-arbitrage | 100 | 224 | Research code | RK171 | [**researched**](algorithms/put-call-parity-conversion-reversal-arbitrage.md) |
+| 172 | Box-Spread Financing Arbitrage | Options / synthetic lending | 209 | 134 | Research code | RK172 | [**researched**](algorithms/box-spread-financing-arbitrage.md) |
+| 173 | Broken-Wing Butterfly | Options / asymmetric convexity | 210 | 225 | Research code | RK173 | [**researched**](algorithms/broken-wing-butterfly.md) |
+| 174 | Put Debit Spread Momentum | Options / directional risk-defined | 101 | 40 | Research code | RK174 | [**researched**](algorithms/put-debit-spread-momentum.md) |
+| 175 | Quantum Approximate Optimization Algorithm (QAOA) Allocation | Quantum computing / Portfolio optimization | 219 | 183 | Research code | RK175 | [**researched**](algorithms/quantum-approximate-optimization-algorithm-qaoa-allocation.md) |
+| 176 | Rough Heston Stochastic Volatility Calibration | Econometric volatility / Mathematical finance | 358 | 2119 | Research code | RK176 | [**researched**](algorithms/rough-heston-stochastic-volatility-calibration.md) |
+| 177 | Variational Autoencoder (VAE) Latent Yield Curve Arbitrage | Deep Learning / Fixed Income Relative Value | 264 | 110 | Research code | RK177 | [**researched**](algorithms/variational-autoencoder-vae-latent-yield-curve-arbitrage.md) |
+| 178 | Manifold Learning Diffusion Map Statistical Arbitrage | Manifold learning / Statistical arbitrage | 295 | 10219 | No | RK178 | [**researched**](algorithms/manifold-learning-diffusion-map-statistical-arbitrage.md) |
+| 179 | Fractional Order Kalman Filter Dynamic Hedging | Fractional calculus / State-space models / Statistical arbitrage | 325 | 10230 | Research code | RK179 | [**researched**](algorithms/fractional-order-kalman-filter-dynamic-hedging.md) |
+| 180 | Persistent Homology Betti-1 Loop Topological Momentum Strategy | Topological data analysis / Momentum / Cycle detection | 118 | 33 | Research code | RK180 | [**researched**](algorithms/persistent-homology-betti-1-loop-topological-momentum-strategy.md) |
+| 181 | Wasserstein Distributionally Robust Mean-CVaR Dynamic Allocation | Robust statistics / Tail risk allocation | 283 | 169 | Research code | RK181 | [**researched**](algorithms/wasserstein-distributionally-robust-mean-cvar-dynamic-allocation.md) |
+| 182 | Quantum Annealing Graph Partitioning Statistical Arbitrage | Quantum computing / Graph partitioning / Statistical arbitrage | 326 | 1809 | Research code | RK182 | [**researched**](algorithms/quantum-annealing-graph-partitioning-statistical-arbitrage.md) |
+| 183 | Persistent Homology Betti-0 Multiscale Clustering Arbitrage | Topological data analysis / Clustering / Statistical arbitrage | 120 | 199 | Research code | RK183 | [**researched**](algorithms/persistent-homology-betti-0-multiscale-clustering-arbitrage.md) |
+| 184 | Quantum Approximate Optimization Algorithm (QAOA) Max-Cut Statistical Arbitrage | Quantum computing / Max-Cut / Statistical arbitrage | 327 | 1707 | Research code | RK184 | [**researched**](algorithms/quantum-approximate-optimization-algorithm-qaoa-max-cut-statistical-arbitrage.md) |
+| 185 | Riemannian Manifold Metric Hierarchical Risk Parity | Geometric deep learning / Riemannian geometry / Portfolio construction | 249 | 205 | Research code | RK185 | [**researched**](algorithms/riemannian-manifold-metric-hierarchical-risk-parity.md) |
+| 186 | Quantum Annealing Binary Matrix Factorization Statistical Arbitrage | Quantum computing / Matrix factorization / Statistical arbitrage | 323 | 290 | Research code | RK186 | [**researched**](algorithms/quantum-annealing-binary-matrix-factorization-statistical-arbitrage.md) |
+| 187 | Persistent Homology Betti-0 Connected Component Risk Parity | Topological data analysis / Risk parity / Portfolio construction | 124 | 207 | Research code | RK187 | [**researched**](algorithms/persistent-homology-betti-0-connected-component-risk-parity.md) |
+| 188 | Riemannian Manifold Metric Persistent Homology Risk Parity | Geometric deep learning / Riemannian geometry / Topological risk parity | 186 | 151 | Research code | RK188 | [**researched**](algorithms/riemannian-manifold-metric-persistent-homology-risk-parity.md) |
+| 189 | Persistent Homology Betti-1 Cyclical Persistence Landscape Arbitrage | Topological data analysis / Statistical arbitrage / Persistence landscapes | 125 | 208 | Research code | RK189 | [**researched**](algorithms/persistent-homology-betti-1-cyclical-persistence-landscape-arbitrage.md) |
+| 190 | Neural Rough Path Signature Hawkes Jump-Diffusion Spread Arbitrage | Rough path theory / Point processes / Statistical arbitrage | 352 | 6480 | Research code | RK190 | [**researched**](algorithms/neural-rough-path-signature-hawkes-jump-diffusion-spread-arbitrage.md) |
+| 191 | Graph Attention Network Riemannian Manifold Dynamic Risk Parity | Graph neural networks / Riemannian geometry / Risk parity | 271 | 115 | Research code | RK191 | [**researched**](algorithms/graph-attention-network-riemannian-manifold-dynamic-risk-parity.md) |
+| 192 | Quantum Annealing Maximum Independent Set Statistical Arbitrage | Quantum computing / Maximum independent set / Statistical arbitrage | 298 | 277 | Research code | RK192 | [**researched**](algorithms/quantum-annealing-maximum-independent-set-statistical-arbitrage.md) |
+| 193 | Persistent Homology Betti-0 Persistence Landscape Clustering Arbitrage | Topological data analysis / Persistence landscapes / Statistical arbitrage | 130 | 216 | Research code | RK193 | [**researched**](algorithms/persistent-homology-betti-0-persistence-landscape-clustering-arbitrage.md) |
+| 194 | Fixed Fractional / Fixed Dollar Risk | Position sizing | 93 | 254 | Yes | RK194 | [**researched**](algorithms/fixed-fractional-fixed-dollar-risk.md) |
+| 195 | GARCH Volatility Forecasting with Mean-Reversion Channel | Econometric / Volatility modeling | 263 | 6475 | Research code | RK195 | [**researched**](algorithms/garch-volatility-forecasting-with-mean-reversion-channel.md) |
+| 196 | Randomized Matrix Pencil Lead-Lag Cross-Asset Predictor | Signal processing / Matrix pencil / Lead-lag arbitrage | 229 | 2829 | Research code | RK196 | [**researched**](algorithms/randomized-matrix-pencil-lead-lag-cross-asset-predictor.md) |
+| 197 | Topological Persistent Betti Curve Macro Regime Switcher | Topological data analysis / Regime switching / Macro strategy | 177 | 190 | Research code | RK197 | [**researched**](algorithms/topological-persistent-betti-curve-macro-regime-switcher.md) |
+| 198 | Wasserstein Generative Adversarial Network Multi-Asset Allocation (WGAN-MA) | Generative machine learning / Robust portfolio allocation | 315 | 191 | Research code | RK198 | [**researched**](algorithms/wasserstein-generative-adversarial-network-multi-asset-allocation-wgan-ma.md) |
+| 199 | Persistent Homology Betti-1 Persistence Landscape Arbitrage | Topological data analysis / Persistence landscapes / Statistical arbitrage | 121 | 201 | Research code | RK199 | [**researched**](algorithms/persistent-homology-betti-1-persistence-landscape-arbitrage.md) |
 | 200 | Generative Score-Based Diffusion Multi-Asset Scenario Synthesizer | Generative AI / Diffusion models / Risk management | 320 | 298 | Research code | RK200 | [**researched**](algorithms/generative-score-based-diffusion-multi-asset-scenario-synthesizer.md) |
 | 201 | Koopman Operator Predictive Control Statistical Arbitrage | Operator theory / Model predictive control / Statistical arbitrage | 220 | 426 | Research code | RK201 | [**researched**](algorithms/koopman-operator-predictive-control-statistical-arbitrage.md) |
 | 202 | Fractional Brownian Motion Multi-Scale Trend Scanning Strategy | Fractional calculus / Trend scanning / Technical alpha | 317 | 304 | Research code | RK202 | [**researched**](algorithms/fractional-brownian-motion-multi-scale-trend-scanning-strategy.md) |
@@ -5175,7 +6761,7 @@ pricing and hedging entries. For ranks 426–700, the Evidence column of
 
 #### Title-reconstructed algorithms
 
-Listed by rank on the pages below; each row links to one of 378 [concept pages](algorithms/concepts/README.md), 34 of them researched.
+Listed by rank on the pages below; each row links to one of 378 [concept pages](algorithms/concepts/README.md), 378 of them researched.
 
 | Ranks | Algorithms | Page |
 |---|---|---|

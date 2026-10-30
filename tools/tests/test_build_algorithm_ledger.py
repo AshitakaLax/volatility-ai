@@ -190,7 +190,7 @@ def test_a_researched_concept_page_is_kept_and_linked_from_its_members(small):
     assert "[concept](../concepts/basket-model.md)" in shard
     index = out[concepts / "README.md"]
     assert "[Pair model](pair-model.md) · **researched** |" in index
-    assert "1 of them are researched by hand." in index
+    assert "1 of them are researched." in index
     assert (
         "2 [concept pages](algorithms/concepts/README.md), 1 of them researched."
         in out[small["ledger"]]
