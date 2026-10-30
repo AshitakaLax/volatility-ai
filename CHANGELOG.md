@@ -1,5 +1,22 @@
 # Changelog
 
+## Fix: a lot under one whole share no longer aborts a Fidelity loop
+
+**A small lot crashed the live loop on a whole-share venue.** Fidelity orders
+are whole shares, and a strategy sizing lots below one share's price made
+`submit_buy` raise. The loop aborted -- after the duplicate-order guard had
+already claimed the decision, so a buy that was never sent was recorded as
+submitted.
+
+- Brokers that size in whole shares say so (`whole_shares = True` on
+  `FidelityBroker`, and so on the placing broker).
+- `LiveTradingLoop._maybe_buy` settles it **before** the claim: a lot under
+  one share buys exactly one share, if that share passes the same risk clamp
+  and fits the settled cash; otherwise the bar buys nothing and the status
+  says why (`_whole_share_refusal`).
+- A lot rounded up is larger than the one researched; a strategy whose lots
+  are far below a share trades a coarser, larger grid on such a venue.
+
 ## Feat: algorithm management, and a switch that leaves the old lots selling
 
 **A finished backtest could not become a live profile from the app.** The page

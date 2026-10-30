@@ -274,6 +274,10 @@ def _as_bool(value: Any) -> bool:
 class FidelityBroker:
     """Preview-only Fidelity adapter over an authenticated browser session."""
 
+    # Orders here are whole-share (qtyTypeCode 'S'): the live loop skips a
+    # buy worth less than one share rather than handing it to submit_buy.
+    whole_shares = True
+
     def __init__(
         self,
         session: FidelitySession,

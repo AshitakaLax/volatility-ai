@@ -2190,6 +2190,22 @@ class LiveTradingLoop:
                 self._buy_note = limit.why
                 return 0
             limit_price = limit.price
+        # A whole-share venue (Fidelity) cannot place a buy worth less than
+        # one share. Raised from submit_buy it aborted the loop (10-30, a $16
+        # lot of RSP at $219) after submit_once had claimed the decision, so
+        # it is settled HERE, before the claim: such a lot buys ONE share,
+        # if that share passes the same risk clamp and fits the cash; else
+        # this bar buys nothing and the status says why.
+        if getattr(self.broker, "whole_shares", False) and trade_value < limit_price:
+            why = self._whole_share_refusal(context, limit_price)
+            if why is not None:
+                logger.warning(f"No buy this bar: {why}")
+                self._buy_note = why
+                return 0
+            logger.info(
+                f"Lot of ${trade_value:.2f} rounded up to one whole share at ${limit_price:.2f}"
+            )
+            trade_value = limit_price
         placed = {}
 
         def submit(cid):
@@ -2223,6 +2239,22 @@ class LiveTradingLoop:
         self._persist_open_orders()
         self._order_event(self.state.open_orders[decision_id], "placed")
         return 1
+
+    def _whole_share_refusal(self, context: MarketContext, price: float) -> str | None:
+        """Why one whole share at `price` may not be bought, or None."""
+        venue = type(self.broker).__name__
+        clamped = self.risk_manager.clamp_trade_value(
+            price,
+            context.equity,
+            self.state.buying_power,
+            context.open_lot_count,
+            context.drawdown,
+        )
+        if clamped < price:
+            return f"one whole share (${price:.2f}) is over the risk limit; {venue} buys whole shares only"
+        if self._spendable() < price:
+            return f"one whole share (${price:.2f}) is more than the cash to spend; {venue} buys whole shares only"
+        return None
 
     def _buy_limit(self, context: MarketContext):
         """Where a buy goes on the venue's windows: through the quote for a
