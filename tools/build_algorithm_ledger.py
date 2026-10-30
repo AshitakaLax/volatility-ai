@@ -402,7 +402,7 @@ def render_concept_index(
         f"[ranked algorithm list](../../algorithm_ledger.md#{LEDGER_ANCHOR}) share "
         f"{len(concepts):,} descriptions. Each page below holds one description, every "
         "variant of the other fields its members carry, and the members themselves. "
-        f"{len(researched):,} of them are researched by hand.",
+        f"{len(researched):,} of them are researched.",
         "",
         "| Concept | Members | Best rank |",
         "|---|---|---|",
