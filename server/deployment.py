@@ -103,6 +103,7 @@ def describe() -> dict[str, Any]:
     status = _git("status", "--porcelain")
     return {
         "build": {
+            "version": build_info.ENGINE_VERSION,
             # The image has no .git: there the commit is VAI_BUILD_COMMIT, when
             # it was built with one (engine/core/build_info.py).
             "commit": _git("rev-parse", "--short", "HEAD") or build_info.identity()["commit"],

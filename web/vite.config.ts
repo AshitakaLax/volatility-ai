@@ -1,14 +1,21 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const pkg = JSON.parse(readFileSync(path.resolve(__dirname, "package.json"), "utf-8")) as {
+  version: string;
+};
+
 // The dev server proxies /api and /ws to the Python server (Phase 2) so
 // the browser only ever talks to one origin. Without this the app would
 // need CORS in development and not in production, which is exactly the
 // kind of difference that works locally and fails once deployed.
 export default defineConfig({
+  // The web build's own release version, shown under the title in the header.
+  define: { __WEB_VERSION__: JSON.stringify(pkg.version) },
   plugins: [react(), tailwindcss()],
   resolve: {
     // shadcn/ui generates imports as "@/components/...", so the alias is

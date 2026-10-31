@@ -265,6 +265,7 @@ function ShardChip({
     stateLabel(shard.state),
     shard.local ? "this server" : shard.host,
     shard.cores ? `${shard.cores} cores` : null,
+    shard.version ? `v${shard.version}` : null,
     shard.commit ? `${shard.commit}${shard.dirty ? " (modified)" : ""}` : null,
     connLabel(shard.conn),
     shard.conn === "online" ? null : `last heard ${describeSeen(shard.seen_s)}`,
@@ -302,6 +303,9 @@ function ShardChip({
         >
           {shard.name}
         </button>
+        {shard.version ? (
+          <span className="tnum text-[10px] text-muted-foreground">v{shard.version}</span>
+        ) : null}
         {scheduleText ? (
           <Clock
             className={cn(

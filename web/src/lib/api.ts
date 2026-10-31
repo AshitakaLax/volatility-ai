@@ -102,6 +102,8 @@ export interface Health {
   /** Where sweeps run; null when this server runs them itself. */
   upstream: string | null;
   build: {
+    /** The engine's release version (engine/core/build_info.py). */
+    version?: string | null;
     commit: string | null;
     branch: string | null;
     /** null means "could not tell", which is different from false. */
