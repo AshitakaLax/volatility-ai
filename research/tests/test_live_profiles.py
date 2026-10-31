@@ -19,25 +19,53 @@ DEPLOYMENTS = yaml.safe_load(Path("config/deployments.yaml").read_text(encoding=
 ]
 
 
-def test_every_committed_profile_trades_on_a_deployment_it_fits(tmp_path):
-    """A profile no deployment could trade is a file nobody can use: each
-    must pass the trader's own validation on at least one deployment
-    trading a fund it was researched on."""
-    profiles = live_profiles.load_profiles()
-    assert profiles, "no committed profiles"
-    for profile in profiles.values():
-        homes = []
-        for entry in DEPLOYMENTS.values():
-            if not Path(entry["config"]).exists():
-                # Registered before its config is written: Fidelity's names the
-                # account, so it is never committed, and trades nothing until then.
-                continue
-            config = BacktestConfig.from_yaml(entry["config"])
-            if not profile.fits(config.backtest.symbol):
-                continue
+def _with_symbol(section, symbol):
+    """Every `allowed_symbols` list under `section`, re-pointed at `symbol`."""
+    if isinstance(section, dict):
+        for key, value in section.items():
+            if key == "allowed_symbols":
+                section[key] = [symbol]
+            else:
+                _with_symbol(value, symbol)
+
+
+def _configs_for(entry, profile):
+    """The configs a registered deployment could trade `profile` under.
+
+    A committed config is the one it trades. A config that is registered but
+    not committed (Fidelity's names the account, so it is git-ignored) is the
+    operator's to write, fund included: it is checked as its committed
+    `.example` re-pointed at each fund the profile fits, so the profile still
+    has to pass the trader's validation there. With no example either there
+    is nothing to check it against, and it counts as a home unchecked."""
+    path = Path(entry["config"])
+    if path.exists():
+        config = BacktestConfig.from_yaml(path)
+        return [config] if profile.fits(config.backtest.symbol) else []
+    example = Path(f"{path}.example")
+    if not example.exists():
+        return None
+    configs = []
+    for symbol in profile.symbols:
+        raw = yaml.safe_load(example.read_text(encoding="utf-8"))
+        raw.setdefault("backtest", {})["symbol"] = symbol
+        _with_symbol(raw.get("live"), symbol)
+        configs.append(BacktestConfig.from_dict(raw))
+    return configs
+
+
+def _homes(profile, tmp_path):
+    """The registered deployments `profile` passes the trader's validation on."""
+    homes = []
+    for entry in DEPLOYMENTS.values():
+        configs = _configs_for(entry, profile)
+        if configs is None:
+            homes.append(entry["config"])
+            continue
+        for n, config in enumerate(configs):
             control = AlgorithmControl(
                 config,
-                state_db=tmp_path / profile.id / "ledger.db",
+                state_db=tmp_path / profile.id / f"{n}" / "ledger.db",
                 registry=STRATEGIES,
                 allowed=False,
                 web_allowed=True,
@@ -47,7 +75,27 @@ def test_every_committed_profile_trades_on_a_deployment_it_fits(tmp_path):
             except ConfigurationError:
                 continue
             homes.append(entry["config"])
-        assert homes, f"{profile.id} trades on no deployment"
+    return homes
+
+
+def test_every_committed_profile_trades_on_a_deployment_it_fits(tmp_path):
+    """A profile no deployment could trade is a file nobody can use: each
+    must pass the trader's own validation on at least one registered
+    deployment that does, or could, trade a fund it was researched on."""
+    profiles = live_profiles.load_profiles()
+    assert profiles, "no committed profiles"
+    for profile in profiles.values():
+        assert _homes(profile, tmp_path), f"{profile.id} trades on no deployment"
+
+
+def test_an_uncommitted_deployment_still_checks_the_profile(tmp_path, monkeypatch):
+    """The stand-in for an uncommitted config is its example, so a profile the
+    trader would refuse finds no home there: an RSP profile naming an unknown
+    strategy fits only Fidelity's (RSP is the operator's to choose) and fails it."""
+    monkeypatch.setenv("VAI_LIVE_PROFILES", str(tmp_path))
+    _write(tmp_path, "broken-rsp.yaml", "id: broken-rsp\nsymbols: [RSP]\nstrategy_id: no_such\n")
+    (profile,) = live_profiles.load_profiles().values()
+    assert _homes(profile, tmp_path) == []
 
 
 def _write(directory, name, text):
