@@ -394,6 +394,22 @@ Phase 7 can start once Phase 2 lands, in parallel with 3 to 6.
 - **Done when** the identities pass for both fill models and a `composed` config runs through `cli.py backtest`.
 
 ### Phase 3: Sell-policy library
+
+**Status: done** (`research/composition/exit_library.py`). All ten sell policies are registered and each is
+tested end to end with the champion buying. The shared properties hold for every policy: the no-loss track never
+realises a loss, no lot is ever oversold, and every policy changes what sells on the fixture data. Each policy also
+has unit tests for its own rule and for restart (`resume`). Notes:
+- `scale_out` takes its ladder as a string, `"0.5@0.01,0.5@0.03"`, because a list in strategy_params is always a
+  sweep axis. Its first rung replaces the grid's profit target.
+- `signal_take_profit` defaults to the `zscore` gate. A mean-reversion gate shuts when price is stretched high,
+  with lots in profit to sell; a trend gate (`supertrend`) shuts in downtrends, with lots underwater, and barely
+  fires.
+- The regime exits use the internal causal NATR regime (250 sessions of warm-up, seeded by `warm_up` in a
+  backtest and `live_history_sessions` live); `regime_by_date` injects a map for research and is never offered
+  on the web.
+- Documentation is the module docstring and this plan. `docs/algorithms/` is the ranked-list ledger's generated
+  pages, which describe whole strategies, so the sell policies are not added there.
+
 - Implement the "New" rows of the sell table, each defaulting to inert where it has an off switch.
 - One unit test per policy for its rule, plus shared property tests run against **every** registered exit policy:
   - a no-loss-track policy never produces a realized loss under `enforce_no_loss`;

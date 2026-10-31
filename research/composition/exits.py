@@ -132,3 +132,8 @@ def build_exit(exit_id: str, params: dict) -> ExitPolicy:
         return cls(**params)
     except TypeError as exc:
         raise ConfigurationError(f"sell policy {exit_id} refused these parameters: {exc}") from exc
+
+
+# The policy library registers itself into EXITS on import; imported last so
+# the base classes above exist when it runs.
+from research.composition import exit_library  # noqa: E402, F401
