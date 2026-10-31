@@ -130,6 +130,16 @@ function CandidateRow({ candidate, onChanged }: { candidate: Candidate; onChange
         <span className="font-medium">{candidate.label}</span>
         <Badge>{candidate.symbols.join(", ")}</Badge>
         {kind ? <Badge>{kind}</Badge> : null}
+        {candidate.composition ? (
+          <Badge title="a composed algorithm: this buy and this sell">
+            buy {candidate.composition.buy} · sell {candidate.composition.sell}
+          </Badge>
+        ) : null}
+        {candidate.composition?.loss ? (
+          <Badge tone="loss" title="its sell algorithm exits on a signal and can realise a loss">
+            may sell below cost
+          </Badge>
+        ) : null}
       </div>
       <p className="text-xs text-muted-foreground">
         {candidate.strategy_id} · step {candidate.step} · target {candidate.profit_target} · backtest
@@ -142,6 +152,12 @@ function CandidateRow({ candidate, onChanged }: { candidate: Candidate; onChange
         </p>
       ) : trialBlocker(candidate) && candidate.stage === "candidate" ? (
         <p className="text-xs text-muted-foreground">{trialBlocker(candidate)}</p>
+      ) : null}
+      {candidate.paper_deployments.length > 0 && (candidate.paper_refused ?? []).length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Not offered:{" "}
+          {(candidate.paper_refused ?? []).map((entry) => `${entry.deployment} — ${entry.reason}`).join("; ")}
+        </p>
       ) : null}
       {verdict ? (
         <ul className="list-disc space-y-0.5 pl-5 text-xs">

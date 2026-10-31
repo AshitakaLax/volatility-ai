@@ -35,6 +35,14 @@ export function actionsFor(candidate: Candidate): CandidateAction[] {
 /** Why a candidate cannot start a paper trial, or null when it can. */
 export function trialBlocker(candidate: Candidate): string | null {
   if (candidate.paper_deployments.length > 0) return null;
+  const refused = candidate.paper_refused ?? [];
+  if (refused.length > 0) {
+    // Paper deployments on its fund exist, but their trader would refuse it:
+    // say why, since only their own config files can change that.
+    return `No paper deployment would take it: ${refused
+      .map((entry) => `${entry.deployment} — ${entry.reason}`)
+      .join("; ")}`;
+  }
   return `No paper deployment trades ${candidate.symbols.join(", ")}: a trial needs one (a paper account for that fund).`;
 }
 

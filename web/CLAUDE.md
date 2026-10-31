@@ -19,7 +19,9 @@ npm run build          # tsc -b && vite build -> dist/ (mounted by server/app.py
 src/
 ├── App.tsx                # tab shell: "backtest" | "result" | "live" | "algorithms" | "ml" | "warehouse" — that order is deliberate
 ├── components/
-│   ├── backtest/          # ParameterForm/ActiveRuns/ShardPanel/RunHistory live on "backtest"; BacktestResult
+│   ├── backtest/          # ParameterForm (+ CompositionEditor for the composed model: buy x sell, several of
+│   │                      #   each = the matrix; lib/composition.ts)/ActiveRuns/ShardPanel/RunHistory live on "backtest";
+│   │                      #   CompositionMatrix is a composed run's buy x sell heatmap; BacktestResult
 │   │                      #   (chart, trade log, sweep matrix, fund comparison) is the "result" tab
 │   ├── live/               # LiveTab: DeploymentStrip (Alpaca and Fidelity sections), OverviewCard (fund,
 │   │                      #   book, today's trades, what the trader will do next), FidelityPanel (the

@@ -55,6 +55,8 @@ from pydantic import BaseModel, Field, model_validator
 from engine.core.config import BacktestConfig, expand_strategy_params
 from engine.core.exceptions import ConfigurationError
 from engine.warehouse.bars import available_tickers, load_frame
+from research.composition.catalog import catalog as composition_catalog
+from research.composition.catalog import with_defaults as composition_with_defaults
 from research.optimization.optimization_controller import OptimizationController
 from research.optimization.search_strategies import BayesianSearch, GridSearch, SearchStrategy
 from research.strategies.natr_regime import daily_bars
@@ -73,11 +75,13 @@ from research.strategies.param_schema import _wire_type as _wire_type
 from research.strategies.param_schema import describe_params as describe_params
 from research.strategies.param_schema import required_parameters as required_parameters
 
-# SIGNAL_EXIT_STRATEGIES: run with execution.allow_signal_exit on (see
+# SIGNAL_EXIT_STRATEGIES, and any composition whose sell policy may sell
+# below cost (may_realize_loss): run with execution.allow_signal_exit on (see
 # build_config). Backtest only: this server never trades.
+from research.strategies.strategy_registry import SIGNAL_EXIT_STRATEGIES as SIGNAL_EXIT_STRATEGIES
 from research.strategies.strategy_registry import (
-    SIGNAL_EXIT_STRATEGIES,
     STRATEGIES,
+    may_realize_loss,
     resolve_strategy,
     session_bars,
 )
@@ -502,6 +506,16 @@ for _regime_id in (_i for _i in STRATEGIES if _i.startswith("ml_regime_")):
 for _lib_id in (_i for _i, _c in STRATEGIES.items() if _c.__name__ == "LibrarySizing"):
     _GRID_TRIGGER[_lib_id] = dict(_GRID_TRIGGER["hf_entry_gated"])
 
+# A composition's trigger is its BUY policy's (research/composition/): the
+# form shows that policy's own trigger, so the composed id names only that.
+_GRID_TRIGGER["composed"] = {
+    "methods": ["buy_policy"],
+    "default": "buy_policy",
+    "controlled_by": None,
+    "window_param": None,
+    "window_default": None,
+}
+
 
 def describe_grid_trigger(strategy_id: str) -> dict[str, Any]:
     """The grid-step trigger methods a strategy supports, as the wire's Trigger.
@@ -549,6 +563,11 @@ def resolve_params(request: RunRequest) -> dict[str, Any]:
     configuration they did not ask for.
     """
     if request.params:
+        if request.model == "composed":
+            # One level down, the same rule: a buy or sell policy named with
+            # no parameters takes its committed defaults; one given any is
+            # used exactly as given.
+            return composition_with_defaults(dict(request.params), merge=False)
         return dict(request.params)
     return dict(STRATEGY_DEFAULTS.get(request.model, {}))
 
@@ -574,7 +593,7 @@ def build_config(request: RunRequest) -> BacktestConfig:
                 "fill_model": request.fill,
                 "enforce_no_loss": request.no_loss,
                 "cash_yield_pct": request.cash_yield_pct,
-                "allow_signal_exit": request.model in SIGNAL_EXIT_STRATEGIES,
+                "allow_signal_exit": may_realize_loss(request.model, resolve_params(request)),
             },
             "search": {
                 "strategy": "bayesian" if request.bayes else "grid",
@@ -1109,7 +1128,9 @@ def run_backtest(
     for ticker in available:
         report(finished_units / total_units, f"running {ticker}")
         full = session_bars(
-            strategy_class, (bars.load_frame if bars is not None else load_frame)(ticker)
+            strategy_class,
+            (bars.load_frame if bars is not None else load_frame)(ticker),
+            config.strategy.strategy_params,
         )
         frame = window(full, parsed.start, parsed.end, parsed.limit)
         warm_up_daily = warm_up_history(strategy_class, full, frame)
@@ -1450,6 +1471,11 @@ def funds() -> dict[str, Any]:
             }
             for name, cls in sorted(STRATEGIES.items())
         },
+        # The buy and sell policies the `composed` model is built from
+        # (research/composition/catalog.py): each policy's params in the same
+        # shape as a model's, and a sell policy's `loss` flag (it may sell
+        # below cost) for the form to mark.
+        "composition": composition_catalog(),
     }
 
 

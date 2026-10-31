@@ -29,6 +29,15 @@ describe("what a candidate can do next", () => {
     expect(trialBlocker(base)).toBeNull();
   });
 
+  it("says why a paper deployment on its fund would refuse it", () => {
+    const refused = {
+      ...base,
+      paper_deployments: [],
+      paper_refused: [{ deployment: "paper", reason: "needs execution.allow_signal_exit" }],
+    };
+    expect(trialBlocker(refused)).toMatch(/paper — needs execution.allow_signal_exit/);
+  });
+
   it("lets the owner sign off before a pass, and only a promoted one publish", () => {
     expect(actionsFor(base)).toContain("override");
     expect(actionsFor({ ...base, stage: "paper_trial" })).toEqual(["evaluate", "override"]);

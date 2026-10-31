@@ -40,6 +40,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from engine.core.exit_policy import PROFIT_TARGET, SIGNAL_EXIT, ExitOrder, sellable_quantity
 from engine.core.market_context import MarketContext
 
 
@@ -58,6 +59,17 @@ def record_tick(strategy, context: MarketContext) -> None:
     """Phase 1: fires once per bar/tick, unconditionally, before any
     harvest or trigger evaluation (bug B4's fix, Task 1.3)."""
     strategy.record_tick(context)
+
+
+def lot_tag(strategy) -> str | None:
+    """The tag for the lot a buy decided now will open (SizingStrategy.
+    next_lot_tag), or None. Duck-typed: a strategy without the hook tags
+    nothing. Every buy site asks here, at the moment the buy is decided."""
+    hook = getattr(strategy, "next_lot_tag", None)
+    tag = hook() if hook is not None else None
+    if tag is not None and not isinstance(tag, str):
+        raise TypeError(f"next_lot_tag must return a string or None, got {tag!r}")
+    return tag
 
 
 def adjust_open_lot_targets(
@@ -172,6 +184,8 @@ def collect_liquidations(
     *,
     allow_signal_exit: bool,
     skip_order_ids=frozenset(),
+    as_orders: bool = False,
+    whole_shares: bool = False,
 ) -> list:
     """Phase 1c: the open lots a strategy wants closed on signal, not price.
 
@@ -205,6 +219,15 @@ def collect_liquidations(
     skip_order_ids mirrors adjust_open_lot_targets: the live loop
     excludes lots with a sell already in flight, since condemning a lot
     whose order is resting would submit a second one.
+
+    PARTIAL EXITS. The hook may return exit_policy.ExitOrder entries
+    (a lot and how many of its shares) as well as bare lots (all of them).
+    With as_orders=True -- what every sell site passes -- the result is
+    one SIGNAL_EXIT ExitOrder per condemned lot, its quantity shaped by
+    exit_policy.sellable_quantity (whole_shares where the venue needs
+    them); a tranche that shapes to nothing is dropped for this bar. With
+    as_orders=False the result is the condemned LOTS, as it always was --
+    for callers that only ask which lots, never how much.
     """
     if not allow_signal_exit:
         return []
@@ -232,17 +255,66 @@ def collect_liquidations(
     # Identity, not order_id: two lots can share neither, but a lot
     # object not in this bar's open book is not sellable this bar.
     live = {id(lot) for lot in open_lots if lot.order_id not in skip_order_ids}
-    condemned = [lot for lot in requested if id(lot) in live]
 
     # Deduplicate while preserving the strategy's order -- a hook that
-    # returns the same lot twice must not produce two sells.
+    # returns the same lot twice must not produce two sells. The FIRST
+    # entry for a lot wins, whether it is a bare lot or an ExitOrder.
     seen = set()
-    unique = []
-    for lot in condemned:
-        if id(lot) not in seen:
-            seen.add(id(lot))
-            unique.append(lot)
-    return unique
+    orders = []
+    for entry in requested:
+        if isinstance(entry, ExitOrder):
+            lot, quantity = entry.lot, entry.quantity
+        else:
+            lot, quantity = entry, None
+        if id(lot) not in live or id(lot) in seen:
+            continue
+        seen.add(id(lot))
+        orders.append((lot, lot.shares if quantity is None else quantity))
+
+    if not as_orders:
+        return [lot for lot, _ in orders]
+    shaped = []
+    for lot, quantity in orders:
+        qty = sellable_quantity(quantity, lot.shares, whole_shares=whole_shares)
+        if qty > 0:
+            shaped.append(ExitOrder(lot, qty, SIGNAL_EXIT))
+    return shaped
+
+
+def harvest_orders(
+    strategy,
+    marketable,
+    context: MarketContext,
+    *,
+    whole_shares: bool = False,
+    skip_order_ids=frozenset(),
+) -> list:
+    """Phase 2's quantities: how much of each marketable lot to sell at its
+    target, as PROFIT_TARGET ExitOrders in the ledger's FIFO order.
+
+    Before partial selling every marketable lot sold whole, and that is
+    still the answer for every strategy that does not override
+    SizingStrategy.harvest_quantity (duck-typed and optional, like the other
+    hooks, so a test double or external strategy keeps that behaviour).
+
+    skip_order_ids are lots that sell whole regardless of the strategy: the
+    live loop's legacy lots, which still belong to the algorithm that
+    bought them and were never the current strategy's to split.
+
+    Lives here, beside collect_liquidations, so the backtest, the intrabar
+    replay and the live loop ask the identical question.
+    """
+    hook = getattr(strategy, "harvest_quantity", None)
+    orders = []
+    for lot in marketable:
+        if hook is None or lot.order_id in skip_order_ids:
+            requested = lot.shares
+        else:
+            requested = hook(lot, context)
+        qty = sellable_quantity(requested, lot.shares, whole_shares=whole_shares)
+        if qty > 0:
+            orders.append(ExitOrder(lot, qty, PROFIT_TARGET))
+    return orders
 
 
 def evaluate_grid_decision(

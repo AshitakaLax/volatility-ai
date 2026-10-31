@@ -55,7 +55,7 @@ from typing import Literal
 import pandas as pd
 
 from engine.core.exceptions import DataValidationError
-from engine.core.ledger import AssetLotLedger
+from engine.core.ledger import SHARE_EPSILON, AssetLotLedger
 from engine.core.market_context import MarketContext
 from engine.data.earnings_calendar import is_earnings_reaction_day_at
 from engine.data.fomc_calendar import is_fomc_day_at
@@ -180,16 +180,22 @@ def simulate_single_intraday(
         # bar's best price would hand the strategy a high it had no order
         # standing to capture.
         liquidations = decision_cycle.collect_liquidations(
-            sizing_engine, ledger, context, allow_signal_exit=allow_signal_exit
+            sizing_engine, ledger, context, allow_signal_exit=allow_signal_exit, as_orders=True
         )
-        exits = [(lot, context.price, SellReason.SIGNAL_EXIT) for lot in liquidations]
+        exits = [
+            (order.lot, order.quantity, context.price, SellReason.SIGNAL_EXIT)
+            for order in liquidations
+        ]
         if liquidations:
-            condemned = {lot.order_id for lot in liquidations}
+            condemned = {order.lot.order_id for order in liquidations}
             marketable = [lot for lot in marketable if lot.order_id not in condemned]
-        exits.extend((lot, lot.target_sell_price, SellReason.PROFIT_TARGET) for lot in marketable)
+        exits.extend(
+            (order.lot, order.quantity, order.lot.target_sell_price, SellReason.PROFIT_TARGET)
+            for order in decision_cycle.harvest_orders(sizing_engine, marketable, context)
+        )
 
-        for lot, sell_price, sell_reason in exits:
-            exec_res = oms.execute_sell(lot.symbol, lot.shares, sell_price)
+        for lot, sell_quantity, sell_price, sell_reason in exits:
+            exec_res = oms.execute_sell(lot.symbol, sell_quantity, sell_price)
             if exec_res.get("status") != OrderStatus.FILLED:
                 logger.warning(
                     f"[intraday] Sell not filled for lot {lot.order_id}: status={exec_res.get('status')}"
@@ -207,7 +213,10 @@ def simulate_single_intraday(
             except NoLossViolation:
                 continue  # already logged by the guard
             cash += economics.net_sell_proceeds
-            ledger.close_lot(lot)
+            if filled_qty >= lot.shares - SHARE_EPSILON:
+                ledger.close_lot(lot)  # the whole lot, booked as it always was
+            else:
+                ledger.close_lot(lot, sell_qty=filled_qty, execution_price=filled_price)
             if sell_reason is SellReason.SIGNAL_EXIT:
                 signal_exits[0] += 1
 
@@ -238,7 +247,14 @@ def simulate_single_intraday(
         effective_price, buy_cost = cost_model.apply_buy(filled_price, filled_qty)
         total_buy_outlay = (effective_price * filled_qty) + buy_cost
         per_share_cost_basis = total_buy_outlay / filled_qty
-        ledger.register_buy(order["id"], "TQQQ", per_share_cost_basis, filled_qty, profit_target)
+        ledger.register_buy(
+            order["id"],
+            "TQQQ",
+            per_share_cost_basis,
+            filled_qty,
+            profit_target,
+            entry_tag=decision_cycle.lot_tag(sizing_engine),
+        )
         cash -= total_buy_outlay
         last_buy_price = trigger_level
 

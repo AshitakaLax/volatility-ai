@@ -278,6 +278,20 @@ class FidelityBroker:
     # buy worth less than one share rather than handing it to submit_buy.
     whole_shares = True
 
+    def whole_shares_in(self, session: str | None) -> bool:
+        """Whether an order placed in `session` must be whole shares.
+
+        Fidelity takes FRACTIONAL shares in the regular session and whole
+        shares only in pre- and post-market (owner, Oct 31 2026). This adapter
+        still sends every order as shares (qtyTypeCode 'S'): the fractional
+        ticket's quantity type has not been captured from Fidelity's own
+        order ticket (fidelity_gateway/recon.py), and a guessed code on a
+        real-money order is not a risk worth taking. So: whole shares in
+        every session, until a recon capture confirms the fractional type --
+        then this answers `session != REGULAR` and _preview sends that type.
+        docs/research/buy-sell-composition.md, Phase 1b."""
+        return True
+
     def __init__(
         self,
         session: FidelitySession,

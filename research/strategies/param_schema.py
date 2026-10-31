@@ -426,6 +426,13 @@ STRATEGY_DEFAULTS["catalog_exposure"] = {
     "execute_minute": 60,
     "rebalance_band": 0.05,
 }
+# composed (research/composition/): the champion buying and the grid's own
+# fixed target selling -- which IS the champion, so choosing it and changing
+# nothing reproduces hf_local_reference. Derived, not copied.
+STRATEGY_DEFAULTS["composed"] = {
+    "buy": {"id": "hf_local_reference", "params": dict(STRATEGY_DEFAULTS["hf_local_reference"])},
+    "sell": {"id": "fixed_target", "params": {}},
+}
 # Its signals, by name (research/strategies/catalog_exposure_sizing.SIGNALS,
 # pinned there), listed rather than imported like LIBRARY_SIGNALS below.
 CATALOG_SIGNALS: tuple[str, ...] = (
@@ -568,6 +575,8 @@ def _wire_type(hint: object, has_default: bool, default: object) -> tuple[str, b
         return "float", nullable
     if hint is str:
         return "str", nullable
+    if hint is dict or get_origin(hint) is dict:
+        return "object", nullable  # a nested component (composed's buy/sell)
     return "float", nullable  # tolerant: an exotic annotation renders as a number
 
 
@@ -646,7 +655,9 @@ def _resolve_hints(func: object) -> dict[str, object]:
     return resolved
 
 
-def describe_params(strategy_id: str, strategy_class: type) -> list[dict[str, Any]]:
+def describe_params(
+    strategy_id: str, strategy_class: type, committed: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """Every constructor argument of one strategy, in constructor order.
 
     Served by ``/funds`` so the frontend carries no idea of its own about
@@ -655,7 +666,8 @@ def describe_params(strategy_id: str, strategy_class: type) -> list[dict[str, An
     """
     signature = inspect.signature(strategy_class.__init__)
     hints = _resolve_hints(strategy_class.__init__)
-    committed = STRATEGY_DEFAULTS.get(strategy_id, {})
+    if committed is None:
+        committed = STRATEGY_DEFAULTS.get(strategy_id, {})
     required = set(required_parameters(strategy_class))
 
     out: list[dict[str, Any]] = []

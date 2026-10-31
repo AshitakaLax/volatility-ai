@@ -25,6 +25,11 @@ Two more things live here that are not `BacktestConfig`s:
   every profile to trade on some deployment it fits.
   The Algorithms tab can publish one into this folder (it is the one folder `web` may write); the
   file lands uncommitted, for you to review and commit.
+- `matrix/<name>.yaml` — buy × sell MATRIX configs for `python cli.py matrix`
+  (`research/composition/matrix.py`): a `matrix:` section naming buy and sell
+  policies, funds, `min_history_years` (never below 5, 10+ recommended) and an
+  equal `trials_per_cell`, plus the `BacktestConfig` sections every cell is built
+  from (no `strategy:`). Not `BacktestConfig`s themselves.
 - `proposed_profiles/<id>.yaml` — profiles kept for later that no committed
   deployment can trade yet (nothing loads this directory). Move one into
   `live_profiles/` once a deployment trading its symbol is committed.

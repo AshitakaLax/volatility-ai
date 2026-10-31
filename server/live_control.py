@@ -46,6 +46,7 @@ from pydantic import BaseModel, Field
 from engine.core.exceptions import ConfigurationError
 from engine.data.dashboard_data import DashboardError, load_state
 from engine.trading.control_inbox import Command, InvalidCommand
+from research.composition.catalog import catalog as composition_catalog
 from research.strategies import live_profiles
 from research.strategies.live_algorithm import LEGACY_MODES, AlgorithmControl, impact
 from research.strategies.param_schema import describe_params
@@ -426,6 +427,9 @@ def algorithm(deployment_id: str) -> dict[str, Any]:
         ),
         "profiles": _profiles(deployment),
         "strategies": _strategies(deployment, control),
+        # The buy and sell policies a `composed` algorithm is built from
+        # (research/composition/catalog.py), for the switch form's editor.
+        "composition": composition_catalog(),
     }
 
 

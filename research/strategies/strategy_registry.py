@@ -17,6 +17,7 @@ the copy that grew to fill the gap would be free to disagree.
 from __future__ import annotations
 
 from engine.core.exceptions import ConfigurationError
+from research.composition.composed_strategy import ComposedStrategy
 from research.ml.reachability_sizing import MLReachabilitySizing
 from research.ml.regime_scaled_sizing import MLRegimeScaledSizing
 from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
@@ -131,6 +132,13 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     "ml_regime_xbi": MLRegimeScaledSizing,
     "ml_regime_cowz": MLRegimeScaledSizing,
     "ml_regime_ursp": MLRegimeScaledSizing,
+    # Any buy algorithm with any sell policy (research/composition/,
+    # docs/research/buy-sell-composition.md): strategy_params are
+    # {buy: {id, params}, sell: {id, params}}. composed(X, fixed_target) is X
+    # exactly (research/tests/test_composition.py). A sell policy that may
+    # sell below cost still needs execution.allow_signal_exit, which
+    # live_algorithm.check_live_support requires of a live config.
+    "composed": ComposedStrategy,
 }
 
 # The ranked list's single-symbol algorithms, one id each: rk<ledger
@@ -159,14 +167,34 @@ SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset(
 )
 
 
-def session_bars(strategy_class: type, bars):
+def may_realize_loss(strategy_id: str, params: dict | None = None) -> bool:
+    """Whether a run of this strategy is designed to sell below cost, so
+    needs execution.allow_signal_exit: the Ultimate family by id, a
+    composition by its sell policy (any variant of a sweep)."""
+    if strategy_id in SIGNAL_EXIT_STRATEGIES:
+        return True
+    ask = getattr(STRATEGIES.get(strategy_id), "can_realize_loss_for", None)
+    return bool(ask(params or {})) if callable(ask) else False
+
+
+def regular_session_only(strategy_class: type, params: dict | None = None) -> bool:
+    """Whether a run of `strategy_class` (with these params, for one whose
+    answer depends on them -- a composition asks its buy and sell sides) is
+    built on regular-session bars."""
+    ask = getattr(strategy_class, "regular_session_only_for", None)
+    if callable(ask):
+        return bool(ask(params or {}))
+    return bool(getattr(strategy_class, "regular_session_only", False))
+
+
+def session_bars(strategy_class: type, bars, params: dict | None = None):
     """The bars a backtest of `strategy_class` should see: all of them, or
     only the regular session's for a strategy built on those
     (`regular_session_only`: the Ultimate family). From a fund kept with
     extended hours (SQQQ, SPY, IWM, EEM) a pre-market or after-hours bar
     would fold into the session's range and shift its minutes; live,
     live_algorithm.check_live_support refuses the same mix."""
-    if not getattr(strategy_class, "regular_session_only", False) or bars.empty:
+    if bars.empty or not regular_session_only(strategy_class, params):
         return bars
     from engine.data.historical_data import filter_regular_trading_hours
 

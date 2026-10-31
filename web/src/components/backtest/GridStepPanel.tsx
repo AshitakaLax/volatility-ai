@@ -22,6 +22,7 @@ const METHOD_LABEL: Record<TriggerMethod, string> = {
   regime_widened: "Last buy price, regime-widened",
   regime_switched: "Local reference, regime-switched",
   exposure_target: "Daily exposure target (no grid)",
+  buy_policy: "Set by the buy algorithm",
 };
 const METHOD_HELP: Record<TriggerMethod, string> = {
   last_buy: "Buy when price falls one step below the last fill.",
@@ -33,6 +34,8 @@ const METHOD_HELP: Record<TriggerMethod, string> = {
     "While the volatility regime reads calm, buy on a step-sized pullback from max(last fill, N-day high). While it reads turbulent there is no grid: only a capitulation-close buy near the end of a session that fell past the reversal threshold.",
   exposure_target:
     "No grid step: once a session, at the execution minute, the book buys up to (or sells down to) the fraction of equity its daily signal votes for. The grid step and profit target are not used for timing.",
+  buy_policy:
+    "A composed algorithm buys exactly as its chosen buy algorithm does, so the trigger is that algorithm's own.",
 };
 
 interface Props {

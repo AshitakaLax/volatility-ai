@@ -99,10 +99,14 @@ class FundFills:
         self.why_values: np.ndarray = columns["why_values"]
         self.why: np.ndarray = columns["why"]
         n_lots = len(self.lots)
-        has_buy = np.bincount(self.lot_id[self.side == 0], minlength=n_lots) > 0
-        has_sell = np.bincount(self.lot_id[self.side == 1], minlength=n_lots) > 0
+        buys, sells = self.side == 0, self.side == 1
+        has_buy = np.bincount(self.lot_id[buys], minlength=n_lots) > 0
+        bought = np.bincount(self.lot_id[buys], weights=self.qty[buys], minlength=n_lots)
+        sold = np.bincount(self.lot_id[sells], weights=self.qty[sells], minlength=n_lots)
+        # Open until its LAST share sells: a lot sold in tranches has several
+        # sells and is still open until they add up to what was bought.
         # Decided over every fill of the fund, never the filtered subset.
-        self.open_lot: np.ndarray = has_buy & ~has_sell
+        self.open_lot: np.ndarray = has_buy & (sold < bought * (1 - 1e-9) - 1e-9)
 
     def __len__(self) -> int:
         return len(self.side)

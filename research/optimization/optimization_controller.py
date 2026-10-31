@@ -24,7 +24,7 @@ import pandas as pd
 from engine.core.config import INTRABAR_FILL_MODES
 from engine.core.exceptions import ConfigurationError, DataValidationError
 from engine.core.idempotency import ProcessedEventStore
-from engine.core.ledger import AssetLotLedger
+from engine.core.ledger import SHARE_EPSILON, AssetLotLedger
 from engine.core.market_context import MarketContext, SimulationResult
 from engine.core.validation import validate_run_sweep_config
 from engine.data import data_validation
@@ -1060,26 +1060,47 @@ class OptimizationController:
             # signal exit into a price-contingent one that might never
             # fill on a later bar.
             liquidations = decision_cycle.collect_liquidations(
-                strategy_instance, ledger, context, allow_signal_exit=allow_signal_exit
+                strategy_instance,
+                ledger,
+                context,
+                allow_signal_exit=allow_signal_exit,
+                as_orders=True,
             )
-            exits = [(lot, context.price, SellReason.SIGNAL_EXIT) for lot in liquidations]
+            exits = [
+                (order.lot, order.quantity, context.price, SellReason.SIGNAL_EXIT)
+                for order in liquidations
+            ]
             if liquidations:
-                condemned = {lot.order_id for lot in liquidations}
+                condemned = {order.lot.order_id for order in liquidations}
                 marketable = [lot for lot in marketable if lot.order_id not in condemned]
+            # How much of each marketable lot to sell: all of it unless the
+            # strategy sells in tranches (SizingStrategy.harvest_quantity).
+            harvest = decision_cycle.harvest_orders(strategy_instance, marketable, context)
             if fill_model == "intrabar" and intrabar_fill in ("open_or_level", "causal"):
                 # The mirror of the buy side: a resting sell limit at the
                 # target fills at the OPEN when the bar opens at or above it.
                 exits.extend(
-                    (lot, max(lot.target_sell_price, row.open), SellReason.PROFIT_TARGET)
-                    for lot in marketable
+                    (
+                        order.lot,
+                        order.quantity,
+                        max(order.lot.target_sell_price, row.open),
+                        SellReason.PROFIT_TARGET,
+                    )
+                    for order in harvest
                 )
             else:
                 exits.extend(
-                    (lot, lot.target_sell_price, SellReason.PROFIT_TARGET) for lot in marketable
+                    (
+                        order.lot,
+                        order.quantity,
+                        order.lot.target_sell_price,
+                        SellReason.PROFIT_TARGET,
+                    )
+                    for order in harvest
                 )
 
-            for lot, sell_price, sell_reason in exits:
-                exec_res = oms.execute_sell(lot.symbol, lot.shares, sell_price)
+            for lot, sell_quantity, sell_price, sell_reason in exits:
+                exec_res = oms.execute_sell(lot.symbol, sell_quantity, sell_price)
                 if exec_res.get("status") != OrderStatus.FILLED:
                     logger.warning(
                         f"Sell not filled for lot {lot.order_id}: status={exec_res.get('status')}"
@@ -1147,7 +1168,11 @@ class OptimizationController:
                     outright instead of relying on the caller's timing.
                     """
                     state.credit_sale(net_sell_proceeds, settlement_days)
-                    ledger.close_lot(lot)
+                    if filled_qty >= lot.shares - SHARE_EPSILON:
+                        ledger.close_lot(lot)  # the whole lot, booked as it always was
+                    else:
+                        # Part of the lot: the rest stays open at its cost basis.
+                        ledger.close_lot(lot, sell_qty=filled_qty, execution_price=filled_price)
                     if sell_reason is SellReason.SIGNAL_EXIT:
                         signal_exit_count[0] += 1
                     blotter_records.append(
@@ -1264,7 +1289,12 @@ class OptimizationController:
                             correct regardless of when it is invoked.
                             """
                             ledger.register_buy(
-                                order["id"], symbol, per_share_cost_basis, filled_qty, target
+                                order["id"],
+                                symbol,
+                                per_share_cost_basis,
+                                filled_qty,
+                                target,
+                                entry_tag=decision_cycle.lot_tag(strategy_instance),
                             )
                             state.cash -= total_buy_outlay
                             # The grid reference advances to where this buy

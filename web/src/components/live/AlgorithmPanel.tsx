@@ -1,6 +1,7 @@
 import { Cpu, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { CompositionEditor } from "@/components/backtest/CompositionEditor";
 import { ParamField } from "@/components/backtest/ParamField";
 import {
   Badge,
@@ -24,6 +25,7 @@ import {
   shadowLine,
   sourceLabel,
 } from "@/lib/control";
+import { COMPOSED_MODEL, composedParams, stateFrom, type CompositionState } from "@/lib/composition";
 import { buildStrategyParams, paramSpec, seedOf } from "@/lib/strategyParams";
 import { cn } from "@/lib/utils";
 import type { ParamSpec } from "@/types/backtest";
@@ -515,6 +517,15 @@ function SwitchForm({
   const [values, setValues] = useState<Record<string, string>>(() =>
     seedFor((strategy?.params ?? []).map(paramSpec), view.current),
   );
+  // A composed algorithm is edited as one buy and one sell policy, seeded from
+  // the one in force when that is composed too.
+  const [compState, setCompState] = useState<CompositionState>(() =>
+    stateFrom(
+      view.current.strategy_id === COMPOSED_MODEL ? view.current.strategy_params : undefined,
+      view.composition,
+    ),
+  );
+  const composed = strategyId === COMPOSED_MODEL;
   const [step, setStep] = useState(String(view.current.step ?? ""));
   const [target, setTarget] = useState(String(view.current.profit_target ?? ""));
 
@@ -550,7 +561,9 @@ function SwitchForm({
       : {
           legacy_lots: legacy,
           strategy_id: strategyId,
-          strategy_params: buildStrategyParams(specs, values) as Record<string, string | number | boolean>,
+          strategy_params: composed
+            ? (composedParams(compState, view.composition) as unknown as Record<string, string | number | boolean>)
+            : (buildStrategyParams(specs, values) as Record<string, string | number | boolean>),
           step: Number(step),
           profit_target: Number(target),
         };
@@ -710,8 +723,18 @@ function SwitchForm({
           {strategy && !strategy.live_capable && strategy.why ? (
             <p className="text-xs text-loss">{strategy.why}</p>
           ) : null}
+          {composed && view.composition ? (
+            <CompositionEditor
+              composition={view.composition}
+              state={compState}
+              onChange={(next) => edit(() => setCompState(next))}
+              errors={[]}
+              disabled={busy}
+              single
+            />
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {specs.map((spec) => (
+            {(composed ? [] : specs).map((spec) => (
               <ParamField
                 key={spec.name}
                 spec={spec}

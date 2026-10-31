@@ -135,6 +135,12 @@ def check_live_support(config: BacktestConfig, strategy: Any) -> None:
     from research.strategies.strategy_registry import SIGNAL_EXIT_STRATEGIES
 
     strategy_id = config.strategy.strategy_id
+    if getattr(strategy, "can_realize_loss", False) and not config.execution.allow_signal_exit:
+        raise ConfigurationError(
+            f"{strategy_id}'s sell policy may sell below cost (a signal exit). Set "
+            "execution.allow_signal_exit: true in this deployment's config to trade it -- "
+            "that is the file's decision, never the page's."
+        )
     if strategy_id in SIGNAL_EXIT_STRATEGIES and not config.execution.allow_signal_exit:
         raise ConfigurationError(
             f"{strategy_id} was researched with its signal exit (for ultimate, the regime "
@@ -441,6 +447,8 @@ class AlgorithmControl:
             except Exception:
                 params = []
             strategies.append({"id": strategy_id, "params": params})
+        from research.composition.catalog import catalog
+
         return {
             "editable": self._allowed,
             "reason": None
@@ -457,6 +465,8 @@ class AlgorithmControl:
             "changedAt": override.get("changedAt") if override is not None else None,
             "pending": self.pending(),
             "strategies": strategies,
+            # The buy and sell policies a `composed` algorithm is built from.
+            "composition": catalog(),
         }
 
     def set(
@@ -536,6 +546,19 @@ class AlgorithmControl:
             raise ConfigurationError("strategy_params must be an object of at most 64 values.")
         step = _fraction(args.get("step"), "step")
         profit_target = _fraction(args.get("profit_target"), "profit_target")
+
+        if strategy_id == "composed":
+            # A buy and a sell policy, each checked against its own schema
+            # (research/composition/catalog.py), so a bad nested value is
+            # refused by name rather than as an unknown parameter.
+            from research.composition.catalog import parse_change
+
+            return {
+                "strategy_id": strategy_id,
+                "strategy_params": parse_change(params, _param_value, _OMIT, profit_target),
+                "step": step,
+                "profit_target": profit_target,
+            }
 
         schema = {
             spec["name"]: spec for spec in describe_params(strategy_id, self._registry[strategy_id])
@@ -634,12 +657,12 @@ def impact(current: dict, change: dict, lots: list[dict], legacy_lots: str = "ke
     cost; "wait" is a switch made when flat.
     """
     from engine.core.ledger import EXIT_AT_COST_TARGET
-    from research.strategies.strategy_registry import SIGNAL_EXIT_STRATEGIES
+    from research.strategies.strategy_registry import may_realize_loss
 
     count = len(lots)
     target = change.get("profit_target")
-    exit_before = current.get("strategy_id") in SIGNAL_EXIT_STRATEGIES
-    exit_after = change.get("strategy_id") in SIGNAL_EXIT_STRATEGIES
+    exit_before = may_realize_loss(current.get("strategy_id") or "", current.get("strategy_params"))
+    exit_after = may_realize_loss(change.get("strategy_id") or "", change.get("strategy_params"))
     notes = []
     if count and legacy_lots == "keep":
         notes.append(
@@ -742,6 +765,20 @@ def algorithm_summary(algorithm: dict, symbol: str | None = None) -> str:
         if isinstance(target, int | float) and target >= _OUT_OF_REACH:
             text += f" (the lots' +{_percent(target)} target is out of reach on purpose)"
         return text
+    if strategy_id == "composed":
+        buy, sell = params.get("buy") or {}, params.get("sell") or {}
+        buy_id = buy.get("id", "?") if isinstance(buy, dict) else "?"
+        sell_id = sell.get("id", "?") if isinstance(sell, dict) else "?"
+        from research.composition.exits import EXITS
+
+        policy = EXITS.get(sell_id)
+        risky = (
+            " -- it may sell below cost" if policy is not None and policy.can_realize_loss else ""
+        )
+        return (
+            f"buys as {buy_id} does (step {_percent(step)}), and sells as {sell_id} does"
+            f"{risky}; lots are bought with a +{_percent(target)} target the sell policy may move"
+        )
     if strategy_id == "ultimate":
         minute = _param(strategy_id, params, "liquidate_minute")
         return (

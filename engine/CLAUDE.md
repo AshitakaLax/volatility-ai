@@ -30,7 +30,11 @@ every bar — not a convention, a tested assertion:
 
 ```
 1. record_tick(context)        — every bar, unconditionally
-2. harvest eligible lots        — sell before buy
+2. harvest eligible lots        — sell before buy; how much of each lot:
+                                  collect_liquidations(as_orders=True) and
+                                  harvest_orders (core/exit_policy.py shapes
+                                  the quantity; all of it unless a strategy
+                                  overrides harvest_quantity)
 3. _check_grid_trigger()
 4. calculate_trade_value()
 5. risk clamp                   (trading/risk_manager.py)

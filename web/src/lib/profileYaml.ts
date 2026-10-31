@@ -27,6 +27,8 @@ function scalar(value: unknown): string {
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "null";
   if (typeof value === "boolean") return value ? "true" : "false";
   if (value === null || value === undefined) return "null";
+  // A composed model's buy/sell component: JSON is valid YAML (a flow mapping).
+  if (typeof value === "object") return JSON.stringify(value);
   return JSON.stringify(String(value));
 }
 

@@ -139,8 +139,43 @@ class SizingStrategy(ABC):
 
         `open_lots` is a snapshot list, safe to filter. Return a subset
         of it; lots not in the ledger are ignored rather than trusted.
+
+        Each entry is either a lot (sell all of it) or an
+        engine.core.exit_policy.ExitOrder naming the lot and how many of
+        its shares to sell -- a partial exit. Either way the sale is a
+        SIGNAL_EXIT, behind the same two-key gate.
         """
         return []
+
+    def harvest_quantity(self, lot, context: MarketContext) -> float:
+        """Shares of `lot` to sell now that it is marketable at its target.
+
+        Default: all of them, which is every sale this system made before
+        partial selling existed, so a strategy that does not override this
+        sells exactly as it always has.
+
+        Called once per marketable lot per bar, by
+        decision_cycle.harvest_orders -- after adjust_profit_target and
+        collect_liquidations, so a ladder that moved the lot to its next rung
+        this bar answers for that rung. Less than lot.shares sells part of
+        the lot at its target; the rest stays open with the same cost basis,
+        and adjust_profit_target can move its target before the next sale.
+        0 (or less) sells nothing this bar. The answer is shaped by
+        exit_policy.sellable_quantity (whole shares where the venue needs
+        them), and every sale still goes through no_loss_guard.
+        """
+        return lot.shares
+
+    def next_lot_tag(self) -> str | None:
+        """What the lot about to be bought is for, as the selling side should
+        read it (Lot.entry_tag) -- e.g. "reversal" for a capitulation buy that
+        exits differently from the grid's. Default None: an untagged lot.
+
+        Asked once per buy, when it is decided (decision_cycle.lot_tag), so a
+        strategy answers from the state record_tick left for this bar. The
+        tag is persisted with the lot, so a restart does not have to infer
+        it from anything else (a target value, say)."""
+        return None
 
     @abstractmethod
     def record_tick(self, context: MarketContext) -> None:

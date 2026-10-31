@@ -47,7 +47,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from engine.core.exceptions import PersistenceError, ReconciliationError
-from engine.core.ledger import AssetLotLedger, Lot
+from engine.core.ledger import SHARE_EPSILON, AssetLotLedger, Lot
 
 SCHEMA_VERSION = 1
 
@@ -95,6 +95,19 @@ CREATE TABLE IF NOT EXISTS ledger_meta (
 CREATE TABLE IF NOT EXISTS ledger_lot_owners (
     order_id TEXT PRIMARY KEY,
     owner    TEXT NOT NULL
+);
+
+-- What partial selling needs to survive a restart, apart from ledger_lots
+-- for the same reason as ledger_lot_owners: an existing ledger gains it with
+-- no migration. original_shares is the size the lot opened with (a ladder
+-- reads its rung from shares / original_shares); entry_tag is what the buying
+-- side said the lot is for. A lot with no row opened at its current shares,
+-- untagged -- true of every lot recorded before this table existed, since
+-- none could be partly sold by a strategy then.
+CREATE TABLE IF NOT EXISTS ledger_lot_details (
+    order_id        TEXT PRIMARY KEY,
+    original_shares REAL NOT NULL,
+    entry_tag       TEXT
 );
 """
 
@@ -223,6 +236,18 @@ class LedgerStore:
                     revision,
                 ),
             )
+            # OR IGNORE: the first record of a lot is its opening size. A lot
+            # re-recorded later (its target moved after part of it sold) must
+            # not have its original size overwritten by what is left.
+            conn.execute(
+                "INSERT OR IGNORE INTO ledger_lot_details (order_id, original_shares, entry_tag) "
+                "VALUES (?, ?, ?)",
+                (
+                    lot.order_id,
+                    lot.original_shares if lot.original_shares is not None else lot.shares,
+                    lot.entry_tag,
+                ),
+            )
             return revision
 
     def record_lot_shares(self, lot: Lot, is_open: bool) -> int:
@@ -316,7 +341,11 @@ class LedgerStore:
         calling it repeatedly yields equivalent ledgers and mutates
         nothing."""
         ledger = AssetLotLedger()
-        rows = self._conn.execute("SELECT * FROM ledger_lots ORDER BY revision ASC").fetchall()
+        rows = self._conn.execute(
+            "SELECT l.*, d.original_shares AS original_shares, d.entry_tag AS entry_tag "
+            "FROM ledger_lots l LEFT JOIN ledger_lot_details d ON d.order_id = l.order_id "
+            "ORDER BY l.revision ASC"
+        ).fetchall()
         for row in rows:
             lot = Lot(
                 order_id=row["order_id"],
@@ -324,7 +353,16 @@ class LedgerStore:
                 buy_price=row["buy_price"],
                 shares=row["shares"],
                 profit_target=row["profit_target"],
+                original_shares=row["original_shares"],
+                entry_tag=row["entry_tag"],
             )
+            if lot.original_shares is not None and (
+                lot.shares > lot.original_shares + SHARE_EPSILON
+            ):
+                raise PersistenceError(
+                    f"Lot {row['order_id']!r}: {lot.shares} shares open but it opened with "
+                    f"{lot.original_shares}. A lot only ever shrinks."
+                )
             # target_sell_price is recomputed identically by Lot.__post_init__
             # from the persisted buy_price/profit_target; assert rather than
             # trust, so a schema/logic drift surfaces loudly.

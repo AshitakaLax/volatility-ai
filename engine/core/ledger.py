@@ -72,10 +72,27 @@ class Lot:
     buy_price: float
     shares: float
     profit_target: float
+    # The shares the lot opened with. `shares` falls as parts of the lot
+    # sell; this does not, so "how much of it has sold" survives a restart
+    # (a scale-out ladder reads its rung from shares / original_shares).
+    # Defaults to `shares` at creation.
+    original_shares: float | None = None
+    # What the buying side said this lot is for (e.g. "reversal"), read by
+    # the selling side -- the one thing a buy policy hands a sell policy.
+    # None for every lot bought by a strategy that does not tag.
+    entry_tag: str | None = None
     target_sell_price: float = field(init=False)
     # Audit-only: the price of the most recent confirmed fill applied to
     # this lot. Never feeds cost basis or the exit target.
     last_execution_price: float | None = field(default=None, init=False)
+    # Shares sold, and what they fetched, through PARTIAL closes
+    # (close_lot with sell_qty). A whole-lot close leaves both at zero and
+    # `shares` intact, as it always has. PerformanceAnalyzer adds these to
+    # realized P&L, so a tranche sold off a lot that is still open, or a lot
+    # sold away in tranches, is counted; for a run with no partial sale
+    # both stay 0 and no figure moves. Audit/metrics only: never cost basis.
+    partial_sold_shares: float = field(default=0.0, init=False)
+    partial_sold_value: float = field(default=0.0, init=False)
     # The ledger holding this lot, set by register_buy. Exists so
     # retarget() can tell it that a target moved DOWN -- see
     # AssetLotLedger.get_marketable_lots' price bound. Without it a lot
@@ -96,6 +113,15 @@ class Lot:
         closes must not move an existing lot's exit price.
         """
         self.target_sell_price = self.buy_price * (1.0 + self.profit_target)
+        if self.original_shares is None:
+            self.original_shares = self.shares
+
+    @property
+    def sold_fraction(self) -> float:
+        """How much of the lot has sold, 0.0 (none) to 1.0 (all)."""
+        if not self.original_shares:
+            return 0.0
+        return max(0.0, min(1.0, 1.0 - self.shares / self.original_shares))
 
     def retarget(self, new_profit_target: float) -> None:
         """Move this lot's exit target. The ONLY sanctioned mutation of
@@ -166,8 +192,10 @@ class AssetLotLedger:
         buy_price: float,
         shares: float,
         profit_target: float,
+        entry_tag: str | None = None,
     ) -> Lot:
-        """Open a new lot after a confirmed buy fill."""
+        """Open a new lot after a confirmed buy fill. `entry_tag` is what the
+        buying side said the lot is for (Lot.entry_tag), None by default."""
         if shares <= 0:
             raise ValueError(f"shares must be positive, got {shares}")
         if buy_price <= 0:
@@ -181,6 +209,7 @@ class AssetLotLedger:
             buy_price=buy_price,
             shares=shares,
             profit_target=profit_target,
+            entry_tag=entry_tag,
         )
         lot._ledger = self
         self.open_lots.append(lot)
@@ -376,6 +405,10 @@ class AssetLotLedger:
         lot.shares -= sell_qty
         if execution_price is not None:
             lot.last_execution_price = execution_price
+        lot.partial_sold_shares += sell_qty
+        lot.partial_sold_value += sell_qty * (
+            execution_price if execution_price is not None else lot.target_sell_price
+        )
 
         if lot.shares <= SHARE_EPSILON:
             lot.shares = 0.0
