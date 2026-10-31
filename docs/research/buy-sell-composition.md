@@ -245,6 +245,8 @@ The pipeline's stages do not change. Each one learns about `composed`:
    reusing `ParamField` / `SweepableParamField` as is. **Several buys and several sells may be ticked at once**,
    which submits one run that is the matrix (each side's list becomes the nested sweep of Design §3). The form shows
    the cell count before submitting, using the existing split for oversized runs.
+   Loss-capable sells are listed by default with a "may sell below cost" badge, and the form shows a warning
+   while one is selected.
 3. **Run result.** Each cell's `params` is the nested object, so nothing changes in storage. The result view gains a
    **buy × sell heatmap** when a run's model is `composed`: cell colour = the chosen metric (Total Return % or Calmar),
    one heatmap per track, click a cell for its existing detail view.
@@ -390,7 +392,7 @@ Phase 7 can start once Phase 2 lands, in parallel with 3 to 6.
   and calls **`OptimizationController.run_sweep`**, not `run_hf_sweep.py`, which drops `allow_signal_exit` and cash
   yield. It writes through `DuckDBResultSink`.
 - **Symbol universe** (owner: any symbol, long history): every fund in the warehouse
-  (`engine/warehouse/inventory.py`) with at least a configurable minimum history (default 5 years), over its
+  (`engine/warehouse/inventory.py`) with at least `min_history_years` of bars (default 10, never below 5), over its
   **full** history. A policy restricted to some funds (ML tickers, an exposure signal researched on RSP) runs only
   on those and is marked so. Simulated leveraged history (e.g. `tools/simulate_ursp.py`) may extend a fund's
   history but is reported as simulated, never pooled silently with real bars.
@@ -476,13 +478,15 @@ every partially sold lot's broker position matches `shares` after reconciliation
 | The web offers a trial deployment that then refuses the switch | `paper_deployments` runs the trader's own check and shows the refusal |
 | A browser loosens a loss gate | It cannot: `allow_signal_exit` stays in the deployment's file, and real money still takes only committed profiles |
 
-## Open questions (owner decisions)
+## Decided after revision 2 (Oct 31, 2026)
 
-1. **Matrix size for the first real run.** Recommendation: about 8 buys × 8 sells × 4 symbols at an equal budget,
-   sized from one timed cell, before attempting every registered policy.
-2. **The minimum history for "any symbol"** (default 5 years in Phase 5), and whether simulated leveraged history
-   should count at all.
-3. **Should the web form show the loss-capable sells by default**, or behind a toggle that explains they may sell below cost?
+1. **First real matrix**: about 8 buys × 8 sells × 4 symbols at an equal budget, sized from one timed cell.
+2. **Minimum history for "any symbol"**: at least 5 years (enforced); **10 or more recommended**. The matrix
+   config's default is 10, the floor is 5, and the result marks any fund under 10 years. Simulated leveraged
+   history stays as Phase 5 says: allowed, reported as simulated, never pooled with real bars silently.
+3. **Loss-capable sells on the web form**: shown **by default**, each clearly marked as able to sell below cost
+   (a badge on the option and a warning on the form when one is selected). The run, candidate and profile carry
+   the same mark, so it is never lost on the way to a deployment.
 
 ## Effort (rough)
 
