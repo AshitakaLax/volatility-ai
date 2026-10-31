@@ -45,9 +45,9 @@ Add to `engine/core/` (layer 0, no research imports):
 # engine/core/exit_policy.py
 @dataclass(frozen=True)
 class ExitOrder:
-    lot: Lot                 # must be a lot from this bar's open book
-    quantity: float          # 0 < quantity <= lot.shares
-    reason: SellReason       # PROFIT_TARGET (cannot lose) or SIGNAL_EXIT (may lose)
+    lot: Lot  # must be a lot from this bar's open book
+    quantity: float  # 0 < quantity <= lot.shares
+    reason: SellReason  # PROFIT_TARGET (cannot lose) or SIGNAL_EXIT (may lose)
     # Price comes from the reason: PROFIT_TARGET fills at the lot's target or better
     # (the existing harvest path), SIGNAL_EXIT at the bar's price (the existing exit path)
 ```
