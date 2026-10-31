@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 312 (1 = easiest) |
 | Retail advantage rank | 53 (1 = strongest) |
 | Fit with this project | ⏳ as a sizing or gating model · ⛔ long-short stock selection |
-| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `random_forest_signal`, `lag_feature_matrix`; tested on synthetic data, not wired into the engine. The engine's ML models are LightGBM (V13, V14). |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk290_random_forest`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=random_forest`, component `RandomForestGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** in `research.catalog.technical_ml`: `random_forest_signal`, `lag_feature_matrix`; tested on synthetic data, not wired into the engine. The engine's ML models are LightGBM (V13, V14). |
 | Related ledger entries | RK291, RK214, RK292 |
 
 ## In one paragraph

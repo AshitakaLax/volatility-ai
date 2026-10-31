@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 153 (1 = easiest) |
 | Retail advantage rank | 138 (1 = strongest) |
 | Fit with this project | ⏳ for training the ML sizing models |
-| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `sequential_bootstrap`, `average_uniqueness`, `indicator_matrix`; tested on synthetic data, not wired into the engine. Purged k-fold and combinatorial purged CV also exist (C-ML3). |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk271_rf_seqboot`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=rf_seqboot`, component `RandomForestGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** in `research.catalog.technical_ml`: `sequential_bootstrap`, `average_uniqueness`, `indicator_matrix`; tested on synthetic data, not wired into the engine. Purged k-fold and combinatorial purged CV also exist (C-ML3). |
 | Related ledger entries | C-ML3, RK213, RK294, V13, V14 |
 
 ## In one paragraph

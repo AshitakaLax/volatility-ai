@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 151 (1 = easiest) |
 | Retail advantage rank | 136 (1 = strongest) |
 | Fit with this project | 🧪 as a feature transform (C-ML5) |
-| Implemented in volatility-ai | **Research code.** Fixed-width-window fractional differencing (`ml.info_bars.frac_diff_ffd`, ledger C-ML5). |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk300_fracdiff`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=fracdiff`, component `FracDiffGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code.** Fixed-width-window fractional differencing (`ml.info_bars.frac_diff_ffd`, ledger C-ML5). |
 | Related ledger entries | C-ML5, RK213, RK271 |
 
 ## In one paragraph

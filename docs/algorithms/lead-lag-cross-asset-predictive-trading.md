@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 139 (1 = easiest) |
 | Retail advantage rank | 105 (1 = strongest) |
 | Fit with this project | 🧪 the estimator · ⏳ as an entry-timing input (Nasdaq-100 futures leading TQQQ) · ⛔ as a latency trade |
-| Implemented in volatility-ai | **Research code.** `leads.lagged_cross_correlation` and `leads.hy_lead_lag` (the Hayashi–Yoshida covariance with the Hoffmann–Rosenbaum–Yoshida lead estimate), a gap-analysis lead for Nasdaq-100 futures leading the ETF; no trading rule. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk204_lead_lag`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=lead_lag`, component `LeadLagGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code.** `leads.lagged_cross_correlation` and `leads.hy_lead_lag` (the Hayashi–Yoshida covariance with the Hoffmann–Rosenbaum–Yoshida lead estimate), a gap-analysis lead for Nasdaq-100 futures leading the ETF; no trading rule. |
 | Related ledger entries | RK100, RK221, RK257 |
 
 ## In one paragraph

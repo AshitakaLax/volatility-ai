@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 260 (1 = strongest) |
 | Fit with this project | ⏳ worth testing |
 | Useful for volatility-ai | **Worth testing.** The put-buying hedge is excluded, but an EVT expected-shortfall forecast is a candidate exposure governor next to the NATR regime. |
-| Implemented in volatility-ai | **Research code** `research.catalog.concepts`: `pot_var_es`, `tail_budget_exposure`. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk130_evt`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=evt`, component `EvtSizer`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** `research.catalog.concepts`: `pot_var_es`, `tail_budget_exposure`. |
 | Related ledger entries | V17, N5, RK133 |
 
 ## In one paragraph

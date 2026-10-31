@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 234 (1 = strongest) |
 | Fit with this project | 🧪 reference only |
 | Useful for volatility-ai | **Reference only.** The grid already buys pullbacks; a trend-confirmed pullback is at most a gate on it, and no study supports one. |
-| Implemented in volatility-ai | **Research code** `research.strategies.entry_gates`. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk115_ema_pullback`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=ema_pullback`, component `EmaPullbackGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** `research.strategies.entry_gates`. |
 | Related ledger entries | V5, X1, RK17 |
 
 ## In one paragraph

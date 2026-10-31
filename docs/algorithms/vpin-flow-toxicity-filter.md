@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 363 (1 = easiest) |
 | Retail advantage rank | 10,495 (1 = strongest) |
 | Fit with this project | 🧪 as a buy gate (C-MM4) · evidence says it adds little beyond volume and volatility |
-| Implemented in volatility-ai | **Research code.** Bulk-classified VPIN from bars (`microstructure.vpin`, ledger C-MM4). |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk247_vpin`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=vpin`, component `VpinGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code.** Bulk-classified VPIN from bars (`microstructure.vpin`, ledger C-MM4). |
 | Related ledger entries | C-MM4, RK259, V7 |
 
 ## In one paragraph

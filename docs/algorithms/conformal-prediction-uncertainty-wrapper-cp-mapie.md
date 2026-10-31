@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 155 (1 = easiest) |
 | Retail advantage rank | 74 (1 = strongest) |
 | Fit with this project | 🧪 as uncertainty-aware lot sizing |
-| Implemented in volatility-ai | **Research code.** Split-conformal intervals and a long-only sizing rule (`position_sizing.split_conformal_interval`, `conformal_long_size`, catalog S5). |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk295_conformal`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=conformal`, component `ConformalSizer`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code.** Split-conformal intervals and a long-only sizing rule (`position_sizing.split_conformal_interval`, `conformal_long_size`, catalog S5). |
 | Related ledger entries | V13, RK99, S5 |
 
 ## In one paragraph

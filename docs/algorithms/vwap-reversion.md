@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 424 (1 = strongest) |
 | Fit with this project | 🧪 reference only |
 | Useful for volatility-ai | **Reference only.** Session VWAP is already researched as a buy gate (C-MS3); there is no academic evidence for VWAP fades as a strategy. |
-| Implemented in volatility-ai | **Research code** `research.strategies.intraday_gates`: `VwapGate`, `session_vwap`. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk150_vwap`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=vwap`, component `VwapReversionGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** `research.strategies.intraday_gates`: `VwapGate`, `session_vwap`. |
 | Related ledger entries | C-MS3, RK364 |
 
 ## In one paragraph

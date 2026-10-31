@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 303 (1 = easiest) |
 | Retail advantage rank | 9,812 (1 = strongest) |
 | Fit with this project | 🧪 research code (C-MS2; L1 quotes only) · ⏳ as a fair-value check at a live trigger |
-| Implemented in volatility-ai | **Research code.** `microstructure.micro_price` is the size-weighted mid ((bid × ask size + ask × bid size) / total size) and `depth_imbalance` the queue imbalance (ledger C-MS2). Stoikov's micro-price, an estimated martingale adjustment, is not built. |
+| Implemented in volatility-ai | **Research code.** `microstructure.micro_price` is the size-weighted mid ((bid × ask size + ask × bid size) / total size) and `depth_imbalance` the queue imbalance (ledger C-MS2). Stoikov's micro-price, an estimated martingale adjustment, is not built. Deferred: needs Level 1 quotes from Fidelity ([engine/roadmap.md](../../engine/roadmap.md) item 3). |
 | Related ledger entries | RK322, C-MS2, C-MS1, C-MM3 |
 
 ## In one paragraph

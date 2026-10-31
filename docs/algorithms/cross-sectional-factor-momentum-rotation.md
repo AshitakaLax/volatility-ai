@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 31 (1 = easiest) |
 | Retail advantage rank | 125 (1 = strongest) |
 | Fit with this project | ⏳ long-only over factor ETFs (X3's harness) |
-| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `factor_momentum`; tested on synthetic data, not wired into the engine. Not run as a factor rotation; X3's harness would run it given factor ETFs as `--universe`. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator factor_momentum` in the portfolio book (`python -m tools.portfolio_book`; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.factors`: `factor_momentum`; tested on synthetic data, not wired into the engine. Not run as a factor rotation; X3's harness would run it given factor ETFs as `--universe`. |
 | Related ledger entries | X3, RK7, RK19 |
 
 ## In one paragraph

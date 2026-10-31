@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 75 (1 = easiest) |
 | Retail advantage rank | 58 (1 = strongest) |
 | Fit with this project | ⏳ long-only stock basket or shareholder-yield ETF |
-| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `shareholder_yield`; tested on synthetic data, not wired into the engine. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator shareholder_yield` in the portfolio book (`python -m tools.portfolio_book` --data fundamentals=FILE; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.factors`: `shareholder_yield`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK35, RK52 |
 
 ## In one paragraph

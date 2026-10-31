@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 152 (1 = easiest) |
 | Retail advantage rank | 137 (1 = strongest) |
 | Fit with this project | 🧪 as a labelling tool (C-ML1) · not a strategy |
-| Implemented in volatility-ai | **Research code.** `ml.barrier_labels.trend_scanning_labels` (ledger C-ML1); no model is trained on the labels. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk213_trend_scan`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=trend_scan`, component `TrendScanGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code.** `ml.barrier_labels.trend_scanning_labels` (ledger C-ML1); no model is trained on the labels. |
 | Related ledger entries | C-ML1, RK294, RK271, C-ML3 |
 
 ## In one paragraph

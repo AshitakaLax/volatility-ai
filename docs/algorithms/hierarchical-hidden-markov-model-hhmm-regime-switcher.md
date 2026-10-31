@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 259 (1 = strongest) |
 | Fit with this project | ⏳ worth testing |
 | Useful for volatility-ai | **Worth testing.** A two-level bull/bear and volatility regime is plausible, but test it only after the plain HMM (RK102) earns its place. |
-| Implemented in volatility-ai | **Research code** `research.strategies.regime_models`: `GaussianHMM`. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk106_hhmm`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=hhmm`, component `HmmRegimeGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** `research.strategies.regime_models`: `GaussianHMM`. |
 | Related ledger entries | RK102, C-R3 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 224 (1 = easiest) |
 | Retail advantage rank | 9,810 (1 = strongest) |
 | Fit with this project | 🧪 research code (the trajectory) · ⏳ as a measurement (shortfall of each fill, RK250) |
-| Implemented in volatility-ai | **Research code.** `leads.almgren_chriss` and `almgren_chriss_objective` compute the optimal holdings path, expected cost and variance; the live loop does not record shortfall. |
+| Implemented in volatility-ai | **Research code.** `leads.almgren_chriss` and `almgren_chriss_objective` compute the optimal holdings path, expected cost and variance; the live loop does not record shortfall. Deferred: execution scheduling is [engine/roadmap.md](../../engine/roadmap.md) item 2. |
 | Related ledger entries | RK250, RK363, RK244 |
 
 ## In one paragraph

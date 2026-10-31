@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 49 (1 = strongest) |
 | Fit with this project | ⏳ worth testing |
 | Useful for volatility-ai | **Worth testing.** Conformal sizing is already researched for grid lots (V13); stacking needs several alpha sources the project does not have. |
-| Implemented in volatility-ai | **Research code** `research.strategies.position_sizing`: `conformal_long_size`; `research.catalog.forecasting`: `stack_forecasts`. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk127_conformal_stack`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=conformal_stack`, component `ConformalSizer`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** `research.strategies.position_sizing`: `conformal_long_size`; `research.catalog.forecasting`: `stack_forecasts`. |
 | Related ledger entries | V13, RK132, RK144 |
 
 ## In one paragraph

@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 160 (1 = strongest) |
 | Fit with this project | 🧪 reference only |
 | Useful for volatility-ai | **Reference only.** The overnight/intraday split is already measured (leads.overnight_intraday); as a close-to-open strategy it conflicts with the grid's hold-to-target lots. |
-| Implemented in volatility-ai | **Research code** `research.catalog.leads`: `overnight_intraday`. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk154_overnight`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=overnight`, component `OvernightGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** `research.catalog.leads`: `overnight_intraday`. |
 | Related ledger entries | RK69 |
 
 ## In one paragraph

@@ -7,8 +7,14 @@
         --market SPY                                                # RK10
     python -m tools.portfolio_book --allocator dividend_yield --universe SPYD SCHD VYM DGRO \\
         --dividends data/dividends.csv                              # RK52
+    python -m tools.portfolio_book --allocator gross_profitability --universe A B C D \
+        --data fundamentals=data/fundamentals.csv                   # RK13
+    python -m tools.portfolio_book --list                           # every allocator
 
-Allocators: research/strategies/allocators.py (ALLOCATORS). The book:
+Allocators: research/strategies/allocator_library.py (ALLOCATOR_LIBRARY, which
+includes allocators.py's). Data an allocator reads (fundamentals, events,
+deals, navs, macro, dividends) comes in as CSVs with --data name=path; see
+that module's docstring for each table's columns. The book:
 research/strategies/portfolio_book.py -- weights from closes before each
 session, traded at its close, every sale through the no-loss guard
 (--allow-loss makes rebalancing sales signal exits instead). A backtest
@@ -27,7 +33,8 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from engine.execution.cost_models import SlippageCommissionModel
-from research.strategies.allocators import ALLOCATORS, SECTOR_ETFS
+from research.strategies.allocator_library import ALLOCATOR_LIBRARY, DATA_NEEDS, LEDGER
+from research.strategies.allocators import SECTOR_ETFS
 from research.strategies.natr_regime import daily_bars
 from research.strategies.portfolio_book import run_portfolio
 
@@ -45,7 +52,9 @@ def _value(text: str):
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--allocator", choices=sorted(ALLOCATORS), required=True)
+    p.add_argument("--allocator", choices=sorted(ALLOCATOR_LIBRARY))
+    p.add_argument("--list", action="store_true", help="list the allocators and exit")
+    p.add_argument("--data", action="append", default=[], help="a data table, name=file.csv")
     p.add_argument("--universe", nargs="+", default=[])
     p.add_argument("--preset", choices=sorted(PRESETS))
     p.add_argument(
@@ -61,6 +70,13 @@ def main(argv=None) -> int:
     p.add_argument("--allow-loss", action="store_true", help="rebalancing sales may realise a loss")
     p.add_argument("--out", default="output/portfolio_book")
     args = p.parse_args(argv)
+    if args.list:
+        for name in sorted(ALLOCATOR_LIBRARY):
+            needs = ", ".join(DATA_NEEDS.get(name, ())) or "-"
+            print(f"{name:34s} {LEDGER.get(name, ''):6s} data: {needs}")
+        return 0
+    if not args.allocator:
+        raise SystemExit("--allocator is required (see --list)")
 
     names = list(dict.fromkeys([*PRESETS.get(args.preset, []), *args.universe]))
     kwargs = dict(item.split("=", 1) for item in args.param)
@@ -70,10 +86,13 @@ def main(argv=None) -> int:
             raise SystemExit("state_filtered_momentum needs --market")
         names.append(args.market)
         kwargs["market"] = args.market
-    if args.allocator == "dividend_yield":
-        if not args.dividends:
-            raise SystemExit("dividend_yield needs --dividends")
-        kwargs["dividends"] = pd.read_csv(args.dividends)
+    tables = dict(item.split("=", 1) for item in args.data)
+    if args.dividends:
+        tables.setdefault("dividends", args.dividends)
+    for need in DATA_NEEDS.get(args.allocator, ()):
+        if need not in tables:
+            raise SystemExit(f"{args.allocator} needs --data {need}=FILE.csv")
+        kwargs[need] = pd.read_csv(tables[need])
     if len(names) < 2:
         raise SystemExit("give two or more instruments (--universe or --preset)")
 
@@ -89,7 +108,7 @@ def main(argv=None) -> int:
     rebalance = int(args.rebalance) if args.rebalance.isdigit() else args.rebalance
     result = run_portfolio(
         table,
-        ALLOCATORS[args.allocator],
+        ALLOCATOR_LIBRARY[args.allocator],
         rebalance=rebalance,
         min_history=args.min_history,
         initial_cash=args.initial_cash,

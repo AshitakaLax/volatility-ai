@@ -1,5 +1,72 @@
 # Changelog
 
+## Feat: every fitting research-code algorithm, selectable for backtests
+
+**78 of the 82 research-code entries that fit the owner's rules are now
+selectable algorithms; four wait on engine work.** Nothing that already
+trades changed: the new strategy ids share one new class, and the champion,
+`hf_entry_gated`, `hf_signal_gated` and the Ultimate family are untouched.
+
+- **50 single-symbol strategy ids**, one per algorithm, named
+  `rk<ledger number>_<signal>` (`rk44_supertrend`, `rk102_hmm`,
+  `rk134_kelly`, ...). They cover the 37 new algorithms here and the 13
+  earlier `hf_signal_gated` gates.
+  - **Built on the champion grid.** Each is `LibrarySizing`
+    (`research/strategies/library_sizing.py`): the grid plus ONE component from
+    `research/strategies/signal_library.py`.
+  - **Three kinds of component:**
+    - a gate pauses buys;
+    - a sizer scales lots;
+    - a level component only lowers the buy level.
+  - **Committed defaults.** Each id carries its algorithm as the default
+    `signal` (seeded, and sent by a plain Run; it is not locked, because the
+    form does not send locked fields). The algorithm's parameters stay
+    tunable through `signal_params` ("k=v,k=v").
+  - **Signals that read a file.** Seven need a daily CSV path in
+    `signal_params`: leader closes, breadth, sentiment, events. Without one
+    the strategy still builds, so the form can show it, but the run stops on
+    its first bar naming the file. It never quietly does nothing.
+  - **Safe defaults.** With `signal="off"` the class is `hf_entry_gated`
+    exactly (pinned under both fill models). No component sells.
+  - **What the components are:**
+    - regime models: HMM, hierarchical HMM, Hurst/variance-ratio,
+      TDA landscapes and Rips scores, a self-exciting jump intensity;
+    - trend filters: Supertrend, MA crossover, multi-timeframe,
+      trend scanning;
+    - intraday rules: opening range, EMA pullback, VWAP, overnight, VPIN;
+    - learned models: random forests (one with sequential bootstrap) and
+      RL exposure policies (PPO, TD3, SAC, the EMV agent);
+    - sizers: ATR, Kelly, GARCH, EVT, conformal and conformal stacking;
+    - market-making bids: inventory skew and Avellaneda-Stoikov;
+    - external series: lead-lag and transfer entropy (with a leader
+      series), breadth, sentiment, causal impact.
+- **41 more portfolio-book allocators**
+  (`research/strategies/allocator_library.py`; `python -m
+  tools.portfolio_book --list`):
+  - optimisers: min-CVaR, distributionally robust CVaR, minimum variance,
+    Black-Litterman, maximum diversification, tail-risk parity, WDRO,
+    vine copula;
+  - learned rankers: LambdaRank, a domain-adversarial forecaster, ARD
+    factors;
+  - turnover rule: top-K dropout;
+  - scenario generators: diffusion, GMMN, TimeGAN and factor diffusion,
+    each feeding min-CVaR;
+  - price-based factors: 12-1 and residual momentum, factor momentum,
+    industry reversal, inflation rotation;
+  - fundamental and event factors: 16 stock factors and 5 event and
+    deal books.
+
+  Data the warehouse lacks (fundamentals, events, deals, NAVs, CPI) comes
+  in as CSVs with `--data name=file.csv`, read point-in-time. The book now
+  passes its current weights to an allocator that asks for them.
+- **Deferred to [`engine/roadmap.md`](engine/roadmap.md):**
+  - RK306 and RK322 need Level 1/Level 2 quotes from Fidelity;
+  - RK363 and RK366 are execution schedules.
+
+  The roadmap's data-feed item now lists every file these read.
+
+None of the 78 has been run on real market data.
+
 ## Feat: the partly implemented ranked-list algorithms, completed
 
 **26 of the 30 "partial" entries of the ranked list (docs/algorithm_ledger.md

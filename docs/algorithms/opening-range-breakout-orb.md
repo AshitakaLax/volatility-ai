@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 218 (1 = strongest) |
 | Fit with this project | 🧪 reference only |
 | Useful for volatility-ai | **Reference only.** A day-trading rule; the index replications are net zero after costs, and the research code and gate form exist (C-M2, N2). |
-| Implemented in volatility-ai | **Research code** `research.catalog.trend_following`: `orb_trade`; `research.strategies.entry_gates`: `BreakdownGate`. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk110_orb`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=orb`, component `OpeningRangeGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** `research.catalog.trend_following`: `orb_trade`; `research.strategies.entry_gates`: `BreakdownGate`. |
 | Related ledger entries | C-M2, N2, RK70 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 89 (1 = easiest) |
 | Retail advantage rank | 81 (1 = strongest) |
 | Fit with this project | ⏳ long-only (small-cap ETF, ideally quality-screened) |
-| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `size_with_quality`; tested on synthetic data, not wired into the engine. RSP (equal-weight S&P 500) is traded and carries a mild size tilt relative to the cap-weighted index, but it is not a small-cap strategy. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator small_cap_quality` in the portfolio book (`python -m tools.portfolio_book` --data fundamentals=FILE; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.factors`: `size_with_quality`; tested on synthetic data, not wired into the engine. RSP (equal-weight S&P 500) is traded and carries a mild size tilt relative to the cap-weighted index, but it is not a small-cap strategy. |
 | Related ledger entries | RK11, RK9 |
 
 ## In one paragraph

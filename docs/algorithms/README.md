@@ -36,18 +36,18 @@ residuals for physics-informed networks).
 | RK2 | [Volatility-Scaled Trend Following](volatility-scaled-trend-following.md) | 2 | Research code; the scaling half is wired (S4) |
 | RK3 | [Dual Momentum (Absolute + Relative)](dual-momentum-absolute-relative.md) | 3 | Yes, as `tools/rotation.py --mode relative_strength` (X3) |
 | RK4 | [Cross-Asset Carry Composite](cross-asset-carry-composite.md) | 4 | Research code |
-| RK5 | [Value-Momentum Composite](value-momentum-composite.md) | 5 | Research code |
-| RK6 | [12–1 Momentum (Skip-Month)](12-1-momentum-skip-month.md) | 6 | Research code |
+| RK5 | [Value-Momentum Composite](value-momentum-composite.md) | 5 | Yes |
+| RK6 | [12–1 Momentum (Skip-Month)](12-1-momentum-skip-month.md) | 6 | Yes |
 | RK7 | [Cross-Sectional Momentum](cross-sectional-momentum.md) | 7 | Yes (X3) |
 | RK8 | [Commodity Momentum + Term Structure](commodity-momentum-term-structure.md) | 8 | Research code |
 | RK9 | [Fama–French Five-Factor Model Portfolio](fama-french-five-factor-model-portfolio.md) | 9 | Research code |
 | RK10 | [State-Filtered Momentum](state-filtered-momentum.md) | 10 | Yes |
 | RK11 | [Quality Minus Junk (QMJ)](quality-minus-junk-qmj.md) | 11 | Research code |
-| RK12 | [Quality / Profitability Factor](quality-profitability-factor.md) | 12 | Research code |
-| RK13 | [Gross Profitability Factor](gross-profitability-factor.md) | 13 | Research code |
+| RK12 | [Quality / Profitability Factor](quality-profitability-factor.md) | 12 | Yes |
+| RK13 | [Gross Profitability Factor](gross-profitability-factor.md) | 13 | Yes |
 | RK14 | [52-Week High Momentum](52-week-high-momentum.md) | 14 | Yes |
-| RK15 | [Conservative Investment Factor](conservative-investment-factor.md) | 15 | Research code |
-| RK16 | [Residual Momentum](residual-momentum.md) | 16 | Research code |
+| RK15 | [Conservative Investment Factor](conservative-investment-factor.md) | 15 | Yes |
+| RK16 | [Residual Momentum](residual-momentum.md) | 16 | Yes |
 | RK17 | [10-Month Moving-Average Risk Filter](10-month-moving-average-risk-filter.md) | 17 | Yes (V16, C-E2) |
 | RK18 | [Low-Volatility Equity](low-volatility-equity.md) | 18 | Yes (X2) |
 | RK19 | [Sector Momentum Rotation](sector-momentum-rotation.md) | 19 | Yes (X3) |
@@ -58,47 +58,47 @@ residuals for physics-informed networks).
 | RK24 | [ETF NAV / Creation-Redemption Arbitrage](etf-nav-creation-redemption-arbitrage.md) | 24 | Research code (C-RJ6) |
 | RK25 | [Index Futures vs Cash Basis Arbitrage](index-futures-vs-cash-basis-arbitrage.md) | 25 | Research code |
 | RK26 | [Futures Cash-and-Carry Basis Trading](futures-cash-and-carry-basis-trading.md) | 26 | Partial |
-| RK27 | [Shareholder Yield Factor](shareholder-yield-factor.md) | 27 | Research code |
+| RK27 | [Shareholder Yield Factor](shareholder-yield-factor.md) | 27 | Yes |
 | RK28 | [Fixed-Income Carry and Roll-Down](fixed-income-carry-and-roll-down.md) | 28 | Research code |
-| RK29 | [Price + Earnings Momentum](price-earnings-momentum.md) | 29 | Research code |
+| RK29 | [Price + Earnings Momentum](price-earnings-momentum.md) | 29 | Yes |
 | RK30 | [FX Carry Trade](fx-carry-trade.md) | 30 | Research code |
-| RK31 | [Intangibles-Adjusted Value and Profitability Factor](intangibles-adjusted-value-and-profitability-factor.md) | 31 | Research code |
+| RK31 | [Intangibles-Adjusted Value and Profitability Factor](intangibles-adjusted-value-and-profitability-factor.md) | 31 | Yes |
 | RK32 | [Commodity Futures Roll Yield](commodity-futures-roll-yield.md) | 32 | Research code |
 | RK33 | [Market-Neutral Residual Mean Reversion](market-neutral-residual-mean-reversion.md) | 33 | Research code (C-MR2) |
 | RK34 | [Futures Calendar-Spread Mean Reversion](futures-calendar-spread-mean-reversion.md) | 34 | Research code |
-| RK35 | [Net Stock Issuance Anomaly](net-stock-issuance-anomaly.md) | 35 | Research code |
+| RK35 | [Net Stock Issuance Anomaly](net-stock-issuance-anomaly.md) | 35 | Yes |
 | RK36 | [Johansen Cointegration Basket Trading](johansen-cointegration-basket-trading.md) | 36 | Research code |
 | RK37 | [Cointegration-Based Pairs Trading](cointegration-based-pairs-trading.md) | 37 | Research code (Q2) |
 | RK38 | [Chandelier Exit Trend Following](chandelier-exit-trend-following.md) | 38 | Partial (V10, Q8) |
-| RK39 | [Merger Arbitrage](merger-arbitrage.md) | 39 | Research code |
-| RK40 | [Earnings Estimate Revision Momentum](earnings-estimate-revision-momentum.md) | 40 | Research code |
-| RK41 | [Inflation-Regime Asset Rotation](inflation-regime-asset-rotation.md) | 41 | Research code |
+| RK39 | [Merger Arbitrage](merger-arbitrage.md) | 39 | Yes |
+| RK40 | [Earnings Estimate Revision Momentum](earnings-estimate-revision-momentum.md) | 40 | Yes |
+| RK41 | [Inflation-Regime Asset Rotation](inflation-regime-asset-rotation.md) | 41 | Yes |
 | RK42 | [Cross-Asset Commodity Futures Term-Structure Carry & Roll Yield](cross-asset-commodity-futures-term-structure-carry-roll-yield.md) | 42 | Research code |
 | RK43 | [Donchian / Turtle Channel Breakout](donchian-turtle-channel-breakout.md) | 43 | Research code (C-G5) |
-| RK44 | [Supertrend ATR-Band Trend Following](supertrend-atr-band-trend-following.md) | 44 | Research code |
-| RK45 | [Post-Earnings Announcement Drift (PEAD)](post-earnings-announcement-drift-pead.md) | 45 | Research code |
+| RK44 | [Supertrend ATR-Band Trend Following](supertrend-atr-band-trend-following.md) | 44 | Yes |
+| RK45 | [Post-Earnings Announcement Drift (PEAD)](post-earnings-announcement-drift-pead.md) | 45 | Yes |
 | RK46 | [MACD Signal-Line Crossover](macd-signal-line-crossover.md) | 46 | Yes (Q1) |
-| RK47 | [Public Activist-Filing Event Strategy](public-activist-filing-event-strategy.md) | 47 | Research code |
-| RK48 | [Book-to-Market Value](book-to-market-value.md) | 48 | Research code |
+| RK47 | [Public Activist-Filing Event Strategy](public-activist-filing-event-strategy.md) | 47 | Yes |
+| RK48 | [Book-to-Market Value](book-to-market-value.md) | 48 | Yes |
 | RK49 | [Betting Against Beta (BAB)](betting-against-beta-bab.md) | 49 | Research code |
-| RK50 | [Accrual Anomaly](accrual-anomaly.md) | 50 | Research code |
-| RK51 | [Asset-Growth Anomaly](asset-growth-anomaly.md) | 51 | Research code |
+| RK50 | [Accrual Anomaly](accrual-anomaly.md) | 50 | Yes |
+| RK51 | [Asset-Growth Anomaly](asset-growth-anomaly.md) | 51 | Yes |
 | RK52 | [Dividend Yield / Dividend Growth](dividend-yield-dividend-growth.md) | 52 | Yes |
-| RK53 | [CVaR / Expected-Shortfall Optimization](cvar-expected-shortfall-optimization.md) | 53 | Research code |
+| RK53 | [CVaR / Expected-Shortfall Optimization](cvar-expected-shortfall-optimization.md) | 53 | Yes |
 | RK54 | [Volatility-Managed Factor Portfolio](volatility-managed-factor-portfolio.md) | 54 | Partial (S4) |
 | RK55 | [ADX-Filtered Trend Following](adx-filtered-trend-following.md) | 55 | Yes (V15) |
 | RK56 | [Hierarchical Risk Parity (HRP)](hierarchical-risk-parity-hrp.md) | 56 | Yes (A5, Q13) |
-| RK57 | [Low P/E Value Screen](low-p-e-value-screen.md) | 57 | Research code |
-| RK58 | [Small-Cap Size Premium](small-cap-size-premium.md) | 58 | Research code |
+| RK57 | [Low P/E Value Screen](low-p-e-value-screen.md) | 57 | Yes |
+| RK58 | [Small-Cap Size Premium](small-cap-size-premium.md) | 58 | Yes |
 | RK59 | [Liquidity Factor](liquidity-factor.md) | 59 | Partial |
-| RK60 | [Global Minimum-Variance Portfolio](global-minimum-variance-portfolio.md) | 60 | Research code (Q13) |
+| RK60 | [Global Minimum-Variance Portfolio](global-minimum-variance-portfolio.md) | 60 | Yes (Q13) |
 | RK61 | [Risk Parity / Equal Risk Contribution](risk-parity-equal-risk-contribution.md) | 61 | Yes (A5) |
-| RK62 | [Dual Moving Average Crossover](dual-moving-average-crossover.md) | 62 | Research code (Q1, C-E2) |
-| RK63 | [Black–Litterman Allocation](black-litterman-allocation.md) | 63 | Research code |
+| RK62 | [Dual Moving Average Crossover](dual-moving-average-crossover.md) | 62 | Yes (Q1, C-E2) |
+| RK63 | [Black–Litterman Allocation](black-litterman-allocation.md) | 63 | Yes |
 | RK64 | [Triple EMA / Moving-Average Ribbon](triple-ema-moving-average-ribbon.md) | 64 | Yes (V15) |
-| RK65 | [Cross-Sectional Factor Momentum Rotation](cross-sectional-factor-momentum-rotation.md) | 65 | Research code |
-| RK66 | [Maximum-Diversification Portfolio](maximum-diversification-portfolio.md) | 66 | Research code |
-| RK67 | [ATR-Based Position Sizing](atr-based-position-sizing.md) | 67 | Research code (C-G5) |
+| RK65 | [Cross-Sectional Factor Momentum Rotation](cross-sectional-factor-momentum-rotation.md) | 65 | Yes |
+| RK66 | [Maximum-Diversification Portfolio](maximum-diversification-portfolio.md) | 66 | Yes |
+| RK67 | [ATR-Based Position Sizing](atr-based-position-sizing.md) | 67 | Yes (C-G5) |
 | RK68 | [Dual Thrust Breakout](dual-thrust-breakout.md) | 68 | Research code (Q7, N1) |
 | RK69 | [London Session Breakout](london-session-breakout.md) | 69 | Research code (Q4, N2, N3) |
 | RK70 | [Parabolic SAR Trend / Stop](parabolic-sar-trend-stop.md) | 70 | Yes (Q8) |
@@ -109,44 +109,44 @@ residuals for physics-informed networks).
 | RK75 | [Ornstein–Uhlenbeck Spread Trading](ornstein-uhlenbeck-spread-trading.md) | 75 | Research code (C-MR2, C-MR4) |
 | RK76 | [PCA Residual Statistical Arbitrage](pca-residual-statistical-arbitrage.md) | 76 | Partial (C-MR2) |
 | RK77 | [ATR Volatility-Expansion Breakout](atr-volatility-expansion-breakout.md) | 77 | Research code |
-| RK78 | [Multi-Timeframe Trend Agreement](multi-timeframe-trend-agreement.md) | 78 | Research code |
+| RK78 | [Multi-Timeframe Trend Agreement](multi-timeframe-trend-agreement.md) | 78 | Yes |
 | RK79 | [Opening Gap Continuation](opening-gap-continuation.md) | 79 | Yes (N3, X1) |
 | RK80 | [Convertible Bond Arbitrage](convertible-bond-arbitrage.md) | 80 | Research code |
 | RK81 | [Capital Structure Arbitrage](capital-structure-arbitrage.md) | 81 | Research code |
-| RK82 | [Closed-End Fund Discount Reversion](closed-end-fund-discount-reversion.md) | 82 | Research code |
+| RK82 | [Closed-End Fund Discount Reversion](closed-end-fund-discount-reversion.md) | 82 | Yes |
 | RK83 | [Triangular FX Arbitrage](triangular-fx-arbitrage.md) | 83 | Research code (A7) |
 | RK84 | [Crypto Perpetual Funding-Rate Capture](crypto-perpetual-funding-rate-capture.md) | 84 | Research code (C-RJ2) |
 | RK85 | [Spot-Perpetual Basis Arbitrage](spot-perpetual-basis-arbitrage.md) | 85 | Partial (C-RJ2) |
 | RK86 | [Yield Curve Steepener / Flattener](yield-curve-steepener-flattener.md) | 86 | Research code |
 | RK87 | [Option Dispersion Trading](option-dispersion-trading.md) | 87 | Research code |
-| RK88 | [Distributionally Robust CVaR Allocation](distributionally-robust-cvar-allocation.md) | 88 | Research code |
+| RK88 | [Distributionally Robust CVaR Allocation](distributionally-robust-cvar-allocation.md) | 88 | Yes |
 | RK89 | [Autoencoder Latent-Factor Statistical Arbitrage](autoencoder-latent-factor-statistical-arbitrage.md) | 89 | Research code |
-| RK90 | [Long-Term Industry Reversal with Valuation Confirmation](long-term-industry-reversal-with-valuation-confirmation.md) | 90 | Research code |
+| RK90 | [Long-Term Industry Reversal with Valuation Confirmation](long-term-industry-reversal-with-valuation-confirmation.md) | 90 | Yes |
 | RK91 | [iNAV Dislocation ETF Arbitrage](inav-dislocation-etf-arbitrage.md) | 91 | Partial (C-RJ6) |
 | RK92 | [FED OTC Liquidity Sweep & Reverse Repo Arbitrage](fed-otc-liquidity-sweep-reverse-repo-arbitrage.md) | 92 | Research code |
 | RK93 | [Cointegrated Triplet Basket Statistical Arbitrage](cointegrated-triplet-basket-statistical-arbitrage.md) | 93 | Research code |
 | RK94 | [Dynamic Copula-GARCH Multivariate Pair Trading](dynamic-copula-garch-multivariate-pair-trading.md) | 94 | Research code |
-| RK95 | [Asymmetric Tail-Risk Parity Allocation](asymmetric-tail-risk-parity-allocation.md) | 95 | Research code |
+| RK95 | [Asymmetric Tail-Risk Parity Allocation](asymmetric-tail-risk-parity-allocation.md) | 95 | Yes |
 | RK96 | [Principal Component Analysis (PCA) Eigenportfolios Statistical Arbitrage](principal-component-analysis-pca-eigenportfolios-statistical-arbitrage.md) | 96 | Partial (C-MR2) |
 | RK97 | [Wasserstein Distributionally Robust Statistical Arbitrage](wasserstein-distributionally-robust-statistical-arbitrage.md) | 97 | Research code |
-| RK98 | [Adversarial Domain Generalization Cross-Market Momentum](adversarial-domain-generalization-cross-market-momentum.md) | 98 | Research code |
+| RK98 | [Adversarial Domain Generalization Cross-Market Momentum](adversarial-domain-generalization-cross-market-momentum.md) | 98 | Yes |
 | RK99 | [Conformally Constrained Risk Parity Portfolio](conformally-constrained-risk-parity-portfolio.md) | 99 | Yes |
 | RK100 | [Causal Discovery Directed Acyclic Graph (DAG) Pair Selection](causal-discovery-directed-acyclic-graph-dag-pair-selection.md) | 100 | Research code |
 | RK101 | [Dynamic Copula-EVT Tail Risk Relative Value Arbitrage](dynamic-copula-evt-tail-risk-relative-value-arbitrage.md) | 101 | Research code |
-| RK102 | [Hidden Markov Model Regime Switching](hidden-markov-model-regime-switching.md) | 102 | Research code (C-R3) |
-| RK103 | [Hurst-Exponent Trend / Mean-Reversion Regime Gate](hurst-exponent-trend-mean-reversion-regime-gate.md) | 103 | Research code (C-MR4) |
+| RK102 | [Hidden Markov Model Regime Switching](hidden-markov-model-regime-switching.md) | 102 | Yes (C-R3) |
+| RK103 | [Hurst-Exponent Trend / Mean-Reversion Regime Gate](hurst-exponent-trend-mean-reversion-regime-gate.md) | 103 | Yes (C-MR4) |
 | RK104 | [Bayesian Online Changepoint Regime Gate](bayesian-online-changepoint-regime-gate.md) | 104 | No |
 | RK105 | [Adaptive Range-Breakout with Volatility Filter](adaptive-range-breakout-with-volatility-filter.md) | 105 | Research code |
-| RK106 | [Hierarchical Hidden Markov Model (HHMM) Regime Switcher](hierarchical-hidden-markov-model-hhmm-regime-switcher.md) | 106 | Research code |
+| RK106 | [Hierarchical Hidden Markov Model (HHMM) Regime Switcher](hierarchical-hidden-markov-model-hhmm-regime-switcher.md) | 106 | Yes |
 | RK107 | [Entropy-Based Portfolio Diversification Optimization](entropy-based-portfolio-diversification-optimization.md) | 107 | Research code |
 | RK108 | [Intraday ETF Relative-Value Arbitrage](intraday-etf-relative-value-arbitrage.md) | 108 | Research code (A6) |
 | RK109 | [Sparse Graphical Lasso Cross-Asset Spillover Predictor](sparse-graphical-lasso-cross-asset-spillover-predictor.md) | 109 | No |
-| RK110 | [Opening Range Breakout (ORB)](opening-range-breakout-orb.md) | 110 | Research code (C-M2, N2) |
+| RK110 | [Opening Range Breakout (ORB)](opening-range-breakout-orb.md) | 110 | Yes (C-M2, N2) |
 | RK111 | [Ichimoku Cloud Trend Filter](ichimoku-cloud-trend-filter.md) | 111 | No |
 | RK112 | [Kaufman Adaptive Moving Average (KAMA) Trend](kaufman-adaptive-moving-average-kama-trend.md) | 112 | Yes (V15) |
 | RK113 | [Wavelet Transform Denoised Breakout System](wavelet-transform-denoised-breakout-system.md) | 113 | Research code |
 | RK114 | [Volatility Risk Premium (Short Vol + Tail Hedge)](volatility-risk-premium-short-vol-tail-hedge.md) | 114 | Research code (S1) |
-| RK115 | [EMA Pullback Continuation](ema-pullback-continuation.md) | 115 | Research code |
+| RK115 | [EMA Pullback Continuation](ema-pullback-continuation.md) | 115 | Yes |
 | RK116 | [Markowitz Mean-Variance Optimization](markowitz-mean-variance-optimization.md) | 116 | Research code (Q13) |
 | RK117 | [Equal-Weight Rebalancing](equal-weight-rebalancing.md) | 117 | Yes (X5) |
 | RK118 | [Minimum-Correlation Portfolio](minimum-correlation-portfolio.md) | 118 | No |
@@ -158,14 +158,14 @@ residuals for physics-informed networks).
 | RK124 | [Optimal Transport Wasserstein Barycenter Asset Allocation](optimal-transport-wasserstein-barycenter-asset-allocation.md) | 124 | No |
 | RK125 | [Continuous-Time Mean-Field Portfolio Game with Competition](continuous-time-mean-field-portfolio-game-with-competition.md) | 125 | No |
 | RK126 | [Entropic Risk Measure Portfolio Optimization](entropic-risk-measure-portfolio-optimization.md) | 126 | Research code |
-| RK127 | [Conformal Prediction Risk-Bounded Alpha Stacking](conformal-prediction-risk-bounded-alpha-stacking.md) | 127 | Research code |
+| RK127 | [Conformal Prediction Risk-Bounded Alpha Stacking](conformal-prediction-risk-bounded-alpha-stacking.md) | 127 | Yes |
 | RK128 | [Fractional Order Cointegration Residual Mean-Reversion](fractional-order-cointegration-residual-mean-reversion.md) | 128 | Research code |
 | RK129 | [Inverse-Volatility Allocation](inverse-volatility-allocation.md) | 129 | Yes (A5) |
-| RK130 | [Extreme Value Theory (EVT) Dynamic Tail-Risk Hedge](extreme-value-theory-evt-dynamic-tail-risk-hedge.md) | 130 | Research code |
+| RK130 | [Extreme Value Theory (EVT) Dynamic Tail-Risk Hedge](extreme-value-theory-evt-dynamic-tail-risk-hedge.md) | 130 | Yes |
 | RK131 | [Markov-Switching Vector Error Correction Model (MS-VECM) Arbitrage](markov-switching-vector-error-correction-model-ms-vecm-arbitrage.md) | 131 | Research code |
 | RK132 | [Conformal Risk-Bounded Dynamic Portfolio Allocation](conformal-risk-bounded-dynamic-portfolio-allocation.md) | 132 | Yes (V13) |
 | RK133 | [Protective Put / Collar](protective-put-collar.md) | 133 | Research code (S1) |
-| RK134 | [Fractional Kelly Position Sizing](fractional-kelly-position-sizing.md) | 134 | Research code (C-S2) |
+| RK134 | [Fractional Kelly Position Sizing](fractional-kelly-position-sizing.md) | 134 | Yes (C-S2) |
 | RK135 | [Fractional Order Cointegration Vector AutoRegressive (VAR) Strategy](fractional-order-cointegration-vector-autoregressive-var-strategy.md) | 135 | Research code |
 | RK136 | [Graph Attention Network Dynamic Cointegration Basket Selection](graph-attention-network-dynamic-cointegration-basket-selection.md) | 136 | Research code |
 | RK137 | [Fractional Cointegration Hawkes Process Lead-Lag Arbitrage](fractional-cointegration-hawkes-process-lead-lag-arbitrage.md) | 137 | Research code |
@@ -181,11 +181,11 @@ residuals for physics-informed networks).
 | RK147 | [Moving-Average Z-Score Reversion](moving-average-z-score-reversion.md) | 147 | Yes (Q9) |
 | RK148 | [Williams %R Reversal](williams-r-reversal.md) | 148 | Partial (V15) |
 | RK149 | [Gap-Fade Strategy](gap-fade-strategy.md) | 149 | No |
-| RK150 | [VWAP Reversion](vwap-reversion.md) | 150 | Research code (C-MS3) |
+| RK150 | [VWAP Reversion](vwap-reversion.md) | 150 | Yes (C-MS3) |
 | RK151 | [Short-Term Stock Reversal](short-term-stock-reversal.md) | 151 | Research code (C-MR1) |
 | RK152 | [Same-Calendar-Month Seasonality](same-calendar-month-seasonality.md) | 152 | No |
 | RK153 | [Turn-of-the-Month Effect](turn-of-the-month-effect.md) | 153 | No |
-| RK154 | [Overnight Equity Anomaly](overnight-equity-anomaly.md) | 154 | Research code |
+| RK154 | [Overnight Equity Anomaly](overnight-equity-anomaly.md) | 154 | Yes |
 | RK155 | [Wasserstein Distributionally Robust Neural Operator Portfolio Optimization](wasserstein-distributionally-robust-neural-operator-portfolio-optimization.md) | 155 | Research code |
 | RK156 | [Neural Operator Delay-Differential Stochastic Control Portfolio Optimization](neural-operator-delay-differential-stochastic-control-portfolio-optimization.md) | 156 | Research code |
 | RK157 | [Wasserstein Distributionally Robust Neural Operator Optimal Portfolio](wasserstein-distributionally-robust-neural-operator-optimal-portfolio.md) | 157 | Research code |
@@ -226,37 +226,37 @@ residuals for physics-informed networks).
 | RK192 | [Quantum Annealing Maximum Independent Set Statistical Arbitrage](quantum-annealing-maximum-independent-set-statistical-arbitrage.md) | 192 | Research code |
 | RK193 | [Persistent Homology Betti-0 Persistence Landscape Clustering Arbitrage](persistent-homology-betti-0-persistence-landscape-clustering-arbitrage.md) | 193 | Research code |
 | RK194 | [Fixed Fractional / Fixed Dollar Risk](fixed-fractional-fixed-dollar-risk.md) | 194 | Yes |
-| RK195 | [GARCH Volatility Forecasting with Mean-Reversion Channel](garch-volatility-forecasting-with-mean-reversion-channel.md) | 195 | Research code |
+| RK195 | [GARCH Volatility Forecasting with Mean-Reversion Channel](garch-volatility-forecasting-with-mean-reversion-channel.md) | 195 | Yes |
 | RK196 | [Randomized Matrix Pencil Lead-Lag Cross-Asset Predictor](randomized-matrix-pencil-lead-lag-cross-asset-predictor.md) | 196 | Research code |
 | RK197 | [Topological Persistent Betti Curve Macro Regime Switcher](topological-persistent-betti-curve-macro-regime-switcher.md) | 197 | Research code |
 | RK198 | [Wasserstein Generative Adversarial Network Multi-Asset Allocation (WGAN-MA)](wasserstein-generative-adversarial-network-multi-asset-allocation-wgan-ma.md) | 198 | Research code |
 | RK199 | [Persistent Homology Betti-1 Persistence Landscape Arbitrage](persistent-homology-betti-1-persistence-landscape-arbitrage.md) | 199 | Research code |
-| RK200 | [Generative Score-Based Diffusion Multi-Asset Scenario Synthesizer](generative-score-based-diffusion-multi-asset-scenario-synthesizer.md) | 200 | Research code |
+| RK200 | [Generative Score-Based Diffusion Multi-Asset Scenario Synthesizer](generative-score-based-diffusion-multi-asset-scenario-synthesizer.md) | 200 | Yes |
 | RK201 | [Koopman Operator Predictive Control Statistical Arbitrage](koopman-operator-predictive-control-statistical-arbitrage.md) | 201 | Research code |
 | RK202 | [Fractional Brownian Motion Multi-Scale Trend Scanning Strategy](fractional-brownian-motion-multi-scale-trend-scanning-strategy.md) | 202 | Research code |
 | RK203 | [Koopman Operator Model Predictive Control Spread Equilibrium](koopman-operator-model-predictive-control-spread-equilibrium.md) | 203 | Research code |
-| RK204 | [Lead-Lag Cross-Asset Predictive Trading](lead-lag-cross-asset-predictive-trading.md) | 204 | Research code |
+| RK204 | [Lead-Lag Cross-Asset Predictive Trading](lead-lag-cross-asset-predictive-trading.md) | 204 | Yes |
 | RK205 | [Dynamic Tensor Decomposition Multi-Asset Factor Rotation](dynamic-tensor-decomposition-multi-asset-factor-rotation.md) | 205 | Research code |
 | RK206 | [Koopman Operator Model Predictive Control Multi-Asset Allocation](koopman-operator-model-predictive-control-multi-asset-allocation.md) | 206 | Research code |
-| RK207 | [Standardized Unexpected Earnings (SUE)](standardized-unexpected-earnings-sue.md) | 207 | Research code |
+| RK207 | [Standardized Unexpected Earnings (SUE)](standardized-unexpected-earnings-sue.md) | 207 | Yes |
 | RK208 | [Anchored VWAP Reclaim / Rejection](anchored-vwap-reclaim-rejection.md) | 208 | Yes (C-MS3) |
-| RK209 | [Corporate Buyback Announcement Drift](corporate-buyback-announcement-drift.md) | 209 | Research code |
+| RK209 | [Corporate Buyback Announcement Drift](corporate-buyback-announcement-drift.md) | 209 | Yes |
 | RK210 | [Index Reconstitution / Rebalance Event Trading](index-reconstitution-rebalance-event-trading.md) | 210 | Research code |
 | RK211 | [Macro Surprise / Economic Release Strategy](macro-surprise-economic-release-strategy.md) | 211 | Partial (V6) |
-| RK212 | [Market Breadth Thrust](market-breadth-thrust.md) | 212 | Research code |
-| RK213 | [Trend-Scanning Label Model](trend-scanning-label-model.md) | 213 | Research code (C-ML1) |
-| RK214 | [XGBoost Cross-Sectional Ranking](xgboost-cross-sectional-ranking.md) | 214 | Research code |
+| RK212 | [Market Breadth Thrust](market-breadth-thrust.md) | 212 | Yes |
+| RK213 | [Trend-Scanning Label Model](trend-scanning-label-model.md) | 213 | Yes (C-ML1) |
+| RK214 | [XGBoost Cross-Sectional Ranking](xgboost-cross-sectional-ranking.md) | 214 | Yes |
 | RK215 | [Cross-Sectional Reversal with Risk Neutralization](cross-sectional-reversal-with-risk-neutralization.md) | 215 | Yes (C-MR1) |
-| RK216 | [Top-K with Dropout Portfolio Rotation](top-k-with-dropout-portfolio-rotation.md) | 216 | Research code |
-| RK217 | [Bayesian Structural Time Series (BSTS) Causal Impact Macro Strategy](bayesian-structural-time-series-bsts-causal-impact-macro-strategy.md) | 217 | Research code |
-| RK218 | [Sparse Bayesian Learning Dynamic Factor Model](sparse-bayesian-learning-dynamic-factor-model.md) | 218 | Research code |
+| RK216 | [Top-K with Dropout Portfolio Rotation](top-k-with-dropout-portfolio-rotation.md) | 216 | Yes |
+| RK217 | [Bayesian Structural Time Series (BSTS) Causal Impact Macro Strategy](bayesian-structural-time-series-bsts-causal-impact-macro-strategy.md) | 217 | Yes |
+| RK218 | [Sparse Bayesian Learning Dynamic Factor Model](sparse-bayesian-learning-dynamic-factor-model.md) | 218 | Yes |
 | RK219 | [Dynamic Mode Decomposition (DMD) Market Mode Predictor](dynamic-mode-decomposition-dmd-market-mode-predictor.md) | 219 | Research code |
-| RK220 | [Continuous-Time Mean-Variance Reinforcement Learning Agent](continuous-time-mean-variance-reinforcement-learning-agent.md) | 220 | Research code |
-| RK221 | [Information-Theoretic Transfer Entropy Lead-Lag Strategy](information-theoretic-transfer-entropy-lead-lag-strategy.md) | 221 | Research code |
+| RK220 | [Continuous-Time Mean-Variance Reinforcement Learning Agent](continuous-time-mean-variance-reinforcement-learning-agent.md) | 220 | Yes |
+| RK221 | [Information-Theoretic Transfer Entropy Lead-Lag Strategy](information-theoretic-transfer-entropy-lead-lag-strategy.md) | 221 | Yes |
 | RK222 | [Maximum Entropy Production Rate Macro Allocator](maximum-entropy-production-rate-macro-allocator.md) | 222 | Research code |
 | RK223 | [Quantum Tensor Network Portfolio Optimization](quantum-tensor-network-portfolio-optimization.md) | 223 | Research code |
 | RK224 | [Deep Latent Force Model (LFM) Interest Rate Forecaster](deep-latent-force-model-lfm-interest-rate-forecaster.md) | 224 | Research code |
-| RK225 | [Wasserstein Distributionally Robust Mean-Variance Allocation](wasserstein-distributionally-robust-mean-variance-allocation.md) | 225 | Research code |
+| RK225 | [Wasserstein Distributionally Robust Mean-Variance Allocation](wasserstein-distributionally-robust-mean-variance-allocation.md) | 225 | Yes |
 | RK226 | [Functional Principal Component Analysis (FPCA) Yield Curve Forecaster](functional-principal-component-analysis-fpca-yield-curve-forecaster.md) | 226 | Research code |
 | RK227 | [Multi-Agent Evolutionary Reinforcement Learning Portfolio Optimizer](multi-agent-evolutionary-reinforcement-learning-portfolio-optimizer.md) | 227 | Research code |
 | RK228 | [Deep Generative Flow Matching Portfolio Generator](deep-generative-flow-matching-portfolio-generator.md) | 228 | Research code |
@@ -277,16 +277,16 @@ residuals for physics-informed networks).
 | RK243 | [Price/Volume Anomaly Detection](price-volume-anomaly-detection.md) | 243 | Yes (A8) |
 | RK244 | [Liquidity-Aware Adaptive Execution](liquidity-aware-adaptive-execution.md) | 244 | Partial |
 | RK245 | [Pure Passive Market Making](pure-passive-market-making.md) | 245 | Research code (C-MM1, C-MM2) |
-| RK246 | [Inventory-Skewed Market Making](inventory-skewed-market-making.md) | 246 | Research code (C-G2, C-MM1) |
-| RK247 | [VPIN Flow-Toxicity Filter](vpin-flow-toxicity-filter.md) | 247 | Research code (C-MM4) |
+| RK246 | [Inventory-Skewed Market Making](inventory-skewed-market-making.md) | 246 | Yes (C-G2, C-MM1) |
+| RK247 | [VPIN Flow-Toxicity Filter](vpin-flow-toxicity-filter.md) | 247 | Yes (C-MM4) |
 | RK248 | [Hawkes-Process Order-Flow Forecast](hawkes-process-order-flow-forecast.md) | 248 | Research code |
 | RK249 | [Iceberg / Reserve-Order Execution](iceberg-reserve-order-execution.md) | 249 | Research code |
 | RK250 | [Arrival-Price Adaptive Limit-vs-Market Execution](arrival-price-adaptive-limit-vs-market-execution.md) | 250 | Partial |
 | RK251 | [Intraday Volume-Profile Execution](intraday-volume-profile-execution.md) | 251 | Research code |
 | RK252 | [Order-Flow Imbalance (OFI) Cross-Sectional Alpha Predictor](order-flow-imbalance-ofi-cross-sectional-alpha-predictor.md) | 252 | Partial (C-MS1) |
 | RK253 | [Information-Driven Volume Clock Imbalance Momentum](information-driven-volume-clock-imbalance-momentum.md) | 253 | Yes (C-ML5) |
-| RK254 | [Persistent Homology Topological Data Analysis (TDA) Crash Predictor](persistent-homology-topological-data-analysis-tda-crash-predictor.md) | 254 | Research code |
-| RK255 | [Persistent Homology Topological Landscape Crisis Predictor](persistent-homology-topological-landscape-crisis-predictor.md) | 255 | Research code |
+| RK254 | [Persistent Homology Topological Data Analysis (TDA) Crash Predictor](persistent-homology-topological-data-analysis-tda-crash-predictor.md) | 254 | Yes |
+| RK255 | [Persistent Homology Topological Landscape Crisis Predictor](persistent-homology-topological-landscape-crisis-predictor.md) | 255 | Yes |
 | RK256 | [Deep Markov State-Space Intraday Volume Profile Predictor](deep-markov-state-space-intraday-volume-profile-predictor.md) | 256 | Research code |
 | RK257 | [Information-Theoretic Causality Flow Macro Asset Allocator](information-theoretic-causality-flow-macro-asset-allocator.md) | 257 | Research code |
 | RK258 | [Spiking Graph Convolutional Network (SGCN) Contagion Predictor](spiking-graph-convolutional-network-sgcn-contagion-predictor.md) | 258 | Research code |
@@ -299,13 +299,13 @@ residuals for physics-informed networks).
 | RK265 | [Persistent Homology Betti-2 3D Void Macro Stress Predictor](persistent-homology-betti-2-3d-void-macro-stress-predictor.md) | 265 | Research code |
 | RK266 | [Riemannian Manifold Metric Entropic Risk Portfolio](riemannian-manifold-metric-entropic-risk-portfolio.md) | 266 | Research code |
 | RK267 | [Graph Attention Network Covariance Matrix Spectral Regularization](graph-attention-network-covariance-matrix-spectral-regularization.md) | 267 | Research code |
-| RK268 | [Persistent Homology Multi-Scale Vietoris-Rips Filtration Risk Scoring](persistent-homology-multi-scale-vietoris-rips-filtration-risk-scoring.md) | 268 | Research code |
+| RK268 | [Persistent Homology Multi-Scale Vietoris-Rips Filtration Risk Scoring](persistent-homology-multi-scale-vietoris-rips-filtration-risk-scoring.md) | 268 | Yes |
 | RK269 | [Persistent Homology Betti-0 Multiscale Filtration Contagion Clustering](persistent-homology-betti-0-multiscale-filtration-contagion-clustering.md) | 269 | Yes (A5) |
 | RK270 | [Quantum Annealing Binary Matrix Factorization Portfolio Risk Model](quantum-annealing-binary-matrix-factorization-portfolio-risk-model.md) | 270 | Research code |
-| RK271 | [Sequential Bootstrapping Sample Weights](sequential-bootstrapping-sample-weights.md) | 271 | Research code |
+| RK271 | [Sequential Bootstrapping Sample Weights](sequential-bootstrapping-sample-weights.md) | 271 | Yes |
 | RK272 | [Wavelet-Neural Network Hybrid Intraday Trend Scalper](wavelet-neural-network-hybrid-intraday-trend-scalper.md) | 272 | Research code |
 | RK273 | [Deep Koopman-Inspired Spectral Asset Allocation](deep-koopman-inspired-spectral-asset-allocation.md) | 273 | Research code |
-| RK274 | [Avellaneda–Stoikov Market Making](avellaneda-stoikov-market-making.md) | 274 | Research code (C-MM1) |
+| RK274 | [Avellaneda–Stoikov Market Making](avellaneda-stoikov-market-making.md) | 274 | Yes (C-MM1) |
 | RK275 | [DeepLOB-Style Order-Book Forecasting](deeplob-style-order-book-forecasting.md) | 275 | Research code |
 | RK276 | [Queue-Reactive Market Making](queue-reactive-market-making.md) | 276 | Partial (C-MM5) |
 | RK277 | [Hawkes Process Multi-Dimensional Order Flow Intensity Model](hawkes-process-multi-dimensional-order-flow-intensity-model.md) | 277 | Research code |
@@ -321,17 +321,17 @@ residuals for physics-informed networks).
 | RK287 | [Neural Operator Delay Differential Equation (Delay-ODE) Term Structure Predictor](neural-operator-delay-differential-equation-delay-ode-term-structure-predictor.md) | 287 | Research code |
 | RK288 | [Neural Controlled Differential Equation (Neural CDE) Point Process Execution](neural-controlled-differential-equation-neural-cde-point-process-execution.md) | 288 | Research code |
 | RK289 | [Neural Operator Delay-Differential Hawkes Microstructure Predictor](neural-operator-delay-differential-hawkes-microstructure-predictor.md) | 289 | Research code |
-| RK290 | [Random Forest Return Classification](random-forest-return-classification.md) | 290 | Research code |
+| RK290 | [Random Forest Return Classification](random-forest-return-classification.md) | 290 | Yes |
 | RK291 | [Gradient-Boosted Trees Return Prediction](gradient-boosted-trees-return-prediction.md) | 291 | Yes (V13, V14) |
 | RK292 | [LSTM Sequence Forecasting](lstm-sequence-forecasting.md) | 292 | Research code (C-RJ4) |
-| RK293 | [News / Financial Sentiment NLP](news-financial-sentiment-nlp.md) | 293 | Research code |
+| RK293 | [News / Financial Sentiment NLP](news-financial-sentiment-nlp.md) | 293 | Yes |
 | RK294 | [Triple-Barrier Labeled ML Strategy](triple-barrier-labeled-ml-strategy.md) | 294 | Yes (C-ML1) |
-| RK295 | [Conformal Prediction Uncertainty Wrapper (CP-MAPIE)](conformal-prediction-uncertainty-wrapper-cp-mapie.md) | 295 | Research code (V13) |
-| RK296 | [Dynamic Copula-Vine Regularized Factor Allocation](dynamic-copula-vine-regularized-factor-allocation.md) | 296 | Research code |
+| RK295 | [Conformal Prediction Uncertainty Wrapper (CP-MAPIE)](conformal-prediction-uncertainty-wrapper-cp-mapie.md) | 295 | Yes (V13) |
+| RK296 | [Dynamic Copula-Vine Regularized Factor Allocation](dynamic-copula-vine-regularized-factor-allocation.md) | 296 | Yes |
 | RK297 | [Fractional Hurst-Driven Adaptive Bandwidth Mean Reversion](fractional-hurst-driven-adaptive-bandwidth-mean-reversion.md) | 297 | Yes (C-MR4) |
 | RK298 | [AMM / CLOB Cross-Venue Arbitrage](amm-clob-cross-venue-arbitrage.md) | 298 | Research code |
 | RK299 | [Dynamic AMM Liquidity Provision / Liquidity Mining](dynamic-amm-liquidity-provision-liquidity-mining.md) | 299 | Research code |
-| RK300 | [Fractional Differentiation Feature Pipeline](fractional-differentiation-feature-pipeline.md) | 300 | Research code (C-ML5) |
+| RK300 | [Fractional Differentiation Feature Pipeline](fractional-differentiation-feature-pipeline.md) | 300 | Yes (C-ML5) |
 | RK301 | [Temporal Fusion Transformer Forecasting](temporal-fusion-transformer-forecasting.md) | 301 | Research code |
 | RK302 | [Physics-Informed Deep Galerkin Method (DGM) Option Solver](physics-informed-deep-galerkin-method-dgm-option-solver.md) | 302 | Research code |
 | RK303 | [Neural Jump-Diffusion Rough Heston Smile Predictor](neural-jump-diffusion-rough-heston-smile-predictor.md) | 303 | Research code |
@@ -342,10 +342,10 @@ residuals for physics-informed networks).
 | RK308 | [Dividend Capture Window Strategy](dividend-capture-window-strategy.md) | 308 | Research code |
 | RK309 | [Gamma Scalping / Long-Gamma Rebalancing](gamma-scalping-long-gamma-rebalancing.md) | 309 | Research code |
 | RK310 | [Multi-Agent RL Execution / Liquidation](multi-agent-rl-execution-liquidation.md) | 310 | Research code |
-| RK311 | [FinBERT Sentiment-Driven Event Arbitrage](finbert-sentiment-driven-event-arbitrage.md) | 311 | Research code |
+| RK311 | [FinBERT Sentiment-Driven Event Arbitrage](finbert-sentiment-driven-event-arbitrage.md) | 311 | Yes |
 | RK312 | [Deep Q-Network (DQN) Liquidation Agent](deep-q-network-dqn-liquidation-agent.md) | 312 | Research code |
 | RK313 | [Adaptive Mesh Reinforcement Learning Market Maker (RL-MM)](adaptive-mesh-reinforcement-learning-market-maker-rl-mm.md) | 313 | Research code |
-| RK314 | [Hawkes-Jump Diffusion Multivariate Event Detection](hawkes-jump-diffusion-multivariate-event-detection.md) | 314 | Research code |
+| RK314 | [Hawkes-Jump Diffusion Multivariate Event Detection](hawkes-jump-diffusion-multivariate-event-detection.md) | 314 | Yes |
 | RK315 | [Empirical Mode Decomposition (EMD) Hilbert-Huang Intraday Scalper](empirical-mode-decomposition-emd-hilbert-huang-intraday-scalper.md) | 315 | Research code |
 | RK316 | [Temporal CNN / TCN Forecasting](temporal-cnn-tcn-forecasting.md) | 316 | Research code |
 | RK317 | [Meta-Labeling Primary Signals](meta-labeling-primary-signals.md) | 317 | Yes (V13, C-ML1) |
@@ -377,10 +377,10 @@ residuals for physics-informed networks).
 | RK343 | [Generative Score-Based Diffusion Limit Order Book Flow Synthesizer](generative-score-based-diffusion-limit-order-book-flow-synthesizer.md) | 343 | Research code |
 | RK344 | [Multi-Agent Reinforcement Learning Stackelberg Market Maker Equilibrium](multi-agent-reinforcement-learning-stackelberg-market-maker-equilibrium.md) | 344 | Research code |
 | RK345 | [Multi-Agent Reinforcement Learning Stackelberg Spread Capture](multi-agent-reinforcement-learning-stackelberg-spread-capture.md) | 345 | Research code |
-| RK346 | [SAC Continuous-Action Trading Agent](sac-continuous-action-trading-agent.md) | 346 | Research code (A1) |
-| RK347 | [DDPG / TD3 Continuous-Control Trader](ddpg-td3-continuous-control-trader.md) | 347 | Research code (A1) |
+| RK346 | [SAC Continuous-Action Trading Agent](sac-continuous-action-trading-agent.md) | 346 | Yes (A1) |
+| RK347 | [DDPG / TD3 Continuous-Control Trader](ddpg-td3-continuous-control-trader.md) | 347 | Yes (A1) |
 | RK348 | [Phase Space Reconstructed Neural ODE (PSR-NODE)](phase-space-reconstructed-neural-ode-psr-node.md) | 348 | Research code |
-| RK349 | [Time-Series Generative Adversarial Network (TimeGAN)](time-series-generative-adversarial-network-timegan.md) | 349 | Research code |
+| RK349 | [Time-Series Generative Adversarial Network (TimeGAN)](time-series-generative-adversarial-network-timegan.md) | 349 | Yes |
 | RK350 | [Physics-Informed Deep Learning Schrödinger Volatility Solver](physics-informed-deep-learning-schrodinger-volatility-solver.md) | 350 | Research code |
 | RK351 | [Multi-Agent Deep Deterministic Policy Gradient (MADDPG) Portfolio Allocation](multi-agent-deep-deterministic-policy-gradient-maddpg-portfolio-allocation.md) | 351 | Research code |
 | RK352 | [Deep Hedging with Transaction Costs and Friction](deep-hedging-with-transaction-costs-and-friction.md) | 352 | Research code |
@@ -403,8 +403,8 @@ residuals for physics-informed networks).
 | RK369 | [Multi-Agent Mean-Field Game Optimal Execution Routing](multi-agent-mean-field-game-optimal-execution-routing.md) | 369 | Research code |
 | RK370 | [Wasserstein Distributionally Robust Optimal Execution Trajectory](wasserstein-distributionally-robust-optimal-execution-trajectory.md) | 370 | Research code |
 | RK371 | [Wasserstein Distributionally Robust Hawkes Point Process Execution](wasserstein-distributionally-robust-hawkes-point-process-execution.md) | 371 | Research code |
-| RK372 | [PPO Reinforcement-Learning Trader](ppo-reinforcement-learning-trader.md) | 372 | Research code (A1) |
-| RK373 | [Generative Moment Matching Network (GMMN) Portfolio Simulator](generative-moment-matching-network-gmmn-portfolio-simulator.md) | 373 | Research code |
+| RK372 | [PPO Reinforcement-Learning Trader](ppo-reinforcement-learning-trader.md) | 372 | Yes (A1) |
+| RK373 | [Generative Moment Matching Network (GMMN) Portfolio Simulator](generative-moment-matching-network-gmmn-portfolio-simulator.md) | 373 | Yes |
 | RK374 | [Physics-Informed Neural Network (PINN) Burgers Volatility Model](physics-informed-neural-network-pinn-burgers-volatility-model.md) | 374 | Research code |
 | RK375 | [Quantum Support Vector Regression (QSVR) Return Predictor](quantum-support-vector-regression-qsvr-return-predictor.md) | 375 | Research code |
 | RK376 | [Deep Koopman Operator Market Dynamics Predictor](deep-koopman-operator-market-dynamics-predictor.md) | 376 | Research code |
@@ -426,7 +426,7 @@ residuals for physics-informed networks).
 | RK392 | [Fractional Order Vector AutoRegressive (VAR) Macro Allocator](fractional-order-vector-autoregressive-var-macro-allocator.md) | 392 | Research code |
 | RK393 | [Quantum Neural Network (QNN) Volatility Surface Forecaster](quantum-neural-network-qnn-volatility-surface-forecaster.md) | 393 | Research code |
 | RK394 | [Graph Diffusion Convolutional Network Cross-Sectional Alpha](graph-diffusion-convolutional-network-cross-sectional-alpha.md) | 394 | Research code |
-| RK395 | [Generative Score-Based Diffusion Macro Factor Synthesizer](generative-score-based-diffusion-macro-factor-synthesizer.md) | 395 | Research code |
+| RK395 | [Generative Score-Based Diffusion Macro Factor Synthesizer](generative-score-based-diffusion-macro-factor-synthesizer.md) | 395 | Yes |
 | RK396 | [Riemannian Manifold Metric Graph Diffusion Covariance Estimator](riemannian-manifold-metric-graph-diffusion-covariance-estimator.md) | 396 | Research code |
 | RK397 | [Quantum Annealing Graph Neural Network Covariance Shrinkage](quantum-annealing-graph-neural-network-covariance-shrinkage.md) | 397 | Research code |
 | RK398 | [Persistent Homology Betti-2 Persistence Landscape Macro Contagion](persistent-homology-betti-2-persistence-landscape-macro-contagion.md) | 398 | Research code |

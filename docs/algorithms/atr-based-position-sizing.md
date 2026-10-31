@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 48 (1 = easiest) |
 | Retail advantage rank | 124 (1 = strongest) |
 | Fit with this project | 🧪 as volatility-normalised lot sizing · ⛔ the stop-distance form (no price stops) |
-| Implemented in volatility-ai | **Research code.** Turtle units (`position_sizing.turtle_unit_shares`, `turtle_atr`, `TurtlePyramid`; C-G5). The wired relatives scale lots by volatility: V7 (fast/slow ratio) and S4 (target over realized). |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk67_atr_sizing`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=atr_sizing`, component `AtrSizer`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code.** Turtle units (`position_sizing.turtle_unit_shares`, `turtle_atr`, `TurtlePyramid`; C-G5). The wired relatives scale lots by volatility: V7 (fast/slow ratio) and S4 (target over realized). |
 | Related ledger entries | C-G5, V7, S4, RK43 |
 
 ## In one paragraph

@@ -487,6 +487,14 @@ for _regime_id in (_i for _i in STRATEGIES if _i.startswith("ml_regime_")):
     }
 
 
+# The signal library's ids (rk<N>_<signal>): LibrarySizing pauses or lowers
+# hf_entry_gated's local_reference level and never raises it, so they are
+# described like hf_entry_gated. Derived from the registry, like the
+# ml_regime_* ids above.
+for _lib_id in (_i for _i, _c in STRATEGIES.items() if _c.__name__ == "LibrarySizing"):
+    _GRID_TRIGGER[_lib_id] = dict(_GRID_TRIGGER["hf_entry_gated"])
+
+
 def describe_grid_trigger(strategy_id: str) -> dict[str, Any]:
     """The grid-step trigger methods a strategy supports, as the wire's Trigger.
 

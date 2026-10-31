@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 202 (1 = easiest) |
 | Retail advantage rank | 162 (1 = strongest) |
 | Fit with this project | ⏳ for a multi-ETF book; not applicable to the single-instrument grid |
-| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `cvar_weights`, `portfolio_cvar`; tested on synthetic data, not wired into the engine. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator min_cvar` in the portfolio book (`python -m tools.portfolio_book`; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.allocation`: `cvar_weights`, `portfolio_cvar`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | A5, RK60, RK88, RK95 |
 
 ## In one paragraph

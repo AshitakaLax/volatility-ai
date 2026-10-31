@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 140 (1 = easiest) |
 | Retail advantage rank | 235 (1 = strongest) |
 | Fit with this project | ⏳ (long the target in cash deals) · ⛔ (stock deals hedged by shorting the acquirer) |
-| Implemented in volatility-ai | **Research code** in `research.catalog.stat_arb`: `merger_arb_return`, `merger_implied_probability`; tested on synthetic data, not wired into the engine. No deal data in the warehouse. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator merger_arbitrage` in the portfolio book (`python -m tools.portfolio_book` --data deals=FILE; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.stat_arb`: `merger_arb_return`, `merger_implied_probability`; tested on synthetic data, not wired into the engine. No deal data in the warehouse. |
 | Related ledger entries | RK47 |
 
 ## In one paragraph

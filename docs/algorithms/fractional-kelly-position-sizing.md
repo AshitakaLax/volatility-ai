@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 70 (1 = strongest) |
 | Fit with this project | ⏳ worth testing |
 | Useful for volatility-ai | **Worth testing.** A principled cap on lot size or total exposure; the research code exists (C-S2). |
-| Implemented in volatility-ai | **Research code** `research.strategies.position_sizing`: `kelly_portfolio`, `kelly_leverage`. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk134_kelly`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=kelly`, component `KellySizer`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** `research.strategies.position_sizing`: `kelly_portfolio`, `kelly_leverage`. |
 | Related ledger entries | C-S2, V1, RK194 |
 
 ## In one paragraph

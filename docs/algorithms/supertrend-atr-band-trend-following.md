@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 49 (1 = easiest) |
 | Retail advantage rank | 4 (1 = strongest) |
 | Fit with this project | ⏳ as a long-or-cash regime · ⛔ as a stop-and-reverse trade |
-| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `supertrend`, `atr`; tested on synthetic data, not wired into the engine. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk44_supertrend`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=supertrend`, component `SupertrendGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** in `research.catalog.technical_ml`: `supertrend`, `atr`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK70 (PSAR), RK38, V15 |
 
 ## In one paragraph

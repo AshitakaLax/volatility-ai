@@ -81,6 +81,14 @@ flag *and* a strategy hook.
     Bollinger reversion, VIX term structure, anchored VWAP, anomalies,
     volume-clock imbalance, triple-barrier classifier, Hurst bands); all off
     by default, unmeasured
+  - `rk<N>_<signal>` (50 ids, e.g. `rk44_supertrend`, `rk102_hmm`, `rk134_kelly`) —
+    one strategy per ranked-list algorithm: the champion grid with that
+    algorithm as a gate, a lot sizer or a lower buy level
+    (`strategies/library_sizing.py`, `strategies/signal_library.py`); unmeasured
+- **Portfolio book** (`strategies/portfolio_book.py`, `tools/portfolio_book.py
+  --list`): 53 long-only multi-asset allocators (`strategies/allocators.py`,
+  `strategies/allocator_library.py`) backtested on daily closes, every sale
+  through the no-loss guard; backtest only (`engine/roadmap.md`)
   - `ultimate` — a causal NATR volatility regime with a bear filter: the
     champion grid while calm, capitulation-close reversal lots while
     turbulent, and a delayed regime exit

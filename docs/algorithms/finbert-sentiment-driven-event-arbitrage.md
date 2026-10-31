@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 213 (1 = easiest) |
 | Retail advantage rank | 98 (1 = strongest) |
 | Fit with this project | ⏳ as a market-level input (RK293) · ⛔ as a stock-level event trade |
-| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `SentenceClassifier`, `event_sentiment_trades`; tested on synthetic data, not wired into the engine. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk311_event_sentiment`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=event_sentiment`, component `EventSentimentGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** in `research.catalog.technical_ml`: `SentenceClassifier`, `event_sentiment_trades`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK293, V6, RK45 |
 
 ## In one paragraph

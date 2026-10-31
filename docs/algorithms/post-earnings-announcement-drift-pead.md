@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 5 (1 = easiest) |
 | Retail advantage rank | 18 (1 = strongest) |
 | Fit with this project | ⏳ (long-only after positive surprises, small caps) · ⛔ (short side) |
-| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `sue`, `event_drift_trades`; tested on synthetic data, not wired into the engine. The champion's earnings-day lot boost (V6) uses the same calendar of mega-cap earnings reactions, but it sizes lots on volatility, not on the surprise. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator earnings_drift` in the portfolio book (`python -m tools.portfolio_book` --data fundamentals=FILE; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.factors`: `sue`, `event_drift_trades`; tested on synthetic data, not wired into the engine. The champion's earnings-day lot boost (V6) uses the same calendar of mega-cap earnings reactions, but it sizes lots on volatility, not on the surprise. |
 | Related ledger entries | V6, RK40 |
 
 ## In one paragraph

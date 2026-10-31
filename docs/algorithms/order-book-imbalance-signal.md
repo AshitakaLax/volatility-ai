@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 330 (1 = easiest) |
 | Retail advantage rank | 9,811 (1 = strongest) |
 | Fit with this project | 🧪 research code (C-MS2) · ⛔ as a trade (needs depth and tick data) |
-| Implemented in volatility-ai | **Research code.** `microstructure.depth_imbalance` and `standardized` (ledger C-MS2); no depth data to feed them. |
+| Implemented in volatility-ai | **Research code.** `microstructure.depth_imbalance` and `standardized` (ledger C-MS2); no depth data to feed them. Deferred: needs Level 2 depth from Fidelity ([engine/roadmap.md](../../engine/roadmap.md) item 3). |
 | Related ledger entries | RK306, C-MS2, C-MS1 |
 
 ## In one paragraph

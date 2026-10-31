@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 93 (1 = strongest) |
 | Fit with this project | 🧪 reference only |
 | Useful for volatility-ai | **Reference only.** The estimator is built (C-MR4) but too noisy on short windows to gate trades, and no study supports the gate. |
-| Implemented in volatility-ai | **Research code** `research.strategies.mean_reversion`: `hurst_exponent`, `variance_ratio`. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk103_hurst_regime`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=hurst_regime`, component `HurstRegimeGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** `research.strategies.mean_reversion`: `hurst_exponent`, `variance_ratio`. |
 | Related ledger entries | C-MR4, RK202, RK297 |
 
 ## In one paragraph

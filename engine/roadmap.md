@@ -13,10 +13,10 @@ items below exist.
 
 | # | Item | Unblocks |
 |---|---|---|
-| 1 | [A multi-asset live book](#1-a-multi-asset-live-book) | RK7, RK10, RK18, RK19, RK52, RK61, RK99, RK117, RK129, RK132, RK144, RK215, RK269 (live), X2, X3, A5 |
-| 2 | [Adaptive order execution](#2-adaptive-order-execution) | RK244, RK250 |
-| 3 | [Level 1 quotes and Level 2 depth from Fidelity](#3-level-1-quotes-and-level-2-depth-from-fidelity) | RK252, RK276, and the bar-level stand-ins of RK247 and RK253 |
-| 4 | [Daily data feeds for the new gates and allocators](#4-daily-data-feeds-for-the-new-gates-and-allocators) | RK168 (live), RK52 |
+| 1 | [A multi-asset live book](#1-a-multi-asset-live-book) | the 53 portfolio-book allocators (`research/strategies/allocator_library.py`) live, X2, X3, A5 |
+| 2 | [Adaptive order execution](#2-adaptive-order-execution) | RK244, RK250, RK363, RK366 |
+| 3 | [Level 1 quotes and Level 2 depth from Fidelity](#3-level-1-quotes-and-level-2-depth-from-fidelity) | RK252, RK276, RK306, RK322, and the bar-level stand-ins of RK247 and RK253 |
+| 4 | [Daily data feeds for the new gates and allocators](#4-daily-data-feeds-for-the-new-gates-and-allocators) | the data-reading signals and allocators (see the item) |
 
 ## 1. A multi-asset live book
 
@@ -127,11 +127,15 @@ Today the bar-level stand-ins, VPIN (RK247) and the volume-clock imbalance gate 
 
 **Gap:**
 - `hf_signal_gated`'s `term_gate` (RK168) reads a CSV of `date, vix, vix3m` from `term_path`. Live, someone has to keep that file current.
+- Seven library strategies read a daily CSV named in `signal_params` (`path=...`): `rk168_vix_term`, `rk204_lead_lag` and `rk221_transfer_entropy` (a leader's closes), `rk212_breadth_thrust` (advances, declines), `rk217_causal_impact` (event dates and a control series), `rk293_sentiment` (a pessimism index) and `rk311_event_sentiment` (classified news scores). None of these is fetched by any job yet.
+- Sixteen portfolio-book allocators read point-in-time fundamentals (`--data fundamentals=...`; `research/strategies/allocator_library.py` lists the fields), two read filing or buyback events, one reads merger deals, one closed-end-fund NAVs and one CPI. The warehouse holds none of them.
 - The `dividend_yield` allocator (RK52) needs ex-dates and amounts. The warehouse's `market_events` table can hold them, but nothing ingests them.
 
 **Work:**
 1. **Term-structure file.** A daily job (beside the backup job in `docker-compose`) that appends the previous session's VIX and VIX3M closes to the term-structure CSV. `tools/fetch_market_inputs.py` already fetches CBOE series.
 2. **Dividends.** Ingest ex-dates and amounts into `market_events` (`event_type = 'dividend'`, `event_timestamp` = ex-date). Add a reader that `tools/portfolio_book.py --dividends` can use in place of a CSV.
+3. **Fundamentals and events.** A point-in-time fundamentals table (published date, ticker, field, value) and an events table in the warehouse, with readers that `tools/portfolio_book.py --data` can use in place of CSVs; a stock universe's minute or daily bars ingested beside them.
+4. **The other daily series.** Leader closes, breadth, a pessimism index and classified news scores, appended daily, for the library strategies above.
 
 **Done when:**
 - A paper deployment with `term_gate` on runs a week without a stale-file warning.
@@ -145,3 +149,7 @@ Today the bar-level stand-ins, VPIN (RK247) and the volume-clock imbalance gate 
 | RK250 | Arrival-Price Adaptive Limit-vs-Market Execution | Purpose-based order pricing | Item 2 |
 | RK252 | Order-Flow Imbalance Cross-Sectional Alpha Predictor | Single-instrument OFI (`research/strategies/microstructure.ofi`) | Item 3 (Level 1); a cross-section also needs item 1 |
 | RK276 | Queue-Reactive Market Making | Queue-position fill model (`microstructure.QueuePositionEstimator`) | Item 3 (Level 2), and an owner decision on market making |
+| RK306 | Micro-price / queue-imbalance signal | `microstructure.micro_price`, `depth_imbalance` | Item 3 (Level 1 bid/ask sizes) |
+| RK322 | Order-book imbalance signal | `microstructure.depth_imbalance` | Item 3 (Level 2 depth) |
+| RK363 | TWAP execution | Almgren-Chriss schedule research code (`research/catalog/leads.almgren_chriss`, risk aversion 0) | Item 2 |
+| RK366 | Implementation shortfall / Almgren-Chriss | The same schedule; no shortfall journal | Item 2 (the arrival-price journal is its measurement) |
