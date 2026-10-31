@@ -43,6 +43,10 @@ class ExitPolicy:
     exit_id = "fixed_target"
     label = "Fixed target"
     can_realize_loss = False
+    # True for a policy that sets each lot's target itself rather than
+    # refining the one it was bought with (a buyer estimating the chance of
+    # reaching that target refuses such a policy).
+    replaces_target = False
 
     def record_tick(self, context: MarketContext) -> None:
         """Every bar, after the buy side's record_tick."""
@@ -136,4 +140,4 @@ def build_exit(exit_id: str, params: dict) -> ExitPolicy:
 
 # The policy library registers itself into EXITS on import; imported last so
 # the base classes above exist when it runs.
-from research.composition import exit_library  # noqa: E402, F401
+from research.composition import book_exits, exit_library  # noqa: E402, F401

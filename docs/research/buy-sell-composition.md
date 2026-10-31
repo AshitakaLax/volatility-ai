@@ -419,6 +419,31 @@ has unit tests for its own rule and for restart (`resume`). Notes:
   `tools/build_algorithm_ledger.py`, and marked UNMEASURED.
 
 ### Phase 4: Extract the remaining buy policies, Ultimate and the exposure books included
+
+**Status: done.** 74 buy policies and 14 sell policies are registered. Pinned identical, blotter for blotter, on
+Phase 0's own cases:
+- `harvest_sleeve` + `age_decay` ≡ the harvest sleeve's target decay, and `harvest_sleeve` (calm sleeve) +
+  `regime_exit` ≡ its regime exit.
+- `ultimate` + `ultimate_exit` ≡ `ultimate`, with and without `liquidate_reversal_on_calm`.
+- `ultimate_rsp` + `rsp_rebalance` ≡ `ultimate_rsp`, and `catalog_exposure` + `catalog_rebalance` ≡
+  `catalog_exposure`.
+- `bayesian_dual_scale` + `fixed_target` ≡ itself.
+
+How the split was made, which differs in places from the text below:
+- **Book sell policies are subclasses of the original strategies** (`research/composition/book_exits.py`),
+  used for their sell side only, so their sells are the original code by construction. Each keeps its own copy of
+  the signal it sells on.
+- **A buyer that reads its own lots** (Ultimate limits reversal buys by open reversal lots, learned in its
+  `adjust_profit_target`) is marked `lot_view`. The composition shows it the lots for bookkeeping and discards
+  any target it returns.
+- **Lot tags are live:** `ultimate` tags each turbulent-mode buy `"reversal"`, `ultimate_exit` classes a tagged
+  lot by its tag (an untagged one by mode, as Ultimate does), and both `resume`s read tags. The identity passing
+  is the proof that tag and mode agree.
+- **Selling parameters on a split buyer are refused unless left at their default** (`liquidate_minute` on
+  `ultimate`, `target_decay_*` on `harvest_sleeve`, `trail_pct` everywhere).
+- **A buyer with a `target_return` refuses a sell policy that replaces each lot's target** (`replaces_target`:
+  `scale_out`, `scale_out_trail`, `vol_scaled_target`).
+
 - Bayesian, ML, harvest-sleeve buys, each with a pinned identity against its original id combined with the exit
   policy that reproduces its old sells.
 - `ultimate_entry` + `ultimate_exit` with lot tags (Design §6), and `exposure_entry` + `exposure_rebalance_exit`,

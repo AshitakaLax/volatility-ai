@@ -103,9 +103,16 @@ def test_the_partial_policies_sell_lots_in_parts(runs, exit_id):
     assert sells.groupby("lot_id").size().max() >= 2
 
 
-def test_only_the_regime_exits_are_on_the_loss_capable_track():
+def test_only_the_signal_exits_are_on_the_loss_capable_track():
     capable = {exit_id for exit_id, cls in EXITS.items() if cls.can_realize_loss}
-    assert capable == {"regime_exit", "regime_exit_partial"}
+    assert capable == {
+        "regime_exit",
+        "regime_exit_partial",
+        "ultimate_exit",
+        "rsp_rebalance",
+        "ursp_rebalance",
+        "catalog_rebalance",
+    }
     assert may_realize_loss("composed", {"buy": BUY, "sell": {"id": "regime_exit"}})
     assert may_realize_loss(
         "composed", {"buy": BUY, "sell": [{"id": "trailing"}, {"id": "regime_exit_partial"}]}

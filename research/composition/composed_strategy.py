@@ -62,6 +62,23 @@ class ComposedStrategy(SizingStrategy):
         self.sell = {"id": sell_id, "params": copy.deepcopy(sell_params)}
         self._entry = entries.build_entry(buy_id, buy_params)
         self._exit = exits.build_exit(sell_id, sell_params)
+        # A buyer that reads its own lots (entries.py, A BUYER THAT READS ITS
+        # LOTS) is shown them for its bookkeeping; which side wants this
+        # bar's walk is decided once per bar, in wants_lot_retargeting.
+        self._entry_sees_lots = entries.sees_lots(buy_id)
+        self._exit_wants = True
+        self._entry_wants = False
+        if (
+            getattr(self._entry, "target_return", None) is not None
+            and getattr(self._exit, "replaces_target", False)
+            and not getattr(self._entry, "allow_target_return_mismatch", False)
+        ):
+            raise ConfigurationError(
+                f"{buy_id} estimates the chance of reaching target_return, but {sell_id} "
+                "replaces each lot's target with its own, so the estimate would answer a "
+                "different question than the one traded. Pick a sell policy that keeps the "
+                "target (fixed_target, trailing), or set allow_target_return_mismatch."
+            )
         self.can_realize_loss = bool(self._exit.can_realize_loss)
         sides = (self._entry, self._exit)
         self.regular_session_only = any(getattr(s, "regular_session_only", False) for s in sides)
@@ -72,8 +89,17 @@ class ComposedStrategy(SizingStrategy):
                 setattr(self, name, getattr(self._entry, name))
         if getattr(self._entry, "marketable_orders", False):
             self.marketable_orders = True
-        if callable(getattr(self._entry, "decision_not_sent", None)):
-            self.decision_not_sent = self._entry.decision_not_sent
+        told = [
+            s for s in (self._entry, self._exit) if callable(getattr(s, "decision_not_sent", None))
+        ]
+        if told:
+            # Both sides may hold this bar's decision (an exposure book's
+            # rebalance lives on whichever side acts on it).
+            def decision_not_sent() -> None:
+                for side in told:
+                    side.decision_not_sent()
+
+            self.decision_not_sent = decision_not_sent
 
     # -- what the composition is, for the server and the web -------------------
 
@@ -115,7 +141,10 @@ class ComposedStrategy(SizingStrategy):
 
     def use_prior_bar_trigger(self, enabled: bool) -> None:
         super().use_prior_bar_trigger(enabled)
-        self._entry.use_prior_bar_trigger(enabled)
+        for side in (self._entry, self._exit):
+            hook = getattr(side, "use_prior_bar_trigger", None)
+            if callable(hook):
+                hook(enabled)
 
     def record_tick(self, context: MarketContext) -> None:
         self._entry.record_tick(context)
@@ -141,13 +170,20 @@ class ComposedStrategy(SizingStrategy):
     # -- the sell side ---------------------------------------------------------
 
     def wants_lot_retargeting(self) -> bool:
-        return self._exit.wants_lot_retargeting()
+        self._exit_wants = bool(self._exit.wants_lot_retargeting())
+        self._entry_wants = self._entry_sees_lots and bool(self._entry.wants_lot_retargeting())
+        return self._exit_wants or self._entry_wants
 
     def adjust_profit_target(self, lot, context: MarketContext) -> float | None:
-        return self._exit.adjust_profit_target(lot, context)
+        if self._entry_wants:
+            self._entry.adjust_profit_target(lot, context)  # its bookkeeping; the target is not its
+        return self._exit.adjust_profit_target(lot, context) if self._exit_wants else None
 
     def retain_lots(self, open_order_ids) -> None:
-        self._exit.retain_lots(open_order_ids)
+        if self._exit_wants:
+            self._exit.retain_lots(open_order_ids)
+        if self._entry_wants:
+            self._entry.retain_lots(open_order_ids)
 
     def harvest_quantity(self, lot, context: MarketContext) -> float:
         return self._exit.harvest_quantity(lot, context)
@@ -185,5 +221,7 @@ class ComposedStrategy(SizingStrategy):
         report = getattr(self._entry, "diagnostics", None)
         if callable(report):
             out.update(report() or {})
-        out.update({f"sell_{k}": v for k, v in (self._exit.diagnostics() or {}).items()})
+        sells = getattr(self._exit, "diagnostics", None)
+        if callable(sells):
+            out.update({f"sell_{k}": v for k, v in (sells() or {}).items()})
         return out

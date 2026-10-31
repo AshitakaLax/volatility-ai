@@ -100,7 +100,7 @@ class AgeDecay(ExitPolicy):
         self.span_bars = _count("span_bars", span_bars)
         self.floor = _positive("floor", floor)
         self.check_bars = _count("check_bars", check_bars)
-        self._bar = 0
+        self._bar = -1  # the first bar is bar 0, as harvest_sleeve counts them
         self._lots = _NewLots()
         self._births: dict[str, tuple[int, float]] = {}
         self.retargets = 0
@@ -153,6 +153,7 @@ class VolScaledTarget(ExitPolicy):
 
     exit_id = "vol_scaled_target"
     label = "Volatility-scaled target"
+    replaces_target = True
 
     def __init__(
         self,
@@ -288,6 +289,7 @@ class ScaleOut(ExitPolicy):
 
     exit_id = "scale_out"
     label = "Scale out in tranches"
+    replaces_target = True
 
     def __init__(self, rungs: str = "0.5@0.01,0.5@0.03", min_tranche_notional: float = 0.0) -> None:
         self.rungs = str(rungs)
@@ -337,6 +339,7 @@ class ScaleOutTrail(ExitPolicy):
 
     exit_id = "scale_out_trail"
     label = "Scale out, then trail the rest"
+    replaces_target = True
 
     def __init__(
         self,

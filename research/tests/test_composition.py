@@ -166,7 +166,7 @@ def test_selling_parameters_are_refused_on_the_buy_side():
 @pytest.mark.parametrize(
     ("buy", "match"),
     [
-        ({"id": "ultimate", "params": {}}, "not separated"),
+        ({"id": "composed", "params": {}}, "cannot be a buy policy"),
         ({"id": "nope", "params": {}}, "Unknown buy policy"),
         ({"params": {}}, "must be"),
         ({"id": "fixed", "extra": 1}, "unknown keys"),
