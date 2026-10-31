@@ -726,11 +726,16 @@ def algorithm_summary(algorithm: dict, symbol: str | None = None) -> str:
     params = dict(algorithm.get("strategy_params") or {})
     step, target = algorithm.get("step"), algorithm.get("profit_target")
     what = symbol or "the fund"
-    if strategy_id in ("ultimate_rsp", "ultimate_ursp"):
+    if strategy_id in ("ultimate_rsp", "ultimate_ursp", "catalog_exposure"):
         minute = _param(strategy_id, params, "execute_minute")
         band = _param(strategy_id, params, "rebalance_band")
+        vote = (
+            f"the catalog's {_param(strategy_id, params, 'catalog_signal')} signal"
+            if strategy_id == "catalog_exposure"
+            else "a daily regime vote"
+        )
         text = (
-            f"holds a share of equity in {what} set by a daily regime vote, rebalanced once a "
+            f"holds a share of equity in {what} set by {vote}, rebalanced once a "
             f"session at minute {minute} when more than {_percent(band)} off; it sells -- at a "
             "loss if need be -- only to cut exposure"
         )
