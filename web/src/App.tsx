@@ -48,9 +48,17 @@ export default function App() {
   // Bumped whenever a run settles, so history reloads without the
   // reader having to press anything.
   const [historyToken, setHistoryToken] = useState(0);
+  const [engineVersion, setEngineVersion] = useState<string | null>(null);
   const [staged, setStaged] = useState<{ gridStep: number; profitTarget: number } | null>(
     null,
   );
+
+  useEffect(() => {
+    api
+      .health()
+      .then((h) => setEngineVersion(h.build.version ?? null))
+      .catch(() => setEngineVersion(null));
+  }, []);
 
   useEffect(() => {
     void api.staticReport().then(setStaticReport);
@@ -91,7 +99,16 @@ export default function App() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-[1600px] items-center gap-6 px-6 py-4">
-          <span className="text-sm font-semibold tracking-tight">volatility-ai</span>
+          <div className="flex flex-col leading-tight">
+            <span className="text-sm font-semibold tracking-tight">volatility-ai</span>
+            <span
+              className="tnum text-[10px] text-muted-foreground"
+              title="Web UI release version · engine release version"
+              data-testid="version-line"
+            >
+              web v{__WEB_VERSION__} · engine {engineVersion ? `v${engineVersion}` : "…"}
+            </span>
+          </div>
           <nav className="flex gap-1">
             {(
               [

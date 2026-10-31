@@ -28,6 +28,11 @@ from functools import lru_cache
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# The engine's release version (what the web header and the shard list show).
+# Bump it when cutting a release; the commit/code fingerprint below say which
+# exact code is running, this says which release it belongs to.
+ENGINE_VERSION = "1.0.0"
 _SOURCES = ("engine", "research", "server", "fidelity_gateway", "tools")
 _SKIPPED = {"__pycache__", "tests"}
 
@@ -66,6 +71,7 @@ def code_fingerprint(root: Path = REPO_ROOT) -> str | None:
 def identity() -> dict:
     """This process: its build and how long it has been up."""
     return {
+        "version": ENGINE_VERSION,
         "commit": os.environ.get("VAI_BUILD_COMMIT") or None,
         "code": code_fingerprint(),
         "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
@@ -74,4 +80,4 @@ def identity() -> dict:
     }
 
 
-__all__ = ["REPO_ROOT", "STARTED_AT", "code_fingerprint", "identity"]
+__all__ = ["ENGINE_VERSION", "REPO_ROOT", "STARTED_AT", "code_fingerprint", "identity"]

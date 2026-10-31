@@ -317,6 +317,8 @@ export interface Shard {
   conn: ShardConn;
   state: ShardState;
   host: string | null;
+  /** The shard's engine release version. */
+  version?: string | null;
   commit: string | null;
   dirty: boolean | null;
   cores: number | null;
@@ -339,6 +341,8 @@ export interface ShardList {
   paused: boolean;
   /** The engine host's commit; a shard on another one is flagged. */
   commit: string | null;
+  /** The engine host's release version. */
+  version?: string | null;
   stale_s: number;
   timeout_s: number;
 }

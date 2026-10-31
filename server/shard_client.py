@@ -633,6 +633,7 @@ class ShardProcess:
                 answer = self.main.register(
                     commit=build.get("commit"),
                     dirty=build.get("dirty"),
+                    version=build.get("version"),
                     cores=os.cpu_count(),
                     allow_version_mismatch=self._allow_mismatch,
                 )

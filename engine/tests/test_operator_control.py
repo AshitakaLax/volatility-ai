@@ -569,4 +569,4 @@ class TestJournals:
     def test_the_supervisor_reports_the_code_it_runs(self, inbox, ledger):
         supervisor(inbox, ledger, sleep=lambda s: None).report("closed")
         build = inbox.status()["build"]
-        assert set(build) == {"commit", "code", "python", "pid", "started_at"}
+        assert set(build) == {"version", "commit", "code", "python", "pid", "started_at"}
