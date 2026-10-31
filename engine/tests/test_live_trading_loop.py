@@ -18,6 +18,7 @@ from engine.core.exceptions import BrokerUnavailableError, ConfigurationError, D
 from engine.core.persistence import LedgerStore
 from engine.core.retry_policy import AmbiguousSubmissionError
 from engine.data.alpaca_market_data import LiveBar
+from engine.trading.duplicate_order_guard import DecisionState
 from engine.trading.live_trading_loop import LiveTradingLoop
 from research.strategies.size_calculators import FixedPortfolioPercentage
 
@@ -288,6 +289,61 @@ def test_a_confirmed_buy_fill_opens_a_lot_and_debits_cash(store):
     assert lot.buy_price == 98.0, "the real fill price is the cost basis, unmodified"
     assert lot.shares == 10.0
     assert loop.state.cash == pytest.approx(100_000.0 - 980.0)
+
+
+class WholeShareBroker(FakeBroker):
+    """Fidelity's sizing: whole shares only, and submit_buy raises below one."""
+
+    whole_shares = True
+
+    def submit_buy(self, symbol, trade_value, client_order_id=None, limit_price=None):
+        if trade_value < limit_price:
+            raise ValueError(f"${trade_value:.2f} does not buy one whole share")
+        return super().submit_buy(symbol, trade_value, client_order_id, limit_price)
+
+
+def _whole_share_buy(store, allocation, **config):
+    broker = WholeShareBroker()
+    market = FakeMarketData()
+    market.push(100.0)
+    loop = make_loop(
+        store,
+        broker,
+        market,
+        config=make_config(**config) if config else None,
+        strategy=FixedPortfolioPercentage(allocation),
+    )
+    loop.run_once()
+    at = BASE_TS + timedelta(minutes=1)
+    market.push(98.0, ts=at)
+    return loop, broker, loop.run_once(), at
+
+
+def test_a_lot_under_one_whole_share_buys_one_share(store):
+    """10-30: a $16 lot of RSP at $219 raised from Fidelity's submit_buy and
+    aborted the loop, after the guard had claimed the decision. A whole-share
+    venue's lot under one share now buys exactly one."""
+    _, broker, outcome, _ = _whole_share_buy(store, 0.0001)  # $10 at $98
+    assert outcome.buys_submitted == 1
+    (_, value, _), limit = broker.buys[0], broker.buy_limits[0]
+    assert value == limit and int(value // limit) == 1
+
+
+def test_a_lot_of_a_share_or_more_is_unchanged(store):
+    _, broker, outcome, _ = _whole_share_buy(store, 0.05)
+    assert outcome.buys_submitted == 1 and broker.buys[0][1] > broker.buy_limits[0]
+
+
+def test_one_share_the_risk_limit_refuses_is_skipped_before_the_claim(store, monkeypatch):
+    from engine.trading import risk_manager as rm
+
+    monkeypatch.setattr(
+        rm.RiskManager, "clamp_trade_value", lambda self, value, *a, **k: min(value, 50.0)
+    )
+    loop, broker, outcome, at = _whole_share_buy(store, 0.0001)
+    assert outcome.buys_submitted == 0 and broker.buys == []
+    assert "over the risk limit" in loop._buy_note
+    assert loop.guard.state_of(loop._decision_id("BUY", at)) is DecisionState.NEW
 
 
 def test_the_same_bar_cannot_be_bought_twice(store):
