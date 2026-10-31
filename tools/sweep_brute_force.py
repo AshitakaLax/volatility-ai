@@ -97,6 +97,9 @@ COST_SECONDS: dict[str, float] = {
     "hf_local_reference": 34.4,
     "hf_entry_gated": 34.2,
     "ultimate": 57.9,
+    # Ultimate-RSP's book plus one catalog call a session (2-75 ms over
+    # ~2,700 sessions; catalog_exposure_sizing's smoke timings), averaged.
+    "catalog_exposure": 90.0,
     # Measured on 2024-2026 and scaled to the full history.
     "ml_regime_rsp": 60.0,
     "ml_regime_ursp": 60.0,
@@ -146,6 +149,32 @@ FUNDS: dict[str, dict[str, Any]] = {
     },
 }
 
+# The rest of the warehouse (2026-10-30), each scaled from RSP's grid by the
+# median absolute daily close-to-close move over its whole history relative
+# to RSP's (URSP's over its own short history, since 2025-08-27), and with
+# the median minutes per session the Warehouse tab reports. SQQQ is inverse:
+# these strategies are long-only, so it is traded as the falling-Nasdaq fund
+# it is.
+_RSP_STEPS = [0.0025, 0.005, 0.0075, 0.01, 0.015, 0.02]
+_RSP_TARGETS = [0.005, 0.01, 0.02, 0.03]
+for _fund, _scale, _bars in (
+    ("COWZ", 1.2, 375),
+    ("QQQ", 1.35, 390),
+    ("SPYD", 1.1, 356),
+    ("XBI", 2.4, 390),
+    ("URSP", 2.0, 35),
+    ("TQQQ", 4.0, 390),
+    ("SQQQ", 4.0, 940),
+    ("SOXL", 6.5, 390),
+):
+    FUNDS[_fund] = {
+        "start": None,
+        "steps": [round(v * _scale, 6) for v in _RSP_STEPS],
+        "targets": [round(v * _scale, 6) for v in _RSP_TARGETS],
+        "scale": _scale,
+        "bars_per_day": _bars,
+    }
+
 # Regular-session minutes the RSP-era spaces were tuned with.
 REGULAR_BARS_PER_DAY = 387
 
@@ -160,6 +189,7 @@ ORDER = [
     "ultimate_rsp",
     "ultimate_ursp",
     "ultimate",
+    "catalog_exposure",
     "fixed",
     "hf_local_reference",
     "hf_entry_gated",
@@ -232,6 +262,8 @@ def _spaces(strategy: str, fund: str) -> list[dict[str, Any]]:
                 "rsi_gate": ["off", "head_shoulders"],
             }
         ]
+    if strategy == "catalog_exposure":
+        return _catalog_spaces(scale)
     if strategy == "rsi":
         return [
             {
@@ -320,6 +352,82 @@ def _spaces(strategy: str, fund: str) -> list[dict[str, Any]]:
     raise KeyError(strategy)
 
 
+# catalog_exposure: per signal (catalog_exposure_sizing.SIGNALS), 2-3 values
+# of each parameter around the source's default, as catalog_params strings.
+# Risk budgets are in daily-return units, so they scale with the fund.
+CATALOG_GRIDS: dict[str, dict[str, list]] = {
+    "tsmom": {"lookback": [63, 126, 252], "vol_target": [0.2, 0.4, 1.0]},
+    "multi_timeframe": {
+        "horizons": ["21/63/252", "10/21/63", "63/126/252"],
+        "mode": ["agree", "average"],
+    },
+    "supertrend": {"n": [7, 10, 14], "mult": [2.0, 3.0, 4.0]},
+    "macd": {"fast/slow/signal": ["12/26/9", "8/17/9", "5/35/5"]},
+    "awesome": {"fast/slow": ["5/34", "3/20", "10/50"]},
+    "psar": {"step": [0.01, 0.02, 0.03], "max_step": [0.1, 0.2]},
+    "heikin_ashi": {"confirm": [1, 2, 3]},
+    "sma": {"window": [50, 100, 150, 200, 250]},
+    "kalman_trend": {"q_slope": [1e-8, 1e-7, 1e-6], "r": [1e-4, 1e-3]},
+    "l1_trend": {"window": [60, 120, 250], "lam": [1.0, 5.0, 20.0]},
+    "kama": {"n": [10, 20], "slow": [30, 60]},
+    "cycle_momentum": {"fast/slow": ["21/252", "21/126", "63/252"]},
+    "spectral_trend": {"window": [64, 128, 256], "keep": [2, 3, 5]},
+    "bayesian_drift": {"discount": [0.98, 0.99, 0.995], "threshold": [0.55, 0.6, 0.7]},
+    "robust_momentum": {"lookback": [63, 126, 252], "method": ["theil_sen", "median"]},
+    "arfima": {"window": [50, 100, 200]},
+    "tail_budget": {"es_budget": [0.02, 0.03, 0.05], "window": [250, 500]},
+    "wavelet_var": {"var_budget": [0.02, 0.03, 0.05], "window": [125, 250]},
+    "early_warning": {"threshold": [0.3, 0.5, 0.7], "window": [60, 100]},
+    "state_momentum": {
+        "lookback": [126, 252],
+        "state_lookback": [252, 756],
+        "vol_quantile": [0.7, 0.8, 0.9],
+    },
+    "high_52w": {"threshold": [0.85, 0.9, 0.95], "mode": ["binary", "graded"]},
+    "ema_ribbon": {
+        "short": ["3/5/8/10/12/15", "5/10/20"],
+        "long": ["30/35/40/45/50/60", "50/100/200"],
+        "mode": ["stacked", "average"],
+    },
+    "jump_stress": {"k": [3.0, 4.0], "multiple": [2.0, 3.0, 5.0]},
+    "random_forest": {"threshold": [0.5, 0.55, 0.6]},
+}
+_BUDGETS = {"es_budget", "var_budget"}
+
+
+def _catalog_params(grid: dict[str, list], scale: float) -> list[str]:
+    """Every combination of `grid` as a catalog_params string. A key naming
+    several parameters ("fast/slow") takes values that set them together."""
+    import itertools
+
+    keys = list(grid)
+    out = []
+    for values in itertools.product(*(grid[k] for k in keys)):
+        parts = []
+        for key, value in zip(keys, values, strict=True):
+            names = key.split("/")
+            if len(names) > 1:
+                parts += [f"{n}={v}" for n, v in zip(names, str(value).split("/"), strict=True)]
+            elif key in _BUDGETS:
+                parts.append(f"{key}={round(float(value) * scale, 6)}")
+            else:
+                parts.append(f"{key}={value}")
+        out.append(";".join(parts))
+    return out
+
+
+def _catalog_spaces(scale: float) -> list[dict[str, Any]]:
+    return [
+        {
+            "catalog_signal": [signal],
+            "catalog_params": _catalog_params(grid, scale),
+            "execute_minute": [60],
+            "rebalance_band": [0.05, 0.1],
+        }
+        for signal, grid in CATALOG_GRIDS.items()
+    ]
+
+
 def _quantiles(fund: str, head: str) -> dict[str, float]:
     import json
 
@@ -368,7 +476,7 @@ def _regime_space(fund: str) -> dict[str, Any]:
 def grid(strategy: str, fund: str) -> tuple[list[float], list[float]]:
     """(grid steps, profit targets) for `strategy` on `fund`."""
     scale = FUNDS[fund]["scale"]
-    if strategy in ("ultimate_rsp", "ultimate_ursp"):
+    if strategy in ("ultimate_rsp", "ultimate_ursp", "catalog_exposure"):
         # Daily exposure targets, exited by signal: no grid to search. The
         # configs these were researched with use exactly this.
         return [0.001], [10.0]
