@@ -454,6 +454,27 @@ How the split was made, which differs in places from the text below:
   they are. Their configs and profiles do not move to `composed`.
 
 ### Phase 5: The matrix runner, across any symbol
+
+**Status: done** (`research/composition/matrix.py`, `cli.py matrix`, `config/matrix/first_8x8x4.yaml`).
+- A cell is one buy id × one sell id, with all of their variants. Each cell gets `trials_per_cell` trials drawn by
+  `RandomSearch` with a seed fixed per cell, so a cell sees the same parameters on every fund.
+- A policy named without params takes its committed defaults.
+- When a cell's sell policy replaces targets, its profit-target axis is collapsed to one value, so its budget isn't
+  spent on bit-identical trials.
+- The loss gate opens only for loss-capable cells.
+- A fund under `min_history_years` (floor 5, default 10) is skipped. One under 10 years runs and is marked
+  `short_history`. A cell whose policy was researched on another fund (an ML ticker) is skipped there with the
+  reason.
+- Each trial is reduced in the sink, then let go: headline metrics plus Calmar, partial-sale counts, per-year
+  figures (return, drawdown, realized P&L, signal exits, year-end open lots and committed capital), monthly
+  returns, stress windows, and returns by NATR regime and 200-session trend. Trials are appended to
+  `trials.jsonl` as they finish.
+- Not done yet: sharding over `cli.py shard` (a matrix runs on one machine with `--n-jobs`), and a warehouse
+  view. Trials live in their own files.
+- **The real first run has not happened.** This container's warehouse holds no bars. It is verified on synthetic
+  funds (`research/tests/test_matrix.py`). Time one cell first: `cli.py matrix --config config/matrix/first_8x8x4.yaml
+  --output output/matrix/first --limit-cells 1`.
+
 - `research/composition/matrix.py`: takes buy variants × sell variants × symbols, builds the `composed` param grid,
   and calls **`OptimizationController.run_sweep`**, not `run_hf_sweep.py`, which drops `allow_signal_exit` and cash
   yield. It writes through `DuckDBResultSink`.
@@ -476,6 +497,16 @@ How the split was made, which differs in places from the text below:
   view returns 18 cells with per-year rows.
 
 ### Phase 6: Analysis that answers the question
+
+**Status: tooling done** (`research/composition/analysis.py`, `cli.py matrix --analyze DIR` → `report.md`); **the
+results document waits for the real run.**
+- Two-way decomposition with variance shares, and the interaction F-test (a two-way ANOVA with years as
+  replicates; the p-value from an in-house incomplete beta, so no scipy).
+- The buy × sell × fund decomposition, the independent-or-pair decision rule, year × cell tables,
+  leave-one-year-out rank correlation, stress windows, the market-condition breakdown, and PBO with the
+  finalists' deflated Sharpe.
+- Tests construct additive, crossed and one-year-driven matrices, and check that each is told apart.
+
 For each track, metric (Total Return %, Calmar; **not** Capital Velocity Index, which saturates) and symbol:
 
 1. **Cell score** = the median over the cell's trials of the metric, plus the best trial reported alongside, never

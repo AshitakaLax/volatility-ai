@@ -26,7 +26,7 @@ the context small.
 | `tools/` | [tools/README.md](tools/README.md) | ops scripts, data prep, probes — nothing in `engine/` or `research/` imports these |
 | `config/` | [config/CLAUDE.md](config/CLAUDE.md) | sweep configs vs. `live:`-enabled deployment configs |
 | `tests/` | [tests/CLAUDE.md](tests/CLAUDE.md) | unit / integration / e2e / fixtures |
-| `cli.py` | | single entrypoint and Docker `ENTRYPOINT`: `test \| backtest \| search \| submit \| live \| serve \| shard \| backup \| restore \| fetch-data` |
+| `cli.py` | | single entrypoint and Docker `ENTRYPOINT`: `test \| backtest \| search \| matrix \| submit \| live \| serve \| shard \| backup \| restore \| fetch-data` |
 
 ## The dependency direction, which the split depends on
 
@@ -101,6 +101,7 @@ together (the Ultimate family's regime exit).
 ```bash
 .venv/bin/python cli.py test -q                 # full suite (~4,000 tests)
 .venv/bin/python cli.py backtest --config C --output O   # bars from the warehouse by backtest.symbol
+.venv/bin/python cli.py matrix --config config/matrix/first_8x8x4.yaml --output O  # buy x sell matrix; --analyze O for the report
 .venv/bin/python cli.py serve                   # API on 127.0.0.1:8000
 .venv/bin/python tools/build_warehouse.py --ingest TQQQ  # CSV in data/ → Parquet lake
 .venv/bin/ruff format . && .venv/bin/ruff check --fix .   # line-length 100

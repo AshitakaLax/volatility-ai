@@ -1,0 +1,43 @@
+# The first real buy x sell matrix (docs/research/buy-sell-composition.md,
+# Phase 5): 8 buy policies x 8 sell policies x 4 funds, an equal budget of
+# 12 trials per cell, the real cost model (tranches pay per trade).
+#
+#   python cli.py matrix --config config/matrix/first_8x8x4.yaml --output output/matrix/first_8x8x4
+#   python cli.py matrix --analyze output/matrix/first_8x8x4
+#
+# Size it from one timed cell first (--limit-cells 1). Not a BacktestConfig:
+# the `matrix:` section names buys and sells; everything else is the
+# BacktestConfig every cell is built from (no `strategy:`).
+matrix:
+  name: first-8x8x4
+  symbols: [TQQQ, QQQ, SOXL, RSP]
+  min_history_years: 10       # owner: at least 5, 10 or more recommended
+  trials_per_cell: 12
+  seed: 20261031
+  buys:
+    - {id: hf_local_reference}                                  # the champion
+    - {id: hf_entry_gated, params: {momentum_gate: early_negative}}
+    - {id: rk62_ma_cross}
+    - {id: rk147_zscore}
+    - {id: rk44_supertrend}
+    - {id: rk161_bollinger}
+    - {id: harvest_sleeve, params: {inventory_decay: [1.0, 0.99]}}
+    - {id: ultimate}                                            # warms up ~250 sessions in-run
+  sells:
+    # no-loss track
+    - {id: fixed_target}
+    - {id: trailing, params: {trail_pct: [0.005, 0.01, 0.02]}}
+    - {id: age_decay, params: {after_bars: [1950, 3900]}}
+    - {id: vol_scaled_target, params: {k: [0.5, 1.0, 2.0]}}
+    - {id: scale_out, params: {rungs: ["0.5@0.01,0.5@0.03", "0.34@0.01,0.33@0.02,0.33@0.05"]}}
+    - {id: scale_out_trail, params: {trail_pct: [0.01, 0.02]}}
+    # loss-capable track (reported separately)
+    - {id: regime_exit}
+    - {id: ultimate_exit}
+grid:
+  steps: [0.0005, 0.001, 0.002]
+  profit_targets: [0.005, 0.01, 0.02]
+backtest: {initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+execution: {on_flat_reentry: stale_reference, intrabar_priority: sell_first, fill_model: intrabar, intrabar_fill: causal, enforce_no_loss: true}

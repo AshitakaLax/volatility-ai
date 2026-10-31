@@ -2144,6 +2144,61 @@ def cmd_shard(args: argparse.Namespace) -> int:
     return process.run_forever(max_runs=args.max_runs)
 
 
+def cmd_matrix(args: argparse.Namespace) -> int:
+    """Run a buy x sell matrix (research/composition/matrix.py) over the
+    warehouse's funds, or analyse one already run (--analyze DIR)."""
+    from dataclasses import replace
+
+    from engine.core.exceptions import ConfigurationError
+    from research.composition import analysis, matrix
+
+    if args.analyze:
+        directory = Path(args.analyze)
+        trials_path = directory / "trials.jsonl"
+        if not trials_path.exists():
+            print(f"No trials.jsonl in {directory}.", file=sys.stderr)
+            return 2
+        text = analysis.report(
+            matrix.load_trials(trials_path), metric=args.metric, title=directory.name
+        )
+        (directory / "report.md").write_text(text, encoding="utf-8")
+        print(text)
+        return 0
+    if not args.config or not args.output:
+        print("matrix needs --config and --output (or --analyze DIR).", file=sys.stderr)
+        return 2
+    try:
+        spec = matrix.load_spec(args.config)
+    except ConfigurationError as exc:
+        print(f"Invalid matrix config: {exc}", file=sys.stderr)
+        return 2
+    if args.symbols:
+        spec = replace(spec, symbols=tuple(s.strip().upper() for s in args.symbols.split(",")))
+    if args.limit_cells:
+        # The first N cells: the policies they use, so a cell can be timed
+        # before the full matrix is sized from it.
+        cells = matrix.plan_cells(spec)[: args.limit_cells]
+        buy_ids, sell_ids = {c.buy_id for c in cells}, {c.sell_id for c in cells}
+        spec = replace(
+            spec,
+            buys=tuple(b for b in spec.buys if b.get("id") in buy_ids),
+            sells=tuple(s for s in spec.sells if s.get("id") in sell_ids),
+        )
+
+    def progress(message: str) -> None:
+        print(f"[matrix] {message}", flush=True)
+
+    run = matrix.run_matrix(spec, n_jobs=args.n_jobs, out_dir=args.output, progress=progress)
+    print(
+        f"{len(run.trials)} trial(s) written to {args.output}/trials.jsonl; {len(run.skipped)} skipped."
+    )
+    if run.trials:
+        text = analysis.report(run.trials, metric=args.metric, title=spec.name)
+        (Path(args.output) / "report.md").write_text(text, encoding="utf-8")
+        print(f"Report: {args.output}/report.md")
+    return 0
+
+
 def cmd_submit(args: argparse.Namespace) -> int:
     """Submit a BacktestConfig YAML to the server's shard queue.
 
@@ -2393,6 +2448,28 @@ def main() -> int:
         help="Label shown in the web UI's Run History (default: the config file's name)",
     )
     p_backtest.set_defaults(func=cmd_backtest)
+
+    p_matrix = sub.add_parser(
+        "matrix",
+        help="Run a buy x sell matrix (docs/research/buy-sell-composition.md), or analyse one",
+    )
+    p_matrix.add_argument("--config", help="A matrix YAML (config/matrix/*.yaml)")
+    p_matrix.add_argument("--output", help="Directory for trials.jsonl, skipped.json, report.md")
+    p_matrix.add_argument("--symbols", help="Override matrix.symbols: comma-separated funds")
+    p_matrix.add_argument(
+        "--limit-cells",
+        type=int,
+        default=0,
+        help="Run only the first N cells (one buy): time a cell before sizing the full matrix",
+    )
+    p_matrix.add_argument("--n-jobs", type=int, default=1, help="Worker processes per cell")
+    p_matrix.add_argument(
+        "--metric",
+        default="Calmar",
+        help="What the report ranks by: Calmar (default) or 'Total Return %%'",
+    )
+    p_matrix.add_argument("--analyze", metavar="DIR", help="Analyse a finished run's directory")
+    p_matrix.set_defaults(func=cmd_matrix)
 
     p_fetch = sub.add_parser("fetch-data", help="Download historical bars for backtesting")
     p_fetch.add_argument("--symbol", required=True, help="Ticker to download, e.g. TQQQ")
