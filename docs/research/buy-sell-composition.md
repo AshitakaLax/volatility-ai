@@ -356,6 +356,19 @@ Phase 7 can start once Phase 2 lands, in parallel with 3 to 6.
 - **Done when** all of that passes and Phase 0's fixture is identical.
 
 ### Phase 1b: Fidelity's fractional shares in the regular session
+
+**Status: engine side done; the Fidelity order itself is blocked on a capture.**
+- Done: the live loop asks a broker that answers per session, `whole_shares_in(session)`, about the current window,
+  and both partial sells and the whole-share buy rounding use that answer. `FidelityBroker.whole_shares_in`
+  exists and answers **whole shares in every session**.
+- Blocked: the gateway sends every order as shares (`qtyTypeCode 'S'`). The fractional ticket's quantity type has
+  never been captured from Fidelity's own order ticket, and guessing it on a real-money order is not a risk worth
+  taking. **What unblocks it:** a `fidelity_gateway/recon.py` capture of a fractional order placed by hand in the
+  regular session. Then `whole_shares_in` answers `session != REGULAR`, and `_preview` sends the fractional
+  type for a non-whole quantity.
+- Not done: modelling Fidelity's whole-share-only extended hours in the backtest (an `execution` option).
+  Backtests today sell fractional quantities in every session, as the Alpaca route does.
+
 - `fidelity_gateway/broker.py` and `placing_broker.py`: replace the class-level `whole_shares = True` with a
   session-aware answer, fractional in the regular session and whole in pre- and post-market (owner, Oct 31).
   Buys gain fractional sizing in the regular session too, which today is "not modelled".

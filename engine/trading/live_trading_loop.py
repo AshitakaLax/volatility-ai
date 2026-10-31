@@ -2083,7 +2083,13 @@ class LiveTradingLoop:
         return submitted
 
     def _whole_shares(self) -> bool:
-        """Whether the venue takes only whole shares (Fidelity, today)."""
+        """Whether an order placed now must be whole shares. A broker that
+        answers per session (whole_shares_in: Fidelity takes fractional
+        shares in the regular session only) is asked about this tick's
+        window; any other is asked once, by its `whole_shares`."""
+        per_session = getattr(self.broker, "whole_shares_in", None)
+        if callable(per_session):
+            return bool(per_session(self.window.session if self.window is not None else None))
         return bool(getattr(self.broker, "whole_shares", False))
 
     def _submit_exit(self, orders: list, context: MarketContext) -> int:
@@ -2235,7 +2241,7 @@ class LiveTradingLoop:
         # it is settled HERE, before the claim: such a lot buys ONE share,
         # if that share passes the same risk clamp and fits the cash; else
         # this bar buys nothing and the status says why.
-        if getattr(self.broker, "whole_shares", False) and trade_value < limit_price:
+        if self._whole_shares() and trade_value < limit_price:
             why = self._whole_share_refusal(context, limit_price)
             if why is not None:
                 logger.warning(f"No buy this bar: {why}")

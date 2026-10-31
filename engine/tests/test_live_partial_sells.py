@@ -200,3 +200,29 @@ def test_every_sell_site_asks_the_shared_helper_how_much():
         assert "decision_cycle.harvest_orders(" in source, name
         assert "as_orders=True" in source, name
         assert "harvest_quantity(" not in source, f"{name} calls the hook directly"
+
+
+class _SessionBroker(FakeBroker):
+    """Fidelity's shape: fractional in the regular session, whole outside it."""
+
+    def whole_shares_in(self, session):
+        return session != "regular"
+
+
+def test_a_per_session_broker_is_asked_about_this_ticks_window(store):  # noqa: F811
+    from types import SimpleNamespace
+
+    loop = make_loop(store, broker=_SessionBroker())
+    loop.window = SimpleNamespace(session="pre_market")
+    assert loop._whole_shares() is True
+    loop.window = SimpleNamespace(session="regular")
+    assert loop._whole_shares() is False
+
+
+def test_fidelity_still_sends_whole_shares_in_every_session():
+    """Until a captured fractional ticket confirms its quantity type
+    (docs/research/buy-sell-composition.md, Phase 1b)."""
+    from fidelity_gateway.broker import FidelityBroker
+
+    for session in (None, "pre_market", "regular", "after_hours"):
+        assert FidelityBroker.whole_shares_in(object(), session) is True
