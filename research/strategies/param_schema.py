@@ -419,6 +419,42 @@ STRATEGY_DEFAULTS["ultimate_ursp"] = {
     "bear_dd_full": 0.55,
 }
 
+# catalog_exposure: the constructor's defaults -- a Kalman trend on
+# Ultimate-RSP's execution. Unmeasured; a starting point, not a choice.
+STRATEGY_DEFAULTS["catalog_exposure"] = {
+    "catalog_signal": "kalman_trend",
+    "execute_minute": 60,
+    "rebalance_band": 0.05,
+}
+# Its signals, by name (research/strategies/catalog_exposure_sizing.SIGNALS,
+# pinned there), listed rather than imported like LIBRARY_SIGNALS below.
+CATALOG_SIGNALS: tuple[str, ...] = (
+    "arfima",
+    "awesome",
+    "bayesian_drift",
+    "cycle_momentum",
+    "early_warning",
+    "ema_ribbon",
+    "heikin_ashi",
+    "high_52w",
+    "jump_stress",
+    "kalman_trend",
+    "kama",
+    "l1_trend",
+    "macd",
+    "multi_timeframe",
+    "psar",
+    "random_forest",
+    "robust_momentum",
+    "sma",
+    "spectral_trend",
+    "state_momentum",
+    "supertrend",
+    "tail_budget",
+    "tsmom",
+    "wavelet_var",
+)
+
 
 def required_parameters(strategy_class: type) -> list[str]:
     """Constructor arguments with no default, so a caller can be told."""
@@ -486,6 +522,7 @@ _PARAM_ENUMS: dict[str, list[str]] = {
 }
 # research/strategies/library_sizing.SIGNAL_NAMES (pinned there).
 _PARAM_ENUMS["signal"] = ["off", *sorted(set(LIBRARY_SIGNALS.values()))]
+_PARAM_ENUMS["catalog_signal"] = list(CATALOG_SIGNALS)
 
 # Filesystem wiring the engine supplies. Never shown, never sent -- the
 # constructor's own default is used. regime_by_date is UltimateSizing's

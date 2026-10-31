@@ -1,5 +1,53 @@
 # Changelog
 
+## Feat: catalog_exposure, the research catalog's long-or-cash signals as one live-capable strategy, and brute force on every fund
+
+**The research catalog's whole-position timing signals could not be
+backtested.** The `rk*` library strategies (`library_sizing.py`) and
+`hf_signal_gated` use a signal as a gate on the grid. Many catalog entries
+are instead a daily fraction of equity to hold, which no registered
+strategy executed.
+
+- **`catalog_exposure`** (`research/strategies/catalog_exposure_sizing.py`):
+  - 24 single-fund long-or-cash signals run on Ultimate-RSP's daily
+    exposure book, one per run, picked by `catalog_signal` (a dropdown in
+    the run form), with `catalog_params` ("name=value;...") overriding its
+    defaults. The names differ from the library's `signal`/`signal_params`
+    because the run form's choices are keyed by parameter name.
+    - From the catalog: TSMOM, multi-horizon momentum, Supertrend, MACD,
+      Awesome, PSAR, Heikin-Ashi, SMA, Kalman, l1 and spectral trend, KAMA,
+      cycle-blended momentum, Bayesian drift, robust momentum, ARFIMA, and
+      the POT, wavelet and early-warning risk budgets.
+    - Ledger entries as exposure timing: state-filtered momentum (RK10),
+      52-week-high nearness (RK14), the Guppy EMA ribbon (RK64), a Hawkes
+      jump-intensity stress gauge (RK314) and a random-forest classifier
+      (RK290).
+  - The two model-fitting signals refit once per calendar bucket, on the
+    sessions before it, keyed by dates rather than a count of calls, so a
+    live cold start rebuilds the model a backtest through the same dates
+    holds. A test pins that.
+  - The target for a session comes from the sessions before it. Tests pin
+    causality for every signal, that the windowed signals equal the
+    catalog's full-history call, and that the engine trades it exactly like
+    `ultimate_rsp` handed the same map.
+  - Exits are signal exits, like the book it reuses (`SIGNAL_EXIT_STRATEGIES`).
+    The catalog's scipy and scikit-learn imports stay out of the live
+    loop's import path (pinned).
+  - Left out: the HMM trend (a refit per session costs hours per
+    configuration), and the entries needing future-labelled training or a
+    second instrument.
+- **`tools/sweep_brute_force.py`** covers every warehouse fund (the eight
+  added scaled from RSP's grid by their median daily move) and has a
+  `catalog_exposure` series: one sub-space per signal, risk budgets scaled
+  per fund.
+- **The road to live:** it builds from a live config (refused without
+  `execution.allow_signal_exit`, and outside the regular session), replays
+  its own history on a cold start, and so can go candidate -> paper trial
+  -> live profile through the Algorithms tab. Tests pin all three.
+- **hf_entry_gated is untouched**, like the traded strategies main keeps
+  apart from the library.
+- **Unmeasured:** none of these has been swept yet.
+
 ## Feat: every fitting research-code algorithm, selectable for backtests
 
 **78 of the 82 research-code entries that fit the owner's rules are now

@@ -459,6 +459,14 @@ _GRID_TRIGGER: dict[str, dict[str, Any]] = {
         "window_param": None,
         "window_default": None,
     },
+    # The same book on a research-catalog signal: same trigger.
+    "catalog_exposure": {
+        "methods": ["exposure_target"],
+        "default": "exposure_target",
+        "controlled_by": None,
+        "window_param": None,
+        "window_default": None,
+    },
 }
 # MLRegimeScaledSizing's level is last_buy's formula with the STEP
 # scaled by a model-driven latch, so it is neither of the two methods
