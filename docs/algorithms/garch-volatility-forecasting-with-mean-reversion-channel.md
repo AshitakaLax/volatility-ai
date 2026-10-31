@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 6,475 (1 = strongest) |
 | Fit with this project | ⏳ worth testing |
 | Useful for volatility-ai | **Worth testing.** The grid's step already scales with volatility; GARCH is a candidate forecaster for that step, and it is hard to beat. |
-| Implemented in volatility-ai | **Research code** `research.catalog.econometrics`: `garch11_fit`, `garch11_forecast`. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk195_garch`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=garch`, component `GarchSizer`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** `research.catalog.econometrics`: `garch11_fit`, `garch11_forecast`. |
 | Related ledger entries | C-G2, S4, RK94 |
 
 ## In one paragraph

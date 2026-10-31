@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 276 (1 = easiest) |
 | Retail advantage rank | 255 (1 = strongest) |
 | Fit with this project | 🧪 research code (A1) · ❌ for now as a trader (A1) |
-| Implemented in volatility-ai | **Research code.** The algorithm's update targets are in `research/catalog/rl_agents.py` (ledger A1); no trained agent. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk372_rl_ppo`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=rl_ppo`, component `RLSizer`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code.** The algorithm's update targets are in `research/catalog/rl_agents.py` (ledger A1); no trained agent. |
 | Related ledger entries | RK346, RK347, A1, C-RL4 |
 
 ## In one paragraph

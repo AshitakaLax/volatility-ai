@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 123 (1 = easiest) |
 | Retail advantage rank | 204 (1 = strongest) |
 | Fit with this project | ⏳ as a regime input (crash early warning) |
-| Implemented in volatility-ai | **Research code** in `research.catalog.topology`: `multiscale_rips_score`, `rips_persistence`; tested on synthetic data, not wired into the engine. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk268_tda_rips`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=tda_rips`, component `RipsScoreGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** in `research.catalog.topology`: `multiscale_rips_score`, `rips_persistence`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK254, RK255, RK262, RK269 |
 
 ## In one paragraph

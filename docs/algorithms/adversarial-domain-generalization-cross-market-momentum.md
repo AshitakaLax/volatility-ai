@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 175 (1 = easiest) |
 | Retail advantage rank | 25 (1 = strongest) |
 | Fit with this project | ⏳ (in principle, as a long-only ranking) · not a priority |
-| Implemented in volatility-ai | **Research code** in `research.catalog.cross_section`: `DomainAdversarialForecaster`, `momentum_features`; tested on synthetic data, not wired into the engine. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator domain_adversarial_momentum` in the portfolio book (`python -m tools.portfolio_book`; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.cross_section`: `DomainAdversarialForecaster`, `momentum_features`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK7, RK1 |
 
 ## In one paragraph

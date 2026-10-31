@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 374 (1 = easiest) |
 | Retail advantage rank | 6,477 (1 = strongest) |
 | Fit with this project | ⏳ as a measurement (lead-lag) · ⛔ as a trade (no evidence) |
-| Implemented in volatility-ai | **Research code** in `research.catalog.information`: `te_lead_lag_positions`, `transfer_entropy`; tested on synthetic data, not wired into the engine. The linear and Hayashi–Yoshida lead-lag estimators exist (RK204). |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk221_transfer_entropy`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=transfer_entropy`, component `TransferEntropyGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** in `research.catalog.information`: `te_lead_lag_positions`, `transfer_entropy`; tested on synthetic data, not wired into the engine. The linear and Hayashi–Yoshida lead-lag estimators exist (RK204). |
 | Related ledger entries | RK204, RK257, RK264 |
 
 ## In one paragraph

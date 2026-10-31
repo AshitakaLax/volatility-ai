@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 44 (1 = easiest) |
 | Retail advantage rank | 69 (1 = strongest) |
 | Fit with this project | ⏳ long-only weights for a multi-ETF book |
-| Implemented in volatility-ai | **Research code.** `je_suis_tm_projects.markowitz_weights` returns long-only, fully invested min-variance weights (Q13's notebook); not wired into a harness. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator global_min_variance` in the portfolio book (`python -m tools.portfolio_book`; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code.** `je_suis_tm_projects.markowitz_weights` returns long-only, fully invested min-variance weights (Q13's notebook); not wired into a harness. |
 | Related ledger entries | Q13, A5, RK18, RK56 |
 
 ## In one paragraph

@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 127 (1 = strongest) |
 | Fit with this project | ⏳ worth testing |
 | Useful for volatility-ai | **Worth testing.** A regime input to compare against the NATR regime; the Gaussian HMM is already built (C-R3). |
-| Implemented in volatility-ai | **Research code** `research.strategies.regime_models`: `GaussianHMM`, `GaussianMixture`. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk102_hmm`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=hmm`, component `HmmRegimeGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code** `research.strategies.regime_models`: `GaussianHMM`, `GaussianMixture`. |
 | Related ledger entries | C-R3, V17, N5, RK10 |
 
 ## In one paragraph

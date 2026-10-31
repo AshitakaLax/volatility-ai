@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 305 (1 = easiest) |
 | Retail advantage rank | 1,815 (1 = strongest) |
 | Fit with this project | ✅ buy-side skew (C-G2) · ⛔ sell-side skew below cost |
-| Implemented in volatility-ai | **Research code.** `inventory_control.inventory_skewed_level` and `as_reservation_price` (ledger C-G2, C-MM1); buy-side only, because sell rungs cannot move below cost. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk246_inventory_skew`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=inventory_skew`, component `InventorySkewLevel`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code.** `inventory_control.inventory_skewed_level` and `as_reservation_price` (ledger C-G2, C-MM1); buy-side only, because sell rungs cannot move below cost. |
 | Related ledger entries | C-G2, C-MM1, RK274, RK245 |
 
 ## In one paragraph

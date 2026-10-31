@@ -22,6 +22,7 @@ from research.ml.regime_scaled_sizing import MLRegimeScaledSizing
 from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 from research.strategies.gated_local_reference_sizing import GatedLocalReferenceSizing
 from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from research.strategies.library_sizing import LibrarySizing, library_strategy_ids
 from research.strategies.signal_gated_sizing import SignalGatedSizing
 from research.strategies.size_calculators import (
     BellCurveProbabilitySizing,
@@ -123,6 +124,14 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     "ml_regime_cowz": MLRegimeScaledSizing,
     "ml_regime_ursp": MLRegimeScaledSizing,
 }
+
+# The ranked list's single-symbol algorithms, one id each: rk<ledger
+# number>_<signal> (e.g. rk44_supertrend), all LibrarySizing with that
+# algorithm's `signal` as the committed default (param_schema.py), so each
+# is picked from the strategy list by name. Derived from the signal library
+# rather than listed, so a new signal cannot be left unregistered.
+# UNMEASURED: none of these has been swept.
+STRATEGIES.update(dict.fromkeys(library_strategy_ids(), LibrarySizing))
 
 # Strategies whose design includes an exit below cost basis. The flag is
 # half of a two-part gate -- a loss needs execution.allow_signal_exit AND

@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 78 (1 = easiest) |
 | Retail advantage rank | 147 (1 = strongest) |
 | Fit with this project | ⏳ for a multi-ETF book (long-only weights) |
-| Implemented in volatility-ai | **Research code** in `research.catalog.allocation`: `wdro_mean_variance`; tested on synthetic data, not wired into the engine. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator wdro_mean_variance` in the portfolio book (`python -m tools.portfolio_book`; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.allocation`: `wdro_mean_variance`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK88, RK233, RK61 |
 
 ## In one paragraph

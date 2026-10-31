@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 314 (1 = easiest) |
 | Retail advantage rank | 268 (1 = strongest) |
 | Fit with this project | ⏳ as a stress-test generator (RK200) · not a strategy |
-| Implemented in volatility-ai | **Research code** in `research.catalog.generative`: `TimeGAN`; tested on synthetic data, not wired into the engine. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator timegan_scenarios` in the portfolio book (`python -m tools.portfolio_book`; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.generative`: `TimeGAN`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK200, RK373, RK378 |
 
 ## In one paragraph

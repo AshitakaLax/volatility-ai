@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 9 (1 = easiest) |
 | Retail advantage rank | 27 (1 = strongest) |
 | Fit with this project | 🧪 as a long-or-cash regime · ⛔ as a long/short trade |
-| Implemented in volatility-ai | **Research code.** quant-trading's "MACD oscillator" is a short/long SMA crossover (`je_suis_tm.macd_crossover`, Q1 as a trade); Faber's 20/200 targets (`tactical_allocation.faber_targets`, C-E2). The wired regimes are EMA-MACD (`--regime macd`) and price-above-SMA (`--regime sma`), not a two-SMA crossover. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk62_ma_cross`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=ma_cross`, component `MovingAverageCrossGate`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code.** quant-trading's "MACD oscillator" is a short/long SMA crossover (`je_suis_tm.macd_crossover`, Q1 as a trade); Faber's 20/200 targets (`tactical_allocation.faber_targets`, C-E2). The wired regimes are EMA-MACD (`--regime macd`) and price-above-SMA (`--regime sma`), not a two-SMA crossover. |
 | Related ledger entries | Q1, C-E2, V16, RK17, RK46, RK64 |
 
 ## In one paragraph

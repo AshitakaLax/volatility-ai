@@ -303,6 +303,66 @@ STRATEGY_DEFAULTS["hf_entry_gated"] = dict(STRATEGY_DEFAULTS["hf_local_reference
 # hf_signal_gated: the same champion values with every gate off, so it too
 # reproduces hf_local_reference until a gate is switched on.
 STRATEGY_DEFAULTS["hf_signal_gated"] = dict(STRATEGY_DEFAULTS["hf_local_reference"])
+# The signal library's ids (rk<N>_<signal>, research/strategies/
+# library_sizing.py): the champion's values plus the algorithm's `signal`,
+# which the run form seeds (and a plain Run sends, being a committed
+# value; the form does not send locked fields). Listed from the
+# library's own table by name, without importing it, to keep this module
+# free of strategy imports.
+LIBRARY_SIGNALS: dict[str, str] = {
+    "rk14_high52": "high52",
+    "rk55_adx": "adx",
+    "rk64_ribbon": "ribbon",
+    "rk79_gap": "gap",
+    "rk112_kama": "kama",
+    "rk147_zscore": "zscore",
+    "rk161_bollinger": "bollinger",
+    "rk168_vix_term": "vix_term",
+    "rk208_avwap": "avwap",
+    "rk243_anomaly": "anomaly",
+    "rk253_imbalance": "imbalance",
+    "rk294_triple_barrier": "triple_barrier",
+    "rk297_hurst_bands": "hurst_bands",
+    "rk44_supertrend": "supertrend",
+    "rk62_ma_cross": "ma_cross",
+    "rk67_atr_sizing": "atr_sizing",
+    "rk78_mtf_trend": "mtf_trend",
+    "rk102_hmm": "hmm",
+    "rk103_hurst_regime": "hurst_regime",
+    "rk106_hhmm": "hhmm",
+    "rk110_orb": "orb",
+    "rk115_ema_pullback": "ema_pullback",
+    "rk127_conformal_stack": "conformal_stack",
+    "rk130_evt": "evt",
+    "rk134_kelly": "kelly",
+    "rk150_vwap": "vwap",
+    "rk154_overnight": "overnight",
+    "rk195_garch": "garch",
+    "rk204_lead_lag": "lead_lag",
+    "rk212_breadth_thrust": "breadth_thrust",
+    "rk213_trend_scan": "trend_scan",
+    "rk217_causal_impact": "causal_impact",
+    "rk220_emv": "emv",
+    "rk221_transfer_entropy": "transfer_entropy",
+    "rk246_inventory_skew": "inventory_skew",
+    "rk247_vpin": "vpin",
+    "rk254_tda_level": "tda_level",
+    "rk255_tda_variance": "tda_variance",
+    "rk268_tda_rips": "tda_rips",
+    "rk271_rf_seqboot": "rf_seqboot",
+    "rk274_avellaneda_stoikov": "avellaneda_stoikov",
+    "rk290_random_forest": "random_forest",
+    "rk293_sentiment": "sentiment",
+    "rk295_conformal": "conformal",
+    "rk300_fracdiff": "fracdiff",
+    "rk311_event_sentiment": "event_sentiment",
+    "rk314_hawkes_jumps": "hawkes_jumps",
+    "rk346_rl_sac": "rl_sac",
+    "rk347_rl_ddpg": "rl_ddpg",
+    "rk372_rl_ppo": "rl_ppo",
+}
+for _sid, _signal in LIBRARY_SIGNALS.items():
+    STRATEGY_DEFAULTS[_sid] = {**STRATEGY_DEFAULTS["hf_local_reference"], "signal": _signal}
 # ultimate: the recommended configuration of docs/research/ultimate-algorithm.md
 # (config/ultimate_tqqq.yaml) -- the champion's full committed set from
 # config/best_known_2026-08-24.yaml, which unlike the hf_local_reference
@@ -424,6 +484,8 @@ _PARAM_ENUMS: dict[str, list[str]] = {
     "barrier_gate": ["off", "classifier"],
     "hurst_gate": ["off", "adaptive_band"],
 }
+# research/strategies/library_sizing.SIGNAL_NAMES (pinned there).
+_PARAM_ENUMS["signal"] = ["off", *sorted(set(LIBRARY_SIGNALS.values()))]
 
 # Filesystem wiring the engine supplies. Never shown, never sent -- the
 # constructor's own default is used. regime_by_date is UltimateSizing's

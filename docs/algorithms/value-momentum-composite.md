@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 57 (1 = easiest) |
 | Retail advantage rank | 8 (1 = strongest) |
 | Fit with this project | ⏳ long-only (a stock basket, or value and momentum ETFs) · ⛔ long/short |
-| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `value_momentum_composite`, `rank_z`; tested on synthetic data, not wired into the engine. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator value_momentum` in the portfolio book (`python -m tools.portfolio_book` --data fundamentals=FILE; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.factors`: `value_momentum_composite`, `rank_z`; tested on synthetic data, not wired into the engine. |
 | Related ledger entries | RK6, RK48, RK65, X3, A5 |
 
 ## In one paragraph

@@ -28,6 +28,7 @@ trade live until a multi-asset deployment exists (engine/roadmap.md).
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
@@ -105,7 +106,11 @@ def run_portfolio(
     if len(closes) <= min_history:
         raise ConfigurationError(f"need more than min_history={min_history} sessions")
     model = cost_model or SlippageCommissionModel()
-    kwargs = allocator_kwargs or {}
+    kwargs = dict(allocator_kwargs or {})
+    try:
+        wants_current = "current" in inspect.signature(allocator).parameters
+    except (TypeError, ValueError):
+        wants_current = False
     names = list(closes.columns)
     shares = dict.fromkeys(names, 0.0)
     basis = dict.fromkeys(names, 0.0)  # per-share cost basis, buy costs folded in
@@ -120,6 +125,10 @@ def run_portfolio(
         px = closes.iloc[i]
         cash *= 1.0 + daily_yield
         if day in rebal:
+            if wants_current:  # a turnover rule (top-K dropout) needs today's book
+                held = {n: shares[n] * px[n] for n in names}
+                value_now = cash + sum(held.values())
+                kwargs["current"] = pd.Series({n: held[n] / value_now for n in names})
             target = allocator(closes.iloc[:i], **kwargs)
             target = target.reindex(names).fillna(0.0).clip(lower=0.0)
             if target.sum() > 1.0 + 1e-9:

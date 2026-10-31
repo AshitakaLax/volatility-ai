@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 113 (1 = easiest) |
 | Retail advantage rank | 23 (1 = strongest) |
 | Fit with this project | ⏳ long-only top-k over an ETF or stock universe · ⛔ long-short |
-| Implemented in volatility-ai | **Research code** in `research.catalog.technical_ml`: `train_ranker`, `rank_select`, `relevance_labels`; tested on synthetic data, not wired into the engine. The engine's LightGBM models size grid lots (V13, V14); none of them ranks assets. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator lambdarank` in the portfolio book (`python -m tools.portfolio_book`; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.technical_ml`: `train_ranker`, `rank_select`, `relevance_labels`; tested on synthetic data, not wired into the engine. The engine's LightGBM models size grid lots (V13, V14); none of them ranks assets. |
 | Related ledger entries | RK291, RK216, RK7 |
 
 ## In one paragraph

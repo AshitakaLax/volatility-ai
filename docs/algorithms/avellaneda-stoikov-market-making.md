@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 302 (1 = easiest) |
 | Retail advantage rank | 5,930 (1 = strongest) |
 | Fit with this project | ✅ buy-side reservation price (C-MM1) · ⛔ two-sided quoting |
-| Implemented in volatility-ai | **Research code.** `inventory_control.as_reservation_price`, `as_optimal_spread`, `as_quotes` (ledger C-MM1); buy-side use only. |
+| Implemented in volatility-ai | **Yes.** Its own strategy id, `rk274_avellaneda_stoikov`, selectable for backtests: `LibrarySizing` (`research/strategies/library_sizing.py`) with `signal=avellaneda_stoikov`, component `AvellanedaStoikovLevel`. Tune it with `signal_params`. Unmeasured. Before this change: **Research code.** `inventory_control.as_reservation_price`, `as_optimal_spread`, `as_quotes` (ledger C-MM1); buy-side use only. |
 | Related ledger entries | C-MM1, RK246, RK245, C-G2 |
 
 ## In one paragraph

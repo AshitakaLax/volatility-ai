@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 19 (1 = easiest) |
 | Retail advantage rank | 11 (1 = strongest) |
 | Fit with this project | ⏳ long-only top-decile basket (needs a stock universe) · ⛔ long/short |
-| Implemented in volatility-ai | **Research code** in `research.catalog.factors`: `momentum_12_1`, `quantile_weights`; tested on synthetic data, not wired into the engine. The nearest code ranks a few ETFs by a 63-session return with no skip month (X3, `tools/rotation.py`). |
+| Implemented in volatility-ai | **Yes, as a backtest book.** Selectable as `--allocator momentum_12_1` in the portfolio book (`python -m tools.portfolio_book`; `research/strategies/allocator_library.py`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Research code** in `research.catalog.factors`: `momentum_12_1`, `quantile_weights`; tested on synthetic data, not wired into the engine. The nearest code ranks a few ETFs by a 63-session return with no skip month (X3, `tools/rotation.py`). |
 | Related ledger entries | X3, RK3, RK7, RK14, RK16 |
 
 ## In one paragraph

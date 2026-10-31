@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 301 (1 = easiest) |
 | Retail advantage rank | 5,928 (1 = strongest) |
 | Fit with this project | 🧪 the schedule is the zero-risk-aversion case of the Almgren-Chriss lead · ⛔ not needed |
-| Implemented in volatility-ai | **Research code.** `leads.almgren_chriss` with zero risk aversion returns the straight-line (TWAP) holdings path; nothing slices live orders. |
+| Implemented in volatility-ai | **Research code.** `leads.almgren_chriss` with zero risk aversion returns the straight-line (TWAP) holdings path; nothing slices live orders. Deferred: execution scheduling is [engine/roadmap.md](../../engine/roadmap.md) item 2. |
 | Related ledger entries | RK364, RK365, RK366, RK244 |
 
 ## In one paragraph
