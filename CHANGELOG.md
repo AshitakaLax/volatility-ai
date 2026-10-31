@@ -1,5 +1,54 @@
 # Changelog
 
+## Feat: the partly implemented ranked-list algorithms, completed
+
+**26 of the 30 "partial" entries of the ranked list (docs/algorithm_ledger.md
+§8C) now run as described; four wait on engine work.** Nothing that already
+trades changed: the new gates live on a new strategy id, and every existing
+class, default and live profile is untouched.
+
+- **Thirteen single-symbol signals are tradeable** as entry gates on
+  `hf_signal_gated` (`research/strategies/signal_gated_sizing.py`, gates in
+  `signal_gates.py`).
+  - Daily-bar trend filters: 52-week high (RK14), ADX (RK55), moving-average
+    ribbon (RK64), KAMA (RK112).
+  - Intraday: opening gap (RK79), anchored VWAP (RK208).
+  - Reversion permissions: z-score (RK147), Bollinger (RK161),
+    Hurst-adaptive bands (RK297).
+  - Regime: VIX term structure (RK168).
+  - Flow: price/volume anomalies (RK243), volume-clock imbalance (RK253).
+  - Learned: a triple-barrier classifier, refitted walk-forward (RK294).
+
+  It is a subclass of `hf_entry_gated` and not new options on it, because
+  `hf_entry_gated` is traded (`config/live_profiles/hf-entry-gated-rsp.yaml`).
+  Every gate is off by default; with all of them off the strategy is
+  `hf_entry_gated` exactly (pinned under both fill models). A gate only
+  pauses buys, so no configuration can realise a loss. A bar never decides
+  itself: each gate holds a bar back until the next one arrives, as
+  `entry_gates.py` does. None has been measured.
+- **Thirteen portfolio allocators run as backtest books**
+  (`research/strategies/allocators.py`, `portfolio_book.py`,
+  `tools/portfolio_book.py`):
+  - momentum: cross-sectional and sector (RK7, RK19), state-filtered (RK10);
+  - weighting rules: low volatility (RK18), dividend yield (RK52), equal
+    risk contribution (RK61), equal weight (RK117), inverse volatility
+    (RK129);
+  - conformal: conformal risk parity (RK99), conformal allocation (RK132);
+  - forecast-driven: alpha stacking (RK144);
+  - reversal and contagion: residual reversal (RK215), the Betti-0
+    contagion guard (RK269).
+
+  The book trades on closes before each session. It sends every sale
+  through `no_loss_guard.validate_sell`, so a rebalance that would realise
+  a loss is skipped (or, with `--allow-loss`, made a signal exit). They
+  cannot trade live: a deployment trades one symbol.
+- **[`engine/roadmap.md`](engine/roadmap.md)** records what live trading of
+  the rest needs:
+  - a multi-asset live book;
+  - adaptive execution (RK244, RK250);
+  - Level 1 quotes and Level 2 depth sourced from Fidelity (RK252, RK276);
+  - daily data feeds for the VIX term structure and dividends.
+
 ## Fix: a lot under one whole share no longer aborts a Fidelity loop
 
 **A small lot crashed the live loop on a whole-share venue.** Fidelity orders

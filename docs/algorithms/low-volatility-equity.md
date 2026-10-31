@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 13 (1 = easiest) |
 | Retail advantage rank | 35 (1 = strongest) |
 | Fit with this project | 🧪 via low-volatility ETFs in the defensive rotation (X2) |
-| Implemented in volatility-ai | **Partial.** USMV (and SPLV) are candidate holdings in X2's defensive rotation (`tools/rotation.py --mode defensive`); there is no low-volatility stock selection. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** `research/strategies/allocators.py` `low_volatility`, run by the portfolio book (`python -m tools.portfolio_book --allocator low_volatility`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Partial.** USMV (and SPLV) are candidate holdings in X2's defensive rotation (`tools/rotation.py --mode defensive`); there is no low-volatility stock selection. |
 | Related ledger entries | X2, RK49, RK60, RK22 |
 
 ## In one paragraph

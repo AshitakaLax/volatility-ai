@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 23 (1 = easiest) |
 | Retail advantage rank | 1 (1 = strongest) |
 | Fit with this project | 🧪 fits; X3's harness runs it with a sector-ETF universe |
-| Implemented in volatility-ai | **Partial.** `tools/rotation.py --mode relative_strength --universe XLK XLF ...` holds the single best sector ETF by trailing return, cash when even the best is negative. Never run with sectors. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** `research/strategies/allocators.py` `cross_sectional_momentum`, run by the portfolio book (`python -m tools.portfolio_book --allocator cross_sectional_momentum --preset sectors`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Partial.** `tools/rotation.py --mode relative_strength --universe XLK XLF ...` holds the single best sector ETF by trailing return, cash when even the best is negative. Never run with sectors. |
 | Related ledger entries | X3, RK3, RK7, RK10 |
 
 ## In one paragraph

@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 41 (1 = strongest) |
 | Fit with this project | ✅ in use |
 | Useful for volatility-ai | **In use.** For one instrument it is volatility targeting, which the grid already applies (S4 vol_target). |
-| Implemented in volatility-ai | **Partly.** `research.strategies.hrp`: `hrp_weights`. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** `research/strategies/allocators.py` `inverse_volatility`, run by the portfolio book (`python -m tools.portfolio_book --allocator inverse_volatility`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Partly.** `research.strategies.hrp`: `hrp_weights`. |
 | Related ledger entries | S4, A5, RK2, RK117 |
 
 ## In one paragraph

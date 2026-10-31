@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 340 (1 = easiest) |
 | Retail advantage rank | 6,476 (1 = strongest) |
 | Fit with this project | 🧪 information-driven bars (C-ML5) · ⏳ a momentum rule on them |
-| Implemented in volatility-ai | **Partial.** Volume and tick-imbalance bars (`ml.info_bars.volume_bars`, `tick_imbalance_bars`; ledger C-ML5); no momentum rule. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `imbalance_gate=sell_imbalance` (`research/strategies/signal_gates.py`, `VolumeImbalanceGate`). Off by default; unmeasured. Before this change: **Partial.** Volume and tick-imbalance bars (`ml.info_bars.volume_bars`, `tick_imbalance_bars`; ledger C-ML5); no momentum rule. |
 | Related ledger entries | C-ML5, RK300, RK247 |
 
 ## In one paragraph

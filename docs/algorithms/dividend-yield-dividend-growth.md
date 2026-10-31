@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 136 (1 = easiest) |
 | Retail advantage rank | 52 (1 = strongest) |
 | Fit with this project | 🧪 as an instrument (SPYD); ⏳ as a selection rule |
-| Implemented in volatility-ai | **Partial.** SPYD (the S&P 500 High Dividend ETF) is one of the funds the grid and ML strategies are researched on (`ml_regime_spyd`, `ml_reachability_spyd`, the SPYD sweeps); there is no dividend selection rule. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** `research/strategies/allocators.py` `dividend_yield`, run by the portfolio book (`python -m tools.portfolio_book --allocator dividend_yield --dividends FILE`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Partial.** SPYD (the S&P 500 High Dividend ETF) is one of the funds the grid and ML strategies are researched on (`ml_regime_spyd`, `ml_reachability_spyd`, the SPYD sweeps); there is no dividend selection rule. |
 | Related ledger entries | RK27, V13, V14 |
 
 ## In one paragraph

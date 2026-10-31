@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 73 (1 = strongest) |
 | Fit with this project | 🧪 reference only |
 | Useful for volatility-ai | **Reference only.** Forecast combination has real evidence, but the project has one signal family to combine; keep it for when it has several. |
-| Implemented in volatility-ai | **Partly.** `research.catalog.forecasting`: `stack_forecasts`. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** `research/strategies/allocators.py` `alpha_stacking`, run by the portfolio book (`python -m tools.portfolio_book --allocator alpha_stacking`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Partly.** `research.catalog.forecasting`: `stack_forecasts`. |
 | Related ledger entries | C-RJ4, RK127 |
 
 ## In one paragraph

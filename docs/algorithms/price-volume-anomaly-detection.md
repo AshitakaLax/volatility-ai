@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 223 (1 = easiest) |
 | Retail advantage rank | 54 (1 = strongest) |
 | Fit with this project | 🧪 as a data-quality or risk flag · ❌ as an alpha source |
-| Implemented in volatility-ai | **Partial.** Exponentially weighted anomaly bands (`forecasting.ewm_anomalies`, ledger A8); not used to filter trades. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `anomaly_gate=price|price_volume` (`research/strategies/signal_gates.py`, `AnomalyGate`). Off by default; unmeasured. Before this change: **Partial.** Exponentially weighted anomaly bands (`forecasting.ewm_anomalies`, ledger A8); not used to filter trades. |
 | Related ledger entries | A8, C-MS5 |
 
 ## In one paragraph

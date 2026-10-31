@@ -414,6 +414,14 @@ _GRID_TRIGGER: dict[str, dict[str, Any]] = {
         "window_param": "lookback_days",
         "window_default": None,
     },
+    # hf_entry_gated's level with more gates: the same paused local_reference.
+    "hf_signal_gated": {
+        "methods": ["local_reference"],
+        "default": "local_reference",
+        "controlled_by": None,
+        "window_param": "lookback_days",
+        "window_default": None,
+    },
     "bayesian_dual_scale": {
         "methods": ["last_buy", "local_reference"],
         "default": "last_buy",

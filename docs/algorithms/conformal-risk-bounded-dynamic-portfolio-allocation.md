@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 143 (1 = strongest) |
 | Fit with this project | ⏳ worth testing |
 | Useful for volatility-ai | **Worth testing.** Conformal lot sizing is already researched (V13); this is its leverage-control form, worth a walk-forward test. |
-| Implemented in volatility-ai | **Partly.** `research.strategies.position_sizing`: `conformal_long_size`. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** `research/strategies/allocators.py` `conformal_allocation`, run by the portfolio book (`python -m tools.portfolio_book --allocator conformal_allocation`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Partly.** `research.strategies.position_sizing`: `conformal_long_size`. |
 | Related ledger entries | V13, RK127 |
 
 ## In one paragraph

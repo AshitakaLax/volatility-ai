@@ -22,6 +22,7 @@ from research.ml.regime_scaled_sizing import MLRegimeScaledSizing
 from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 from research.strategies.gated_local_reference_sizing import GatedLocalReferenceSizing
 from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from research.strategies.signal_gated_sizing import SignalGatedSizing
 from research.strategies.size_calculators import (
     BellCurveProbabilitySizing,
     FixedPortfolioPercentage,
@@ -43,6 +44,13 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     # pinned by research/tests/test_gated_local_reference_sizing.py.
     # UNMEASURED: registered so config/probe_entry_gate_*.yaml can run.
     "hf_entry_gated": GatedLocalReferenceSizing,
+    # hf_entry_gated plus the ranked list's single-symbol signal gates
+    # (research/strategies/signal_gates.py: RK14, RK55, RK64, RK79, RK112,
+    # RK147, RK161, RK168, RK208, RK243, RK253, RK294, RK297). Every new
+    # gate defaults "off", which is hf_entry_gated exactly -- pinned by
+    # research/tests/test_signal_gated_sizing.py. A separate id so the
+    # traded hf_entry_gated is untouched. UNMEASURED.
+    "hf_signal_gated": SignalGatedSizing,
     # The Ultimate algorithm (docs/research/ultimate-algorithm.md): the
     # champion grid while a causal NATR regime says calm, capitulation-
     # close event lots while it says turbulent, and the calm lots sold an

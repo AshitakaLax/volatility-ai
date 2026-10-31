@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 321 (1 = easiest) |
 | Retail advantage rank | 10,483 (1 = strongest) |
 | Fit with this project | 🧪 single-instrument OFI (C-MS1) as a possible buy gate · ⛔ cross-sectional model |
-| Implemented in volatility-ai | **Partial.** Single-instrument order-flow imbalance (`microstructure.ofi`, `ofi_events`; ledger C-MS1; needs L1 quotes); no cross-sectional model. |
+| Implemented in volatility-ai | **Partial.** Single-instrument order-flow imbalance (`microstructure.ofi`, `ofi_events`; ledger C-MS1; needs L1 quotes); no cross-sectional model. Deferred: needs Level 1 quotes from Fidelity ([engine/roadmap.md](../../engine/roadmap.md) item 3). |
 | Related ledger entries | C-MS1, C-MS2, RK275 |
 
 ## In one paragraph
