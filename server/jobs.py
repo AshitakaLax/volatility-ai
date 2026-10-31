@@ -241,6 +241,7 @@ class Shard:
     local: bool = False
     host: str | None = None
     commit: str | None = None
+    version: str | None = None
     dirty: bool | None = None
     cores: int | None = None
     paused: bool = False
@@ -905,6 +906,7 @@ class JobQueue:
         commit: str | None = None,
         dirty: bool | None = None,
         cores: int | None = None,
+        version: str | None = None,
     ) -> dict[str, Any]:
         """Register (or re-register) a remote shard. Last registration wins.
 
@@ -933,6 +935,7 @@ class JobQueue:
                 last_seen=self._clock(),
                 host=host,
                 commit=commit,
+                version=version,
                 dirty=dirty,
                 cores=cores,
                 paused=paused,
@@ -1144,6 +1147,7 @@ class JobQueue:
             "state": state,
             "host": shard.host,
             "commit": shard.commit,
+            "version": shard.version,
             "dirty": shard.dirty,
             "cores": shard.cores,
             "seen_s": 0.0 if shard.local else round(max(0.0, now - shard.last_seen), 1),

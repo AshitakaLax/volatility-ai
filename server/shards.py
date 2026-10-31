@@ -210,6 +210,7 @@ def main_build() -> dict[str, Any]:
         build = deployment.describe()["build"]
         _main_commit["commit"] = build.get("commit")
         _main_commit["dirty"] = build.get("dirty")
+        _main_commit["version"] = build.get("version")
     return dict(_main_commit)
 
 
@@ -278,10 +279,12 @@ def list_shards() -> dict[str, Any]:
     for shard in shards:
         if shard["local"]:
             shard["commit"], shard["dirty"] = main.get("commit"), main.get("dirty")
+            shard["version"] = main.get("version")
     return {
         "shards": shards,
         "paused": bool(shards) and all(shard["state"] in ("paused", "pausing") for shard in shards),
         "commit": main.get("commit"),
+        "version": main.get("version"),
         "stale_s": SHARD_STALE_SECONDS,
         "timeout_s": SHARD_TIMEOUT_SECONDS,
     }
@@ -334,6 +337,7 @@ class Registration(BaseModel):
     instance: str = Field(min_length=1, max_length=64)
     commit: str | None = Field(default=None, max_length=64)
     dirty: bool | None = None
+    version: str | None = Field(default=None, max_length=32)
     cores: int | None = Field(default=None, ge=1)
     allow_version_mismatch: bool = False
 
@@ -383,6 +387,7 @@ def register(name: ShardName, body: Registration, request: Request) -> dict[str,
             host=host,
             commit=theirs,
             dirty=body.dirty,
+            version=body.version,
             cores=body.cores,
         )
     )
