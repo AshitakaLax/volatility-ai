@@ -19,7 +19,10 @@ gaps that remain. Ranks 101–199 and the 344 concepts beyond rank 700 were rese
 2026-10-30 as a usefulness triage: each page says whether the algorithm is in use, worth
 testing, reference only or not useful here (§8C, "Usefulness triage"). On 2026-10-29 every researched entry
 without code got standalone research code in `research/catalog/` (as §8B did for its
-entries): tested on synthetic data, not wired into the engine, and no change to any verdict.*
+entries): tested on synthetic data, not wired into the engine, and no change to any verdict. On 2026-10-31 26 of the 30 partly implemented entries were completed: 13
+single-symbol signals as entry gates on the new `hf_signal_gated` strategy, and 13 portfolio
+allocators as backtest books (`tools/portfolio_book.py`); the other four wait on
+[`engine/roadmap.md`](../engine/roadmap.md).*
 
 ---
 
@@ -1802,7 +1805,7 @@ Hold the leaders of a universe by trailing return. The general form of RK6, RK19
 
 * **Fit:** Long-only over ETFs is X3. Each switch liquidates a grid sleeve, so switches are a cost here.
 * **Against:** Few-asset rotations are specification bets; crashes after panics.
-* **Built:** `tools/rotation.py` — `--mode relative_strength` (X3), top-1 only.
+* **Built:** `research/strategies/allocators.py` cross_sectional_momentum, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator cross_sectional_momentum`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: `tools/rotation.py` — `--mode relative_strength` (X3), top-1 only.
 * **Details:** [docs/algorithms/cross-sectional-momentum.md](algorithms/cross-sectional-momentum.md)
 
 ### RK8. Commodity momentum + term structure ⛔
@@ -1829,7 +1832,7 @@ Run momentum only in favourable market states: about 0.93% a month after up mark
 
 * **Fit:** The state filter is a causal regime map the repository already builds (N5, `--regime sma`); the momentum book must be long-only (X3 or a momentum ETF).
 * **Against:** Few states and many thresholds: data-mining risk; contradicting evidence exists.
-* **Built:** Pieces only: regimes (N5, trend regimes) and X3; X3 cannot yet be gated by a regime.
+* **Built:** `research/strategies/allocators.py` state_filtered_momentum, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator state_filtered_momentum --market SPY`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: Pieces only: regimes (N5, trend regimes) and X3; X3 cannot yet be gated by a regime.
 * **Details:** [docs/algorithms/state-filtered-momentum.md](algorithms/state-filtered-momentum.md)
 
 ### RK11. Quality minus junk (QMJ) ⛔ (as published) · ⏳ (long-only)
@@ -1865,7 +1868,7 @@ Buy stocks nearest their 52-week high. Nearness beats past returns as a forecast
 
 * **Fit:** The ranking needs a stock universe. The same nearness measure is already the Ultimate strategy's bear filter (`bear_dd`, `bear_window=250`, L12).
 * **Against:** Sample sensitivity; momentum-style crashes.
-* **Built:** As a single-asset condition only: `UltimateSizing` bear filter.
+* **Built:** `hf_signal_gated` with `high52_gate=near_high` — `research/strategies/signal_gates.py` FiftyTwoWeekHighGate (tradeable on the grid; off by default; unmeasured). Before this change: As a single-asset condition only: `UltimateSizing` bear filter.
 * **Details:** [docs/algorithms/52-week-high-momentum.md](algorithms/52-week-high-momentum.md)
 
 ### RK15. Conservative investment factor ⏳ (long-only basket) · ⛔ (long/short)
@@ -1901,7 +1904,7 @@ Hold the least volatile or lowest-beta stocks: high-volatility stocks have long 
 
 * **Fit:** Low-volatility ETFs (USMV, SPLV) are candidate holdings in X2's defensive rotation, held only while their own NATR regime is calm.
 * **Against:** Sector and rate concentration; lags speculative rallies; defensives fell with the market in March 2020.
-* **Built:** `tools/rotation.py` — `--mode defensive` (X2) with USMV among the candidates.
+* **Built:** `research/strategies/allocators.py` low_volatility, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator low_volatility`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: `tools/rotation.py` — `--mode defensive` (X2) with USMV among the candidates.
 * **Details:** [docs/algorithms/low-volatility-equity.md](algorithms/low-volatility-equity.md)
 
 ### RK19. Sector momentum rotation 🧪
@@ -1910,7 +1913,7 @@ Hold the strongest sector ETFs by trailing return. Industry momentum survives co
 
 * **Fit:** Long-only ETFs; X3's harness runs it with a sector universe (each held ETF runs the grid).
 * **Against:** Concentration and tracking error; XLC and XLRE are recent; short lookbacks whipsaw.
-* **Built:** `tools/rotation.py` — `--mode relative_strength` with a sector `--universe` (never run).
+* **Built:** `research/strategies/allocators.py` cross_sectional_momentum, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator cross_sectional_momentum --preset sectors`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: `tools/rotation.py` — `--mode relative_strength` with a sector `--universe` (never run).
 * **Details:** [docs/algorithms/sector-momentum-rotation.md](algorithms/sector-momentum-rotation.md)
 
 ### RK20. Bond duration momentum ⛔ (as published) · ⏳ (long-or-cash Treasury ETF)
@@ -2207,7 +2210,7 @@ Select by dividend yield or growth. Weak on the evidence: payout yield beats div
 
 * **Fit:** SPYD (the S&P 500 High Dividend ETF) is already a grid and ML-sizing instrument here; a selection rule would need dividend histories.
 * **Against:** High yield signals distress; sector and rate concentration.
-* **Built:** SPYD as an instrument: `ml_regime_spyd`, `ml_reachability_spyd`, the SPYD sweeps.
+* **Built:** `research/strategies/allocators.py` dividend_yield, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator dividend_yield --dividends FILE`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: SPYD as an instrument: `ml_regime_spyd`, `ml_reachability_spyd`, the SPYD sweeps.
 * **Details:** [docs/algorithms/dividend-yield-dividend-growth.md](algorithms/dividend-yield-dividend-growth.md)
 
 ### RK53. CVaR / expected-shortfall optimization ⏳
@@ -2234,7 +2237,7 @@ Trade a trend only when Wilder's ADX shows a strong trend. ADX measures strength
 
 * **Fit:** A gate that pauses new grid lots never sells and is direction-agnostic, the kind of regime L1 favours. Ultimate-RSP already votes on Wilder's +DM.
 * **Against:** Double smoothing makes it slow; V15's ADX flags carried the same-session lookahead (caveat 1).
-* **Built:** ADX screened in V15; +DM is Ultimate-RSP's core vote. No ADX gate.
+* **Built:** `hf_signal_gated` with `adx_gate=strong_downtrend` — `research/strategies/signal_gates.py` AdxTrendGate (tradeable on the grid; off by default; unmeasured). Before this change: ADX screened in V15; +DM is Ultimate-RSP's core vote. No ADX gate.
 * **Details:** [docs/algorithms/adx-filtered-trend-following.md](algorithms/adx-filtered-trend-following.md)
 
 ### RK56. Hierarchical risk parity (HRP) 🧪
@@ -2288,7 +2291,7 @@ Equalise each asset's risk contribution (ERC lies between minimum variance and e
 
 * **Fit:** Long-only ETF weights fit; it needs a multi-instrument book, which today exists only as the rotation harness's additive account.
 * **Against:** Levered bonds are out of scope and failed in 2022; contributions jump with correlations.
-* **Built:** HRP only (A5); ERC is not built.
+* **Built:** `research/strategies/allocators.py` equal_risk_contribution, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator equal_risk_contribution`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: HRP only (A5); ERC is not built.
 * **Details:** [docs/algorithms/risk-parity-equal-risk-contribution.md](algorithms/risk-parity-equal-risk-contribution.md)
 
 ### RK62. Dual moving-average crossover 🧪 (as a regime) · ⛔ (as a long/short trade)
@@ -2315,7 +2318,7 @@ Trend confirmed only while several moving averages are stacked in order (Guppy's
 
 * **Fit:** A regime fits, but a ribbon is mostly off in chop, where this grid earns most.
 * **Against:** More lag and more parameters.
-* **Built:** Single TA-Lib averages were screened in V15; no ribbon rule.
+* **Built:** `hf_signal_gated` with `ribbon_gate=bearish` — `research/strategies/signal_gates.py` RibbonGate (tradeable on the grid; off by default; unmeasured). Before this change: Single TA-Lib averages were screened in V15; no ribbon rule.
 * **Details:** [docs/algorithms/triple-ema-moving-average-ribbon.md](algorithms/triple-ema-moving-average-ribbon.md)
 
 ### RK65. Cross-sectional factor momentum rotation ⏳
@@ -2450,7 +2453,7 @@ Trade in a large gap's direction once the open confirms it. The first half-hour 
 
 * **Fit:** The day trade is out. The downside half is built twice as buy gates (N3 prior-low gap, X1 intraday momentum); both unmeasured.
 * **Against:** Opening-auction slippage; the edge is small against costs; stock gaps around earnings differ.
-* **Built:** `entry_gates.BreakdownGate` mode `prior_low` (N3); `entry_gates.IntradayMomentumGate` (X1).
+* **Built:** `hf_signal_gated` with `gap_gate=gap_down` — `research/strategies/signal_gates.py` GapGate (tradeable on the grid; off by default; unmeasured). Before this change: `entry_gates.BreakdownGate` mode `prior_low` (N3); `entry_gates.IntradayMomentumGate` (X1).
 * **Details:** [docs/algorithms/opening-gap-continuation.md](algorithms/opening-gap-continuation.md)
 
 ### RK80. Convertible bond arbitrage ⛔
@@ -2630,7 +2633,7 @@ ERC weights plus a conformal bound on portfolio loss. Conformal portfolio select
 
 * **Fit:** Conformal intervals and conformal sizing exist as research code (catalog S5); ERC does not. A conformal check on the single grid's total exposure is the more practical use.
 * **Against:** Exchangeability fails for returns; needs adaptive conformal inference; two layers of estimation.
-* **Built:** Pieces: `position_sizing.split_conformal_interval`, `conformal_long_size`; HRP.
+* **Built:** `research/strategies/allocators.py` conformal_risk_parity, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator conformal_risk_parity`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: Pieces: `position_sizing.split_conformal_interval`, `conformal_long_size`; HRP.
 * **Details:** [docs/algorithms/conformally-constrained-risk-parity-portfolio.md](algorithms/conformally-constrained-risk-parity-portfolio.md)
 
 ### RK100. Causal-discovery (DAG) pair selection ⛔
@@ -2759,7 +2762,7 @@ An efficiency-ratio adaptive moving average. Built as an indicator; no evidence 
 * **Useful:** **Reference only.** Available as an indicator (V15) and research code; no evidence it beats a plain moving average.
 * **Fit:** Indicator only.
 * **Against:** Three more parameters, no better evidence.
-* **Built:** research code, `research/strategies/indicator_library.py`.
+* **Built:** `hf_signal_gated` with `kama_gate=below_falling` — `research/strategies/signal_gates.py` KamaTrendGate (tradeable on the grid; off by default; unmeasured). Before this change: research code, `research/strategies/indicator_library.py`.
 * **Details:** [docs/algorithms/kaufman-adaptive-moving-average-kama-trend.md](algorithms/kaufman-adaptive-moving-average-kama-trend.md)
 
 ### RK113. Wavelet-denoised breakout system ⛔
@@ -2809,7 +2812,7 @@ Equal weights with periodic rebalancing; the benchmark optimisers fail to beat.
 * **Useful:** **Reference only.** The right benchmark for any multi-ETF book this project might add; not a strategy for one instrument.
 * **Fit:** Benchmark for a future multi-ETF book.
 * **Against:** Equal weight is unequal risk for leveraged ETFs.
-* **Built:** research code, `research/catalog/excluded.py` — rebalanced_mix.
+* **Built:** `research/strategies/allocators.py` equal_weight, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator equal_weight`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: research code, `research/catalog/excluded.py` — rebalanced_mix.
 * **Details:** [docs/algorithms/equal-weight-rebalancing.md](algorithms/equal-weight-rebalancing.md)
 
 ### RK118. Minimum-correlation portfolio ⛔
@@ -2929,7 +2932,7 @@ Weight inversely to volatility. In single-asset form this is the grid's volatili
 * **Useful:** **In use.** For one instrument it is volatility targeting, which the grid already applies (S4 vol_target).
 * **Fit:** In use as S4 vol_target.
 * **Against:** Ignores correlations; lags.
-* **Built:** research code, `research/strategies/hrp.py` — hrp_weights.
+* **Built:** `research/strategies/allocators.py` inverse_volatility, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator inverse_volatility`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: research code, `research/strategies/hrp.py` — hrp_weights.
 * **Details:** [docs/algorithms/inverse-volatility-allocation.md](algorithms/inverse-volatility-allocation.md)
 
 ### RK130. Extreme value theory dynamic tail-risk hedge ⏳
@@ -2959,7 +2962,7 @@ Scale leverage by conformal bounds on a return forecast. Conformal lot sizing is
 * **Useful:** **Worth testing.** Conformal lot sizing is already researched (V13); this is its leverage-control form, worth a walk-forward test.
 * **Fit:** Part of the V13 conformal sizing line.
 * **Against:** Needs adaptive intervals under shift.
-* **Built:** research code, `research/strategies/position_sizing.py` — conformal_long_size.
+* **Built:** `research/strategies/allocators.py` conformal_allocation, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator conformal_allocation`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: research code, `research/strategies/position_sizing.py` — conformal_long_size.
 * **Details:** [docs/algorithms/conformal-risk-bounded-dynamic-portfolio-allocation.md](algorithms/conformal-risk-bounded-dynamic-portfolio-allocation.md)
 
 ### RK133. Protective put / collar ⛔
@@ -3079,7 +3082,7 @@ Combine alpha forecasts by stacking. Combination works; the project has little t
 * **Useful:** **Reference only.** Forecast combination has real evidence, but the project has one signal family to combine; keep it for when it has several.
 * **Fit:** Reference for combining regime signals.
 * **Against:** Fitted stacking weights over-fit.
-* **Built:** research code, `research/catalog/forecasting.py` — stack_forecasts.
+* **Built:** `research/strategies/allocators.py` alpha_stacking, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator alpha_stacking`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: research code, `research/catalog/forecasting.py` — stack_forecasts.
 * **Details:** [docs/algorithms/alpha-stacking-ensemble-portfolio-optimizer.md](algorithms/alpha-stacking-ensemble-portfolio-optimizer.md)
 
 ### RK145. Multi-scale wavelet LSTM cross-sectional alpha ranker ⛔
@@ -3109,7 +3112,7 @@ Fade extreme z-scores from a moving average. The Bollinger gates cover it.
 * **Useful:** **Reference only.** The grid's band gates already use this signal (Q9 Bollinger, X4).
 * **Fit:** Covered by existing gates.
 * **Against:** Falling knives without a regime filter.
-* **Built:** research code, `research/catalog/je_suis_tm.py` — bollinger_bands.
+* **Built:** `hf_signal_gated` with `zscore_gate=oversold` — `research/strategies/signal_gates.py` BandReversionGate (tradeable on the grid; off by default; unmeasured). Before this change: research code, `research/catalog/je_suis_tm.py` — bollinger_bands.
 * **Details:** [docs/algorithms/moving-average-z-score-reversion.md](algorithms/moving-average-z-score-reversion.md)
 
 ### RK148. Williams %R reversal ⛔
@@ -3249,7 +3252,7 @@ Fade Bollinger-band excursions. Researched as a grid gate (X4).
 * **Useful:** **Reference only.** Researched as a grid buy gate (X4); the plain rule fails after costs, the contrarian one does better.
 * **Fit:** Researched as a gate.
 * **Against:** Bands widen in crises.
-* **Built:** research code, `research/strategies/entry_gates.py` — BollingerWGate; `research/catalog/je_suis_tm.py` — bollinger_w_trades.
+* **Built:** `hf_signal_gated` with `band_gate=lower_band` — `research/strategies/signal_gates.py` BandReversionGate (tradeable on the grid; off by default; unmeasured). Before this change: research code, `research/strategies/entry_gates.py` — BollingerWGate; `research/catalog/je_suis_tm.py` — bollinger_w_trades.
 * **Details:** [docs/algorithms/bollinger-band-mean-reversion.md](algorithms/bollinger-band-mean-reversion.md)
 
 ### RK162. Stochastic oscillator reversal ⛔
@@ -3319,7 +3322,7 @@ Trade VIX futures on the basis. Futures are excluded; the term structure is a ca
 * **Useful:** **Worth testing.** Trading VIX futures is excluded, but the term structure itself is a candidate regime input; the research code exists.
 * **Fit:** Signal only, as a regime input.
 * **Against:** Short-vol blowups.
-* **Built:** research code, `research/catalog/leads.py` — vix_term_structure_regime.
+* **Built:** `hf_signal_gated` with `term_gate=backwardation` — `research/strategies/signal_gates.py` TermStructureGate (tradeable on the grid; off by default; unmeasured). Before this change: research code, `research/catalog/leads.py` — vix_term_structure_regime.
 * **Details:** [docs/algorithms/vix-futures-term-structure-strategy.md](algorithms/vix-futures-term-structure-strategy.md)
 
 ### RK169. Volatility skew risk premium ⛔
@@ -3710,7 +3713,7 @@ Trade a reclaim or rejection of VWAP anchored at an event. No academic test foun
 
 * **Fit:** As a buy gate it fits; the session form is built, an event-anchored one would extend VwapGate.
 * **Against:** Hindsight anchor choice; moving-average lag.
-* **Built:** `intraday_gates.session_vwap`, `VwapGate` (C-MS3).
+* **Built:** `hf_signal_gated` with `avwap_gate=swing_high|swing_low` — `research/strategies/signal_gates.py` AnchoredVwapGate (tradeable on the grid; off by default; unmeasured). Before this change: `intraday_gates.session_vwap`, `VwapGate` (C-MS3).
 * **Details:** [docs/algorithms/anchored-vwap-reclaim-rejection.md](algorithms/anchored-vwap-reclaim-rejection.md)
 
 ### RK209. Corporate buyback announcement drift ⏳ (long-only event basket)
@@ -3773,7 +3776,7 @@ Buy recent losers net of market, industry and news components. The residual reve
 
 * **Fit:** Needs a stock universe; the grid is already a single-asset reversal bet. Contrarian weights exist as research code.
 * **Against:** Turnover; profits concentrated in illiquid names and the short leg.
-* **Built:** `mean_reversion.contrarian_weights`, `decayed_reversal_scores` (C-MR1).
+* **Built:** `research/strategies/allocators.py` risk_neutral_reversal, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator risk_neutral_reversal`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: `mean_reversion.contrarian_weights`, `decayed_reversal_scores` (C-MR1).
 * **Details:** [docs/algorithms/cross-sectional-reversal-with-risk-neutralization.md](algorithms/cross-sectional-reversal-with-risk-neutralization.md)
 
 ### RK216. Top-K with dropout portfolio rotation ⏳ (turnover rule)
@@ -4025,7 +4028,7 @@ Flag unusual price, volume or spread observations and filter trades. No study fo
 
 * **Fit:** A data-quality check fits; as a trade filter it removes the volatile sessions the grid harvests.
 * **Against:** Anomalies are not predictions; filters cut volatile sessions.
-* **Built:** `forecasting.ewm_anomalies` (A8).
+* **Built:** `hf_signal_gated` with `anomaly_gate=price|price_volume` — `research/strategies/signal_gates.py` AnomalyGate (tradeable on the grid; off by default; unmeasured). Before this change: `forecasting.ewm_anomalies` (A8).
 * **Details:** [docs/algorithms/price-volume-anomaly-detection.md](algorithms/price-volume-anomaly-detection.md)
 
 ### RK244. Liquidity-aware adaptive execution 🧪 (spread gate) · ⛔ (slicing not needed)
@@ -4034,7 +4037,7 @@ Adapt aggressiveness and child-order timing to spreads, depth and urgency (Almgr
 
 * **Fit:** Orders here are small; the live loop already skips grid buys when the spread is too wide.
 * **Against:** Objective trade-offs; vendor-specific methods.
-* **Built:** Spread gate and premium cap in `engine/execution/limit_pricing.py`.
+* **Built:** Spread gate and premium cap in `engine/execution/limit_pricing.py`. Deferred: adaptive execution is [engine/roadmap.md](../engine/roadmap.md) item 2.
 * **Details:** [docs/algorithms/liquidity-aware-adaptive-execution.md](algorithms/liquidity-aware-adaptive-execution.md)
 
 ### RK245. Pure passive market making ⛔ (two-sided) · grid is the buy-side relative
@@ -4088,7 +4091,7 @@ Choose limit or marketable orders by drift from arrival and urgency; judge by im
 
 * **Fit:** Built in a purpose-based form; measuring live shortfall against trigger prices is the useful addition.
 * **Against:** Non-fill versus impact; must be benchmarked on real fills.
-* **Built:** `engine/execution/limit_pricing.py` (grid_buy, marketable_buy, marketable_sell).
+* **Built:** `engine/execution/limit_pricing.py` (grid_buy, marketable_buy, marketable_sell). Deferred: adaptive execution is [engine/roadmap.md](../engine/roadmap.md) item 2.
 * **Details:** [docs/algorithms/arrival-price-adaptive-limit-vs-market-execution.md](algorithms/arrival-price-adaptive-limit-vs-market-execution.md)
 
 ### RK251. Intraday volume-profile execution ⛔ (not applicable)
@@ -4106,7 +4109,7 @@ Net changes in best-quote queue sizes explain short-interval price changes linea
 
 * **Fit:** A possible buy gate on live quotes, but no historical quotes to test it.
 * **Against:** Data and compute heavy; seconds horizon.
-* **Built:** `microstructure.ofi`, `ofi_events` (C-MS1).
+* **Built:** `microstructure.ofi`, `ofi_events` (C-MS1). Deferred: needs Level 1 quotes from Fidelity ([engine/roadmap.md](../engine/roadmap.md) item 3).
 * **Details:** [docs/algorithms/order-flow-imbalance-ofi-cross-sectional-alpha-predictor.md](algorithms/order-flow-imbalance-ofi-cross-sectional-alpha-predictor.md)
 
 ### RK253. Information-driven volume-clock imbalance momentum 🧪 (bars) · ⏳ (rule)
@@ -4115,7 +4118,7 @@ Sample by volume or order imbalance rather than time and trade the imbalance (Ea
 
 * **Fit:** Bars built (C-ML5); the engine runs on minute bars.
 * **Against:** Event-indexed backtests required.
-* **Built:** `ml.info_bars.volume_bars`, `tick_imbalance_bars` (C-ML5).
+* **Built:** `hf_signal_gated` with `imbalance_gate=sell_imbalance` — `research/strategies/signal_gates.py` VolumeImbalanceGate (tradeable on the grid; off by default; unmeasured). Before this change: `ml.info_bars.volume_bars`, `tick_imbalance_bars` (C-ML5).
 * **Details:** [docs/algorithms/information-driven-volume-clock-imbalance-momentum.md](algorithms/information-driven-volume-clock-imbalance-momentum.md)
 
 ### RK254. Persistent-homology (TDA) crash predictor ⏳ as a regime input
@@ -4262,7 +4265,7 @@ Watch Betti-0 persistence (single-linkage merge heights) for sudden cluster fusi
 
 * **Fit:** The dendrogram exists (A5); as a signal it mostly restates rising correlation.
 * **Against:** Restates rising correlation.
-* **Built:** Single-linkage clustering inside `hrp.hrp_weights` (A5).
+* **Built:** `research/strategies/allocators.py` contagion_guard, run by `research/strategies/portfolio_book.py` (`tools/portfolio_book.py --allocator contagion_guard`): a backtest book; live needs engine/roadmap.md item 1. Unmeasured. Before this change: Single-linkage clustering inside `hrp.hrp_weights` (A5).
 * **Details:** [docs/algorithms/persistent-homology-betti-0-multiscale-filtration-contagion-clustering.md](algorithms/persistent-homology-betti-0-multiscale-filtration-contagion-clustering.md)
 
 ### RK270. Quantum annealing binary matrix factorization risk model ⛔
@@ -4325,7 +4328,7 @@ Quote according to queue state, modelling the book as a Markov queuing system (H
 
 * **Fit:** The queue estimator would make level fills more realistic; needs L2 to calibrate.
 * **Against:** Bars cannot simulate queue priority.
-* **Built:** `microstructure.QueuePositionEstimator` (C-MM5).
+* **Built:** `microstructure.QueuePositionEstimator` (C-MM5). Deferred: needs Level 2 depth from Fidelity and a market-making decision ([engine/roadmap.md](../engine/roadmap.md) item 3).
 * **Details:** [docs/algorithms/queue-reactive-market-making.md](algorithms/queue-reactive-market-making.md)
 
 ### RK277. Hawkes multi-dimensional order-flow intensity model ⛔
@@ -4487,7 +4490,7 @@ Label trades by the first of profit target, stop and time limit, then train a (m
 
 * **Fit:** Labels built (C-ML1); the meta-model on top is the missing step.
 * **Against:** A labelling method; overlapping labels need purged validation.
-* **Built:** `ml.barrier_labels.triple_barrier_labels` (C-ML1).
+* **Built:** `hf_signal_gated` with `barrier_gate=classifier` — `research/strategies/signal_gates.py` TripleBarrierGate (tradeable on the grid; off by default; unmeasured). Before this change: `ml.barrier_labels.triple_barrier_labels` (C-ML1).
 * **Details:** [docs/algorithms/triple-barrier-labeled-ml-strategy.md](algorithms/triple-barrier-labeled-ml-strategy.md)
 
 ### RK295. Conformal prediction uncertainty wrapper (CP-MAPIE) 🧪 (conformal sizing)
@@ -4514,7 +4517,7 @@ Widen or narrow mean-reversion bands by a rolling Hurst exponent. Intuitive for 
 
 * **Fit:** Maps onto an adaptive grid step; check rolling H on TQQQ first.
 * **Against:** Noisy rolling estimates; weak long memory.
-* **Built:** `mean_reversion.hurst_exponent` (C-MR4).
+* **Built:** `hf_signal_gated` with `hurst_gate=adaptive_band` — `research/strategies/signal_gates.py` HurstBandGate (tradeable on the grid; off by default; unmeasured). Before this change: `mean_reversion.hurst_exponent` (C-MR4).
 * **Details:** [docs/algorithms/fractional-hurst-driven-adaptive-bandwidth-mean-reversion.md](algorithms/fractional-hurst-driven-adaptive-bandwidth-mean-reversion.md)
 
 ### RK298. AMM / CLOB cross-venue arbitrage ❌
@@ -6399,9 +6402,9 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 
 | Rows | Algorithms | Yes | Research code | Partial | No |
 |---|---|---|---|---|---|
-| Specific (ranks 1–425) | 425 | 15 | 353 | 41 | 16 |
+| Specific (ranks 1–425) | 425 | 41 | 353 | 15 | 16 |
 | Title-reconstructed (ranks 426–14,225) | 13,800 | 0 | 0 | 0 | 13,800 |
-| All | 14,225 | 15 | 353 | 41 | 13,816 |
+| All | 14,225 | 41 | 353 | 15 | 13,816 |
 
 #### Specific algorithms
 
@@ -6413,19 +6416,19 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 4 | Cross-Asset Carry Composite | Macro / carry | 68 | 131 | Research code | RK4 | [**researched**](algorithms/cross-asset-carry-composite.md) |
 | 5 | Value-Momentum Composite | Equity factor / multi-factor | 57 | 8 | Research code | RK5 | [**researched**](algorithms/value-momentum-composite.md) |
 | 6 | 12–1 Momentum (Skip-Month) | Trend / momentum | 19 | 11 | Research code | RK6 | [**researched**](algorithms/12-1-momentum-skip-month.md) |
-| 7 | Cross-Sectional Momentum | Trend / momentum | 81 | 51 | Partial | RK7, X3 | [**researched**](algorithms/cross-sectional-momentum.md) |
+| 7 | Cross-Sectional Momentum | Trend / momentum | 81 | 51 | Yes | RK7, X3 | [**researched**](algorithms/cross-sectional-momentum.md) |
 | 8 | Commodity Momentum + Term Structure | Trend / carry | 25 | 14 | Research code | RK8 | [**researched**](algorithms/commodity-momentum-term-structure.md) |
 | 9 | Fama–French Five-Factor Model Portfolio | Factor / systematic equity | 88 | 252 | Research code | RK9 | [**researched**](algorithms/fama-french-five-factor-model-portfolio.md) |
-| 10 | State-Filtered Momentum | Factor / regime-aware | 35 | 17 | Partial | RK10 | [**researched**](algorithms/state-filtered-momentum.md) |
+| 10 | State-Filtered Momentum | Factor / regime-aware | 35 | 17 | Yes | RK10 | [**researched**](algorithms/state-filtered-momentum.md) |
 | 11 | Quality Minus Junk (QMJ) | Equity factor / quality | 234 | 301 | Research code | RK11 | [**researched**](algorithms/quality-minus-junk-qmj.md) |
 | 12 | Quality / Profitability Factor | Factor / systematic equity | 110 | 245 | Research code | RK12 | [**researched**](algorithms/quality-profitability-factor.md) |
 | 13 | Gross Profitability Factor | Equity factor / fundamental | 167 | 106 | Research code | RK13 | [**researched**](algorithms/gross-profitability-factor.md) |
-| 14 | 52-Week High Momentum | Cross-sectional momentum | 15 | 5 | Partial | RK14 | [**researched**](algorithms/52-week-high-momentum.md) |
+| 14 | 52-Week High Momentum | Cross-sectional momentum | 15 | 5 | Yes | RK14 | [**researched**](algorithms/52-week-high-momentum.md) |
 | 15 | Conservative Investment Factor | Equity factor / fundamental | 73 | 7 | Research code | RK15 | [**researched**](algorithms/conservative-investment-factor.md) |
 | 16 | Residual Momentum | Factor / systematic equity | 34 | 29 | Research code | RK16 | [**researched**](algorithms/residual-momentum.md) |
 | 17 | 10-Month Moving-Average Risk Filter | Trend / risk filter | 27 | 15 | Yes | RK17, V16, C-E2 | [**researched**](algorithms/10-month-moving-average-risk-filter.md) |
-| 18 | Low-Volatility Equity | Factor / systematic equity | 13 | 35 | Partial | RK18, X2 | [**researched**](algorithms/low-volatility-equity.md) |
-| 19 | Sector Momentum Rotation | Trend / allocation | 23 | 1 | Partial | RK19, X3 | [**researched**](algorithms/sector-momentum-rotation.md) |
+| 18 | Low-Volatility Equity | Factor / systematic equity | 13 | 35 | Yes | RK18, X2 | [**researched**](algorithms/low-volatility-equity.md) |
+| 19 | Sector Momentum Rotation | Trend / allocation | 23 | 1 | Yes | RK19, X3 | [**researched**](algorithms/sector-momentum-rotation.md) |
 | 20 | Bond Duration Momentum | Fixed income / trend | 69 | 84 | Research code | RK20 | [**researched**](algorithms/bond-duration-momentum.md) |
 | 21 | VIX-Regime Conditional Equity Exposure | Regime / volatility | 196 | 100 | Yes | RK21, V12 | [**researched**](algorithms/vix-regime-conditional-equity-exposure.md) |
 | 22 | Volatility Targeting / Risk Scaling | Risk management | 137 | 123 | Yes | RK22, S4, V18, S3 | [**researched**](algorithms/volatility-targeting-risk-scaling.md) |
@@ -6458,19 +6461,19 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 49 | Betting Against Beta (BAB) | Factor / systematic equity | 90 | 233 | Research code | RK49 | [**researched**](algorithms/betting-against-beta-bab.md) |
 | 50 | Accrual Anomaly | Factor / systematic equity | 135 | 180 | Research code | RK50 | [**researched**](algorithms/accrual-anomaly.md) |
 | 51 | Asset-Growth Anomaly | Factor / systematic equity | 165 | 159 | Research code | RK51 | [**researched**](algorithms/asset-growth-anomaly.md) |
-| 52 | Dividend Yield / Dividend Growth | Factor / systematic equity | 136 | 52 | Partial | RK52 | [**researched**](algorithms/dividend-yield-dividend-growth.md) |
+| 52 | Dividend Yield / Dividend Growth | Factor / systematic equity | 136 | 52 | Yes | RK52 | [**researched**](algorithms/dividend-yield-dividend-growth.md) |
 | 53 | CVaR / Expected-Shortfall Optimization | Portfolio construction | 202 | 162 | Research code | RK53 | [**researched**](algorithms/cvar-expected-shortfall-optimization.md) |
 | 54 | Volatility-Managed Factor Portfolio | Equity factor / risk management | 61 | 31 | Partial | RK54, S4 | [**researched**](algorithms/volatility-managed-factor-portfolio.md) |
-| 55 | ADX-Filtered Trend Following | Trend / breakout | 20 | 12 | Partial | RK55, V15 | [**researched**](algorithms/adx-filtered-trend-following.md) |
+| 55 | ADX-Filtered Trend Following | Trend / breakout | 20 | 12 | Yes | RK55, V15 | [**researched**](algorithms/adx-filtered-trend-following.md) |
 | 56 | Hierarchical Risk Parity (HRP) | Portfolio construction | 3 | 36 | Yes | RK56, A5, Q13 | [**researched**](algorithms/hierarchical-risk-parity-hrp.md) |
 | 57 | Low P/E Value Screen | Factor / systematic equity | 72 | 244 | Research code | RK57 | [**researched**](algorithms/low-p-e-value-screen.md) |
 | 58 | Small-Cap Size Premium | Factor / systematic equity | 89 | 81 | Research code | RK58 | [**researched**](algorithms/small-cap-size-premium.md) |
 | 59 | Liquidity Factor | Factor / systematic equity | 2 | 82 | Partial | RK59 | [**researched**](algorithms/liquidity-factor.md) |
 | 60 | Global Minimum-Variance Portfolio | Portfolio construction | 44 | 69 | Research code | RK60, Q13 | [**researched**](algorithms/global-minimum-variance-portfolio.md) |
-| 61 | Risk Parity / Equal Risk Contribution | Portfolio construction | 45 | 122 | Partial | RK61, A5 | [**researched**](algorithms/risk-parity-equal-risk-contribution.md) |
+| 61 | Risk Parity / Equal Risk Contribution | Portfolio construction | 45 | 122 | Yes | RK61, A5 | [**researched**](algorithms/risk-parity-equal-risk-contribution.md) |
 | 62 | Dual Moving Average Crossover | Trend / momentum | 9 | 27 | Research code | RK62, Q1, C-E2 | [**researched**](algorithms/dual-moving-average-crossover.md) |
 | 63 | Black–Litterman Allocation | Portfolio construction | 43 | 67 | Research code | RK63 | [**researched**](algorithms/black-litterman-allocation.md) |
-| 64 | Triple EMA / Moving-Average Ribbon | Trend / momentum | 66 | 9 | Partial | RK64, V15 | [**researched**](algorithms/triple-ema-moving-average-ribbon.md) |
+| 64 | Triple EMA / Moving-Average Ribbon | Trend / momentum | 66 | 9 | Yes | RK64, V15 | [**researched**](algorithms/triple-ema-moving-average-ribbon.md) |
 | 65 | Cross-Sectional Factor Momentum Rotation | Factor investing / cross-sectional momentum / allocation | 31 | 125 | Research code | RK65 | [**researched**](algorithms/cross-sectional-factor-momentum-rotation.md) |
 | 66 | Maximum-Diversification Portfolio | Portfolio optimization | 60 | 42 | Research code | RK66 | [**researched**](algorithms/maximum-diversification-portfolio.md) |
 | 67 | ATR-Based Position Sizing | Position sizing | 48 | 124 | Research code | RK67, C-G5 | [**researched**](algorithms/atr-based-position-sizing.md) |
@@ -6485,7 +6488,7 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 76 | PCA Residual Statistical Arbitrage | Statistical arbitrage | 194 | 264 | Partial | RK76, C-MR2 | [**researched**](algorithms/pca-residual-statistical-arbitrage.md) |
 | 77 | ATR Volatility-Expansion Breakout | Trend / volatility breakout | 14 | 91 | Research code | RK77, N1, N5 | [**researched**](algorithms/atr-volatility-expansion-breakout.md) |
 | 78 | Multi-Timeframe Trend Agreement | Trend / signal confirmation | 16 | 181 | Research code | RK78 | [**researched**](algorithms/multi-timeframe-trend-agreement.md) |
-| 79 | Opening Gap Continuation | Intraday momentum / event | 94 | 56 | Partial | RK79, N3, X1 | [**researched**](algorithms/opening-gap-continuation.md) |
+| 79 | Opening Gap Continuation | Intraday momentum / event | 94 | 56 | Yes | RK79, N3, X1 | [**researched**](algorithms/opening-gap-continuation.md) |
 | 80 | Convertible Bond Arbitrage | Capital structure / relative value | 204 | 281 | Research code | RK80 | [**researched**](algorithms/convertible-bond-arbitrage.md) |
 | 81 | Capital Structure Arbitrage | Relative value / credit-equity | 205 | 130 | Research code | RK81 | [**researched**](algorithms/capital-structure-arbitrage.md) |
 | 82 | Closed-End Fund Discount Reversion | Relative value / fund discounts | 4 | 57 | Research code | RK82 | [**researched**](algorithms/closed-end-fund-discount-reversion.md) |
@@ -6505,7 +6508,7 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 96 | Principal Component Analysis (PCA) Eigenportfolios Statistical Arbitrage | Statistical arbitrage / Factor modeling | 105 | 269 | Partial | RK96, C-MR2 | [**researched**](algorithms/principal-component-analysis-pca-eigenportfolios-statistical-arbitrage.md) |
 | 97 | Wasserstein Distributionally Robust Statistical Arbitrage | Robust statistics / Statistical arbitrage | 278 | 960 | Research code | RK97 | [**researched**](algorithms/wasserstein-distributionally-robust-statistical-arbitrage.md) |
 | 98 | Adversarial Domain Generalization Cross-Market Momentum | Domain adaptation / Machine learning momentum | 175 | 25 | Research code | RK98 | [**researched**](algorithms/adversarial-domain-generalization-cross-market-momentum.md) |
-| 99 | Conformally Constrained Risk Parity Portfolio | Conformal prediction / Portfolio construction | 18 | 47 | Partial | RK99 | [**researched**](algorithms/conformally-constrained-risk-parity-portfolio.md) |
+| 99 | Conformally Constrained Risk Parity Portfolio | Conformal prediction / Portfolio construction | 18 | 47 | Yes | RK99 | [**researched**](algorithms/conformally-constrained-risk-parity-portfolio.md) |
 | 100 | Causal Discovery Directed Acyclic Graph (DAG) Pair Selection | Causal inference / Statistical arbitrage | 324 | 6478 | Research code | RK100 | [**researched**](algorithms/causal-discovery-directed-acyclic-graph-dag-pair-selection.md) |
 | 101 | Dynamic Copula-EVT Tail Risk Relative Value Arbitrage | Extreme value theory / Copulas / Relative value | 355 | 10445 | Research code | RK101 | [**researched**](algorithms/dynamic-copula-evt-tail-risk-relative-value-arbitrage.md) |
 | 102 | Hidden Markov Model Regime Switching | Regime / machine learning | 290 | 127 | Research code | RK102, C-R3 | [**researched**](algorithms/hidden-markov-model-regime-switching.md) |
@@ -6518,12 +6521,12 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 109 | Sparse Graphical Lasso Cross-Asset Spillover Predictor | Graphical models / Econometrics / Risk management | 64 | 145 | No | RK109 | [**researched**](algorithms/sparse-graphical-lasso-cross-asset-spillover-predictor.md) |
 | 110 | Opening Range Breakout (ORB) | Trend / breakout | 131 | 218 | Research code | RK110, C-M2, N2 | [**researched**](algorithms/opening-range-breakout-orb.md) |
 | 111 | Ichimoku Cloud Trend Filter | Trend / breakout | 21 | 88 | No | RK111 | [**researched**](algorithms/ichimoku-cloud-trend-filter.md) |
-| 112 | Kaufman Adaptive Moving Average (KAMA) Trend | Adaptive trend | 51 | 92 | Partial | RK112, V15 | [**researched**](algorithms/kaufman-adaptive-moving-average-kama-trend.md) |
+| 112 | Kaufman Adaptive Moving Average (KAMA) Trend | Adaptive trend | 51 | 92 | Yes | RK112, V15 | [**researched**](algorithms/kaufman-adaptive-moving-average-kama-trend.md) |
 | 113 | Wavelet Transform Denoised Breakout System | Signal processing / Technical trend | 255 | 7556 | Research code | RK113 | [**researched**](algorithms/wavelet-transform-denoised-breakout-system.md) |
 | 114 | Volatility Risk Premium (Short Vol + Tail Hedge) | Options / volatility | 40 | 246 | Research code | RK114, S1 | [**researched**](algorithms/volatility-risk-premium-short-vol-tail-hedge.md) |
 | 115 | EMA Pullback Continuation | Trend / pullback | 1 | 234 | Research code | RK115 | [**researched**](algorithms/ema-pullback-continuation.md) |
 | 116 | Markowitz Mean-Variance Optimization | Portfolio construction | 42 | 66 | Research code | RK116, Q13 | [**researched**](algorithms/markowitz-mean-variance-optimization.md) |
-| 117 | Equal-Weight Rebalancing | Portfolio construction | 59 | 22 | Partial | RK117, X5 | [**researched**](algorithms/equal-weight-rebalancing.md) |
+| 117 | Equal-Weight Rebalancing | Portfolio construction | 59 | 22 | Yes | RK117, X5 | [**researched**](algorithms/equal-weight-rebalancing.md) |
 | 118 | Minimum-Correlation Portfolio | Portfolio optimization | 6 | 43 | No | RK118 | [**researched**](algorithms/minimum-correlation-portfolio.md) |
 | 119 | Hierarchical Equal Risk Contribution (HERC) | Portfolio optimization / clustering | 7 | 44 | No | RK119 | [**researched**](algorithms/hierarchical-equal-risk-contribution-herc.md) |
 | 120 | Nested Cluster Optimization (NCO) | Portfolio optimization / clustering | 147 | 45 | No | RK120 | [**researched**](algorithms/nested-cluster-optimization-nco.md) |
@@ -6535,10 +6538,10 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 126 | Entropic Risk Measure Portfolio Optimization | Risk-sensitive optimization / Portfolio construction | 65 | 79 | Research code | RK126 | [**researched**](algorithms/entropic-risk-measure-portfolio-optimization.md) |
 | 127 | Conformal Prediction Risk-Bounded Alpha Stacking | Conformal prediction / Ensemble modeling / Portfolio construction | 217 | 49 | Research code | RK127 | [**researched**](algorithms/conformal-prediction-risk-bounded-alpha-stacking.md) |
 | 128 | Fractional Order Cointegration Residual Mean-Reversion | Statistical arbitrage / Fractional time series | 171 | 228 | Research code | RK128 | [**researched**](algorithms/fractional-order-cointegration-residual-mean-reversion.md) |
-| 129 | Inverse-Volatility Allocation | Portfolio construction / risk scaling | 146 | 41 | Partial | RK129, A5 | [**researched**](algorithms/inverse-volatility-allocation.md) |
+| 129 | Inverse-Volatility Allocation | Portfolio construction / risk scaling | 146 | 41 | Yes | RK129, A5 | [**researched**](algorithms/inverse-volatility-allocation.md) |
 | 130 | Extreme Value Theory (EVT) Dynamic Tail-Risk Hedge | Quantitative risk management / Tail risk | 214 | 260 | Research code | RK130 | [**researched**](algorithms/extreme-value-theory-evt-dynamic-tail-risk-hedge.md) |
 | 131 | Markov-Switching Vector Error Correction Model (MS-VECM) Arbitrage | Econometric / Regime-switching cointegration | 172 | 19 | Research code | RK131 | [**researched**](algorithms/markov-switching-vector-error-correction-model-ms-vecm-arbitrage.md) |
-| 132 | Conformal Risk-Bounded Dynamic Portfolio Allocation | Conformal prediction / Risk management | 157 | 143 | Partial | RK132, V13 | [**researched**](algorithms/conformal-risk-bounded-dynamic-portfolio-allocation.md) |
+| 132 | Conformal Risk-Bounded Dynamic Portfolio Allocation | Conformal prediction / Risk management | 157 | 143 | Yes | RK132, V13 | [**researched**](algorithms/conformal-risk-bounded-dynamic-portfolio-allocation.md) |
 | 133 | Protective Put / Collar | Options / hedging | 252 | 121 | Research code | RK133, S1 | [**researched**](algorithms/protective-put-collar.md) |
 | 134 | Fractional Kelly Position Sizing | Position sizing | 47 | 70 | Research code | RK134, C-S2 | [**researched**](algorithms/fractional-kelly-position-sizing.md) |
 | 135 | Fractional Order Cointegration Vector AutoRegressive (VAR) Strategy | Statistical arbitrage / Fractional time series / Econometrics | 178 | 285 | Research code | RK135 | [**researched**](algorithms/fractional-order-cointegration-vector-autoregressive-var-strategy.md) |
@@ -6550,10 +6553,10 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 141 | Fractional Order Cointegration Hawkes Point Process Statistical Arbitrage | Fractional time series / Point processes / Statistical arbitrage | 360 | 10658 | Research code | RK141 | [**researched**](algorithms/fractional-order-cointegration-hawkes-point-process-statistical-arbitrage.md) |
 | 142 | Fractional Order Cointegration Vector Error Correction Hawkes Strategy | Fractional time series / Point processes / Statistical arbitrage | 361 | 10659 | Research code | RK142 | [**researched**](algorithms/fractional-order-cointegration-vector-error-correction-hawkes-strategy.md) |
 | 143 | Fractional Order Cointegration Hawkes Jump-Diffusion Arbitrage | Fractional time series / Point processes / Statistical arbitrage | 299 | 10165 | Research code | RK143 | [**researched**](algorithms/fractional-order-cointegration-hawkes-jump-diffusion-arbitrage.md) |
-| 144 | Alpha Stacking / Ensemble Portfolio Optimizer | Portfolio construction / ensemble | 149 | 73 | Partial | RK144, C-RJ4 | [**researched**](algorithms/alpha-stacking-ensemble-portfolio-optimizer.md) |
+| 144 | Alpha Stacking / Ensemble Portfolio Optimizer | Portfolio construction / ensemble | 149 | 73 | Yes | RK144, C-RJ4 | [**researched**](algorithms/alpha-stacking-ensemble-portfolio-optimizer.md) |
 | 145 | Multi-Scale Wavelet LSTM Cross-Sectional Alpha Ranker | Signal processing / Recurrent neural networks / Equity factor modeling | 297 | 240 | No | RK145 | [**researched**](algorithms/multi-scale-wavelet-lstm-cross-sectional-alpha-ranker.md) |
 | 146 | Connors RSI-2 Mean Reversion | Mean reversion | 11 | 116 | No | RK146 | [**researched**](algorithms/connors-rsi-2-mean-reversion.md) |
-| 147 | Moving-Average Z-Score Reversion | Mean reversion | 30 | 156 | Partial | RK147, Q9 | [**researched**](algorithms/moving-average-z-score-reversion.md) |
+| 147 | Moving-Average Z-Score Reversion | Mean reversion | 30 | 156 | Yes | RK147, Q9 | [**researched**](algorithms/moving-average-z-score-reversion.md) |
 | 148 | Williams %R Reversal | Mean reversion | 86 | 16 | Partial | RK148, V15 | [**researched**](algorithms/williams-r-reversal.md) |
 | 149 | Gap-Fade Strategy | Mean reversion / intraday | 133 | 157 | No | RK149 | [**researched**](algorithms/gap-fade-strategy.md) |
 | 150 | VWAP Reversion | Mean reversion / intraday | 222 | 424 | Research code | RK150, C-MS3 | [**researched**](algorithms/vwap-reversion.md) |
@@ -6567,14 +6570,14 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 158 | Fractional Cointegration Multiscale Wavelet Arbitrage | Fractional calculus / Wavelets / Statistical arbitrage | 316 | 10283 | Research code | RK158 | [**researched**](algorithms/fractional-cointegration-multiscale-wavelet-arbitrage.md) |
 | 159 | Koopman Operator Non-Linear Cointegration Spread Strategy | Operator theory / Cointegration / Statistical arbitrage | 180 | 288 | Research code | RK159 | [**researched**](algorithms/koopman-operator-non-linear-cointegration-spread-strategy.md) |
 | 160 | RSI Oversold/Overbought Reversion | Mean reversion | 28 | 61 | Yes | RK160, Q10, V3 | [**researched**](algorithms/rsi-oversold-overbought-reversion.md) |
-| 161 | Bollinger Band Mean Reversion | Mean reversion | 29 | 89 | Partial | RK161, Q9, X4 | [**researched**](algorithms/bollinger-band-mean-reversion.md) |
+| 161 | Bollinger Band Mean Reversion | Mean reversion | 29 | 89 | Yes | RK161, Q9, X4 | [**researched**](algorithms/bollinger-band-mean-reversion.md) |
 | 162 | Stochastic Oscillator Reversal | Mean reversion | 85 | 80 | Partial | RK162, V15 | [**researched**](algorithms/stochastic-oscillator-reversal.md) |
 | 163 | FX Mean-Reversion / Momentum Hybrid | Mean reversion / FX | 87 | 63 | No | RK163 | [**researched**](algorithms/fx-mean-reversion-momentum-hybrid.md) |
 | 164 | Grid / Price-Ladder Trading | Mean reversion / inventory | 33 | 64 | Yes | RK164, V1, V2, V3, V4, V5, C-G2, C-G3, C-G4 | [**researched**](algorithms/grid-price-ladder-trading.md) |
 | 165 | Fractional Order Cointegration Dynamic Copula Portfolio Optimizer | Fractional time series / Copulas / Portfolio construction | 250 | 155 | Research code | RK165 | [**researched**](algorithms/fractional-order-cointegration-dynamic-copula-portfolio-optimizer.md) |
 | 166 | Calendar / Diagonal Spread | Options / volatility | 201 | 253 | Research code | RK166 | [**researched**](algorithms/calendar-diagonal-spread.md) |
 | 167 | Delta-Hedged Volatility Arbitrage | Options / volatility | 328 | 6473 | Research code | RK167 | [**researched**](algorithms/delta-hedged-volatility-arbitrage.md) |
-| 168 | VIX Futures Term-Structure Strategy | Options / volatility | 92 | 265 | Partial | RK168 | [**researched**](algorithms/vix-futures-term-structure-strategy.md) |
+| 168 | VIX Futures Term-Structure Strategy | Options / volatility | 92 | 265 | Yes | RK168 | [**researched**](algorithms/vix-futures-term-structure-strategy.md) |
 | 169 | Volatility Skew Risk Premium | Options / volatility risk premium | 99 | 39 | Research code | RK169 | [**researched**](algorithms/volatility-skew-risk-premium.md) |
 | 170 | Earnings Volatility Crush / Delta-Hedged Event Options | Options / event volatility | 169 | 165 | Research code | RK170 | [**researched**](algorithms/earnings-volatility-crush-delta-hedged-event-options.md) |
 | 171 | Put-Call Parity Conversion / Reversal Arbitrage | Options / no-arbitrage | 100 | 224 | Research code | RK171 | [**researched**](algorithms/put-call-parity-conversion-reversal-arbitrage.md) |
@@ -6614,14 +6617,14 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 205 | Dynamic Tensor Decomposition Multi-Asset Factor Rotation | Tensor algebra / Factor investing | 77 | 32 | Research code | RK205 | [**researched**](algorithms/dynamic-tensor-decomposition-multi-asset-factor-rotation.md) |
 | 206 | Koopman Operator Model Predictive Control Multi-Asset Allocation | Operator theory / Model predictive control / Portfolio allocation | 233 | 154 | Research code | RK206 | [**researched**](algorithms/koopman-operator-model-predictive-control-multi-asset-allocation.md) |
 | 207 | Standardized Unexpected Earnings (SUE) | Factor / event-driven | 111 | 118 | Research code | RK207 | [**researched**](algorithms/standardized-unexpected-earnings-sue.md) |
-| 208 | Anchored VWAP Reclaim / Rejection | Intraday price/volume | 159 | 248 | Partial | RK208, C-MS3 | [**researched**](algorithms/anchored-vwap-reclaim-rejection.md) |
+| 208 | Anchored VWAP Reclaim / Rejection | Intraday price/volume | 159 | 248 | Yes | RK208, C-MS3 | [**researched**](algorithms/anchored-vwap-reclaim-rejection.md) |
 | 209 | Corporate Buyback Announcement Drift | Event-driven / corporate actions | 143 | 71 | Research code | RK209 | [**researched**](algorithms/corporate-buyback-announcement-drift.md) |
 | 210 | Index Reconstitution / Rebalance Event Trading | Event-driven / flow prediction | 97 | 96 | Research code | RK210 | [**researched**](algorithms/index-reconstitution-rebalance-event-trading.md) |
 | 211 | Macro Surprise / Economic Release Strategy | Macro / event-driven | 207 | 164 | Partial | RK211, V6 | [**researched**](algorithms/macro-surprise-economic-release-strategy.md) |
 | 212 | Market Breadth Thrust | Market internals / timing | 58 | 38 | Research code | RK212 | [**researched**](algorithms/market-breadth-thrust.md) |
 | 213 | Trend-Scanning Label Model | ML / event labeling | 152 | 137 | Research code | RK213, C-ML1 | [**researched**](algorithms/trend-scanning-label-model.md) |
 | 214 | XGBoost Cross-Sectional Ranking | ML / cross-sectional selection | 113 | 23 | Research code | RK214 | [**researched**](algorithms/xgboost-cross-sectional-ranking.md) |
-| 215 | Cross-Sectional Reversal with Risk Neutralization | Equity / short-horizon reversal | 103 | 97 | Partial | RK215, C-MR1 | [**researched**](algorithms/cross-sectional-reversal-with-risk-neutralization.md) |
+| 215 | Cross-Sectional Reversal with Risk Neutralization | Equity / short-horizon reversal | 103 | 97 | Yes | RK215, C-MR1 | [**researched**](algorithms/cross-sectional-reversal-with-risk-neutralization.md) |
 | 216 | Top-K with Dropout Portfolio Rotation | Portfolio strategy / ML signal deployment | 104 | 24 | Research code | RK216 | [**researched**](algorithms/top-k-with-dropout-portfolio-rotation.md) |
 | 217 | Bayesian Structural Time Series (BSTS) Causal Impact Macro Strategy | Bayesian econometrics / Macro event trading | 236 | 186 | Research code | RK217 | [**researched**](algorithms/bayesian-structural-time-series-bsts-causal-impact-macro-strategy.md) |
 | 218 | Sparse Bayesian Learning Dynamic Factor Model | Bayesian statistics / Systematic equity | 76 | 109 | Research code | RK218 | [**researched**](algorithms/sparse-bayesian-learning-dynamic-factor-model.md) |
@@ -6649,7 +6652,7 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 240 | Neural Operator Delay-Differential Stochastic Volatility Calibrator | Neural operators / Stochastic volatility / Options pricing | 701 | 10286 | Research code | RK240 | [**researched**](algorithms/neural-operator-delay-differential-stochastic-volatility-calibrator.md) |
 | 241 | Koopman Operator Multi-Factor Equity Risk Factor Tracking | Operator theory / Factor modeling / Risk management | 163 | 112 | Research code | RK241 | [**researched**](algorithms/koopman-operator-multi-factor-equity-risk-factor-tracking.md) |
 | 242 | Long-Volatility Breakout (Options) | Options / volatility | 41 | 102 | Research code | RK242, Q12 | [**researched**](algorithms/long-volatility-breakout-options.md) |
-| 243 | Price/Volume Anomaly Detection | Machine learning / microstructure | 223 | 54 | Partial | RK243, A8 | [**researched**](algorithms/price-volume-anomaly-detection.md) |
+| 243 | Price/Volume Anomaly Detection | Machine learning / microstructure | 223 | 54 | Yes | RK243, A8 | [**researched**](algorithms/price-volume-anomaly-detection.md) |
 | 244 | Liquidity-Aware Adaptive Execution | Execution / market microstructure | 362 | 9357 | Partial | RK244 | [**researched**](algorithms/liquidity-aware-adaptive-execution.md) |
 | 245 | Pure Passive Market Making | Market microstructure / market making | 304 | 2118 | Research code | RK245, C-MM1, C-MM2 | [**researched**](algorithms/pure-passive-market-making.md) |
 | 246 | Inventory-Skewed Market Making | Market microstructure / market making | 305 | 1815 | Research code | RK246, C-G2, C-MM1 | [**researched**](algorithms/inventory-skewed-market-making.md) |
@@ -6659,7 +6662,7 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 250 | Arrival-Price Adaptive Limit-vs-Market Execution | Execution / transaction-cost optimization | 154 | 302 | Partial | RK250 | [**researched**](algorithms/arrival-price-adaptive-limit-vs-market-execution.md) |
 | 251 | Intraday Volume-Profile Execution | Execution / volume forecasting | 102 | 250 | Research code | RK251 | [**researched**](algorithms/intraday-volume-profile-execution.md) |
 | 252 | Order-Flow Imbalance (OFI) Cross-Sectional Alpha Predictor | Market microstructure / Alpha generation | 321 | 10483 | Partial | RK252, C-MS1 | [**researched**](algorithms/order-flow-imbalance-ofi-cross-sectional-alpha-predictor.md) |
-| 253 | Information-Driven Volume Clock Imbalance Momentum | Market microstructure / Volume timing | 340 | 6476 | Partial | RK253, C-ML5 | [**researched**](algorithms/information-driven-volume-clock-imbalance-momentum.md) |
+| 253 | Information-Driven Volume Clock Imbalance Momentum | Market microstructure / Volume timing | 340 | 6476 | Yes | RK253, C-ML5 | [**researched**](algorithms/information-driven-volume-clock-imbalance-momentum.md) |
 | 254 | Persistent Homology Topological Data Analysis (TDA) Crash Predictor | Topological data analysis / Risk management | 294 | 7422 | Research code | RK254 | [**researched**](algorithms/persistent-homology-topological-data-analysis-tda-crash-predictor.md) |
 | 255 | Persistent Homology Topological Landscape Crisis Predictor | Topological data analysis / Risk management / Crash prediction | 296 | 7424 | Research code | RK255 | [**researched**](algorithms/persistent-homology-topological-landscape-crisis-predictor.md) |
 | 256 | Deep Markov State-Space Intraday Volume Profile Predictor | Deep state-space models / Market microstructure | 1877 | 10496 | Research code | RK256 | [**researched**](algorithms/deep-markov-state-space-intraday-volume-profile-predictor.md) |
@@ -6675,7 +6678,7 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 266 | Riemannian Manifold Metric Entropic Risk Portfolio | Geometric deep learning / Riemannian optimization / Risk management | 247 | 200 | Research code | RK266 | [**researched**](algorithms/riemannian-manifold-metric-entropic-risk-portfolio.md) |
 | 267 | Graph Attention Network Covariance Matrix Spectral Regularization | Graph neural networks / Covariance estimation / Risk management | 182 | 171 | Research code | RK267 | [**researched**](algorithms/graph-attention-network-covariance-matrix-spectral-regularization.md) |
 | 268 | Persistent Homology Multi-Scale Vietoris-Rips Filtration Risk Scoring | Topological data analysis / Risk management | 123 | 204 | Research code | RK268 | [**researched**](algorithms/persistent-homology-multi-scale-vietoris-rips-filtration-risk-scoring.md) |
-| 269 | Persistent Homology Betti-0 Multiscale Filtration Contagion Clustering | Topological data analysis / Clustering / Risk management | 127 | 211 | Partial | RK269, A5 | [**researched**](algorithms/persistent-homology-betti-0-multiscale-filtration-contagion-clustering.md) |
+| 269 | Persistent Homology Betti-0 Multiscale Filtration Contagion Clustering | Topological data analysis / Clustering / Risk management | 127 | 211 | Yes | RK269, A5 | [**researched**](algorithms/persistent-homology-betti-0-multiscale-filtration-contagion-clustering.md) |
 | 270 | Quantum Annealing Binary Matrix Factorization Portfolio Risk Model | Quantum computing / Matrix factorization / Risk management | 261 | 243 | Research code | RK270 | [**researched**](algorithms/quantum-annealing-binary-matrix-factorization-portfolio-risk-model.md) |
 | 271 | Sequential Bootstrapping Sample Weights | ML / training data sampling | 153 | 138 | Research code | RK271 | [**researched**](algorithms/sequential-bootstrapping-sample-weights.md) |
 | 272 | Wavelet-Neural Network Hybrid Intraday Trend Scalper | Signal processing / Machine learning trend | 322 | 2828 | Research code | RK272 | [**researched**](algorithms/wavelet-neural-network-hybrid-intraday-trend-scalper.md) |
@@ -6700,10 +6703,10 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 291 | Gradient-Boosted Trees Return Prediction | Machine learning | 275 | 103 | Yes | RK291, V13, V14 | [**researched**](algorithms/gradient-boosted-trees-return-prediction.md) |
 | 292 | LSTM Sequence Forecasting | Machine learning | 313 | 104 | Research code | RK292, C-RJ4 | [**researched**](algorithms/lstm-sequence-forecasting.md) |
 | 293 | News / Financial Sentiment NLP | Machine learning / alternative data | 300 | 223 | Research code | RK293 | [**researched**](algorithms/news-financial-sentiment-nlp.md) |
-| 294 | Triple-Barrier Labeled ML Strategy | Machine learning / event-based labels | 150 | 135 | Partial | RK294, C-ML1 | [**researched**](algorithms/triple-barrier-labeled-ml-strategy.md) |
+| 294 | Triple-Barrier Labeled ML Strategy | Machine learning / event-based labels | 150 | 135 | Yes | RK294, C-ML1 | [**researched**](algorithms/triple-barrier-labeled-ml-strategy.md) |
 | 295 | Conformal Prediction Uncertainty Wrapper (CP-MAPIE) | Uncertainty quantification / Machine learning filter | 155 | 74 | Research code | RK295, V13 | [**researched**](algorithms/conformal-prediction-uncertainty-wrapper-cp-mapie.md) |
 | 296 | Dynamic Copula-Vine Regularized Factor Allocation | Vine copulas / Regularization / Multi-factor allocation | 244 | 168 | Research code | RK296 | [**researched**](algorithms/dynamic-copula-vine-regularized-factor-allocation.md) |
-| 297 | Fractional Hurst-Driven Adaptive Bandwidth Mean Reversion | Fractional time-series / Mean reversion | 156 | 2760 | Partial | RK297, C-MR4 | [**researched**](algorithms/fractional-hurst-driven-adaptive-bandwidth-mean-reversion.md) |
+| 297 | Fractional Hurst-Driven Adaptive Bandwidth Mean Reversion | Fractional time-series / Mean reversion | 156 | 2760 | Yes | RK297, C-MR4 | [**researched**](algorithms/fractional-hurst-driven-adaptive-bandwidth-mean-reversion.md) |
 | 298 | AMM / CLOB Cross-Venue Arbitrage | Crypto / decentralized market structure | 142 | 133 | Research code | RK298 | [**researched**](algorithms/amm-clob-cross-venue-arbitrage.md) |
 | 299 | Dynamic AMM Liquidity Provision / Liquidity Mining | Crypto / liquidity provision | 331 | 959 | Research code | RK299 | [**researched**](algorithms/dynamic-amm-liquidity-provision-liquidity-mining.md) |
 | 300 | Fractional Differentiation Feature Pipeline | ML / time-series preprocessing | 151 | 136 | Research code | RK300, C-ML5 | [**researched**](algorithms/fractional-differentiation-feature-pipeline.md) |

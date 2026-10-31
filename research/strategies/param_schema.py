@@ -300,6 +300,9 @@ STRATEGY_DEFAULTS: dict[str, dict[str, Any]] = {
 # selecting it and changing nothing reproduces hf_local_reference. Derived
 # from that entry rather than copied, so the two cannot drift apart.
 STRATEGY_DEFAULTS["hf_entry_gated"] = dict(STRATEGY_DEFAULTS["hf_local_reference"])
+# hf_signal_gated: the same champion values with every gate off, so it too
+# reproduces hf_local_reference until a gate is switched on.
+STRATEGY_DEFAULTS["hf_signal_gated"] = dict(STRATEGY_DEFAULTS["hf_local_reference"])
 # ultimate: the recommended configuration of docs/research/ultimate-algorithm.md
 # (config/ultimate_tqqq.yaml) -- the champion's full committed set from
 # config/best_known_2026-08-24.yaml, which unlike the hf_local_reference
@@ -403,6 +406,23 @@ _PARAM_ENUMS: dict[str, list[str]] = {
     ],
     # research/strategies/ultimate_sizing.TURBULENT_MODES (pinned there).
     "turbulent_mode": ["reversal", "cash"],
+    # research/strategies/signal_gates.py, hf_signal_gated only; each list
+    # is pinned to its gate's `modes` by research/tests/test_signal_gates.py.
+    "high52_gate": ["off", "near_high"],
+    "adx_gate": ["off", "strong_downtrend"],
+    "ribbon_gate": ["off", "bearish"],
+    "ribbon_ma": ["ema", "tema"],
+    "gap_gate": ["off", "gap_down"],
+    "gap_release": ["fill", "session"],
+    "kama_gate": ["off", "below_falling"],
+    "zscore_gate": ["off", "oversold"],
+    "band_gate": ["off", "lower_band"],
+    "term_gate": ["off", "backwardation"],
+    "avwap_gate": ["off", "swing_high", "swing_low"],
+    "anomaly_gate": ["off", "price", "price_volume"],
+    "imbalance_gate": ["off", "sell_imbalance"],
+    "barrier_gate": ["off", "classifier"],
+    "hurst_gate": ["off", "adaptive_band"],
 }
 
 # Filesystem wiring the engine supplies. Never shown, never sent -- the

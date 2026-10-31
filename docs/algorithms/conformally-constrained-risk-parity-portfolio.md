@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 18 (1 = easiest) |
 | Retail advantage rank | 47 (1 = strongest) |
 | Fit with this project | ⏳ (an allocator plus a tail constraint) |
-| Implemented in volatility-ai | **Partial.** Split-conformal intervals and conformal long sizing exist (`position_sizing.split_conformal_interval`, `conformal_long_size`; catalog S5); HRP exists (A5); no ERC and no combination. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** `research/strategies/allocators.py` `conformal_risk_parity`, run by the portfolio book (`python -m tools.portfolio_book --allocator conformal_risk_parity`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Partial.** Split-conformal intervals and conformal long sizing exist (`position_sizing.split_conformal_interval`, `conformal_long_size`; catalog S5); HRP exists (A5); no ERC and no combination. |
 | Related ledger entries | RK61, A5, V13 (catalog S5) |
 
 ## In one paragraph

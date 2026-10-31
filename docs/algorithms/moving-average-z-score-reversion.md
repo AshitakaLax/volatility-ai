@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 156 (1 = strongest) |
 | Fit with this project | 🧪 reference only |
 | Useful for volatility-ai | **Reference only.** The grid's band gates already use this signal (Q9 Bollinger, X4). |
-| Implemented in volatility-ai | **Partly.** `research.catalog.je_suis_tm`: `bollinger_bands`. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `zscore_gate=oversold` (`research/strategies/signal_gates.py`, `BandReversionGate`). Off by default; unmeasured. Before this change: **Partly.** `research.catalog.je_suis_tm`: `bollinger_bands`. |
 | Related ledger entries | Q9, X4, RK161 |
 
 ## In one paragraph

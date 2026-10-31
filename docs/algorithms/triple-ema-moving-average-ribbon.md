@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 66 (1 = easiest) |
 | Retail advantage rank | 9 (1 = strongest) |
 | Fit with this project | ⏳ as a long-or-cash regime · ⛔ as a long/short trade |
-| Implemented in volatility-ai | **Partial.** Single TA-Lib moving averages (EMA, TEMA, KAMA and others) were screened as regime flags in the V15 sweep; no ribbon-alignment rule exists. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `ribbon_gate=bearish` (`research/strategies/signal_gates.py`, `RibbonGate`). Off by default; unmeasured. Before this change: **Partial.** Single TA-Lib moving averages (EMA, TEMA, KAMA and others) were screened as regime flags in the V15 sweep; no ribbon-alignment rule exists. |
 | Related ledger entries | V15, RK62, RK46 |
 
 ## In one paragraph

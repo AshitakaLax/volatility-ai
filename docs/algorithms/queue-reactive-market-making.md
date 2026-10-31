@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 306 (1 = easiest) |
 | Retail advantage rank | 10,330 (1 = strongest) |
 | Fit with this project | 🧪 queue-position fill model (C-MM5) · ⛔ queue-reactive quoting |
-| Implemented in volatility-ai | **Partial.** A probabilistic queue-position fill model (`microstructure.QueuePositionEstimator`, ledger C-MM5; needs L2); no quoting rule. |
+| Implemented in volatility-ai | **Partial.** A probabilistic queue-position fill model (`microstructure.QueuePositionEstimator`, ledger C-MM5; needs L2); no quoting rule. Deferred: needs Level 2 depth from Fidelity and a market-making decision ([engine/roadmap.md](../../engine/roadmap.md) item 3). |
 | Related ledger entries | C-MM5, RK274, RK275 |
 
 ## In one paragraph

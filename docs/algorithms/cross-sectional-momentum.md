@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 81 (1 = easiest) |
 | Retail advantage rank | 51 (1 = strongest) |
 | Fit with this project | 🧪 long-only over an ETF universe (X3) · ⛔ long/short |
-| Implemented in volatility-ai | **Partial.** X3 (`tools/rotation.py --mode relative_strength`) holds the single best of a small ETF universe by trailing return; no top-k basket, no short leg. Unmeasured. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** `research/strategies/allocators.py` `cross_sectional_momentum`, run by the portfolio book (`python -m tools.portfolio_book --allocator cross_sectional_momentum`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Partial.** X3 (`tools/rotation.py --mode relative_strength`) holds the single best of a small ETF universe by trailing return; no top-k basket, no short leg. Unmeasured. |
 | Related ledger entries | X3, RK3, RK6, RK19, RK65 |
 
 ## In one paragraph

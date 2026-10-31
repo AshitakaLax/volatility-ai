@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 159 (1 = easiest) |
 | Retail advantage rank | 248 (1 = strongest) |
 | Fit with this project | 🧪 session VWAP as a buy gate (C-MS3) · ⏳ event anchors |
-| Implemented in volatility-ai | **Partial.** Session-anchored VWAP is research code and a buy gate (`intraday_gates.session_vwap`, `intraday_gates.VwapGate`, C-MS3); no event anchors. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `avwap_gate=swing_high|swing_low` (`research/strategies/signal_gates.py`, `AnchoredVwapGate`). Off by default; unmeasured. Before this change: **Partial.** Session-anchored VWAP is research code and a buy gate (`intraday_gates.session_vwap`, `intraday_gates.VwapGate`, C-MS3); no event anchors. |
 | Related ledger entries | C-MS3, C-M1, RK79 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 150 (1 = easiest) |
 | Retail advantage rank | 135 (1 = strongest) |
 | Fit with this project | 🧪 as labels for lot outcomes (C-ML1) |
-| Implemented in volatility-ai | **Partial.** `ml.barrier_labels.triple_barrier_labels` (ledger C-ML1); no classifier is trained on the labels. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `barrier_gate=classifier` (`research/strategies/signal_gates.py`, `TripleBarrierGate`). Off by default; unmeasured. Before this change: **Partial.** `ml.barrier_labels.triple_barrier_labels` (ledger C-ML1); no classifier is trained on the labels. |
 | Related ledger entries | C-ML1, RK213, RK271, V13 |
 
 ## In one paragraph

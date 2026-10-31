@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 362 (1 = easiest) |
 | Retail advantage rank | 9,357 (1 = strongest) |
 | Fit with this project | 🧪 the spread gate on live buys · ⛔ child-order slicing (orders are small) |
-| Implemented in volatility-ai | **Partial.** Live grid buys are skipped while the quote's spread exceeds `live.orders.max_spread`, and must-fill orders cap their premium over the bar (`engine/execution/limit_pricing.py`); no order slicing or adaptive aggressiveness. |
+| Implemented in volatility-ai | **Partial.** Live grid buys are skipped while the quote's spread exceeds `live.orders.max_spread`, and must-fill orders cap their premium over the bar (`engine/execution/limit_pricing.py`); no order slicing or adaptive aggressiveness. Deferred: adaptive execution is [engine/roadmap.md](../../engine/roadmap.md) item 2. |
 | Related ledger entries | RK250, RK251, RK249 |
 
 ## In one paragraph

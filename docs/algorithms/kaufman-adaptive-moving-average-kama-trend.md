@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 92 (1 = strongest) |
 | Fit with this project | 🧪 reference only |
 | Useful for volatility-ai | **Reference only.** Available as an indicator (V15) and research code; no evidence it beats a plain moving average. |
-| Implemented in volatility-ai | **Partly.** `research.strategies.indicator_library`. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `kama_gate=below_falling` (`research/strategies/signal_gates.py`, `KamaTrendGate`). Off by default; unmeasured. Before this change: **Partly.** `research.strategies.indicator_library`. |
 | Related ledger entries | V15, RK17 |
 
 ## In one paragraph

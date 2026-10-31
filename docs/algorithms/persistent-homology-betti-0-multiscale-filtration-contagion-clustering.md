@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 127 (1 = easiest) |
 | Retail advantage rank | 211 (1 = strongest) |
 | Fit with this project | 🧪 the dendrogram exists inside HRP · ⏳ as a contagion signal |
-| Implemented in volatility-ai | **Partial.** Single-linkage hierarchical clustering on correlation distance is built inside HRP (`hrp.hrp_weights`, ledger A5); no contagion detector. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** `research/strategies/allocators.py` `contagion_guard`, run by the portfolio book (`python -m tools.portfolio_book --allocator contagion_guard`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Partial.** Single-linkage hierarchical clustering on correlation distance is built inside HRP (`hrp.hrp_weights`, ledger A5); no contagion detector. |
 | Related ledger entries | A5, RK262, RK60 |
 
 ## In one paragraph

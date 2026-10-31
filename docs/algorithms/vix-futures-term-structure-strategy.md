@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 265 (1 = strongest) |
 | Fit with this project | ⏳ worth testing |
 | Useful for volatility-ai | **Worth testing.** Trading VIX futures is excluded, but the term structure itself is a candidate regime input; the research code exists. |
-| Implemented in volatility-ai | **Partly.** `research.catalog.leads`: `vix_term_structure_regime`. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `term_gate=backwardation` (`research/strategies/signal_gates.py`, `TermStructureGate`). Off by default; unmeasured. Before this change: **Partly.** `research.catalog.leads`: `vix_term_structure_regime`. |
 | Related ledger entries | RK56, V17, N5 |
 
 ## In one paragraph

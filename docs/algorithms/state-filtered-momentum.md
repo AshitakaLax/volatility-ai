@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 35 (1 = easiest) |
 | Retail advantage rank | 17 (1 = strongest) |
 | Fit with this project | ⏳ as a regime condition on a long-only momentum rotation · ⛔ long/short |
-| Implemented in volatility-ai | **No.** The pieces exist separately: market-state regimes (N5 NATR, `--regime sma`) and a relative-strength rotation (X3), but the rotation cannot yet be switched off by a regime. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** `research/strategies/allocators.py` `state_filtered_momentum`, run by the portfolio book (`python -m tools.portfolio_book --allocator state_filtered_momentum --market SPY`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **No.** The pieces exist separately: market-state regimes (N5 NATR, `--regime sma`) and a relative-strength rotation (X3), but the rotation cannot yet be switched off by a regime. |
 | Related ledger entries | X3, N5, V16, RK6, RK7 |
 
 ## In one paragraph

@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 154 (1 = easiest) |
 | Retail advantage rank | 302 (1 = strongest) |
 | Fit with this project | 🧪 purpose-based limit pricing (built) · ⏳ an implementation-shortfall check on live fills |
-| Implemented in volatility-ai | **Partial.** `engine/execution/limit_pricing.py` prices an order by its purpose: a grid buy rests at its trigger price (skipped while the spread is too wide), a must-fill order crosses to the far quote within a premium cap; regular-hours buys are notional market orders. No arrival-price or urgency model. |
+| Implemented in volatility-ai | **Partial.** `engine/execution/limit_pricing.py` prices an order by its purpose: a grid buy rests at its trigger price (skipped while the spread is too wide), a must-fill order crosses to the far quote within a premium cap; regular-hours buys are notional market orders. No arrival-price or urgency model. Deferred: adaptive execution is [engine/roadmap.md](../../engine/roadmap.md) item 2. |
 | Related ledger entries | RK244, RK249 |
 
 ## In one paragraph

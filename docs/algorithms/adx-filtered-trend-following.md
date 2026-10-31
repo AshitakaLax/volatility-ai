@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 20 (1 = easiest) |
 | Retail advantage rank | 12 (1 = strongest) |
 | Fit with this project | ⏳ as a direction-agnostic harvest gate (plan.md's proposal) · ⛔ as a long/short trend trade |
-| Implemented in volatility-ai | **Partial.** ADX was screened as an above/below-median regime flag in the V15 TA-Lib sweep; Wilder's +DM, a component of the same system, is the core vote of the registered `ultimate_rsp` strategy. No ADX-gated trade. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `adx_gate=strong_downtrend` (`research/strategies/signal_gates.py`, `AdxTrendGate`). Off by default; unmeasured. Before this change: **Partial.** ADX was screened as an above/below-median regime flag in the V15 TA-Lib sweep; Wilder's +DM, a component of the same system, is the core vote of the registered `ultimate_rsp` strategy. No ADX-gated trade. |
 | Related ledger entries | V15, Ultimate-RSP, RK46, RK70 |
 
 ## In one paragraph

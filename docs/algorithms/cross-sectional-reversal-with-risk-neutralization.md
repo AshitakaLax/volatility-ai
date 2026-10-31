@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 103 (1 = easiest) |
 | Retail advantage rank | 97 (1 = strongest) |
 | Fit with this project | 🧪 long-only contrarian weights (C-MR1) · ⛔ market-neutral |
-| Implemented in volatility-ai | **Partial.** Contrarian weights and decayed reversal scores (`mean_reversion.contrarian_weights`, `decayed_reversal_scores`, C-MR1), without factor neutralisation. |
+| Implemented in volatility-ai | **Yes, as a backtest book.** `research/strategies/allocators.py` `risk_neutral_reversal`, run by the portfolio book (`python -m tools.portfolio_book --allocator risk_neutral_reversal`), which routes every sale through the no-loss guard. Trading it live needs a multi-asset deployment ([engine/roadmap.md](../../engine/roadmap.md) item 1). Unmeasured. Before this change: **Partial.** Contrarian weights and decayed reversal scores (`mean_reversion.contrarian_weights`, `decayed_reversal_scores`, C-MR1), without factor neutralisation. |
 | Related ledger entries | C-MR1, RK33, RK76 |
 
 ## In one paragraph

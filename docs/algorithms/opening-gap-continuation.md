@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 94 (1 = easiest) |
 | Retail advantage rank | 56 (1 = strongest) |
 | Fit with this project | 🧪 its downside as a buy gate (N3, X1) · ⛔ as a day trade (flat at close, stops) |
-| Implemented in volatility-ai | **Partial.** The gap-down side is the N3 `prior_low` gate; the first-half-hour version is the X1 intraday-momentum gate; the noise-band form is C-M1. No gap-continuation trade. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `gap_gate=gap_down` (`research/strategies/signal_gates.py`, `GapGate`). Off by default; unmeasured. Before this change: **Partial.** The gap-down side is the N3 `prior_low` gate; the first-half-hour version is the X1 intraday-momentum gate; the noise-band form is C-M1. No gap-continuation trade. |
 | Related ledger entries | N3, X1, C-M1, C-M2, RK69 |
 
 ## In one paragraph

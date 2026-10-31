@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 15 (1 = easiest) |
 | Retail advantage rank | 5 (1 = strongest) |
 | Fit with this project | ⏳ long-only stock basket (needs a stock universe) · ⛔ long/short · its nearness measure already gates the Ultimate strategy |
-| Implemented in volatility-ai | **No** as a ranking. The same quantity, distance from the trailing one-year high, is the Ultimate strategy's bear filter (`bear_dd`, `bear_window=250`). |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `high52_gate=near_high` (`research/strategies/signal_gates.py`, `FiftyTwoWeekHighGate`). Off by default; unmeasured. Before this change: **No** as a ranking. The same quantity, distance from the trailing one-year high, is the Ultimate strategy's bear filter (`bear_dd`, `bear_window=250`). |
 | Related ledger entries | RK6, RK7; Ultimate lesson L12 |
 
 ## In one paragraph

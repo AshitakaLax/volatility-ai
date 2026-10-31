@@ -76,6 +76,11 @@ flag *and* a strategy hook.
   - `hf_entry_gated` — the same with entry gates (breakdown, dual thrust,
     opening range, candlestick patterns, intraday momentum, RSI, volatility
     targeting)
+  - `hf_signal_gated` — `hf_entry_gated` plus the ranked list's single-symbol
+    signal gates (52-week high, ADX, MA ribbon, opening gap, KAMA, z-score and
+    Bollinger reversion, VIX term structure, anchored VWAP, anomalies,
+    volume-clock imbalance, triple-barrier classifier, Hurst bands); all off
+    by default, unmeasured
   - `ultimate` — a causal NATR volatility regime with a bear filter: the
     champion grid while calm, capitulation-close reversal lots while
     turbulent, and a delayed regime exit

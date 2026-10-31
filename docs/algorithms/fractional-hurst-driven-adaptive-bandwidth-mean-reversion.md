@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 156 (1 = easiest) |
 | Retail advantage rank | 2,760 (1 = strongest) |
 | Fit with this project | 🧪 the Hurst diagnostic (C-MR4) · ⏳ as an adaptive band width |
-| Implemented in volatility-ai | **Partial.** A Hurst-exponent estimator exists (`mean_reversion.hurst_exponent`, ledger C-MR4); no wavelet estimator and no adaptive bands. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `hurst_gate=adaptive_band` (`research/strategies/signal_gates.py`, `HurstBandGate`). Off by default; unmeasured. Before this change: **Partial.** A Hurst-exponent estimator exists (`mean_reversion.hurst_exponent`, ledger C-MR4); no wavelet estimator and no adaptive bands. |
 | Related ledger entries | C-MR4, RK202, RK75 |
 
 ## In one paragraph

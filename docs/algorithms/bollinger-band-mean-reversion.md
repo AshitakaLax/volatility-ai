@@ -12,7 +12,7 @@ researched 2026-10-30
 | Retail advantage rank | 89 (1 = strongest) |
 | Fit with this project | 🧪 reference only |
 | Useful for volatility-ai | **Reference only.** Researched as a grid buy gate (X4); the plain rule fails after costs, the contrarian one does better. |
-| Implemented in volatility-ai | **Partly.** `research.strategies.entry_gates`: `BollingerWGate`; `research.catalog.je_suis_tm`: `bollinger_w_trades`. |
+| Implemented in volatility-ai | **Yes.** Tradeable as an entry gate on the `hf_signal_gated` strategy: `band_gate=lower_band` (`research/strategies/signal_gates.py`, `BandReversionGate`). Off by default; unmeasured. Before this change: **Partly.** `research.strategies.entry_gates`: `BollingerWGate`; `research.catalog.je_suis_tm`: `bollinger_w_trades`. |
 | Related ledger entries | Q9, X4, RK147 |
 
 ## In one paragraph
