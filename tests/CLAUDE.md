@@ -26,7 +26,7 @@ pytest `::` node id) runs exactly that instead.
 | `tools/tests/` | ops scripts, data-prep, research probes |
 | **`tests/`** (here) | only what genuinely spans two of the above as PEERS — see below |
 | `tests/e2e/` | `test_pi_backtest.py` — exercises the actual Raspberry Pi deployment path |
-| `tests/fixtures/` | `regression_ohlcv.csv` (35-bar synthetic OHLCV), `regression_baseline.py`, `drawdown_non_trigger_bar.csv` — the ONE shared fixture directory; every section reaches it via the dotted import `from tests.fixtures.regression_baseline import ...`, never a copy of its own |
+| `tests/fixtures/` | `regression_ohlcv.csv` (35-bar synthetic OHLCV), `regression_baseline.py`, `drawdown_non_trigger_bar.csv`, `composition_baseline.py` + `composition_ohlcv.csv` + `composition_baseline.json` (every sell path pinned before the buy × sell composition work, `research/tests/test_composition_baseline.py`) — the ONE shared fixture directory; every section reaches it via the dotted import `from tests.fixtures.regression_baseline import ...`, never a copy of its own |
 
 Root `conftest.py` (repo root, sibling of `cli.py` — **not** under
 `tests/`) holds the `VAI_QUEUE_DIR`/`VAI_RUN_HISTORY_DIR` isolation that
