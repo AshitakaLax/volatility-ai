@@ -121,7 +121,20 @@ def trade_metrics(blotter: pd.DataFrame) -> dict:
             .groupby("lot_id")["bar_index"]
             .min()
         )
-        closed = sells.dropna(subset=["lot_id"]).groupby("lot_id")["bar_index"].max()
+        # A lot is held until its LAST share sells. With partial selling a
+        # lot can have several sells and still be open, so "has a sell" is
+        # not "closed": compare the shares sold with the shares bought.
+        bought = blotter[blotter["side"] == "buy"].dropna(subset=["lot_id"])
+        sold = sells.dropna(subset=["lot_id"])
+        last_sell = sold.groupby("lot_id")["bar_index"].max()
+        if "qty" in blotter.columns:
+            bought_qty = bought.groupby("lot_id")["qty"].sum()
+            sold_qty = sold.groupby("lot_id")["qty"].sum()
+            done = sold_qty.index[
+                sold_qty >= bought_qty.reindex(sold_qty.index).fillna(0.0) * (1 - 1e-9) - 1e-9
+            ]
+            last_sell = last_sell.loc[last_sell.index.intersection(done)]
+        closed = last_sell
         spans = (closed - opened).dropna()
         hold = float(spans.mean()) if not spans.empty else 0.0
 
@@ -221,6 +234,15 @@ class PerformanceAnalyzer:
         # No buy/sell transaction costs are modeled yet (Phase 2 scope).
         realized_pnl = sum(
             (lot.target_sell_price - lot.buy_price) * lot.shares for lot in closed_lots
+        )
+        # Plus every share sold through a PARTIAL close, at what it actually
+        # fetched -- tranches off lots still open, and lots sold away in
+        # tranches (whose remaining `shares` reached 0, so the term above
+        # counts nothing for them). Zero for a run with no partial sale.
+        realized_pnl += sum(
+            getattr(lot, "partial_sold_value", 0.0)
+            - lot.buy_price * getattr(lot, "partial_sold_shares", 0.0)
+            for lot in (*closed_lots, *open_lots)
         )
 
         total_return_pct = (

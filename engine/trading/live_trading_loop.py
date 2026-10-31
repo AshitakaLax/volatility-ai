@@ -147,10 +147,10 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from decimal import ROUND_FLOOR, Decimal
 
 from engine.core.config import BacktestConfig
 from engine.core.exceptions import BrokerUnavailableError, ConfigurationError, PersistenceError
+from engine.core.exit_policy import floor_shares
 from engine.core.idempotency import compute_decision_id
 from engine.core.ledger import EXIT_AT_COST_TARGET, SHARE_EPSILON
 from engine.core.market_context import MarketContext
@@ -200,11 +200,9 @@ def _seconds(value: float):
     return timedelta(seconds=float(value))
 
 
-def _floor_shares(qty: float) -> float:
-    """Down to the nine decimals a fractional order may carry, never up:
-    an order for more shares than the lots hold would sell what we do not
-    own."""
-    return float(Decimal(str(qty)).quantize(Decimal("0.000000001"), rounding=ROUND_FLOOR))
+# Down to the nine decimals a fractional order may carry, never up: one
+# definition, shared with the backtest's partial sells (engine/core/exit_policy).
+_floor_shares = floor_shares
 
 
 # Durable keys for the scalars that are not lots. Namespaced so they
@@ -340,6 +338,10 @@ class _TrackedOrder:
     lot_order_id: str | None = None
     trigger_price: float = 0.0
     profit_target: float = 0.0
+    # A BUY's tag for the lot it opens (SizingStrategy.next_lot_tag), taken
+    # when the buy was decided -- the fill arrives ticks later, when the
+    # strategy's state has moved on.
+    entry_tag: str | None = None
     # WHY the sell was submitted, carried from submission to fill.
     # Unlike the backtest, live splits those into two ticks: the guard
     # runs in _apply_sell_fill, long after _maybe_sell decided. Without
@@ -351,6 +353,11 @@ class _TrackedOrder:
     # A SIGNAL EXIT sells many lots in ONE order (_submit_exit): their ids,
     # in the order fills are allocated to them. Empty for every other order.
     exit_lot_ids: tuple[str, ...] = ()
+    # The shares still to sell of each of those lots, aligned with
+    # exit_lot_ids and reduced as fills are allocated: a partial exit asks
+    # for part of a lot. Empty means every lot whole, which is what every
+    # exit persisted before partial exits existed asked for.
+    exit_lot_qtys: list[float] = field(default_factory=list)
     # The bar it was submitted on, and whether a cancel has been asked: an
     # exit still resting on a later bar is cancelled and re-offered.
     submitted_bar: str | None = None
@@ -389,8 +396,10 @@ class _TrackedOrder:
             "lot_order_id": self.lot_order_id,
             "trigger_price": self.trigger_price,
             "profit_target": self.profit_target,
+            "entry_tag": self.entry_tag,
             "sell_reason": str(self.sell_reason),
             "exit_lot_ids": list(self.exit_lot_ids),
+            "exit_lot_qtys": list(self.exit_lot_qtys),
             "submitted_bar": self.submitted_bar,
             "cancel_requested": self.cancel_requested,
             "session": self.session,
@@ -416,8 +425,10 @@ class _TrackedOrder:
             lot_order_id=raw.get("lot_order_id"),
             trigger_price=float(raw.get("trigger_price", 0.0)),
             profit_target=float(raw.get("profit_target", 0.0)),
+            entry_tag=raw.get("entry_tag"),
             sell_reason=SellReason(raw.get("sell_reason", SellReason.PROFIT_TARGET)),
             exit_lot_ids=tuple(raw.get("exit_lot_ids") or ()),
+            exit_lot_qtys=[float(q) for q in raw.get("exit_lot_qtys") or ()],
             submitted_bar=raw.get("submitted_bar"),
             cancel_requested=bool(raw.get("cancel_requested", False)),
             session=raw.get("session"),
@@ -1757,6 +1768,7 @@ class LiveTradingLoop:
             delta.avg_price,
             delta.qty,
             tracked.profit_target,
+            entry_tag=tracked.entry_tag,
         )
         self.state.cash -= delta.notional
         self.state.last_buy_price = tracked.trigger_price or delta.avg_price
@@ -1782,13 +1794,19 @@ class LiveTradingLoop:
         loss). Shares filled beyond the lots' own are reported, never
         invented into the ledger."""
         remaining = delta.qty
-        for lot_id in tracked.exit_lot_ids:
+        wanted = tracked.exit_lot_qtys
+        for index, lot_id in enumerate(tracked.exit_lot_ids):
             if remaining <= SHARE_EPSILON:
                 break
             lot = next((lot for lot in self.ledger.open_lots if lot.order_id == lot_id), None)
             if lot is None:
                 continue  # closed by an earlier increment
-            qty = min(lot.shares, remaining)
+            # A partial exit asked for part of this lot: allocate no more than
+            # what is still asked of it. Without quantities, the whole lot.
+            cap = lot.shares if index >= len(wanted) else min(lot.shares, wanted[index])
+            if cap <= SHARE_EPSILON:
+                continue  # this lot's part is already sold
+            qty = min(cap, remaining)
             try:
                 economics = validate_sell(
                     lot,
@@ -1805,6 +1823,8 @@ class LiveTradingLoop:
             self.ledger.close_lot(lot, sell_qty=qty, execution_price=delta.avg_price)
             self.store.sync_lot(self.ledger, lot)
             remaining -= qty
+            if index < len(wanted):
+                wanted[index] = max(0.0, wanted[index] - qty)
             self._report_sale(tracked, lot_id, qty, delta.avg_price, economics, cost)
         logger.info(
             f"EXIT filled: {delta.qty} @ {delta.avg_price} across "
@@ -2011,22 +2031,34 @@ class LiveTradingLoop:
             context,
             allow_signal_exit=self.config.execution.allow_signal_exit,
             skip_order_ids=self.state.sells_in_flight | self._legacy,
+            as_orders=True,
+            whole_shares=self._whole_shares(),
         )
         if liquidations:
-            condemned = {lot.order_id for lot in liquidations}
+            condemned = {order.lot.order_id for order in liquidations}
             marketable = [lot for lot in marketable if lot.order_id not in condemned]
             submitted += self._submit_exit(liquidations, context)
 
-        for lot in marketable[: max(0, self.config.live.max_sells_per_tick - submitted)]:
-            if lot.order_id in self.state.sells_in_flight:
-                continue
+        # How much of each lot to sell at its target, through the shared
+        # helper: all of it unless the strategy sells in tranches. Legacy
+        # lots sell whole -- they are the earlier algorithm's, not this one's
+        # to split.
+        harvest = decision_cycle.harvest_orders(
+            self.strategy,
+            [lot for lot in marketable if lot.order_id not in self.state.sells_in_flight],
+            context,
+            whole_shares=self._whole_shares(),
+            skip_order_ids=self._legacy,
+        )
+        for order in harvest[: max(0, self.config.live.max_sells_per_tick - submitted)]:
+            lot, qty = order.lot, order.quantity
             decision_id = self._decision_id("SELL", context.timestamp, lot.order_id)
             outcome = self.guard.submit_once(
                 decision_id,
-                lambda cid, lot=lot: str(
+                lambda cid, lot=lot, qty=qty: str(
                     self.broker.submit_sell(
                         self.symbol,
-                        lot.shares,
+                        qty,
                         lot.target_sell_price,
                         client_order_id=cid,
                         **self._order_kwargs(),
@@ -2042,7 +2074,7 @@ class LiveTradingLoop:
                 tracker=FillTracker(decision_id),
                 lot_order_id=lot.order_id,
                 sell_reason=SellReason.PROFIT_TARGET,
-                **self._window_fields(limit=lot.target_sell_price, qty=lot.shares, reserve=0.0),
+                **self._window_fields(limit=lot.target_sell_price, qty=qty, reserve=0.0),
             )
             self.state.sells_in_flight.add(lot.order_id)
             self._persist_open_orders()
@@ -2050,8 +2082,13 @@ class LiveTradingLoop:
             submitted += 1
         return submitted
 
-    def _submit_exit(self, lots: list, context: MarketContext) -> int:
-        """ONE limit order for every lot the strategy wants out of.
+    def _whole_shares(self) -> bool:
+        """Whether the venue takes only whole shares (Fidelity, today)."""
+        return bool(getattr(self.broker, "whole_shares", False))
+
+    def _submit_exit(self, orders: list, context: MarketContext) -> int:
+        """ONE limit order for every lot the strategy wants out of -- all of
+        each, or the part of it an ExitOrder names.
 
         A signal exit used to send an order per lot, at most
         max_sells_per_tick a tick: a calm book of 3,000 lots took about an
@@ -2067,8 +2104,9 @@ class LiveTradingLoop:
         One still resting on a later bar is cancelled and the rest offered
         again at the new price (_cancel_stale_exits).
         """
-        lots = [lot for lot in lots if lot.order_id not in self.state.sells_in_flight]
-        qty = _floor_shares(sum(lot.shares for lot in lots))
+        orders = [o for o in orders if o.lot.order_id not in self.state.sells_in_flight]
+        lots = [o.lot for o in orders]
+        qty = _floor_shares(sum(o.quantity for o in orders))
         if not lots or qty <= 0:
             return 0
         price = context.price * (1.0 - self.config.live.exit_limit_buffer)
@@ -2103,6 +2141,7 @@ class LiveTradingLoop:
             tracker=FillTracker(decision_id),
             sell_reason=SellReason.SIGNAL_EXIT,
             exit_lot_ids=tuple(lot.order_id for lot in lots),
+            exit_lot_qtys=[float(o.quantity) for o in orders],
             submitted_bar=context.timestamp.isoformat(),
             **self._window_fields(limit=price, qty=qty, reserve=0.0),
         )
@@ -2234,6 +2273,7 @@ class LiveTradingLoop:
             tracker=FillTracker(decision_id),
             trigger_price=context.price,
             profit_target=self.profit_target,
+            entry_tag=decision_cycle.lot_tag(self.strategy),
             **self._window_fields(limit=limit_price, qty=qty, reserve=trade_value),
         )
         self._persist_open_orders()

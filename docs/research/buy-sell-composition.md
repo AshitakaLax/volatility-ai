@@ -317,6 +317,17 @@ Phase 7 can start once Phase 2 lands, in parallel with 3 to 6.
 - **Done when** the fixture is committed and the suite asserts identity against it.
 
 ### Phase 1: Partial sells in the engine
+
+**Status: done.** Three deviations from the text below, each to keep "no recorded result moves" true:
+- `original_shares` / `entry_tag` live in a new `ledger_lot_details` side table (the `ledger_lot_owners`
+  precedent), not new `ledger_lots` columns: no migration, no schema-version bump, and a lot with no row loads as
+  unsold and untagged.
+- The blotter gains **no** `remaining_shares` column and the summary row no `partial_sells` /
+  `avg_tranches_per_lot`, because a new column would restate every pinned result. A partial sale is a `lot_id`
+  with more than one sell row; Phase 5 derives the counts from that.
+- Realized P&L now adds every partially sold share at what it fetched (`Lot.partial_sold_shares/value`), for open
+  lots too. A run with no partial sale is unchanged.
+
 - `engine/core/sizing.py`: `harvest_quantity` default; `ExitOrder` in a new `engine/core/exit_policy.py`;
   `lots_to_liquidate` accepts `ExitOrder | Lot`; `sellable_quantity` (Design §4).
 - `engine/trading/decision_cycle.py`: `collect_liquidations` normalises to `ExitOrder`, checks
