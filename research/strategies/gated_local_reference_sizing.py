@@ -74,6 +74,30 @@ TWO MORE CORRECTION LEVERS (both off by default)
       back to 1, the target does not.
 
 --------------------------------------------------------------------
+FOUR INTRADAY GATES (all off by default; research/strategies/intraday_gates.py)
+
+  noise_gate="below_lower"         C-M1 NoiseAreaGate: no buys while price
+      is below the Zarattini-Aziz-Barbon Noise Area at a half-hour check.
+  vwap_gate="far_falling"|"band"   C-MS3 VwapGate: no buys far below the
+      session VWAP while still falling.
+  session_throttle="on"            C-X4 SessionLotThrottle: a per-session
+      lot cap, spacing between buys, a cooldown after adverse runs.
+  rbreaker_gate="short_pauses"     C-MR7 RBreakerGate: no buys while the
+      R-Breaker state machine is short.
+
+Each only blocks buys, like the gates above.
+
+--------------------------------------------------------------------
+TWO DAILY LEVERS (both off by default; research/strategies/daily_gates.py)
+
+  adx_gate="strong_trend"|"strong_downtrend"   RK55: no buys through a
+      session after one that closed with Wilder's ADX above adx_threshold
+      (the second only when -DI leads).
+  hurst_step_exponent=<e>          RK297: the grid step times
+      clamp((H / 0.5) ** e, hurst_step_min, hurst_step_max), H the rolling
+      Hurst exponent of the last hurst_window session closes.
+
+--------------------------------------------------------------------
 UNMEASURED
 
 No sweep has run this. config/probe_entry_gate_*.yaml pin every
@@ -85,6 +109,7 @@ from __future__ import annotations
 
 from engine.core.exceptions import ConfigurationError
 from engine.core.market_context import MarketContext
+from research.strategies.daily_gates import AdxTrendGate, HurstStep
 from research.strategies.entry_gates import (
     BollingerWGate,
     BreakdownGate,
@@ -93,6 +118,12 @@ from research.strategies.entry_gates import (
     ShootingStarGate,
 )
 from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
+from research.strategies.intraday_gates import (
+    NoiseAreaGate,
+    RBreakerGate,
+    SessionLotThrottle,
+    VwapGate,
+)
 from research.strategies.volatility_estimators import SessionVolatility
 
 # Below every real price, so no bar can touch it -- see module docstring.
@@ -173,6 +204,29 @@ class GatedLocalReferenceSizing(HighFrequencyLocalReferenceSizing):
         rsi_overbought: float = 70.0,
         rsi_tolerance: float = 5.0,
         rsi_hold_candles: int = 8,
+        # -- intraday gates (research/strategies/intraday_gates.py) ------
+        noise_gate: str = "off",
+        noise_lookback_days: int = 14,
+        noise_check_minutes: int = 30,
+        vwap_gate: str = "off",
+        vwap_far_k: float = 3.0,
+        vwap_near_k: float = 1.0,
+        vwap_vol_window: int = 30,
+        session_throttle: str = "off",
+        throttle_max_lots_per_session: int | None = None,
+        throttle_min_bars_between_buys: int = 0,
+        throttle_adverse_run: int | None = None,
+        throttle_cooldown_bars: int = 30,
+        rbreaker_gate: str = "off",
+        # -- daily levers (research/strategies/daily_gates.py) -----------
+        adx_gate: str = "off",
+        adx_period: int = 14,
+        adx_threshold: float = 25.0,
+        hurst_step_exponent: float = 0.0,
+        hurst_window: int = 100,
+        hurst_max_lag: int = 20,
+        hurst_step_min: float = 0.5,
+        hurst_step_max: float = 2.0,
     ) -> None:
         super().__init__(
             per_lot_pct=per_lot_pct,
@@ -256,9 +310,43 @@ class GatedLocalReferenceSizing(HighFrequencyLocalReferenceSizing):
             tolerance=rsi_tolerance,
             hold_candles=rsi_hold_candles,
         )
+        self.noise = NoiseAreaGate(
+            noise_gate, lookback_days=noise_lookback_days, check_minutes=noise_check_minutes
+        )
+        self.vwap = VwapGate(
+            vwap_gate, far_k=vwap_far_k, near_k=vwap_near_k, vol_window=vwap_vol_window
+        )
+        self.throttle = SessionLotThrottle(
+            session_throttle,
+            max_lots_per_session=throttle_max_lots_per_session,
+            min_bars_between_buys=throttle_min_bars_between_buys,
+            adverse_run=throttle_adverse_run,
+            cooldown_bars=throttle_cooldown_bars,
+        )
+        self.rbreaker = RBreakerGate(rbreaker_gate)
+        self.adx = AdxTrendGate(adx_gate, period=adx_period, threshold=adx_threshold)
+        self.hurst_step = HurstStep(
+            hurst_step_exponent,
+            window=hurst_window,
+            max_lag=hurst_max_lag,
+            lo=hurst_step_min,
+            hi=hurst_step_max,
+        )
+        self._noise_lookback_days = int(noise_lookback_days)
         self._gates = tuple(
             gate
-            for gate in (self.breakdown, self.pattern, self.momentum, self.bounce, self.rsi_top)
+            for gate in (
+                self.breakdown,
+                self.pattern,
+                self.momentum,
+                self.bounce,
+                self.rsi_top,
+                self.noise,
+                self.vwap,
+                self.throttle,
+                self.rbreaker,
+                self.adx,
+            )
             if gate.enabled
         )
         self._entry_suppressed = False
@@ -268,6 +356,8 @@ class GatedLocalReferenceSizing(HighFrequencyLocalReferenceSizing):
         capital baseline), then each enabled gate. Every gate change
         happens here and only here -- see module docstring."""
         super().record_tick(context)
+        if self.hurst_step.enabled:
+            self.hurst_step.observe(context)
         if self._gates:
             for gate in self._gates:
                 gate.observe(context)
@@ -285,6 +375,12 @@ class GatedLocalReferenceSizing(HighFrequencyLocalReferenceSizing):
             sessions = max(sessions, self._session_vol_days + 2)
         if self._gates:
             sessions = max(sessions, self._dt_lookback_days + 2, 5)
+        if self.noise.enabled:
+            sessions = max(sessions, self._noise_lookback_days + 2)
+        if self.adx.enabled:
+            sessions = max(sessions, self.adx.history_sessions + 1)
+        if self.hurst_step.enabled:
+            sessions = max(sessions, self.hurst_step.history_sessions + 1)
         return sessions
 
     @property
@@ -295,9 +391,12 @@ class GatedLocalReferenceSizing(HighFrequencyLocalReferenceSizing):
     def _grid_trigger_level(
         self, context: MarketContext, last_buy_price: float, step: float
     ) -> float:
-        """NO_BUY_LEVEL while gated, else exactly the parent's level."""
+        """NO_BUY_LEVEL while gated, else the parent's level -- at the step
+        the Hurst lever scales (exactly the parent's while it is off)."""
         if self._entry_suppressed:
             return NO_BUY_LEVEL
+        if self.hurst_step.enabled:
+            step *= self.hurst_step.multiplier
         return super()._grid_trigger_level(context, last_buy_price, step)
 
     @property
@@ -344,6 +443,19 @@ class GatedLocalReferenceSizing(HighFrequencyLocalReferenceSizing):
             "rsi_gate": self.rsi_top.mode,
             "rsi": self.rsi_top.rsi,
             "rsi_episodes": self.rsi_top.episodes,
+            "noise_gate": self.noise.mode,
+            "noise_episodes": self.noise.episodes,
+            "vwap_gate": self.vwap.mode,
+            "vwap_episodes": self.vwap.episodes,
+            "session_throttle": self.throttle.mode,
+            "throttle_episodes": self.throttle.episodes,
+            "rbreaker_gate": self.rbreaker.mode,
+            "rbreaker_episodes": self.rbreaker.episodes,
+            "adx_gate": self.adx.mode,
+            "adx": self.adx.adx,
+            "adx_episodes": self.adx.episodes,
+            "hurst": self.hurst_step.hurst,
+            "hurst_step_multiplier": self.hurst_step.multiplier,
         }
 
 

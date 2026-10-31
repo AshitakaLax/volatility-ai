@@ -1,5 +1,66 @@
 # Changelog
 
+## Feat: the ledger's single-fund candidates as backtestable, live-capable strategies, and brute force on every fund
+
+**The algorithms added to `research/catalog/` could not be backtested.** They
+are standalone research functions, and the engine, the server queue and the
+brute-force tool run only what `strategy_registry.py` registers.
+
+- **`catalog_exposure`** (`research/strategies/catalog_exposure_sizing.py`):
+  - 24 single-fund long-or-cash signals run on Ultimate-RSP's daily
+    exposure book, one per run, picked by `signal` (a dropdown in the run
+    form) with `signal_params` overriding its defaults:
+    - From the catalog: TSMOM, multi-horizon momentum, Supertrend, MACD,
+      Awesome, PSAR, Heikin-Ashi, SMA, Kalman, l1 and spectral trend, KAMA,
+      cycle-blended momentum, Bayesian drift, robust momentum, ARFIMA, and
+      the POT, wavelet and early-warning risk budgets.
+    - Ledger candidates (⏳) that had no implementation: state-filtered
+      momentum (RK10), 52-week-high nearness (RK14), the Guppy EMA ribbon
+      (RK64), a Hawkes jump-intensity stress gauge (RK314) and a
+      random-forest classifier (RK290).
+  - The two model-fitting signals (RK290, RK314) refit once per calendar
+    bucket, on sessions before it. Live starts every session cold, so the
+    refit is keyed by dates rather than by a count of calls: a cold start
+    rebuilds the model a backtest through the same dates holds, and a test
+    pins that.
+  - The target for a session comes from the sessions before it: the catalog
+    function is called on the trailing window and its last value is used.
+    Tests pin causality for every signal. They also pin that the windowed
+    signals equal the catalog's full-history call, and that the engine
+    trades the strategy exactly like `ultimate_rsp` handed the same map.
+  - Exits are signal exits, like the book it reuses (`SIGNAL_EXIT_STRATEGIES`).
+  - The catalog's scipy and scikit-learn imports stay out of the live loop's
+    import path; a test pins that too.
+  - Left out: the HMM trend (a refit per session costs hours per
+    configuration), and the entries needing future-labelled training or a
+    second instrument.
+- **hf_entry_gated takes six more levers**, all off by default, so existing
+  runs are unchanged:
+  - the four intraday gates (`intraday_gates.py`): `noise_gate`,
+    `vwap_gate`, `session_throttle` and `rbreaker_gate`;
+  - RK55's ADX harvest gate, `adx_gate` (`daily_gates.py`; Wilder's ADX,
+    pinned to TA-Lib), which pauses buys through a session after a
+    strong-trend close;
+  - RK297's Hurst-adaptive grid step, `hurst_step_exponent`.
+  - UltimateSizing mirrors them, as it does every hf_entry_gated
+    parameter.
+- **`tools/sweep_brute_force.py`:**
+  - It covers every warehouse fund. The eight new funds are scaled from RSP's
+    grid by their median daily move.
+  - It has a `catalog_exposure` series (one sub-space per signal, risk
+    budgets scaled per fund), plus `hf_entry_gated_intraday` and
+    `hf_entry_gated_daily` series, named apart so the finished
+    hf_entry_gated runs are not re-queued.
+- **The road to live:** each one builds from a live config (a signal
+  exit needs `execution.allow_signal_exit`, and the regular session only),
+  replays its own history on a cold start, and so can go candidate ->
+  paper trial -> live profile through the Algorithms tab. Tests pin all
+  three.
+- **Not done:** the ⏳ entries that need data the warehouse lacks
+  (fundamentals, earnings, CPI, NAVs, quotes, breadth) or a multi-fund book
+  (allocation, rotation, lead-lag).
+- **Unmeasured:** none of these has been swept yet.
+
 ## Feat: algorithm management, and a switch that leaves the old lots selling
 
 **A finished backtest could not become a live profile from the app.** The page

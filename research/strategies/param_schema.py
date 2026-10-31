@@ -21,6 +21,15 @@ import sys
 import types
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
+from research.strategies.catalog_exposure_sizing import SIGNALS as CATALOG_SIGNALS
+from research.strategies.daily_gates import ADX_MODES
+from research.strategies.intraday_gates import (
+    NOISE_MODES,
+    RBREAKER_MODES,
+    THROTTLE_MODES,
+    VWAP_MODES,
+)
+
 # DEFAULTS FOR THE STRATEGIES THAT CANNOT BE CONSTRUCTED WITHOUT THEM.
 #
 # Only `fixed` has an all-optional constructor. Every other strategy has
@@ -356,6 +365,14 @@ STRATEGY_DEFAULTS["ultimate_ursp"] = {
     "bear_dd_full": 0.55,
 }
 
+# catalog_exposure: the constructor's defaults -- a Kalman trend on
+# Ultimate-RSP's execution. Unmeasured; a starting point, not a choice.
+STRATEGY_DEFAULTS["catalog_exposure"] = {
+    "signal": "kalman_trend",
+    "execute_minute": 60,
+    "rebalance_band": 0.05,
+}
+
 
 def required_parameters(strategy_class: type) -> list[str]:
     """Constructor arguments with no default, so a caller can be told."""
@@ -403,6 +420,14 @@ _PARAM_ENUMS: dict[str, list[str]] = {
     ],
     # research/strategies/ultimate_sizing.TURBULENT_MODES (pinned there).
     "turbulent_mode": ["reversal", "cash"],
+    # research/strategies/intraday_gates.py's mode tuples, read from there.
+    "noise_gate": list(NOISE_MODES),
+    "vwap_gate": list(VWAP_MODES),
+    "session_throttle": list(THROTTLE_MODES),
+    "rbreaker_gate": list(RBREAKER_MODES),
+    "adx_gate": list(ADX_MODES),
+    # catalog_exposure's signals (catalog_exposure_sizing.SIGNALS).
+    "signal": sorted(CATALOG_SIGNALS),
 }
 
 # Filesystem wiring the engine supplies. Never shown, never sent -- the

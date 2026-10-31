@@ -617,6 +617,7 @@ ENTRIES: tuple[Entry, ...] = (
         "Time-series momentum (TSMOM)",
         "⛔ (as published) · ⏳ (long-or-cash)",
         f"{_RC}.trend_following:tsmom_weights",
+        f"{_RS}.catalog_exposure_sizing:CatalogExposureSizing",
     ),
     _e(
         "RK2",
@@ -626,6 +627,7 @@ ENTRIES: tuple[Entry, ...] = (
         f"{_RC}.trend_following:pytrendfollow_position",
         f"{_RS}.gated_local_reference_sizing:GatedLocalReferenceSizing",
         f"{_RS}.volatility_estimators:SessionVolatility",
+        f"{_RS}.catalog_exposure_sizing:CatalogExposureSizing",
     ),
     _e("RK3", "Dual momentum (absolute + relative)", "🧪", "tools/rotation.py"),
     _e(
@@ -678,6 +680,7 @@ ENTRIES: tuple[Entry, ...] = (
         "⏳",
         f"{_RS}.natr_regime:calm_by_date",
         "tools/rotation.py",
+        f"{_RS}.catalog_exposure_sizing:CatalogExposureSizing",
     ),
     _e(
         "RK11",
@@ -703,6 +706,7 @@ ENTRIES: tuple[Entry, ...] = (
         "52-week-high momentum",
         "⏳ (long-only basket) · ⛔ (long/short)",
         f"{_RS}.ultimate_sizing:UltimateSizing",
+        f"{_RS}.catalog_exposure_sizing:CatalogExposureSizing",
     ),
     _e(
         "RK15",
@@ -891,6 +895,7 @@ ENTRIES: tuple[Entry, ...] = (
         "⏳ (long-or-cash regime) · ⛔ (stop-and-reverse)",
         f"{_RC}.technical_ml:supertrend",
         f"{_RC}.technical_ml:atr",
+        f"{_RS}.catalog_exposure_sizing:CatalogExposureSizing",
     ),
     _e(
         "RK45",
@@ -966,6 +971,7 @@ ENTRIES: tuple[Entry, ...] = (
         "⏳ (harvest gate) · ⛔ (long/short trend trade)",
         f"{_RS}.indicator_library",
         f"{_RS}.ultimate_rsp_sizing:UltimateRspSizing",
+        f"{_RS}.daily_gates:AdxTrendGate",
     ),
     _e(
         "RK56",
@@ -1023,6 +1029,7 @@ ENTRIES: tuple[Entry, ...] = (
         "Triple EMA / moving-average ribbon",
         "⏳ (as a regime) · ⛔ (as a long/short trade)",
         f"{_RS}.indicator_library",
+        f"{_RS}.catalog_exposure_sizing:CatalogExposureSizing",
     ),
     _e(
         "RK65",
@@ -1113,6 +1120,7 @@ ENTRIES: tuple[Entry, ...] = (
         "Multi-timeframe trend agreement",
         "⏳ (long-or-cash) · ⛔ (with a short side)",
         f"{_RC}.technical_ml:multi_timeframe_trend",
+        f"{_RS}.catalog_exposure_sizing:CatalogExposureSizing",
     ),
     _e(
         "RK79",
@@ -1870,6 +1878,7 @@ ENTRIES: tuple[Entry, ...] = (
         "⏳ (as a learner) · ⛔ (long-short)",
         f"{_RC}.technical_ml:random_forest_signal",
         f"{_RC}.technical_ml:lag_feature_matrix",
+        f"{_RS}.catalog_exposure_sizing:CatalogExposureSizing",
     ),
     _e(
         "RK291",
@@ -1911,6 +1920,7 @@ ENTRIES: tuple[Entry, ...] = (
         "Fractional Hurst-driven adaptive-bandwidth mean reversion",
         "🧪 (Hurst diagnostic) · ⏳ (adaptive bands)",
         f"{_RS}.mean_reversion:hurst_exponent",
+        f"{_RS}.daily_gates:HurstStep",
     ),
     _e(
         "RK298",
@@ -2031,6 +2041,7 @@ ENTRIES: tuple[Entry, ...] = (
         f"{_RC}.point_processes:detect_jumps",
         f"{_RC}.point_processes:mutually_exciting_jump_intensity",
         f"{_RC}.point_processes:fit_jump_excitation",
+        f"{_RS}.catalog_exposure_sizing:CatalogExposureSizing",
     ),
     _e(
         "RK315",

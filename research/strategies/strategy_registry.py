@@ -20,6 +20,7 @@ from engine.core.exceptions import ConfigurationError
 from research.ml.reachability_sizing import MLReachabilitySizing
 from research.ml.regime_scaled_sizing import MLRegimeScaledSizing
 from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
+from research.strategies.catalog_exposure_sizing import CatalogExposureSizing
 from research.strategies.gated_local_reference_sizing import GatedLocalReferenceSizing
 from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from research.strategies.size_calculators import (
@@ -75,6 +76,12 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     # against buy-and-hold URSP's 11.2% at 88.5%. Signal exits on (server);
     # ~300 sessions of history (warm_up). URSP only.
     "ultimate_ursp": UltimateUrspSizing,
+    # The research catalog's single-fund long-or-cash signals (Kalman, l1 and
+    # spectral trend, KAMA, Supertrend, MACD, PSAR, TSMOM, tail-risk budgets,
+    # ...: catalog_exposure_sizing.SIGNALS) on Ultimate-RSP's exposure book,
+    # one signal per run by `signal`. UNMEASURED: none has been swept on this
+    # platform's funds. Signal exits on (server), like the book it reuses.
+    "catalog_exposure": CatalogExposureSizing,
     # Three ids, one class: MLReachabilitySizing takes `ticker` as a
     # constructor kwarg, and each id's STRATEGY_DEFAULTS entry
     # (server/backtest.py) supplies a different one. The sizing-model
@@ -124,12 +131,14 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
 # design was measured with; without the flag those lots ride the downturn
 # and the run is a different, unresearched strategy. UltimateRspSizing's
 # only exit is one: it moves to a daily exposure target by selling whole
-# lots -- and so is UltimateUrspSizing's.
+# lots -- and so are UltimateUrspSizing's and CatalogExposureSizing's.
 #
 # server/backtest.py turns the flag on for these ids (it never trades).
 # A live deployment must set it in its own file:
 # research/strategies/live_algorithm.py refuses to start one without it.
-SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset({"ultimate", "ultimate_rsp", "ultimate_ursp"})
+SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset(
+    {"ultimate", "ultimate_rsp", "ultimate_ursp", "catalog_exposure"}
+)
 
 
 def session_bars(strategy_class: type, bars):
