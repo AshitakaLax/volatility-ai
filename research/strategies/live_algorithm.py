@@ -135,6 +135,12 @@ def check_live_support(config: BacktestConfig, strategy: Any) -> None:
     from research.strategies.strategy_registry import SIGNAL_EXIT_STRATEGIES
 
     strategy_id = config.strategy.strategy_id
+    if getattr(strategy, "can_realize_loss", False) and not config.execution.allow_signal_exit:
+        raise ConfigurationError(
+            f"{strategy_id}'s sell policy may sell below cost (a signal exit). Set "
+            "execution.allow_signal_exit: true in this deployment's config to trade it -- "
+            "that is the file's decision, never the page's."
+        )
     if strategy_id in SIGNAL_EXIT_STRATEGIES and not config.execution.allow_signal_exit:
         raise ConfigurationError(
             f"{strategy_id} was researched with its signal exit (for ultimate, the regime "
@@ -634,12 +640,12 @@ def impact(current: dict, change: dict, lots: list[dict], legacy_lots: str = "ke
     cost; "wait" is a switch made when flat.
     """
     from engine.core.ledger import EXIT_AT_COST_TARGET
-    from research.strategies.strategy_registry import SIGNAL_EXIT_STRATEGIES
+    from research.strategies.strategy_registry import may_realize_loss
 
     count = len(lots)
     target = change.get("profit_target")
-    exit_before = current.get("strategy_id") in SIGNAL_EXIT_STRATEGIES
-    exit_after = change.get("strategy_id") in SIGNAL_EXIT_STRATEGIES
+    exit_before = may_realize_loss(current.get("strategy_id") or "", current.get("strategy_params"))
+    exit_after = may_realize_loss(change.get("strategy_id") or "", change.get("strategy_params"))
     notes = []
     if count and legacy_lots == "keep":
         notes.append(

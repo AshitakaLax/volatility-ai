@@ -529,7 +529,9 @@ export interface FillsPage<Row = Fill> {
 export interface Param {
   /** Constructor keyword -- the exact key put in `params`. */
   name: string;
-  type: "float" | "int" | "bool" | "str";
+  /** "object": a nested {id, params} component -- composed's buy and sell
+   * (research/composition/), edited by the composition editor, not a field. */
+  type: "float" | "int" | "bool" | "str" | "object";
   /** The bare constructor default; null when required or when it is None. */
   default: ParamValue | null;
   /** The committed value the field is seeded to and "reset" restores. */
@@ -591,13 +593,16 @@ export interface ParamSpec {
  *                    capitulation-close reversal entry. Always locked.
  *   exposure_target  not a grid: buys once a session, at a set minute, up
  *                    to a daily exposure target. Always locked.
+ *   buy_policy       composed's: whatever its BUY policy's own trigger is.
+ *                    Always locked.
  */
 export type TriggerMethod =
   | "last_buy"
   | "local_reference"
   | "regime_widened"
   | "regime_switched"
-  | "exposure_target";
+  | "exposure_target"
+  | "buy_policy";
 
 export interface Trigger {
   /** Display order; [0] is the default; a single entry is locked. */

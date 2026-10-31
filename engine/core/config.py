@@ -366,18 +366,29 @@ def expand_strategy_params(strategy_params: dict) -> list[dict]:
     but not from a config file, which is where sweeps are actually
     defined.
 
-    Scalars pass through untouched, so existing configs produce exactly
-    one combination and are bit-identical to before.
-
     A list is ALWAYS a sweep axis here, never a literal value. That is a
     real constraint: a strategy taking a genuine list argument cannot
     express it in YAML. No current strategy does, and the alternative
     (a sentinel wrapper key) would add ceremony to every ordinary config
     to serve a case that does not exist yet.
+
+    COMPONENTS. A value shaped `{id: <name>, params: {...}}` -- one half
+    of a composed strategy, say (research/composition/) -- is a component:
+    the lists inside its params are swept too, and a LIST of components
+    sweeps over them. Each becomes one axis of concrete `{id, params}`
+    values, so `buy: [A, B]` x `sell: {id: C, params: {x: [1, 2]}}` is the
+    four buy x sell cells. Nothing here knows what a component means.
+
+    Scalars pass through untouched, so existing configs produce exactly
+    one combination and are bit-identical to before.
     """
     if not strategy_params:
         return [{}]
 
+    strategy_params = {
+        key: (expand_component(value, key) if _is_component_axis(value) else value)
+        for key, value in strategy_params.items()
+    }
     swept = {k: v for k, v in strategy_params.items() if isinstance(v, list)}
     if not swept:
         return [dict(strategy_params)]
@@ -397,6 +408,39 @@ def expand_strategy_params(strategy_params: dict) -> list[dict]:
         combo.update(dict(zip(keys, values, strict=True)))
         combinations.append(combo)
     return combinations
+
+
+def _is_component(value) -> bool:
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("id"), str)
+        and set(value) <= {"id", "params"}
+        and isinstance(value.get("params", {}), dict)
+    )
+
+
+def _is_component_axis(value) -> bool:
+    if _is_component(value):
+        return True
+    return isinstance(value, list) and bool(value) and all(_is_component(v) for v in value)
+
+
+def expand_component(value, key: str = "component") -> list[dict]:
+    """A component, or a list of them, as every concrete `{id, params}` it
+    sweeps (see expand_strategy_params). Always a list, so the caller's
+    product treats it as one axis even when it holds a single value."""
+    out: list[dict] = []
+    for component in value if isinstance(value, list) else [value]:
+        params = dict(component.get("params") or {})
+        for name, values in params.items():
+            if isinstance(values, list) and not values:
+                raise ConfigurationError(
+                    f"strategy_params[{key!r}] {component['id']}.{name} is an empty list -- it "
+                    "would produce zero combinations and silently sweep nothing."
+                )
+        for concrete in expand_strategy_params(params):
+            out.append({"id": component["id"], "params": concrete})
+    return out
 
 
 def _as_account_tuple(value) -> tuple:

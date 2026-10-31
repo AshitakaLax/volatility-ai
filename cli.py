@@ -352,7 +352,9 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         return 2
     from research.strategies.strategy_registry import session_bars
 
-    df = _apply_backtest_window(session_bars(strategy_class, df), config)
+    df = _apply_backtest_window(
+        session_bars(strategy_class, df, config.strategy.strategy_params), config
+    )
 
     from research.optimization.optimization_controller import OptimizationController
 

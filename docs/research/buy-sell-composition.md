@@ -367,6 +367,20 @@ Phase 7 can start once Phase 2 lands, in parallel with 3 to 6.
   extended-hours one is refused or floored as Design §4 says.
 
 ### Phase 2: Composition layer
+
+**Status: done.** As built:
+- `research/composition/entries.py` (buy policies), `exits.py` (`ExitPolicy`, `fixed_target`, `trailing`),
+  `composed_strategy.py`. A buy policy is the registered strategy itself, constructed with its params, of which
+  only the buy side is called; selling params (`trail_pct`) are refused there. Buy ids so far: `fixed`, `rsi`,
+  `bell_curve`, `hf_local_reference`, `hf_entry_gated`, `hf_signal_gated` and every `rk*` library id.
+- Nested sweeps live in `engine/core/config.expand_strategy_params`, generically: any `{id, params}` value is a
+  component whose params' lists are swept, and a list of components sweeps over them. The engine knows nothing
+  about what a component is.
+- `strategy_registry.may_realize_loss(id, params)` and `regular_session_only(cls, params)` answer for a
+  composition from its parts; the server's backtests, the live checks and `session_bars` ask them.
+- Parameters typed `dict` are served as `"object"`, and composed's trigger as `"buy_policy"`; both are in
+  `web/src/types/backtest.ts`. The composition editor itself is Phase 7.
+
 - `research/composition/` as in Design §2, with `fixed_target` and `trailing` exits and entry adapters for
   `fixed`, `hf_local_reference`, `hf_entry_gated`, `LibrarySizing`.
 - `config.expand_strategy_params` nested expansion; `param_schema.describe_params` describes `composed` as two
