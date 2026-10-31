@@ -772,7 +772,9 @@ def algorithm_summary(algorithm: dict, symbol: str | None = None) -> str:
         from research.composition.exits import EXITS
 
         policy = EXITS.get(sell_id)
-        risky = " -- it may sell below cost" if policy is not None and policy.can_realize_loss else ""
+        risky = (
+            " -- it may sell below cost" if policy is not None and policy.can_realize_loss else ""
+        )
         return (
             f"buys as {buy_id} does (step {_percent(step)}), and sells as {sell_id} does"
             f"{risky}; lots are bought with a +{_percent(target)} target the sell policy may move"
