@@ -146,11 +146,9 @@ class Cell:
 
 
 def _defaults(side: str, policy_id: str) -> dict:
-    from research.composition import entries, exits
+    from research.composition.catalog import defaults_for
 
-    if side == "buys":
-        return entries.entry_defaults(policy_id)
-    return dict(exits.EXIT_DEFAULTS.get(policy_id, {}))
+    return defaults_for("buy" if side == "buys" else "sell", policy_id)
 
 
 def _group(components: Iterable[dict], side: str) -> dict[str, tuple[dict, ...]]:

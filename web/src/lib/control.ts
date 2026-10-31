@@ -7,6 +7,7 @@
  * exist so the page offers what will be accepted and says why the rest is
  * not, rather than letting a click find out.
  */
+import { composedNames, paramText } from "@/lib/composition";
 import { usd } from "@/lib/utils";
 import type {
   Algorithm,
@@ -279,8 +280,12 @@ function fraction(value: number | null | undefined): string {
 }
 
 /** "ultimate · step 0.075% · target 30%" */
-export function algorithmLabel(a: Pick<Algorithm, "strategy_id" | "step" | "profit_target">): string {
-  return `${a.strategy_id} · step ${fraction(a.step)} · target ${fraction(a.profit_target)}`;
+export function algorithmLabel(
+  a: Pick<Algorithm, "strategy_id" | "step" | "profit_target"> & Partial<Pick<Algorithm, "strategy_params">>,
+): string {
+  const names = a.strategy_id === "composed" ? composedNames(a.strategy_params) : null;
+  const what = names ? `buy ${names.buy} · sell ${names.sell}` : a.strategy_id;
+  return `${what} · step ${fraction(a.step)} · target ${fraction(a.profit_target)}`;
 }
 
 export interface AlgorithmDiff {
@@ -308,11 +313,12 @@ export function diffAlgorithms(from: Algorithm, to: Algorithm): AlgorithmDiff[] 
   for (const name of [...names].sort()) {
     const before = from.strategy_params[name];
     const after = to.strategy_params[name];
-    if (String(before) !== String(after)) {
+    // paramText, not String: a composed algorithm's buy/sell are objects.
+    if (paramText(before) !== paramText(after)) {
       out.push({
         field: name,
-        from: before === undefined ? "--" : String(before),
-        to: after === undefined ? "--" : String(after),
+        from: before === undefined ? "--" : paramText(before),
+        to: after === undefined ? "--" : paramText(after),
       });
     }
   }

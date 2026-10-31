@@ -18,7 +18,13 @@
  */
 
 /** A concrete parameter value. `null` is never sent -- blank is omitted. */
-export type ParamValue = number | string | boolean;
+/** One half of a composed strategy (research/composition/): a buy or sell
+ * policy by id, with its own parameters. */
+export interface ComponentValue {
+  id: string;
+  params?: Record<string, number | string | boolean | null>;
+}
+export type ParamValue = number | string | boolean | ComponentValue;
 export type Params = Record<string, ParamValue>;
 /** A list value is a SWEPT argument (server-side expand_strategy_params). */
 export type SweptParams = Record<string, ParamValue | ParamValue[]>;
@@ -624,6 +630,24 @@ export interface Catalog {
    * named (`cli.py fetch-data`). */
   funds: { ticker: string; path: string; ok: boolean }[];
   models: Record<string, { params: Param[]; trigger: Trigger }>;
+  /** The buy and sell policies the `composed` model is built from
+   * (research/composition/catalog.py). */
+  composition?: Composition;
+}
+
+/** A sell policy as the form lists it. `loss`: it may sell below cost (a
+ * signal exit, behind execution.allow_signal_exit) -- shown by default,
+ * marked. `partial`: it sells lots in parts. */
+export interface SellPolicy {
+  label?: string;
+  params: Param[];
+  loss?: boolean;
+  partial?: boolean;
+}
+
+export interface Composition {
+  buys: Record<string, { params: Param[] }>;
+  sells: Record<string, SellPolicy>;
 }
 
 /** One OHLCV bar: epoch seconds, open, high, low, close, volume. */

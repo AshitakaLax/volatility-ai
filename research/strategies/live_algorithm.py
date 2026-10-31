@@ -447,6 +447,8 @@ class AlgorithmControl:
             except Exception:
                 params = []
             strategies.append({"id": strategy_id, "params": params})
+        from research.composition.catalog import catalog
+
         return {
             "editable": self._allowed,
             "reason": None
@@ -463,6 +465,8 @@ class AlgorithmControl:
             "changedAt": override.get("changedAt") if override is not None else None,
             "pending": self.pending(),
             "strategies": strategies,
+            # The buy and sell policies a `composed` algorithm is built from.
+            "composition": catalog(),
         }
 
     def set(
@@ -542,6 +546,19 @@ class AlgorithmControl:
             raise ConfigurationError("strategy_params must be an object of at most 64 values.")
         step = _fraction(args.get("step"), "step")
         profit_target = _fraction(args.get("profit_target"), "profit_target")
+
+        if strategy_id == "composed":
+            # A buy and a sell policy, each checked against its own schema
+            # (research/composition/catalog.py), so a bad nested value is
+            # refused by name rather than as an unknown parameter.
+            from research.composition.catalog import parse_change
+
+            return {
+                "strategy_id": strategy_id,
+                "strategy_params": parse_change(params, _param_value, _OMIT, profit_target),
+                "step": step,
+                "profit_target": profit_target,
+            }
 
         schema = {
             spec["name"]: spec for spec in describe_params(strategy_id, self._registry[strategy_id])
@@ -748,6 +765,18 @@ def algorithm_summary(algorithm: dict, symbol: str | None = None) -> str:
         if isinstance(target, int | float) and target >= _OUT_OF_REACH:
             text += f" (the lots' +{_percent(target)} target is out of reach on purpose)"
         return text
+    if strategy_id == "composed":
+        buy, sell = params.get("buy") or {}, params.get("sell") or {}
+        buy_id = buy.get("id", "?") if isinstance(buy, dict) else "?"
+        sell_id = sell.get("id", "?") if isinstance(sell, dict) else "?"
+        from research.composition.exits import EXITS
+
+        policy = EXITS.get(sell_id)
+        risky = " -- it may sell below cost" if policy is not None and policy.can_realize_loss else ""
+        return (
+            f"buys as {buy_id} does (step {_percent(step)}), and sells as {sell_id} does"
+            f"{risky}; lots are bought with a +{_percent(target)} target the sell policy may move"
+        )
     if strategy_id == "ultimate":
         minute = _param(strategy_id, params, "liquidate_minute")
         return (

@@ -1,3 +1,4 @@
+import { paramText } from "@/lib/composition";
 import { ListTree } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
@@ -22,7 +23,7 @@ interface Props {
 function formatAxisValues(axis: SweepAxis): string {
   const isPercentAxis = axis.key === "grid_step" || axis.key === "profit_target";
   const format = (value: SweepAxis["values"][number]): string =>
-    isPercentAxis && typeof value === "number" ? `${(value * 100).toFixed(2)}%` : String(value);
+    isPercentAxis && typeof value === "number" ? `${(value * 100).toFixed(2)}%` : paramText(value);
   // A long axis reads better as a range than a wall of numbers; a short
   // one is more informative listed out in full.
   if (axis.values.length > 6) {

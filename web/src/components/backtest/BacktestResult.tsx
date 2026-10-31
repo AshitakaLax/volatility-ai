@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { BacktestChart } from "@/components/backtest/BacktestChart";
+import { CompositionMatrix } from "@/components/backtest/CompositionMatrix";
 import { ConfigurationList } from "@/components/backtest/ConfigurationList";
 import { FilterPanel } from "@/components/backtest/FilterPanel";
 import { FundComparison } from "@/components/backtest/FundComparison";
@@ -260,6 +261,10 @@ export function BacktestResult({
       ) : null}
 
       {showSweepDetails ? <SweepSummary configurations={configurations} /> : null}
+
+      {report.model === "composed" && showSweepDetails ? (
+        <CompositionMatrix configurations={configurations} />
+      ) : null}
 
       <SweepMatrix
         funds={report.funds}

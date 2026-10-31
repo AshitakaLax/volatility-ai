@@ -55,6 +55,8 @@ from pydantic import BaseModel, Field, model_validator
 from engine.core.config import BacktestConfig, expand_strategy_params
 from engine.core.exceptions import ConfigurationError
 from engine.warehouse.bars import available_tickers, load_frame
+from research.composition.catalog import catalog as composition_catalog
+from research.composition.catalog import with_defaults as composition_with_defaults
 from research.optimization.optimization_controller import OptimizationController
 from research.optimization.search_strategies import BayesianSearch, GridSearch, SearchStrategy
 from research.strategies.natr_regime import daily_bars
@@ -561,6 +563,11 @@ def resolve_params(request: RunRequest) -> dict[str, Any]:
     configuration they did not ask for.
     """
     if request.params:
+        if request.model == "composed":
+            # One level down, the same rule: a buy or sell policy named with
+            # no parameters takes its committed defaults; one given any is
+            # used exactly as given.
+            return composition_with_defaults(dict(request.params), merge=False)
         return dict(request.params)
     return dict(STRATEGY_DEFAULTS.get(request.model, {}))
 
@@ -1464,6 +1471,11 @@ def funds() -> dict[str, Any]:
             }
             for name, cls in sorted(STRATEGIES.items())
         },
+        # The buy and sell policies the `composed` model is built from
+        # (research/composition/catalog.py): each policy's params in the same
+        # shape as a model's, and a sell policy's `loss` flag (it may sell
+        # below cost) for the form to mark.
+        "composition": composition_catalog(),
     }
 
 

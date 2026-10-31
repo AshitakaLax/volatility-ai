@@ -541,6 +541,27 @@ For each track, metric (Total Return %, Calmar; **not** Capital Velocity Index, 
 Output: `docs/research/buy-sell-matrix-results.md` with the heatmaps, the decomposition tables and the year tables.
 
 ### Phase 7: The web pipeline for composites
+
+**Status: done**, all five steps, each with its contract on both sides:
+1. **Catalogue and recursive validation.** `research/composition/catalog.py` is served as `composition` by
+   `/api/backtest/funds`, by the live `/algorithm` route and by `AlgorithmControl.describe`. A composed change is
+   validated component by component, so a bad value is refused by name (`buy.params.per_lot_pct`). A policy named
+   with no params takes its committed defaults; one given any is used as given.
+2. **Backtest form.** Choosing `composed` shows a buy column and a sell column, each filterable, with each chosen
+   policy's parameters. Several on either side make the matrix one run. Loss-capable sells carry a "may sell
+   below cost" badge, and choosing one shows a warning; partial sells are tagged.
+3. **Result heatmap** (`CompositionMatrix`): each buy × sell pairing's best configuration on a chosen metric, with
+   loss-capable columns marked.
+4. **Algorithms tab.** A composed candidate is named and labelled for its halves and carries
+   `composition: {buy, sell, loss}`. Trials are offered only where the paper deployment's own
+   `AlgorithmControl.check` passes; `paper_refused` gives each refusal's reason (for example
+   `execution.allow_signal_exit`). A composed trial queues the composed switch.
+5. **Live switch form** (`AlgorithmPanel`): the same editor in single mode (one buy, one sell), seeded from the
+   composition in force.
+
+Real money is unchanged: committed, promoted profiles only. A composed profile is just `strategy_id: composed`.
+Not done: the per-year table in the web result, which is the matrix report's job (`cli.py matrix`).
+
 Design §7, in this order, each step its own PR with its contract change made on both sides:
 
 1. Catalogue endpoint (`entry_policies`, `exit_policies`) and recursive `AlgorithmControl._parse`. Backend only;

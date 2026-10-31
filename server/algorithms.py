@@ -31,6 +31,7 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from engine.core.exceptions import ConfigurationError
 from engine.promotion_record import build_record, evaluate
 from research.strategies import live_profiles
 from server import history, live_control, live_registry
@@ -112,16 +113,50 @@ def _stage(candidate: dict[str, Any]) -> str:
     return "candidate"
 
 
+def _change(candidate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "strategy_id": candidate["strategy_id"],
+        "strategy_params": candidate["strategy_params"],
+        "step": candidate["step"],
+        "profit_target": candidate["profit_target"],
+    }
+
+
 def _wire(candidate: dict[str, Any]) -> dict[str, Any]:
+    """The candidate, its stage, and the paper deployments that would take it.
+
+    "Would take it" is the TRADER's own check (AlgorithmControl.check, as
+    live_control dry-runs a switch), not the fund alone: a composite whose
+    sell policy may sell below cost needs execution.allow_signal_exit in the
+    deployment's file, a regular-session buyer refuses extended hours, and
+    the page cannot change either. A paper deployment on the right fund that
+    refuses it is listed under `paper_refused` with the trader's reason."""
     symbol = candidate["symbols"][0]
-    fits = []
+    fits, refused = [], []
     for deployment in live_registry.registry().values():
         try:
-            if deployment.paper and deployment.config().backtest.symbol == symbol:
-                fits.append(deployment.id)
+            if not deployment.paper or deployment.config().backtest.symbol != symbol:
+                continue
+            live_control.algorithm_control(deployment).check(_change(candidate))
+        except ConfigurationError as exc:
+            refused.append({"deployment": deployment.id, "reason": str(exc)})
+            continue
         except Exception:  # a deployment whose config is missing fits nothing
             continue
-    return {**candidate, "stage": _stage(candidate), "paper_deployments": fits}
+        fits.append(deployment.id)
+    return {
+        **candidate,
+        "stage": _stage(candidate),
+        "paper_deployments": fits,
+        **({"paper_refused": refused} if refused else {}),
+    }
+
+
+def _composed_names(cell_params: dict[str, Any]) -> tuple[str, str] | None:
+    buy, sell = cell_params.get("buy"), cell_params.get("sell")
+    if isinstance(buy, dict) and isinstance(sell, dict):
+        return str(buy.get("id")), str(sell.get("id"))
+    return None
 
 
 # -- candidates ------------------------------------------------------------------------
@@ -151,14 +186,24 @@ def add_candidate(body: CandidateRequest) -> dict[str, Any]:
     cell = fund["cells"][body.cell]
     model = str(summary.get("model") or "")
     metrics = cell.get("m") or {}
-    candidate_id = _slug(f"{model}-{body.ticker}-{body.run[:6]}-{body.cell}")[:60].strip("-")
+    names = _composed_names(cell.get("params") or {}) if model == "composed" else None
+    stem = f"{names[0]}-x-{names[1]}" if names else model
+    candidate_id = _slug(f"{stem}-{body.ticker}-{body.run[:6]}-{body.cell}")[:60].strip("-")
     if not model or not _ID.match(candidate_id):
         raise HTTPException(status_code=422, detail="This run has no usable strategy id.")
     if _candidate_path(candidate_id).exists():
         raise HTTPException(status_code=409, detail=f"{candidate_id} is already a candidate.")
+    if names:
+        from research.strategies.strategy_registry import may_realize_loss
+
+        loss = may_realize_loss("composed", cell.get("params") or {})
     candidate = {
         "id": candidate_id,
-        "label": f"{model} on {body.ticker} (backtest {body.run})",
+        "label": (
+            f"{names[0]} buying, {names[1]} selling, on {body.ticker} (backtest {body.run})"
+            if names
+            else f"{model} on {body.ticker} (backtest {body.run})"
+        ),
         "symbols": [body.ticker.upper()],
         "strategy_id": model,
         "strategy_params": dict(cell.get("params") or {}),
@@ -183,6 +228,7 @@ def add_candidate(body: CandidateRequest) -> dict[str, Any]:
                 f"{(fund.get('bars') or {}).get('end')}",
             }
         },
+        **({"composition": {"buy": names[0], "sell": names[1], "loss": loss}} if names else {}),
         "created_at": _now(),
         "created_by": body.operator,
         "trial": None,

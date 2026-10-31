@@ -655,7 +655,9 @@ def _resolve_hints(func: object) -> dict[str, object]:
     return resolved
 
 
-def describe_params(strategy_id: str, strategy_class: type) -> list[dict[str, Any]]:
+def describe_params(
+    strategy_id: str, strategy_class: type, committed: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """Every constructor argument of one strategy, in constructor order.
 
     Served by ``/funds`` so the frontend carries no idea of its own about
@@ -664,7 +666,8 @@ def describe_params(strategy_id: str, strategy_class: type) -> list[dict[str, An
     """
     signature = inspect.signature(strategy_class.__init__)
     hints = _resolve_hints(strategy_class.__init__)
-    committed = STRATEGY_DEFAULTS.get(strategy_id, {})
+    if committed is None:
+        committed = STRATEGY_DEFAULTS.get(strategy_id, {})
     required = set(required_parameters(strategy_class))
 
     out: list[dict[str, Any]] = []

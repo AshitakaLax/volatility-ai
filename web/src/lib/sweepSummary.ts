@@ -6,6 +6,7 @@
  * logic behind BacktestResult's sweep-summary section and configuration
  * list, covered in sweepSummary.test.ts.
  */
+import { paramText } from "@/lib/composition";
 import type { Cell, ParamValue } from "@/types/backtest";
 
 function sortedParamEntries(params: Cell["params"]): [string, ParamValue][] {
@@ -61,7 +62,7 @@ export function configurationLabel(config: Cell): string {
   const base = `step ${((config.grid ?? 0) * 100).toFixed(2)}% · target ${((config.target ?? 0) * 100).toFixed(2)}%`;
   const entries = sortedParamEntries(config.params);
   if (entries.length === 0) return base;
-  return `${base} · ${entries.map(([key, value]) => `${key}=${value}`).join(", ")}`;
+  return `${base} · ${entries.map(([key, value]) => `${key}=${paramText(value)}`).join(", ")}`;
 }
 
 export interface SweepAxis {
@@ -85,9 +86,16 @@ export interface SweepSummary {
  * to this file's completed-report one) can reuse it rather than
  * redefine it -- both answer "what varied," just from different shapes. */
 export function distinct<T extends ParamValue>(values: T[]): T[] {
+  // By text, not identity: a composed run's components arrive as separate
+  // objects from JSON, and two equal ones are one value.
   const seen: T[] = [];
+  const keys = new Set<string>();
   for (const value of values) {
-    if (!seen.includes(value)) seen.push(value);
+    const key = typeof value === "object" ? paramText(value) : `${typeof value}:${String(value)}`;
+    if (!keys.has(key)) {
+      keys.add(key);
+      seen.push(value);
+    }
   }
   return seen;
 }
@@ -97,7 +105,7 @@ export function sortValues(values: ParamValue[]): ParamValue[] {
   if (values.every((value) => typeof value === "number")) {
     return [...(values as number[])].sort((a, b) => a - b);
   }
-  return [...values].sort((a, b) => String(a).localeCompare(String(b)));
+  return [...values].sort((a, b) => paramText(a).localeCompare(paramText(b)));
 }
 
 /**

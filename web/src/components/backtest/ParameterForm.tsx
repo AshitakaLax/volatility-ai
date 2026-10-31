@@ -1,6 +1,7 @@
 import { AlertCircle, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { CompositionEditor } from "@/components/backtest/CompositionEditor";
 import { GridStepPanel } from "@/components/backtest/GridStepPanel";
 import { OptionsSweepField } from "@/components/backtest/OptionsSweepField";
 import { ParamField } from "@/components/backtest/ParamField";
@@ -9,6 +10,13 @@ import { SweepableParamField } from "@/components/backtest/SweepableParamField";
 import { SweepControls } from "@/components/backtest/SweepControls";
 import { api } from "@/lib/api";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Field, Input, Select } from "@/components/ui/primitives";
+import {
+  cellCount,
+  COMPOSED_MODEL,
+  composedParams,
+  initialState,
+  type CompositionState,
+} from "@/lib/composition";
 import { buildGridSteps } from "@/lib/gridSteps";
 import { isRunning } from "@/lib/runQueue";
 import { GENERIC_TRIGGER, initialTriggerMethod, usesWindow } from "@/lib/gridTrigger";
@@ -29,6 +37,7 @@ import {
 import type { Batch } from "@/hooks/useBacktestRun";
 import type {
   Catalog,
+  Composition,
   DateRange,
   ParamSpec,
   Run,
@@ -101,6 +110,10 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
   const [funds, setFunds] = useState<Catalog["funds"]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [paramSpecs, setParamSpecs] = useState<Record<string, ParamSpec[]>>({});
+  // The `composed` model's buy and sell policies (Catalog.composition), and
+  // which are chosen -- its editor replaces the flat parameter fields.
+  const [composition, setComposition] = useState<Composition | undefined>(undefined);
+  const [compState, setCompState] = useState<CompositionState>({ buys: [], sells: [] });
   const [gridTriggerMap, setGridTriggerMap] = useState<Record<string, Trigger>>({});
   const [tickers, setTickers] = useState<string[]>(["TQQQ"]);
   const [name, setName] = useState("");
@@ -157,7 +170,10 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
   const [validation, setValidation] = useState<Validation | null>(null);
   const validateSeq = useRef(0);
 
-  const specs = useMemo(() => paramSpecs[model] ?? [], [paramSpecs, model]);
+  const composed = model === COMPOSED_MODEL;
+  // composed's own two params (buy, sell) are objects the editor builds; the
+  // flat field machinery below never sees them.
+  const specs = useMemo(() => (composed ? [] : (paramSpecs[model] ?? [])), [paramSpecs, model, composed]);
 
   // Grid-step trigger method for the current model. `method` is the
   // EFFECTIVE choice -- forced to the only option when the model has no
@@ -234,6 +250,7 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
   // 1 for a param with no valid sweep yet -- the combinations estimate
   // stays a lower bound rather than momentarily reading 0.
   const totalCombinations =
+    (composed ? Math.max(1, cellCount(compState)) : 1) *
     Math.max(1, gridSteps.steps.length) *
     Math.max(1, profitSteps.steps.length) *
     paramSweepResults.reduce((product, result) => product * Math.max(1, result.values.length), 1) *
@@ -252,6 +269,8 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
         const ids = Object.keys(body.models).sort();
         setFunds(body.funds);
         setModels(ids);
+        setComposition(body.composition);
+        setCompState(initialState(body.composition));
         // The wire omits what the form derives (group, step, sweepable,
         // ...); paramSpec fills it in once, here.
         setParamSpecs(
@@ -372,7 +391,9 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
     // for exactly which are included. A sweepable field with its
     // checkbox on is sent as a list; a no-edit, no-sweep submit
     // reproduces the model's committed defaults byte-for-byte.
-    params: buildStrategyParams(specs, paramValues, sweepFields, optionSweepFields),
+    params: composed
+      ? composedParams(compState, composition)
+      : buildStrategyParams(specs, paramValues, sweepFields, optionSweepFields),
     limit,
     // Blank or unparsable -> omitted, falling back to the server's own
     // default (ExecutionConfig.cash_yield_pct) rather than sending a
@@ -406,6 +427,7 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
   const sweepFieldsKey = JSON.stringify(sweepFields);
   const optionSweepFieldsKey = JSON.stringify(optionSweepFields);
   const searchMethodKey = JSON.stringify(searchMethod);
+  const compositionKey = JSON.stringify(compState);
   useEffect(() => {
     const request = buildRequest();
     const seq = ++validateSeq.current;
@@ -443,6 +465,7 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
     sweepFieldsKey,
     optionSweepFieldsKey,
     searchMethodKey,
+    compositionKey,
   ]);
 
   const setParam = (paramName: string, value: string) =>
@@ -501,6 +524,10 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
     [...primary, ...(showAdvanced ? advanced : [])].map((spec) => spec.name),
   );
   if (usesWindow(method) && windowParam) renderedFields.add(windowParam);
+  if (composed) {
+    renderedFields.add("buy"); // shown in the composition editor's columns
+    renderedFields.add("sell");
+  }
   const bannerErrors = (validation?.errors ?? []).filter(
     (entry) => entry.field === undefined || !renderedFields.has(entry.field),
   );
@@ -742,6 +769,7 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
           disabled={
             busy ||
             tickers.length === 0 ||
+            (composed && cellCount(compState) === 0) ||
             blanks.length > 0 ||
             (validation?.errors.length ?? 0) > 0 ||
             sweepErrors.length > 0 ||
@@ -761,6 +789,26 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
             A previous sweep is still processing — this one will queue behind it. See Active
             runs below for the queue.
           </p>
+        </CardContent>
+      ) : null}
+
+      {composed && composition ? (
+        <CardContent className="flex flex-col gap-3 pt-0">
+          <CompositionEditor
+            composition={composition}
+            state={compState}
+            onChange={setCompState}
+            errors={validation?.errors ?? []}
+            disabled={busy}
+          />
+          {totalCombinations > 1 ? (
+            <p className="text-[11px] leading-tight text-muted-foreground">
+              {totalCombinations} configurations: the pairings × every grid step and target
+              {totalCombinations > combinationCeiling
+                ? ` — too many for one submission, so it will run as ~${Math.ceil(totalCombinations / combinationCeiling)} separate runs grouped together.`
+                : "."}
+            </p>
+          ) : null}
         </CardContent>
       ) : null}
 

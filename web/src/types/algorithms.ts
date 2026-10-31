@@ -47,8 +47,13 @@ export interface Candidate {
   promotion: Promotion | null;
   published?: { at: string; by: string };
   stage: AlgorithmStage;
-  /** Paper deployments trading its fund. */
+  /** Paper deployments whose trader would take it (its own check, not the fund alone). */
   paper_deployments: string[];
+  /** Paper deployments on its fund that would refuse it, with the trader's reason
+   * (e.g. a sell that may sell below cost needs execution.allow_signal_exit). */
+  paper_refused?: { deployment: string; reason: string }[];
+  /** A composed candidate's halves; `loss` when its sell may sell below cost. */
+  composition?: { buy: string; sell: string; loss: boolean };
 }
 
 export interface AlgorithmLibrary {

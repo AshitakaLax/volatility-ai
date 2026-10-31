@@ -8,7 +8,7 @@
  * and its LEDGER is read mode=ro. A command is an intent the trader applies
  * between ticks or between sessions; its own `status` says when it has.
  */
-import type { Param, ParamValue } from "@/types/backtest";
+import type { Composition, Param, ParamValue } from "@/types/backtest";
 import type { LiveState } from "@/types/telemetry";
 
 /** What a deployment's trader is doing, as one chip. */
@@ -557,6 +557,8 @@ export interface AlgorithmView {
   pending: boolean;
   profiles: ProfileRow[];
   strategies: StrategyRow[];
+  /** The buy and sell policies a `composed` algorithm is built from. */
+  composition?: Composition;
 }
 
 /** What a switch does to the open book. Lots keep the targets they were
