@@ -30,6 +30,7 @@ buy x sell matrix's cells comparable.
 from __future__ import annotations
 
 import copy
+import functools
 from typing import Any
 
 from engine.core.exceptions import ConfigurationError
@@ -50,6 +51,11 @@ def _component(raw: Any, side: str) -> tuple[str, dict]:
     if not isinstance(params, dict):
         raise ConfigurationError(f"composed: `{side}.params` must be a mapping")
     return raw["id"], dict(params)
+
+
+def _tell_sides(sides: list, /) -> None:
+    for side in sides:
+        side.decision_not_sent()
 
 
 class ComposedStrategy(SizingStrategy):
@@ -95,11 +101,9 @@ class ComposedStrategy(SizingStrategy):
         if told:
             # Both sides may hold this bar's decision (an exposure book's
             # rebalance lives on whichever side acts on it).
-            def decision_not_sent() -> None:
-                for side in told:
-                    side.decision_not_sent()
-
-            self.decision_not_sent = decision_not_sent
+            # A partial of a module-level function, not a closure: a sweep
+            # pickles the strategy to its worker processes.
+            self.decision_not_sent = functools.partial(_tell_sides, told)
 
     # -- what the composition is, for the server and the web -------------------
 

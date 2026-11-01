@@ -179,6 +179,17 @@ and a live deployment of them would read stale files.
 | pessimism | date, pessimism | `rk293_sentiment` |
 | news scores | date, score | `rk311_event_sentiment` |
 
+**What this blocks today (measured Nov 1, 2026).** The composed buy x sell sweep
+(`tools/sweep_composed.py`) leaves out seven buy policies, because every
+configuration of each errors with "reads data the warehouse does not hold":
+`rk168_vix_term`, `rk204_lead_lag`, `rk212_breadth_thrust`,
+`rk217_causal_impact`, `rk221_transfer_entropy`, `rk293_sentiment` and
+`rk311_event_sentiment`. They are listed in that tool's `SKIP_BUYS`, so they
+are missing from every fund's buy x sell comparison until their series are
+in the warehouse. Delivery order for the sweep: VIX/VIX3M, leader closes
+(also feeds transfer entropy), breadth, then the macro-events, pessimism and
+news-score series.
+
 **Work.**
 1. **Point-in-time tables.**
    - Add `fundamentals`, `corporate_events`, `deals`, `fund_nav` and `daily_series` tables to `engine/warehouse/schema.py`.
@@ -203,10 +214,14 @@ and a live deployment of them would read stale files.
      - `signal_library._Series`.
    - `tools/portfolio_book.py --data` and `signal_params` paths then become optional. The warehouse is the default, and a CSV overrides it for research.
    - The warehouse stays an optional dependency: the live loop reads through `bars.py`-style readers, never duckdb directly.
+6. **Unblock the sweep.** When a table's reader lands, remove its policies from
+   `SKIP_BUYS` in `tools/sweep_composed.py` and queue them for every fund
+   (`--buy <ids>`). Until then those buy policies have no sweep results at all.
 5. **Staleness.** Each reader reports the newest row's date. A live deployment refuses to start (and pauses buys mid-run) when a table it reads is older than its expected refresh, rather than trading on stale data.
 
 **Done when:**
 - Each allocator in the table and each file-reading strategy id runs a backtest from the warehouse alone, with no `--data` or `path=`.
+- `SKIP_BUYS` in `tools/sweep_composed.py` is empty, and the seven buy policies above have a result for every fund and sell policy.
 - A paper deployment of `rk168_vix_term` runs a week with the series refreshed daily and no staleness pause.
 
 ## 5. A stock universe

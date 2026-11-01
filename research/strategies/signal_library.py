@@ -1545,6 +1545,12 @@ def parse_signal_params(name: str, text: str) -> dict:
     return {k: _coerce(k, known[k], v) for k, v in raw.items()}
 
 
+def _keep_level(level, context, step):
+    """A gate leaves the grid's reference level alone. A module-level function,
+    not a lambda: a sweep pickles the strategy to its worker processes."""
+    return level
+
+
 def build_signal(name: str, params: str = ""):
     """Construct the named component with the algorithm's fixed settings and
     any overrides from `params`."""
@@ -1560,7 +1566,7 @@ def build_signal(name: str, params: str = ""):
     if not hasattr(component, "kind"):
         component.kind = "gate"  # signal_gates' gates
     if not hasattr(component, "adjust_level"):
-        component.adjust_level = lambda level, context, step: level
+        component.adjust_level = _keep_level
     if not hasattr(component, "multiplier"):
         component.multiplier = 1.0
     return component
