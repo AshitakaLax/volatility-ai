@@ -17,10 +17,18 @@ every other request for its whole duration, including the read-only live
 WebSocket that an operator may be watching a real deployment through.
 One worker thread keeps the loop responsive.
 
-ONE worker here, but that is about ORDERING, not about cores. Runs queue
-so their progress is legible and so two submissions cannot interleave
+One worker by default, but that is about ORDERING, not about cores. Runs
+queue so their progress is legible and so two submissions cannot interleave
 their output; parallelism happens INSIDE a run, where server/backtest.py
 hands run_sweep an n_jobs of one-less-than-the-core-count.
+
+A run of a few configurations cannot use that many cores, though: a sweep
+of thousands of 4-configuration runs leaves a 64-core host nearly idle.
+VAI_LOCAL_WORKERS=N therefore gives this machine N LANES, each a local shard
+of its own ("local", "local-2" ... "local-N") that takes one run at a time,
+and each run's n_jobs shrinks to its share of the cores
+(server/backtest.py). Pausing, resuming and the lockout window of "local"
+apply to every lane.
 
 An earlier version of this file justified the single worker by saying a
 pool would starve a live trading loop sharing the machine. That premise
@@ -168,6 +176,22 @@ StopRequest = Literal["pause", "cancel"]
 ShardOutcome = Literal["complete", "failed", "stopped", "released"]
 
 LOCAL_SHARD = "local"
+LOCAL_WORKERS_ENV = "VAI_LOCAL_WORKERS"
+MAX_LOCAL_WORKERS = 64
+
+
+def local_workers() -> int:
+    """How many runs this machine's own worker takes at once (VAI_LOCAL_WORKERS,
+    default 1)."""
+    raw = os.environ.get(LOCAL_WORKERS_ENV, "")
+    return max(1, min(MAX_LOCAL_WORKERS, int(raw))) if raw.isdigit() else 1
+
+
+def lane_name(index: int) -> str:
+    """The shard name of local lane `index` (1-based): "local", "local-2" ..."""
+    return LOCAL_SHARD if index <= 1 else f"{LOCAL_SHARD}-{index}"
+
+
 # Letters, digits, dot, dash, underscore; it appears in URL paths and log
 # lines, so nothing that needs escaping in either.
 SHARD_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
@@ -462,6 +486,7 @@ class JobQueue:
         store: QueueStore | None = None,
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], datetime] = datetime.now,
+        workers: int | None = None,
     ):
         # Called as runner(request, report, control).
         self._runner = runner
@@ -481,7 +506,8 @@ class JobQueue:
         # rely on: _release and _settle_stopped call _finish/_changed while
         # already holding it.
         self._condition = threading.Condition()
-        self._worker: threading.Thread | None = None
+        # One thread per local lane, started lazily (_ensure_worker).
+        self._workers: dict[str, threading.Thread] = {}
         # Injected so shard timeouts are tested without sleeping. This is
         # a DURATION clock (monotonic by default) -- never wall-clock
         # time, and never used to decide what time of day it is.
@@ -498,15 +524,18 @@ class JobQueue:
         # settable before a shard has ever registered.
         self._schedules: dict[str, dict[str, Any]] = {}
         now = clock()
+        lanes = local_workers() if workers is None else max(1, workers)
+        self._lanes: list[str] = [lane_name(i) for i in range(1, lanes + 1)]
         self._shards: dict[str, Shard] = {
-            LOCAL_SHARD: Shard(
-                name=LOCAL_SHARD,
-                instance=LOCAL_SHARD,
+            name: Shard(
+                name=name,
+                instance=name,
                 registered_at=time.time(),
                 last_seen=now,
                 local=True,
                 cores=os.cpu_count(),
             )
+            for name in self._lanes
         }
         # Pauses of remote shards that are not registered right now (this
         # process restarted), applied when they register again.
@@ -583,8 +612,9 @@ class JobQueue:
         with self._condition:
             self._paused = bool(state.get("paused", False))
             paused_shards = {str(name) for name in state.get("paused_shards", [])}
-            self._shards[LOCAL_SHARD].paused = LOCAL_SHARD in paused_shards
-            self._paused_names = paused_shards - {LOCAL_SHARD}
+            for name in self._lanes:
+                self._shards[name].paused = LOCAL_SHARD in paused_shards
+            self._paused_names = paused_shards - set(self._lanes)
             self._schedules = {
                 str(name): schedule
                 for name, schedule in state.get("schedules", {}).items()
@@ -762,7 +792,10 @@ class JobQueue:
         the local one first."""
         with self._condition:
             now = self._clock()
-            ordered = sorted(self._shards.values(), key=lambda s: (not s.local, s.name.lower()))
+            ordered = sorted(
+                self._shards.values(),
+                key=lambda s: (not s.local, len(s.name) if s.local else 0, s.name.lower()),
+            )
             return [self._shard_snapshot(shard, now) for shard in ordered]
 
     def shard(self, name: str) -> dict[str, Any]:
@@ -774,20 +807,29 @@ class JobQueue:
         configurations in flight and goes back to the queue."""
         with self._condition:
             shard = self._shard(name)
-            shard.paused = True
+            for member in self._members(shard):
+                member.paused = True
             self._changed()
             return self._shard_snapshot(shard, self._clock())
 
     def resume_shard(self, name: str) -> dict[str, Any]:
         with self._condition:
             shard = self._shard(name)
-            shard.paused = False
+            for member in self._members(shard):
+                member.paused = False
             self._paused_names.discard(name)
             self._changed()
             snapshot = self._shard_snapshot(shard, self._clock())
         if shard.local:
             self._ensure_worker()
         return snapshot
+
+    def _members(self, shard: Shard) -> list[Shard]:
+        """The shards a pause or resume of `shard` reaches: every local lane
+        for "local", else just the shard. Caller holds the lock."""
+        if shard.name == LOCAL_SHARD:
+            return [self._shards[name] for name in self._lanes]
+        return [shard]
 
     def shard_schedule(self, name: str) -> dict[str, Any] | None:
         with self._condition:
@@ -914,8 +956,8 @@ class JobQueue:
         machine does not want a restart of its process to quietly
         un-pause it.
         """
-        if name == LOCAL_SHARD:
-            raise QueueError(f"{LOCAL_SHARD!r} is this server's own worker; pick another name.")
+        if name in self._lanes:
+            raise QueueError(f"{name!r} is this server's own worker; pick another name.")
         with self._condition:
             existing = self._shards.get(name)
             keep_run: str | None = None
@@ -1104,7 +1146,7 @@ class JobQueue:
         clear the other. Callers that need "will this shard do anything
         right now" check both.
         """
-        schedule = self._schedules.get(name)
+        schedule = self._schedules.get(LOCAL_SHARD if name in self._lanes else name)
         if not schedule or not schedule.get("enabled"):
             return False
         try:
@@ -1261,7 +1303,11 @@ class JobQueue:
                 "paused": self._paused,
                 "paused_shards": sorted(
                     self._paused_names
-                    | {name for name, shard in self._shards.items() if shard.paused}
+                    | {
+                        name
+                        for name, shard in self._shards.items()
+                        if shard.paused and name not in self._lanes[1:]
+                    }
                 ),
                 "schedules": self._schedules,
                 "jobs": [
@@ -1302,14 +1348,19 @@ class JobQueue:
         return None
 
     def _ensure_worker(self) -> None:
-        """Start the worker lazily, on first submission or restore.
+        """Start the workers lazily, on first submission or restore.
 
         Not at import: importing this module must not spawn a thread,
         or every test that touches the server would leak one.
         """
-        if self._worker is None or not self._worker.is_alive():
-            self._worker = threading.Thread(target=self._drain, name="backtest-worker", daemon=True)
-            self._worker.start()
+        for name in self._lanes:
+            thread = self._workers.get(name)
+            if thread is None or not thread.is_alive():
+                thread = threading.Thread(
+                    target=self._drain, args=(name,), name=f"backtest-{name}", daemon=True
+                )
+                self._workers[name] = thread
+                thread.start()
 
     def _finish(self, job: Job, **fields: Any) -> None:
         """File a job as terminal: out of the order, checkpoint discarded."""
@@ -1324,19 +1375,19 @@ class JobQueue:
                 self._store.discard(job.run_id)
             self._changed(job)
 
-    def _local_ready(self) -> bool:
+    def _local_ready(self, name: str = LOCAL_SHARD) -> bool:
         return (
-            not self._shards[LOCAL_SHARD].paused
-            and not self._in_lockout(LOCAL_SHARD)
+            not self._shards[name].paused
+            and not self._in_lockout(name)
             and self._next_runnable() is not None
         )
 
-    def _drain(self) -> None:
-        """The local shard: this process's own worker."""
-        local = self._shards[LOCAL_SHARD]
+    def _drain(self, name: str = LOCAL_SHARD) -> None:
+        """One local lane: this process's own worker."""
+        local = self._shards[name]
         while True:
             with self._condition:
-                self._condition.wait_for(self._local_ready)
+                self._condition.wait_for(lambda: self._local_ready(name))
                 job = self._next_runnable()
                 assert job is not None
                 self._start(job, local)
