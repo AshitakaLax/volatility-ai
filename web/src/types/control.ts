@@ -359,6 +359,8 @@ export interface TraderFill {
   /** A buy: what it cost, and the target its lot carries. */
   value?: number;
   target?: number;
+  /** A buy: the price its lot sells at (absent before the trader journalled it). */
+  target_price?: number;
   /** A sale: why (profit_target or signal_exit), what it fetched net,
    * what its lot cost, and the difference. */
   reason?: string;

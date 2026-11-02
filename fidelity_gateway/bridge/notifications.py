@@ -228,6 +228,9 @@ class Notifications:
         # What has been said, for what is news next.
         self._said = threading.Lock()
         self._engine_state: str | None = None
+        # Order id -> the profit target its lot will carry, from the engine's
+        # status (cli.py on_order): a buy's fill is announced with its target.
+        self._buy_targets: dict[str, float] = {}
         self._tab: str | None = None
         self._refusals: dict[tuple[str, str], float] = {}
         self._check_failed = False
@@ -460,6 +463,12 @@ class Notifications:
         between sessions, or `serve`) is not an engine's, and is skipped."""
         if status.get("mode") == "bridge":
             return None
+        targets = status.get("buyTargets")
+        if isinstance(targets, dict):
+            with self._said:
+                self._buy_targets = {
+                    str(k): float(v) for k, v in targets.items() if isinstance(v, (int, float))
+                }
         window = status.get("lastWindow")
         if isinstance(window, dict):
             self.window_summary(window)
@@ -528,6 +537,16 @@ class Notifications:
             data=dict(summary),
         )
 
+    def _lot_target(self, report: OrderReport) -> float | None:
+        """Where a buy's lot will sell: its average fill price x (1 + the profit
+        target the engine said the order carries), or None when the engine did
+        not say (a buy placed by hand, or before the engine reported it)."""
+        if report.avg_price <= 0:
+            return None
+        with self._said:
+            target = self._buy_targets.get(report.id)
+        return report.avg_price * (1.0 + target) if target else None
+
     def order_report(
         self, report: OrderReport, previous: OrderReport | None, resent: bool = False
     ) -> Notification | None:
@@ -559,12 +578,17 @@ class Notifications:
             "avgPrice": report.avg_price,
         }
         buy = report.side == "buy"
+        target = self._lot_target(report) if buy else None
+        if target is not None:
+            data["targetSellPrice"] = target
+        sells_at = f" Sells at ${target:,.2f}." if target is not None else ""
         if report.state == "filled":
             filled = report.filled_qty or report.qty
             return self.publish(
                 report.side,
                 f"{'Bought' if buy else 'Sold'} {_shares(filled)} {report.symbol}",
-                f"{_shares(filled)} at ${report.avg_price:,.2f} ({report.summary}), {order}.",
+                f"{_shares(filled)} at ${report.avg_price:,.2f} ({report.summary}), {order}."
+                f"{sells_at}",
                 data=data,
             )
         if report.state == "partially_filled":
@@ -573,7 +597,7 @@ class Notifications:
                 f"{'Buy' if buy else 'Sell'} partly filled: {_shares(report.filled_qty)} of "
                 f"{_shares(report.qty)} {report.symbol}",
                 f"{_shares(report.filled_qty)} so far at ${report.avg_price:,.2f} "
-                f"({report.summary}), {order}.",
+                f"({report.summary}), {order}.{sells_at}",
                 data=data,
             )
         if report.state == "submitted":

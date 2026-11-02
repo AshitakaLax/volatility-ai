@@ -224,6 +224,30 @@ def test_a_filled_buy_and_a_filled_sell():
     assert (sold.kind, sold.title) == ("sell", "Sold 3 TQQQ")
 
 
+def test_a_filled_buy_says_where_its_lot_sells_when_the_engine_said_its_target():
+    hub = _hub()
+    hub.engine_status({"state": "running", "buyTargets": {"r1": 0.01}})
+    bought = hub.order_report(_report(state="filled", filled_qty=3, avg_price=70.0), None)
+    assert bought.body == "3 at $70.00 (BUY 3 TQQQ @ $70.10), order 2C50H6WV. Sells at $70.70."
+    assert bought.data["targetSellPrice"] == pytest.approx(70.7)
+    partial = hub.order_report(
+        _report(id="r1", state="partially_filled", filled_qty=1, avg_price=70.0), None
+    )
+    assert partial.body.endswith("Sells at $70.70.")
+
+
+def test_a_buy_the_engine_never_mentioned_has_no_target_and_a_sell_never_does():
+    hub = _hub()
+    hub.engine_status({"state": "running", "buyTargets": {"other": 0.01}})
+    bought = hub.order_report(_report(state="filled", filled_qty=3, avg_price=70.0), None)
+    assert "Sells at" not in bought.body and "targetSellPrice" not in bought.data
+    hub.engine_status({"state": "running", "buyTargets": {"r2": 0.01}})
+    sold = hub.order_report(
+        _report(id="r2", side="sell", state="filled", filled_qty=3, avg_price=71.2), None
+    )
+    assert "Sells at" not in sold.body
+
+
 def test_a_partial_fill_is_announced_once_not_at_every_share():
     hub = _hub()
     partial = _report(state="partially_filled", filled_qty=1, avg_price=70.1)

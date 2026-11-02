@@ -1437,6 +1437,7 @@ def test_every_fill_is_reported_with_what_a_sale_realised(store):
     assert buy["side"] == "buy" and buy["lot"] == lot.order_id
     assert (buy["qty"], buy["price"], buy["value"]) == (10.0, 98.0, pytest.approx(980.0))
     assert buy["target"] == 0.005 and isinstance(buy["t"], float)
+    assert buy["target_price"] == pytest.approx(98.0 * 1.005) == lot.target_sell_price
     assert sale["side"] == "sell" and sale["reason"] == "profit_target"
     assert sale["price"] == target and sale["cost"] == pytest.approx(980.0)
     assert sale["pnl"] == pytest.approx(sale["proceeds"] - 980.0)

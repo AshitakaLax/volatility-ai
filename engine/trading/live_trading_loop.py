@@ -1517,6 +1517,11 @@ class LiveTradingLoop:
                         float(tracked.tracker.cumulative_notional) / filled if filled > 0 else None
                     ),
                     "reason": str(tracked.sell_reason) if tracked.kind == "sell" else None,
+                    # A buy's lot will sell at its fill price x (1 + this): the
+                    # bridge's notice of the fill says where (cli.py on_order).
+                    "profit_target": (
+                        float(tracked.profit_target) if tracked.kind == "buy" else None
+                    ),
                     **fields,
                 }
             )
@@ -1785,6 +1790,8 @@ class LiveTradingLoop:
             price=float(delta.avg_price),
             value=float(delta.notional),
             target=float(tracked.profit_target),
+            # What the lot sells at, as registered (buy price x (1 + target)).
+            target_price=float(lot.target_sell_price),
         )
 
     def _apply_exit_fill(self, tracked: _TrackedOrder, delta) -> None:
