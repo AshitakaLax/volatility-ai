@@ -91,6 +91,10 @@ services:
       <<: *env
       VAI_WAREHOUSE_DIR: /app/warehouse
       VAI_BACKUP_DIR: /app/backups
+      # Runs the queue takes at once on this machine (server/jobs.py lanes);
+      # each run's worker processes shrink to its share of the cores. A sweep
+      # of small runs otherwise leaves most cores idle.
+      VAI_LOCAL_WORKERS: ${VAI_LOCAL_WORKERS:-8}
     ports:
       - "${VAI_WEB_BIND:-127.0.0.1}:8000:8000"
     volumes:

@@ -669,7 +669,6 @@ class CatalogTimingSignal:
 
     def __init__(self, signal: str, params: dict[str, ParamValue]) -> None:
         self.name = signal
-        self.spec = SIGNALS[signal]
         self.params = params
         self._need = int(self.spec.history(params))
         if self._need < 2:
@@ -683,6 +682,12 @@ class CatalogTimingSignal:
         self.target: float | None = None
         self.raw: float | None = None
         self.votes: dict[str, float | None] = {}
+
+    @property
+    def spec(self) -> Signal:
+        # Looked up, not held: its history/compute are lambdas, and a sweep
+        # pickles the strategy to its worker processes.
+        return SIGNALS[self.name]
 
     @property
     def history_sessions(self) -> int:

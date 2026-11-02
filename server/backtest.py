@@ -96,6 +96,7 @@ from server.jobs import (
     RunControl,
     RunStopped,
     UnknownRun,
+    local_workers,
 )
 from tools.export_ui_data import KNOWN_DATA, equity_series, executions, fund_metrics
 
@@ -132,7 +133,8 @@ if _CONFIGURED and _CONFIGURED.isdigit() and int(_CONFIGURED) >= 1:
     MAX_JOBS = int(_CONFIGURED)
     DEFAULT_JOBS = MAX_JOBS
 else:
-    DEFAULT_JOBS = max(1, _CORES - 1)
+    # With several local lanes (server/jobs.py) each run gets its share.
+    DEFAULT_JOBS = max(1, (_CORES - 1) // local_workers())
     MAX_JOBS = max(1, _CORES)
 
 # BUT A POOL IS NOT FREE, AND BELOW A CERTAIN SIZE IT IS A LOSS.

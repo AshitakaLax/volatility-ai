@@ -300,3 +300,39 @@ def test_the_composed_defaults_are_the_champion():
         "params": STRATEGY_DEFAULTS["hf_local_reference"],
     }
     assert defaults["sell"]["id"] == "fixed_target"
+
+
+@pytest.mark.parametrize("buy", ["bell_curve", "catalog_exposure", "ultimate_rsp"])
+def test_a_composition_whose_side_holds_a_decision_pickles_to_a_worker(buy):
+    """A sweep sends the strategy to worker processes; the hand-off to a side's
+    decision_not_sent must survive that (it was a closure, which cannot)."""
+    sell = "rsp_rebalance"
+    strategy = ComposedStrategy(
+        buy={"id": buy, "params": entries.entry_defaults(buy)},
+        sell={"id": sell, "params": {}},
+    )
+    clone = pickle.loads(pickle.dumps(strategy))
+    assert type(clone) is ComposedStrategy
+    if hasattr(strategy, "decision_not_sent"):
+        clone.decision_not_sent()
+
+
+def test_every_buy_pairs_with_a_sell_and_pickles_to_a_worker():
+    """No buy policy leaves a lambda or closure on the strategy (the library's
+    gates once did, and 72 sweep runs failed sending results back)."""
+    from research.composition.catalog import defaults_for
+
+    failures = []
+    for buy in entries.entry_ids():
+        try:
+            strategy = ComposedStrategy(
+                buy={"id": buy, "params": entries.entry_defaults(buy)},
+                sell={"id": "regime_exit", "params": defaults_for("sell", "regime_exit")},
+            )
+        except ConfigurationError:
+            continue
+        try:
+            pickle.dumps(strategy)
+        except Exception as exc:
+            failures.append(f"{buy}: {exc}")
+    assert not failures
