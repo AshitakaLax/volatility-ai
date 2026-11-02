@@ -25,6 +25,12 @@ interface Props {
 
 const SHOWN = 50;
 
+/** Where a bought lot sells: journalled with the fill, else its price x (1 + target). */
+function lotTarget(fill: TraderFill): number | null {
+  if (fill.target_price !== undefined) return fill.target_price;
+  return fill.target !== undefined ? fill.price * (1 + fill.target) : null;
+}
+
 export function TradesCard({ fills, sessions, onSessions }: Props) {
   const [all, setAll] = useState(false);
   const rows = [...(fills ?? [])].reverse();
@@ -72,6 +78,7 @@ export function TradesCard({ fills, sessions, onSessions }: Props) {
                   <th className="pb-2 text-right font-medium">Shares</th>
                   <th className="pb-2 text-right font-medium">Price</th>
                   <th className="pb-2 text-right font-medium">Value</th>
+                  <th className="pb-2 text-right font-medium">Sells at</th>
                   <th className="pb-2 text-right font-medium">Realised</th>
                 </tr>
               </thead>
@@ -101,6 +108,9 @@ export function TradesCard({ fills, sessions, onSessions }: Props) {
                     <td className="tnum py-1.5 text-right">{usd(fill.price)}</td>
                     <td className="tnum py-1.5 text-right">
                       {usd(fill.side === "buy" ? (fill.value ?? null) : (fill.proceeds ?? null))}
+                    </td>
+                    <td className="tnum py-1.5 text-right">
+                      {fill.side === "buy" ? usd(lotTarget(fill)) : ""}
                     </td>
                     <td
                       className={cn(

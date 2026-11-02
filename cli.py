@@ -1538,10 +1538,20 @@ def _run_trading_loop(
         if inbox is not None:
             inbox.record_fill(fill)
 
+    buy_targets: dict[str, float] = {}
+
     def on_order(event: dict) -> None:
         # Each moment of an order's life: the proof a limit order filled.
         if inbox is not None:
             inbox.record_order(event)
+        placed_buy = event.get("event") == "placed" and event.get("kind") == "buy"
+        if placed_buy and isinstance(event.get("profit_target"), (int, float)):
+            # Tell the bridge each buy's profit target before it fills, so its
+            # notice of the fill can say where the lot will sell.
+            buy_targets[str(event["order"])] = float(event["profit_target"])
+            while len(buy_targets) > 20:
+                buy_targets.pop(next(iter(buy_targets)))
+            report(buyTargets=dict(buy_targets))
 
     def build(cfg, built_strategy):
         loop = LiveTradingLoop(

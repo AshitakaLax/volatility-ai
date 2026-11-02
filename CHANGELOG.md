@@ -1,5 +1,21 @@
 # Changelog
 
+## Feat: a buy's notice and the Trades card say where the lot sells
+
+A bought lot's notification said how much and at what price, not where it
+would sell.
+
+- **The engine** puts the order's profit target on its `placed` event, and
+  `cli.py live` tells the bridge (`buyTargets` in the engine status, the last 20
+  buys). The bridge's "Bought" and "Buy partly filled" notices then end with
+  "Sells at $X" (average fill price x (1 + target), the lot's registered target)
+  and carry `targetSellPrice` in their data, for the extension and the Android
+  app. A buy the engine never mentioned (placed by hand) is announced as before.
+- **The fill journal** records `target_price` with each buy, and the Live page's
+  Trades card has a "Sells at" column (older fills: price x (1 + target)).
+- A strategy that later retargets the lot is not reflected in the notice, which
+  is the target at purchase.
+
 ## Feat: catalog_exposure, the research catalog's long-or-cash signals as one live-capable strategy, and brute force on every fund
 
 **The research catalog's whole-position timing signals could not be
