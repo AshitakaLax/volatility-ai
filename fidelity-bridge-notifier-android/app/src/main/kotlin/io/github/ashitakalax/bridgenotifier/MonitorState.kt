@@ -9,7 +9,8 @@ import io.github.ashitakalax.bridgenotifier.core.Notification
  * service hands everything over there before it lands here.
  */
 object MonitorState {
-    const val RECENT = 50
+    // As many as the bridge keeps for a replay: the Activity page's history.
+    const val RECENT = 200
 
     data class Snapshot(
         val link: BridgeClient.Link = BridgeClient.Link.Idle,

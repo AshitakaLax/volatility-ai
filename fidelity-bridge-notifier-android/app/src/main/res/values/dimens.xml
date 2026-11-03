@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <dimen name="screen_padding">16dp</dimen>
-    <dimen name="section_gap">20dp</dimen>
-    <dimen name="item_gap">10dp</dimen>
+    <dimen name="card_radius">14dp</dimen>
+    <dimen name="card_gap">12dp</dimen>
+    <dimen name="item_gap">8dp</dimen>
 </resources>

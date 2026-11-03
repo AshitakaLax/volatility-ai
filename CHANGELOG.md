@@ -1,5 +1,22 @@
 # Changelog
 
+## Feat: the Notifier app's four pages, and the book they show
+
+The Android app was one long screen of settings and status. It now opens on a
+**Connect** page (address, key, a three-step connection check, what to be told
+about) and then has **Home** (readiness, today's profit, the session), **Lots**
+(open lots with their targets, or the last 20 sales) and **Activity** (the last
+200 notifications, filtered).
+
+- **The book** (`fidelity_gateway/bridge/book.py`): the bridge host reads the
+  open lots from the trader's ledger and the sales from its fill journal, both
+  read-only, and puts them in the status apps hear (`book`, every 30 s when it
+  changed): open lots, the last 20 sales, today's realised profit and counts,
+  the open lots' unrealised figure. Compose mounts the trader's state into
+  `fidelity-bridge` read-only for it.
+- An older app ignores the new status part; an older bridge leaves the Lots
+  page saying so.
+
 ## Feat: a buy's notice and the Trades card say where the lot sells
 
 A bought lot's notification said how much and at what price, not where it

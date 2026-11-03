@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
 
 /** What the bridge can tell the app: its notifications' kinds. */
@@ -244,15 +245,108 @@ data class EngineStatus(
     }
 }
 
+/** A lot still held: what it cost and where it sells. */
+data class OpenLot(
+    val id: String,
+    val qty: Double,
+    val buyPrice: Double,
+    val targetPrice: Double,
+    /** ISO-8601, UTC; null when the fill journal no longer goes back that far. */
+    val boughtAt: String?,
+) {
+    companion object {
+        fun parse(obj: JsonObject?): OpenLot? {
+            if (obj == null) return null
+            return OpenLot(
+                id = obj.string("id") ?: return null,
+                qty = obj.double("qty") ?: return null,
+                buyPrice = obj.double("buyPrice") ?: return null,
+                targetPrice = obj.double("targetPrice") ?: return null,
+                boughtAt = obj.string("boughtAt"),
+            )
+        }
+    }
+}
+
+/** One sale: what was sold, for what, and what it made after costs. */
+data class ClosedLot(
+    val id: String?,
+    val qty: Double,
+    val buyPrice: Double?,
+    val sellPrice: Double,
+    val pnl: Double?,
+    /** profit_target, or signal_exit for a regime exit (the one sale that may lose). */
+    val reason: String?,
+    val boughtAt: String?,
+    val soldAt: String?,
+) {
+    companion object {
+        fun parse(obj: JsonObject?): ClosedLot? {
+            if (obj == null) return null
+            return ClosedLot(
+                id = obj.string("id"),
+                qty = obj.double("qty") ?: return null,
+                buyPrice = obj.double("buyPrice"),
+                sellPrice = obj.double("sellPrice") ?: return null,
+                pnl = obj.double("pnl"),
+                reason = obj.string("reason"),
+                boughtAt = obj.string("boughtAt"),
+                soldAt = obj.string("soldAt"),
+            )
+        }
+    }
+}
+
+/**
+ * The trading book (the bridge's book.py): the open lots, the last sales and
+ * today's figures, read from the trader's ledger and fill journal. Null from a
+ * bridge older than this, or one with no trader to read.
+ */
+data class Book(
+    val symbol: String?,
+    val asOf: String?,
+    val lastPrice: Double?,
+    val open: List<OpenLot>,
+    val openCost: Double,
+    /** Open lots at the last price, before costs; null without a price. */
+    val unrealized: Double?,
+    /** Newest first, at most 20. */
+    val closed: List<ClosedLot>,
+    /** Today's realised profit after costs, and today's sales and buys. */
+    val realizedToday: Double,
+    val salesToday: Int,
+    val buysToday: Int,
+) {
+    companion object {
+        fun parse(obj: JsonObject?): Book? = obj?.let {
+            val today = it["today"] as? JsonObject
+            Book(
+                symbol = it.string("symbol"),
+                asOf = it.string("asOf"),
+                lastPrice = it.double("lastPrice"),
+                open = (it["open"] as? JsonArray).orEmpty().mapNotNull { lot -> OpenLot.parse(lot as? JsonObject) },
+                openCost = it.double("openCost") ?: 0.0,
+                unrealized = it.double("unrealized"),
+                closed = (it["closed"] as? JsonArray).orEmpty()
+                    .mapNotNull { lot -> ClosedLot.parse(lot as? JsonObject) },
+                realizedToday = today?.double("realized") ?: 0.0,
+                salesToday = today?.long("sales")?.toInt() ?: 0,
+                buysToday = today?.long("buys")?.toInt() ?: 0,
+            )
+        }
+    }
+}
+
 /**
  * What the bridge shows apps: the extension's side, a trading session's
- * engine (null between sessions), and the bridge host's readiness (null
- * without a host).
+ * engine (null between sessions), the bridge host's readiness (null
+ * without a host) and the trading book (null without a trader to read).
  */
 data class BridgeStatus(
     val extension: ExtensionStatus?,
     val engine: EngineStatus?,
     val bridge: HostStatus? = null,
+    val book: Book? = null,
 ) {
     companion object {
         val UNKNOWN = BridgeStatus(null, null, null)
@@ -261,6 +355,7 @@ data class BridgeStatus(
             extension = ExtensionStatus.parse(obj?.get("extension") as? JsonObject),
             engine = EngineStatus.parse(obj?.get("engine") as? JsonObject),
             bridge = HostStatus.parse(obj?.get("bridge") as? JsonObject),
+            book = Book.parse(obj?.get("book") as? JsonObject),
         )
     }
 }
@@ -309,6 +404,9 @@ internal fun JsonObject.string(name: String): String? =
 
 internal fun JsonObject.long(name: String): Long? =
     (this[name] as? JsonPrimitive)?.takeUnless { it.isString }?.longOrNull
+
+internal fun JsonObject.double(name: String): Double? =
+    (this[name] as? JsonPrimitive)?.takeUnless { it.isString }?.doubleOrNull
 
 internal fun JsonObject.bool(name: String): Boolean? =
     (this[name] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull

@@ -23,8 +23,21 @@ sees:
   refused a connection from an address it does not allow. And if the phone
   cannot reach it for 2 minutes, the app says so, and again when it is back.
 
-The main screen shows the bridge's readiness checklist as it stands, link by
-link, the trading session, and the last account check.
+Four pages:
+
+- **Connect**, at start-up (switch that off on the page): the bridge's address
+  and key, a three-step check that they work (reachable, key accepted, a test
+  notification received) and what to be told about.
+- **Home**: ready to trade or the one thing to fix, the readiness checklist link
+  by link, today's realised profit and the open lots' unrealised figure, the
+  day's buys and sales, the trading session and the last account check.
+- **Lots**: the open lots, each with where it sells and how far it has to go,
+  or the last 20 sales with what each made.
+- **Activity**: the last 200 notifications, filtered to trades, problems or
+  the connection.
+
+Lots and today's profit come from the bridge's `book` (PROTOCOL.md); a bridge
+older than that shows the other pages as before.
 
 It only listens. Nothing it sends can place, cancel or change anything. The
 one thing it may ask the bridge for is a test notification.

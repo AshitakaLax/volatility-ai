@@ -350,6 +350,7 @@ def run_host(args: argparse.Namespace, stop: threading.Event | None = None) -> i
     """Until SIGTERM or Ctrl-C (or `stop`): the deployment's bridge host."""
     from engine.core.build_info import identity
     from engine.trading.control_inbox import ControlInbox
+    from fidelity_gateway.bridge.book import read_book
     from fidelity_gateway.bridge.host import CONFIG_POLL_SECONDS, BridgeHost, account_checker
 
     if not args.socket:
@@ -396,6 +397,14 @@ def run_host(args: argparse.Namespace, stop: threading.Event | None = None) -> i
 
     settings = lambda: _load_fidelity(config_path)  # noqa: E731 -- re-read on a change
     inbox = ControlInbox(Path(args.control_dir) / "bridge") if args.control_dir else None
+    # The trader's own control directory (its fill journal) and its ledger,
+    # read-only, for the book apps are shown (book.py).
+    trader_inbox = ControlInbox(Path(args.control_dir)) if args.control_dir else None
+    state_db = os.environ.get("VAI_STATE_DB") or None
+
+    def book(now: float) -> dict | None:
+        return read_book(state_db, trader_inbox, symbol=settings()[1], now=now)
+
     host = BridgeHost(
         make_server=make_server,
         settings=settings,
@@ -407,6 +416,7 @@ def run_host(args: argparse.Namespace, stop: threading.Event | None = None) -> i
         notifications=Notifications(log=_stderr),
         make_notifier=make_notifier,
         sessions=lambda: _load_sessions(config_path),
+        book=book if (state_db or trader_inbox) else None,
     )
     stamp = {"value": _config_stamp(config_path)}
 

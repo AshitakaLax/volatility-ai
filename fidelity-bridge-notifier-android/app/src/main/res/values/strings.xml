@@ -2,54 +2,114 @@
 <resources>
     <string name="app_name">Bridge Notifier</string>
 
-    <string name="header_bridge">Fidelity Bridge</string>
-    <string name="header_recent">Recent</string>
-    <string name="header_settings">Bridge address and key</string>
-    <string name="header_notify_me">Notify me about</string>
+    <!-- The tab bar -->
+    <string name="nav_home">Home</string>
+    <string name="nav_lots">Lots</string>
+    <string name="nav_activity">Activity</string>
 
-    <string name="link_idle">Not watching</string>
-    <string name="link_connecting">Connecting to %1$s…</string>
-    <string name="link_connected">● Connected to %1$s</string>
-    <string name="link_waiting">Not connected: %1$s. Trying again in %2$d s.</string>
-    <string name="link_stopped_by_bridge">The bridge is restarting: %1$s. Reconnecting in %2$d s.</string>
-    <string name="link_refused">Not watching: %1$s</string>
-
-    <string name="extension_connected">Extension %1$s connected %2$s</string>
-    <string name="extension_disconnected">Extension not connected (since %1$s)</string>
-    <string name="trading_on">Allow trading: on</string>
-    <string name="trading_off">Allow trading: OFF. Every order is refused.</string>
-    <string name="trading_unknown">Allow trading: not reported yet</string>
-    <string name="engine_unknown">Engine: no trading session running</string>
-    <string name="engine_last_tick">last tick %1$s</string>
-    <string name="unknown">unknown</string>
-
-    <string name="readiness_ready">✓ Ready to trade</string>
-    <string name="readiness_not_ready">✗ Not ready: %1$s</string>
-    <string name="readiness_fix">To fix: %1$s</string>
-    <string name="readiness_unknown">Readiness: not reported. This bridge runs without its host service.</string>
-    <string name="session_open_attached">Market open · trading session running since %1$s</string>
-    <string name="session_open_none">Market open · no trading session attached</string>
-    <string name="session_closed">Market closed · next open %1$s</string>
-    <string name="check_never">No account check since the extension connected</string>
-    <string name="check_passed">Last account check %1$s: passed (%2$s)</string>
-    <string name="check_failed">Last account check %1$s: FAILED (%2$s)</string>
-
-    <string name="recent_empty">Nothing yet. Notifications appear here as the bridge sends them.</string>
-
-    <string name="address_hint">Bridge address, e.g. 192.168.1.10 or ws://host:8766</string>
+    <!-- Connect: the settings and connection page -->
+    <string name="connect_title">Connect to your bridge</string>
+    <string name="connect_intro">The app only listens. Nothing here can place, cancel or change an order.</string>
+    <string name="address_label">Bridge address</string>
+    <string name="address_hint">192.168.1.10 or ws://host:8766</string>
+    <string name="address_help">Port 8766 on the computer running fidelity-bridge. From outside your home network, over a VPN.</string>
+    <string name="key_label">App key</string>
     <string name="key_hint">FIDELITY_BRIDGE_NOTIFY_KEY</string>
     <string name="key_help">On the bridge\'s computer, run python -m fidelity_gateway.bridge keygen --notify and paste the key it prints. It is not the extension\'s key.</string>
+    <string name="show_key">Show key</string>
+    <string name="hide_key">Hide key</string>
+    <string name="check_header">Connection check</string>
+    <string name="check_reachable">Bridge reachable</string>
+    <string name="check_reachable_yes">%1$s answered</string>
+    <string name="check_reachable_no">Not reached yet</string>
+    <string name="check_reachable_waiting">Not reached: %1$s</string>
+    <string name="check_key">Key accepted</string>
+    <string name="check_key_yes">Signed messages are flowing</string>
+    <string name="check_key_refused">Refused: %1$s</string>
+    <string name="check_key_wait">Checked once the bridge answers</string>
+    <string name="check_test">Test notification</string>
+    <string name="check_test_yes">Received %1$s</string>
+    <string name="check_test_wait">Send one to check alerts reach this phone</string>
+    <string name="header_notify_me">Notify me about</string>
+    <string name="alert_unreachable">Tell me when the bridge cannot be reached for 2 minutes (10 while it restarts)</string>
+    <string name="open_at_start">Open this page at start-up</string>
+    <string name="open_at_start_help">Off: start on Home once the bridge is set</string>
     <string name="plaintext_warning">ws:// is not encrypted. Messages are signed, so they cannot be forged, but anyone on this network can read them. From outside your home network, reach the bridge over a VPN (WireGuard, Tailscale). Never open its port to the internet.</string>
     <string name="notifications_off">Notifications are off for this app, so nothing will be shown. Turn them on in the system settings.</string>
-    <string name="alert_unreachable">Tell me when the bridge cannot be reached for 2 minutes (10 while it restarts)</string>
-
-    <string name="save_and_watch">Save and start watching</string>
-    <string name="send_test">Send a test notification</string>
+    <string name="send_test">Send test</string>
+    <string name="save_and_watch">Save and connect</string>
     <string name="stop_watching">Stop watching</string>
-
     <string name="error_address">Not an address. Try 192.168.1.10, my-server.lan:8766 or ws://host:8766/notifications.</string>
     <string name="error_key">Keys are 32 to 256 letters, digits or ._~+/=- with no spaces.</string>
 
+    <!-- Home -->
+    <string name="home_title">Home</string>
+    <string name="settings">Connection settings</string>
+    <string name="hero_ready_tag">Ready to trade</string>
+    <string name="hero_ready_title">Everything is connected</string>
+    <string name="hero_ready_detail">Bridge, extension, Fidelity sign-in and Allow trading all check out.</string>
+    <string name="hero_blocked_tag">Not ready</string>
+    <string name="hero_fix">Fix: %1$s</string>
+    <string name="hero_offline_tag">No connection</string>
+    <string name="hero_offline_title">Can\'t reach the bridge</string>
+    <string name="hero_refused_title">The bridge refused the key</string>
+    <string name="hero_connecting_tag">Connecting</string>
+    <string name="hero_connecting_title">Reaching %1$s…</string>
+    <string name="hero_restarting_title">The bridge is restarting</string>
+    <string name="hero_idle_tag">Not watching</string>
+    <string name="hero_idle_title">Set up the connection</string>
+    <string name="hero_idle_detail">Enter the bridge address and key to start.</string>
+    <string name="hero_unknown_tag">Connected</string>
+    <string name="hero_unknown_title">Readiness not reported</string>
+    <string name="hero_unknown_detail">This bridge runs without its host service.</string>
+    <string name="profit_today">Profit today</string>
+    <string name="profit_detail">Realised from %1$d sales, after costs</string>
+    <string name="profit_none">Shown once the bridge sends its book</string>
+    <string name="unrealized_label">Open lots, unrealised</string>
+    <string name="tile_open">Open lots</string>
+    <string name="tile_buys">Buys today</string>
+    <string name="tile_sells">Sells today</string>
+    <string name="session_header">Trading session</string>
+    <string name="session_none">No trading session running</string>
+    <string name="session_closed">Market closed · next open %1$s</string>
+    <string name="session_last_tick">Last tick %1$s</string>
+    <string name="check_never">No account check since the extension connected</string>
+    <string name="check_passed">Account check passed %1$s</string>
+    <string name="check_failed">Account check FAILED %1$s: %2$s</string>
+    <string name="latest_trade">Latest trade</string>
+    <string name="see_all">All</string>
+    <string name="unknown">unknown</string>
+
+    <!-- Lots -->
+    <string name="lots_title">Lots</string>
+    <string name="lots_open">Open · %1$d</string>
+    <string name="lots_closed">Recently closed · %1$d</string>
+    <string name="lots_summary_open">%1$d lots · cost %2$s</string>
+    <string name="lots_unrealised">unrealised %1$s</string>
+    <string name="lots_summary_closed">Last %1$d sales</string>
+    <string name="lots_realised">realised %1$s</string>
+    <string name="lot_open_line">%1$s sh at %2$s</string>
+    <string name="sells_at">Sells at %1$s</string>
+    <string name="to_go">%1$s%% to go</string>
+    <string name="at_target">At its target</string>
+    <string name="lot_closed_line">%1$s sh · %2$s → %3$s</string>
+    <string name="held">held %1$s</string>
+    <string name="reason_target">Target reached</string>
+    <string name="reason_signal">Regime exit</string>
+    <string name="lots_empty_open">No open lots.</string>
+    <string name="lots_empty_closed">No sales in the journal yet.</string>
+    <string name="lots_no_book">This bridge sends no book yet. Update the bridge to see lots here.</string>
+
+    <!-- Activity -->
+    <string name="activity_title">Activity</string>
+    <string name="activity_sub">The last %1$d from the bridge</string>
+    <string name="filter_all">All</string>
+    <string name="filter_trades">Trades</string>
+    <string name="filter_problems">Problems</string>
+    <string name="filter_connection">Connection</string>
+    <string name="activity_empty">Nothing of this kind yet.</string>
+
+    <!-- Notification channels and the service -->
     <string name="channel_trades">Trades</string>
     <string name="channel_trades_description">Buys and sells filled, and orders accepted or cancelled</string>
     <string name="channel_bridge">Bridge and engine</string>

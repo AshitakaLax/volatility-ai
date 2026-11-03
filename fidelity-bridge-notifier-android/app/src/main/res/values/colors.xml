@@ -1,11 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#0B5D4B</color>
-    <color name="primary_dark">#07463A</color>
-    <color name="accent">#2E9E7E</color>
-    <color name="status_ok">#2E7D32</color>
-    <color name="status_warn">#B26A00</color>
-    <color name="status_bad">#C62828</color>
-    <color name="status_idle">#757575</color>
+    <!-- One blue accent; the status colours differ in lightness as well as hue. -->
+    <color name="primary">#1F4FC2</color>
+    <color name="primary_dark">#163C96</color>
+    <color name="accent">#1F4FC2</color>
+    <color name="accent_soft">#E8EEFC</color>
+    <color name="ink">#111827</color>
+    <color name="ink_soft">#374151</color>
+    <color name="muted">#4B5563</color>
+    <color name="ground">#F3F4F6</color>
+    <color name="card">#FFFFFF</color>
+    <color name="line">#E5E7EB</color>
+    <color name="line_strong">#D1D5DB</color>
+    <color name="track">#E5E7EB</color>
+    <color name="status_ok">#1F7A55</color>
+    <color name="status_ok_soft">#E3F3EC</color>
+    <color name="status_warn">#B45309</color>
+    <color name="status_warn_soft">#FDF0E1</color>
+    <color name="status_bad">#B42318</color>
+    <color name="status_bad_soft">#FDE8E7</color>
+    <color name="status_idle">#6B7280</color>
+    <color name="status_offline">#374151</color>
     <color name="ic_launcher_background">#0B5D4B</color>
 </resources>

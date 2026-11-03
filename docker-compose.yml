@@ -239,10 +239,14 @@ services:
       VAI_BRIDGE_SOCKET: /app/bridge/bridge.sock
       VAI_CONTROL_DIR: /app/control
       VAI_DEPLOYMENT: fidelity
+      # The trader's ledger, read-only: the open lots in the book the phone
+      # app is shown (fidelity_gateway/bridge/book.py).
+      VAI_STATE_DB: /app/state/fidelity_ledger.db
     volumes:
       - ./config:/app/config:ro
       - control_fidelity:/app/control
       - bridge_fidelity:/app/bridge
+      - state_fidelity:/app/state:ro
 
   fidelity:
     <<: *trader

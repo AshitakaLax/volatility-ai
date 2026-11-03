@@ -88,6 +88,7 @@ from zoneinfo import ZoneInfo
 
 from engine.core import trading_calendar
 from engine.core.exceptions import ConfigurationError
+from fidelity_gateway.bridge.book import BOOK_SECONDS
 from fidelity_gateway.bridge.local import Line, LinkClosed, error_payload
 from fidelity_gateway.bridge.notifications import Notifications, close_words
 from fidelity_gateway.bridge.notify_server import NotificationServer, NotifySettings
@@ -278,8 +279,14 @@ class BridgeHost:
         notifications: Notifications | None = None,
         make_notifier: Callable[[NotifySettings, Notifications], NotificationServer] | None = None,
         sessions: Callable[[], tuple] | None = None,
+        book: Callable[[float], dict | None] | None = None,
     ) -> None:
         self._make_server = make_server
+        # The trading book apps are shown (book.py): read_book bound to the
+        # trader's ledger and journal, or None for a bridge with no trader.
+        self._book_source = book
+        self._book: dict | None = None
+        self._next_book = 0.0
         self._settings_source = settings
         # The windows the deployment trades (live.sessions): when its trading
         # day starts, for the checks before it and the warning near it.
@@ -879,6 +886,7 @@ class BridgeHost:
         self._auto_check(now, window, report)
         self._send_connection(report, now)
         self._publish_app_status(verdict, window, now)
+        self._publish_book(now)
         return self._write_status(report, verdict, window, now)
 
     def _journal_changes(self, report: dict) -> None:
@@ -1115,6 +1123,23 @@ class BridgeHost:
             return
         self._app_status = (meaning, bridge, now)
         self.notifications.update_status(bridge=bridge)
+
+    def _publish_book(self, now: float) -> None:
+        """The book (book.py), re-read every BOOK_SECONDS and sent to apps
+        when anything but its time stamp changed."""
+        if self._book_source is None or now < self._next_book:
+            return
+        self._next_book = now + BOOK_SECONDS
+        try:
+            book = self._book_source(now)
+        except Exception as exc:
+            self._log(f"[bridge-host] reading the book failed: {type(exc).__name__}: {exc}")
+            return
+        unstamped = {k: v for k, v in (book or {}).items() if k != "asOf"}
+        if self._book is not None and unstamped == self._book:
+            return
+        self._book = unstamped
+        self.notifications.update_status(book=book)
 
     def _journal(self, kind: str, detail: str, *, t: float | None = None, **fields: Any) -> None:
         if self.inbox is None:

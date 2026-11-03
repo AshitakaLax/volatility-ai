@@ -126,4 +126,37 @@ class MessagesTest {
     fun everyKindHasALabel() {
         for (kind in EventKind.ALL + EventKind.TEST) assertFalse(EventKind.label(kind) == kind)
     }
+
+    @Test
+    fun theStatusCarriesTheBook() {
+        val status = (
+            BridgeMessage.parse(
+                obj(
+                    """{"type":"status","status":{"book":{"symbol":"RSP","asOf":"2026-11-03T19:00:00+00:00",
+                    "lastPrice":219.42,"openCost":438.98,"unrealized":-0.14,
+                    "open":[{"id":"a","qty":1,"buyPrice":219.98,"targetPrice":222.18,"boughtAt":null},
+                            {"id":"b","qty":1,"buyPrice":219.0}],
+                    "closed":[{"id":"c","qty":1.0,"buyPrice":218.1,"sellPrice":220.28,"pnl":2.18,
+                               "reason":"profit_target","soldAt":"2026-11-03T18:36:00+00:00"}],
+                    "today":{"realized":8.72,"sales":4,"buys":7}}}}""",
+                ),
+            ) as BridgeMessage.StatusMessage
+            ).status
+        val book = status.book!!
+        assertEquals("RSP", book.symbol)
+        assertEquals(1, book.open.size) // the lot with no target is not one
+        assertEquals(222.18, book.open[0].targetPrice, 1e-9)
+        assertNull(book.open[0].boughtAt)
+        assertEquals(2.18, book.closed[0].pnl!!, 1e-9)
+        assertEquals(8.72, book.realizedToday, 1e-9)
+        assertEquals(4, book.salesToday)
+        assertEquals(7, book.buysToday)
+        assertEquals(-0.14, book.unrealized!!, 1e-9)
+    }
+
+    @Test
+    fun aBridgeWithoutABookHasNone() {
+        val status = (BridgeMessage.parse(obj("""{"type":"status","status":{}}""")) as BridgeMessage.StatusMessage).status
+        assertNull(status.book)
+    }
 }
