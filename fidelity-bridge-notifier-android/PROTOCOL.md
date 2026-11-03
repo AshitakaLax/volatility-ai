@@ -127,6 +127,23 @@ network.
     refreshed at most once a minute.
   - `trading`, `previews` and `fidelity` (`signed_in`, `signed_out`,
     `no_tab`, `elsewhere`) are `null` until the extension has said.
+  - `book` is the trading book, read-only from the trader's ledger and fill
+    journal (the bridge's `book.py`), refreshed every 30 s and sent when it
+    changes; absent from a bridge older than this or one with no trader to
+    read:
+    ```json
+    "book": {"symbol": "RSP", "asOf": "…", "lastPrice": 219.42,
+             "open": [{"id": "…", "qty": 1, "buyPrice": 219.98, "targetPrice": 222.18,
+                       "boughtAt": "…"}],
+             "openCost": 5037.80, "unrealized": -4.21,
+             "closed": [{"id": "…", "qty": 1, "buyPrice": 218.10, "sellPrice": 220.28,
+                         "pnl": 2.18, "reason": "profit_target", "boughtAt": "…", "soldAt": "…"}],
+             "today": {"realized": 8.72, "sales": 4, "buys": 7}}
+    ```
+    `open` is newest first; `closed` is the last 20 sales, newest first, `pnl`
+    after costs. `unrealized` is the open lots at `lastPrice`, before costs.
+    `today` is the market's calendar day (New York). `boughtAt` is `null` when
+    the journal no longer reaches back to the buy.
 - **goodbye**, `{"type": "goodbye", "reason": "…"}`: the bridge is
   stopping on purpose. The host runs all the time, so this is a restart (a
   deploy, a config change) and it is back within seconds. The connection

@@ -43,6 +43,11 @@ class Prefs(context: Context) : PositionStore {
         get() = prefs.getBoolean(ALERT_UNREACHABLE, true)
         set(value) = prefs.edit().putBoolean(ALERT_UNREACHABLE, value).apply()
 
+    /** Whether the app opens on its Connect page; off, it opens on Home once set up. */
+    var openConnectAtStart: Boolean
+        get() = prefs.getBoolean(OPEN_CONNECT, true)
+        set(value) = prefs.edit().putBoolean(OPEN_CONNECT, value).apply()
+
     /** How long the bridge may be unreachable before that is worth saying. */
     val unreachableGraceMillis: Long
         get() = prefs.getLong(UNREACHABLE_GRACE, 120_000L)
@@ -71,6 +76,7 @@ class Prefs(context: Context) : PositionStore {
         const val DISABLED_KINDS = "disabled_kinds"
         const val ENABLED_KINDS_BEFORE = "kinds"
         const val ALERT_UNREACHABLE = "alert_unreachable"
+        const val OPEN_CONNECT = "open_connect_at_start"
         const val UNREACHABLE_GRACE = "unreachable_grace_ms"
         const val STREAM = "position_stream"
         const val LAST_ID = "position_id"
