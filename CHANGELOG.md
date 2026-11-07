@@ -1,5 +1,36 @@
 # Changelog
 
+## Feat: Daily Ultimate, an algorithm swept for +0.1% of equity a session
+
+The owner asked for an algorithm targeting +0.1% of equity a session, and which fund, buy and
+sell reach it.
+
+- **`daily_ultimate`** (`research/strategies/daily_ultimate_sizing.py`): Ultimate with three
+  switches, each off by default (all off is `ultimate`, blotter for blotter):
+  - `compound_lots`: lots from each session's opening equity;
+  - `daily_goal` with `goal_pause_buys` / `goal_lock`: once the session is up the goal, pause
+    the calm grid, or sell calm lots already in profit at the market;
+  - `eod_harvest_minute`: sell calm lots in profit from that minute to the close.
+- Both take-profits are profit-target sales, so the no-loss guard checks them. The regime exit is
+  still the only loss path.
+- As composable halves: the `daily_ultimate` buy, the `daily_ultimate_exit` sell (Ultimate's exit
+  plus the take-profits, regime defaults matching the buy) and `daily_harvest` (the take-profits
+  for any buyer). The composed pair is pinned identical to the strategy.
+- **The sweep** (`tools/probe_daily_ultimate.py`, 734 configurations, causal fills, dynamic
+  slippage, no cash yield; `docs/research/daily-ultimate.md`):
+  - Only TQQQ reaches the goal inside a 30% drawdown.
+  - The choice is Ultimate's buy and regime exit with 0.8% lots and a 12% target, the daily
+    switches off: 0.160% a session (49.6% CAGR, 29.9% max DD) against buy-and-hold's 0.128%
+    (37.8%, 81.7%).
+  - From 2022: 0.099% a session against 0.033%. It was second of 300 when chosen on 2017–2021
+    alone.
+  - Compounding doubles the drawdown for the same return, and every daily take-profit costs
+    return per session. Pinned as `config/daily_ultimate_tqqq.yaml` and
+    `STRATEGY_DEFAULTS["daily_ultimate"]`.
+- **Why the first selection rule was replaced:** the shallowest drawdown at the goal picked a cell
+  that made 0.046% a session out of sample (184th of 300). The highest return within a 30%
+  drawdown held its rank.
+
 ## Feat: the Notifier app's four pages, and the book they show
 
 The Android app was one long screen of settings and status. It now opens on a

@@ -6,7 +6,7 @@ kinds live side by side — check which one before editing:
 | Kind | Examples | `live.enabled` | Purpose |
 |---|---|---|---|
 | **Sweep** | `search_hf_*.yaml`, `sweep_5y*.yaml`, `probe_*.yaml`, `lotcap_test_*.yaml` | false/absent | a `grid`/`bayesian`/`random` search space for `research/run_hf_sweep.py` or `python cli.py search`/`backtest` |
-| **Pinned champion** | `best_known_2026-08-24.yaml`, `ultimate_tqqq.yaml`, `soxl_champion.yaml` | false | a single-point config reproducing one specific best-known result — not a search space, don't add a grid to it |
+| **Pinned champion** | `best_known_2026-08-24.yaml`, `ultimate_tqqq.yaml`, `daily_ultimate_tqqq.yaml`, `soxl_champion.yaml` | false | a single-point config reproducing one specific best-known result — not a search space, don't add a grid to it |
 | **Deployment** | `paper_aggressive.yaml`, `ultimate_paper.yaml`, `production.yaml`, `staging.yaml`, `staging_hf_local_reference.yaml` | **true** | drives `python cli.py live` and the compose trading services: `paper` → `paper_aggressive.yaml` (`.env`), `paper-ultimate` → `ultimate_paper.yaml` (`.env.ultimate`), `live` → `production.yaml` (`.env.production` + a passing `PromotionEvaluation`), `fidelity` → `fidelity_live.yaml` (copied from its `.example`; git-ignored and kept out of the image, it names the account; real money through the browser extension). Each must pass `live_algorithm.build_strategy`'s live rules (`tools/tests/test_compose_deployment.py`). Never sweep configs. |
 
 Two more things live here that are not `BacktestConfig`s:

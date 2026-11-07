@@ -22,6 +22,7 @@ from research.ml.reachability_sizing import MLReachabilitySizing
 from research.ml.regime_scaled_sizing import MLRegimeScaledSizing
 from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 from research.strategies.catalog_exposure_sizing import CatalogExposureSizing
+from research.strategies.daily_ultimate_sizing import DailyUltimateSizing
 from research.strategies.gated_local_reference_sizing import GatedLocalReferenceSizing
 from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from research.strategies.library_sizing import LibrarySizing, library_strategy_ids
@@ -66,6 +67,17 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     # on for this id; config/ultimate_tqqq.yaml sets it), and the
     # regime needs ~250 sessions of history (UltimateSizing.warm_up).
     "ultimate": UltimateSizing,
+    # Daily Ultimate (docs/research/daily-ultimate.md): Ultimate run for a
+    # return on the day's equity -- lots compounded from each session's
+    # opening equity, a daily goal that can pause buying or lock in the
+    # day's gains, and a closing profit-only harvest. Every switch off is
+    # ultimate exactly (research/tests/test_daily_ultimate.py). The same
+    # regime exit, so the same allow_signal_exit requirement. Swept on 11
+    # funds (tools/probe_daily_ultimate.py): only TQQQ reaches +0.1% a
+    # session inside a 30% drawdown, and its best configuration
+    # (config/daily_ultimate_tqqq.yaml) leaves the three switches off --
+    # 0.160% a session from 2017, 0.099% from 2022, 29.9% max DD.
+    "daily_ultimate": DailyUltimateSizing,
     # Ultimate-RSP (docs/research/ultimate-rsp.md): not a grid. A daily
     # exposure target for RSP from two uncorrelated vote families --
     # PLUS_DM (upside volatility) and Chaikin ADOSC (money flow), each
@@ -163,7 +175,7 @@ STRATEGIES.update(dict.fromkeys(library_strategy_ids(), LibrarySizing))
 # A live deployment must set it in its own file:
 # research/strategies/live_algorithm.py refuses to start one without it.
 SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset(
-    {"ultimate", "ultimate_rsp", "ultimate_ursp", "catalog_exposure"}
+    {"ultimate", "daily_ultimate", "ultimate_rsp", "ultimate_ursp", "catalog_exposure"}
 )
 
 

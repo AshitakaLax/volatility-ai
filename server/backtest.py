@@ -508,6 +508,10 @@ for _regime_id in (_i for _i in STRATEGIES if _i.startswith("ml_regime_")):
 for _lib_id in (_i for _i, _c in STRATEGIES.items() if _c.__name__ == "LibrarySizing"):
     _GRID_TRIGGER[_lib_id] = dict(_GRID_TRIGGER["hf_entry_gated"])
 
+# Daily Ultimate buys exactly as Ultimate does (its goal can only pause the
+# calm grid), so it is described the same way.
+_GRID_TRIGGER["daily_ultimate"] = dict(_GRID_TRIGGER["ultimate"])
+
 # A composition's trigger is its BUY policy's (research/composition/): the
 # form shows that policy's own trigger, so the composed id names only that.
 _GRID_TRIGGER["composed"] = {

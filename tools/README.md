@@ -168,6 +168,7 @@ stage's result and the prediction it was read against:
 | `probe_bull_capture.py` | Why the regime book captures ~1/3 of the benchmark in every bull year. |
 | `probe_downturn_tactics.py` | TQQQ: which tactic actually makes money *through* a drawdown? |
 | `probe_escalating_risk.py` | Lot size scaling with the underlying's drawdown. |
+| `probe_daily_ultimate.py` | Which fund, buy and sell reach +0.1% of equity a session? (TQQQ; Ultimate's buy and regime exit; `docs/research/daily-ultimate.md`) |
 | `probe_sqqq_stop.py` | Does a stoppable SQQQ hedge work now that a loss can be realised? (No.) |
 
 **Costs and signals the backtest does not model:**

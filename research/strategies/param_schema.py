@@ -396,6 +396,22 @@ STRATEGY_DEFAULTS["ultimate"] = {
     "liquidate_minute": 60,
 }
 
+# daily_ultimate: the configuration the daily-ultimate sweep chose
+# (docs/research/daily-ultimate.md, config/daily_ultimate_tqqq.yaml) --
+# pinned to that file by research/tests/test_daily_ultimate.py.
+STRATEGY_DEFAULTS["daily_ultimate"] = {
+    **STRATEGY_DEFAULTS["ultimate"],
+    "per_lot_pct": 0.008,
+    "natr_period": 14,
+    "reversal_threshold": -0.08,
+    "reversal_target": 0.08,
+    "compound_lots": False,
+    "daily_goal": 0.001,
+    "goal_pause_buys": False,
+    "goal_lock": False,
+    "harvest_min_gain": 0.002,
+}
+
 # ultimate_rsp: the recommended configuration of docs/research/ultimate-rsp.md
 # (config/ultimate_rsp.yaml), which is also the constructor's defaults --
 # listed so the form shows them as the strategy's primary fields.
