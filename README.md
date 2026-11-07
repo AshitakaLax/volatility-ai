@@ -85,10 +85,6 @@ flag *and* a strategy hook.
     one strategy per ranked-list algorithm: the champion grid with that
     algorithm as a gate, a lot sizer or a lower buy level
     (`strategies/library_sizing.py`, `strategies/signal_library.py`); unmeasured
-- **Portfolio book** (`strategies/portfolio_book.py`, `tools/portfolio_book.py
-  --list`): 53 long-only multi-asset allocators (`strategies/allocators.py`,
-  `strategies/allocator_library.py`) backtested on daily closes, every sale
-  through the no-loss guard; backtest only (`engine/roadmap.md`)
   - `ultimate` — a causal NATR volatility regime with a bear filter: the
     champion grid while calm, capitulation-close reversal lots while
     turbulent, and a delayed regime exit
@@ -97,6 +93,19 @@ flag *and* a strategy hook.
     a simulated 3x RSP
   - `ml_reachability_*`, `ml_regime_*` — learned sizing (LightGBM),
     research only
+  - `ml_meta_label` — the champion grid with each buy skipped or shrunk by a
+    trained meta-label model: LightGBM on triple-barrier labels of the grid's
+    own triggers, trained walk-forward by `cli.py train` (`ml/meta_*.py`;
+    [below](#train-and-run-the-ml-model)); it never grows a buy or sells
+  - `ml_tft` — grid buys sized by a Temporal Fusion Transformer: its 10/50/90
+    quantiles become a mean and standard deviation, each buy is
+    `max_trade_pct` × clip(kelly_scale · μ/σ²) × a drawdown decay, so buying
+    throttles as uncertainty or a drawdown grows (`ml/tft_*.py`; needs
+    `requirements-dl.txt`; [below](#the-temporal-fusion-transformer-sizer))
+- **Portfolio book** (`strategies/portfolio_book.py`, `tools/portfolio_book.py
+  --list`): 53 long-only multi-asset allocators (`strategies/allocators.py`,
+  `strategies/allocator_library.py`) backtested on daily closes, every sale
+  through the no-loss guard; backtest only (`engine/roadmap.md`)
 - **Sweeps** — grid, Bayesian (Optuna TPE) and random search, run in
   parallel processes with checkpointed output (`run_hf_sweep.py`,
   `optimization/`), plus warm-up history for regime strategies.
@@ -152,7 +161,7 @@ flag *and* a strategy hook.
 
 ### Operations (`cli.py`, `tools/`, Docker)
 - **One entrypoint**: `test`, `fetch-data`, `backtest`, `search`, `submit`,
-  `live`, `serve`, `shard`, `backup`, `restore`.
+  `train`, `live`, `serve`, `shard`, `backup`, `restore`.
 - **One Docker Compose file** for everything that stays up: the UI with its
   backtest engine, the paper trading loop and a daily backup; Ultimate in
   paper and real money behind profiles; one-off tools (tests, preflight,
@@ -259,6 +268,60 @@ results = controller.run_sweep(
     strategy_params_grid=[{"allocation_pct": 0.05}],
 )
 ```
+
+### Train and run the ML model
+
+`ml_meta_label` is the champion grid with a learned filter on its buys
+(meta-labelling: [docs/ml_plan.md](docs/ml_plan.md), "Phase ML-3"). Training
+is a time-series walk-forward: one LightGBM model per year, each fitted only
+on outcomes known before its year began, so a backtest over the whole
+history is out of sample wherever the model speaks. Needs
+`pip install -r requirements-ml.txt`.
+
+```bash
+.venv/bin/python cli.py train --config config/ml/meta_label_tqqq.yaml --compare
+.venv/bin/python cli.py backtest --config data/ml/models/meta_label_tqqq/backtest.yaml
+.venv/bin/python cli.py backtest --config data/ml/models/meta_label_tqqq/baseline.yaml
+```
+
+`train` writes the model directory (`manifest.json`, one booster per
+segment, `report.md` with out-of-sample AUC, Brier skill and a
+shuffled-label control) and two backtest configs: the model on the base
+config, and the base config alone. `--compare` runs both on the
+out-of-sample window. `--bars FILE` trains on a CSV/Parquet instead of the
+warehouse. The same strategy id runs in the web UI's backtest form (its
+`model` field names the directory) and live (the newest segment answers).
+
+### The Temporal Fusion Transformer sizer
+
+`ml_tft` sizes each grid buy from a TFT's quantile forecast of the price
+`prediction_length` bars ahead (`research/ml/tft_sizing.py`). Needs
+`pip install -r requirements-dl.txt` (torch, lightning,
+pytorch-forecasting 1.8, which caps pandas below 3.1).
+
+```bash
+.venv/bin/python cli.py train --config config/ml/tft_tqqq.yaml --compare
+.venv/bin/python cli.py backtest --config data/ml/models/tft_tqqq/backtest.yaml
+```
+
+The covariates map onto pytorch-forecasting's `TimeSeriesDataSet` like this
+(`research/ml/tft_training.py`'s `dataset_kwargs`):
+
+| TFT input | columns | why there |
+|---|---|---|
+| target | `log_close` | the decoder's last step is the price `H` bars out; minus log(entry) it is the lot's return |
+| `time_varying_unknown_reals` (observed, encoder only) | `log_close`, `ret_1` (R<sub>t-1</sub>), `ret_2` (R<sub>t-2</sub>), `s_macro`, `s_earnings`, `s_news` | known only up to the forecast origin |
+| `time_varying_known_reals` (decoder too) | `e_event` (FOMC day), `t_open`, `t_close` (session clock) | scheduled, so their future values are known |
+| `static_categoricals` / `group_ids` | `group` (the fund) | |
+| lengths | `min = max_encoder_length = L`, `min = max_prediction_length = H` | the live ring holds exactly `L` rows |
+| `target_normalizer` | `EncoderNormalizer()` | each window on its own scale, across TQQQ's $1–$90 history |
+
+The three outside series are CSVs (`timestamp` or `date`, and `value`) read
+point-in-time; leave one `null` and it is 0.0 in training and trading alike.
+Training stops at `validation_start`, the sizer refuses to size an earlier
+bar, and `backtest.yaml` starts there. A forecast is one forward pass (about
+30 ms on a CPU) and runs only on a trigger, at most once per
+`refresh_bars`; each bar's update is an O(1) write into a pre-allocated ring.
 
 Research sweeps (parallel workers, random/Bayesian search, the record of
 every sweep run so far) are documented in [docs/sweeps.md](docs/sweeps.md);

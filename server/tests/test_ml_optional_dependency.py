@@ -30,7 +30,8 @@ import pytest
 @pytest.fixture
 def lightgbm_and_sklearn_unavailable(monkeypatch):
     """Simulates a machine with only requirements.txt installed."""
-    blocked = {"lightgbm", "sklearn"}
+    # requirements-ml.txt and requirements-dl.txt (the ml_tft sizer's TFT).
+    blocked = {"lightgbm", "sklearn", "torch", "lightning", "pytorch_forecasting"}
     real_import = builtins.__import__
 
     def guarded(name, *args, **kwargs):
@@ -131,3 +132,13 @@ def test_only_constructing_the_ml_strategy_needs_the_missing_dependency(
     # Every other strategy is completely unaffected.
     resolve_strategy("fixed")(allocation_pct=0.1)
     resolve_strategy("hf_local_reference")
+
+
+def test_the_tft_sizer_needs_torch_only_to_load_a_model(lightgbm_and_sklearn_unavailable):
+    from engine.core.exceptions import ConfigurationError
+    from research.ml.tft_model import deep_learning
+    from research.strategies.strategy_registry import resolve_strategy
+
+    resolve_strategy("ml_tft")(max_trade_pct=0.05, bars_per_day=387)  # constructs
+    with pytest.raises(ConfigurationError, match=r"requirements-dl.txt"):
+        deep_learning()

@@ -303,6 +303,24 @@ STRATEGY_DEFAULTS["hf_entry_gated"] = dict(STRATEGY_DEFAULTS["hf_local_reference
 # hf_signal_gated: the same champion values with every gate off, so it too
 # reproduces hf_local_reference until a gate is switched on.
 STRATEGY_DEFAULTS["hf_signal_gated"] = dict(STRATEGY_DEFAULTS["hf_local_reference"])
+# ml_meta_label: the champion's values, the model `cli.py train` writes from
+# config/ml/meta_label_tqqq.yaml, and the sizing thresholds that config
+# trains for (research/ml/meta_label_sizing.py).
+STRATEGY_DEFAULTS["ml_meta_label"] = {
+    **STRATEGY_DEFAULTS["hf_local_reference"],
+    "model": "data/ml/models/meta_label_tqqq",
+    "skip_below": 0.5,
+    "full_size_at": 0.7,
+    "size_floor": 0.5,
+}
+# ml_tft: the TFT sizer at the per-trade cap and bar size config/ml/tft_tqqq.yaml
+# trains for; the other arguments keep their constructor defaults
+# (research/ml/tft_sizing.py).
+STRATEGY_DEFAULTS["ml_tft"] = {
+    "max_trade_pct": 0.05,
+    "bars_per_day": 387,
+    "model": "data/ml/models/tft_tqqq",
+}
 # The signal library's ids (rk<N>_<signal>, research/strategies/
 # library_sizing.py): the champion's values plus the algorithm's `signal`,
 # which the run form seeds (and a plain Run sends, being a committed

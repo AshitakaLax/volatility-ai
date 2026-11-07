@@ -11,7 +11,7 @@ researched 2026-10-28
 | AI implementability rank | 253 (1 = easiest) |
 | Retail advantage rank | 107 (1 = strongest) |
 | Fit with this project | ✅ (V13: a model scales grid buys by the chance the lot reaches its target) |
-| Implemented in volatility-ai | **Yes.** `research/ml/reachability_sizing.py` (ledger V13) is meta-labelling applied to the grid: the grid trigger is the primary signal and a LightGBM model of P(target reached) shrinks the size of each buy. Per-ticker models exist for COWZ, RSP and SPYD, not TQQQ. |
+| Implemented in volatility-ai | **Yes.** `research/ml/reachability_sizing.py` (ledger V13) is meta-labelling applied to the grid: the grid trigger is the primary signal and a LightGBM model of P(target reached) shrinks the size of each buy. Per-ticker models exist for COWZ, RSP and SPYD, not TQQQ. **And** `ml_meta_label` (`research/ml/meta_label_sizing.py`, 2026-11-07): the champion `hf_local_reference` trigger as the primary signal, LightGBM on triple-barrier labels of its own triggers as the secondary, trained walk-forward with purging, uniqueness weights and calibration by `cli.py train` (`research/ml/meta_training.py`); it skips or shrinks a buy. Any fund, TQQQ included; unmeasured on real bars. |
 | Related ledger entries | V13, C-ML1, V14, RK213 |
 
 ## In one paragraph
@@ -66,9 +66,10 @@ model; the existing ones cover COWZ, RSP and SPYD.
 
 ## What to measure next
 
-Train the reachability model on TQQQ triggers with the purged
-walk-forward split (C-ML3), and compare the champion with and without
-the sizing over the 2020 and 2022 drawdowns, ranking by total return and
+Built as `ml_meta_label` (docs/ml_plan.md, Phase ML-3): run
+`python cli.py train --config config/ml/meta_label_tqqq.yaml --compare` on
+the warehouse's TQQQ, then compare the champion with and without the
+model over the 2020 and 2022 drawdowns, ranking by total return and
 Calmar.
 
 ## References
