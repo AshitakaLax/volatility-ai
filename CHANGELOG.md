@@ -1,5 +1,43 @@
 # Changelog
 
+## Feat: `ml_meta_label`, the meta-label model, and `cli.py train` to train and run it
+
+**The learned-sizing line had no model that could be trained, backtested and
+traded the same way.** The reachability models (V13) trained once to a fixed
+cutoff, so a backtest over the training years was partly in-sample, and none
+covered TQQQ. Of the learned methods the ledger researched, gradient-boosted
+trees used as a meta-labeller fit the owner's rules and the evidence best
+(RK291, RK317, RK294; `docs/ml_plan.md`, "Phase ML-3"). The grid's own trigger
+picks the buys; the model only skips or shrinks them.
+
+- **Training** (`cli.py train --config config/ml/meta_label_tqqq.yaml`,
+  `research/ml/meta_training.py`): every buy the base config's
+  `hf_local_reference` trigger would place is labelled by its triple barrier
+  (the lot's target touched within `max_hold_days`, before an optional stop),
+  weighted by average uniqueness, and learned by an expanding-window
+  walk-forward: one LightGBM model per `refit_days`, each fitted only on labels
+  resolved before its period (purged, with an embargo), early-stopped and
+  isotonic-calibrated on its own held-out tail. The report gives pooled
+  out-of-sample AUC, Brier skill against the base rate, hit rate by quintile
+  and a shuffled-label control.
+- **The artifact** (`research/ml/meta_model.py`): a manifest and one text
+  booster per segment, hashed and checked on load. Each bar is answered by the
+  segment whose period it falls in, so a full-history backtest is out of sample
+  wherever the model speaks; before the first segment the strategy is
+  `hf_local_reference` exactly. Live, the newest segment answers. `train` also
+  writes `backtest.yaml` and `baseline.yaml`, and `--compare` runs both on the
+  out-of-sample window.
+- **The strategy** (`ml_meta_label`, `research/ml/meta_label_sizing.py`): the
+  champion grid unchanged, each buy multiplied by 0 below `skip_below`, then
+  `size_floor` to 1 up to `full_size_at`. It never grows a buy, moves a target
+  or sells; it refuses a model trained for another lookback, bar size or grid
+  step. The features (`research/ml/meta_features.py`) are one class used by both
+  the dataset builder and the strategy, causal under both fill models, and
+  pinned equal through the real controller.
+- Unmeasured on real bars: train it on the warehouse's TQQQ and compare before
+  trading it.
+- README: the portfolio-book bullet no longer splits the strategy list.
+
 ## Feat: the Notifier app's four pages, and the book they show
 
 The Android app was one long screen of settings and status. It now opens on a

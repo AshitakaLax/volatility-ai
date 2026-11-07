@@ -1,0 +1,52 @@
+# Meta-label model for the TQQQ paper deployment's grid.
+#
+#   python cli.py train --config config/ml/meta_label_tqqq.yaml --compare
+#   python cli.py backtest --config data/ml/models/meta_label_tqqq/backtest.yaml
+#
+# NOT a BacktestConfig: a training config for research/ml/meta_training.py.
+# It names a base BacktestConfig whose grid it learns to filter; the trigger
+# (step, lookback_days, bars_per_day, fill model), the lot's profit target and
+# the fund all come from there, so the model is trained for exactly the grid
+# that config runs. The trainer writes backtest.yaml (the model on that
+# config) and baseline.yaml (the config as it is) into the model directory.
+
+name: meta_label_tqqq
+base_config: config/paper_aggressive.yaml   # hf_local_reference, step 0.00075, target 0.003
+bars: null          # null: the warehouse's TQQQ bars; or a CSV/Parquet path
+start_date: null    # e.g. "2016-01-01"; the backtest configs start here too
+end_date: null
+
+label:
+  max_hold_days: 1.0   # vertical barrier: the target must be touched within a session
+  stop: 0.02           # lower barrier: ...without first falling 2% (a label only; nothing sells)
+
+events:
+  min_gap_bars: 5      # keep triggers at least 5 bars apart (the rest are near-duplicates)
+
+walk_forward:
+  min_train_days: 730      # the first model needs two years of resolved labels
+  refit_days: 365          # a new model every year, each trained only on the past
+  embargo_days: 1          # labels resolving within a day of a segment's start are purged
+  validation_fraction: 0.2 # the last 20% of each training window: early stopping + calibration
+
+model:                     # LightGBM; any lightgbm.train parameter may be added
+  learning_rate: 0.03
+  num_leaves: 15
+  min_data_in_leaf: 200
+  feature_fraction: 0.8
+  bagging_fraction: 0.8
+  bagging_freq: 1
+  lambda_l2: 1.0
+  seed: 7
+  num_boost_round: 500
+  early_stopping_rounds: 50
+
+controls:
+  shuffled_label_runs: 1   # the same scheme on permuted labels: its AUC must sit near 0.5
+
+sizing:                    # written into backtest.yaml; sweepable there
+  skip_below: 0.5          # no buy when P(target first) is below this
+  full_size_at: 0.7        # full size from here; linear from size_floor below it
+  size_floor: 0.5
+
+output: data/ml/models/meta_label_tqqq

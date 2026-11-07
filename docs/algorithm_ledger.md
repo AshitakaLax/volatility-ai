@@ -685,6 +685,12 @@ decline needs a larger recovery to exit.
 profit target is reachable and scales size accordingly. Unmeasured for
 corrections; the per-ticker models do not include TQQQ.
 
+Its successor, `ml_meta_label` (2026-11-07; RK317, RK294, RK291), works on
+any fund, TQQQ included: LightGBM on triple-barrier labels of the champion
+trigger's own buys, trained walk-forward (one model a year, each on the past
+only) by `cli.py train`, skipping or shrinking each buy. Unmeasured on real
+bars (`docs/ml_plan.md`, Phase ML-3).
+
 ### V14. ML regime sizing (qlib) 🧪
 
 `ml_regime_{tqqq,qqq,rsp,soxl,sqqq,spyd,xbi,cowz,ursp}`,

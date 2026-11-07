@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Single entrypoint for running this project inside a container (or
-locally). Ten subcommands cover everything the project can honestly
+locally). These subcommands cover everything the project can honestly
 do today:
 
   cli.py test [pytest args...]     Run the whole suite: every project
@@ -26,6 +26,11 @@ do today:
                                     Run an exhaustive parameter sweep
                                     against C's `backtest.symbol` bars,
                                     read from the warehouse.
+  cli.py train --config T [--compare]
+                                    Train the meta-label model (time-series
+                                    walk-forward, research/ml/meta_training.py)
+                                    and write it with a backtest config
+                                    that runs it (`ml_meta_label`).
   cli.py search --config C --trials N
                                     Adaptive (Optuna TPE) search over a
                                     space too large to enumerate, logging
@@ -346,6 +351,17 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         )
         return 2
     strategy_class = registry[config.strategy.strategy_id]
+    if callable(getattr(strategy_class, "check_run", None)):
+        # A trained model refuses a run it was not trained for here, rather
+        # than as a failed row per combination inside the sweep.
+        from engine.core.config import expand_strategy_params
+
+        try:
+            for combo in expand_strategy_params(config.strategy.strategy_params):
+                strategy_class(**combo).check_run(config.grid.steps, config.grid.profit_targets)
+        except ConfigurationError as e:
+            print(f"Invalid config: {e}", file=sys.stderr)
+            return 2
 
     df, dataset_version = _load_warehouse_bars(config.backtest.symbol)
     if df is None:
@@ -2154,6 +2170,23 @@ def cmd_shard(args: argparse.Namespace) -> int:
     return process.run_forever(max_runs=args.max_runs)
 
 
+def cmd_train(args: argparse.Namespace) -> int:
+    """Train the meta-label model from a training YAML (config/ml/).
+
+    A time-series walk-forward: one model per period, each fitted only on
+    labels resolved before it, written as one artifact with the backtest
+    configs that run it. Needs requirements-ml.txt; see
+    research/ml/meta_training.py for the scheme."""
+    from engine.core.exceptions import ConfigurationError
+    from research.ml.meta_training import run_cli
+
+    try:
+        return run_cli(args.config, args.bars, args.output, args.compare)
+    except ConfigurationError as exc:
+        print(f"Cannot train: {exc}", file=sys.stderr)
+        return 2
+
+
 def cmd_matrix(args: argparse.Namespace) -> int:
     """Run a buy x sell matrix (research/composition/matrix.py) over the
     warehouse's funds, or analyse one already run (--analyze DIR)."""
@@ -2458,6 +2491,22 @@ def main() -> int:
         help="Label shown in the web UI's Run History (default: the config file's name)",
     )
     p_backtest.set_defaults(func=cmd_backtest)
+
+    p_train = sub.add_parser(
+        "train",
+        help="Train the meta-label model (walk-forward) and write the configs that run it",
+    )
+    p_train.add_argument("--config", required=True, help="A training YAML (config/ml/*.yaml)")
+    p_train.add_argument(
+        "--bars", default=None, help="Train on this CSV/Parquet instead of the warehouse"
+    )
+    p_train.add_argument("--output", default=None, help="Model directory (default: the config's)")
+    p_train.add_argument(
+        "--compare",
+        action="store_true",
+        help="Then backtest the model against the base strategy on the out-of-sample window",
+    )
+    p_train.set_defaults(func=cmd_train)
 
     p_matrix = sub.add_parser(
         "matrix",

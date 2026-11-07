@@ -30,6 +30,12 @@ Two more things live here that are not `BacktestConfig`s:
   policies, funds, `min_history_years` (never below 5, 10+ recommended) and an
   equal `trials_per_cell`, plus the `BacktestConfig` sections every cell is built
   from (no `strategy:`). Not `BacktestConfig`s themselves.
+- `ml/<name>.yaml` — TRAINING configs for `python cli.py train`
+  (`research/ml/meta_training.py`): a `base_config` (an `hf_local_reference`
+  BacktestConfig with one step and one target, whose grid the model filters),
+  the label's barriers, the walk-forward, LightGBM parameters and the sizing
+  thresholds. Not `BacktestConfig`s themselves; the trainer writes the
+  `backtest.yaml` that runs the model beside it.
 - `proposed_profiles/<id>.yaml` — profiles kept for later that no committed
   deployment can trade yet (nothing loads this directory). Move one into
   `live_profiles/` once a deployment trading its symbol is committed.

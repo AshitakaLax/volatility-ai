@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from engine.core.exceptions import ConfigurationError
 from research.composition.composed_strategy import ComposedStrategy
+from research.ml.meta_label_sizing import MetaLabelSizing
 from research.ml.reachability_sizing import MLReachabilitySizing
 from research.ml.regime_scaled_sizing import MLRegimeScaledSizing
 from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
@@ -132,6 +133,13 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     "ml_regime_xbi": MLRegimeScaledSizing,
     "ml_regime_cowz": MLRegimeScaledSizing,
     "ml_regime_ursp": MLRegimeScaledSizing,
+    # The champion grid with each buy sized by a trained meta-label model
+    # (gradient-boosted trees on triple-barrier labels of its own triggers,
+    # walk-forward trained: research/ml/meta_training.py, `cli.py train`).
+    # One id for every fund: the model is a directory (`model`), and the
+    # strategy refuses one trained for another trigger. Skips or shrinks a
+    # buy, never grows or sells one. UNMEASURED on real bars until trained.
+    "ml_meta_label": MetaLabelSizing,
     # Any buy algorithm with any sell policy (research/composition/,
     # docs/research/buy-sell-composition.md): strategy_params are
     # {buy: {id, params}, sell: {id, params}}. composed(X, fixed_target) is X

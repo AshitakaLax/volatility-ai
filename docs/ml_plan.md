@@ -586,3 +586,62 @@ is never installed there). Verified by actually blocking `lightgbm`/
 (`tests/unit/test_ml_optional_dependency.py`), not by inspection.
 
 `pytest tests/unit -q` -> **1890 passed, 1 skipped**. `npm run build`/`npm test` clean.
+
+---
+
+## Phase ML-3 — The meta-label model, trained walk-forward and tradable (2026-11-07)
+
+`ml_meta_label` and `cli.py train`. The model the plan above asked for
+("Phase 2 — The model", "Phase 3.1 — the per-fold step is fit the model on
+the training window, score on the test window"), built so that training,
+backtesting and live trading all use one artifact.
+
+### Why this algorithm
+
+Of every learned method the ledger researched (RK89–RK414, A1, C-RL*),
+**gradient-boosted trees as a meta-labeller** are the one that fits both the
+owner's rules and the evidence:
+
+| | |
+|---|---|
+| fits the rules | the grid trigger stays the primary signal (side is always long); the model only skips or shrinks a buy it chose, so the no-loss guard, the stranding fix and long-only are untouched |
+| evidence | trees are the strongest learners on tabular, noisy, partly missing inputs (Gu, Kelly & Xiu 2020; Krauss, Do & Huck 2017); meta-labelling is the published way to raise a high-recall rule's precision (López de Prado 2018 ch. 3; Joubert 2022), and calibration matters for sizing (Meyer, Barziy & Joubert 2023) |
+| fits the budget | one prediction per buy, not per bar; the features cost ~10 µs a bar (measured: 3 µs to fold a bar, 6 µs to read its New York session clock) |
+| the alternatives | LSTM (RK292) rejected, transformers (RK301, RK413) and deep RL (A1, RK372) out of scope: weak signal and few independent observations, no evidence they beat trees here |
+
+It is the ledger's own "what to measure next" for RK317: train on TQQQ
+triggers with a purged walk-forward and compare against the champion.
+
+### The pieces
+
+| File | What it does |
+|---|---|
+| `research/ml/meta_features.py` | `MetaFeatures`: 30 price/time features (entry context, the last session of bars, completed sessions), one class fed by the builder and the strategy in the same order, so their vectors are equal by construction (tested through the real controller under close, `causal` and `open_or_level` fills) |
+| `research/ml/meta_dataset.py` | events = the `hf_local_reference` trigger from price alone, per fill model; labels = triple barrier (target on highs, optional stop on lows, `max_hold` bars; a bar touching both scores 0); weights = average uniqueness |
+| `research/ml/meta_training.py` | expanding-window walk-forward: segment k trains on labels resolved before `b_k − embargo`, early-stops and isotonic-calibrates on its last 20 %, answers `[b_k, b_{k+1})`; pooled out-of-sample AUC, Brier skill vs the training base rate, quintile hit rates, a shuffled-label control; writes the artifact, `report.md`, `backtest.yaml`, `baseline.yaml` |
+| `research/ml/meta_model.py` | loads the artifact (text boosters + JSON, SHA-256 checked), picks the segment by bar time |
+| `research/ml/meta_label_sizing.py` | `ml_meta_label`: `hf_local_reference` with each buy × 0 / `size_floor`..1 by p; refuses a model trained for another trigger |
+| `config/ml/meta_label_tqqq.yaml` | trains for `config/paper_aggressive.yaml`'s grid (step 0.075 %, target 0.3 %): target within a session, before a 2 % fall |
+
+### Why a full-history backtest is honest
+
+Each segment answers only for the period after the labels it trained on
+were resolved, and the strategy picks the segment by bar time. Before the
+first segment there is no model and the run is `hf_local_reference`
+exactly (tested). So the walk-forward's out-of-sample scores and the
+backtest describe the same predictions, and the backtest can run over the
+whole history without grading any bar on a model that saw it.
+
+### Status
+
+**Unmeasured on real bars.** The container this was built in holds no
+warehouse; the pipeline was run end to end on synthetic bars, where the
+shuffled-label control sat at 0.495 and the model, given little to find,
+found little (AUC 0.516). The bar for keeping it is unchanged from Phase 1:
+beat `hf_local_reference` out of sample on return and drawdown, then beat
+buy-and-hold. AUC is not P&L.
+
+```bash
+python cli.py train --config config/ml/meta_label_tqqq.yaml --compare
+python cli.py backtest --config data/ml/models/meta_label_tqqq/backtest.yaml
+```
