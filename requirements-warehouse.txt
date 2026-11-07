@@ -22,3 +22,6 @@
 duckdb>=1.1           # columnar engine, Parquet views, ASOF JOIN
 polars>=1.0           # streaming CSV scan + zero-copy Arrow handoff
 pyarrow>=15           # the Arrow bridge between polars and duckdb
+pytz>=2020.1          # duckdb imports it to hand TIMESTAMPTZ values to Python. It used
+                      # to arrive through alpaca-py, which dropped it in 0.45.0
+                      # (2026-11-05); without it every warehouse read of a timestamp fails.

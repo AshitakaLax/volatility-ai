@@ -37,6 +37,9 @@ picks the buys; the model only skips or shrinks them.
 - Unmeasured on real bars: train it on the warehouse's TQQQ and compare before
   trading it.
 - README: the portfolio-book bullet no longer splits the strategy list.
+- `requirements-warehouse.txt` names `pytz`: DuckDB needs it for timestamps with a
+  time zone, and it used to come only through alpaca-py, which dropped it in 0.45.0,
+  so every fresh install failed the warehouse tests.
 
 ## Feat: the Notifier app's four pages, and the book they show
 
