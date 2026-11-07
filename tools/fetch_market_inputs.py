@@ -40,7 +40,7 @@ WORKERS = 4
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, default=None, help="Defaults to data/external/")
-    parser.add_argument("--provider", nargs="+", help="Limit to fred, cboe and/or yahoo.")
+    parser.add_argument("--provider", nargs="+", help="Limit to fred, cboe, yahoo and/or frbsf.")
     parser.add_argument("--category", nargs="+", help="Limit to categories, e.g. vol credit.")
     parser.add_argument("--refresh", action="store_true", help="Re-fetch series already on disk.")
     parser.add_argument("--list", action="store_true", help="Show the registry and exit.")

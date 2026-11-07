@@ -59,6 +59,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
+import zipfile
 import zlib
 from dataclasses import dataclass
 from datetime import timedelta
@@ -106,6 +108,12 @@ _NEXT_DAY = timedelta(days=1)  # daily macro, published after the close
 _WEEKLY_RELEASE = timedelta(days=6)  # e.g. claims: week ends Sat, out Thu
 _MONTHLY_RELEASE = timedelta(days=45)  # CPI/payrolls/production, generously
 _QUARTERLY_RELEASE = timedelta(days=90)  # GDP-style, revised for longer still
+# The daily policy-uncertainty index is posted the next morning, and FRED
+# carries it a day after that (measured 2026-11-07: FRED's latest was 11-05).
+_EPU_RELEASE = timedelta(days=2)
+# The SF Fed's news sentiment is refreshed about weekly (2026-11-07: the
+# file ran to 11-01), so a day's value can be up to a week old when read.
+_WEEKLY_REFRESH = timedelta(days=7)
 
 
 # ------------------------------------------------------------------
@@ -190,6 +198,10 @@ _FRED: tuple[tuple[str, str, str, timedelta], ...] = (
     ("GDPC1", "macro", "Real GDP", _QUARTERLY_RELEASE),
     ("USREC", "macro", "NBER recession indicator", _QUARTERLY_RELEASE),
     ("USSLIND", "macro", "Leading index for the United States", _MONTHLY_RELEASE),
+    # News-based uncertainty, daily since 1985 (Baker, Bloom & Davis): the
+    # free stand-in for a macro-surprise index, whose consensus forecasts
+    # are not public (research/ml/tft_inputs.py, s_macro).
+    ("USEPUINDXD", "uncertainty", "Economic policy uncertainty, daily", _EPU_RELEASE),
 )
 
 # ------------------------------------------------------------------
@@ -282,6 +294,41 @@ _YAHOO: tuple[tuple[str, str, str], ...] = (
     ("FXY", "fx", "Japanese yen"),
     ("BTC-USD", "crypto", "Bitcoin"),
     ("ETH-USD", "crypto", "Ethereum"),
+    # The earnings calendar's sixteen Nasdaq-100 reporters
+    # (tools/build_earnings_calendar.py), for each release's price reaction:
+    # the free stand-in for earnings sentiment (research/ml/tft_inputs.py).
+    ("AAPL", "constituent", "Apple"),
+    ("MSFT", "constituent", "Microsoft"),
+    ("NVDA", "constituent", "Nvidia"),
+    ("AMZN", "constituent", "Amazon"),
+    ("GOOGL", "constituent", "Alphabet class A"),
+    ("GOOG", "constituent", "Alphabet class C"),
+    ("META", "constituent", "Meta Platforms"),
+    ("AVGO", "constituent", "Broadcom"),
+    ("TSLA", "constituent", "Tesla"),
+    ("COST", "constituent", "Costco"),
+    ("NFLX", "constituent", "Netflix"),
+    ("AMD", "constituent", "Advanced Micro Devices"),
+    ("CSCO", "constituent", "Cisco"),
+    ("INTC", "constituent", "Intel"),
+    ("MU", "constituent", "Micron"),
+    ("WMT", "constituent", "Walmart"),
+)
+
+# ------------------------------------------------------------------
+# The San Francisco Fed. Its daily news sentiment index (Buckman,
+# Shapiro, Sudhof & Wilson 2020): the tone of economics articles in 24
+# major US newspapers, from 1980, as one spreadsheet. The free news
+# sentiment series there is.
+
+_FRBSF: tuple[tuple[str, str, str, str, timedelta], ...] = (
+    (
+        "NEWS_SENTIMENT",
+        "https://www.frbsf.org/wp-content/uploads/news_sentiment_data.xlsx",
+        "sentiment",
+        "SF Fed daily news sentiment index",
+        _WEEKLY_REFRESH,
+    ),
 )
 
 
@@ -320,6 +367,17 @@ def registry() -> list[Source]:
                 category=category,
                 description=description,
                 lag=_SAME_DAY_CLOSE,
+            )
+        )
+    for key, url, category, description, lag in _FRBSF:
+        sources.append(
+            Source(
+                key=key,
+                provider="frbsf",
+                remote_id=url,
+                category=category,
+                description=description,
+                lag=lag,
             )
         )
     return sources
@@ -470,7 +528,91 @@ def fetch_yahoo(source: Source) -> pd.DataFrame:
     return out.dropna(subset=["close"]).reset_index(drop=True)
 
 
-_FETCHERS = {"fred": fetch_fred, "cboe": fetch_cboe, "yahoo": fetch_yahoo}
+_SHEET_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+_REL_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+
+
+def _xlsx_rows(body: bytes, sheet: str) -> list[dict[str, str | None]]:
+    """One worksheet of an .xlsx as rows of {column letter: cell text}.
+
+    An .xlsx is a zip of XML parts; the standard library reads the few a
+    two-column sheet needs, so one public spreadsheet does not add
+    openpyxl to the requirements. Shared and inline strings are resolved;
+    every other cell is its raw text (a date is Excel's day number).
+    """
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(body))
+    except zipfile.BadZipFile as exc:
+        raise SourceUnavailable(f"not an .xlsx file: {exc}") from exc
+    with archive:
+        names = set(archive.namelist())
+        shared: list[str] = []
+        if "xl/sharedStrings.xml" in names:
+            for item in ET.fromstring(archive.read("xl/sharedStrings.xml")):
+                shared.append("".join(t.text or "" for t in item.iter(f"{_SHEET_NS}t")))
+        workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+        rels = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        targets = {r.get("Id"): r.get("Target", "") for r in rels}
+        rid = next(
+            (
+                s.get(f"{_REL_NS}id")
+                for s in workbook.iter(f"{_SHEET_NS}sheet")
+                if s.get("name") == sheet
+            ),
+            None,
+        )
+        if rid not in targets:
+            raise SourceUnavailable(f"no sheet named {sheet!r}")
+        target = targets[rid].lstrip("/")
+        part = target if target.startswith("xl/") else f"xl/{target}"
+        root = ET.fromstring(archive.read(part))
+    rows = []
+    for row in root.iter(f"{_SHEET_NS}row"):
+        cells: dict[str, str | None] = {}
+        for cell in row.iter(f"{_SHEET_NS}c"):
+            column = "".join(ch for ch in cell.get("r", "") if ch.isalpha())
+            kind = cell.get("t")
+            if kind == "inlineStr":
+                text = "".join(t.text or "" for t in cell.iter(f"{_SHEET_NS}t"))
+            else:
+                value = cell.find(f"{_SHEET_NS}v")
+                text = None if value is None else value.text
+                if kind == "s" and text is not None:
+                    text = shared[int(text)]
+            cells[column] = text
+        rows.append(cells)
+    return rows
+
+
+def fetch_frbsf(source: Source) -> pd.DataFrame:
+    """The news sentiment spreadsheet's Data sheet: a date and a value."""
+    rows = _xlsx_rows(_http_get(source.remote_id), "Data")
+    if not rows:
+        raise SourceUnavailable(f"FRBSF {source.key}: the Data sheet is empty")
+    header = {col: (text or "").strip().lower() for col, text in rows[0].items()}
+    date_col = next((c for c, h in header.items() if h == "date"), None)
+    value_col = next((c for c, h in header.items() if c != date_col and h), None)
+    if date_col is None or value_col is None:
+        raise SourceUnavailable(f"FRBSF {source.key}: unexpected header {list(header.values())}")
+    raw_dates = pd.Series([r.get(date_col) for r in rows[1:]])
+    serial = pd.to_numeric(raw_dates, errors="coerce")
+    # Excel's day numbers count from 1899-12-30; a text date is parsed as text.
+    dates = pd.to_datetime(serial, unit="D", origin="1899-12-30")
+    text = serial.isna() & raw_dates.notna()
+    if text.any():
+        dates[text] = pd.to_datetime(raw_dates[text], format="mixed", errors="coerce")
+    values = pd.to_numeric(pd.Series([r.get(value_col) for r in rows[1:]]), errors="coerce")
+    frame = pd.DataFrame({"date": dates, "close": values}).dropna()
+    out = pd.DataFrame({"timestamp": _stamp(frame["date"], source.lag), "close": frame["close"]})
+    return out.reset_index(drop=True)
+
+
+_FETCHERS = {
+    "fred": fetch_fred,
+    "cboe": fetch_cboe,
+    "yahoo": fetch_yahoo,
+    "frbsf": fetch_frbsf,
+}
 
 
 def fetch(source: Source) -> pd.DataFrame:
