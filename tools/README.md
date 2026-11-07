@@ -81,6 +81,8 @@ the same machinery — see `cli.py backup --help` / `cli.py restore --help`.
 | Script | Produces |
 |---|---|
 | `build_earnings_calendar.py` | `data/earnings_releases_derived.csv`. **Load-bearing for a fresh checkout** — `data/` is git-ignored, so this is absent after a clone and `engine/data/event_calendar.py` needs it. Makes network requests; slow. |
+| `build_tft_inputs.py` | `data/ml/inputs/s_{news,macro,earnings}.csv`, the TFT's three outside series, from the warehouse: the SF Fed's news sentiment, a policy-uncertainty shock (daily EPU) and the earnings announcement return of the calendar's reporters (`research/ml/tft_inputs.py`). Run `fetch_market_inputs.py` and `build_warehouse.py --external` first. |
+| `precompute_tft_forecasts.py` | `<model>/forecasts.npz`: a trained TFT's forecast for every bar of its fund from `valid_from`, made once across all cores (about 10 minutes for 280k bars) so `ml_tft` / `tft_take_profit` sweeps look them up (`forecast_cache`). Exact: keyed by the inputs, a miss runs the model (`research/ml/tft_cache.py`). Needs `requirements-dl.txt`. |
 | `pull_extended_history.py` | Extended-hours minute datasets under `data/`, year by year. |
 | `export_strategy_curves.py` | One JSON blob of every strategy measured here, for the dashboard and the artifact. |
 | `simulate_ursp.py` | `data/simulated/URSP_simulated_daily.csv` (and, with `--minutes`, warehouse-format `URSP_simulated_1Min.csv`): a simulated URSP (2× daily S&P 500 Equal Weight) from RSP since 2003 — 2× RSP's total return less financing (fed funds + a spread calibrated to the real fund) and the 0.95% fee — spliced with the real fund from 2025-08-27. Makes network requests (Yahoo, FRED). See `docs/research/ultimate-ursp.md`. |
@@ -161,6 +163,7 @@ stage's result and the prediction it was read against:
 | `screen_daily_fitness.py` | Which instruments suit a volatility-harvesting grid, on daily bars? |
 | `probe_rsp_alternatives.py` | RSP: is there anything that beats simply holding it? |
 | `probe_feed_coverage.py` | How often does Alpaca's feed (IEX; `--compare sip`) have a bar in each of Fidelity's windows -- the pre-market and after-hours minutes the second source (`live.secondary_feed`) would fill? |
+| `probe_tft_composite.py` | The TFT as a buy (`ml_tft`) and as a sell (`tft_take_profit`), each paired with the composition library's other policies, on TQQQ and RSP over the models' out-of-sample window -- does a TFT improve any pairing? See `docs/research/tft-composite.md`. |
 | `probe_regime_signals.py` | Which regime indicator actually gets you out of 2022, and at what cost? |
 | `probe_regime_integrated.py` | The regime strategy as ONE simulation rather than two spliced return streams. |
 | `probe_regime_combo.py` | Trend-follow in bull, deep-dip escalate in bear. |

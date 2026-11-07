@@ -1,5 +1,64 @@
 # Changelog
 
+## Research: the TFT trained for TQQQ and RSP, and measured in buy × sell compositions
+
+**The owner asked for TFT models for both funds, run as composite buys and
+sells with the other algorithms.** Four models were trained before
+2024-01-01 (each fund, with price alone and with outside series). They were
+judged to 2026-11-06 in a 242-cell matrix with causal fills
+(`docs/research/tft-composite.md`).
+
+**The TFT adds nothing as a buy sizer, and a little, on RSP only, as a sell.**
+
+- Every TFT buy was set beside a **null**: the same sizer fed the model's
+  average forecast. On RSP the TFT and its null are within tenths of a point.
+  On TQQQ it only moves exposure up or down. The models learned the spread
+  of the next 30 minutes (pinball skill +5–6%) but not its direction (rank
+  correlation about 0).
+- As a sell, the TFT take-profit beats its own null by 1–4 points on RSP and
+  matches the fixed target on TQQQ.
+- The best cells need no TFT:
+  - TQQQ: `ultimate` × `regime_exit`, 171% at a 20.9% drawdown, against
+    buy-and-hold's 118% and 62%;
+  - RSP: small grid buys × `rsp_rebalance`, 40% at 6.1%, against 44% and
+    19.3%.
+
+  Both use parameters tuned on histories that include the window.
+
+- **`ml_tft` is a buy policy, and `tft_take_profit` a new sell policy**
+  (`research/composition/entries.py`, `exit_library.py`). The take-profit
+  shares `signal_take_profit`'s mechanics, now in a common `_GateTakeProfit`
+  base. It sells lots up at least `min_gain` when the forecast turns to a
+  fall, always through the no-loss guard. The sizer gained
+  `forecast_moments()` so the two can share it.
+- **A forecast cache** (`research/ml/tft_cache.py`,
+  `tools/precompute_tft_forecasts.py`). It holds each bar's forecast, made
+  once across all cores and keyed by a digest of the exact inputs. A miss
+  runs the model, so the cache can make a run faster, never different.
+  It was checked bit for bit against the live sizer. One `ml_tft` backtest
+  went from more than an hour to about two minutes.
+- **The TFT's outside series, from free data** (`research/ml/tft_inputs.py`,
+  `tools/build_tft_inputs.py`):
+  - `s_news`: the SF Fed's daily news sentiment;
+  - `s_macro`: a policy-uncertainty shock, from daily EPU;
+  - `s_earnings`: the earnings announcement return of the calendar's 16
+    reporters.
+
+  Training configs: `config/ml/tft_rsp.yaml` and `tft_{tqqq,rsp}_inputs.yaml`.
+  `config/hf_entry_gated_rsp.yaml` is the live RSP profile's algorithm as a
+  single-point base config.
+- **New free sources** in `research/ml/sources.py`:
+  - `fred_USEPUINDXD`;
+  - `frbsf_NEWS_SENTIMENT`, a new `frbsf` provider whose `.xlsx` is read
+    with the standard library;
+  - daily closes of the 16 reporters.
+
+  The warehouse's external lake, stale since 2026-09-04, was refreshed (136
+  series).
+- **Nasdaq's calendars** carry the consensus that a true surprise index
+  needs, but they refuse non-browser clients. They are not used: this project
+  does not disguise its client.
+
 ## Feat: `ml_tft`, a Temporal Fusion Transformer sizer, trained by `cli.py train`
 
 **The owner asked for a deep-learning sizer.** The ledger's verdict on the TFT

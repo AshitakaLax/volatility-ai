@@ -4564,6 +4564,7 @@ Multi-horizon attention-based forecaster (Lim et al. 2021). In Qlib's own equity
 * **Fit:** The ML pipeline's problem is signal, not model capacity (as RK292, C-RJ4).
 * **Against:** Accuracy is not profit; tuning; leakage.
 * **Built:** research code, `research/catalog/neural_models.py` — TemporalFusionTransformer (tested on synthetic data; not wired into the engine). Related: the rejected deep-forecaster catalog (C-RJ4) has an LSTM.
+* **Measured (2026-11-07):** as `ml_tft` and `tft_take_profit` on TQQQ and RSP, trained before 2024 and judged after it. Its forecast spread is calibrated (pinball skill +5–6%) but its direction is not (rank correlation about 0). As a sizer it does no better than a null fed its average forecast; as a take-profit it beats its null by 1–4 points on RSP only. See [docs/research/tft-composite.md](research/tft-composite.md).
 * **Details:** [docs/algorithms/temporal-fusion-transformer-forecasting.md](algorithms/temporal-fusion-transformer-forecasting.md)
 
 ### RK302. Deep Galerkin Method (DGM) option solver ⛔

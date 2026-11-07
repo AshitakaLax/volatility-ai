@@ -1,0 +1,60 @@
+# The TFT of tft_tqqq.yaml, also reading the three outside series: news
+# sentiment, a policy-uncertainty shock and the earnings announcement return
+# (research/ml/tft_inputs.py says what each is). Build them first:
+#
+#   python tools/fetch_market_inputs.py --refresh && python tools/build_warehouse.py --external
+#   python tools/build_tft_inputs.py
+#   python cli.py train --config config/ml/tft_tqqq_inputs.yaml --compare
+#
+# Same data, split and network as tft_tqqq.yaml, so the two models'
+# reports and backtests differ only by these inputs.
+
+kind: tft
+name: tft_tqqq_inputs
+base_config: config/paper_aggressive.yaml
+bars: null                   # null: the warehouse's TQQQ bars; or a CSV/Parquet path
+start_date: "2016-01-01"
+end_date: null
+validation_start: "2024-01-01"   # train on bars before this; validate, and trade, after
+bars_per_day: 387
+
+encoder_length: 120          # bars the encoder reads (the live ring holds exactly this)
+prediction_length: 30        # bars ahead; the sizer reads the last step's quantiles
+quantiles: [0.1, 0.5, 0.9]
+
+# Observed, time-varying outside series (CSV: `timestamp` or `date`, and
+# `value`), read point-in-time. null: the input is 0.0 in training and
+# trading alike. The sizer refuses to run without a series it was trained on.
+sources:
+  s_macro: data/ml/inputs/s_macro.csv
+  s_earnings: data/ml/inputs/s_earnings.csv
+  s_news: data/ml/inputs/s_news.csv
+
+model:                       # TemporalFusionTransformer.from_dataset arguments
+  hidden_size: 16
+  attention_head_size: 2
+  dropout: 0.1
+  hidden_continuous_size: 8
+  learning_rate: 0.003
+
+trainer:
+  max_epochs: 5
+  batch_size: 128
+  limit_train_batches: 200   # windows per epoch = 200 x 128, sampled from every bar
+  limit_val_batches: 50
+  gradient_clip_val: 0.1
+  patience: 2
+  seed: 7
+
+sizing:                      # written into backtest.yaml; sweepable there
+  max_trade_pct: 0.05        # the per-trade cap: the allocation never exceeds it
+  kelly_scale: 0.5           # half-Kelly on mu / sigma^2
+  sigma_floor: 0.0001
+  min_confidence: 0.0
+  dd_decay: 3.0              # exp(-3 x drawdown): 0.41 at a 30% drawdown
+  duration_decay: 0.01       # exp(-0.01 x sessions underwater): 0.37 after 100
+  refresh_bars: 1            # a new forecast at most once per bar
+  lookback_days: 0.02        # retrigger from the rolling high (null: from the last fill)
+
+eval_samples: 20000
+output: data/ml/models/tft_tqqq_inputs

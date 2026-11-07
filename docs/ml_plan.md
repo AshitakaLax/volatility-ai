@@ -685,10 +685,34 @@ environment: trained (2 epochs, 10 s), loaded, forecasts equal to the
 dataset path, and `ml_tft` backtested through the real controller. Quantile
 coverage there was 0.10 / 0.44 / 0.76 and the pinball loss worse than the
 naive forecast (skill -0.25), which is what an undertrained model on a
-random walk should show. **Unmeasured on real bars.** The bar is unchanged:
-beat the base config's own run on return and drawdown out of sample.
+random walk should show.
+
+**Measured on real bars (2026-11-07, `docs/research/tft-composite.md`).** Four
+models were trained before 2024-01-01: TQQQ and RSP, each with price alone
+and with the three outside series (`tools/build_tft_inputs.py`). Each was
+judged from that date to 2026-11-06 in a 242-cell buy × sell matrix
+(`tools/probe_tft_composite.py`), every TFT cell beside a **null** (the same
+sizer fed the model's average forecast).
+
+- The models forecast the spread well: pinball skill +0.052 to +0.059 over
+  naive, with calibrated quantiles. They forecast the direction not at all:
+  rank correlation of mu with the outcome −0.011 to +0.011.
+- As a sizer, `ml_tft` does not beat its null. On RSP the two are within
+  tenths of a point; on TQQQ it is an exposure dial, with return and drawdown
+  rising together and Calmar unchanged.
+- As a sell (`tft_take_profit`), it beats its null by 1–4 points of total
+  return on RSP at the same drawdown, and changes nothing on TQQQ. That is a
+  lead from one window, not a result.
+
+**The bar is not met**, and the phase's verdict matches the ledger's. The
+cheap next checks:
+
+- a model per cutoff (2021-07, 2023-01), so 2022 is out of sample;
+- a larger network;
+- the null, which `--build-null` makes in minutes.
 
 ```bash
-pip install -r requirements-dl.txt
+pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements-dl.txt
 python cli.py train --config config/ml/tft_tqqq.yaml --compare
+python tools/precompute_tft_forecasts.py --model data/ml/models/tft_tqqq   # for sweeps
 ```

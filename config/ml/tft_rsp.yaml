@@ -1,0 +1,58 @@
+# Temporal Fusion Transformer for the `ml_tft` sizer, on RSP minute bars.
+#
+#   pip install -r requirements-dl.txt
+#   python cli.py train --config config/ml/tft_rsp.yaml --compare
+#   python cli.py backtest --config data/ml/models/tft_rsp/backtest.yaml
+#
+# NOT a BacktestConfig: a training config for research/ml/tft_training.py,
+# the same settings as tft_tqqq.yaml on the other fund. base_config is the
+# live RSP profile's algorithm (config/hf_entry_gated_rsp.yaml): its grid,
+# costs and fills go into the backtest.yaml the trainer writes, and its own
+# run is the baseline.
+
+kind: tft
+name: tft_rsp
+base_config: config/hf_entry_gated_rsp.yaml
+bars: null                   # null: the warehouse's RSP bars; or a CSV/Parquet path
+start_date: "2016-01-01"
+end_date: null
+validation_start: "2024-01-01"   # train on bars before this; validate, and trade, after
+bars_per_day: 390
+
+encoder_length: 120          # bars the encoder reads (the live ring holds exactly this)
+prediction_length: 30        # bars ahead; the sizer reads the last step's quantiles
+quantiles: [0.1, 0.5, 0.9]
+
+sources:
+  s_macro: null
+  s_earnings: null
+  s_news: null
+
+model:
+  hidden_size: 16
+  attention_head_size: 2
+  dropout: 0.1
+  hidden_continuous_size: 8
+  learning_rate: 0.003
+
+trainer:
+  max_epochs: 5
+  batch_size: 128
+  limit_train_batches: 200
+  limit_val_batches: 50
+  gradient_clip_val: 0.1
+  patience: 2
+  seed: 7
+
+sizing:
+  max_trade_pct: 0.05
+  kelly_scale: 0.5
+  sigma_floor: 0.0001
+  min_confidence: 0.0
+  dd_decay: 3.0
+  duration_decay: 0.01
+  refresh_bars: 1
+  lookback_days: 0.02        # the base profile's retrigger from the rolling high
+
+eval_samples: 20000
+output: data/ml/models/tft_rsp

@@ -39,6 +39,11 @@ Two more things live here that are not `BacktestConfig`s:
   horizon lengths, quantiles, the outside series, the TFT and trainer
   settings, `validation_start` and the `ml_tft` sizing. Not `BacktestConfig`s
   themselves; the trainer writes the `backtest.yaml` that runs the model.
+  `tft_tqqq.yaml` / `tft_rsp.yaml` read price alone; `tft_*_inputs.yaml` are
+  the same models reading the three outside series too
+  (`tools/build_tft_inputs.py`). `tft_rsp.yaml`'s base is
+  `hf_entry_gated_rsp.yaml`, the live RSP profile's algorithm as a
+  single-point config.
 - `proposed_profiles/<id>.yaml` — profiles kept for later that no committed
   deployment can trade yet (nothing loads this directory). Move one into
   `live_profiles/` once a deployment trading its symbol is committed.
