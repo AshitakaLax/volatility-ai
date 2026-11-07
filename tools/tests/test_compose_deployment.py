@@ -158,7 +158,8 @@ def test_the_fidelity_bridge_stays_up_and_only_its_trader_can_reach_it(compose):
     every session. Its socket is in a volume only it and the Fidelity trader
     mount -- the web server must never be able to reach Fidelity -- and its
     status, events and the Live page's check_connection go through the
-    deployment's control volume, which the page reads."""
+    deployment's control volume, which the page reads. It reads the trader's
+    ledger for the book, through a read-only mount of that trader's state."""
     services = compose["services"]
     host = services["fidelity-bridge"]
     trader = services["fidelity"]
@@ -169,7 +170,13 @@ def test_the_fidelity_bridge_stays_up_and_only_its_trader_can_reach_it(compose):
         host["command"][host["command"].index("--config") + 1] == "/app/config/fidelity_live.yaml"
     )
     assert "./config:/app/config:ro" in host["volumes"]
-    assert not any(m.split(":")[1] == "/app/state" for m in host["volumes"]), "no ledger"
+    # The book the phone shows (fidelity_gateway/bridge/book.py) reads the
+    # trader's ledger, so the bridge mounts the trader's own state volume --
+    # read-only, so the trader stays the ledger's only writer -- and no other.
+    trader_state = next(m for m in trader["volumes"] if m.split(":")[1] == "/app/state")
+    host_state = [m for m in host["volumes"] if m.split(":")[1] == "/app/state"]
+    assert host_state == [f"{trader_state.split(':')[0]}:/app/state:ro"], "the ledger, read-only"
+    assert host["environment"]["VAI_STATE_DB"] == trader["environment"]["VAI_STATE_DB"]
 
     socket_path = host["environment"]["VAI_BRIDGE_SOCKET"]
     assert trader["environment"]["VAI_BRIDGE_SOCKET"] == socket_path

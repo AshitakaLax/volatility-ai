@@ -80,6 +80,9 @@ picks the buys; the model only skips or shrinks them.
 - `requirements-warehouse.txt` names `pytz`: DuckDB needs it for timestamps with a
   time zone, and it used to come only through alpaca-py, which dropped it in 0.45.0,
   so every fresh install failed the warehouse tests.
+- `tools/tests/test_compose_deployment.py` allows the `fidelity-bridge`'s read-only
+  mount of its trader's ledger (#44 added it for the book the phone shows) and
+  still refuses a writable one or another trader's.
 
 ## Feat: the Notifier app's four pages, and the book they show
 
