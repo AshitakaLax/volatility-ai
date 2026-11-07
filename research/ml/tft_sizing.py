@@ -95,7 +95,10 @@ raises unless `allow_in_sample` is set; the backtest.yaml the trainer
 writes starts at valid_from.
 
 torch and pytorch-forecasting are loaded with the model, on the first
-bar, never at import (research/ml/tft_model.py).
+bar, never at import (research/ml/tft_model.py). A sweep sets
+`forecast_cache` to a table of the model's forecasts made once for the
+same bars (research/ml/tft_cache.py): every hit is what the model returned
+for exactly those inputs, and a miss runs the model.
 """
 
 from __future__ import annotations
@@ -199,6 +202,7 @@ class TemporalFusionTransformerSizer(_BaselineScaledStrategy):
         earnings_path: str = "",
         news_path: str = "",
         allow_in_sample: bool = False,
+        forecast_cache: str = "",
         baseline_price: float | None = None,
         inverse_scale_kappa: float = 0.0,
     ) -> None:
@@ -232,6 +236,7 @@ class TemporalFusionTransformerSizer(_BaselineScaledStrategy):
         self.earnings_path = earnings_path
         self.news_path = news_path
         self.allow_in_sample = allow_in_sample
+        self.forecast_cache = forecast_cache
         # Loaded on the first bar (ensure_model_available), so construction,
         # the parameter schema and the server work without torch or a model.
         self._forecaster: QuantileForecaster | None = None
@@ -257,6 +262,10 @@ class TemporalFusionTransformerSizer(_BaselineScaledStrategy):
     # -- the model -------------------------------------------------------
 
     def _load_forecaster(self) -> QuantileForecaster:
+        if self.forecast_cache:  # the model's own forecasts, made once (tft_cache.py)
+            from research.ml.tft_cache import CachedForecaster
+
+            return CachedForecaster(self.model, self.forecast_cache)
         from research.ml.tft_model import TftForecaster
 
         return TftForecaster(self.model)
@@ -345,12 +354,16 @@ class TemporalFusionTransformerSizer(_BaselineScaledStrategy):
         times = [ts, *future_bar_times(ts, forecaster.prediction_length - 1, self.bars_per_day)]
         return np.array([known_at(t) for t in times], dtype=np.float64)
 
-    def _model_multiplier(self, context: MarketContext) -> float:
+    def forecast_moments(self, context: MarketContext) -> tuple[float, float] | None:
+        """(mu, sigma) of the log return from context.price to the horizon,
+        from the forecast at this bar (its encoder ending at the bar
+        before); None until the ring holds a full encoder window. The sizer
+        reads it on a trigger; research/composition/exit_library.
+        TftTakeProfit reads it to sell."""
         forecaster = self.ensure_model_available()
         assert self._ring is not None
         if self._pending is None or not self._ring.full:
-            self.last_confidence = None
-            return 0.0  # no full encoder window yet: no forecast, no buy
+            return None  # no full encoder window yet: no forecast
         ts = self._pending[0]
         if not self.allow_in_sample and forecaster.valid_from is not None:
             bar = pd.Timestamp(ts)
@@ -368,9 +381,16 @@ class TemporalFusionTransformerSizer(_BaselineScaledStrategy):
             self._forecast_bar = context.bar_index
             self.forecasts += 1
         if context.price <= 0:
-            return 0.0
+            return None
         returns = self._forecast - math.log(context.price)
-        mu, sigma = quantiles_to_moments(returns, forecaster.levels)
+        return quantiles_to_moments(returns, forecaster.levels)
+
+    def _model_multiplier(self, context: MarketContext) -> float:
+        moments = self.forecast_moments(context)
+        if moments is None:
+            self.last_confidence = None
+            return 0.0  # no forecast: no buy
+        mu, sigma = moments
         confidence = precision_weighted_confidence(mu, sigma, self.kelly_scale, self.sigma_floor)
         if confidence < self.min_confidence:
             confidence = 0.0

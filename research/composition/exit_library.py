@@ -16,6 +16,8 @@ none of these can realise a loss under any parameters:
   scale_out_trail      PARTIAL: sell part at a fixed target, trail the rest
   signal_take_profit   when a signal-library gate shuts (its bearish reading),
                        sell lots already above a minimum gain at the market
+  tft_take_profit      the same sale when a trained TFT forecasts a fall over
+                       its horizon: the TFT as a sell model
 
 LOSS-CAPABLE TRACK -- signal exits, behind execution.allow_signal_exit:
 
@@ -393,37 +395,16 @@ class ScaleOutTrail(ExitPolicy):
         self._runners.update(lot.order_id for lot in open_lots if self._is_runner(lot))
 
 
-class SignalTakeProfit(ExitPolicy):
-    """When a signal-library GATE shuts -- its reading that buying should
-    pause -- sell `fraction` of every lot already up at least
-    `min_gain`, at the market: its target is moved to the current price, so
-    the harvest takes it as a profit-target sale the no-loss guard checks. A
-    lot below `min_gain` keeps its target. With fraction < 1 the rest goes
-    back to the target it had.
+class _GateTakeProfit(ExitPolicy):
+    """When a gate shuts (`suppressed` turns true), sell `fraction` of every
+    lot already up at least `min_gain`, at the market: its target is moved
+    to the current price, so the harvest takes it as a profit-target sale
+    the no-loss guard checks. A lot below `min_gain` keeps its target. With
+    fraction < 1 the rest goes back to the target it had. The gate is any
+    object with observe(context), `suppressed` and `history_sessions`."""
 
-    Which gate matters: a mean-reversion gate (zscore, bollinger -- the
-    default is zscore) shuts when price is stretched HIGH, which is when a
-    take-profit has lots in profit to sell; a trend gate (supertrend,
-    ma_cross) shuts in a downtrend, when most lots are underwater and the
-    policy mostly does nothing."""
-
-    exit_id = "signal_take_profit"
-    label = "Take profit on a bearish signal"
-
-    def __init__(
-        self,
-        signal: str = "zscore",
-        signal_params: str = "",
-        min_gain: float = 0.002,
-        fraction: float = 1.0,
-    ) -> None:
-        from research.strategies.signal_library import build_signal
-
-        self.signal = signal
-        self.signal_params = signal_params
-        self._component = build_signal(signal, signal_params)
-        if getattr(self._component, "kind", "gate") != "gate":
-            raise ConfigurationError(f"{signal} is a {self._component.kind}, not a gate")
+    def __init__(self, component, min_gain: float, fraction: float) -> None:
+        self._component = component
         self.min_gain = _positive("min_gain", min_gain)
         self.fraction = _fraction("fraction", fraction)
         self._was = False
@@ -478,6 +459,128 @@ class SignalTakeProfit(ExitPolicy):
 
     def diagnostics(self) -> dict:
         return {"take_profit_signals": self.fires}
+
+
+class SignalTakeProfit(_GateTakeProfit):
+    """When a signal-library GATE shuts -- its reading that buying should
+    pause -- sell `fraction` of every lot already up at least
+    `min_gain`, at the market (_GateTakeProfit).
+
+    Which gate matters: a mean-reversion gate (zscore, bollinger -- the
+    default is zscore) shuts when price is stretched HIGH, which is when a
+    take-profit has lots in profit to sell; a trend gate (supertrend,
+    ma_cross) shuts in a downtrend, when most lots are underwater and the
+    policy mostly does nothing."""
+
+    exit_id = "signal_take_profit"
+    label = "Take profit on a bearish signal"
+
+    def __init__(
+        self,
+        signal: str = "zscore",
+        signal_params: str = "",
+        min_gain: float = 0.002,
+        fraction: float = 1.0,
+    ) -> None:
+        from research.strategies.signal_library import build_signal
+
+        self.signal = signal
+        self.signal_params = signal_params
+        component = build_signal(signal, signal_params)
+        if getattr(component, "kind", "gate") != "gate":
+            raise ConfigurationError(f"{signal} is a {component.kind}, not a gate")
+        super().__init__(component, min_gain, fraction)
+
+
+class TftFallGate:
+    """Shut while a TFT (research/ml/tft_sizing.py) forecasts a fall: the
+    mean log return from the current price to its horizon below
+    -`min_drop`. The forecast is read every `check_bars` bars while lots are
+    open, and its reading held between reads; with no lots open there is
+    nothing to sell, so it stays open and reads nothing."""
+
+    kind = "gate"
+
+    def __init__(self, forecaster, min_drop: float, check_bars: int) -> None:
+        self._tft = forecaster
+        self.min_drop = float(min_drop)
+        if not (math.isfinite(self.min_drop) and self.min_drop >= 0):
+            raise ConfigurationError(f"min_drop must be >= 0, got {min_drop}")
+        self.check_bars = _count("check_bars", check_bars)
+        self.suppressed = False
+        self._bar = -1
+        self.reads = 0
+        self.last_mu: float | None = None
+
+    @property
+    def history_sessions(self) -> int:
+        return int(self._tft.live_history_sessions())
+
+    def observe(self, context: MarketContext) -> None:
+        self._tft.record_tick(context)
+        self._bar += 1
+        if context.open_lot_count <= 0:
+            self.suppressed = False
+            return
+        if self._bar % self.check_bars:
+            return
+        moments = self._tft.forecast_moments(context)
+        if moments is None:
+            return
+        self.reads += 1
+        self.last_mu = moments[0]
+        self.suppressed = moments[0] < -self.min_drop
+
+
+class TftTakeProfit(_GateTakeProfit):
+    """The TFT as a SELL model: when its forecast turns to a fall (TftFallGate)
+    sell `fraction` of every lot already up at least `min_gain`, at the
+    market -- a profit-target sale the no-loss guard checks, so it never
+    sells below cost. Pairs with any buy, the TFT's own (ml_tft) included.
+
+    `model` is a directory research/ml/tft_training.py wrote; like the
+    sizer, it refuses a bar before the model's valid_from unless
+    allow_in_sample, and needs the outside series the model was trained on
+    (macro_path, earnings_path, news_path; the manifest's by default), and
+    reads a forecast_cache as the sizer does. The model is loaded on the
+    first bar, so building the policy needs no torch."""
+
+    exit_id = "tft_take_profit"
+    label = "Take profit when the TFT forecasts a fall"
+
+    def __init__(
+        self,
+        model: str = "data/ml/models/tft_tqqq",
+        bars_per_day: int = 387,
+        min_drop: float = 0.0,
+        min_gain: float = 0.002,
+        fraction: float = 1.0,
+        check_bars: int = 15,
+        allow_in_sample: bool = False,
+        macro_path: str = "",
+        earnings_path: str = "",
+        news_path: str = "",
+        forecast_cache: str = "",
+    ) -> None:
+        from research.ml.tft_sizing import TemporalFusionTransformerSizer
+
+        self.model = model
+        self.bars_per_day = bars_per_day
+        forecaster = TemporalFusionTransformerSizer(
+            max_trade_pct=1.0,  # never sizes a buy: only its forecast is read
+            bars_per_day=bars_per_day,
+            model=model,
+            allow_in_sample=allow_in_sample,
+            macro_path=macro_path,
+            earnings_path=earnings_path,
+            news_path=news_path,
+            forecast_cache=forecast_cache,
+        )
+        super().__init__(TftFallGate(forecaster, min_drop, check_bars), min_gain, fraction)
+
+    def diagnostics(self) -> dict:
+        gate = self._component
+        return {"take_profit_signals": self.fires, "tft_forecasts": gate.reads}
 
 
 # -------------------------------------------------------- loss-capable track
@@ -598,5 +701,16 @@ register(
     {"first_fraction": 0.5, "first_target": 0.01, "trail_pct": 0.01, "runner_target": 0.5},
 )
 register(SignalTakeProfit, {"signal": "zscore", "min_gain": 0.002, "fraction": 1.0})
+register(
+    TftTakeProfit,
+    {
+        "model": "data/ml/models/tft_tqqq",
+        "bars_per_day": 387,
+        "min_drop": 0.0,
+        "min_gain": 0.002,
+        "fraction": 1.0,
+        "check_bars": 15,
+    },
+)
 register(RegimeExit, {"natr_period": 10, "natr_lookback": 100, "regime_min_hold": 5})
 register(RegimeExitPartial, {"fraction": 0.5, "natr_period": 10, "natr_lookback": 100})
