@@ -21,6 +21,7 @@ from research.composition.composed_strategy import ComposedStrategy
 from research.ml.meta_label_sizing import MetaLabelSizing
 from research.ml.reachability_sizing import MLReachabilitySizing
 from research.ml.regime_scaled_sizing import MLRegimeScaledSizing
+from research.ml.tft_sizing import TemporalFusionTransformerSizer
 from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 from research.strategies.catalog_exposure_sizing import CatalogExposureSizing
 from research.strategies.gated_local_reference_sizing import GatedLocalReferenceSizing
@@ -140,6 +141,12 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     # strategy refuses one trained for another trigger. Skips or shrinks a
     # buy, never grows or sells one. UNMEASURED on real bars until trained.
     "ml_meta_label": MetaLabelSizing,
+    # Grid buys sized by a Temporal Fusion Transformer's quantile forecast
+    # (research/ml/tft_sizing.py; trained by `cli.py train` with a kind: tft
+    # config): mu and sigma from the quantiles, a precision-weighted
+    # (Kelly) confidence mu / sigma^2, an exponential drawdown decay, capped
+    # at max_trade_pct. Needs requirements-dl.txt. UNMEASURED on real bars.
+    "ml_tft": TemporalFusionTransformerSizer,
     # Any buy algorithm with any sell policy (research/composition/,
     # docs/research/buy-sell-composition.md): strategy_params are
     # {buy: {id, params}, sell: {id, params}}. composed(X, fixed_target) is X

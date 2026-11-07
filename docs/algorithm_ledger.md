@@ -6412,9 +6412,9 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 
 | Rows | Algorithms | Yes | Research code | Partial | No |
 |---|---|---|---|---|---|
-| Specific (ranks 1–425) | 425 | 119 | 275 | 15 | 16 |
+| Specific (ranks 1–425) | 425 | 121 | 273 | 15 | 16 |
 | Title-reconstructed (ranks 426–14,225) | 13,800 | 0 | 0 | 0 | 13,800 |
-| All | 14,225 | 119 | 275 | 15 | 13,816 |
+| All | 14,225 | 121 | 273 | 15 | 13,816 |
 
 #### Specific algorithms
 
@@ -6720,7 +6720,7 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 298 | AMM / CLOB Cross-Venue Arbitrage | Crypto / decentralized market structure | 142 | 133 | Research code | RK298 | [**researched**](algorithms/amm-clob-cross-venue-arbitrage.md) |
 | 299 | Dynamic AMM Liquidity Provision / Liquidity Mining | Crypto / liquidity provision | 331 | 959 | Research code | RK299 | [**researched**](algorithms/dynamic-amm-liquidity-provision-liquidity-mining.md) |
 | 300 | Fractional Differentiation Feature Pipeline | ML / time-series preprocessing | 151 | 136 | Yes | RK300, C-ML5 | [**researched**](algorithms/fractional-differentiation-feature-pipeline.md) |
-| 301 | Temporal Fusion Transformer Forecasting | ML / time-series forecasting | 277 | 249 | Research code | RK301 | [**researched**](algorithms/temporal-fusion-transformer-forecasting.md) |
+| 301 | Temporal Fusion Transformer Forecasting | ML / time-series forecasting | 277 | 249 | Yes | RK301 | [**researched**](algorithms/temporal-fusion-transformer-forecasting.md) |
 | 302 | Physics-Informed Deep Galerkin Method (DGM) Option Solver | Physics-informed neural networks / Options pricing | 281 | 283 | Research code | RK302 | [**researched**](algorithms/physics-informed-deep-galerkin-method-dgm-option-solver.md) |
 | 303 | Neural Jump-Diffusion Rough Heston Smile Predictor | Stochastic volatility / Deep learning / Derivatives pricing | 379 | 10661 | Research code | RK303 | [**researched**](algorithms/neural-jump-diffusion-rough-heston-smile-predictor.md) |
 | 304 | Recurrent Neural Hawkes Point Process Volatility Jump Forecaster | Point processes / Recurrent neural networks / Volatility forecasting | 5371 | 10657 | Research code | RK304 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-volatility-jump-forecaster.md) |
@@ -6832,7 +6832,7 @@ concept's status, and for ranks 701–14,225 the Evidence column of
 | 410 | Wasserstein Distributionally Robust Neural Operator Optimal Execution | Robust statistics / Neural operators / Optimal execution | 377 | 7430 | Research code | RK410 | [**researched**](algorithms/wasserstein-distributionally-robust-neural-operator-optimal-execution.md) |
 | 411 | Recurrent Neural Hawkes Point Process Dynamic Hedging Scheduler | Point processes / Recurrent neural networks / Derivatives hedging | 1881 | 10497 | Research code | RK411 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-dynamic-hedging-scheduler.md) |
 | 412 | Recurrent Neural Hawkes Point Process Toxic Flow Hedging Allocator | Point processes / Recurrent neural networks / Derivatives hedging | 1883 | 10499 | Research code | RK412 | [**researched**](algorithms/recurrent-neural-hawkes-point-process-toxic-flow-hedging-allocator.md) |
-| 413 | Temporal Fusion Transformer (TFT) Multi-Horizon Price Forecaster | Deep learning / Time-series forecasting | 237 | 238 | Research code | RK413 | [**researched**](algorithms/temporal-fusion-transformer-tft-multi-horizon-price-forecaster.md) |
+| 413 | Temporal Fusion Transformer (TFT) Multi-Horizon Price Forecaster | Deep learning / Time-series forecasting | 237 | 238 | Yes | RK413 | [**researched**](algorithms/temporal-fusion-transformer-tft-multi-horizon-price-forecaster.md) |
 | 414 | Attention-Based Recurrent Neural Hawkes Point Process Alpha | Recurrent neural networks / Attention / Point processes | 1878 | 10662 | Research code | RK414 | [**researched**](algorithms/attention-based-recurrent-neural-hawkes-point-process-alpha.md) |
 | 415 | Koopman Operator Model Predictive Control Portfolio Rebalancing | Operator theory / Model predictive control / Portfolio rebalancing | 122 | 202 | Research code | RK415 | [**researched**](algorithms/koopman-operator-model-predictive-control-portfolio-rebalancing.md) |
 | 416 | Koopman Operator Model Predictive Control Dynamic Hedging | Operator theory / Model predictive control / Derivatives hedging | 286 | 295 | Research code | RK416 | [**researched**](algorithms/koopman-operator-model-predictive-control-dynamic-hedging.md) |

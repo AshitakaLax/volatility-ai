@@ -645,3 +645,50 @@ buy-and-hold. AUC is not P&L.
 python cli.py train --config config/ml/meta_label_tqqq.yaml --compare
 python cli.py backtest --config data/ml/models/meta_label_tqqq/backtest.yaml
 ```
+
+---
+
+## Phase ML-4 — A Temporal Fusion Transformer sizer, at the owner's request (2026-11-07)
+
+`ml_tft`. Phase 2 above says "gradient-boosted trees first, and probably
+last", and the ledger's verdict on the TFT (RK301, RK413) is "no evidence it
+beats the LightGBM baseline". Neither changes here. The owner asked for a
+deep-learning sizer, and it is built so that the question has a backtest
+answer instead of an argument.
+
+### The design, in the terms this plan set
+
+| Plan rule | How `ml_tft` meets it |
+|---|---|
+| one feature definition | `research/ml/tft_features.py`: `build_frame` (training) and `CovariateRing` (trading) produce identical rows, bit for bit when fed from the same first bar (tested) |
+| causal | at bar t the encoder ends at t-1; the decoder's known inputs (FOMC day, session clock) come from the calendar for bars t..t+H-1; outside series are read strictly after their stamps |
+| the holdout is not looked at | one `validation_start`; training windows end before it, the sizer raises on an earlier bar, `backtest.yaml` starts there |
+| inference budget | an O(1) ring write per bar (~7 µs measured); a TFT forward pass (~34 ms, CPU) only on a trigger, at most once per `refresh_bars` |
+| the trading machine grows no training dependency | `requirements-dl.txt` is separate; only `tft_model.py` and `tft_training.py` import torch, lazily |
+| confidence only shrinks a position | every factor in [0, 1], clamped to `max_trade_pct` of equity (`_BaselineScaledStrategy`) |
+
+### From quantiles to a size
+
+    mu    = 0.3 q10 + 0.4 q50 + 0.3 q90                (Swanson; exact for a normal)
+    sigma = (q90 - q10) / (2 x 1.2815515655)           (exact for a normal)
+    C     = clip(kelly_scale x mu / max(sigma, sigma_floor)^2, 0, 1)    (Kelly mu / sigma^2)
+    D     = exp(-(dd_decay x drawdown + duration_decay x sessions underwater))
+    buy   = equity x max_trade_pct x inverse-scale x C x D
+
+Other quantile sets are fitted to the normal model by least squares. sigma
+enters squared, so doubling the forecast's uncertainty quarters the buy.
+
+### Status
+
+Run end to end on synthetic 5-minute bars in a pytorch-forecasting 1.8
+environment: trained (2 epochs, 10 s), loaded, forecasts equal to the
+dataset path, and `ml_tft` backtested through the real controller. Quantile
+coverage there was 0.10 / 0.44 / 0.76 and the pinball loss worse than the
+naive forecast (skill -0.25), which is what an undertrained model on a
+random walk should show. **Unmeasured on real bars.** The bar is unchanged:
+beat the base config's own run on return and drawdown out of sample.
+
+```bash
+pip install -r requirements-dl.txt
+python cli.py train --config config/ml/tft_tqqq.yaml --compare
+```

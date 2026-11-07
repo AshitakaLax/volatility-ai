@@ -97,6 +97,11 @@ flag *and* a strategy hook.
     trained meta-label model: LightGBM on triple-barrier labels of the grid's
     own triggers, trained walk-forward by `cli.py train` (`ml/meta_*.py`;
     [below](#train-and-run-the-ml-model)); it never grows a buy or sells
+  - `ml_tft` — grid buys sized by a Temporal Fusion Transformer: its 10/50/90
+    quantiles become a mean and standard deviation, each buy is
+    `max_trade_pct` × clip(kelly_scale · μ/σ²) × a drawdown decay, so buying
+    throttles as uncertainty or a drawdown grows (`ml/tft_*.py`; needs
+    `requirements-dl.txt`; [below](#the-temporal-fusion-transformer-sizer))
 - **Portfolio book** (`strategies/portfolio_book.py`, `tools/portfolio_book.py
   --list`): 53 long-only multi-asset allocators (`strategies/allocators.py`,
   `strategies/allocator_library.py`) backtested on daily closes, every sale
@@ -286,6 +291,37 @@ config, and the base config alone. `--compare` runs both on the
 out-of-sample window. `--bars FILE` trains on a CSV/Parquet instead of the
 warehouse. The same strategy id runs in the web UI's backtest form (its
 `model` field names the directory) and live (the newest segment answers).
+
+### The Temporal Fusion Transformer sizer
+
+`ml_tft` sizes each grid buy from a TFT's quantile forecast of the price
+`prediction_length` bars ahead (`research/ml/tft_sizing.py`). Needs
+`pip install -r requirements-dl.txt` (torch, lightning,
+pytorch-forecasting 1.8, which caps pandas below 3.1).
+
+```bash
+.venv/bin/python cli.py train --config config/ml/tft_tqqq.yaml --compare
+.venv/bin/python cli.py backtest --config data/ml/models/tft_tqqq/backtest.yaml
+```
+
+The covariates map onto pytorch-forecasting's `TimeSeriesDataSet` like this
+(`research/ml/tft_training.py`'s `dataset_kwargs`):
+
+| TFT input | columns | why there |
+|---|---|---|
+| target | `log_close` | the decoder's last step is the price `H` bars out; minus log(entry) it is the lot's return |
+| `time_varying_unknown_reals` (observed, encoder only) | `log_close`, `ret_1` (R<sub>t-1</sub>), `ret_2` (R<sub>t-2</sub>), `s_macro`, `s_earnings`, `s_news` | known only up to the forecast origin |
+| `time_varying_known_reals` (decoder too) | `e_event` (FOMC day), `t_open`, `t_close` (session clock) | scheduled, so their future values are known |
+| `static_categoricals` / `group_ids` | `group` (the fund) | |
+| lengths | `min = max_encoder_length = L`, `min = max_prediction_length = H` | the live ring holds exactly `L` rows |
+| `target_normalizer` | `EncoderNormalizer()` | each window on its own scale, across TQQQ's $1–$90 history |
+
+The three outside series are CSVs (`timestamp` or `date`, and `value`) read
+point-in-time; leave one `null` and it is 0.0 in training and trading alike.
+Training stops at `validation_start`, the sizer refuses to size an earlier
+bar, and `backtest.yaml` starts there. A forecast is one forward pass (about
+30 ms on a CPU) and runs only on a trigger, at most once per
+`refresh_bars`; each bar's update is an O(1) write into a pre-allocated ring.
 
 Research sweeps (parallel workers, random/Bayesian search, the record of
 every sweep run so far) are documented in [docs/sweeps.md](docs/sweeps.md);

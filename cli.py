@@ -27,10 +27,12 @@ do today:
                                     against C's `backtest.symbol` bars,
                                     read from the warehouse.
   cli.py train --config T [--compare]
-                                    Train the meta-label model (time-series
-                                    walk-forward, research/ml/meta_training.py)
-                                    and write it with a backtest config
-                                    that runs it (`ml_meta_label`).
+                                    Train a model and write it with the
+                                    backtest configs that run it: the
+                                    meta-label model (walk-forward,
+                                    `ml_meta_label`) or, with `kind: tft`,
+                                    the Temporal Fusion Transformer sizer
+                                    (`ml_tft`).
   cli.py search --config C --trials N
                                     Adaptive (Optuna TPE) search over a
                                     space too large to enumerate, logging
@@ -2171,15 +2173,31 @@ def cmd_shard(args: argparse.Namespace) -> int:
 
 
 def cmd_train(args: argparse.Namespace) -> int:
-    """Train the meta-label model from a training YAML (config/ml/).
+    """Train a model from a training YAML (config/ml/), by its `kind`.
 
-    A time-series walk-forward: one model per period, each fitted only on
-    labels resolved before it, written as one artifact with the backtest
-    configs that run it. Needs requirements-ml.txt; see
-    research/ml/meta_training.py for the scheme."""
+    meta_label (the default): a time-series walk-forward, one LightGBM model
+    per period, each fitted only on labels resolved before it
+    (research/ml/meta_training.py; requirements-ml.txt). tft: the Temporal
+    Fusion Transformer the ml_tft sizer trades, trained before a validation
+    date (research/ml/tft_training.py; requirements-dl.txt). Either writes
+    the artifact with the backtest configs that run it."""
+    import yaml
+
     from engine.core.exceptions import ConfigurationError
-    from research.ml.meta_training import run_cli
 
+    try:
+        with open(args.config, encoding="utf-8") as fh:
+            kind = (yaml.safe_load(fh) or {}).get("kind", "meta_label")
+    except OSError as exc:
+        print(f"Cannot train: {exc}", file=sys.stderr)
+        return 2
+    if kind == "tft":
+        from research.ml.tft_training import run_cli
+    elif kind == "meta_label":
+        from research.ml.meta_training import run_cli
+    else:
+        print(f"Cannot train: unknown kind {kind!r} (meta_label or tft)", file=sys.stderr)
+        return 2
     try:
         return run_cli(args.config, args.bars, args.output, args.compare)
     except ConfigurationError as exc:

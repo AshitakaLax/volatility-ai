@@ -178,6 +178,7 @@ class TrainConfig:
     @classmethod
     def from_dict(cls, data: dict) -> TrainConfig:
         known = {
+            "kind",
             "name",
             "base_config",
             "bars",
@@ -194,6 +195,8 @@ class TrainConfig:
         unknown = set(data) - known
         if unknown:
             raise ConfigurationError(f"unknown training config keys: {sorted(unknown)}")
+        if data.get("kind", "meta_label") != "meta_label":
+            raise ConfigurationError(f"kind {data['kind']!r} is not a meta-label config")
         for key in ("name", "base_config"):
             if not data.get(key):
                 raise ConfigurationError(f"training config needs {key!r}")

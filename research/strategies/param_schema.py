@@ -313,6 +313,14 @@ STRATEGY_DEFAULTS["ml_meta_label"] = {
     "full_size_at": 0.7,
     "size_floor": 0.5,
 }
+# ml_tft: the TFT sizer at the per-trade cap and bar size config/ml/tft_tqqq.yaml
+# trains for; the other arguments keep their constructor defaults
+# (research/ml/tft_sizing.py).
+STRATEGY_DEFAULTS["ml_tft"] = {
+    "max_trade_pct": 0.05,
+    "bars_per_day": 387,
+    "model": "data/ml/models/tft_tqqq",
+}
 # The signal library's ids (rk<N>_<signal>, research/strategies/
 # library_sizing.py): the champion's values plus the algorithm's `signal`,
 # which the run form seeds (and a plain Run sends, being a committed

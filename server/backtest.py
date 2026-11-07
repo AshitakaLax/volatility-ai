@@ -512,6 +512,10 @@ for _lib_id in (_i for _i, _c in STRATEGIES.items() if _c.__name__ == "LibrarySi
 # sizes a buy, it never moves the trigger).
 _GRID_TRIGGER["ml_meta_label"] = dict(_GRID_TRIGGER["hf_local_reference"])
 
+# ml_tft offers bayesian_dual_scale's optional retrigger: the last fill by
+# default, the higher of it and a rolling high once lookback_days is set.
+_GRID_TRIGGER["ml_tft"] = dict(_GRID_TRIGGER["bayesian_dual_scale"], window_default=0.02)
+
 # A composition's trigger is its BUY policy's (research/composition/): the
 # form shows that policy's own trigger, so the composed id names only that.
 _GRID_TRIGGER["composed"] = {
