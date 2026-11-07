@@ -586,3 +586,109 @@ is never installed there). Verified by actually blocking `lightgbm`/
 (`tests/unit/test_ml_optional_dependency.py`), not by inspection.
 
 `pytest tests/unit -q` -> **1890 passed, 1 skipped**. `npm run build`/`npm test` clean.
+
+---
+
+## Phase ML-3 — The meta-label model, trained walk-forward and tradable (2026-11-07)
+
+`ml_meta_label` and `cli.py train`. The model the plan above asked for
+("Phase 2 — The model", "Phase 3.1 — the per-fold step is fit the model on
+the training window, score on the test window"), built so that training,
+backtesting and live trading all use one artifact.
+
+### Why this algorithm
+
+Of every learned method the ledger researched (RK89–RK414, A1, C-RL*),
+**gradient-boosted trees as a meta-labeller** are the one that fits both the
+owner's rules and the evidence:
+
+| | |
+|---|---|
+| fits the rules | the grid trigger stays the primary signal (side is always long); the model only skips or shrinks a buy it chose, so the no-loss guard, the stranding fix and long-only are untouched |
+| evidence | trees are the strongest learners on tabular, noisy, partly missing inputs (Gu, Kelly & Xiu 2020; Krauss, Do & Huck 2017); meta-labelling is the published way to raise a high-recall rule's precision (López de Prado 2018 ch. 3; Joubert 2022), and calibration matters for sizing (Meyer, Barziy & Joubert 2023) |
+| fits the budget | one prediction per buy, not per bar; the features cost ~10 µs a bar (measured: 3 µs to fold a bar, 6 µs to read its New York session clock) |
+| the alternatives | LSTM (RK292) rejected, transformers (RK301, RK413) and deep RL (A1, RK372) out of scope: weak signal and few independent observations, no evidence they beat trees here |
+
+It is the ledger's own "what to measure next" for RK317: train on TQQQ
+triggers with a purged walk-forward and compare against the champion.
+
+### The pieces
+
+| File | What it does |
+|---|---|
+| `research/ml/meta_features.py` | `MetaFeatures`: 30 price/time features (entry context, the last session of bars, completed sessions), one class fed by the builder and the strategy in the same order, so their vectors are equal by construction (tested through the real controller under close, `causal` and `open_or_level` fills) |
+| `research/ml/meta_dataset.py` | events = the `hf_local_reference` trigger from price alone, per fill model; labels = triple barrier (target on highs, optional stop on lows, `max_hold` bars; a bar touching both scores 0); weights = average uniqueness |
+| `research/ml/meta_training.py` | expanding-window walk-forward: segment k trains on labels resolved before `b_k − embargo`, early-stops and isotonic-calibrates on its last 20 %, answers `[b_k, b_{k+1})`; pooled out-of-sample AUC, Brier skill vs the training base rate, quintile hit rates, a shuffled-label control; writes the artifact, `report.md`, `backtest.yaml`, `baseline.yaml` |
+| `research/ml/meta_model.py` | loads the artifact (text boosters + JSON, SHA-256 checked), picks the segment by bar time |
+| `research/ml/meta_label_sizing.py` | `ml_meta_label`: `hf_local_reference` with each buy × 0 / `size_floor`..1 by p; refuses a model trained for another trigger |
+| `config/ml/meta_label_tqqq.yaml` | trains for `config/paper_aggressive.yaml`'s grid (step 0.075 %, target 0.3 %): target within a session, before a 2 % fall |
+
+### Why a full-history backtest is honest
+
+Each segment answers only for the period after the labels it trained on
+were resolved, and the strategy picks the segment by bar time. Before the
+first segment there is no model and the run is `hf_local_reference`
+exactly (tested). So the walk-forward's out-of-sample scores and the
+backtest describe the same predictions, and the backtest can run over the
+whole history without grading any bar on a model that saw it.
+
+### Status
+
+**Unmeasured on real bars.** The container this was built in holds no
+warehouse; the pipeline was run end to end on synthetic bars, where the
+shuffled-label control sat at 0.495 and the model, given little to find,
+found little (AUC 0.516). The bar for keeping it is unchanged from Phase 1:
+beat `hf_local_reference` out of sample on return and drawdown, then beat
+buy-and-hold. AUC is not P&L.
+
+```bash
+python cli.py train --config config/ml/meta_label_tqqq.yaml --compare
+python cli.py backtest --config data/ml/models/meta_label_tqqq/backtest.yaml
+```
+
+---
+
+## Phase ML-4 — A Temporal Fusion Transformer sizer, at the owner's request (2026-11-07)
+
+`ml_tft`. Phase 2 above says "gradient-boosted trees first, and probably
+last", and the ledger's verdict on the TFT (RK301, RK413) is "no evidence it
+beats the LightGBM baseline". Neither changes here. The owner asked for a
+deep-learning sizer, and it is built so that the question has a backtest
+answer instead of an argument.
+
+### The design, in the terms this plan set
+
+| Plan rule | How `ml_tft` meets it |
+|---|---|
+| one feature definition | `research/ml/tft_features.py`: `build_frame` (training) and `CovariateRing` (trading) produce identical rows, bit for bit when fed from the same first bar (tested) |
+| causal | at bar t the encoder ends at t-1; the decoder's known inputs (FOMC day, session clock) come from the calendar for bars t..t+H-1; outside series are read strictly after their stamps |
+| the holdout is not looked at | one `validation_start`; training windows end before it, the sizer raises on an earlier bar, `backtest.yaml` starts there |
+| inference budget | an O(1) ring write per bar (~7 µs measured); a TFT forward pass (~34 ms, CPU) only on a trigger, at most once per `refresh_bars` |
+| the trading machine grows no training dependency | `requirements-dl.txt` is separate; only `tft_model.py` and `tft_training.py` import torch, lazily |
+| confidence only shrinks a position | every factor in [0, 1], clamped to `max_trade_pct` of equity (`_BaselineScaledStrategy`) |
+
+### From quantiles to a size
+
+    mu    = 0.3 q10 + 0.4 q50 + 0.3 q90                (Swanson; exact for a normal)
+    sigma = (q90 - q10) / (2 x 1.2815515655)           (exact for a normal)
+    C     = clip(kelly_scale x mu / max(sigma, sigma_floor)^2, 0, 1)    (Kelly mu / sigma^2)
+    D     = exp(-(dd_decay x drawdown + duration_decay x sessions underwater))
+    buy   = equity x max_trade_pct x inverse-scale x C x D
+
+Other quantile sets are fitted to the normal model by least squares. sigma
+enters squared, so doubling the forecast's uncertainty quarters the buy.
+
+### Status
+
+Run end to end on synthetic 5-minute bars in a pytorch-forecasting 1.8
+environment: trained (2 epochs, 10 s), loaded, forecasts equal to the
+dataset path, and `ml_tft` backtested through the real controller. Quantile
+coverage there was 0.10 / 0.44 / 0.76 and the pinball loss worse than the
+naive forecast (skill -0.25), which is what an undertrained model on a
+random walk should show. **Unmeasured on real bars.** The bar is unchanged:
+beat the base config's own run on return and drawdown out of sample.
+
+```bash
+pip install -r requirements-dl.txt
+python cli.py train --config config/ml/tft_tqqq.yaml --compare
+```

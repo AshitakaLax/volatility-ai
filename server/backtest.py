@@ -508,6 +508,14 @@ for _regime_id in (_i for _i in STRATEGIES if _i.startswith("ml_regime_")):
 for _lib_id in (_i for _i, _c in STRATEGIES.items() if _c.__name__ == "LibrarySizing"):
     _GRID_TRIGGER[_lib_id] = dict(_GRID_TRIGGER["hf_entry_gated"])
 
+# ml_meta_label inherits hf_local_reference's level unchanged (the model
+# sizes a buy, it never moves the trigger).
+_GRID_TRIGGER["ml_meta_label"] = dict(_GRID_TRIGGER["hf_local_reference"])
+
+# ml_tft offers bayesian_dual_scale's optional retrigger: the last fill by
+# default, the higher of it and a rolling high once lookback_days is set.
+_GRID_TRIGGER["ml_tft"] = dict(_GRID_TRIGGER["bayesian_dual_scale"], window_default=0.02)
+
 # A composition's trigger is its BUY policy's (research/composition/): the
 # form shows that policy's own trigger, so the composed id names only that.
 _GRID_TRIGGER["composed"] = {
@@ -733,6 +741,13 @@ def build_config(request: RunRequest) -> BacktestConfig:
             f"model that matches the fund (e.g. ml_reachability_cowz for COWZ), or add "
             f"{declared_ticker} to the funds being run."
         )
+
+    # A model trained for one trigger and lot target (MetaLabelSizing,
+    # `check_run`): refused here for the same reason, from its manifest
+    # alone, before the sweep can turn it into failed-combination rows.
+    check_run = getattr(instance, "check_run", None)
+    if callable(check_run):
+        check_run(list(config.grid.steps), list(config.grid.profit_targets))
 
     # Rebuilt so the alignment above is what the ENGINE sees, not just
     # what was validated. A check that passed on one set of parameters

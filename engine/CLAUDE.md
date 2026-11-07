@@ -70,8 +70,10 @@ is worth (confidence can shrink size toward zero, never grow past
 `max_trade_pct`); it cannot decide whether to buy, move a profit target,
 or sell. It is wired into the backtest engine as a real, selectable
 strategy (see `strategy_registry.py`), but nothing defaults to it and no
-live config enables it without deliberately setting `strategy_id`. The
-rest of `ml/` (`features.py`, `labels.py`, `sources.py`) feeds
+live config enables it without deliberately setting `strategy_id`.
+`ml_meta_label` (`research/ml/meta_label_sizing.py`) is the same kind of
+lever on the champion grid: a walk-forward-trained model may skip or shrink
+a buy the trigger chose, never grow it, move a target or sell. The rest of `ml/` (`features.py`, `labels.py`, `sources.py`) feeds
 `tools/build_ml_dataset.py` and `server/ml_insights.py`'s read-only UI
 tab, not the trading path.
 

@@ -10,8 +10,8 @@ researched 2026-10-29
 | Potential effectiveness rank | 413 (1 = strongest) |
 | AI implementability rank | 237 (1 = easiest) |
 | Retail advantage rank | 238 (1 = strongest) |
-| Fit with this project | ⛔ (no evidence it beats the LightGBM baseline; as RK301) |
-| Implemented in volatility-ai | **Research code** in `research.catalog.neural_models`: `TemporalFusionTransformer`; tested on synthetic data, not wired into the engine. |
+| Fit with this project | ⛔ on the evidence (as RK301) · built as the `ml_tft` sizer at the owner's request |
+| Implemented in volatility-ai | **Yes, as a sizer.** `ml_tft` (`research/ml/tft_sizing.py`, 2026-11-07): a pytorch-forecasting TFT with R_{t-1}, R_{t-2}, macro surprise and earnings/news sentiment as observed inputs and the FOMC calendar and session clock as known future inputs; its 10/50/90 quantiles become mu and sigma, and each grid buy is max_trade_pct x clip(kelly_scale mu / sigma^2) x a drawdown decay. Trained by `cli.py train` with `config/ml/tft_tqqq.yaml` (requirements-dl.txt). Unmeasured on real bars. Earlier: research code in `research.catalog.neural_models`: `TemporalFusionTransformer`. |
 | Related ledger entries | RK301, RK316, C-RJ4 |
 
 ## In one paragraph

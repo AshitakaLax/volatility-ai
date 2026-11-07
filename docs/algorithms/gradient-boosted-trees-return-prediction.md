@@ -11,7 +11,7 @@ researched 2026-10-27
 | AI implementability rank | 275 (1 = easiest) |
 | Retail advantage rank | 103 (1 = strongest) |
 | Fit with this project | ✅ as lot sizing (V13, V14) · ⛔ as a return-direction trade |
-| Implemented in volatility-ai | **Yes.** LightGBM models size grid lots: `ml_reachability_*` (V13) scores whether a lot's target is reachable, `ml_regime_*` (V14) scores crash risk. Neither predicts returns. |
+| Implemented in volatility-ai | **Yes.** LightGBM models size grid lots: `ml_reachability_*` (V13) scores whether a lot's target is reachable, `ml_regime_*` (V14) scores crash risk, and `ml_meta_label` (2026-11-07) scores each champion-grid buy by its triple-barrier outcome, trained walk-forward by `cli.py train`. None predicts returns. |
 | Related ledger entries | V13, V14, RK290, RK214 |
 
 ## In one paragraph
