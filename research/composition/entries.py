@@ -116,6 +116,10 @@ _SPECS: dict[str, EntrySpec] = {
     "catalog_exposure": EntrySpec(
         "research.strategies.catalog_exposure_sizing.CatalogExposureSizing"
     ),
+    # The TFT sizer's buying: the grid's (or the rolling high's) trigger, each
+    # buy sized from the model's quantile forecast. It never sells, so any
+    # sell policy pairs with it -- tft_take_profit included.
+    "ml_tft": EntrySpec("research.ml.tft_sizing.TemporalFusionTransformerSizer"),
 }
 
 _ML_PREFIXES = ("ml_reachability_", "ml_regime_")

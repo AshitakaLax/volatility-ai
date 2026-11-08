@@ -17,6 +17,7 @@ from engine.core.market_context import MarketContext
 from research.composition import exit_library as lib
 from research.composition.composed_strategy import ComposedStrategy
 from research.composition.exits import EXIT_DEFAULTS, EXITS
+from research.ml.tft_sizing import TemporalFusionTransformerSizer
 from research.optimization.optimization_controller import OptimizationController
 from research.strategies.live_algorithm import build_strategy
 from research.strategies.strategy_registry import STRATEGIES, may_realize_loss
@@ -39,7 +40,43 @@ def _params_for(exit_id, df):
         params["regime_by_date"] = fixture.causal_regime(df)
     if exit_id == "inventory_pressure":
         params.update(start_lots=20, full_lots=200)
+    if exit_id == "tft_take_profit":
+        params.update(bars_per_day=HF["bars_per_day"], check_bars=5)
     return params
+
+
+class _TurningForecaster:
+    """Stands in for a trained TFT: its forecast turns from a rise to a fall
+    on every other read, so tft_take_profit's rule fires. The properties
+    tested here are the take-profit's, not the model's."""
+
+    levels = (0.1, 0.5, 0.9)
+    encoder_length = 20
+    prediction_length = 4
+    valid_from = None
+    sources = {"s_macro": None, "s_earnings": None, "s_news": None}  # noqa: RUF012
+
+    def __init__(self, bars_per_day):
+        self.bars_per_day = bars_per_day
+        self.reads = 0
+
+    def forecast(self, encoder, decoder_known):
+        self.reads += 1
+        mu = 0.01 if self.reads % 2 else -0.01
+        return [[encoder[-1, 0] + mu + d for d in (-0.01, 0.0, 0.01)]] * self.prediction_length
+
+
+def _run_policy(df, exit_id):
+    sell = {"id": exit_id, "params": _params_for(exit_id, df)}
+    if exit_id != "tft_take_profit":
+        return _run(df, sell)
+    with pytest.MonkeyPatch.context() as patch:  # no trained model in a fresh checkout
+        patch.setattr(
+            TemporalFusionTransformerSizer,
+            "_load_forecaster",
+            lambda self: _TurningForecaster(self.bars_per_day),
+        )
+        return _run(df, sell)
 
 
 def _run(df, sell, **sweep):
@@ -60,10 +97,7 @@ def _run(df, sell, **sweep):
 
 @pytest.fixture(scope="module")
 def runs(ohlcv):
-    return {
-        exit_id: _run(ohlcv, {"id": exit_id, "params": _params_for(exit_id, ohlcv)})
-        for exit_id in sorted(EXITS)
-    }
+    return {exit_id: _run_policy(ohlcv, exit_id) for exit_id in sorted(EXITS)}
 
 
 # --- properties every policy is held to -------------------------------------

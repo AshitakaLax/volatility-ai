@@ -1,0 +1,51 @@
+# hf_entry_gated on RSP: the live profile config/live_profiles/hf-entry-gated-rsp.yaml
+# (its evidence: web run 027b10806eda) as a single-point BacktestConfig, on
+# the research cost model (dynamic slippage, intrabar fills) rather than the
+# web form's defaults, so its numbers sit beside the other research configs'.
+#
+# The base config for config/ml/tft_rsp.yaml: it gives the TFT's RSP runs
+# their grid (each 0.1% dip, each lot sold at +20%), costs and fills, and is
+# the baseline an ml_tft run on RSP has to beat.
+#
+#   python cli.py backtest --config config/hf_entry_gated_rsp.yaml --output output/rsp
+
+strategy:
+  strategy_id: hf_entry_gated
+  strategy_params:
+    bars_per_day: 390
+    per_lot_pct: 0.0002
+    lookback_days: 0.02
+    momentum_gate: early_negative
+    dd_throttle_start: 0.05
+    dd_throttle_full: 0.25
+    dd_throttle_floor: 0.0
+    vol_measure: range
+    vol_scale_exponent: -2.0
+    vol_fast_days: 0.25
+    vol_slow_days: 20.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    volume_scale_exponent: -1.0
+grid:
+  steps: [0.001]
+  profit_targets: [0.2]
+backtest:
+  symbol: RSP
+  initial_cash: 100000.0
+costs:
+  model_type: dynamic_slippage
+  commission_per_trade: 0.0
+  base_bps: 0.5
+  vol_multiplier: 0.3
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  enforce_no_loss: true
+  allow_signal_exit: false
+  settlement_days: 0
+output:
+  return_full_results: false
