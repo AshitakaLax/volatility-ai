@@ -151,6 +151,7 @@ entries also have reference code in `research/catalog/`, unwired.
 | X7 | Managed-futures ETF sleeve | this work | Crisis alpha | ⛔ | — |
 | X8 | Long-volatility ETF sleeve (VIXY) | this work | Long vol | ⛔ | — |
 | X9 | Gold (GLD) | this work | Rotation | 🆕🧪 | Low–medium |
+| X10 | Daily Ultimate (+0.1% of equity a session) | owner's goal, 2026-11 | Regime grid | 🆕🔬 | **High** |
 | C-MR1 | Short-term reversal as paid liquidity provision (VIX-conditioned) | Nagel 2012; Collin-Dufresne & Daniel | Mean reversion | 🧪 | Medium |
 | C-MR2 | ETF-residual Ornstein-Uhlenbeck stat arb (s-score) | Avellaneda & Lee 2010 | Stat arb | 🧪 | Low–medium |
 | C-MR4 | Mean-reversion diagnostics: ADF, Hurst exponent, variance ratio, OU half-life | letianzj/QuantResearch | Regime filter | 🧪 | Medium |
@@ -1137,6 +1138,48 @@ otherwise. Excluded by the owner. VIXY remains in use as V12's *data*.
 Roughly flat in 2022; no hedge in a fast crash. Included in X2's default
 `--defensive` list, where its own NATR regime must be calm before it is
 held. Low expected value.
+
+### X10. Daily Ultimate 🆕🔬
+The owner's goal: +0.1% of equity a session (28.6% a year), trading daily.
+`daily_ultimate` (`research/strategies/daily_ultimate_sizing.py`) is
+Ultimate with three switches, each off by default (all off = `ultimate`,
+pinned): lots compounded from each session's opening equity; a daily goal
+that can pause the calm grid or sell lots in profit once met; and a
+closing profit-only harvest. Also split as a buy (`daily_ultimate`), a sell
+(`daily_ultimate_exit`) and a regime-free sell (`daily_harvest`).
+
+* **Swept** (`tools/probe_daily_ultimate.py`, 734 configurations, causal
+  fills, dynamic slippage, no cash yield, scored 2017-01 to 2026-11).
+  - Only **TQQQ** reaches the goal inside a 30% drawdown; SOXL needs 43.5%.
+    Unleveraged funds top out at 0.00–0.05% a session.
+  - The choice (highest return within a 30% drawdown) is Ultimate's shape
+    with 0.8% lots, a 12% target and every daily switch off:
+    **0.160% a session, 49.6% CAGR, 29.9% max DD**, against buy-and-hold's
+    0.128% / 37.8% / 81.7%.
+  - From 2022: 0.099% a session against buy-and-hold's 0.033%. Chosen on
+    2017–2021 alone, it ranked 2nd of 300 out of sample.
+* **Findings.**
+  - Every daily switch costs return per session: the goal lock gives
+    0.113% (DD 21.7%), the closing harvest 0.110%, and pausing at the goal
+    roughly halves the return.
+  - Compounding the same book doubles its drawdown (59.9%) for the same
+    return (finding in §9).
+  - No cell reaches 0.1% a session in both 2017–2021 and 2022 onward.
+* **Against.** Rests on 2022 like Ultimate; sensitive to `bear_window` (125:
+  53.9% DD) and the regime's period; lots held a median 10 sessions.
+* **Reserve** (`tools/probe_daily_reserve.py`, 864 configurations with
+  compounded lots, four bears worse than 2022's and a start at the 2021
+  top). The goal at the
+  least drawdown with the most cash: 0.25% lots, cash while turbulent, the
+  goal pause and a drawdown throttle.
+  - It makes **0.101% a session at an 18.5% drawdown**, and no stress path
+    makes that deeper. It holds 25% of the account in TQQQ on average.
+  - It makes 0.077% from 2022 on.
+  - No capped configuration reaches the goal. The ones that reach it in
+    both halves draw down 34–40%.
+* **Details:** [docs/research/daily-ultimate.md](research/daily-ultimate.md),
+  [docs/research/daily-ultimate-reserve.md](research/daily-ultimate-reserve.md);
+  `config/daily_ultimate_tqqq.yaml`, `config/daily_ultimate_reserve_tqqq.yaml`.
 
 ---
 
@@ -6888,6 +6931,8 @@ some recorded number should be read.
 | Shooting-star reference script lookahead | Next-bar confirm + full-sample mean | Fixed in N4 |
 | README runs scripts by path | Fails without the repo root on `PYTHONPATH`; `python -m` works | Flagged |
 | `run_hf_sweep` leaderboard hid swept columns | Rows differing only in an unlisted parameter printed as identical | Fixed (0001) |
+| Fixed-dollar lots shrink as the account grows | A grid's later-year drawdown is understated: by 2022 Ultimate's lots were a sliver of a ~15× account. Compounded from each session's equity, the same book draws down 59.9%, not 29.9% (X10) | Measured; `daily_ultimate` `compound_lots` |
+| Server and warehouse runs use `intrabar_fill=level` and zero costs | The 397k `sim_results` rows are a screen, not a measurement; X10 re-measured its finalists causally | Flagged |
 
 ---
 
@@ -6958,3 +7003,6 @@ python -m tools.rotation --mode hrp
 11. **Build a portfolio-level allocator** in the engine if any
     multi-instrument book earns it. It removes the additive-account
     approximation that N7, N11 and A5 all rest on.
+12. **Paper-trial X10** (`config/daily_ultimate_tqqq.yaml`) beside Ultimate,
+    and re-base `per_lot_pct` as the account grows; then decide whether
+    the goal lock's daily selling is worth its cost.

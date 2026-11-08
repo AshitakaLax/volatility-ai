@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from engine.core.exceptions import ConfigurationError
+from research.strategies.daily_ultimate_sizing import DailyUltimateSizing
 from research.strategies.ultimate_sizing import TURBULENT, UltimateSizing
 
 # Parameters that configure SELLING on every strategy that has them.
@@ -90,6 +91,22 @@ _SPECS: dict[str, EntrySpec] = {
         "research.composition.entries.UltimateEntry",
         sell_params=SELL_SIDE_PARAMS
         | {"liquidate_minute", "liquidate_reversal_on_calm", "reversal_target"},
+        lot_view=True,
+    ),
+    # Daily Ultimate's buying: Ultimate's, with lots compounded from each
+    # session's opening equity and the calm grid paused once the daily goal
+    # is met. Its take-profits sell, so they are `daily_ultimate_exit`'s.
+    "daily_ultimate": EntrySpec(
+        "research.composition.entries.DailyUltimateEntry",
+        sell_params=SELL_SIDE_PARAMS
+        | {
+            "liquidate_minute",
+            "liquidate_reversal_on_calm",
+            "reversal_target",
+            "goal_lock",
+            "eod_harvest_minute",
+            "harvest_min_gain",
+        },
         lot_view=True,
     ),
     # The exposure books' buying: whole lots up to a daily exposure target.
@@ -198,3 +215,8 @@ class UltimateEntry(UltimateSizing):
         lots = list(open_lots)
         super().resume(lots)
         self._reversal_ids |= {lot.order_id for lot in lots if lot.entry_tag == "reversal"}
+
+
+class DailyUltimateEntry(DailyUltimateSizing, UltimateEntry):
+    """Daily Ultimate, buying: UltimateEntry's reversal tags on
+    DailyUltimateSizing's compounded, goal-paused grid."""

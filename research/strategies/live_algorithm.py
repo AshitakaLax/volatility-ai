@@ -786,6 +786,29 @@ def algorithm_summary(algorithm: dict, symbol: str | None = None) -> str:
             f"+{_percent(target)}; turbulent ones: no grid buys, only reversal lots, and its calm "
             f"lots are sold at minute {minute} of the first turbulent session"
         )
+    if strategy_id == "daily_ultimate":
+        minute = _param(strategy_id, params, "liquidate_minute")
+        goal = _param(strategy_id, params, "daily_goal")
+        eod = _param(strategy_id, params, "eod_harvest_minute")
+        sized = (
+            "lots sized from each session's opening equity"
+            if _param(strategy_id, params, "compound_lots")
+            else "fixed-dollar lots"
+        )
+        daily = []
+        if goal is not None and _param(strategy_id, params, "goal_pause_buys"):
+            daily.append(f"stops buying once the day is up {_percent(goal)}")
+        if goal is not None and _param(strategy_id, params, "goal_lock"):
+            daily.append(f"sells lots in profit once the day is up {_percent(goal)}")
+        if eod is not None:
+            daily.append(f"sells lots in profit from minute {eod}")
+        return (
+            f"calm markets: buys each {_percent(step)} dip ({sized}) and sells each lot at "
+            f"+{_percent(target)}"
+            + "".join(f", {part}" for part in daily)
+            + "; turbulent ones: no grid buys, only reversal lots, and its calm lots are sold "
+            f"at minute {minute} of the first turbulent session"
+        )
     return f"buys each {_percent(step)} dip, sells each lot at +{_percent(target)}"
 
 
