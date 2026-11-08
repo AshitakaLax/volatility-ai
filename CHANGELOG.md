@@ -61,6 +61,90 @@ sell reach it.
   that made 0.046% a session out of sample (184th of 300). The highest return within a 30%
   drawdown held its rank.
 
+## Feat: `ml_tft`, a Temporal Fusion Transformer sizer, trained by `cli.py train`
+
+**The owner asked for a deep-learning sizer.** The ledger's verdict on the TFT
+(RK301, RK413) is unchanged -- no evidence it beats the LightGBM baseline --
+and it is built so that question can now be answered with a backtest.
+
+- **Covariates** (`research/ml/tft_features.py`): target `log_close`; observed
+  (encoder) R<sub>t-1</sub>, R<sub>t-2</sub>, macro surprise, earnings and news
+  sentiment; known future (decoder) the FOMC decision day and the session clock
+  (minutes since the open and to the close). Outside series are CSVs read
+  point-in-time (strictly after their stamp; a date-only row from the next day);
+  a missing one is 0.0 in training and trading alike. One definition for both:
+  the live ring's rows equal the training frame's, bit for bit.
+- **Training** (`cli.py train` with `kind: tft`, `research/ml/tft_training.py`,
+  `config/ml/tft_tqqq.yaml`): pytorch-forecasting's `TimeSeriesDataSet` with
+  those groups, fixed encoder and horizon lengths, `EncoderNormalizer`, and
+  `QuantileLoss` at 10/50/90; trained before `validation_start`, validated
+  after it. The report gives quantile coverage, pinball loss against a naive
+  forecast and the realised return by confidence quintile; the trainer writes
+  `backtest.yaml` (from `validation_start`) and `baseline.yaml`.
+- **The sizer** (`ml_tft`, `research/ml/tft_sizing.py`): quantiles to mu
+  (Swanson's 30-40-30) and sigma ((q90 - q10) / 2 z<sub>0.9</sub>; a normal
+  least-squares fit for other levels), a precision-weighted confidence
+  clip(kelly_scale mu / sigma^2, 0, 1), an exponential decay in drawdown depth
+  and in sessions underwater, all on `_BaselineScaledStrategy`'s cap and
+  inverse scaling, so a buy never exceeds `max_trade_pct` of equity. It never
+  sells or moves a target. Each bar is an O(1) write into a pre-allocated ring of
+  exactly the encoder length; a forecast (about 30 ms) runs only on a trigger,
+  at most once per `refresh_bars`. It refuses in-sample bars and a run without
+  the series the model was trained on.
+- **The artifact** (`research/ml/tft_model.py`): a Lightning checkpoint and the
+  dataset parameters, both pickles, SHA-256-checked against the manifest before
+  they are opened. torch is imported only here and in training, lazily;
+  `requirements-dl.txt` is separate (pytorch-forecasting 1.8 caps pandas below
+  3.1).
+- Tested with a stub forecaster everywhere, and against a real TFT where
+  pytorch-forecasting is installed (train, load, the single-window forecast
+  equal to the dataset path, a tampered checkpoint refused). Unmeasured on real
+  bars.
+
+## Feat: `ml_meta_label`, the meta-label model, and `cli.py train` to train and run it
+
+**The learned-sizing line had no model that could be trained, backtested and
+traded the same way.** The reachability models (V13) trained once to a fixed
+cutoff, so a backtest over the training years was partly in-sample, and none
+covered TQQQ. Of the learned methods the ledger researched, gradient-boosted
+trees used as a meta-labeller fit the owner's rules and the evidence best
+(RK291, RK317, RK294; `docs/ml_plan.md`, "Phase ML-3"). The grid's own trigger
+picks the buys; the model only skips or shrinks them.
+
+- **Training** (`cli.py train --config config/ml/meta_label_tqqq.yaml`,
+  `research/ml/meta_training.py`): every buy the base config's
+  `hf_local_reference` trigger would place is labelled by its triple barrier
+  (the lot's target touched within `max_hold_days`, before an optional stop),
+  weighted by average uniqueness, and learned by an expanding-window
+  walk-forward: one LightGBM model per `refit_days`, each fitted only on labels
+  resolved before its period (purged, with an embargo), early-stopped and
+  isotonic-calibrated on its own held-out tail. The report gives pooled
+  out-of-sample AUC, Brier skill against the base rate, hit rate by quintile
+  and a shuffled-label control.
+- **The artifact** (`research/ml/meta_model.py`): a manifest and one text
+  booster per segment, hashed and checked on load. Each bar is answered by the
+  segment whose period it falls in, so a full-history backtest is out of sample
+  wherever the model speaks; before the first segment the strategy is
+  `hf_local_reference` exactly. Live, the newest segment answers. `train` also
+  writes `backtest.yaml` and `baseline.yaml`, and `--compare` runs both on the
+  out-of-sample window.
+- **The strategy** (`ml_meta_label`, `research/ml/meta_label_sizing.py`): the
+  champion grid unchanged, each buy multiplied by 0 below `skip_below`, then
+  `size_floor` to 1 up to `full_size_at`. It never grows a buy, moves a target
+  or sells; it refuses a model trained for another lookback, bar size or grid
+  step. The features (`research/ml/meta_features.py`) are one class used by both
+  the dataset builder and the strategy, causal under both fill models, and
+  pinned equal through the real controller.
+- Unmeasured on real bars: train it on the warehouse's TQQQ and compare before
+  trading it.
+- README: the portfolio-book bullet no longer splits the strategy list.
+- `requirements-warehouse.txt` names `pytz`: DuckDB needs it for timestamps with a
+  time zone, and it used to come only through alpaca-py, which dropped it in 0.45.0,
+  so every fresh install failed the warehouse tests.
+- `tools/tests/test_compose_deployment.py` allows the `fidelity-bridge`'s read-only
+  mount of its trader's ledger (#44 added it for the book the phone shows) and
+  still refuses a writable one or another trader's.
+
 ## Feat: the Notifier app's four pages, and the book they show
 
 The Android app was one long screen of settings and status. It now opens on a

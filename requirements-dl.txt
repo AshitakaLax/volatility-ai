@@ -1,0 +1,20 @@
+# Deep learning: the Temporal Fusion Transformer behind the `ml_tft` sizer
+# (research/ml/tft_model.py, tft_training.py). Kept SEPARATE for the same
+# reason as requirements-ml.txt: the live loop and the Raspberry Pi must
+# never need these to start, and nothing outside research/ml/tft_model.py
+# and tft_training.py imports them (lazily, when a TFT is loaded or trained).
+#
+# pytorch-forecasting 1.8 caps pandas below 3.1. requirements.txt allows
+# any pandas >= 3.0.5, so installing this file may move pandas back to
+# 3.0.x -- inside the project's own bounds, but install it in the
+# environment that trains (and backtests) the TFT, not on the trader
+# unless it will run ml_tft.
+#
+# torch from PyPI is the CUDA build (a few GB with its nvidia-* wheels); on
+# a CPU-only machine, install it first from the CPU index instead:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+torch>=2.6,<3
+lightning>=2.4,<2.7,!=2.6.2,!=2.6.3
+pytorch-forecasting==1.8.0
+pandas>=3.0.5,<3.1
