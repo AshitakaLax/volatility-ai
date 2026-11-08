@@ -109,6 +109,7 @@ def test_only_the_signal_exits_are_on_the_loss_capable_track():
         "regime_exit",
         "regime_exit_partial",
         "ultimate_exit",
+        "daily_ultimate_exit",
         "rsp_rebalance",
         "ursp_rebalance",
         "catalog_rebalance",

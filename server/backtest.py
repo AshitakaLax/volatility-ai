@@ -508,6 +508,10 @@ for _regime_id in (_i for _i in STRATEGIES if _i.startswith("ml_regime_")):
 for _lib_id in (_i for _i, _c in STRATEGIES.items() if _c.__name__ == "LibrarySizing"):
     _GRID_TRIGGER[_lib_id] = dict(_GRID_TRIGGER["hf_entry_gated"])
 
+# Daily Ultimate buys exactly as Ultimate does (its goal can only pause the
+# calm grid), so it is described the same way.
+_GRID_TRIGGER["daily_ultimate"] = dict(_GRID_TRIGGER["ultimate"])
+
 # ml_meta_label inherits hf_local_reference's level unchanged (the model
 # sizes a buy, it never moves the trigger).
 _GRID_TRIGGER["ml_meta_label"] = dict(_GRID_TRIGGER["hf_local_reference"])

@@ -382,6 +382,13 @@ ENTRIES: tuple[Entry, ...] = (
     _e("X7", "Managed-futures ETF sleeve", "⛔", f"{_RC}.trend_following:tsmom_weights"),
     _e("X8", "Long-volatility ETF sleeve (VIXY)", "⛔", f"{_RC}.excluded:long_vol_sleeve"),
     _e("X9", "Gold (GLD)", "🆕🧪", "tools/rotation.py"),
+    _e(
+        "X10",
+        "Daily Ultimate (+0.1% of equity a session)",
+        "🆕🔬",
+        f"{_RS}.daily_ultimate_sizing:DailyUltimateSizing",
+        "tools/probe_daily_ultimate.py",
+    ),
     # ---- section 8A: correction-strategy catalog
     _e(
         "C-MR1",

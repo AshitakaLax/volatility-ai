@@ -16,6 +16,10 @@ none of these can realise a loss under any parameters:
   scale_out_trail      PARTIAL: sell part at a fixed target, trail the rest
   signal_take_profit   when a signal-library gate shuts (its bearish reading),
                        sell lots already above a minimum gain at the market
+  daily_harvest        Daily Ultimate's take-profits for any buyer: lots
+                       already above a minimum gain sold at the market once
+                       the session's equity reaches a daily goal, and/or
+                       from a minute near the close
 
 LOSS-CAPABLE TRACK -- signal exits, behind execution.allow_signal_exit:
 
@@ -40,6 +44,7 @@ from engine.core.exit_policy import ExitOrder
 from engine.core.market_context import MarketContext
 from research.composition.exits import RUNG_TOLERANCE, ExitPolicy, register
 from research.optimization.trailing_target import TrailingTargetPolicy
+from research.strategies.daily_ultimate_sizing import DailyGoal
 
 SESSION_MINUTES = 390
 
@@ -480,6 +485,47 @@ class SignalTakeProfit(ExitPolicy):
         return {"take_profit_signals": self.fires}
 
 
+class DailyHarvest(ExitPolicy):
+    """Daily Ultimate's two market take-profits (research/strategies/
+    daily_ultimate_sizing.DailyGoal) without its regime exit, for any buyer:
+    every lot already up at least harvest_min_gain is sold at the market on
+    the bar the session's equity first reaches daily_goal over its opening
+    equity (goal_lock), and on every bar from eod_harvest_minute to the
+    close. Each is a profit-target sale the no-loss guard checks, so a lot
+    under its minimum gain keeps its target and nothing sells below cost.
+    Unlike daily_ultimate_exit it cannot tell reversal lots from grid lots,
+    so it harvests every lot."""
+
+    exit_id = "daily_harvest"
+    label = "Daily take-profit"
+
+    def __init__(
+        self,
+        daily_goal: float | None = 0.001,
+        goal_lock: bool = True,
+        eod_harvest_minute: int | None = 380,
+        harvest_min_gain: float = 0.002,
+    ) -> None:
+        if not goal_lock and eod_harvest_minute is None:
+            raise ConfigurationError(
+                "daily_harvest with goal_lock off and no eod_harvest_minute never sells early: "
+                "use fixed_target"
+            )
+        self._goal = DailyGoal(daily_goal, goal_lock, eod_harvest_minute, harvest_min_gain)
+
+    def record_tick(self, context: MarketContext) -> None:
+        self._goal.observe(context)
+
+    def wants_lot_retargeting(self) -> bool:
+        return self._goal.harvest_now
+
+    def adjust_profit_target(self, lot, context: MarketContext) -> float | None:
+        return self._goal.take_profit(lot, context)
+
+    def diagnostics(self) -> dict:
+        return self._goal.diagnostics()
+
+
 # -------------------------------------------------------- loss-capable track
 
 
@@ -598,5 +644,9 @@ register(
     {"first_fraction": 0.5, "first_target": 0.01, "trail_pct": 0.01, "runner_target": 0.5},
 )
 register(SignalTakeProfit, {"signal": "zscore", "min_gain": 0.002, "fraction": 1.0})
+register(
+    DailyHarvest,
+    {"daily_goal": 0.001, "goal_lock": True, "eod_harvest_minute": 380, "harvest_min_gain": 0.002},
+)
 register(RegimeExit, {"natr_period": 10, "natr_lookback": 100, "regime_min_hold": 5})
 register(RegimeExitPartial, {"fraction": 0.5, "natr_period": 10, "natr_lookback": 100})

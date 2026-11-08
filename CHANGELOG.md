@@ -1,5 +1,66 @@
 # Changelog
 
+## Research: Daily Ultimate Reserve, the goal at the least drawdown with the most cash
+
+The owner asked for +0.1% of equity a session at the least drawdown, with as much of the account
+in cash as possible, and still standing in a bear worse than 2022's.
+
+- **`tools/stress_paths.py`**: four falls worse than 2022's, built from TQQQ's own minute bars,
+  plus a start at the 2021 peak. The falls are:
+  - `deeper`: 2022 ×1.5, −92%;
+  - `grind`: −95%, each bar's range unchanged;
+  - `twice`: 2022 back to back, −96.5%;
+  - `fast`: the 2020 crash made −83.5%.
+- **`tools/probe_daily_reserve.py`** (`docs/research/daily-ultimate-reserve.md`):
+  - 864 configurations with compounded lots: cash or reversal lots in turbulence, an exposure
+    cap, lot, step, target, the goal pause, and a drawdown throttle or tighter bear filter.
+  - The candidates are stressed. The choice is the shallowest *worst* drawdown at the goal, with
+    ties going to less exposure. Then the lot is trimmed, robustness is checked one change at a
+    time, and the configurations at the goal in both halves are stressed.
+  - Every later stage ends on the reserve stage's last session. `probe_daily_ultimate.run_one`
+    takes an `end` for that.
+- **The choice** (`config/daily_ultimate_reserve_tqqq.yaml`): 0.25% lots of the session's
+  equity, a 0.4% step, a +12% target, cash while turbulent, the goal pause and the drawdown
+  throttle. It makes 0.101% a session (28.8% CAGR) with an 18.5% drawdown, and no stress path
+  makes that deeper. It holds 25% of the account in TQQQ on average. Opened at the 2021 top it
+  falls 16.4%, against Daily Ultimate's 57.6%.
+- **What it costs:**
+  - It makes 0.077% a session from 2022 on.
+  - No configuration with an exposure cap reaches the goal (the best at 50% makes 0.085%).
+  - The configurations that reach the goal in both halves draw down 34–40%.
+  - The walk-forward pick made 0.036% a session out of sample.
+
+## Feat: Daily Ultimate, an algorithm swept for +0.1% of equity a session
+
+The owner asked for an algorithm targeting +0.1% of equity a session, and which fund, buy and
+sell reach it.
+
+- **`daily_ultimate`** (`research/strategies/daily_ultimate_sizing.py`): Ultimate with three
+  switches, each off by default (all off is `ultimate`, blotter for blotter):
+  - `compound_lots`: lots from each session's opening equity;
+  - `daily_goal` with `goal_pause_buys` / `goal_lock`: once the session is up the goal, pause
+    the calm grid, or sell calm lots already in profit at the market;
+  - `eod_harvest_minute`: sell calm lots in profit from that minute to the close.
+- Both take-profits are profit-target sales, so the no-loss guard checks them. The regime exit is
+  still the only loss path.
+- As composable halves: the `daily_ultimate` buy, the `daily_ultimate_exit` sell (Ultimate's exit
+  plus the take-profits, regime defaults matching the buy) and `daily_harvest` (the take-profits
+  for any buyer). The composed pair is pinned identical to the strategy.
+- **The sweep** (`tools/probe_daily_ultimate.py`, 734 configurations, causal fills, dynamic
+  slippage, no cash yield; `docs/research/daily-ultimate.md`):
+  - Only TQQQ reaches the goal inside a 30% drawdown.
+  - The choice is Ultimate's buy and regime exit with 0.8% lots and a 12% target, the daily
+    switches off: 0.160% a session (49.6% CAGR, 29.9% max DD) against buy-and-hold's 0.128%
+    (37.8%, 81.7%).
+  - From 2022: 0.099% a session against 0.033%. It was second of 300 when chosen on 2017–2021
+    alone.
+  - Compounding doubles the drawdown for the same return, and every daily take-profit costs
+    return per session. Pinned as `config/daily_ultimate_tqqq.yaml` and
+    `STRATEGY_DEFAULTS["daily_ultimate"]`.
+- **Why the first selection rule was replaced:** the shallowest drawdown at the goal picked a cell
+  that made 0.046% a session out of sample (184th of 300). The highest return within a 30%
+  drawdown held its rank.
+
 ## Feat: `ml_tft`, a Temporal Fusion Transformer sizer, trained by `cli.py train`
 
 **The owner asked for a deep-learning sizer.** The ledger's verdict on the TFT
