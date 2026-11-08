@@ -1,5 +1,35 @@
 # Changelog
 
+## Research: Daily Ultimate Reserve, the goal at the least drawdown with the most cash
+
+The owner asked for +0.1% of equity a session at the least drawdown, with as much of the account
+in cash as possible, and still standing in a bear worse than 2022's.
+
+- **`tools/stress_paths.py`**: four falls worse than 2022's, built from TQQQ's own minute bars,
+  plus a start at the 2021 peak. The falls are:
+  - `deeper`: 2022 ×1.5, −92%;
+  - `grind`: −95%, each bar's range unchanged;
+  - `twice`: 2022 back to back, −96.5%;
+  - `fast`: the 2020 crash made −83.5%.
+- **`tools/probe_daily_reserve.py`** (`docs/research/daily-ultimate-reserve.md`):
+  - 864 configurations with compounded lots: cash or reversal lots in turbulence, an exposure
+    cap, lot, step, target, the goal pause, and a drawdown throttle or tighter bear filter.
+  - The candidates are stressed. The choice is the shallowest *worst* drawdown at the goal, with
+    ties going to less exposure. Then the lot is trimmed, robustness is checked one change at a
+    time, and the configurations at the goal in both halves are stressed.
+  - Every later stage ends on the reserve stage's last session. `probe_daily_ultimate.run_one`
+    takes an `end` for that.
+- **The choice** (`config/daily_ultimate_reserve_tqqq.yaml`): 0.25% lots of the session's
+  equity, a 0.4% step, a +12% target, cash while turbulent, the goal pause and the drawdown
+  throttle. It makes 0.101% a session (28.8% CAGR) with an 18.5% drawdown, and no stress path
+  makes that deeper. It holds 25% of the account in TQQQ on average. Opened at the 2021 top it
+  falls 16.4%, against Daily Ultimate's 57.6%.
+- **What it costs:**
+  - It makes 0.077% a session from 2022 on.
+  - No configuration with an exposure cap reaches the goal (the best at 50% makes 0.085%).
+  - The configurations that reach the goal in both halves draw down 34–40%.
+  - The walk-forward pick made 0.036% a session out of sample.
+
 ## Feat: Daily Ultimate, an algorithm swept for +0.1% of equity a session
 
 The owner asked for an algorithm targeting +0.1% of equity a session, and which fund, buy and

@@ -1161,8 +1161,19 @@ closing profit-only harvest. Also split as a buy (`daily_ultimate`), a sell
   - No cell reaches 0.1% a session in both 2017–2021 and 2022 onward.
 * **Against.** Rests on 2022 like Ultimate; sensitive to `bear_window` (125:
   53.9% DD) and the regime's period; lots held a median 10 sessions.
-* **Details:** [docs/research/daily-ultimate.md](research/daily-ultimate.md);
-  `config/daily_ultimate_tqqq.yaml`.
+* **Reserve** (`tools/probe_daily_reserve.py`, 864 configurations with
+  compounded lots, four bears worse than 2022's and a start at the 2021
+  top). The goal at the
+  least drawdown with the most cash: 0.25% lots, cash while turbulent, the
+  goal pause and a drawdown throttle.
+  - It makes **0.101% a session at an 18.5% drawdown**, and no stress path
+    makes that deeper. It holds 25% of the account in TQQQ on average.
+  - It makes 0.077% from 2022 on.
+  - No capped configuration reaches the goal. The ones that reach it in
+    both halves draw down 34–40%.
+* **Details:** [docs/research/daily-ultimate.md](research/daily-ultimate.md),
+  [docs/research/daily-ultimate-reserve.md](research/daily-ultimate-reserve.md);
+  `config/daily_ultimate_tqqq.yaml`, `config/daily_ultimate_reserve_tqqq.yaml`.
 
 ---
 
