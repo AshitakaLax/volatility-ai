@@ -239,26 +239,34 @@ made 0.099% from 2022 on, but falls 57.6% if opened at the 2021 top.
 
 ## Paper trial
 
-The trial runs on `paper-ultimate`, the paper deployment that trades TQQQ. Its config
-(`config/ultimate_paper.yaml`) carries this configuration's drawdown throttle, because a
-switch of algorithm changes only the strategy, its parameters, the step and the target,
-never the risk limits. Before 2026-11-09 the live loop also dropped `risk.dd_exposure_*`,
-so no deployment could have traded the throttle.
+It paper-trades on `paper-ultimate`, the paper deployment that trades TQQQ, as the live
+profile `config/live_profiles/daily-ultimate-reserve-tqqq.yaml`. A profile carries the
+strategy, its parameters, the step and the target, never the risk limits, so the drawdown
+throttle is paper-ultimate's own (`config/ultimate_paper.yaml`'s `risk:`).
+`tools/tests/test_probe_daily_reserve.py` holds the profile and that throttle to the pinned
+config. Before 2026-11-09 the live loop dropped `risk.dd_exposure_*`, so no deployment could
+have traded the throttle.
 
 1. **Start from a clean book.** On the Live page, press **Disable now** on `paper-ultimate`.
-   Empty the paper account in Alpaca's dashboard, then press **Fresh paper ledger** and
-   **Enable**. Drawdown, and so the throttle, is measured from the fresh ledger's first tick.
-2. **Backtest tab:** `daily_ultimate` on TQQQ, step 0.004, target 0.12. Change four fields
+   Close its positions and cancel its orders in Alpaca's dashboard, then press **Fresh paper
+   ledger** and **Enable**. Drawdown, and so the throttle, is measured from the fresh
+   ledger's first tick.
+2. **Paper trade it:** **Switch…**, choose the profile, starting next session.
+
+That is paper trading. A trial a later promotion can name goes through the Algorithms tab
+instead of step 2:
+
+3. **Backtest tab:** `daily_ultimate` on TQQQ, step 0.004, target 0.12. Change four fields
    from the form's defaults: `per_lot_pct` 0.0025, `compound_lots` on, `goal_pause_buys`
    on, `turbulent_mode` cash. The web applies no throttle and no costs, and fills at the
    trigger price, so its figures read better than the ones above.
-3. **Add as candidate**, then on the Algorithms tab press **Start paper trial** and choose
-   `paper-ultimate`.
-4. After at least five sessions, **Evaluate trial** (`engine/promotion.py`: 20 decisions,
+4. **Add as candidate**, then on the Algorithms tab press **Start paper trial** and choose
+   `paper-ultimate`. It switches the deployment to the same algorithm.
+5. After at least five sessions, **Evaluate trial** (`engine/promotion.py`: 20 decisions,
    5 fills, and no discrepancies, duplicate orders, no-loss violations, unresolved
    reconciliations or unhandled errors). While TQQQ is turbulent this configuration holds
    cash and buys nothing, so a trial cannot pass until a calm spell.
-5. **Publish as live profile**, then review and commit the profile and its promotion.
+6. **Publish as live profile**, then review and commit the profile and its promotion.
 
 While the throttle holds back a buy, the Live page says so: "at its exposure ceiling: open
 lots may hold 10% of equity at a 23.1% drawdown".

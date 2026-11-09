@@ -157,6 +157,33 @@ def test_the_committed_reserve_config_is_the_choice():
     assert config.risk.max_total_exposure is None and config.risk.dd_exposure_start == 0.05
 
 
+def test_paper_ultimate_trades_the_choice_with_its_throttle(tmp_path):
+    """The live profile is the committed config's algorithm, and paper-ultimate,
+    which holds the risk limits a profile cannot, has the config's throttle and
+    takes the profile."""
+    from research.strategies import live_profiles
+    from research.strategies.live_algorithm import AlgorithmControl
+    from research.strategies.strategy_registry import STRATEGIES
+
+    chosen = BacktestConfig.from_yaml(probe.CHOSEN_CONFIG)
+    profile = live_profiles.get("daily-ultimate-reserve-tqqq")
+    assert profile.change() == {
+        "strategy_id": chosen.strategy.strategy_id,
+        "strategy_params": chosen.strategy.strategy_params,
+        "step": chosen.grid.steps[0],
+        "profit_target": chosen.grid.profit_targets[0],
+    }
+    paper = BacktestConfig.from_yaml(probe.CHOSEN_CONFIG.parent / "ultimate_paper.yaml")
+    throttle = ("dd_exposure_start", "dd_exposure_full", "dd_exposure_floor_pct")
+    assert [getattr(paper.risk, f) for f in throttle] == [getattr(chosen.risk, f) for f in throttle]
+    assert paper.risk.max_total_exposure == chosen.risk.max_total_exposure
+    control = AlgorithmControl(
+        paper, state_db=tmp_path / "ledger.db", registry=STRATEGIES, allowed=False, web_allowed=True
+    )
+    _, trades = control.check(profile.change())
+    assert trades.strategy.strategy_id == "daily_ultimate" and trades.risk == paper.risk
+
+
 def test_both_stresses_only_configurations_at_the_goal_in_both_halves(tmp_path, monkeypatch):
     monkeypatch.setattr(probe, "_top_start", lambda: "2020-11-19")
     days = pd.bdate_range("2021-11-01", "2022-02-28")

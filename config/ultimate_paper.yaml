@@ -25,7 +25,8 @@
 #   lot size             per_lot_pct of the equity at the first tick of each
 #                        session (the backtest: of the starting capital, fixed).
 #   drawdown throttle    risk.dd_exposure_*: config/daily_ultimate_reserve_tqqq.yaml's,
-#                        for its paper trial (docs/research/daily-ultimate-reserve.md).
+#                        for its profile daily-ultimate-reserve-tqqq
+#                        (docs/research/daily-ultimate-reserve.md, "Paper trial").
 #                        It holds back new buys whatever algorithm this account
 #                        trades; Ultimate's and the champion's backtests had none.
 #

@@ -22,8 +22,11 @@ was readied for a paper trial.
   never changes risk limits, so the throttle has to be the deployment's.
   It holds back buys whatever algorithm the account trades, and Ultimate
   and the champion were researched without it.
-- **The trial's steps** are in `docs/research/daily-ultimate-reserve.md`,
-  under "Paper trial".
+- **The reserve is a live profile**, `daily-ultimate-reserve-tqqq`, for
+  paper-ultimate to switch to from the Live page. It is not promoted, and a
+  test holds it and paper-ultimate's throttle to the pinned config. The
+  steps are in `docs/research/daily-ultimate-reserve.md`, under "Paper
+  trial".
 
 ## Research: the TFT trained for TQQQ and RSP, and measured in buy × sell compositions
 

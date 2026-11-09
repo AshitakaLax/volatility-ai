@@ -1,0 +1,58 @@
+# The Daily Ultimate reserve on TQQQ: config/daily_ultimate_reserve_tqqq.yaml's
+# algorithm, for paper-ultimate to switch to from the Live page.
+# research/strategies/live_profiles.py describes the format;
+# tools/tests/test_probe_daily_reserve.py holds it to that config.
+#
+# Not promoted: real money needs evidence.promotion naming a passing paper
+# trial (docs/research/daily-ultimate-reserve.md, "Paper trial").
+id: daily-ultimate-reserve-tqqq
+label: Daily Ultimate reserve, TQQQ (0.25% lots, cash while turbulent)
+symbols:
+- TQQQ
+strategy_id: daily_ultimate
+strategy_params:
+  bars_per_day: 387
+  lookback_days: 0.02
+  event_day_boost_multiplier: 2.5
+  earnings_day_boost_multiplier: 1.5
+  vol_scale_exponent: -1.5
+  vol_fast_days: 0.25
+  vol_slow_days: 10.0
+  vol_scale_min: 0.25
+  vol_scale_max: 3.0
+  vol_measure: stdev
+  volume_scale_exponent: -1.0
+  natr_period: 14
+  natr_lookback: 100
+  regime_min_hold: 5
+  bear_dd: 0.5
+  bear_window: 250
+  turbulent_mode: cash
+  reversal_lot_pct: 0.2
+  reversal_max_lots: 4
+  liquidate_minute: 60
+  per_lot_pct: 0.0025
+  reversal_threshold: -0.08
+  reversal_target: 0.08
+  compound_lots: true
+  daily_goal: 0.001
+  goal_pause_buys: true
+  harvest_min_gain: 0.002
+step: 0.004
+profit_target: 0.12
+evidence:
+  note: >-
+    config/daily_ultimate_reserve_tqqq.yaml, chosen by tools/probe_daily_reserve.py
+    (docs/research/daily-ultimate-reserve.md). It was researched with the drawdown
+    throttle (risk.dd_exposure_*), which a profile cannot carry: trade it on a
+    deployment whose own risk section has it, as paper-ultimate's does. Needs
+    execution.allow_signal_exit and a regular-hours deployment.
+  backtest:
+    source: tools/probe_daily_reserve.py
+    window: 2016-01-04 to 2026-11-04, scored from 2017-01-03
+    fills: intrabar causal, dynamic slippage, no cash yield
+    per_session_pct: 0.101
+    cagr_pct: 28.8
+    max_drawdown_pct: 18.5
+    shares: fractional
+    initial_cash: 100000.0
