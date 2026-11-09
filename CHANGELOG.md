@@ -1,5 +1,30 @@
 # Changelog
 
+## Fix: live trading applies the drawdown throttle
+
+**The live loop dropped `risk.dd_exposure_*`.** It built its risk limits
+from `max_concurrent_lots` and `max_total_exposure` alone, so a deployment
+traded with no drawdown throttle whatever its config said. `RiskManager`'s
+docstring claimed the throttle "runs in BOTH live and backtest", and only
+the backtest did. No committed deployment set the throttle, so nothing
+traded differently. It surfaced when the Daily Ultimate reserve
+(`config/daily_ultimate_reserve_tqqq.yaml`), researched with the throttle,
+was readied for a paper trial.
+
+- **The loop builds its risk limits with `config.risk.build()`**, the
+  backtest's own builder. A config without the throttle builds the same
+  limits as before.
+- **The Live page names the ceiling** when it holds back a buy: "at its
+  exposure ceiling: open lots may hold 10% of equity at a 23.1% drawdown"
+  (`RiskManager.exposure_ceiling`).
+- **`paper-ultimate` carries the reserve's throttle** (100% of equity at
+  a 5% drawdown, down to 10% at 20%), for that trial. A switch of algorithm
+  never changes risk limits, so the throttle has to be the deployment's.
+  It holds back buys whatever algorithm the account trades, and Ultimate
+  and the champion were researched without it.
+- **The trial's steps** are in `docs/research/daily-ultimate-reserve.md`,
+  under "Paper trial".
+
 ## Research: the TFT trained for TQQQ and RSP, and measured in buy × sell compositions
 
 **The owner asked for TFT models for both funds, run as composite buys and

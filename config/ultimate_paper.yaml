@@ -1,6 +1,7 @@
 # Paper trading the Ultimate algorithm on TQQQ, against Alpaca's PAPER
-# endpoint: config/ultimate_tqqq.yaml's research configuration, unchanged,
-# plus the `live:` section a deployment needs.
+# endpoint: config/ultimate_tqqq.yaml's research configuration plus the
+# `live:` section a deployment needs, and one lever Ultimate was researched
+# without: the drawdown throttle (see `risk:` below).
 #
 # WHAT IS DIFFERENT FROM THE BACKTEST, AND WHY
 #
@@ -23,6 +24,10 @@
 #                        that bar's close.
 #   lot size             per_lot_pct of the equity at the first tick of each
 #                        session (the backtest: of the starting capital, fixed).
+#   drawdown throttle    risk.dd_exposure_*: config/daily_ultimate_reserve_tqqq.yaml's,
+#                        for its paper trial (docs/research/daily-ultimate-reserve.md).
+#                        It holds back new buys whatever algorithm this account
+#                        trades; Ultimate's and the champion's backtests had none.
 #
 # ONE LOOP PER ALPACA ACCOUNT. This trades a different book from
 # config/paper_aggressive.yaml: give it its own paper account (keys in
@@ -66,7 +71,15 @@ grid:
 # ledger seeds from this, not from the broker.
 backtest: {symbol: TQQQ, initial_cash: 274001.33}
 costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
-risk: {max_concurrent_lots: 6000, max_total_exposure: null}
+# The exposure ceiling ramps from 100% of equity at a 5% drawdown to 10% at a
+# 20% drawdown, measured from the ledger's peak equity (a fresh ledger's from
+# its first tick). It only holds back buys; it never sells.
+risk:
+  max_concurrent_lots: 6000
+  max_total_exposure: null
+  dd_exposure_start: 0.05
+  dd_exposure_full: 0.2
+  dd_exposure_floor_pct: 0.1
 execution:
   on_flat_reentry: stale_reference
   intrabar_priority: sell_first

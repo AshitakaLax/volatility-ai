@@ -1395,6 +1395,63 @@ def test_a_strategy_that_buys_at_no_price_says_so_with_its_diagnostics(store):
     assert loop.decision["strategy"] == {"mode": "turbulent", "held": 2, "odd": None}
 
 
+# --- the deployment's risk section ---
+#
+# The loop built its risk limits from the lot cap and the exposure cap alone,
+# so the drawdown throttle (risk.dd_exposure_*) a config was researched with
+# never reached a live buy.
+
+_THROTTLE = {"dd_exposure_start": 0.05, "dd_exposure_full": 0.2, "dd_exposure_floor_pct": 0.1}
+
+
+def _with_risk(risk):
+    data = make_config().to_dict()
+    data["risk"] = risk
+    return BacktestConfig.from_dict(data)
+
+
+def _buy_in_drawdown(store, config):
+    """One grid buy of half the account, 23% below a peak of $130,000."""
+    store.set_meta("live.peak_equity", "130000.0")
+    broker, market = FakeBroker(), FakeMarketData()
+    market.push(100.0)
+    loop = make_loop(
+        store, broker, market, config=config, strategy=FixedPortfolioPercentage(allocation_pct=0.5)
+    )
+    loop.run_once()
+    market.push(98.0, ts=BASE_TS + timedelta(minutes=1))
+    loop.run_once()
+    return loop, broker, market
+
+
+def test_the_drawdown_throttle_reaches_live_buys(store, tmp_path):
+    _, unthrottled, _ = _buy_in_drawdown(store, make_config())
+    other = LedgerStore(str(tmp_path / "throttled.db"))
+    try:
+        _, throttled, _ = _buy_in_drawdown(other, _with_risk(_THROTTLE))
+    finally:
+        other.close()
+    assert unthrottled.buys[0][1] == pytest.approx(50_000.0)
+    # Past a 20% drawdown open lots may hold 10% of the $100,000 equity.
+    assert throttled.buys[0][1] == pytest.approx(10_000.0)
+
+
+def test_the_ceiling_is_named_as_what_blocks_a_buy(store):
+    loop, broker, market = _buy_in_drawdown(store, _with_risk(_THROTTLE))
+    _, value, cid = broker.buys[0]
+    broker.fill(cid, qty=value / 98.0, price=98.0)
+    market.push(98.0, ts=BASE_TS + timedelta(minutes=2))
+    loop.run_once()
+    assert loop.decision["blocked"] == (
+        "at its exposure ceiling: open lots may hold 10% of equity at a 23.1% drawdown"
+    )
+
+
+def test_no_ceiling_reports_nothing(store):
+    loop, _, _ = _buy_in_drawdown(store, make_config())
+    assert loop.decision["blocked"] is None
+
+
 def test_the_ticks_bar_is_kept_for_the_bar_journal(store):
     market = FakeMarketData()
     market.push(100.0, open=99.5, high=100.5, low=99.0, volume=1200.0)

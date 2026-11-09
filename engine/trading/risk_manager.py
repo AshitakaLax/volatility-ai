@@ -347,6 +347,11 @@ class RiskManager:
         frac = (drawdown - self.dd_exposure_start) / span
         return base - frac * (base - self.dd_exposure_floor_pct)
 
+    def exposure_ceiling(self, drawdown: float = 0.0) -> float | None:
+        """The share of equity open lots may hold at `drawdown` (None: no
+        ceiling) -- what clamp_trade_value applies, for a report to name."""
+        return self._effective_exposure_pct(drawdown)
+
     def clamp_trade_value(
         self,
         proposed_value: float,
