@@ -3,7 +3,8 @@
 # this for anything but a backtest).
 #
 # A pinned single-point config, not a search space and not a deployment:
-# there is no `live:` section.
+# there is no `live:` section. Its paper trial runs on paper-ultimate, whose
+# config carries this file's `risk:` throttle (the write-up's "Paper trial").
 #
 # The goal: +0.1% of equity a session at the least drawdown, with as much of
 # the account in cash as possible, still standing in a bear worse than 2022's.

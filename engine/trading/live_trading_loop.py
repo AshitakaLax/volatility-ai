@@ -651,10 +651,10 @@ class LiveTradingLoop:
         # broker that fails after that has cost the strategy its decision.
         self._decided = False
 
-        self.risk_manager = risk_manager or RiskManager(
-            max_concurrent_lots=config.risk.max_concurrent_lots,
-            max_total_exposure=config.risk.max_total_exposure,
-        )
+        # Every lever of the deployment's risk section. Built from the lot
+        # cap and the exposure cap alone, this dropped the drawdown throttle
+        # (risk.dd_exposure_*): a config researched with it traded without it.
+        self.risk_manager = risk_manager or config.risk.build()
         self.circuit_breaker = circuit_breaker or CircuitBreaker(store=store)
         # Zero by default: a real fill price already contains real
         # slippage (see module docstring). A configured model still
@@ -1612,6 +1612,12 @@ class LiveTradingLoop:
                 blocked = "no buying power left"
             elif cap is not None and len(self.ledger.open_lots) >= cap:
                 blocked = f"at its limit of {cap} open lots"
+            elif self._exposure_room(context) < 0.01:
+                ceiling = self.risk_manager.exposure_ceiling(context.drawdown)
+                blocked = (
+                    f"at its exposure ceiling: open lots may hold {ceiling:.0%} of equity "
+                    f"at a {context.drawdown:.1%} drawdown"
+                )
             else:
                 blocked = None
             if blocked is None and self._buy_note:
@@ -2292,6 +2298,21 @@ class LiveTradingLoop:
         self._persist_open_orders()
         self._order_event(self.state.open_orders[decision_id], "placed")
         return 1
+
+    def _exposure_room(self, context: MarketContext) -> float:
+        """Dollars a buy may still add under the exposure ceiling, or
+        infinity with none -- for the report only; the buy itself is clamped
+        in decision_cycle.evaluate_grid_decision."""
+        ceiling = getattr(self.risk_manager, "exposure_ceiling", None)
+        if ceiling is None or ceiling(context.drawdown) is None:
+            return math.inf
+        return self.risk_manager.clamp_trade_value(
+            context.equity,
+            context.equity,
+            self.state.buying_power,
+            context.open_lot_count,
+            context.drawdown,
+        )
 
     def _whole_share_refusal(self, context: MarketContext, price: float) -> str | None:
         """Why one whole share at `price` may not be bought, or None."""
