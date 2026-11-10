@@ -257,9 +257,16 @@ after, which is when the sizing reads it, but the next release date is not.
 - **The governor's evidence is the reserve's.** Its edge there is small and its drawdown gain is
   one episode; on Daily Ultimate there is none. It reads five of five warnings on 2026-11-10.
 - **Not measured:** the governor on Ultimate-RSP, or scaling lots by the vote count.
-- **Options data** (skew and gamma by strike for QQQ and TQQQ) is the one input with no free
-  source that this family of signals would use. The owner has a Fidelity Trader+ login that may
-  carry it; nothing here reads it yet.
+- **Options data has a source, and no history.** Fidelity's Trader+ serves TQQQ's chain from
+  three read-only endpoints, found in a capture the owner saved on 2026-11-10.
+  `fidelity_gateway/options_capture.py` reads them out of a capture and appends each reading to
+  a series: IV30 and HV30 percentiles, put/call volume and open interest, at-the-money IV,
+  25-delta skew, near-chain dealer gamma. That day: IV30 at its 56th percentile with HV30 at its
+  100th, a 15.6-point 25-delta skew a week out, put/call volume 0.77. One capture is one moment
+  and measures nothing. Collecting daily without a person saving a capture means the three
+  endpoints joining `session.READ_ONLY_ENDPOINTS` and the extension's allowlist, a change to
+  the real-money bridge and the owner's to make. A signal can be tested only once months of it
+  exist.
 
 ## Reproduce
 

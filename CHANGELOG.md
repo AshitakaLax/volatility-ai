@@ -54,6 +54,12 @@ and the drawdown it removes is one episode, the current one.
   Daily Ultimate a fifth of its return (0.124% a session).
 - **The test suite no longer reads `data/external/`**: `conftest.py` points
   `VAI_EXTERNAL_DIR` at flat series of its own.
+- **TQQQ's option chain can be read from a Trader+ capture**
+  (`fidelity_gateway/options_capture.py`): volatility percentiles, put/call
+  ratios, at-the-money IV, skew and near-chain gamma, each appended to a
+  series stamped at the capture. No history exists, so nothing trades on
+  it; unattended collection would need the bridge's allowlists changed.
+  `*.devtools` captures are git-ignored like `*.har`.
 
 ## Fix: live trading applies the drawdown throttle
 
