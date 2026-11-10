@@ -26,6 +26,21 @@ ultimate exactly (research/tests/test_daily_ultimate.py):
                       already up at least harvest_min_gain is sold at the
                       market: the day's gains realised, not carried overnight.
 
+A fourth switch reads outside the fund (risk_governor.py,
+docs/research/risk-governor.md), also off by default:
+
+  caution_min_votes   with at least this many of `caution_signals` raised
+                      for a session, the calm grid buys nothing that
+                      session. Lots still sell at their targets; nothing is
+                      liquidated and the regime is not touched. The series
+                      are read from `caution_dir` (default data/external/,
+                      kept current by tools/refresh_external.py); a warning
+                      whose data is older than `caution_stale_days` (default:
+                      each signal's own limit) casts no vote, so a feed that
+                      has stopped leaves the strategy as it is without a
+                      governor. `caution_by_date` injects a precomputed
+                      {session: paused} map instead, for research.
+
 --------------------------------------------------------------------
 NOTHING HERE CAN SELL BELOW COST
 
@@ -66,6 +81,7 @@ from datetime import date
 from engine.core.exceptions import ConfigurationError
 from engine.core.market_context import MarketContext
 from research.strategies.gated_local_reference_sizing import NO_BUY_LEVEL
+from research.strategies.risk_governor import CORE_SIGNALS, Reading, RiskGovernor
 from research.strategies.ultimate_sizing import CALM, UltimateSizing
 
 SESSION_MINUTES = 390
@@ -287,6 +303,12 @@ class DailyUltimateSizing(DailyTakeProfit, UltimateSizing):
         goal_lock: bool = False,
         eod_harvest_minute: int | None = None,
         harvest_min_gain: float = 0.002,
+        # -- the risk governor (default: off) ------------------------------
+        caution_min_votes: int | None = None,
+        caution_signals: str = ",".join(CORE_SIGNALS),
+        caution_dir: str | None = None,
+        caution_stale_days: int | None = None,
+        caution_by_date: Mapping[date, bool] | None = None,
     ) -> None:
         super().__init__(
             per_lot_pct=per_lot_pct,
@@ -372,6 +394,23 @@ class DailyUltimateSizing(DailyTakeProfit, UltimateSizing):
         self.goal_lock = self._goal.goal_lock
         self.eod_harvest_minute = self._goal.eod_harvest_minute
         self.harvest_min_gain = self._goal.harvest_min_gain
+        # The risk governor: a precomputed {session: paused} map (research),
+        # or the outside series read from caution_dir (the server, and a
+        # live loop, which starts cold each session and so reads the files
+        # tools/refresh_external.py wrote the evening before).
+        self._caution_map = dict(caution_by_date) if caution_by_date else None
+        self._governor: RiskGovernor | None = None
+        if self._caution_map is None and caution_min_votes is not None:
+            self._governor = RiskGovernor.from_directory(
+                caution_dir,
+                signals=caution_signals,
+                min_votes=caution_min_votes,
+                stale_days=caution_stale_days,
+            )
+        self._caution_day: date | None = None
+        self._caution_reading: Reading | None = None
+        self.cautious = False
+        self.cautious_sessions = 0
 
     def record_tick(self, context: MarketContext) -> None:
         super().record_tick(context)
@@ -380,13 +419,39 @@ class DailyUltimateSizing(DailyTakeProfit, UltimateSizing):
             # moves the baseline to the session's opening equity, which
             # calculate_trade_value (grid and reversal lots alike) reads.
             self._baseline_capital = self._goal.open_equity
+        if (self._caution_map is not None or self._governor is not None) and (
+            context.time_of_day_flag >= 0
+        ):
+            day = context.timestamp.date()
+            if day != self._caution_day:
+                self._caution_day = day
+                if self._caution_map is not None:
+                    self.cautious = bool(self._caution_map.get(day, False))
+                else:
+                    self._caution_reading = self._governor.reading(day)
+                    self.cautious = self._caution_reading.paused
+                self.cautious_sessions += self.cautious
 
     def _grid_trigger_level(
         self, context: MarketContext, last_buy_price: float, step: float
     ) -> float:
-        if self.goal_pause_buys and self._goal.reached and self.mode == CALM:
+        if self.mode == CALM and (self.cautious or (self.goal_pause_buys and self._goal.reached)):
             return NO_BUY_LEVEL
         return super()._grid_trigger_level(context, last_buy_price, step)
+
+    def diagnostics(self) -> dict:
+        out = super().diagnostics()
+        if self._caution_map is not None or self._governor is not None:
+            out.update(caution_paused=self.cautious, caution_sessions=self.cautious_sessions)
+        reading = self._caution_reading
+        if reading is not None:
+            out.update(
+                caution_votes=reading.votes,
+                caution_known=reading.known,
+                caution_raised=", ".join(reading.raised),
+                caution_stale=", ".join(reading.stale),
+            )
+        return out
 
 
 __all__ = ["DailyGoal", "DailyTakeProfit", "DailyUltimateSizing"]

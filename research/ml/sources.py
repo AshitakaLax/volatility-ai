@@ -55,6 +55,8 @@ from __future__ import annotations
 import gzip
 import io
 import json
+import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -63,7 +65,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 import zlib
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -114,6 +116,18 @@ _EPU_RELEASE = timedelta(days=2)
 # The SF Fed's news sentiment is refreshed about weekly (2026-11-07: the
 # file ran to 11-01), so a day's value can be up to a week old when read.
 _WEEKLY_REFRESH = timedelta(days=7)
+# The OFR stress index for a day is posted two business days later
+# (measured 2026-11-10, a Tuesday: the file ran to Thursday 11-05), so
+# four calendar days covers a weekend in between.
+_OFR_RELEASE = timedelta(days=4)
+# Commitments of Traders: positions as of Tuesday, published Friday at
+# 15:30 Eastern, or the Monday after when a federal holiday falls in the
+# week. Six days puts the stamp at Monday's close.
+_COT_RELEASE = timedelta(days=6)
+# SqueezeMetrics posts a session's figures that evening, after the close
+# the row is dated to: readable before the next session, never during
+# the one it describes.
+_EVENING = timedelta(hours=6)
 
 
 # ------------------------------------------------------------------
@@ -221,6 +235,15 @@ _CBOE: tuple[tuple[str, str, str], ...] = (
     ("RVX", "vol", "Russell 2000 implied volatility"),
     ("OVX", "vol", "Crude oil implied volatility"),
     ("GVZ", "vol", "Gold implied volatility"),
+    # Added 2026-11-10 for the risk governor (research/strategies/risk_governor.py).
+    ("VIX1D", "vol", "S&P 500 1-day implied volatility, from 2022"),
+    ("VXD", "vol", "Dow Jones implied volatility"),
+    ("VXEEM", "vol", "Emerging-markets ETF implied volatility"),
+    # Implied correlation: how much of index volatility is stocks moving
+    # together. It rises into a broad sell-off before the index range does.
+    ("COR1M", "correlation", "S&P 500 1-month implied correlation"),
+    ("COR3M", "correlation", "S&P 500 3-month implied correlation"),
+    ("DSPX", "correlation", "S&P 500 dispersion index"),
 )
 
 # ------------------------------------------------------------------
@@ -313,6 +336,19 @@ _YAHOO: tuple[tuple[str, str, str], ...] = (
     ("INTC", "constituent", "Intel"),
     ("MU", "constituent", "Micron"),
     ("WMT", "constituent", "Walmart"),
+    # Added 2026-11-10 for the risk governor: the cross-asset stress and
+    # leadership series the lake lacked.
+    ("^MOVE", "vol", "ICE BofA MOVE index: Treasury implied volatility"),
+    ("^SOX", "index", "PHLX semiconductor index: the Nasdaq-100's leading sector"),
+    ("SMH", "sector", "Semiconductors"),
+    ("KRE", "sector", "Regional banks: funding stress shows here first"),
+    ("JNK", "bond", "High yield corporates (SPDR)"),
+    ("IWF", "factor", "Russell 1000 growth"),
+    ("IWD", "factor", "Russell 1000 value"),
+    ("ARKK", "factor", "Speculative growth, as a risk-appetite gauge"),
+    ("HG=F", "commodity", "Copper futures, front month"),
+    ("NQ=F", "futures", "Nasdaq-100 futures, front month"),
+    ("DX-Y.NYB", "fx", "US dollar index (DXY)"),
 )
 
 # ------------------------------------------------------------------
@@ -330,6 +366,73 @@ _FRBSF: tuple[tuple[str, str, str, str, timedelta], ...] = (
         _WEEKLY_REFRESH,
     ),
 )
+
+# ------------------------------------------------------------------
+# The Office of Financial Research's Financial Stress Index. Daily from
+# 2000, built from 33 market series (spreads, valuations, funding,
+# safe-haven flows, volatility), zero at the average level of stress.
+# One CSV holds the index and its eight contributions; each column is a
+# series here. It is the one daily, official composite of "is the system
+# under stress", which is the question a regime exit asks.
+
+OFR_FSI_URL = "https://www.financialresearch.gov/financial-stress-index/data/fsi.csv"
+
+_OFR: tuple[tuple[str, str, str], ...] = (
+    ("FSI", "OFR FSI", "OFR financial stress index"),
+    ("FSI_CREDIT", "Credit", "OFR FSI: credit contribution"),
+    ("FSI_EQUITY", "Equity valuation", "OFR FSI: equity valuation contribution"),
+    ("FSI_SAFE", "Safe assets", "OFR FSI: safe-asset contribution"),
+    ("FSI_FUNDING", "Funding", "OFR FSI: funding contribution"),
+    ("FSI_VOL", "Volatility", "OFR FSI: volatility contribution"),
+    ("FSI_US", "United States", "OFR FSI: United States contribution"),
+    ("FSI_ADVANCED", "Other advanced economies", "OFR FSI: other advanced economies"),
+    ("FSI_EMERGING", "Emerging markets", "OFR FSI: emerging markets"),
+)
+
+# ------------------------------------------------------------------
+# The CFTC's Traders in Financial Futures report (futures only), from
+# its public Socrata endpoint. Weekly from mid-2010 for the consolidated
+# Nasdaq-100 and S&P 500 contracts. Each series is one trader group's
+# net position as a share of open interest: leveraged funds (hedge funds
+# and CTAs), asset managers (institutions) and dealers.
+
+CFTC_TFF_URL = "https://publicreporting.cftc.gov/resource/gpe5-46if.json"
+
+_CFTC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
+    ("NDX", "20974+", "Nasdaq-100 futures"),
+    ("SPX", "13874+", "S&P 500 futures"),
+)
+# group -> (the report's long field, its short field, description)
+_CFTC_GROUPS: dict[str, tuple[str, str, str]] = {
+    "LEV": ("lev_money_positions_long", "lev_money_positions_short", "leveraged funds"),
+    "AM": ("asset_mgr_positions_long", "asset_mgr_positions_short", "asset managers"),
+    "DEALER": ("dealer_positions_long_all", "dealer_positions_short_all", "dealers"),
+}
+
+# ------------------------------------------------------------------
+# SqueezeMetrics' free daily file: DIX, the short-sale share of off-
+# exchange volume in S&P 500 stocks (dark-pool buying shows up as short
+# volume, because the dealer filling the buyer sells short), and GEX,
+# dealers' net gamma in S&P 500 options in dollars per 1% move. Low or
+# negative GEX means dealers hedge WITH the move, and the next days'
+# ranges are wider. From 2011. A commercial site's convenience download,
+# not an official series: it can change or vanish, and a failed fetch is
+# a recorded failure like any other.
+
+SQUEEZE_URL = "https://squeezemetrics.com/monitor/static/DIX.csv"
+
+_SQUEEZE: tuple[tuple[str, str, str, str], ...] = (
+    ("DIX", "dix", "positioning", "Dark-pool short-volume share, S&P 500 stocks"),
+    ("GEX", "gex", "positioning", "Dealer gamma exposure, S&P 500 options (USD per 1%)"),
+)
+
+
+def _yahoo_key(symbol: str) -> str:
+    """A Yahoo symbol as a file-name key: ^VIX -> VIX, BTC-USD -> BTCUSD,
+    HG=F -> HGF, DX-Y.NYB -> DXY."""
+    if symbol == "DX-Y.NYB":
+        return "DXY"
+    return "".join(ch for ch in symbol if ch.isalnum())
 
 
 def registry() -> list[Source]:
@@ -361,12 +464,46 @@ def registry() -> list[Source]:
     for symbol, category, description in _YAHOO:
         sources.append(
             Source(
-                key=symbol.replace("^", "").replace("-", ""),
+                key=_yahoo_key(symbol),
                 provider="yahoo",
                 remote_id=symbol,
                 category=category,
                 description=description,
                 lag=_SAME_DAY_CLOSE,
+            )
+        )
+    for key, column, description in _OFR:
+        sources.append(
+            Source(
+                key=key,
+                provider="ofr",
+                remote_id=column,
+                category="stress",
+                description=description,
+                lag=_OFR_RELEASE,
+            )
+        )
+    for market, code, market_name in _CFTC_CONTRACTS:
+        for group, (_, _, group_name) in _CFTC_GROUPS.items():
+            sources.append(
+                Source(
+                    key=f"{market}_{group}_NET",
+                    provider="cftc",
+                    remote_id=f"{code}:{group}",
+                    category="positioning",
+                    description=f"{market_name}: {group_name} net position, share of open interest",
+                    lag=_COT_RELEASE,
+                )
+            )
+    for key, column, category, description in _SQUEEZE:
+        sources.append(
+            Source(
+                key=key,
+                provider="squeeze",
+                remote_id=column,
+                category=category,
+                description=description,
+                lag=_EVENING,
             )
         )
     for key, url, category, description, lag in _FRBSF:
@@ -391,14 +528,14 @@ class SourceUnavailable(RuntimeError):
     """A source could not be fetched, or answered with something unusable."""
 
 
-def _http_get(url: str, *, retries: int = 3) -> bytes:
+def _http_get(url: str, *, retries: int = 3, user_agent: str | None = None) -> bytes:
     """GET with backoff, transparently decompressing.
 
     Some of these endpoints answer gzipped without being asked, and
     urllib does not decompress for you -- a body read as UTF-8 then
     fails on the gzip magic bytes rather than on anything meaningful.
     """
-    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    request = urllib.request.Request(url, headers={"User-Agent": user_agent or _USER_AGENT})
     last: Exception | None = None
 
     for attempt in range(retries):
@@ -607,11 +744,105 @@ def fetch_frbsf(source: Source) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
+# One download serves every series cut from the same file: the OFR CSV
+# holds nine, SqueezeMetrics' two, a CFTC contract's report three. Kept
+# for a few minutes, so a daily service that fetches the registry again
+# tomorrow gets tomorrow's file.
+_SHARED_TTL_SECONDS = 600.0
+_shared_bodies: dict[str, tuple[float, bytes]] = {}
+
+
+def _shared_get(url: str) -> bytes:
+    held = _shared_bodies.get(url)
+    if held is not None and time.monotonic() - held[0] < _SHARED_TTL_SECONDS:
+        return held[1]
+    body = _http_get(url)
+    _shared_bodies[url] = (time.monotonic(), body)
+    return body
+
+
+def _column_of(body: bytes, date_column: str, value_column: str, what: str) -> pd.DataFrame:
+    """One dated column of a CSV as `date`, `close`, missing values dropped."""
+    frame = pd.read_csv(io.StringIO(body.decode("utf-8", "replace")))
+    frame.columns = [str(c).strip() for c in frame.columns]
+    if date_column not in frame.columns or value_column not in frame.columns:
+        raise SourceUnavailable(f"{what}: no {value_column!r} among {list(frame.columns)}")
+    out = pd.DataFrame(
+        {
+            "date": pd.to_datetime(frame[date_column], errors="coerce"),
+            "close": pd.to_numeric(frame[value_column], errors="coerce"),
+        }
+    )
+    return out.dropna().reset_index(drop=True)
+
+
+def fetch_ofr(source: Source) -> pd.DataFrame:
+    frame = _column_of(_shared_get(OFR_FSI_URL), "Date", source.remote_id, f"OFR {source.key}")
+    return pd.DataFrame({"timestamp": _stamp(frame["date"], source.lag), "close": frame["close"]})
+
+
+def fetch_squeeze(source: Source) -> pd.DataFrame:
+    frame = _column_of(
+        _shared_get(SQUEEZE_URL), "date", source.remote_id, f"SqueezeMetrics {source.key}"
+    )
+    return pd.DataFrame({"timestamp": _stamp(frame["date"], source.lag), "close": frame["close"]})
+
+
+def cftc_net_share(rows: list[dict], long_field: str, short_field: str) -> pd.DataFrame:
+    """(long - short) / open interest for each report in `rows`, as
+    `date`, `close`. A report missing a field, or with no open interest,
+    is dropped rather than read as zero."""
+    records = []
+    for row in rows:
+        try:
+            held_long = float(row[long_field])
+            held_short = float(row[short_field])
+            open_interest = float(row["open_interest_all"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if open_interest <= 0:
+            continue
+        records.append(
+            (row.get("report_date_as_yyyy_mm_dd"), (held_long - held_short) / open_interest)
+        )
+    frame = pd.DataFrame(records, columns=["date", "close"])
+    frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+    return frame.dropna().sort_values("date").reset_index(drop=True)
+
+
+def fetch_cftc(source: Source) -> pd.DataFrame:
+    code, _, group = source.remote_id.partition(":")
+    if group not in _CFTC_GROUPS:
+        raise SourceUnavailable(f"CFTC {source.key}: unknown trader group {group!r}")
+    long_field, short_field, _ = _CFTC_GROUPS[group]
+    query = urllib.parse.urlencode(
+        {
+            "cftc_contract_market_code": code,
+            "$select": "report_date_as_yyyy_mm_dd,open_interest_all,"
+            + ",".join(f"{a},{b}" for a, b, _ in _CFTC_GROUPS.values()),
+            "$order": "report_date_as_yyyy_mm_dd",
+            # Weekly since 2010 is under a thousand reports; the default page is 1,000.
+            "$limit": "50000",
+        }
+    )
+    try:
+        rows = json.loads(_shared_get(f"{CFTC_TFF_URL}?{query}").decode("utf-8", "replace"))
+    except json.JSONDecodeError as exc:
+        raise SourceUnavailable(f"CFTC {source.key}: not JSON ({exc})") from exc
+    if not isinstance(rows, list):
+        raise SourceUnavailable(f"CFTC {source.key}: unexpected answer {str(rows)[:120]}")
+    frame = cftc_net_share(rows, long_field, short_field)
+    return pd.DataFrame({"timestamp": _stamp(frame["date"], source.lag), "close": frame["close"]})
+
+
 _FETCHERS = {
     "fred": fetch_fred,
     "cboe": fetch_cboe,
     "yahoo": fetch_yahoo,
     "frbsf": fetch_frbsf,
+    "ofr": fetch_ofr,
+    "cftc": fetch_cftc,
+    "squeeze": fetch_squeeze,
 }
 
 
@@ -625,6 +856,263 @@ def fetch(source: Source) -> pd.DataFrame:
     # Duplicate stamps would make an as-of lookup depend on row order.
     frame = frame.sort_values("timestamp").drop_duplicates("timestamp", keep="last")
     return frame.reset_index(drop=True)
+
+
+def manifest_entry(source: Source, frame: pd.DataFrame) -> dict:
+    """A fetched series' row in manifest.json: what the external lake's
+    ingest reads its provider, category and publication lag from."""
+    return {
+        "provider": source.provider,
+        "remote_id": source.remote_id,
+        "category": source.category,
+        "description": source.description,
+        "lag_days": source.lag.total_seconds() / 86400,
+        "file": source.filename,
+        "rows": len(frame),
+        "first": str(frame["timestamp"].iloc[0]),
+        "last": str(frame["timestamp"].iloc[-1]),
+        "columns": list(frame.columns),
+    }
+
+
+def manifest_key(source: Source) -> str:
+    """Keyed by provider AND key: Yahoo's ^VIX and CBOE's VIX both reduce
+    to "VIX", and keying on that alone silently drops one of the two."""
+    return f"{source.provider}_{source.key}"
+
+
+# ------------------------------------------------------------------
+# The FOMC's meeting calendar. Not a series: the dates the strategies'
+# event-day sizing reads (engine/data/fomc_calendar.py holds them as a
+# list in the source). The Federal Reserve publishes the schedule two
+# years ahead on one page, and tools/refresh_external.py reads it daily
+# to say when that list has fallen behind.
+
+FOMC_CALENDAR_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+
+_MONTHS = {
+    name: number
+    for number, names in enumerate(
+        (
+            ("january", "jan"),
+            ("february", "feb"),
+            ("march", "mar"),
+            ("april", "apr"),
+            ("may",),
+            ("june", "jun"),
+            ("july", "jul"),
+            ("august", "aug"),
+            ("september", "sep", "sept"),
+            ("october", "oct"),
+            ("november", "nov"),
+            ("december", "dec"),
+        ),
+        start=1,
+    )
+    for name in names
+}
+_FOMC_YEAR = re.compile(r">\s*(\d{4}) FOMC Meetings\s*<")
+_FOMC_MEETING = re.compile(
+    r"fomc-meeting__month[^>]*>\s*<strong>([^<]+)</strong>\s*</div>\s*"
+    r'<div class="fomc-meeting__date[^>]*>([^<]+)<'
+)
+
+
+def fomc_decision_dates(html: str) -> list[date]:
+    """The decision day (the last day) of every scheduled meeting on the
+    Federal Reserve's calendar page, in date order.
+
+    A row is a month ("March", or "Apr/May" for a meeting that spans two)
+    and its days ("17-18*", "30-1"). Notation votes, unscheduled meetings
+    and cancelled ones carry a note in parentheses and are left out: the
+    event-day research was done on scheduled decisions.
+    """
+    years = [(m.start(), int(m.group(1))) for m in _FOMC_YEAR.finditer(html)]
+    found: set[date] = set()
+    for match in _FOMC_MEETING.finditer(html):
+        before = [year for position, year in years if position < match.start()]
+        days_text = match.group(2).strip()
+        if not before or "(" in days_text:
+            continue
+        months = [
+            _MONTHS[part.strip().lower()]
+            for part in match.group(1).split("/")
+            if part.strip().lower() in _MONTHS
+        ]
+        days = [int(day) for day in re.findall(r"\d+", days_text)]
+        if not months or not days:
+            continue
+        try:
+            found.add(date(before[-1], months[-1], days[-1]))
+        except ValueError:
+            continue
+    return sorted(found)
+
+
+def fetch_fomc_decision_dates() -> list[date]:
+    dates = fomc_decision_dates(_http_get(FOMC_CALENDAR_URL).decode("utf-8", "replace"))
+    if not dates:
+        raise SourceUnavailable(f"{FOMC_CALENDAR_URL}: no meeting dates found (page changed?)")
+    return dates
+
+
+# ------------------------------------------------------------------
+# Earnings releases, from the SEC. A company furnishes its results on
+# Form 8-K under Item 2.02 ("Results of Operations and Financial
+# Condition"), and EDGAR stamps the second it accepted the filing --
+# minutes after the release crossed the wire. That is the release as a
+# public record, not a schedule: it says when each report came out, to
+# the minute, by the next morning. It does not say when the next one is
+# due.
+#
+# The SEC asks every automated client to name itself and a way to reach
+# its operator (sec.gov/os/accessing-edgar-data), and refuses those that
+# do not. The operator's contact is theirs to give, so it is read from
+# the environment and never written here.
+
+SEC_CONTACT_ENV = "VAI_SEC_CONTACT"
+SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/"
+EARNINGS_ITEM = "2.02"
+# Ten requests a second is the SEC's limit; this asks for five.
+SEC_PAUSE_SECONDS = 0.2
+# A quarter has one earnings release. Item 2.02 also carries what comes
+# before it -- Tesla's delivery counts three weeks ahead of its results, a
+# pre-announcement -- so of two filings this close together the LATER is
+# the report (tools/build_earnings_calendar.py spaces its events the same).
+EARNINGS_SPACING_DAYS = 45
+
+# tools/build_earnings_calendar.py's sixteen Nasdaq-100 reporters, and
+# the registrant each files under. A CIK is permanent. GOOG and GOOGL are
+# one registrant and one report, kept as two rows as that tool keeps them:
+# two holdings, each with its own weight.
+EARNINGS_REPORTERS: dict[str, int] = {
+    "NVDA": 1045810,
+    "AAPL": 320193,
+    "MSFT": 789019,
+    "MU": 723125,
+    "AMZN": 1018724,
+    "AMD": 2488,
+    "GOOGL": 1652044,
+    "AVGO": 1730168,
+    "GOOG": 1652044,
+    "META": 1326801,
+    "TSLA": 1318605,
+    "WMT": 104169,
+    "INTC": 50863,
+    "CSCO": 858877,
+    "COST": 909832,
+    "NFLX": 1065280,
+}
+
+
+def sec_user_agent(contact: str | None = None) -> str:
+    """The User-Agent the SEC is sent: this project and the operator's
+    contact, from `contact` or VAI_SEC_CONTACT. Refuses without one."""
+    contact = (contact or os.environ.get(SEC_CONTACT_ENV) or "").strip()
+    if not contact:
+        raise SourceUnavailable(
+            f"the SEC asks for a contact: set {SEC_CONTACT_ENV} (an address it can reach you at)"
+        )
+    return f"volatility-ai {contact}"
+
+
+def earnings_releases(filings: dict) -> list[tuple[pd.Timestamp, str]]:
+    """(acceptance instant UTC, accession number) of every 8-K furnishing
+    results (Item 2.02) in one page of EDGAR's filings, as its columns
+    (`form`, `items`, `acceptanceDateTime`, `accessionNumber`)."""
+    out = []
+    for form, items, accepted, accession in zip(
+        filings.get("form", ()),
+        filings.get("items", ()),
+        filings.get("acceptanceDateTime", ()),
+        filings.get("accessionNumber", ()),
+        strict=False,
+    ):
+        if form != "8-K" or EARNINGS_ITEM not in [i.strip() for i in str(items).split(",")]:
+            continue
+        stamp = pd.to_datetime(accepted, utc=True, errors="coerce")
+        if pd.notna(stamp):
+            out.append((stamp, str(accession)))
+    return out
+
+
+def quarterly(
+    found: list[tuple[pd.Timestamp, str]], spacing_days: int = EARNINGS_SPACING_DAYS
+) -> list[tuple[pd.Timestamp, str]]:
+    """`found` (one registrant's releases) without those followed by
+    another within `spacing_days`: the earnings report of each quarter."""
+    ordered = sorted(set(found))
+    spacing = pd.Timedelta(days=spacing_days)
+    return [
+        item
+        for i, item in enumerate(ordered)
+        if i + 1 == len(ordered) or ordered[i + 1][0] - item[0] >= spacing
+    ]
+
+
+def fetch_edgar_earnings(
+    reporters: dict[str, int] | None = None,
+    *,
+    since: date = date(2016, 1, 1),
+    contact: str | None = None,
+    pause: float = SEC_PAUSE_SECONDS,
+    sleep=time.sleep,
+) -> pd.DataFrame:
+    """Every earnings release since `since` for `reporters` ({ticker: CIK},
+    default EARNINGS_REPORTERS): `symbol`, `release_et`, `release_utc`,
+    `accession`, in release order. One registrant is fetched once however
+    many tickers it files under. Older pages of a registrant's filings are
+    asked for only when `since` reaches back into them. A registrant's newest
+    release is kept until a later one arrives inside EARNINGS_SPACING_DAYS,
+    so a delivery report can stand in for three weeks, and then gives way."""
+    agent = sec_user_agent(contact)
+    reporters = dict(EARNINGS_REPORTERS if reporters is None else reporters)
+    cutoff = pd.Timestamp(since, tz="UTC")
+    by_cik: dict[int, list[tuple[pd.Timestamp, str]]] = {}
+    asked = 0
+
+    def get(name: str) -> dict:
+        nonlocal asked
+        if asked:
+            sleep(pause)
+        asked += 1
+        body = _http_get(f"{SEC_SUBMISSIONS_URL}{name}", user_agent=agent)
+        try:
+            return json.loads(body.decode("utf-8", "replace"))
+        except json.JSONDecodeError as exc:
+            raise SourceUnavailable(f"EDGAR {name}: not JSON ({exc})") from exc
+
+    for ticker, cik in reporters.items():
+        if cik in by_cik:
+            continue
+        payload = get(f"CIK{cik:010d}.json")
+        listed = {str(t).upper() for t in payload.get("tickers") or ()}
+        if ticker.upper() not in listed:
+            raise SourceUnavailable(
+                f"EDGAR: CIK {cik} files as {sorted(listed)}, not {ticker}; fix EARNINGS_REPORTERS"
+            )
+        filings = payload.get("filings") or {}
+        found = earnings_releases(filings.get("recent") or {})
+        for page in filings.get("files") or ():
+            # A page is asked for only if it holds filings on or after `since`.
+            last = pd.to_datetime(page.get("filingTo"), utc=True, errors="coerce")
+            if pd.isna(last) or last < cutoff:
+                continue
+            found += earnings_releases(get(str(page["name"])))
+        by_cik[cik] = [item for item in quarterly(found) if item[0] >= cutoff]
+
+    rows = [
+        {"symbol": ticker, "release_utc": stamp, "accession": accession}
+        for ticker, cik in reporters.items()
+        for stamp, accession in by_cik[cik]
+    ]
+    frame = pd.DataFrame(rows, columns=["symbol", "release_utc", "accession"])
+    if frame.empty:
+        raise SourceUnavailable("EDGAR: no earnings release found for any reporter")
+    frame = frame.sort_values(["release_utc", "symbol"]).reset_index(drop=True)
+    eastern = frame["release_utc"].dt.tz_convert("America/New_York")
+    frame.insert(1, "release_et", eastern.dt.tz_localize(None))
+    return frame
 
 
 def default_directory() -> Path:

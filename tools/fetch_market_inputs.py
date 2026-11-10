@@ -28,7 +28,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from research.ml.sources import SourceUnavailable, default_directory, fetch, registry
+from research.ml.sources import (
+    SourceUnavailable,
+    default_directory,
+    fetch,
+    manifest_entry,
+    manifest_key,
+    registry,
+)
 
 # Four at a time. These are public endpoints being asked for a hundred
 # files; the sequential version takes about two minutes and a heavier
@@ -40,7 +47,11 @@ WORKERS = 4
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, default=None, help="Defaults to data/external/")
-    parser.add_argument("--provider", nargs="+", help="Limit to fred, cboe, yahoo and/or frbsf.")
+    parser.add_argument(
+        "--provider",
+        nargs="+",
+        help="Limit to providers: fred, cboe, yahoo, frbsf, ofr, cftc, squeeze.",
+    )
     parser.add_argument("--category", nargs="+", help="Limit to categories, e.g. vol credit.")
     parser.add_argument("--refresh", action="store_true", help="Re-fetch series already on disk.")
     parser.add_argument("--list", action="store_true", help="Show the registry and exit.")
@@ -95,21 +106,7 @@ def main(argv=None) -> int:
                 print(f"{label} FAILED  {error[:70]}")
                 continue
             first, last = frame["timestamp"].iloc[0], frame["timestamp"].iloc[-1]
-            # Keyed by provider AND key: Yahoo's ^VIX and CBOE's VIX
-            # both reduce to "VIX", and keying on that alone silently
-            # drops one of the two from the index of what exists.
-            results[f"{source.provider}_{source.key}"] = {
-                "provider": source.provider,
-                "remote_id": source.remote_id,
-                "category": source.category,
-                "description": source.description,
-                "lag_days": source.lag.total_seconds() / 86400,
-                "file": source.filename,
-                "rows": len(frame),
-                "first": str(first),
-                "last": str(last),
-                "columns": list(frame.columns),
-            }
+            results[manifest_key(source)] = manifest_entry(source, frame)
             print(
                 f"{label} {len(frame):>7,} rows  {str(first)[:10]} -> {str(last)[:10]}  {elapsed:4.1f}s"
             )

@@ -571,8 +571,18 @@ _PARAM_ENUMS["catalog_signal"] = list(CATALOG_SIGNALS)
 # way to type one, and without it the strategy computes the same regime
 # from the bars (warmed with the history before the window -- see
 # warm_up_history). exposure_by_date is UltimateRspSizing's equivalent.
+# caution_dir and caution_by_date are DailyUltimateSizing's risk governor:
+# where its outside series live, and the research injection of a
+# precomputed {date: paused} map (research/strategies/risk_governor.py).
 _HIDDEN_PARAMS: frozenset[str] = frozenset(
-    {"model_dir", "external_dir", "regime_by_date", "exposure_by_date"}
+    {
+        "model_dir",
+        "external_dir",
+        "regime_by_date",
+        "exposure_by_date",
+        "caution_dir",
+        "caution_by_date",
+    }
 )
 
 # Shown but locked: the engine captures these at run time (the first

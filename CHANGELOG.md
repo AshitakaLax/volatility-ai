@@ -1,5 +1,66 @@
 # Changelog
 
+## Research: outside data as a risk governor, and a service that keeps it current
+
+**The owner asked what data would give the trading an advantage, and for it
+to be collected automatically.** Measured on the Daily Ultimate reserve
+through the minute-bar engine (`docs/research/risk-governor.md`,
+`tools/probe_risk_governor.py`, 118 runs).
+
+**Outside series help in one form only: a pause on new buying when four of
+five warnings agree.** 0.100% a session at an 18.5% drawdown, against
+0.098% at 20.6% without it; from 2022, 0.076% at 15.9% against 0.072% at
+20.6%. Used as a veto on the NATR regime, or to override it, the same
+warnings cost return. It still does not make 0.1% a session from 2022 on,
+and the drawdown it removes is one episode, the current one.
+
+- **`daily_ultimate` has a fourth switch, `caution_min_votes`**, off by
+  default (`research/strategies/risk_governor.py`). The calm grid buys
+  nothing on a paused session; nothing is liquidated. A warning whose data
+  is over a week old casts no vote, so a feed that stops returns the
+  strategy to the plain reserve. Pinned in
+  `config/daily_ultimate_governed_tqqq.yaml`; not a live profile.
+- **A null control backs it.** None of 40 copies of the pause map moved in
+  time matches the real one on return over drawdown. The form and
+  threshold were still chosen after looking at this history.
+- **`tools/refresh_external.py` keeps the outside series current**, as the
+  compose `market-inputs` service (20:45 and 07:30 Eastern, no keys). Each
+  series is checked before it replaces the stored file, and the external
+  lake is rewritten without the catalog's writer
+  (`ingest_external_series(dimension=False)`). Until now the series were
+  pulled by hand.
+- **The registry grew from 136 to 170 series**: the OFR Financial Stress
+  Index, CFTC positioning in Nasdaq-100 and S&P 500 futures, SqueezeMetrics
+  dealer gamma, implied correlation, MOVE, semiconductors and others.
+- **The event calendars have run out, and nothing said so.** The FOMC list
+  in `engine/data/fomc_calendar.py` ends 2026-07-29 and the earnings dates
+  2026-07-31, so event-day sizing has been off since, through the decisions
+  of 2026-09-16 and 2026-10-28. The refresh now fetches the Federal
+  Reserve's schedule and reports every meeting the list lacks on each run.
+  The list itself is not changed here.
+- **Earnings releases come from SEC EDGAR** (each reporter's 8-K under Item
+  2.02, one a quarter) when `VAI_SEC_CONTACT` is set; the contact is the
+  operator's and is never in the repository. New releases are appended to
+  `data/earnings_releases_derived.csv`, which had stopped at 2026-08-04
+  with its source, and the reaction sessions the engine's list lacks are
+  reported: seven since 2026-07-31.
+- **Preflight warns** when a calendar a configured boost reads has run out,
+  and shows a governed strategy's reading and any stale warning.
+- **On Daily Ultimate the governor measures no gain** (0.159% a session at
+  30.1% against 0.158% at 29.9%; its null control is at chance). The owner
+  chose that book for the paper trial, so the profile
+  `daily-ultimate-governed-tqqq` exists to trial the governor running live,
+  and its evidence note says so. paper-ultimate's drawdown throttle costs
+  Daily Ultimate a fifth of its return (0.124% a session).
+- **The test suite no longer reads `data/external/`**: `conftest.py` points
+  `VAI_EXTERNAL_DIR` at flat series of its own.
+- **TQQQ's option chain can be read from a Trader+ capture**
+  (`fidelity_gateway/options_capture.py`): volatility percentiles, put/call
+  ratios, at-the-money IV, skew and near-chain gamma, each appended to a
+  series stamped at the capture. No history exists, so nothing trades on
+  it; unattended collection would need the bridge's allowlists changed.
+  `*.devtools` captures are git-ignored like `*.har`.
+
 ## Fix: live trading applies the drawdown throttle
 
 **The live loop dropped `risk.dd_exposure_*`.** It built its risk limits

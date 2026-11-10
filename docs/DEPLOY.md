@@ -9,6 +9,7 @@ One host runs everything that has to stay up, from one file,
 | `paper-ultimate` | the Ultimate algorithm in paper, its own account and ledger | Alpaca paper |
 | `backup` | every ledger and the warehouse catalogs, daily | `/workspace/backups` |
 | `market-data` | every tracked fund's bars into the warehouse, daily | Alpaca market data |
+| `market-inputs` | every outside series (volatility, rates, credit, stress, positioning) into `data/external/` and the warehouse, twice daily | public endpoints, no keys |
 | `paper` | *profile `champion`*: the champion grid, `config/paper_aggressive.yaml` | Alpaca paper, no port |
 | `live` | *profile `production`*: **real money**, `config/production.yaml` | Alpaca live |
 | `test`, `preflight`, `fetch-data`, `ingest`, `backtest` | *profile `tools`*: one-offs for `docker compose run --rm` | |
@@ -119,7 +120,7 @@ Every line must be `ok`. The ones worth reading:
 Then:
 
 ```bash
-docker compose up -d                 # web, paper-ultimate, backup, market-data
+docker compose up -d                 # web, paper-ultimate, backup, market-data, market-inputs
 docker compose ps
 docker compose logs -f paper
 ```
@@ -307,6 +308,48 @@ docker compose run --rm market-data --list              # the funds, and how eac
 
 A new fund is added in two places: `FUNDS` in `tools/refresh_warehouse.py`
 and `KNOWN_DATA` in `tools/export_ui_data.py` (a test holds them equal).
+
+### Outside series, twice daily
+
+`market-inputs` keeps every series in `research/ml/sources.py` current
+(`tools/refresh_external.py`): volatility indices, rates, credit spreads,
+the OFR stress index, CFTC positioning, dealer gamma, sector and factor
+closes. It runs once at start, then at `VAI_EXTERNAL_AT` (20:45 Eastern,
+when the day's closes are posted) and `VAI_EXTERNAL_AT_2` (07:30, for what
+is posted overnight). Every source is a public endpoint, so it has no key
+file.
+
+- **Each series is fetched whole and checked before it replaces the stored
+  file.** A download with under 90% of the stored rows, or one that ends
+  earlier, is kept out and reported. A bar still forming is dropped.
+- **The files land in `data/external/`**, which every trader sees read-only
+  through its `./data` mount. A strategy with the risk governor on
+  (`caution_min_votes`, `docs/research/risk-governor.md`) reads them when
+  its session starts.
+- **The warehouse's external lake is rewritten** when anything changed,
+  without the catalog's writer.
+- **Each run prints the governor's reading** for the next session, any
+  warning whose data has gone stale, and any scheduled FOMC meeting the
+  engine's calendar lacks.
+- **With `VAI_SEC_CONTACT` in `.env`, earnings releases are read from SEC
+  EDGAR** and the new ones appended to `data/earnings_releases_derived.csv`,
+  the calendar the traders' event table loads. The SEC asks an automated
+  client for a way to reach its operator; without the variable this step is
+  skipped and says so. That file is why the service mounts `./data` whole.
+
+A warning whose data is more than a week old casts no vote, so if this
+service stops the governor stops pausing and the strategy trades as it does
+without one. The run fails, and is retried within the hour, when a series
+the governor reads could not be fetched.
+
+```bash
+docker compose logs market-inputs                       # what each run did, and the governor's reading
+docker compose run --rm market-inputs --status          # every series' newest value and its age
+docker compose run --rm market-inputs --dry-run         # what a run would change
+docker compose run --rm market-inputs --provider ofr    # one provider, now
+```
+
+A new series is one line in `research/ml/sources.py`'s registry.
 
 ---
 

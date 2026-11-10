@@ -73,6 +73,10 @@ recon_*.json
 # committable. See analyze_har.py, which reads these and offers
 # --redact to produce a scrubbed copy.
 *.har
+# The same export under the name Chrome's "Download all" gives it
+# (download.devtools at the repo root, 2026-11-10: a Fidelity Trader+
+# session with TQQQ's option chain).
+*.devtools
 
 # Runtime logs from the paper/live supervisor. Machine-local by nature:
 # they record one deployment's session on one host, so committing them
