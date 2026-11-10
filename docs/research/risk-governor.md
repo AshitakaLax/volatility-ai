@@ -39,6 +39,9 @@ drawdown it was in then has deepened to 20.6%.
 
 - **It still does not make 0.1% a session from 2022 on** (0.076%). No amount of outside data
   tried here changes that.
+- **On Daily Ultimate it buys nothing** that can be told from chance
+  ([On Daily Ultimate](#on-daily-ultimate-no-measurable-gain)). The result below is the
+  reserve's.
 - **The drawdown it removes is one episode: the current one** (2026-10-06 onward, 20.6% without
   the governor, 15.9% with it). The 2021 drawdown (18.5%) is untouched, and 2017–21 return is
   slightly lower with the governor on (0.122% against 0.124%).
@@ -126,6 +129,57 @@ for harm, not a measure of what the warnings would have read on that path. `twic
 fund's dates after its second bear, which puts the pauses on the wrong dates: it behaves like a
 shifted map from the null stage.
 
+## On Daily Ultimate: no measurable gain
+
+The owner chose Daily Ultimate (`config/daily_ultimate_tqqq.yaml`: fixed 0.8% lots, reversal
+lots while turbulent), not the reserve, for the paper trial. Measured the same way, in two
+forms: as it was researched, and with the drawdown throttle `paper-ultimate`'s own risk section
+applies to whatever it trades (`--stage daily`, `daily-null`, `daily-stress`; 110 runs).
+
+| Book | | Per session | Max DD | 2017–21 | 2022 on |
+|---|---|---|---|---|---|
+| As researched | no governor | 0.158% | 29.9% | 0.220%, DD 20.5% | 0.095%, DD 21.0% |
+| | with the governor | 0.159% | 30.1% | 0.215%, DD 20.8% | 0.101%, DD 19.4% |
+| Under paper-ultimate's throttle | no governor | 0.124% | 22.4% | 0.189%, DD 18.2% | 0.056%, DD 21.5% |
+| | with the governor | 0.123% | 22.5% | 0.187%, DD 18.2% | 0.056%, DD 20.0% |
+
+| Null control | Return | Drawdown | Return over drawdown |
+|---|---|---|---|
+| Shifted maps at least as good, as researched | 2 of 40 | 21 of 40 | 15 of 40 |
+| Shifted maps at least as good, under the throttle | 16 of 40 | 24 of 40 | 17 of 40 |
+
+- **The governor changes nothing that can be told from chance here.** The same return and the
+  same drawdown with it as without, and the real pause map sits in the middle of its
+  time-shifted copies.
+- **Why the reserve differs.** The reserve's deepest drawdown is a slide inside a calm spell
+  (2026-10-06 to 2026-11-05), and the governor was pausing on 52% of those sessions. Daily
+  Ultimate's is the 2022 bear (2021-09-07 to 2023-04-25), most of it turbulent, where the book
+  holds reversal lots. The pause acts only on calm-grid buying. On the drawdown the two books
+  share (2021-02-12 to 2021-05-05) the governor never paused.
+- **The throttle costs Daily Ultimate a fifth of its return** (0.158% to 0.124% a session, and
+  0.095% to 0.056% from 2022). It was added to `paper-ultimate` for the reserve's trial and
+  applies to any algorithm that account trades. Daily Ultimate was not researched with it.
+- **Stress:** within about a point and a half either way on `deeper`, `grind` and `fast`.
+  Opened at the 2021 peak, the drawdown is 57.6% as researched and 44.1% under the throttle,
+  with or without the governor.
+
+The profile is `config/live_profiles/daily-ultimate-governed-tqqq.yaml`. What its trial tests is
+the governor running live (the files read at each session's start, the pause, the staleness
+rule), not an edge.
+
+### Paper trial
+
+1. **Start the data:** put `VAI_SEC_CONTACT=...` in `.env` if earnings releases are wanted, then
+   `docker compose up -d --build market-inputs`. `docker compose logs market-inputs` shows the
+   governor's reading.
+2. **Rebuild the traders and the web** from this branch, so both have the governor:
+   `docker compose up -d --build web paper-ultimate`.
+3. **Check:** `docker compose run --rm preflight` now lists the governor's reading and any
+   event calendar that has run out.
+4. **Switch** `paper-ultimate` to **Daily Ultimate, TQQQ, with the risk governor** on the Live
+   page, from a clean book as in [the reserve's trial](daily-ultimate-reserve.md#paper-trial).
+   The Live page's diagnostics carry `caution_votes`, `caution_raised` and `caution_stale`.
+
 ## How it works
 
 `RiskGovernor` reads `<provider>_<key>.csv` files as `research/ml/sources.py` writes them. Each
@@ -165,35 +219,56 @@ Tried and left out:
 
 ## Found on the way: the event calendars have run out
 
-`engine/data/fomc_calendar.py`'s list ends 2026-07-29 and the earnings reaction dates end
-2026-07-31. Every strategy that sizes up on event days (`event_day_boost_multiplier`,
-`earnings_day_boost_multiplier`; the reserve uses 2.5 and 1.5) has not done so since. The FOMC
-decisions of 2026-09-16 and 2026-10-28 passed without it; the next is 2026-12-09.
+`engine/data/fomc_calendar.py`'s list ends 2026-07-29 and the earnings reaction dates in
+`engine/data/earnings_calendar.py` end 2026-07-31. Every strategy that sizes up on event days
+(`event_day_boost_multiplier`, `earnings_day_boost_multiplier`; the reserve and Daily Ultimate
+use 2.5 and 1.5) has not done so since.
 
-`refresh_external.py` now reads the Federal Reserve's schedule (to the end of 2027), writes it to
-`data/external/fomc_calendar.csv` and reports every scheduled meeting the engine's list lacks, on
-each run. The list itself is unchanged: it is a source file under `engine/data/`, which this work
-could not open.
+| Calendar | Ends | Missed since | Next |
+|---|---|---|---|
+| FOMC decisions | 2026-07-29 | 2026-09-16, 2026-10-28 | 2026-12-09 |
+| Earnings reaction sessions | 2026-07-31 | 2026-08-27, 09-03, 10-21, 10-22, 10-29, 10-30, 11-03 | after each release |
+
+What now catches it, on every run of `refresh_external.py`:
+
+- **FOMC:** the Federal Reserve's schedule (to the end of 2027) is written to
+  `data/external/fomc_calendar.csv`, and every scheduled meeting the engine's list lacks is
+  named.
+- **Earnings:** each reporter's 8-K under Item 2.02 is read from SEC EDGAR, stamped the second
+  the filing was accepted (NVDA's read 16:21 Eastern; its releases are at 16:20). One a quarter
+  is kept, the later of two within 45 days, which drops Tesla's delivery counts. For the nine
+  megacaps the engine's list covers, EDGAR's reaction sessions are 98.9% in that list. They are
+  written to `earnings_releases_edgar.csv` and `earnings_reaction_days.csv`, new ones are
+  appended to `data/earnings_releases_derived.csv` (the calendar the event table loads), and
+  the reaction sessions the engine's list lacks are named. It needs `VAI_SEC_CONTACT`: the SEC
+  asks an automated client for a way to reach its operator.
+- **Preflight** warns when a calendar a configured boost reads has run out.
+
+**The two lists themselves are unchanged.** They are source files under `engine/data/`, which
+`.claude/settings.json`'s `Read(data/**)` rule keeps this work from opening, the owner's consent
+notwithstanding. EDGAR gives releases, not a schedule: a reaction session is known the morning
+after, which is when the sizing reads it, but the next release date is not.
 
 ## Open
 
-- **A paper trial is the next evidence.** The edge here is small and its drawdown gain is one
-  episode. The governor reads five of five warnings on 2026-11-10, so it would be pausing now.
-- **The event calendars need extending**, and the earnings one needs a source: SEC EDGAR is free
-  and asks for a contact address in the request.
-- **Not measured:** the governor on Daily Ultimate (`daily_ultimate_tqqq.yaml`), on Ultimate-RSP,
-  or scaling lots by the vote count.
+- **The engine's two calendar lists need extending** from the files above, once
+  `engine/data/*.py` can be opened: anchor the rule as `Read(/data/**)`, or add the dates by
+  hand.
+- **The governor's evidence is the reserve's.** Its edge there is small and its drawdown gain is
+  one episode; on Daily Ultimate there is none. It reads five of five warnings on 2026-11-10.
+- **Not measured:** the governor on Ultimate-RSP, or scaling lots by the vote count.
 - **Options data** (skew and gamma by strike for QQQ and TQQQ) is the one input with no free
-  source that this family of signals would use.
+  source that this family of signals would use. The owner has a Fidelity Trader+ login that may
+  carry it; nothing here reads it yet.
 
 ## Reproduce
 
 ```bash
 .venv/bin/python tools/refresh_external.py                    # the series, into data/external
-for s in forms frontier robust null stress; do
+for s in forms frontier robust null stress daily daily-null daily-stress; do
   .venv/bin/python tools/probe_risk_governor.py --stage $s --out output/risk_governor --jobs 40
 done
 .venv/bin/python tools/probe_risk_governor.py --report output/risk_governor
 ```
 
-About 50 seconds a run; the whole measurement is under ten minutes on 40 cores.
+About 50 seconds a run; the whole measurement is under fifteen minutes on 40 cores.

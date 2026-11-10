@@ -9,6 +9,9 @@ the OFR stress index -- improve the Daily Ultimate reserve, and in what form?
     python tools/probe_risk_governor.py --stage robust   --out DIR
     python tools/probe_risk_governor.py --stage null     --out DIR
     python tools/probe_risk_governor.py --stage stress   --out DIR
+    python tools/probe_risk_governor.py --stage daily    --out DIR
+    python tools/probe_risk_governor.py --stage daily-null   --out DIR
+    python tools/probe_risk_governor.py --stage daily-stress --out DIR
     python tools/probe_risk_governor.py --report DIR
 
 Every run is the reserve configuration (tools/probe_daily_reserve.CHOSEN) on
@@ -37,6 +40,12 @@ THE STAGES
             are history's (and `twice` moves the fund's dates after its
             second bear), so this shows the pause does no harm on a worse
             path, not what the outside series would have read there.
+
+The `daily*` stages repeat the measurement on DAILY ULTIMATE itself
+(config/daily_ultimate_tqqq.yaml: fixed 0.8% lots, reversal lots while
+turbulent), the book the paper trial runs, in two forms: `plain`, as it was
+researched, and `throttle`, with the drawdown throttle paper-ultimate's own
+risk section applies to whatever it trades.
 """
 
 from __future__ import annotations
@@ -184,6 +193,80 @@ def plan_stress(external: Path) -> list[dict]:
     return out
 
 
+# -- Daily Ultimate: the pinned configuration, plain and under the throttle
+
+BOOKS = ("plain", "throttle")
+DAILY_VOTES = (3, CORE_MIN_VOTES)
+
+
+def daily(book: str, **params) -> dict:
+    """config/daily_ultimate_tqqq.yaml, `params` added to its strategy's;
+    `throttle` adds the reserve's drawdown throttle, as paper-ultimate does."""
+    if book not in BOOKS:
+        raise ValueError(f"book must be one of {BOOKS}, got {book!r}")
+    config = dr._pinned_config()
+    config["strategy"]["strategy_params"] = {**config["strategy"]["strategy_params"], **params}
+    if book == "throttle":
+        config["risk"] = {**config.get("risk", {}), **dr.THROTTLE}
+    return config
+
+
+def daily_governed(book: str, external: Path, min_votes: int = CORE_MIN_VOTES) -> dict:
+    return daily(
+        book,
+        caution_min_votes=min_votes,
+        caution_signals=",".join(CORE_SIGNALS),
+        caution_dir=str(external),
+    )
+
+
+def plan_daily(external: Path) -> list[dict]:
+    out = []
+    for book in BOOKS:
+        out.append(_spec("daily", f"{book} off", daily(book), book=book, governor="off"))
+        for votes in DAILY_VOTES:
+            out.append(
+                _spec(
+                    "daily",
+                    f"{book} core>={votes}",
+                    daily_governed(book, external, votes),
+                    book=book,
+                    governor=f"core>={votes}",
+                )
+            )
+    return out
+
+
+def plan_daily_null(external: Path) -> list[dict]:
+    table = RiskGovernor.from_directory(external).table()
+    table = table[table.index >= du.START]
+    days = [ts.date() for ts in table.index]
+    paused = [bool(v) for v in table["paused"]]
+    maps = shifted_maps(paused, days, NULL_SHIFTS, NULL_SEED)
+    out = []
+    for book in BOOKS:
+        real = daily_governed(book, external)
+        out.append(_spec("daily-null", f"{book} real", real, book=book, shift="real"))
+        out.append(_spec("daily-null", f"{book} off", daily(book), book=book, shift="off"))
+        for i, mapping in enumerate(maps):
+            config = daily(book, caution_by_date=mapping)
+            out.append(_spec("daily-null", f"{book} shift {i:02d}", config, book=book, shift=i))
+    return out
+
+
+def plan_daily_stress(external: Path) -> list[dict]:
+    out = []
+    for book in BOOKS:
+        for label, config in (("off", daily(book)), ("core", daily_governed(book, external))):
+            for stress in STRESSES:
+                spec = _spec(
+                    "daily-stress", f"{book} {label} {stress}", config, book=book, governor=label
+                )
+                spec["meta"]["stress"] = stress
+                out.append(dr._under(spec, stress))
+    return out
+
+
 # -- forms: the warnings as a veto and as an override of the NATR regime
 
 
@@ -295,9 +378,16 @@ def line(row: dict) -> str:
     )
 
 
-def null_rank(rows: list[dict]) -> dict[str, Any] | None:
-    """Where the real pause map sits among its time-shifted copies."""
-    by = {r["meta"]["shift"]: r["metrics"] for r in rows if r["stage"] == "null"}
+def null_rank(
+    rows: list[dict], stage: str = "null", book: str | None = None
+) -> dict[str, Any] | None:
+    """Where the real pause map sits among its time-shifted copies, in
+    `stage` (and for one `book` of a daily stage)."""
+    by = {
+        r["meta"]["shift"]: r["metrics"]
+        for r in rows
+        if r["stage"] == stage and (book is None or r["meta"].get("book") == book)
+    }
     shifted = [m for k, m in by.items() if k not in ("real", "off")]
     if "real" not in by or "off" not in by or not shifted:
         return None
@@ -321,7 +411,7 @@ def null_rank(rows: list[dict]) -> dict[str, Any] | None:
 def report(out_dir: Path) -> str:
     rows = [r for r in du.load_results(out_dir) if du._ok(r)]
     lines = [f"# Risk governor probe -- {out_dir.name}", ""]
-    for stage in ("forms", "frontier", "robust", "stress"):
+    for stage in ("forms", "frontier", "robust", "stress", "daily", "daily-stress"):
         staged = [r for r in rows if r["stage"] == stage]
         if not staged:
             continue
@@ -330,11 +420,14 @@ def report(out_dir: Path) -> str:
         for r in staged:
             lines.append(f"{r['name'].split('| ', 1)[1]:<{width}}  {line(r)}")
         lines += ["```", ""]
-    rank = null_rank(rows)
-    if rank:
+    ranks = [("null", null_rank(rows))]
+    ranks += [(f"daily-null, {book}", null_rank(rows, "daily-null", book)) for book in BOOKS]
+    for title, rank in ranks:
+        if not rank:
+            continue
         real, off = rank["real"], rank["off"]
         lines += [
-            "## null",
+            f"## {title}",
             "",
             f"real map: {real['geo_daily']:.3f}%/d, DD {real['max_dd']:.1f}%; "
             f"no governor: {off['geo_daily']:.3f}%/d, DD {off['max_dd']:.1f}%; "
@@ -353,7 +446,19 @@ def report(out_dir: Path) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
-    parser.add_argument("--stage", choices=("forms", "frontier", "robust", "null", "stress"))
+    parser.add_argument(
+        "--stage",
+        choices=(
+            "forms",
+            "frontier",
+            "robust",
+            "null",
+            "stress",
+            "daily",
+            "daily-null",
+            "daily-stress",
+        ),
+    )
     parser.add_argument("--out", type=Path)
     parser.add_argument("--external", type=Path, help="the outside series (default: data/external)")
     parser.add_argument("--report", type=Path, help="print and write DIR/report.md")
@@ -373,6 +478,9 @@ def main(argv: list[str] | None = None) -> int:
         "robust": plan_robust,
         "null": plan_null,
         "stress": plan_stress,
+        "daily": plan_daily,
+        "daily-null": plan_daily_null,
+        "daily-stress": plan_daily_stress,
     }
     specs = plans[args.stage](external)
     done = {r["name"] for r in du.load_results(args.out)}

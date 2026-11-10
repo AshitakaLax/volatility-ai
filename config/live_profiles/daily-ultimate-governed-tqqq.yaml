@@ -1,0 +1,76 @@
+# Daily Ultimate on TQQQ with the risk governor: config/daily_ultimate_tqqq.yaml's
+# algorithm plus caution_min_votes, for paper-ultimate to switch to from the
+# Live page. research/strategies/live_profiles.py describes the format;
+# tools/tests/test_probe_risk_governor.py holds it to that config.
+#
+# It reads data/external/ (tools/refresh_external.py, the compose
+# market-inputs service) when a session starts, and refuses to start without
+# those files. A warning whose data is over a week old casts no vote.
+#
+# Not promoted: real money needs evidence.promotion naming a passing paper
+# trial. READ THE EVIDENCE NOTE: on this book the governor measured no gain.
+id: daily-ultimate-governed-tqqq
+label: Daily Ultimate, TQQQ, with the risk governor (pause on 4 of 5 warnings)
+symbols:
+- TQQQ
+strategy_id: daily_ultimate
+strategy_params:
+  bars_per_day: 387
+  per_lot_pct: 0.008
+  lookback_days: 0.02
+  event_day_boost_multiplier: 2.5
+  earnings_day_boost_multiplier: 1.5
+  vol_scale_exponent: -1.5
+  vol_fast_days: 0.25
+  vol_slow_days: 10.0
+  vol_scale_min: 0.25
+  vol_scale_max: 3.0
+  vol_measure: stdev
+  volume_scale_exponent: -1.0
+  natr_period: 14
+  natr_lookback: 100
+  regime_min_hold: 5
+  bear_dd: 0.5
+  bear_window: 250
+  turbulent_mode: reversal
+  reversal_threshold: -0.08
+  reversal_target: 0.08
+  reversal_lot_pct: 0.2
+  reversal_max_lots: 4
+  liquidate_minute: 60
+  compound_lots: false
+  daily_goal: 0.001
+  goal_pause_buys: false
+  goal_lock: false
+  harvest_min_gain: 0.002
+  caution_min_votes: 4
+  caution_signals: vxn_hi,sox_weak,credit,trend100,fsi_rising
+step: 0.002
+profit_target: 0.12
+evidence:
+  note: >-
+    config/daily_ultimate_tqqq.yaml (docs/research/daily-ultimate.md) with the
+    risk governor's pause (docs/research/risk-governor.md, "On Daily Ultimate").
+    The governor was chosen on the reserve configuration, where it trims the
+    drawdown about two points. On this book it measured no gain: the same return
+    and drawdown with it as without, and its time-shifted null control is at
+    chance. The trial is of the governor running live (the files read at each
+    session's start, the pause, the staleness rule), not of an edge. paper-ultimate
+    carries a drawdown throttle this algorithm was not researched with, which
+    costs it about a fifth of its return; the second backtest below is that
+    book. Needs execution.allow_signal_exit and a regular-hours deployment.
+  backtest:
+    source: tools/probe_risk_governor.py --stage daily
+    window: 2016-01-04 to 2026-11-09, scored from 2017-01-03
+    fills: intrabar causal, dynamic slippage, no cash yield
+    per_session_pct: 0.159
+    cagr_pct: 49.1
+    max_drawdown_pct: 30.1
+    without_governor: {per_session_pct: 0.158, cagr_pct: 48.8, max_drawdown_pct: 29.9}
+    shares: fractional
+    initial_cash: 100000.0
+  backtest_with_paper_ultimate_throttle:
+    per_session_pct: 0.123
+    cagr_pct: 36.1
+    max_drawdown_pct: 22.5
+    without_governor: {per_session_pct: 0.124, cagr_pct: 36.5, max_drawdown_pct: 22.4}

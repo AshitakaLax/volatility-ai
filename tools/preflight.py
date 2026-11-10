@@ -128,6 +128,81 @@ def check_strategy(report: Report, config) -> None:
     report.add(PASS, "strategy (live)", detail)
 
 
+EARNINGS_STALE_DAYS = 100  # a quarter and a week: every reporter has released again
+
+
+def check_outside_data(report: Report, config, today=None) -> None:
+    """What the strategy reads that is not the fund's own bars, and whether
+    it still reaches today. Each of these runs out silently: a calendar
+    that ends leaves its sizing boost off, and a governor whose feed has
+    stopped abstains. Nothing here stops the loop, so each is a warning."""
+    from datetime import date as _date
+
+    today = today or _date.today()
+    params = dict(config.strategy.strategy_params or {})
+
+    if float(params.get("event_day_boost_multiplier", 1.0) or 1.0) != 1.0:
+        from engine.data.fomc_calendar import FOMC_DECISION_DATES
+
+        ahead = sorted(day for day in FOMC_DECISION_DATES if day >= today)
+        if ahead:
+            report.add(PASS, "FOMC calendar", f"next decision day {ahead[0]}")
+        else:
+            report.add(
+                WARN,
+                "FOMC calendar",
+                f"ends {max(FOMC_DECISION_DATES)}: event-day sizing "
+                f"(x{params['event_day_boost_multiplier']}) is off until "
+                "engine/data/fomc_calendar.py is extended "
+                "(tools/refresh_external.py lists the meetings)",
+            )
+
+    if float(params.get("earnings_day_boost_multiplier", 1.0) or 1.0) != 1.0:
+        from engine.data.earnings_calendar import EARNINGS_REACTION_DATES
+
+        last = max(EARNINGS_REACTION_DATES)
+        if (today - last).days <= EARNINGS_STALE_DAYS:
+            report.add(PASS, "earnings calendar", f"to {last}")
+        else:
+            report.add(
+                WARN,
+                "earnings calendar",
+                f"ends {last}: earnings-day sizing "
+                f"(x{params['earnings_day_boost_multiplier']}) is off until "
+                "engine/data/earnings_calendar.py is extended "
+                "(tools/refresh_external.py writes earnings_reaction_days.csv)",
+            )
+
+    if params.get("caution_min_votes") is not None and not params.get("caution_by_date"):
+        from engine.core.trading_calendar import is_session, next_session
+        from research.strategies.risk_governor import CORE_SIGNALS, RiskGovernor
+
+        session = today if is_session(today) else next_session(today)
+        try:
+            reading = RiskGovernor.from_directory(
+                params.get("caution_dir"),
+                signals=params.get("caution_signals", CORE_SIGNALS),
+                min_votes=params["caution_min_votes"],
+                stale_days=params.get("caution_stale_days"),
+            ).reading(session)
+        except Exception as exc:
+            report.add(FAIL, "risk governor", str(exc))
+            return
+        detail = (
+            f"{reading.votes} of {reading.known} warnings raised for {session}"
+            f"{': new buying paused' if reading.paused else ''}"
+        )
+        if reading.stale:
+            report.add(
+                WARN,
+                "risk governor",
+                f"{detail}; STALE and casting no vote: {', '.join(reading.stale)} "
+                "(is the market-inputs service running?)",
+            )
+        else:
+            report.add(PASS, "risk governor", detail)
+
+
 def check_history(report: Report, config) -> None:
     """The history the loop replays at start-up, fetched exactly as it will
     be. A strategy that needs it refuses to start without it."""
@@ -348,6 +423,8 @@ def main(argv=None) -> int:
     check_python(report)
     check_imports(report)
     config = check_config(report, args.config)
+    if config is not None:
+        check_outside_data(report, config)
     if config is not None and not args.skip_network and check_credentials(report):
         check_broker(report, config)
         check_extended_clock(report, config)

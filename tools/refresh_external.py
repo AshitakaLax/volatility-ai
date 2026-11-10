@@ -39,6 +39,15 @@ WHAT A RUN DOES
    fomc_calendar.csv, and compared with the list the strategies' event-day
    sizing reads (engine/data/fomc_calendar.py). A scheduled meeting that
    list lacks is reported on every run until someone adds it.
+6. EARNINGS RELEASES are read from the SEC (each reporter's 8-K under Item
+   2.02, stamped the second EDGAR accepted it) when VAI_SEC_CONTACT is set:
+   the SEC asks an automated client for a contact, and that is the
+   operator's to give. They are written to earnings_releases_edgar.csv,
+   and their reaction sessions to earnings_reaction_days.csv, compared
+   with the list earnings-day sizing reads (engine/data/
+   earnings_calendar.py). --earnings-file names the calendar the event
+   table loads (data/earnings_releases_derived.csv): releases newer than
+   its last are appended to it, and nothing already in it is touched.
 
 A failed source is one line, not a failed run; the run fails (and a daily
 one is tried again within the hour) only when a series the governor's core
@@ -89,6 +98,13 @@ KEEP_ROWS = 0.9
 RETRY_SECONDS = 3600
 DEFAULT_TIMES = ("20:45", "07:30")
 FOMC_FILE = "fomc_calendar.csv"
+EARNINGS_FILE = "earnings_releases_edgar.csv"
+REACTION_FILE = "earnings_reaction_days.csv"
+# The reporters whose reaction sessions engine/data/earnings_calendar.py
+# lists. Measured 2026-11-10: EDGAR's releases for these nine give 98.9% of
+# their reaction days in that list, and 96% of the list (the rest are
+# Broadcom's before its 2018 registrant).
+REACTION_REPORTERS = ("AAPL", "AMZN", "AVGO", "GOOGL", "META", "MSFT", "NFLX", "NVDA", "TSLA")
 # The series a missing fetch of fails the run for.
 REQUIRED = frozenset(key for name in CORE_SIGNALS for key in SIGNALS[name].inputs)
 
@@ -313,6 +329,106 @@ def fomc_lines(directory: Path, today: date, fetch: Callable[[], list[date]]) ->
     return lines
 
 
+def reaction_day(release_et: pd.Timestamp) -> date:
+    """The session that first trades on a release: the next one for a
+    release at or after the close (or on a day with no session), else the
+    release's own day."""
+    day = release_et.date()
+    if release_et.time() >= clock_time(16, 0) or not is_session(day):
+        return next_session(day)
+    return day
+
+
+def reaction_days(releases: pd.DataFrame, reporters=REACTION_REPORTERS) -> dict[date, list[str]]:
+    """{reaction session: the reporters it reacts to}, in date order."""
+    out: dict[date, list[str]] = {}
+    for symbol, release_et in zip(releases["symbol"], releases["release_et"], strict=True):
+        if symbol in reporters:
+            out.setdefault(reaction_day(pd.Timestamp(release_et)), []).append(symbol)
+    return {day: sorted(set(out[day])) for day in sorted(out)}
+
+
+def extend_releases(path: Path, releases: pd.DataFrame) -> int:
+    """Append to the earnings calendar at `path` (`symbol`, `release_utc`,
+    and whatever other columns it has) every release of a reporter already
+    in it that is more than EARNINGS_SPACING_DAYS after that reporter's
+    last. Existing lines are not rewritten. Returns how many were added."""
+    text = path.read_text(encoding="utf-8")
+    stored = pd.read_csv(path)
+    if not {"symbol", "release_utc"} <= set(stored.columns):
+        raise ValueError(f"{path} has no symbol and release_utc columns")
+    stamps = pd.to_datetime(stored["release_utc"], utc=True)
+    newest = stamps.groupby(stored["symbol"]).max()
+    spacing = pd.Timedelta(days=sources.EARNINGS_SPACING_DAYS)
+    lines = []
+    for row in releases.itertuples(index=False):
+        if row.symbol not in newest.index or row.release_utc <= newest[row.symbol] + spacing:
+            continue
+        if row.release_utc <= stamps.max():  # the file stays in release order
+            continue
+        values = {
+            "symbol": row.symbol,
+            "release_et": pd.Timestamp(row.release_et).isoformat(),
+            "release_utc": row.release_utc.isoformat(),
+        }
+        lines.append(",".join(str(values.get(column, "")) for column in stored.columns))
+    if lines:
+        joint = "" if text.endswith("\n") or not text else "\n"
+        write_atomic(path, text + joint + "\n".join(lines) + "\n")
+    return len(lines)
+
+
+def earnings_lines(
+    directory: Path,
+    today: date,
+    fetch: Callable[[], pd.DataFrame],
+    calendar: Path | None = None,
+) -> list[str]:
+    """Store the SEC's earnings releases and their reaction sessions, extend
+    `calendar` with the new ones, and name the reaction sessions the
+    engine's own list lacks."""
+    try:
+        releases = fetch()
+    except Exception as exc:
+        return [f"earnings releases not fetched: {exc}"[:300]]
+    for name, text in (
+        (EARNINGS_FILE, as_csv(releases)),
+        (
+            REACTION_FILE,
+            "date,symbols\n"
+            + "".join(f"{d},{' '.join(names)}\n" for d, names in reaction_days(releases).items()),
+        ),
+    ):
+        path = directory / name
+        if not path.exists() or path.read_text(encoding="utf-8") != text:
+            write_atomic(path, text)
+    newest = releases["release_utc"].max()
+    lines = [f"earnings: {len(releases)} releases from the SEC, to {newest:%Y-%m-%d}"]
+    if calendar is not None:
+        if not calendar.exists():
+            lines.append(f"  {calendar} is not there to extend")
+        else:
+            try:
+                added = extend_releases(calendar, releases)
+                lines.append(f"  {calendar.name}: {added} release(s) appended")
+            except Exception as exc:
+                lines.append(f"  {calendar.name} NOT extended: {exc}"[:300])
+    try:
+        from engine.data.earnings_calendar import EARNINGS_REACTION_DATES as known
+    except Exception as exc:
+        return [*lines, f"  the engine's earnings list could not be read ({exc})"]
+    lacking = [d for d in reaction_days(releases) if max(known) < d <= today]
+    if lacking:
+        lines.append(
+            f"  the engine's earnings list ends {max(known)} and lacks {len(lacking)} reaction "
+            f"session(s) since; earnings-day sizing was off on them: "
+            f"{', '.join(map(str, lacking[-8:]))}"
+        )
+    else:
+        lines.append(f"  the engine's earnings list is current to {max(known)}")
+    return lines
+
+
 def status_lines(directory: Path, now: datetime) -> list[str]:
     """Every series in the registry: its newest stamp on disk, and its age."""
     lines = []
@@ -356,6 +472,8 @@ def run_once(
     dry_run: bool = False,
     fetch: Callable = sources.fetch,
     fomc: Callable[[], list[date]] | None = sources.fetch_fomc_decision_dates,
+    earnings: Callable[[], pd.DataFrame] | None = None,
+    earnings_file: Path | None = None,
     lake: Callable[[Path, Path], str] = write_lake,
     report: Callable[[str], None] = print,
 ) -> bool:
@@ -380,6 +498,10 @@ def run_once(
     report(f"[external] {governor_line(directory, upcoming_session(now))}")
     if fomc is not None:
         for line in fomc_lines(directory, now.astimezone(EASTERN).date(), fomc):
+            report(f"[external] {line}")
+    if earnings is not None:
+        today = now.astimezone(EASTERN).date()
+        for line in earnings_lines(directory, today, earnings, earnings_file):
             report(f"[external] {line}")
     return ok
 
@@ -443,6 +565,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="HH:MM",
         help=f"run now, then daily at these Eastern times (default: {' '.join(DEFAULT_TIMES)})",
     )
+    parser.add_argument(
+        "--earnings-file",
+        type=Path,
+        default=None,
+        help="an earnings calendar to append the SEC's new releases to "
+        "(data/earnings_releases_derived.csv); needs VAI_SEC_CONTACT",
+    )
     parser.add_argument("--status", action="store_true", help="what is on disk, and how old")
     parser.add_argument("--list", action="store_true", help="the registry")
     return parser
@@ -488,13 +617,30 @@ def main(argv: list[str] | None = None) -> int:
 
         root = args.root or warehouse_root()
 
+    earnings = None
+    if os.environ.get(sources.SEC_CONTACT_ENV, "").strip():
+        earnings = sources.fetch_edgar_earnings
+    else:
+        print(
+            f"[external] earnings releases are skipped: set {sources.SEC_CONTACT_ENV} "
+            "(the SEC asks for a contact)"
+        )
+
     def once() -> bool:
         started = datetime.now(UTC)
         print(
             f"[external] {started.astimezone(EASTERN):%Y-%m-%d %H:%M %Z} -- {len(wanted)} series"
             f" into {directory}{' (dry run: nothing is written)' if args.dry_run else ''}"
         )
-        ok = run_once(wanted, directory, root, now=started, dry_run=args.dry_run)
+        ok = run_once(
+            wanted,
+            directory,
+            root,
+            now=started,
+            dry_run=args.dry_run,
+            earnings=earnings,
+            earnings_file=args.earnings_file,
+        )
         seconds = (datetime.now(UTC) - started).total_seconds()
         print(f"[external] done in {seconds:.0f}s{'' if ok else '; FAILED (see above)'}")
         return ok

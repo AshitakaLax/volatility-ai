@@ -129,3 +129,63 @@ def test_the_null_rank_counts_the_shifted_maps_that_match_the_real_one():
     assert rank["n"] == 3
     assert (rank["geo_beaten_by"], rank["dd_beaten_by"], rank["calmar_beaten_by"]) == (1, 1, 0)
     assert probe.null_rank(rows[:2]) is None
+
+
+# -- Daily Ultimate ----------------------------------------------------------------
+
+
+def test_the_daily_stages_are_daily_ultimate_plain_and_under_the_throttle(monkeypatch):
+    monkeypatch.setattr(dr, "_top_start", lambda: "2020-11-19")  # no warehouse here
+    pinned = yaml.safe_load((ROOT / "config" / "daily_ultimate_tqqq.yaml").read_text())
+    assert probe.daily("plain") == pinned
+    throttled = probe.daily("throttle")
+    assert throttled["risk"] == dr.THROTTLE
+    assert throttled["strategy"] == pinned["strategy"]
+    with pytest.raises(ValueError):
+        probe.daily("other")
+    specs = probe.plan_daily(EXTERNAL)
+    assert len(specs) == len(probe.BOOKS) * (1 + len(probe.DAILY_VOTES))
+    stress = probe.plan_daily_stress(EXTERNAL)
+    assert len(stress) == len(probe.BOOKS) * 2 * len(probe.STRESSES)
+    assert len({s["name"] for s in [*specs, *stress]}) == len(specs) + len(stress)
+
+
+def test_the_null_rank_is_taken_one_book_at_a_time():
+    def row(book, shift, geo, dd):
+        base = _row(shift, geo, dd)
+        return {**base, "stage": "daily-null", "meta": {"shift": shift, "book": book}}
+
+    rows = [row("plain", "real", 0.16, 30.0), row("plain", "off", 0.158, 29.9)]
+    rows += [row("plain", 0, 0.15, 30.0), row("throttle", 0, 0.2, 10.0)]
+    rank = probe.null_rank(rows, "daily-null", "plain")
+    assert rank["n"] == 1 and rank["geo_beaten_by"] == 0 and rank["dd_beaten_by"] == 1
+    assert probe.null_rank(rows, "daily-null", "throttle") is None
+    assert probe.null_rank(rows) is None  # nothing in the reserve's null stage
+
+
+def test_paper_ultimate_takes_the_governed_daily_ultimate_profile(tmp_path):
+    """The live profile is Daily Ultimate's committed algorithm plus the
+    governor's switch, and paper-ultimate passes it through the trader's
+    validation (which builds the strategy, and so its governor)."""
+    from research.strategies import live_profiles
+    from research.strategies.live_algorithm import AlgorithmControl
+    from research.strategies.strategy_registry import STRATEGIES
+
+    governed = probe.daily_governed("plain", EXTERNAL)
+    params = governed["strategy"]["strategy_params"]
+    params.pop("caution_dir")  # the profile reads the default directory
+    profile = live_profiles.get("daily-ultimate-governed-tqqq")
+    assert profile.change() == {
+        "strategy_id": "daily_ultimate",
+        "strategy_params": params,
+        "step": governed["grid"]["steps"][0],
+        "profit_target": governed["grid"]["profit_targets"][0],
+    }
+    assert profile.fits("TQQQ") and not profile.promoted()
+    paper = BacktestConfig.from_yaml(ROOT / "config" / "ultimate_paper.yaml")
+    control = AlgorithmControl(
+        paper, state_db=tmp_path / "ledger.db", registry=STRATEGIES, allowed=False, web_allowed=True
+    )
+    _, trades = control.check(profile.change())
+    assert trades.strategy.strategy_params["caution_min_votes"] == CORE_MIN_VOTES
+    assert trades.risk == paper.risk

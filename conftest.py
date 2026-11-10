@@ -31,12 +31,23 @@ of their own; that overrides this for the test and restores it after.
                        their configurations into its sim_results.duckdb.
                        Tests of the recording turn it on against a
                        warehouse of their own.
+  VAI_EXTERNAL_DIR     research/strategies/risk_governor.py reads a
+                       strategy's outside series here, and a strategy with
+                       the governor on refuses to be built without them
+                       (config/live_profiles/daily-ultimate-governed-tqqq
+                       is validated by building it). data/external/ is
+                       downloaded, so a clean checkout has none and a
+                       working one has whatever was fetched last: neither
+                       is a fixture. This is a flat series for every input
+                       a signal names, over fixed dates -- no warning is
+                       ever raised from it.
 """
 
 from __future__ import annotations
 
 import os
 import tempfile
+from datetime import date, timedelta
 
 _ROOT = tempfile.mkdtemp(prefix="vai-tests-")
 # Assigned, not setdefault: an operator shell that exports the real
@@ -44,3 +55,19 @@ _ROOT = tempfile.mkdtemp(prefix="vai-tests-")
 os.environ["VAI_QUEUE_DIR"] = os.path.join(_ROOT, "queue")
 os.environ["VAI_RUN_HISTORY_DIR"] = os.path.join(_ROOT, "runs")
 os.environ["VAI_RECORD_WAREHOUSE"] = "0"
+os.environ["VAI_EXTERNAL_DIR"] = os.path.join(_ROOT, "external")
+
+
+def _write_flat_external_series(directory: str) -> None:
+    from research.strategies.risk_governor import SIGNALS
+
+    os.makedirs(directory, exist_ok=True)
+    first = date(2024, 1, 1)
+    days = [first + timedelta(days=n) for n in range(730)]
+    rows = "".join(f"{day} 21:00:00+00:00,100.0\n" for day in days if day.weekday() < 5)
+    for key in sorted({key for signal in SIGNALS.values() for key in signal.inputs}):
+        with open(os.path.join(directory, f"{key}.csv"), "w", encoding="utf-8") as handle:
+            handle.write("timestamp,close\n" + rows)
+
+
+_write_flat_external_series(os.environ["VAI_EXTERNAL_DIR"])

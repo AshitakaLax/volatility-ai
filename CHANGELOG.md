@@ -38,6 +38,22 @@ and the drawdown it removes is one episode, the current one.
   of 2026-09-16 and 2026-10-28. The refresh now fetches the Federal
   Reserve's schedule and reports every meeting the list lacks on each run.
   The list itself is not changed here.
+- **Earnings releases come from SEC EDGAR** (each reporter's 8-K under Item
+  2.02, one a quarter) when `VAI_SEC_CONTACT` is set; the contact is the
+  operator's and is never in the repository. New releases are appended to
+  `data/earnings_releases_derived.csv`, which had stopped at 2026-08-04
+  with its source, and the reaction sessions the engine's list lacks are
+  reported: seven since 2026-07-31.
+- **Preflight warns** when a calendar a configured boost reads has run out,
+  and shows a governed strategy's reading and any stale warning.
+- **On Daily Ultimate the governor measures no gain** (0.159% a session at
+  30.1% against 0.158% at 29.9%; its null control is at chance). The owner
+  chose that book for the paper trial, so the profile
+  `daily-ultimate-governed-tqqq` exists to trial the governor running live,
+  and its evidence note says so. paper-ultimate's drawdown throttle costs
+  Daily Ultimate a fifth of its return (0.124% a session).
+- **The test suite no longer reads `data/external/`**: `conftest.py` points
+  `VAI_EXTERNAL_DIR` at flat series of its own.
 
 ## Fix: live trading applies the drawdown throttle
 

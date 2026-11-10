@@ -331,6 +331,11 @@ file.
 - **Each run prints the governor's reading** for the next session, any
   warning whose data has gone stale, and any scheduled FOMC meeting the
   engine's calendar lacks.
+- **With `VAI_SEC_CONTACT` in `.env`, earnings releases are read from SEC
+  EDGAR** and the new ones appended to `data/earnings_releases_derived.csv`,
+  the calendar the traders' event table loads. The SEC asks an automated
+  client for a way to reach its operator; without the variable this step is
+  skipped and says so. That file is why the service mounts `./data` whole.
 
 A warning whose data is more than a week old casts no vote, so if this
 service stops the governor stops pausing and the strategy trades as it does

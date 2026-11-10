@@ -55,6 +55,7 @@ from __future__ import annotations
 import gzip
 import io
 import json
+import os
 import re
 import time
 import urllib.error
@@ -527,14 +528,14 @@ class SourceUnavailable(RuntimeError):
     """A source could not be fetched, or answered with something unusable."""
 
 
-def _http_get(url: str, *, retries: int = 3) -> bytes:
+def _http_get(url: str, *, retries: int = 3, user_agent: str | None = None) -> bytes:
     """GET with backoff, transparently decompressing.
 
     Some of these endpoints answer gzipped without being asked, and
     urllib does not decompress for you -- a body read as UTF-8 then
     fails on the gzip magic bytes rather than on anything meaningful.
     """
-    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    request = urllib.request.Request(url, headers={"User-Agent": user_agent or _USER_AGENT})
     last: Exception | None = None
 
     for attempt in range(retries):
@@ -953,6 +954,165 @@ def fetch_fomc_decision_dates() -> list[date]:
     if not dates:
         raise SourceUnavailable(f"{FOMC_CALENDAR_URL}: no meeting dates found (page changed?)")
     return dates
+
+
+# ------------------------------------------------------------------
+# Earnings releases, from the SEC. A company furnishes its results on
+# Form 8-K under Item 2.02 ("Results of Operations and Financial
+# Condition"), and EDGAR stamps the second it accepted the filing --
+# minutes after the release crossed the wire. That is the release as a
+# public record, not a schedule: it says when each report came out, to
+# the minute, by the next morning. It does not say when the next one is
+# due.
+#
+# The SEC asks every automated client to name itself and a way to reach
+# its operator (sec.gov/os/accessing-edgar-data), and refuses those that
+# do not. The operator's contact is theirs to give, so it is read from
+# the environment and never written here.
+
+SEC_CONTACT_ENV = "VAI_SEC_CONTACT"
+SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/"
+EARNINGS_ITEM = "2.02"
+# Ten requests a second is the SEC's limit; this asks for five.
+SEC_PAUSE_SECONDS = 0.2
+# A quarter has one earnings release. Item 2.02 also carries what comes
+# before it -- Tesla's delivery counts three weeks ahead of its results, a
+# pre-announcement -- so of two filings this close together the LATER is
+# the report (tools/build_earnings_calendar.py spaces its events the same).
+EARNINGS_SPACING_DAYS = 45
+
+# tools/build_earnings_calendar.py's sixteen Nasdaq-100 reporters, and
+# the registrant each files under. A CIK is permanent. GOOG and GOOGL are
+# one registrant and one report, kept as two rows as that tool keeps them:
+# two holdings, each with its own weight.
+EARNINGS_REPORTERS: dict[str, int] = {
+    "NVDA": 1045810,
+    "AAPL": 320193,
+    "MSFT": 789019,
+    "MU": 723125,
+    "AMZN": 1018724,
+    "AMD": 2488,
+    "GOOGL": 1652044,
+    "AVGO": 1730168,
+    "GOOG": 1652044,
+    "META": 1326801,
+    "TSLA": 1318605,
+    "WMT": 104169,
+    "INTC": 50863,
+    "CSCO": 858877,
+    "COST": 909832,
+    "NFLX": 1065280,
+}
+
+
+def sec_user_agent(contact: str | None = None) -> str:
+    """The User-Agent the SEC is sent: this project and the operator's
+    contact, from `contact` or VAI_SEC_CONTACT. Refuses without one."""
+    contact = (contact or os.environ.get(SEC_CONTACT_ENV) or "").strip()
+    if not contact:
+        raise SourceUnavailable(
+            f"the SEC asks for a contact: set {SEC_CONTACT_ENV} (an address it can reach you at)"
+        )
+    return f"volatility-ai {contact}"
+
+
+def earnings_releases(filings: dict) -> list[tuple[pd.Timestamp, str]]:
+    """(acceptance instant UTC, accession number) of every 8-K furnishing
+    results (Item 2.02) in one page of EDGAR's filings, as its columns
+    (`form`, `items`, `acceptanceDateTime`, `accessionNumber`)."""
+    out = []
+    for form, items, accepted, accession in zip(
+        filings.get("form", ()),
+        filings.get("items", ()),
+        filings.get("acceptanceDateTime", ()),
+        filings.get("accessionNumber", ()),
+        strict=False,
+    ):
+        if form != "8-K" or EARNINGS_ITEM not in [i.strip() for i in str(items).split(",")]:
+            continue
+        stamp = pd.to_datetime(accepted, utc=True, errors="coerce")
+        if pd.notna(stamp):
+            out.append((stamp, str(accession)))
+    return out
+
+
+def quarterly(
+    found: list[tuple[pd.Timestamp, str]], spacing_days: int = EARNINGS_SPACING_DAYS
+) -> list[tuple[pd.Timestamp, str]]:
+    """`found` (one registrant's releases) without those followed by
+    another within `spacing_days`: the earnings report of each quarter."""
+    ordered = sorted(set(found))
+    spacing = pd.Timedelta(days=spacing_days)
+    return [
+        item
+        for i, item in enumerate(ordered)
+        if i + 1 == len(ordered) or ordered[i + 1][0] - item[0] >= spacing
+    ]
+
+
+def fetch_edgar_earnings(
+    reporters: dict[str, int] | None = None,
+    *,
+    since: date = date(2016, 1, 1),
+    contact: str | None = None,
+    pause: float = SEC_PAUSE_SECONDS,
+    sleep=time.sleep,
+) -> pd.DataFrame:
+    """Every earnings release since `since` for `reporters` ({ticker: CIK},
+    default EARNINGS_REPORTERS): `symbol`, `release_et`, `release_utc`,
+    `accession`, in release order. One registrant is fetched once however
+    many tickers it files under. Older pages of a registrant's filings are
+    asked for only when `since` reaches back into them. A registrant's newest
+    release is kept until a later one arrives inside EARNINGS_SPACING_DAYS,
+    so a delivery report can stand in for three weeks, and then gives way."""
+    agent = sec_user_agent(contact)
+    reporters = dict(EARNINGS_REPORTERS if reporters is None else reporters)
+    cutoff = pd.Timestamp(since, tz="UTC")
+    by_cik: dict[int, list[tuple[pd.Timestamp, str]]] = {}
+    asked = 0
+
+    def get(name: str) -> dict:
+        nonlocal asked
+        if asked:
+            sleep(pause)
+        asked += 1
+        body = _http_get(f"{SEC_SUBMISSIONS_URL}{name}", user_agent=agent)
+        try:
+            return json.loads(body.decode("utf-8", "replace"))
+        except json.JSONDecodeError as exc:
+            raise SourceUnavailable(f"EDGAR {name}: not JSON ({exc})") from exc
+
+    for ticker, cik in reporters.items():
+        if cik in by_cik:
+            continue
+        payload = get(f"CIK{cik:010d}.json")
+        listed = {str(t).upper() for t in payload.get("tickers") or ()}
+        if ticker.upper() not in listed:
+            raise SourceUnavailable(
+                f"EDGAR: CIK {cik} files as {sorted(listed)}, not {ticker}; fix EARNINGS_REPORTERS"
+            )
+        filings = payload.get("filings") or {}
+        found = earnings_releases(filings.get("recent") or {})
+        for page in filings.get("files") or ():
+            # A page is asked for only if it holds filings on or after `since`.
+            last = pd.to_datetime(page.get("filingTo"), utc=True, errors="coerce")
+            if pd.isna(last) or last < cutoff:
+                continue
+            found += earnings_releases(get(str(page["name"])))
+        by_cik[cik] = [item for item in quarterly(found) if item[0] >= cutoff]
+
+    rows = [
+        {"symbol": ticker, "release_utc": stamp, "accession": accession}
+        for ticker, cik in reporters.items()
+        for stamp, accession in by_cik[cik]
+    ]
+    frame = pd.DataFrame(rows, columns=["symbol", "release_utc", "accession"])
+    if frame.empty:
+        raise SourceUnavailable("EDGAR: no earnings release found for any reporter")
+    frame = frame.sort_values(["release_utc", "symbol"]).reset_index(drop=True)
+    eastern = frame["release_utc"].dt.tz_convert("America/New_York")
+    frame.insert(1, "release_et", eastern.dt.tz_localize(None))
+    return frame
 
 
 def default_directory() -> Path:

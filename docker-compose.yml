@@ -333,17 +333,29 @@ services:
   # the warehouse's external lake, never the catalogs a sweep writes. Public
   # endpoints only: no keys. Each run also prints the governor's reading and
   # any FOMC meeting the engine's calendar lacks.
+  #
+  # With VAI_SEC_CONTACT set (in .env, which compose reads for this file:
+  # the SEC asks an automated client for a way to reach its operator), each
+  # run also reads the sixteen reporters' earnings releases from EDGAR and
+  # appends the new ones to data/earnings_releases_derived.csv, the calendar
+  # the traders' event table loads. That file is why it mounts ./data whole.
   # One-off:  docker compose run --rm market-inputs --status
   market-inputs:
     <<: *app
     entrypoint: ["python", "/app/tools/refresh_external.py"]
-    command: ["--daily", "${VAI_EXTERNAL_AT:-20:45}", "${VAI_EXTERNAL_AT_2:-07:30}"]
+    command:
+      - "--daily"
+      - "${VAI_EXTERNAL_AT:-20:45}"
+      - "${VAI_EXTERNAL_AT_2:-07:30}"
+      - "--earnings-file"
+      - "/app/data/earnings_releases_derived.csv"
     environment:
       <<: *env
       VAI_WAREHOUSE_DIR: /app/warehouse
       VAI_EXTERNAL_DIR: /app/data/external
+      VAI_SEC_CONTACT: ${VAI_SEC_CONTACT:-}
     volumes:
-      - ./data/external:/app/data/external
+      - ./data:/app/data
       - ./warehouse:/app/warehouse
     restart: unless-stopped
     mem_limit: 2g
