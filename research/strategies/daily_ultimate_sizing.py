@@ -435,9 +435,7 @@ class DailyUltimateSizing(DailyTakeProfit, UltimateSizing):
     def _grid_trigger_level(
         self, context: MarketContext, last_buy_price: float, step: float
     ) -> float:
-        if self.mode == CALM and (
-            self.cautious or (self.goal_pause_buys and self._goal.reached)
-        ):
+        if self.mode == CALM and (self.cautious or (self.goal_pause_buys and self._goal.reached)):
             return NO_BUY_LEVEL
         return super()._grid_trigger_level(context, last_buy_price, step)
 

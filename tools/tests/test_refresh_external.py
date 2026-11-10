@@ -89,9 +89,7 @@ def test_a_bar_still_forming_is_not_stored_but_a_lagged_stamp_is():
 def test_series_are_written_whole_with_their_manifest(tmp_path):
     feed = Feed(CORE_KEYS)
     outcomes = R.refresh_series(WANTED, tmp_path, fetch=feed, now=NOW, report=quiet.append)
-    assert {o.key: o.status for o in outcomes} == dict.fromkeys(
-        [*CORE_KEYS, "fred_DGS10"], "new"
-    )
+    assert {o.key: o.status for o in outcomes} == dict.fromkeys([*CORE_KEYS, "fred_DGS10"], "new")
     stored = pd.read_csv(tmp_path / "cboe_VXN.csv")
     assert list(stored.columns) == ["timestamp", "close"] and len(stored) == len(SESSIONS)
     manifest = json.loads((tmp_path / "manifest.json").read_text())

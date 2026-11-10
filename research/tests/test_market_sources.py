@@ -65,7 +65,9 @@ def test_a_yahoo_symbol_becomes_a_file_name_key(symbol, key):
 
 def test_a_manifest_row_carries_the_lag_the_lake_needs(served):
     bodies, _ = served
-    bodies[sources.OFR_FSI_URL] = b"Date,OFR FSI,Credit\n2026-11-04,-2.1,-0.8\n2026-11-05,-1.4,-0.9\n"
+    bodies[sources.OFR_FSI_URL] = (
+        b"Date,OFR FSI,Credit\n2026-11-04,-2.1,-0.8\n2026-11-05,-1.4,-0.9\n"
+    )
     fsi = source("ofr", "FSI")
     entry = sources.manifest_entry(fsi, sources.fetch(fsi))
     assert sources.manifest_key(fsi) == "ofr_FSI" and entry["file"] == "ofr_FSI.csv"

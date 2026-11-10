@@ -235,7 +235,9 @@ Optional dependencies fail loudly and early: e.g. `BayesianSearch` raises
 Backtests read bars from the warehouse by ticker (`backtest.symbol`), never
 from a CSV. The funds the Warehouse tab lists are kept current by
 `tools/refresh_warehouse.py` (the compose `market-data` service runs it
-daily; `docs/DEPLOY.md`). Any other fund: fetch, ingest, run:
+daily; `docs/DEPLOY.md`). The outside series a strategy's risk governor reads
+(`data/external/`: volatility, credit, stress, positioning) are kept current
+by `tools/refresh_external.py`, the `market-inputs` service. Any other fund: fetch, ingest, run:
 
 ```bash
 export APCA_API_KEY_ID=... APCA_API_SECRET_KEY=...

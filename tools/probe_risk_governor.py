@@ -54,16 +54,16 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from research.strategies.risk_governor import (  # noqa: E402
+from research.strategies.risk_governor import (
     CORE_MIN_VOTES,
     CORE_SIGNALS,
     SIGNALS,
     RiskGovernor,
     external_directory,
 )
-from tools import probe_daily_reserve as dr  # noqa: E402
-from tools import probe_daily_ultimate as du  # noqa: E402
-from tools import stress_paths  # noqa: E402
+from tools import probe_daily_reserve as dr
+from tools import probe_daily_ultimate as du
+from tools import stress_paths
 
 FUND = dr.FUND
 LOTS = (0.0025, 0.003, 0.0035, 0.0045)
@@ -113,7 +113,9 @@ def plan_frontier(external: Path) -> list[dict]:
     for lot in LOTS:
         out.append(_spec("frontier", f"lot{lot} off", reserve(lot), lot=lot, governor="off"))
         out.append(
-            _spec("frontier", f"lot{lot} core", governed(external, lot=lot), lot=lot, governor="core")
+            _spec(
+                "frontier", f"lot{lot} core", governed(external, lot=lot), lot=lot, governor="core"
+            )
         )
     return out
 

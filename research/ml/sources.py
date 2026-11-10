@@ -912,7 +912,7 @@ _MONTHS = {
 }
 _FOMC_YEAR = re.compile(r">\s*(\d{4}) FOMC Meetings\s*<")
 _FOMC_MEETING = re.compile(
-    r'fomc-meeting__month[^>]*>\s*<strong>([^<]+)</strong>\s*</div>\s*'
+    r"fomc-meeting__month[^>]*>\s*<strong>([^<]+)</strong>\s*</div>\s*"
     r'<div class="fomc-meeting__date[^>]*>([^<]+)<'
 )
 

@@ -302,7 +302,10 @@ def test_the_market_inputs_service_writes_where_the_traders_read(compose):
     from tools.refresh_external import build_parser
 
     service = compose["services"]["market-inputs"]
-    assert service["volumes"] == ["./data/external:/app/data/external", "./warehouse:/app/warehouse"]
+    assert service["volumes"] == [
+        "./data/external:/app/data/external",
+        "./warehouse:/app/warehouse",
+    ]
     assert service["environment"]["VAI_EXTERNAL_DIR"] == "/app/data/external"
     assert "env_file" not in service
     assert service["restart"] == "unless-stopped"

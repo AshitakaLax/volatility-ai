@@ -114,9 +114,7 @@ def test_nothing_before_a_session_changes_when_later_data_arrives():
 
 def test_a_lagged_stamp_delays_the_warning_by_its_lag():
     late = world()
-    late["ofr_FSI"] = stamped(
-        [1.0 if day >= STEP else -1.0 for day in SESSIONS], lag_days=4
-    )
+    late["ofr_FSI"] = stamped([1.0 if day >= STEP else -1.0 for day in SESSIONS], lag_days=4)
     governor = RiskGovernor(late, signals=("fsi_rising",), min_votes=1)
     table = governor.table(LAST)
     first = table.index[table["fsi_rising"] == 1.0][0].date()

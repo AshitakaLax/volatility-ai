@@ -73,11 +73,11 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import pandas as pd  # noqa: E402
+import pandas as pd
 
-from engine.core.trading_calendar import EASTERN, is_session, next_session  # noqa: E402
-from research.ml import sources  # noqa: E402
-from research.strategies.risk_governor import (  # noqa: E402
+from engine.core.trading_calendar import EASTERN, is_session, next_session
+from research.ml import sources
+from research.strategies.risk_governor import (
     CORE_SIGNALS,
     SIGNALS,
     RiskGovernor,
@@ -200,9 +200,7 @@ def refresh_series(
     if not dry_run:
         directory.mkdir(parents=True, exist_ok=True)
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        outcomes = list(
-            pool.map(lambda s: refresh_one(s, directory, fetch, dry_run, now), wanted)
-        )
+        outcomes = list(pool.map(lambda s: refresh_one(s, directory, fetch, dry_run, now), wanted))
     for outcome in outcomes:
         if outcome.status != "unchanged":
             report(outcome.line(dry_run))
