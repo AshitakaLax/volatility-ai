@@ -36,6 +36,7 @@ documentation that makes them findable.
 | `docker_session_loop.sh` | The trading containers' entrypoint (`docker-compose.yml`): one supervised session, a wait, the next; passes `docker stop` on as a graceful stop. |
 | `docker_backup_loop.sh` | The `backup` container's entrypoint: `backup_databases.py` daily at `VAI_BACKUP_AT`, over every ledger it finds and the warehouse catalogs. |
 | `refresh_warehouse.py` | Keep every tracked fund's minute bars in the warehouse current, straight from Alpaca into the bar lake: new sessions appended, a fund whose adjusted prices moved (a dividend or split) downloaded again whole, a missing fund downloaded from its start, URSP_SIM extended from URSP's daily bars on RSP's minutes. The compose `market-data` service runs it daily (`--daily 20:30`). Writes only the lake (`engine/warehouse/lake.py`), never the catalogs. |
+| `refresh_external.py` | Keep every outside series in `research/ml/sources.py` current (volatility indices, rates, credit, the OFR stress index, CFTC positioning, dealer gamma, sector and factor closes): each fetched whole and checked before it replaces the stored file in `data/external/`, then the warehouse's external lake rewritten without the catalog's writer. Prints the risk governor's reading for the next session and any FOMC meeting the engine's calendar lacks. `--daily 20:45 07:30` is the compose `market-inputs` service; `--status` shows every series' age. No keys. |
 | `backup_databases.py` | Snapshot every local database (SQLite ledger + `warehouse/*.duckdb`), archive it under `/workspace/backups` (`$VAI_BACKUP_DIR`; `backups/` where that disk is absent), optionally scp it off the machine, and (`--restore`) pull one back down and write it into place. The compose `backup` service schedules it; `--install-daily` is the cron alternative. See below. |
 
 ### Database backups and restores
@@ -174,6 +175,7 @@ stage's result and the prediction it was read against:
 | `probe_daily_ultimate.py` | Which fund, buy and sell reach +0.1% of equity a session? (TQQQ; Ultimate's buy and regime exit; `docs/research/daily-ultimate.md`) |
 | `probe_daily_reserve.py` | +0.1% a session at the least drawdown with the most cash, stress-tested on bears worse than 2022's (0.25% compounded lots, cash while turbulent, the goal pause and a drawdown throttle; `docs/research/daily-ultimate-reserve.md`) |
 | `stress_paths.py` | Bears deeper than 2022's (`deeper`, `grind`, `twice`, `fast`) built from a fund's own minute bars, and the 2021-peak start; imported by `probe_daily_reserve.py` |
+| `probe_risk_governor.py` | Do outside series improve the Daily Ultimate reserve, and in what form? As a veto on the regime or an override of it they cost return; as a consensus pause on new buying (four of five warnings) they trim the drawdown about two points at the same return. Stages `forms`, `frontier`, `robust`, `null` (the pause map moved in time) and `stress`; `docs/research/risk-governor.md` |
 | `probe_sqqq_stop.py` | Does a stoppable SQQQ hedge work now that a loss can be realised? (No.) |
 
 **Costs and signals the backtest does not model:**

@@ -1,0 +1,74 @@
+# DAILY ULTIMATE RESERVE WITH THE RISK GOVERNOR, on TQQQ.
+#
+# config/daily_ultimate_reserve_tqqq.yaml plus one switch: when at least four
+# of five outside warnings are raised for a session (Nasdaq implied vol high,
+# semiconductors lagging, high yield lagging Treasuries, QQQ below its
+# 100-session mean, the OFR stress index rising), the calm grid buys nothing
+# that session. Nothing is liquidated and the regime is untouched
+# (research/strategies/risk_governor.py).
+#
+# A pinned single-point config, not a deployment: there is no `live:` section.
+# It reads data/external/, which tools/refresh_external.py keeps current, and
+# refuses to build without those files.
+#
+# tools/probe_risk_governor.py (causal intrabar fills, dynamic slippage, no
+# cash yield, 2016-01-04 to 2026-11-09, scored from 2017-01-03):
+#
+#                         per session   max DD   2022 on: per session / DD
+#   reserve, no governor     0.098%     20.6%        0.072% / 20.6%
+#   this configuration       0.100%     18.5%        0.076% / 15.9%
+#
+# A small edge from few episodes. As a veto on the regime, or as an override
+# of it, the same warnings cost return. IT STILL DOES NOT MAKE 0.1% A SESSION
+# FROM 2022 ON.
+#
+# Pinned to tools/probe_risk_governor.py's governed() by
+# tools/tests/test_probe_risk_governor.py.
+strategy:
+  strategy_id: daily_ultimate
+  strategy_params:
+    bars_per_day: 387
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    natr_period: 14
+    natr_lookback: 100
+    regime_min_hold: 5
+    bear_dd: 0.5
+    bear_window: 250
+    turbulent_mode: cash
+    reversal_lot_pct: 0.2
+    reversal_max_lots: 4
+    liquidate_minute: 60
+    per_lot_pct: 0.0025
+    reversal_threshold: -0.08
+    reversal_target: 0.08
+    compound_lots: true
+    daily_goal: 0.001
+    goal_pause_buys: true
+    harvest_min_gain: 0.002
+    caution_min_votes: 4
+    caution_signals: vxn_hi,sox_weak,credit,trend100,fsi_rising
+grid:
+  steps: [0.004]
+  profit_targets: [0.12]
+backtest: {symbol: TQQQ, initial_cash: 100000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {dd_exposure_start: 0.05, dd_exposure_full: 0.2, dd_exposure_floor_pct: 0.1}
+search: {strategy: grid, rank_by: Total Return %}
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  intrabar_fill: causal
+  enforce_no_loss: true
+  allow_signal_exit: true
+  cash_yield_pct: 0.0
+output: {return_full_results: false}

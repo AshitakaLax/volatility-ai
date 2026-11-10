@@ -1,6 +1,6 @@
 # volatility-ai on one host: everything that has to keep running, in one file.
 #
-#     docker compose up -d --build      # web + paper-ultimate + backup + market-data
+#     docker compose up -d --build      # web + paper-ultimate + backup + market-data + market-inputs
 #     docker compose ps
 #     docker compose logs -f paper-ultimate
 #
@@ -12,6 +12,7 @@
 #   paper-ultimate  the Ultimate algorithm, Alpaca paper       its own key file
 #   backup          ledgers + warehouse catalogs, daily        /workspace/backups
 #   market-data     every fund's bars into the warehouse, daily
+#   market-inputs   every outside series (vol, rates, credit, stress), twice daily
 #
 # Behind profiles, started only by name:
 #
@@ -320,6 +321,32 @@ services:
       - ./warehouse:/app/warehouse
     restart: unless-stopped
     mem_limit: 4g
+    cpu_shares: 256
+
+  # Every outside series in research/ml/sources.py, kept current
+  # (tools/refresh_external.py): volatility indices, rates, credit, the OFR
+  # stress index, CFTC positioning, sector and factor closes. At start, then
+  # daily at each VAI_EXTERNAL_AT time (20:45 and 07:30 Eastern), a failed
+  # run retried hourly. It writes ./data/external -- which every trader
+  # mounts read-only through ./data, and where a strategy's risk governor
+  # (caution_min_votes) reads its warnings at the start of a session -- and
+  # the warehouse's external lake, never the catalogs a sweep writes. Public
+  # endpoints only: no keys. Each run also prints the governor's reading and
+  # any FOMC meeting the engine's calendar lacks.
+  # One-off:  docker compose run --rm market-inputs --status
+  market-inputs:
+    <<: *app
+    entrypoint: ["python", "/app/tools/refresh_external.py"]
+    command: ["--daily", "${VAI_EXTERNAL_AT:-20:45}", "${VAI_EXTERNAL_AT_2:-07:30}"]
+    environment:
+      <<: *env
+      VAI_WAREHOUSE_DIR: /app/warehouse
+      VAI_EXTERNAL_DIR: /app/data/external
+    volumes:
+      - ./data/external:/app/data/external
+      - ./warehouse:/app/warehouse
+    restart: unless-stopped
+    mem_limit: 2g
     cpu_shares: 256
 
   # ---- one-off tools: `docker compose run --rm <name> [args]` ----

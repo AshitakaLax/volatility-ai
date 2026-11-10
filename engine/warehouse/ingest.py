@@ -361,6 +361,7 @@ def ingest_external_series(
     external_dir: str | Path,
     *,
     overwrite: bool = True,
+    dimension: bool = True,
 ) -> dict[str, Any]:
     """Ingest data/external/ into the external Parquet lake + dimension.
 
@@ -375,6 +376,13 @@ def ingest_external_series(
     the external series are re-fetched wholesale by
     fetch_market_inputs.py -- a partial series is replaced, not
     extended.
+
+    dimension=False writes the lake's files only and leaves the
+    external_series table alone, so `con` may be any DuckDB connection,
+    an in-memory one included. tools/refresh_external.py runs daily
+    beside a server that holds the catalog's one writer for every batch
+    of sweep results; it writes the files that way and upserts the rows
+    (returned as "dimension") when the catalog is free.
     """
     external_dir = Path(external_dir)
     manifest_path = external_dir / "manifest.json"
@@ -431,7 +439,7 @@ def ingest_external_series(
         (FORMAT PARQUET, PARTITION_BY (provider, series_key), COMPRESSION ZSTD, {mode})
     """)
 
-    upserted = upsert_external_series(con, dim_rows)
+    upserted = upsert_external_series(con, dim_rows) if dimension else 0
     logger.info(
         f"Ingested {len(frames)} external series ({combined.height} rows); "
         f"{len(skipped)} skipped (no file or empty)."
@@ -441,6 +449,7 @@ def ingest_external_series(
         "rows": combined.height,
         "skipped": skipped,
         "dimension_rows": upserted,
+        "dimension": dim_rows,
     }
 
 

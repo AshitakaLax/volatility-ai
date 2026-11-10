@@ -52,7 +52,13 @@ def _state_volume(service) -> str:
 
 def test_up_starts_what_must_keep_running_and_nothing_else(compose):
     """Real money and one-off tools are started only by name."""
-    assert _services(compose) == {"web", "paper-ultimate", "backup", "market-data"}
+    assert _services(compose) == {
+        "web",
+        "paper-ultimate",
+        "backup",
+        "market-data",
+        "market-inputs",
+    }
     assert _services(compose, profile="champion") == {"paper"}
     assert _services(compose, profile="production") == {"live"}
     assert _services(compose, profile="fidelity") == {"fidelity", "fidelity-bridge"}
@@ -286,6 +292,30 @@ def test_the_market_data_service_writes_only_the_warehouse_with_the_flags_it_acc
     build_parser().parse_args(command)
     help_text = build_parser().format_help()
     assert all(flag in help_text for flag in command if flag.startswith("--"))
+
+
+def test_the_market_inputs_service_writes_where_the_traders_read(compose):
+    """It keeps the outside series a strategy's risk governor reads. It
+    writes data/external (inside the ./data every trader mounts read-only)
+    and the warehouse, holds no key file, and takes a command its own
+    parser accepts."""
+    from tools.refresh_external import build_parser
+
+    service = compose["services"]["market-inputs"]
+    assert service["volumes"] == ["./data/external:/app/data/external", "./warehouse:/app/warehouse"]
+    assert service["environment"]["VAI_EXTERNAL_DIR"] == "/app/data/external"
+    assert "env_file" not in service
+    assert service["restart"] == "unless-stopped"
+    for name in TRADERS:
+        assert "./data:/app/data:ro" in compose["services"][name]["volumes"], name
+    command = [
+        part.replace("${VAI_EXTERNAL_AT:-20:45}", "20:45").replace(
+            "${VAI_EXTERNAL_AT_2:-07:30}", "07:30"
+        )
+        for part in service["command"]
+    ]
+    args = build_parser().parse_args(command)
+    assert args.daily == ["20:45", "07:30"]
 
 
 def test_tzdata_is_a_declared_dependency():
