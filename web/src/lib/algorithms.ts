@@ -1,5 +1,5 @@
 /** The Algorithms tab's pure logic: where a candidate stands, and what it can do next. */
-import type { AlgorithmStage, Candidate } from "@/types/algorithms";
+import type { AlgorithmStage, Candidate, EnginePick } from "@/types/algorithms";
 
 export const STAGE_LABEL: Record<AlgorithmStage, string> = {
   candidate: "Candidate",
@@ -54,4 +54,22 @@ export function promotionKind(candidate: Candidate): string | null {
 
 export function percent(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "—";
+}
+
+/** One line of the engine-pick menu: where it ran, what it is, how it did. */
+export function pickLabel(pick: EnginePick): string {
+  const share = (value: number | null | undefined) =>
+    value === null || value === undefined ? "--" : `${Number((value * 100).toFixed(3))}%`;
+  const figure = (value: number | null | undefined) =>
+    value === null || value === undefined ? "--" : `${value.toFixed(1)}%`;
+  return [
+    pick.ticker,
+    pick.model ?? "?",
+    `step ${share(pick.grid)} / target ${share(pick.target)}`,
+    `CAGR ${figure(pick.m.cagr_pct)}`,
+    `DD ${figure(pick.m.max_drawdown_pct)}`,
+    pick.added ? "(added)" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }

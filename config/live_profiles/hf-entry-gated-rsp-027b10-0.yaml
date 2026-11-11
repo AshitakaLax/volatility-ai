@@ -1,0 +1,36 @@
+# Published from the web on 2026-10-30T01:30:23+00:00 by Levi: review it and commit it.
+# Real money may switch to it only while evidence.promotion names a passing
+# evaluation (owner sign-off, no paper trial).
+id: hf-entry-gated-rsp-027b10-0
+label: hf_entry_gated on RSP (backtest 027b10806eda)
+symbols:
+- RSP
+strategy_id: hf_entry_gated
+strategy_params:
+  bars_per_day: 390
+  dd_throttle_floor: 0.0
+  dd_throttle_full: 0.25
+  dd_throttle_start: 0.05
+  lookback_days: 0.02
+  momentum_gate: early_negative
+  per_lot_pct: 0.0002
+  vol_fast_days: 0.25
+  vol_measure: range
+  vol_scale_exponent: -2.0
+  vol_scale_max: 3.0
+  vol_scale_min: 0.25
+  vol_slow_days: 20.0
+  volume_scale_exponent: -1.0
+step: 0.001
+profit_target: 0.2
+evidence:
+  backtest:
+    cagr_pct: 15.0154
+    cell: 0
+    max_drawdown_pct: 23.0864
+    name: 'LEDGER X1 intraday-momentum gate: RSP'
+    net_yield_pct: 343.5077
+    return_over_drawdown: 14.8792
+    run: 027b10806eda
+    window: 2016-01-04T14:30:00+00:00 to 2026-08-28T19:59:00+00:00
+  promotion: promotions/hf-entry-gated-rsp-027b10-0.json

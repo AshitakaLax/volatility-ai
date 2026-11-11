@@ -1,5 +1,15 @@
 # Changelog
 
+## Feature: add any engine pick as a candidate from the Algorithms tab
+
+The tab's new "Add an engine pick" card lists the engine's pick (the cell a
+stored run ranked first) of every run, best return over drawdown first, and
+filters it by fund, algorithm and run name. Picks that never traded are
+hidden by default: a book in cash has no drawdown and tops that rank.
+`GET /api/algorithms/picks` serves it; adding goes through the existing
+`POST /api/algorithms/candidates`, so the figures still come from the stored
+run. Candidate ids are now built in one place for both.
+
 ## Research: outside data as a risk governor, and a service that keeps it current
 
 **The owner asked what data would give the trading an advantage, and for it

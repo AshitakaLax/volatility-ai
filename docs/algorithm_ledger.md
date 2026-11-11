@@ -218,7 +218,7 @@ entries also have reference code in `research/catalog/`, unwired.
 | RK19 | Sector momentum rotation | ranked list #19; Moskowitz & Grinblatt 1999 | Rotation | 🧪 | Low–medium |
 | RK20 | Bond duration momentum | ranked list #20; Durham (NY Fed SR 657, FAJ 2015) | Fixed-income trend | ⛔ (as published) · ⏳ (long-or-cash Treasury ETF) | Low–medium |
 | RK21 | VIX-regime conditional equity exposure | ranked list #21; Copeland & Copeland 1999; Bansal & Stivers 2023 | Volatility regime | 🧪 | Medium |
-| RK22 | Volatility targeting / risk scaling | ranked list #22; Harvey et al. 2018; Moreira & Muir 2017 | Exposure scaling | 🧪 | **High** |
+| RK22 | Volatility targeting / risk scaling | ranked list #22; Harvey et al. 2018; Moreira & Muir 2017 | Exposure scaling | 🔬 | **High** |
 | RK23 | Drawdown-aware de-risking governor | ranked list #23; Grossman & Zhou 1993 | Exposure scaling | 🔬 (V11) · 🧪 (halt tiers) | Medium |
 | RK24 | ETF NAV / creation-redemption arbitrage | ranked list #24; Petajisto 2017 | ETF relative value | ⛔ | None |
 | RK25 | Index futures vs cash basis arbitrage | ranked list #25; MacKinlay & Ramaswamy 1988 | Index arbitrage | ⛔ | None |
@@ -747,7 +747,10 @@ measurement.** Causal version: N5.
 
 `plan.md`: volatility targeting on RSP cut drawdown 54%, where a trend
 filter cost 5.7pp of CAGR to cut it 14pp — "direction is hard; magnitude
-persists." Not yet applied to the TQQQ grid. See S4.
+persists." Applied to the TQQQ grid as S4 (RK22) and measured under
+causal booking (2026-10-28): vol targeting lifts Return/Drawdown from
+22.68 (control) to 25.35 at target 0.60 (53.24% max DD) and improves
+both return and drawdown at target 0.45 (25.81% CAGR, 44.38% max DD).
 
 ### V19. Random-regime null control 🔬⚠️
 
@@ -1068,8 +1071,14 @@ its window fills (tested under both fill models).
 
 * **Probe:** `config/probe_vol_target.yaml` — targets 0.45/0.60/0.75 ×
   10/20 sessions × Yang-Zhang vs close-to-close (12 combinations).
-* **Unmeasured.** Compare with V11 `dd_throttle`, the other exposure
-  lever.
+* **Measured (2026-10-28, causal booking, TQQQ).** Control (off):
+  25.02% CAGR, 44.88% max DD, ret/dd 22.68. Best Return/Drawdown:
+  target 0.60, Yang-Zhang, 10 days → 28.06% CAGR, 53.24% max DD,
+  ret/dd 25.35. Correction-optimal (better return *and* lower drawdown
+  than control): target 0.45, Yang-Zhang, 10 days → 25.81% CAGR,
+  44.38% max DD, ret/dd 24.73. Yang-Zhang beats close-to-close and
+  10-day beats 20-day on ret/dd. Compare with V11 `dd_throttle`, the
+  other exposure lever (harmonized config still needed).
 
 ### S5. czsc (Chan theory) ❌ (unvetted)
 A Chinese technical-analysis framework (缠论). No published evidence base
@@ -1987,13 +1996,14 @@ Change exposure at VIX percentiles. The contrarian direction has the support: mu
 * **Built:** V12 in the champion; `research/strategies/vix_bands.py`; `leads.vix_term_structure_regime`.
 * **Details:** [docs/algorithms/vix-regime-conditional-equity-exposure.md](algorithms/vix-regime-conditional-equity-exposure.md)
 
-### RK22. Volatility targeting / risk scaling 🧪
+### RK22. Volatility targeting / risk scaling 🔬
 
 Scale exposure to a target volatility. Helps equities through the leverage effect and thins tails everywhere (Harvey et al. 2018); real-time versions often fail to beat the unmanaged book (Cederburg et al. 2020). The scaling half of RK2.
 
-* **Fit:** Built as S4 (`vol_target` on `hf_entry_gated`, Yang-Zhang realized vol); measured on RSP (V18: drawdown −54%, edge in Feb–Jun 2020), not on TQQQ.
-* **Against:** De-risks after falls, re-risks after calm; no gap protection; lowered Calmar on top of the Ultimate-RSP votes (A4).
-* **Built:** `research/strategies/gated_local_reference_sizing.py` (S4); `config/probe_vol_target.yaml` unrun.
+* **Fit:** Built as S4 (`vol_target` on `hf_entry_gated`, Yang-Zhang realized vol); measured on RSP (V18: drawdown −54%, edge in Feb–Jun 2020) and now on TQQQ under causal booking (probe below). Yang-Zhang beats close-to-close on TQQQ (overnight gaps), confirming S3's argument; a 10-day window beats a 20-day window.
+* **Against:** De-risks after falls, re-risks after calm; no gap protection; a higher target (0.75) raises CAGR to ~29.4% but pushes max drawdown to ~60–64%. No regime exit, so it cannot change the *shape* of a correction — only the size of lots.
+* **Built:** `research/strategies/gated_local_reference_sizing.py` (S4); `config/probe_vol_target.yaml` run 2026-10-28 under `intrabar_fill=causal` (12 combos, TQQQ, 2,720 sessions). Control (vol_target off): 25.02% CAGR, 44.88% max DD, ret/dd 22.68. Best Return/Drawdown: target 0.60, Yang-Zhang, 10 days → 28.06% CAGR, 53.24% max DD, ret/dd 25.35. Correction-optimal (better return *and* lower drawdown than control): target 0.45, Yang-Zhang, 10 days → 25.81% CAGR, 44.38% max DD, ret/dd 24.73. Side-by-side with V11 `dd_throttle` is not yet possible on equal footing (its probe uses `hf_local_reference`, bars_per_day 960, target 1.00; harmonized config needed).
+* **Caveat:** Measured under `intrabar_fill=causal` (booking + within-bar lookahead both fixed), `--lag` not applicable to S4 (it uses completed sessions only). Realized vol is backward-looking, so a gap-driven crash is not de-risked in advance.
 * **Details:** [docs/algorithms/volatility-targeting-risk-scaling.md](algorithms/volatility-targeting-risk-scaling.md)
 
 ### RK23. Drawdown-aware de-risking governor 🔬 (V11) · 🧪 (halt tiers)
@@ -7006,3 +7016,8 @@ python -m tools.rotation --mode hrp
 12. **Paper-trial X10** (`config/daily_ultimate_tqqq.yaml`) beside Ultimate,
     and re-base `per_lot_pct` as the account grows; then decide whether
     the goal lock's daily selling is worth its cost.
+13. **Build and measure the S3 volatility regime** — implement the
+    `vol_regime` module and `--regime vol` option described in the S3
+    entry, then run it against `--regime natr` at lag 1 (with and
+    without `--min-hold 5`) to settle whether a realized-volatility
+    regime beats NATR.

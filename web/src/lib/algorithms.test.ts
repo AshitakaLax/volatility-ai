@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { actionsFor, promotionKind, trialBlocker } from "@/lib/algorithms";
+import { actionsFor, pickLabel, promotionKind, trialBlocker } from "@/lib/algorithms";
 import type { Candidate } from "@/types/algorithms";
 
 const base = {
@@ -51,6 +51,35 @@ describe("what a candidate can do next", () => {
     expect(promotionKind(manual)).toBe("owner sign-off (manual)");
     expect(promotionKind({ ...manual, promotion: { passed: true, failures: [] } })).toBe(
       "paper trial",
+    );
+  });
+});
+
+describe("pickLabel", () => {
+  const pick = {
+    run: "abc",
+    ticker: "TQQQ",
+    rank: 0,
+    name: null,
+    model: "ultimate",
+    grid: 0.002,
+    target: 0.1,
+    start: null,
+    end: null,
+    m: { cagr_pct: 37.64, max_drawdown_pct: 22.2 },
+    candidate_id: "ultimate-tqqq-abc-0",
+    added: false,
+  };
+
+  it("names the fund, algorithm, grid and results", () => {
+    expect(pickLabel(pick)).toBe(
+      "TQQQ · ultimate · step 0.2% / target 10% · CAGR 37.6% · DD 22.2%",
+    );
+  });
+
+  it("marks one already kept and tolerates figures a run did not record", () => {
+    expect(pickLabel({ ...pick, added: true, m: {}, grid: null })).toBe(
+      "TQQQ · ultimate · step -- / target 10% · CAGR -- · DD -- · (added)",
     );
   });
 });

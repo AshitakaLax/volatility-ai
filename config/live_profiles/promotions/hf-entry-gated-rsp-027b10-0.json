@@ -1,0 +1,10 @@
+{
+  "at": "2026-10-30T01:30:02+00:00",
+  "backtest": "027b10806eda",
+  "by": "Levi",
+  "failures": [],
+  "manual": true,
+  "paper_trial": "none",
+  "passed": true,
+  "reason": "Better than what we currently are running"
+}

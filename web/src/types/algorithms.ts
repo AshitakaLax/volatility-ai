@@ -73,3 +73,37 @@ export interface TrialRequest {
   legacy_lots: LegacyLots;
   timing: "now" | "next_session" | "when_flat";
 }
+
+/** One engine pick: the cell a stored run ranked first, for the tab's menu. */
+export interface EnginePick {
+  run: string;
+  ticker: string;
+  /** The cell's index in the run (an engine pick is always 0). */
+  rank: number;
+  name: string | null;
+  model: string | null;
+  grid: number | null;
+  target: number | null;
+  start: string | null;
+  end: string | null;
+  m: Record<string, number | null | undefined>;
+  /** The id it is kept under, and whether it already is. */
+  candidate_id: string;
+  added: boolean;
+}
+
+/** GET /api/algorithms/picks. `funds` and `models` are the menu's options. */
+export interface EnginePicks {
+  total: number;
+  funds: string[];
+  models: string[];
+  picks: EnginePick[];
+}
+
+export interface EnginePickQuery {
+  ticker?: string;
+  model?: string;
+  name?: string;
+  traded_only?: boolean;
+  limit?: number;
+}

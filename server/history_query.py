@@ -254,6 +254,48 @@ def funds() -> list[dict[str, Any]]:
     return sorted(stats.values(), key=lambda s: s["ticker"])
 
 
+def picks(
+    ticker: str | None = None,
+    model: str | None = None,
+    name: str = "",
+    traded_only: bool = True,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """The engine's pick of each stored run and fund -- the cell it ranked
+    first, rank 0 -- best return over drawdown first. `traded_only` drops a
+    pick that never traded: a book in cash has no drawdown and tops that rank."""
+    needle = name.strip().lower()
+    found = []
+    options: dict[str, set[str]] = {"funds": set(), "models": set()}
+    for fund in [stat["ticker"] for stat in funds()]:
+        for row in fund_rows(fund):
+            if row.get("rank") != 0:
+                continue
+            options["funds"].add(fund)
+            options["models"].add(row.get("model") or "")
+            if ticker and fund != ticker:
+                continue
+            if model and row.get("model") != model:
+                continue
+            if needle and needle not in (row.get("name") or "").lower():
+                continue
+            if traded_only and not (row.get("m") or {}).get("total_trades"):
+                continue
+            found.append(row)
+    found.sort(key=lambda row: (row.get("m") or {}).get("return_over_drawdown") or 0, reverse=True)
+    return {
+        "total": len(found),
+        "funds": sorted(options["funds"]),
+        "models": sorted(m for m in options["models"] if m),
+        "picks": [
+            {key: row.get(key) for key in ("run", "ticker", "rank", "name", "model", "grid")}
+            | {"target": row.get("target"), "start": row.get("start"), "end": row.get("end")}
+            | {"m": row.get("m") or {}, "params": row.get("params") or {}}
+            for row in found[:limit]
+        ],
+    }
+
+
 def runs() -> dict[str, dict[str, Any]]:
     """Run-level fields of every stored run, keyed by id -- names for
     dedupe (cli.py submit, tools/sweep_rsp_all.py) without any cells."""
@@ -342,4 +384,14 @@ def query(body: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-__all__ = ["facets", "field_value", "fund_rows", "funds", "matches", "query", "runs", "sort_rows"]
+__all__ = [
+    "facets",
+    "field_value",
+    "fund_rows",
+    "funds",
+    "matches",
+    "picks",
+    "query",
+    "runs",
+    "sort_rows",
+]
