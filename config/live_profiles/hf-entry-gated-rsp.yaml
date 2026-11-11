@@ -24,7 +24,8 @@ strategy_params:
 step: 0.001
 profit_target: 0.2
 evidence:
-  promotion: PASSING
+  promotion: 
+    passed: true
   backtest:
     run: "027b10806eda"
     name: "LEDGER X1 intraday-momentum gate: RSP"

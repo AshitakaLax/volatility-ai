@@ -28,7 +28,14 @@ import type {
   SubmitResponse,
   Validation,
 } from "@/types/backtest";
-import type { AlgorithmLibrary, Candidate, CandidateRequest, TrialRequest } from "@/types/algorithms";
+import type {
+  AlgorithmLibrary,
+  Candidate,
+  CandidateRequest,
+  EnginePickQuery,
+  EnginePicks,
+  TrialRequest,
+} from "@/types/algorithms";
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
 import type {
   AlgorithmView,
@@ -291,6 +298,11 @@ export const api = {
 
   /** The algorithm library (server/algorithms.py): candidates and where each stands. */
   algorithms: () => request<AlgorithmLibrary>("/api/algorithms"),
+  /** The engine's pick of every stored run, filtered (server/algorithms.py). */
+  enginePicks: (filter: EnginePickQuery) =>
+    request<EnginePicks>(
+      `/api/algorithms/picks?${query({ ...filter, traded_only: filter.traded_only === false ? "false" : undefined })}`,
+    ),
   addCandidate: (body: CandidateRequest) => post<Candidate>("/api/algorithms/candidates", body),
   deleteCandidate: (id: string) =>
     del<{ deleted: string }>(`/api/algorithms/candidates/${encodeURIComponent(id)}`),

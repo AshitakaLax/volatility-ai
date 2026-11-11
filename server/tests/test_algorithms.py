@@ -51,6 +51,46 @@ def test_a_candidate_is_read_from_the_stored_run(client):
     assert client.get("/api/algorithms").json()["candidates"][0]["id"] == body["id"]
 
 
+def test_the_engine_picks_are_each_runs_first_cell_filtered_and_marked_when_added(client):
+    traded = {"net_yield_pct": 1.0, "return_over_drawdown": 5.0, "total_trades": 9}
+    save_run("aaa111bbb222", ticker="TQQQ", model="ultimate", name="ultimate sweep")
+    save_run(
+        "ccc333ddd444",
+        ticker="RSP",
+        model="fixed",
+        cells=[cell(0.002, 0.03, {}, **traded), cell(0.01, 0.05, {}, **traded)],
+    )
+    save_run(
+        "eee555fff666",
+        ticker="RSP",
+        model="ultimate_rsp",
+        cells=[cell(0.001, 0.1, {}, return_over_drawdown=99.0, total_trades=0)],
+    )
+
+    def picks(**query):
+        response = client.get("/api/algorithms/picks", params=query)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    body = picks()
+    # One per run and fund (rank 0 only), never-traded ones dropped.
+    assert [(p["run"], p["rank"]) for p in body["picks"]] == [("ccc333ddd444", 0)]
+    assert (
+        body["picks"][0]["candidate_id"] == "fixed-rsp-ccc333-0" and not body["picks"][0]["added"]
+    )
+    assert picks(traded_only="false", model="ultimate_rsp")["total"] == 1
+    assert picks(traded_only="false", ticker="TQQQ", name="SWEEP")["total"] == 1
+    assert picks(ticker="TQQQ")["total"] == 0
+    # The menu's options are every pick's, not just the filtered ones.
+    assert picks(ticker="TQQQ")["funds"] == ["RSP", "TQQQ"]
+    assert picks()["models"] == ["fixed", "ultimate", "ultimate_rsp"]
+    client.post(
+        "/api/algorithms/candidates",
+        json={"run": "ccc333ddd444", "ticker": "RSP", "cell": 0, "operator": "tester"},
+    )
+    assert picks()["picks"][0]["added"] is True
+
+
 def test_the_same_cell_is_one_candidate_and_an_unknown_one_is_refused(client):
     assert add(client).status_code == 201
     assert add(client).status_code == 409

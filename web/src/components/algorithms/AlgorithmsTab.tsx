@@ -1,11 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from "@/components/ui/primitives";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Checkbox,
+  Field,
+  Input,
+  Select,
+} from "@/components/ui/primitives";
 import { usePolled } from "@/hooks/usePolled";
 import { api } from "@/lib/api";
 import {
   actionsFor,
   percent,
+  pickLabel,
   promotionKind,
   STAGE_LABEL,
   STAGES,
@@ -13,7 +25,7 @@ import {
   type CandidateAction,
 } from "@/lib/algorithms";
 import { rememberedOperator, rememberOperator } from "@/lib/control";
-import type { Candidate } from "@/types/algorithms";
+import type { Candidate, EnginePicks } from "@/types/algorithms";
 import type { LegacyLots } from "@/types/control";
 
 /**
@@ -36,6 +48,7 @@ export function AlgorithmsTab() {
         from the Live page.
       </p>
       {error ? <p className="text-sm text-loss">{error}</p> : null}
+      <EnginePickMenu onAdded={refresh} />
       {STAGES.map((stage) => {
         const rows = candidates.filter((candidate) => candidate.stage === stage);
         return (
@@ -58,6 +71,147 @@ export function AlgorithmsTab() {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Any stored run's engine pick (the cell it ranked first), filtered by fund,
+ * algorithm and name, added as a candidate without opening the run. The
+ * server reads the figures from the stored run, as for the result page's
+ * button.
+ */
+function EnginePickMenu({ onAdded }: { onAdded: () => void }) {
+  const [ticker, setTicker] = useState("");
+  const [model, setModel] = useState("");
+  const [name, setName] = useState("");
+  const [tradedOnly, setTradedOnly] = useState(true);
+  const [chosen, setChosen] = useState("");
+  const [operator, setOperator] = useState(rememberedOperator());
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [found, setFound] = useState<EnginePicks | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    // Typing in the name box asks again after a pause, not per keystroke.
+    const timer = window.setTimeout(() => {
+      api
+        .enginePicks({ ticker, model, name, traded_only: tradedOnly })
+        .then((picks) => {
+          setFound(picks);
+          setError(null);
+          setChosen((current) =>
+            picks.picks.some((pick) => pick.candidate_id === current) ? current : "",
+          );
+        })
+        .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [ticker, model, name, tradedOnly, version]);
+
+  const picks = found?.picks ?? [];
+  const pick = picks.find((candidate) => candidate.candidate_id === chosen);
+
+  const add = async () => {
+    if (!pick) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      rememberOperator(operator.trim());
+      const added = await api.addCandidate({
+        run: pick.run,
+        ticker: pick.ticker,
+        cell: pick.rank,
+        operator: operator.trim(),
+      });
+      setNote(`Added ${added.id}.`);
+      setVersion((value) => value + 1);
+      onAdded();
+    } catch (cause) {
+      setNote(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          Add an engine pick <span className="text-muted-foreground">· {found?.total ?? 0}</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Fund">
+            <Select value={ticker} onChange={(event) => setTicker(event.target.value)}>
+              <option value="">All funds</option>
+              {(found?.funds ?? []).map((fund) => (
+                <option key={fund}>{fund}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Algorithm">
+            <Select value={model} onChange={(event) => setModel(event.target.value)}>
+              <option value="">All algorithms</option>
+              {(found?.models ?? []).map((id) => (
+                <option key={id}>{id}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Run name contains">
+            <Input value={name} onChange={(event) => setName(event.target.value)} />
+          </Field>
+          <label className="flex items-center gap-1.5 pb-2 text-xs">
+            <Checkbox
+              checked={tradedOnly}
+              onChange={(event) => setTradedOnly(event.target.checked)}
+            />
+            Hide picks that never traded
+          </label>
+        </div>
+        <Field label={`Engine pick, best return over drawdown first${found && found.total > picks.length ? ` (top ${picks.length} of ${found.total}: narrow the filters)` : ""}`}>
+          <Select
+            className="w-full"
+            value={chosen}
+            onChange={(event) => setChosen(event.target.value)}
+          >
+            <option value="">{picks.length === 0 ? "No engine picks match" : "Choose one…"}</option>
+            {picks.map((candidate) => (
+              <option key={candidate.candidate_id} value={candidate.candidate_id}>
+                {pickLabel(candidate)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {pick ? (
+          <p className="text-xs text-muted-foreground">
+            Run {pick.run}
+            {pick.name ? ` (${pick.name})` : ""}, {pick.start?.slice(0, 10) ?? "?"} to{" "}
+            {pick.end?.slice(0, 10) ?? "?"} · {pick.m.total_trades ?? 0} trades · return/drawdown{" "}
+            {pick.m.return_over_drawdown ?? "--"}. Web backtests are level-fill and zero-cost: a
+            pick with very many trades will not hold up at a real broker.
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Your name">
+            <Input value={operator} onChange={(event) => setOperator(event.target.value)} />
+          </Field>
+          <Button
+            disabled={busy || !pick || pick.added || operator.trim() === ""}
+            onClick={() => void add()}
+          >
+            Add as candidate
+          </Button>
+          {pick?.added ? (
+            <span className="pb-2 text-xs text-muted-foreground">Already a candidate.</span>
+          ) : null}
+          {note ? <span className="pb-2 text-xs text-muted-foreground">{note}</span> : null}
+        </div>
+        {error ? <p className="text-xs text-loss">{error}</p> : null}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -28,13 +28,13 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from engine.core.exceptions import ConfigurationError
 from engine.promotion_record import build_record, evaluate
 from research.strategies import live_profiles
-from server import history, live_control, live_registry
+from server import history, history_query, live_control, live_registry
 
 router = APIRouter(prefix="/api/algorithms", tags=["algorithms"])
 
@@ -169,6 +169,32 @@ class CandidateRequest(BaseModel):
     operator: str = Field(..., min_length=1, max_length=80)
 
 
+def _candidate_id(model: str, params: dict[str, Any], ticker: str, run: str, cell: int) -> str:
+    names = _composed_names(params) if model == "composed" else None
+    stem = f"{names[0]}-x-{names[1]}" if names else model
+    return _slug(f"{stem}-{ticker}-{run[:6]}-{cell}")[:60].strip("-")
+
+
+@router.get("/picks")
+def engine_picks(
+    ticker: str | None = Query(None, max_length=16),
+    model: str | None = Query(None, max_length=80),
+    name: str = Query("", max_length=80),
+    traded_only: bool = True,
+    limit: int = Query(100, ge=1, le=500),
+) -> dict[str, Any]:
+    """The engine's pick of every stored run (rank 0), filtered, for the tab's
+    menu. Each carries the id it would be added under and whether it is."""
+    found = history_query.picks(ticker, model, name, traded_only, limit)
+    kept = {c["id"] for c in candidates()}
+    for pick in found["picks"]:
+        pick["candidate_id"] = _candidate_id(
+            str(pick["model"] or ""), pick.pop("params"), pick["ticker"], pick["run"], pick["rank"]
+        )
+        pick["added"] = pick["candidate_id"] in kept
+    return found
+
+
 @router.get("")
 def list_algorithms() -> dict[str, Any]:
     return {"candidates": [_wire(c) for c in candidates()]}
@@ -187,8 +213,7 @@ def add_candidate(body: CandidateRequest) -> dict[str, Any]:
     model = str(summary.get("model") or "")
     metrics = cell.get("m") or {}
     names = _composed_names(cell.get("params") or {}) if model == "composed" else None
-    stem = f"{names[0]}-x-{names[1]}" if names else model
-    candidate_id = _slug(f"{stem}-{body.ticker}-{body.run[:6]}-{body.cell}")[:60].strip("-")
+    candidate_id = _candidate_id(model, cell.get("params") or {}, body.ticker, body.run, body.cell)
     if not model or not _ID.match(candidate_id):
         raise HTTPException(status_code=422, detail="This run has no usable strategy id.")
     if _candidate_path(candidate_id).exists():

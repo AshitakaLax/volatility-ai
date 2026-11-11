@@ -11,6 +11,10 @@
   },
   "respectGitignore": true,
   "permissions": {
+    "allow": [
+      "Bash(docker *)",
+      "Bash(docker compose *)"
+    ],
     "deny": [
       "Read(**/__pycache__/**)",
       "Read(**/*.pyc)",
@@ -23,7 +27,7 @@
       "Read(.env)",
       "Read(.env.*)",
       "Read(state/**)",
-      "Read(data/**)",
+      "Read(/data/**)",
       "Read(output/**)",
       "Read(logs/**)",
       "Read(**/*.db)",
@@ -35,7 +39,6 @@
       "Read(Portfolio_Positions*.csv)",
       "Read(.fidelity_recon/**)",
       "Read(recon_*.json)",
-      "Read(**/*.har)",
       "Read(**/*.parquet)",
       "Read(**/*.duckdb)",
       "Read(web/node_modules/**)",
