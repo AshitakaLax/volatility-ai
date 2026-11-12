@@ -114,6 +114,12 @@ CHECK_BEFORE_OPEN_MINUTES = (30, 10)
 # A connection that must be read before trading (module docstring, READ
 # BEFORE TRADING) and failed its check is checked again this often.
 CHECK_RETRY_SECONDS = 120.0
+# COLLECT: option-market readings (fidelity_gateway/options_live.py), once a
+# trading day after its close. Tried again this often, this many times, and
+# not at all once the close is this far behind.
+COLLECT_RETRY_SECONDS = 600.0
+COLLECT_ATTEMPTS = 3
+COLLECT_WINDOW_SECONDS = 4 * 3600.0
 # Not ready this close to the open (or during a session): the extension is
 # told "paused", so its badge turns amber.
 NOT_READY_WARNING_MINUTES = 15
@@ -249,6 +255,18 @@ ServerFactory = Callable[..., BridgeServer]
 Checker = Callable[..., str]
 
 
+def last_close(now: float, sessions: tuple = ("regular",)) -> datetime | None:
+    """The close of today's trading day (ET) if it has passed, else None:
+    before it, and on a day with no session, nothing has closed today."""
+    from engine.core.venue_sessions import VenueCalendar
+
+    moment = datetime.fromtimestamp(now, EASTERN)
+    span = VenueCalendar("fidelity", sessions).day_span(moment.date())
+    if span is None or moment < span[1]:
+        return None
+    return span[1]
+
+
 class BridgeHost:
     """The deployment's bridge, its local socket, its status and its journal.
 
@@ -262,6 +280,10 @@ class BridgeHost:
     runs the read-only account check and returns what it found, raising on
     failure. `inbox` is the host's own control directory (bridge/): its
     status, events and the Live page's check_connection commands.
+    `collect(page)` reads the option-market readings and returns what it
+    did; `collect_after()` is how many minutes after the close it is due,
+    or None for never (COLLECT, above). It runs only with nothing attached,
+    shares the account check's lock, and never navigates.
     """
 
     def __init__(
@@ -280,8 +302,16 @@ class BridgeHost:
         make_notifier: Callable[[NotifySettings, Notifications], NotificationServer] | None = None,
         sessions: Callable[[], tuple] | None = None,
         book: Callable[[float], dict | None] | None = None,
+        collect: Callable[[Any], str] | None = None,
+        collect_after: Callable[[], int | None] | None = None,
     ) -> None:
         self._make_server = make_server
+        self._collect = collect
+        self._collect_after = collect_after
+        self._collected: set[str] = set()  # trading days done, or given up on
+        self._collect_tries: dict[str, int] = {}
+        self._next_collect = 0.0
+        self.last_collect: dict | None = None
         # The trading book apps are shown (book.py): read_book bound to the
         # trader's ledger and journal, or None for a bridge with no trader.
         self._book_source = book
@@ -811,6 +841,78 @@ class BridgeHost:
             "again: the last check failed" if checked else "the extension connected",
         )
 
+    def run_collect(self, day: str) -> dict:
+        """The option-market readings for trading day `day`, through the
+        extension. Returns {"at", "ok", "detail", "day"}; never raises.
+        Shares the account check's lock, so the two never interleave."""
+        if not self._check_lock.acquire(blocking=False):
+            return {
+                "at": _iso(self._clock()),
+                "ok": False,
+                "detail": "a check is running",
+                "day": day,
+            }
+        try:
+            self._collect_tries[day] = self._collect_tries.get(day, 0) + 1
+            if self._attached is not None:
+                detail, ok = "a trading session is attached", False
+            elif not self.server.connected:
+                detail, ok = "no extension is connected", False
+            else:
+                feed = _Feed(self)
+                with self._lock:
+                    for name, data in self._replay():
+                        if name in ("request", "tab"):
+                            feed.put(name, data)
+                    self._feeds.add(feed)
+                try:
+                    from fidelity_gateway.bridge.page import BridgePage
+
+                    detail, ok = self._collect(BridgePage(feed)), True
+                except Exception as exc:
+                    detail, ok = f"{type(exc).__name__}: {exc}", False
+                finally:
+                    with self._lock:
+                        self._feeds.discard(feed)
+            result = {"at": _iso(self._clock()), "ok": ok, "detail": str(detail), "day": day}
+        finally:
+            self._check_lock.release()
+        last = self._collect_tries[day] >= COLLECT_ATTEMPTS
+        if ok or last:
+            self._collected.add(day)
+        self.last_collect = result
+        self._journal(
+            "options",
+            f"Option readings for {day} "
+            + ("collected: " if ok else "not collected" + (" (giving up)" if last else "") + ": ")
+            + result["detail"],
+            ok=ok,
+            day=day,
+        )
+        return result
+
+    def _auto_collect(self, now: float) -> None:
+        """Once a trading day, `collect_after()` minutes after its close,
+        with an extension connected and nothing attached (COLLECT)."""
+        if self._collect is None or self._collect_after is None:
+            return
+        try:
+            minutes = self._collect_after()
+        except Exception:
+            return
+        if not minutes:
+            return
+        closed = last_close(now, self._sessions)
+        if closed is None:
+            return
+        day, since = closed.date().isoformat(), now - closed.timestamp()
+        if day in self._collected or since < minutes * 60 or since > COLLECT_WINDOW_SECONDS:
+            return
+        if not self.server.connected or self._attached is not None or now < self._next_collect:
+            return
+        self._next_collect = now + COLLECT_RETRY_SECONDS
+        self._spawn(self.run_collect, "bridge-host-options", day)
+
     def poll_commands(self) -> list[dict]:
         """Apply the Live page's check_connection commands, from the host's
         own inbox. Returns the results written."""
@@ -884,6 +986,7 @@ class BridgeHost:
         )
         self._tell_extension(verdict, window, now)
         self._auto_check(now, window, report)
+        self._auto_collect(now)
         self._send_connection(report, now)
         self._publish_app_status(verdict, window, now)
         self._publish_book(now)
@@ -1198,9 +1301,9 @@ class BridgeHost:
 
 
 def _extension_side(bridge) -> Any:
-    """live.fidelity.bridge without its notifications: what the extension's
-    connection depends on."""
-    return dataclasses.replace(bridge, notifications=None)
+    """live.fidelity.bridge without its notifications and its option
+    collection: what the extension's connection depends on."""
+    return dataclasses.replace(bridge, notifications=None, options=None)
 
 
 def _notify_side(bridge) -> Any:
@@ -1255,5 +1358,6 @@ __all__ = [
     "STATUS_SECONDS",
     "BridgeHost",
     "account_checker",
+    "last_close",
     "session_window",
 ]

@@ -82,6 +82,20 @@ live:
       # deployment -- kept beside --state-db as algorithm.json, applied at
       # the next tick. Nothing else (account, symbol, limits) can change.
       allow_algorithm_changes: false
+      # Option-market readings, collected by the fidelity-bridge service once a
+      # trading day, `after_close_minutes` after the close and only while no
+      # trading loop is attached: each fund's volatility percentiles, put/call
+      # ratios, at-the-money IV, skew and near-chain gamma, appended to
+      # data/external/fidelity_<SYMBOL>_<READING>.csv. Three read-only GETs of
+      # market data through the extension (0.8.0 or newer); no account is
+      # named and nothing is navigated. The funds need not be the one this
+      # deployment trades. Off while `symbols` is empty. An edit is picked up
+      # within 30 s without dropping the extension.
+      options:
+        symbols: []                   # e.g. [TQQQ]
+        after_close_minutes: 10
+        strikes: 10                   # around the money, per expiration
+        expirations: 5                # the nearest ones
       # Notifications on your phone: the Fidelity Bridge Notifier app
       # (fidelity-bridge-notifier-android/) connects to the fidelity-bridge
       # service here, between sessions too, with its own key (`python -m

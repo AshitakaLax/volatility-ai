@@ -523,6 +523,6 @@ def is_live_earnings_reaction_day_at(
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=UTC)
     day = timestamp.astimezone(EASTERN_TZ).date()
-    if is_earnings_reaction_day(day):
-        return True
-    return day in (later_reaction_dates() if later is None else later)
+    return day in EARNINGS_REACTION_DATES or day in (
+        later_reaction_dates() if later is None else later
+    )

@@ -243,11 +243,16 @@ services:
       # The trader's ledger, read-only: the open lots in the book the phone
       # app is shown (fidelity_gateway/bridge/book.py).
       VAI_STATE_DB: /app/state/fidelity_ledger.db
+      # Where the option-market readings it collects after each close go
+      # (live.fidelity.bridge.options; fidelity_gateway/options_live.py):
+      # beside the series market-inputs keeps, and nowhere else in ./data.
+      VAI_EXTERNAL_DIR: /app/data/external
     volumes:
       - ./config:/app/config:ro
       - control_fidelity:/app/control
       - bridge_fidelity:/app/bridge
       - state_fidelity:/app/state:ro
+      - ./data/external:/app/data/external
 
   fidelity:
     <<: *trader

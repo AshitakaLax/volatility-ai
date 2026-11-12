@@ -41,7 +41,8 @@ python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <numb
 | `placing_broker.py` | The **write** path: places and cancels real orders behind five explicit gates, journals each confNum before committing, and reads the journal back at construction. A separate class so a preview caller cannot reach it by accident. |
 | `capture.py` | Records the browser's own JSON traffic to a HAR-like capture. |
 | `analyze_har.py` | Reads a DevTools HAR export; `--redact` scrubs one before it leaves the machine. |
-| `options_capture.py` | Reads Trader+'s option replies for a fund out of a DevTools HAR (`key-statistics`, `option-expirations`, `slo-chain`): implied and historical volatility percentiles, put/call ratios, at-the-money IV, 25-delta skew, near-chain dealer gamma. `--out` appends each as a `timestamp,close` series stamped at the capture. One capture is one moment; collecting them unattended would mean those endpoints joining both allowlists. |
+| `options_capture.py` | Reads Trader+'s option replies for a fund out of a DevTools HAR (`key-statistics`, `option-expirations`, `slo-chain`): implied and historical volatility percentiles, put/call ratios, at-the-money IV, 25-delta skew, near-chain dealer gamma. `--out` appends each as a `timestamp,close` series stamped at the capture. One capture is one moment. |
+| `options_live.py` | The same readings read live: three GETs of market data (`session.READ_ONLY_GET_ENDPOINTS`, the extension's `get` command from 0.8.0) through a `FidelitySession`. The bridge host runs it once a trading day after the close, with nothing attached, for `live.fidelity.bridge.options.symbols` (off while empty), and appends to `data/external/`. Never navigates, previews or places. |
 | `recon.py` | Reconnaissance, not reconciliation: with `--cdp-url`, records your browser's traffic while you use it. Its launched-browser modes are kept for the record; Fidelity refuses them. |
 | `quotes.py` | `FidelityQuotes`: Fidelity's real-time quote (`getquote`, read-only) as the engine's second data source (`engine/core/quotes.QuoteSource`, `live.secondary_feed`). Its time fields (the bid and ask's, and the last trade's, separately: before the open Fidelity's last is yesterday's close) are not captured yet, so no quote is used until they are. |
 | `place_test_order.py` | Places one small order through the gated adapter — the manual end-to-end check. `--check-only` is the recovery report; `--bridge` goes through the extension instead of a debugging port. |
@@ -71,8 +72,12 @@ implement.
   (default: this computer) or on `--block-client`. The extension refuses
   engines outside its own allowed and blocked lists.
 - **Nothing is ever sent as a script.** `BridgePage.evaluate` accepts
-  only `session.FETCH_SCRIPT` and turns it into the extension's fixed
-  `fetch` command.
+  only `session.FETCH_SCRIPT` and `session.GET_SCRIPT` and turns them into
+  the extension's fixed `fetch` and `get` commands.
+- **A GET reads market data only.** `session.get_json` and the extension's
+  `get` share one list of three option pages and the query names each
+  takes (`READ_ONLY_GET_ENDPOINTS`; a test holds the two equal). The engine
+  sets no header and no body, and allowing trading widens nothing.
 - **Refused versus possibly sent.** A refusal made before anything was
   sent is a `BridgeRefusal`, which is a `ConfigurationError`. Anything
   that might have reached Fidelity is a `BridgeError`. `FidelitySession`

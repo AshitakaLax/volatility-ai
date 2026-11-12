@@ -309,6 +309,24 @@ docker compose run --rm market-data --list              # the funds, and how eac
 A new fund is added in two places: `FUNDS` in `tools/refresh_warehouse.py`
 and `KNOWN_DATA` in `tools/export_ui_data.py` (a test holds them equal).
 
+### Option readings, after each close
+
+With `live.fidelity.bridge.options.symbols` set in `config/fidelity_live.yaml`
+(for example `[TQQQ]`), the `fidelity-bridge` service reads each fund's
+option-market readings ten minutes after the close, while no trading loop
+is attached, and appends them to `data/external/fidelity_<SYMBOL>_<READING>.csv`.
+It needs the extension at 0.8.0 or newer:
+
+```bash
+git submodule update --init
+python -m fidelity_gateway.bridge build-extension      # then Reload now in the extension's popup
+docker compose --profile fidelity up -d --build fidelity-bridge
+```
+
+`docker compose logs fidelity-bridge` and the bridge's event journal
+(`options` events) say what each day's collection did. An older extension
+is named in that line; the trading path is unaffected either way.
+
 ### Outside series, twice daily
 
 `market-inputs` keeps every series in `research/ml/sources.py` current

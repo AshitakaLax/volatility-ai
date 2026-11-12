@@ -405,9 +405,20 @@ def run_host(args: argparse.Namespace, stop: threading.Event | None = None) -> i
     def book(now: float) -> dict | None:
         return read_book(state_db, trader_inbox, symbol=settings()[1], now=now)
 
+    from fidelity_gateway.options_live import options_collector
+
+    def options():
+        return settings()[0].bridge.options
+
+    def collect_after() -> int | None:
+        chosen = options()
+        return chosen.after_close_minutes if chosen.symbols else None
+
     host = BridgeHost(
         make_server=make_server,
         settings=settings,
+        collect=options_collector(options),
+        collect_after=collect_after,
         socket_path=args.socket,
         inbox=inbox,
         check=account_checker(settings),

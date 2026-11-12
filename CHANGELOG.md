@@ -1,5 +1,37 @@
 # Changelog
 
+## Feature: option-market readings collected daily through the Fidelity bridge, and the event calendars extended
+
+**The owner asked for TQQQ's option chain to be collected through the
+extension, and for the two event calendars that had run out to be fixed.**
+
+- **The extension has a `get` command (0.8.0)** for three Trader+
+  market-data pages: a fund's volatility statistics, its option
+  expirations and its option chain. Each path lists the only query
+  parameters it may carry; the engine sets no header and no body, the
+  order log is not told, and allowing trading widens nothing.
+  `session.get_json` mirrors it (`READ_ONLY_GET_ENDPOINTS`), and a test
+  holds the two lists equal. `fetch` is unchanged.
+- **The bridge host collects once a trading day**
+  (`fidelity_gateway/options_live.py`), `after_close_minutes` after the
+  close and only with no trading loop attached, for
+  `live.fidelity.bridge.options.symbols` (off while empty; an edit does
+  not restart the bridge). Readings are appended to
+  `data/external/fidelity_<SYMBOL>_<READING>.csv`. It shares the account
+  check's lock, never navigates, retries three times and then leaves the
+  day.
+- **One thing a capture could not settle:** whether Trader+ writes a day
+  below ten as `12/04/2026` or `12/4/2026` in the chain's query. The
+  padded form is asked first and the other when it comes back empty; the
+  host's journal says which worked.
+- **No history exists yet**, so nothing trades on these readings.
+- **The FOMC list runs to 2027-12-08 and the earnings list to
+  2026-11-03.** Both had ended in July 2026, so event-day and earnings-day
+  sizing had been off since. A live loop now also reads
+  `data/external/earnings_reaction_days.csv`, which `market-inputs`
+  rewrites from EDGAR, for sessions after the list's last; a backtest
+  reads the list alone, so its flags are the same on every machine.
+
 ## Feature: add any engine pick as a candidate from the Algorithms tab
 
 The tab's new "Add an engine pick" card lists the engine's pick (the cell a
