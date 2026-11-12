@@ -263,10 +263,10 @@ after, which is when the sizing reads it, but the next release date is not.
   a series: IV30 and HV30 percentiles, put/call volume and open interest, at-the-money IV,
   25-delta skew, near-chain dealer gamma. That day: IV30 at its 56th percentile with HV30 at its
   100th, a 15.6-point 25-delta skew a week out, put/call volume 0.77. One capture is one moment
-  and measures nothing. Collecting daily without a person saving a capture means the three
-  endpoints joining `session.READ_ONLY_ENDPOINTS` and the extension's allowlist, a change to
-  the real-money bridge and the owner's to make. A signal can be tested only once months of it
-  exist.
+  and measures nothing. From extension 0.8.0 the bridge host collects them itself, once a
+  trading day after the close with no trading loop attached
+  (`live.fidelity.bridge.options.symbols`, `fidelity_gateway/options_live.py`): three GETs of
+  market data, with no account named. A signal can be tested only once months of it exist.
 
 ## Reproduce
 

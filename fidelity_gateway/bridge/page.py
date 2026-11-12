@@ -10,7 +10,8 @@ gate in it -- works unchanged, and so does every broker built on it.
 Two properties are kept on purpose:
 
   * evaluate() runs NO script. It accepts only session.FETCH_SCRIPT and
-    turns its arguments into the extension's fixed `fetch` command;
+    session.GET_SCRIPT and turns their arguments into the extension's
+    fixed `fetch` and `get` commands;
     anything else is refused before it leaves the engine. The extension
     could not run a script anyway -- this makes the refusal local and
     loud rather than a remote error code.
@@ -29,7 +30,7 @@ import time
 from typing import Any
 
 from fidelity_gateway.bridge.server import BridgeRefusal, BridgeServer
-from fidelity_gateway.session import FETCH_SCRIPT
+from fidelity_gateway.session import FETCH_SCRIPT, GET_SCRIPT
 
 NAVIGATION_TIMEOUT_SECONDS = 45.0
 # Slack on top of the fetch's own timeout, for the round trip to the
@@ -114,6 +115,11 @@ class BridgePage:
         self.wait_for_timeout(self._settle_seconds * 1000)
 
     def evaluate(self, script: str, arg: Any = None) -> dict:
+        if script == GET_SCRIPT:
+            path, query, timeout_ms = arg
+            return self._send(
+                "get", {"path": path, "query": query, "timeoutMs": int(timeout_ms)}, timeout_ms
+            )
         if script != FETCH_SCRIPT:
             raise BridgeRefusal(
                 "The Fidelity bridge runs no scripts. It sends Fidelity JSON requests "
@@ -121,11 +127,16 @@ class BridgePage:
                 code="no_scripts",
             )
         path, payload, headers, timeout_ms = arg
-        self._drain()
-        result = self._server.request(
+        return self._send(
             "fetch",
             {"path": path, "body": payload, "headers": headers, "timeoutMs": int(timeout_ms)},
-            timeout=int(timeout_ms) / 1000 + REQUEST_SLACK_SECONDS,
+            timeout_ms,
+        )
+
+    def _send(self, command: str, args: dict, timeout_ms: float) -> dict:
+        self._drain()
+        result = self._server.request(
+            command, args, timeout=int(timeout_ms) / 1000 + REQUEST_SLACK_SECONDS
         )
         tab_url = result.get("tabUrl")
         if isinstance(tab_url, str) and tab_url:

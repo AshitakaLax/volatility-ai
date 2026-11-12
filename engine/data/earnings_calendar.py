@@ -11,6 +11,10 @@ rather than a placeholder for a "real" one. Unlike FOMC dates these
 are not published a year ahead, but every date below is in the PAST
 relative to this repo's data cutoff, so there is nothing to forecast.
 
+That is also why a static list cannot be the whole of it for a LIVE loop:
+a reaction session is known only the evening before, and the list ended
+2026-07-31 while seven more went by unflagged. See LIVE, below.
+
 --------------------------------------------------------------------
 WHAT COUNTS AS AN "EARNINGS REACTION DAY" HERE, AND WHY
 
@@ -45,7 +49,9 @@ same day as GOOGL and would only duplicate dates.
 385 announcements collapse to 296 unique sessions (11.1% of the
 2672 in this repo's TQQQ dataset) because mega-caps cluster their
 reporting into the same few weeks each quarter. 14 of those
-sessions are also FOMC decision days.
+sessions are also FOMC decision days. (As generated, through
+2026-07-31. Seven sessions were added on 2026-11-12, making 303; none
+is an FOMC decision day.)
 
 --------------------------------------------------------------------
 MEASURED EFFECT
@@ -73,6 +79,32 @@ The announcement-to-reaction mapping was verified independently
 against Alpaca SIP daily bars (the gap table above), so the dates here
 do not rest on Yahoo's timestamps alone.
 
+The seven sessions from 2026-08-27 to 2026-11-03 are from SEC EDGAR
+instead: each company's 8-K under Item 2.02, stamped the second the
+filing was accepted, mapped to its reaction session the same way
+(tools/refresh_external.py). Over the list as generated, EDGAR's
+reaction sessions for these nine companies are 98.9% in it.
+
+--------------------------------------------------------------------
+LIVE: THE LIST, AND WHAT CAME AFTER IT
+
+A backtest reads EARNINGS_REACTION_DATES alone: the same flags on every
+machine that runs it, a sweep shard included.
+
+A live loop also reads data/external/earnings_reaction_days.csv
+(VAI_EXTERNAL_DIR), which tools/refresh_external.py -- the compose
+market-inputs service -- rewrites from EDGAR every evening and again at
+07:30 Eastern: `date,symbols`, one row a reaction session. Only rows
+dated AFTER the last entry below are taken, and only for the companies
+above, so the file can add to the list and never alter it. A loop starts
+each session cold and reads it then. Without the file the list stands
+alone, as before.
+
+When the file runs ahead of the list, tools/refresh_external.py names
+the sessions the list lacks on every run and tools/preflight.py warns:
+adding them below keeps backtests of those sessions in step with what
+traded.
+
 --------------------------------------------------------------------
 JOIN SEMANTICS
 
@@ -82,11 +114,18 @@ imported from fomc_calendar rather than redefined, so the two
 calendars cannot drift apart on timezone handling.
 """
 
+import os
 from datetime import UTC, date, datetime
+from functools import lru_cache
+from pathlib import Path
 
 # Imported, not redefined: fomc_calendar already owns the Eastern zone,
 # and two copies of that could disagree.
 from engine.data.fomc_calendar import EASTERN_TZ
+
+#: Where the live loop's later sessions come from (module docstring, LIVE).
+EXTERNAL_DIR_ENV = "VAI_EXTERNAL_DIR"
+REACTION_FILE = "earnings_reaction_days.csv"
 
 MEGA_CAP_SYMBOLS: tuple[str, ...] = (
     "AAPL",
@@ -410,6 +449,14 @@ EARNINGS_REACTION_DATES: frozenset[date] = frozenset(
         (2026, 7, 23),
         (2026, 7, 30),
         (2026, 7, 31),
+        # 2026, from SEC EDGAR (module docstring, PROVENANCE): 7 sessions
+        (2026, 8, 27),  # NVDA
+        (2026, 9, 3),  # AVGO
+        (2026, 10, 21),  # NFLX
+        (2026, 10, 22),  # META, TSLA
+        (2026, 10, 29),  # GOOGL, MSFT
+        (2026, 10, 30),  # AMZN
+        (2026, 11, 3),  # AAPL
     ]
 )
 
@@ -429,3 +476,53 @@ def is_earnings_reaction_day_at(timestamp: datetime) -> bool:
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=UTC)
     return is_earnings_reaction_day(timestamp.astimezone(EASTERN_TZ).date())
+
+
+def read_later_reaction_dates(path: Path | str) -> frozenset[date]:
+    """The reaction sessions in `path` (`date,symbols` rows) dated after
+    the list's last entry, for the companies in MEGA_CAP_SYMBOLS. A file
+    that is missing or unreadable, and a row that is not a date, give
+    nothing: the list then stands alone."""
+    last = max(EARNINGS_REACTION_DATES)
+    found = set()
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return frozenset()
+    for line in lines[1:]:
+        day_text, _, symbols = line.partition(",")
+        try:
+            day = date.fromisoformat(day_text.strip())
+        except ValueError:
+            continue
+        if day > last and day.weekday() < 5 and set(symbols.split()) & set(MEGA_CAP_SYMBOLS):
+            found.add(day)
+    return frozenset(found)
+
+
+def reaction_file() -> Path:
+    """data/external/earnings_reaction_days.csv, or VAI_EXTERNAL_DIR's."""
+    named = os.environ.get(EXTERNAL_DIR_ENV)
+    root = Path(named) if named else Path(__file__).resolve().parents[2] / "data" / "external"
+    return root / REACTION_FILE
+
+
+@lru_cache(maxsize=1)
+def later_reaction_dates() -> frozenset[date]:
+    """read_later_reaction_dates(reaction_file()), read once a process: a
+    live loop is one session, started cold."""
+    return read_later_reaction_dates(reaction_file())
+
+
+def is_live_earnings_reaction_day_at(
+    timestamp: datetime, later: frozenset[date] | None = None
+) -> bool:
+    """is_earnings_reaction_day_at for a LIVE loop: the list, or a session
+    after it in `later` (default: later_reaction_dates()). See the module
+    docstring, LIVE."""
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    day = timestamp.astimezone(EASTERN_TZ).date()
+    return day in EARNINGS_REACTION_DATES or day in (
+        later_reaction_dates() if later is None else later
+    )

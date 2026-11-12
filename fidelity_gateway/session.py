@@ -80,6 +80,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import time
 from typing import Any
 
@@ -99,6 +100,26 @@ READ_ONLY_ENDPOINTS = frozenset(
         "/ftgw/digital/trade-equity/getquote",
     }
 )
+
+# Market data the Trader+ page reads with a plain GET: a fund's volatility
+# statistics, its option expirations and its option chain. Nothing here
+# names an account. Each path lists the ONLY query parameters it may carry
+# -- the extension's own list (READ_ONLY_GET_ENDPOINTS in its endpoints.js)
+# names the same paths and parameters, and a test holds the two equal.
+# A GET goes out with `accept` alone: the page sends these with no CSRF
+# token or appid, so none is replayed.
+READ_ONLY_GET_ENDPOINTS: dict[str, frozenset[str]] = {
+    "/ftgw/digital/traderplus-api/api/key-statistics/v1": frozenset({"underlying"}),
+    "/ftgw/digital/traderplus-api/api/option-expirations/v1": frozenset({"symbol"}),
+    "/ftgw/digital/traderplus-api/api/slo-chain/v1": frozenset(
+        {"strikes", "expirationDates", "settlementTypes", "symbol", "adjustedOptionsData"}
+    ),
+}
+
+# Tickers, counts, dates and settlement types, comma-separated: what the
+# extension lets through. Nothing that could start another parameter.
+_QUERY_VALUE = re.compile(r"^[A-Za-z0-9 ,/|.^_-]*$")
+_MAX_QUERY_VALUE = 2000
 
 # PREVIEW is separated from PLACE, and the split is load-bearing.
 #
@@ -216,6 +237,29 @@ async ([path, payload, headers, timeoutMs]) => {
             method: "POST",
             headers: headers,
             body: JSON.stringify(payload),
+            credentials: "same-origin",
+            signal: controller.signal,
+        });
+        const text = await response.text();
+        return {status: response.status, url: response.url, body: text};
+    } finally {
+        clearTimeout(timer);
+    }
+}
+"""
+
+
+# The GET twin of FETCH_SCRIPT, for READ_ONLY_GET_ENDPOINTS: no body, one
+# header. Over the extension bridge it becomes the fixed `get` command.
+GET_SCRIPT = """
+async ([path, query, timeoutMs]) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const search = new URLSearchParams(query).toString();
+        const response = await fetch(search ? path + "?" + search : path, {
+            method: "GET",
+            headers: {accept: "application/json"},
             credentials: "same-origin",
             signal: controller.signal,
         });
@@ -482,7 +526,41 @@ class FidelitySession:
 
         return self._interpret(path, result)
 
-    def _interpret(self, path: str, result: dict) -> Any:
+    def get_json(self, path: str, query: dict[str, str] | None = None) -> Any:
+        """GET `path` from inside the authenticated page, with `query`.
+
+        Only a path in READ_ONLY_GET_ENDPOINTS, only the parameters it
+        lists, only values of the characters a ticker, a count or a date
+        is written in. It needs no captured token: these are the page's
+        own cookie-only reads.
+        """
+        allowed = READ_ONLY_GET_ENDPOINTS.get(path)
+        if allowed is None:
+            raise ConfigurationError(
+                f"{path} is not a Fidelity page this session reads with a GET. Add it to "
+                "READ_ONLY_GET_ENDPOINTS in fidelity_gateway/session.py -- and to the "
+                "extension's list -- after confirming from a capture what it is."
+            )
+        query = dict(query or {})
+        for name, value in query.items():
+            if name not in allowed:
+                raise ConfigurationError(f"{name!r} is not a parameter {path} takes")
+            if (
+                not isinstance(value, str)
+                or len(value) > _MAX_QUERY_VALUE
+                or not _QUERY_VALUE.match(value)
+            ):
+                raise ConfigurationError(f"the value of {name!r} is not one this session sends")
+        self.assert_authenticated()
+        try:
+            result = self._page.evaluate(GET_SCRIPT, [path, query, self._request_timeout_ms])
+        except ConfigurationError:
+            raise  # refused before anything was sent
+        except Exception as exc:
+            raise FidelitySessionError(f"GET {path} failed in the page: {exc}") from exc
+        return self._interpret(path, result, verb="GET")
+
+    def _interpret(self, path: str, result: dict, verb: str = "POST") -> Any:
         status = int(result.get("status", 0))
         body = result.get("body") or ""
         final_url = str(result.get("url") or "")
@@ -493,7 +571,7 @@ class FidelitySession:
         # empty order list.
         if _SIGNIN_MARKER in final_url:
             raise FidelitySessionExpired(
-                f"POST {path} was redirected to the sign-in flow ({final_url}); "
+                f"{verb} {path} was redirected to the sign-in flow ({final_url}); "
                 "the session has expired. Log in again."
             )
         if status in (401, 403):
@@ -506,7 +584,7 @@ class FidelitySession:
             service = service_of(path)
             if not self.headers_for(path):
                 raise FidelitySessionError(
-                    f"POST {path} returned {status}, and NO headers have been "
+                    f"{verb} {path} returned {status}, and NO headers have been "
                     f"observed for the {service!r} backend -- the request went out "
                     "without the appid/appname that backend expects.\n"
                     f"    observed so far: {list(self.observed_services) or 'none'}\n"
@@ -516,12 +594,12 @@ class FidelitySession:
                     "retry."
                 )
             raise FidelitySessionExpired(
-                f"POST {path} returned {status} using the {service!r} backend's own "
+                f"{verb} {path} returned {status} using the {service!r} backend's own "
                 "observed headers. The session or CSRF token is no longer valid; "
                 "log in again."
             )
         if status >= 400:
-            raise FidelitySessionError(f"POST {path} returned {status}: {body[:300]}")
+            raise FidelitySessionError(f"{verb} {path} returned {status}: {body[:300]}")
 
         try:
             return json.loads(body)
@@ -531,6 +609,6 @@ class FidelitySession:
             # error at column 1.
             hint = " (looks like HTML, not JSON)" if body.lstrip()[:1] == "<" else ""
             raise FidelitySessionError(
-                f"POST {path} returned {status} but the body did not parse as "
+                f"{verb} {path} returned {status} but the body did not parse as "
                 f"JSON{hint}: {body[:200]}"
             ) from exc

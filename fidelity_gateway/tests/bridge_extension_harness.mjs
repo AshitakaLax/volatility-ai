@@ -61,7 +61,68 @@ chrome.tabs.update = async (id, props) => {
 // Fidelity, as far as the test can tell.
 const placed = new Map();
 let previews = 0;
-chrome.scripting.executeScript = async ({ args: [path, body, headers] }) => {
+function optionReply(path, query) {
+  if (path.endsWith("/key-statistics/v1")) {
+    return {
+      underlyingsymbol: query.underlying,
+      iv30percentile: 56,
+      hv30percentile: 100,
+      callVolume: 40000,
+      putVolume: 30000,
+      avgCallVolume: 150000,
+      avgPutVolume: 150000,
+      callOpenInterest: 1000000,
+      putOpenInterest: 650000,
+    };
+  }
+  if (path.endsWith("/option-expirations/v1")) {
+    return {
+      expirations: [
+        { date: "2099-11-13", optionPeriodicity: "W" },
+        { date: "2099-11-20", optionPeriodicity: "M" },
+      ],
+    };
+  }
+  const callsAndPuts = [];
+  String(query.settlementTypes ?? "")
+    .split(",")
+    .filter(Boolean)
+    .forEach((settlement, n) => {
+      for (const [strike, delta] of [[54, 0.75], [56, 0.5], [58, 0.25]]) {
+        callsAndPuts.push({
+          expirationData: { date: settlement.split("|")[0], daysToExpiration: 1 + 6 * n },
+          strike,
+          callImpliedVolatility: 0.8,
+          putImpliedVolatility: 0.9,
+          callDelta: delta,
+          putDelta: delta - 1,
+          callGamma: 0.04,
+          putGamma: 0.04,
+          callOpenInterest: 1000,
+          putOpenInterest: 400,
+          callIntrinsicValue: Math.max(0, 56 - strike),
+          putIntrinsicValue: Math.max(0, strike - 56),
+        });
+      }
+    });
+  return { underlyingSymbol: query.symbol, callsAndPuts, asked: query };
+}
+
+chrome.scripting.executeScript = async ({ func, args }) => {
+  // The extension's `get`: market data, by the page's own GET.
+  if (func?.name === "fidelityGetInPage") {
+    const [getPath, query] = args;
+    return [
+      {
+        result: {
+          status: 200,
+          url: `https://digital.fidelity.com${getPath}?${new URLSearchParams(query)}`,
+          body: JSON.stringify(optionReply(getPath, query)),
+        },
+      },
+    ];
+  }
+  const [path, body, headers] = args;
   const reply = { path, body, headers };
   if (path.endsWith("/previewSrvc")) {
     previews += 1;

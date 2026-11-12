@@ -538,6 +538,28 @@ def _parse_notifications(data) -> FidelityNotificationsConfig:
     )
 
 
+def _parse_options(data) -> FidelityOptionsConfig:
+    """live.fidelity.bridge.options. An unknown setting is refused, as the
+    notifications' are."""
+    if not isinstance(data, dict):
+        raise ConfigurationError(f"live.fidelity.bridge.options must be a mapping, got {data!r}")
+    unknown = set(data) - set(_OPTIONS_FIELDS)
+    if unknown:
+        raise ConfigurationError(
+            f"live.fidelity.bridge.options has no setting(s) {sorted(unknown)}; "
+            f"known: {list(_OPTIONS_FIELDS)}"
+        )
+    defaults = FidelityOptionsConfig()
+    return FidelityOptionsConfig(
+        symbols=_as_string_tuple(
+            data.get("symbols", defaults.symbols), "live.fidelity.bridge.options.symbols"
+        ),
+        after_close_minutes=data.get("after_close_minutes", defaults.after_close_minutes),
+        strikes=data.get("strikes", defaults.strikes),
+        expirations=data.get("expirations", defaults.expirations),
+    )
+
+
 def _parse_bridge(data: dict) -> FidelityBridgeConfig:
     defaults = FidelityBridgeConfig()
     return FidelityBridgeConfig(
@@ -562,6 +584,7 @@ def _parse_bridge(data: dict) -> FidelityBridgeConfig:
         notifications=_parse_notifications(
             {} if data.get("notifications") is None else data["notifications"]
         ),
+        options=_parse_options({} if data.get("options") is None else data["options"]),
     )
 
 
@@ -626,6 +649,37 @@ _NOTIFICATIONS_FIELDS = tuple(FidelityNotificationsConfig().to_dict())
 
 
 @dataclass(frozen=True)
+class FidelityOptionsConfig:
+    """Option-market readings the bridge host collects for `symbols` once a
+    trading day, `after_close_minutes` after its close and only while no
+    trading loop is attached (fidelity_gateway/options_live.py): each fund's
+    volatility statistics, its expirations, and `strikes` strikes around the
+    money for its nearest `expirations` expirations -- three read-only GETs
+    of market data through the extension, appended to data/external/ as
+    `fidelity_<SYMBOL>_<READING>.csv`.
+
+    Off while `symbols` is empty. The funds need not be the one the
+    deployment trades. An edit is picked up without dropping the extension.
+    """
+
+    symbols: tuple = ()
+    after_close_minutes: int = 10
+    strikes: int = 10
+    expirations: int = 5
+
+    def to_dict(self) -> dict:
+        return {
+            "symbols": list(self.symbols),
+            "after_close_minutes": self.after_close_minutes,
+            "strikes": self.strikes,
+            "expirations": self.expirations,
+        }
+
+
+_OPTIONS_FIELDS = tuple(FidelityOptionsConfig().to_dict())
+
+
+@dataclass(frozen=True)
 class FidelityBridgeConfig:
     """Where the engine listens for the Fidelity Bridge extension.
 
@@ -647,6 +701,7 @@ class FidelityBridgeConfig:
     # that describes the deployment grants that.
     allow_algorithm_changes: bool = False
     notifications: FidelityNotificationsConfig = field(default_factory=FidelityNotificationsConfig)
+    options: FidelityOptionsConfig = field(default_factory=FidelityOptionsConfig)
 
 
 @dataclass(frozen=True)
@@ -1321,6 +1376,24 @@ class BacktestConfig:
                 f"{bridge.allow_algorithm_changes!r}"
             )
         BacktestConfig._validate_fidelity_notifications(bridge)
+        BacktestConfig._validate_fidelity_options(bridge.options)
+
+    @staticmethod
+    def _validate_fidelity_options(options: FidelityOptionsConfig) -> None:
+        name = "live.fidelity.bridge.options"
+        for symbol in options.symbols:
+            if not symbol.strip() or not all(ch.isalnum() or ch in ".^-" for ch in symbol):
+                raise ConfigurationError(f"{name}.symbols has {symbol!r}, which is not a ticker")
+        for setting, low, high in (
+            ("after_close_minutes", 1, 240),
+            ("strikes", 2, 100),
+            ("expirations", 1, 20),
+        ):
+            value = getattr(options, setting)
+            if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+                raise ConfigurationError(
+                    f"{name}.{setting} must be a whole number from {low} to {high}, got {value!r}"
+                )
 
     @staticmethod
     def _validate_fidelity_notifications(bridge: FidelityBridgeConfig) -> None:
@@ -1448,6 +1521,7 @@ class BacktestConfig:
                                 "notifications": (
                                     self.live.fidelity.bridge.notifications.to_dict()
                                 ),
+                                "options": self.live.fidelity.bridge.options.to_dict(),
                             },
                         }
                     }

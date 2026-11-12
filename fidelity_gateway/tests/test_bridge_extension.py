@@ -44,6 +44,7 @@ from fidelity_gateway.session import (
     PLACE_ENDPOINTS,
     PREVIEW_ENDPOINTS,
     READ_ONLY_ENDPOINTS,
+    READ_ONLY_GET_ENDPOINTS,
     FidelitySession,
 )
 from fidelity_gateway.tests.bridge_support import API_KEY, EXTENSION_ROOT
@@ -599,6 +600,63 @@ def test_the_extension_and_the_engine_allow_the_same_endpoints_in_the_same_tiers
     assert _js_list(source, "READ_ONLY_ENDPOINTS") == set(READ_ONLY_ENDPOINTS)
     assert _js_list(source, "PREVIEW_ENDPOINTS") == set(PREVIEW_ENDPOINTS)
     assert _js_list(source, "PLACE_ENDPOINTS") == set(PLACE_ENDPOINTS)
+
+
+@needs_extension
+def test_the_extension_and_the_engine_read_the_same_pages_with_the_same_parameters():
+    """The GET allowlists: the same paths, and for each the same query names."""
+    source = ENDPOINTS_JS.read_text(encoding="utf-8")
+    block = re.search(
+        r"export const READ_ONLY_GET_ENDPOINTS = Object\.freeze\(\{(.*?)\n\}\);", source, re.S
+    )
+    assert block, "READ_ONLY_GET_ENDPOINTS not found in endpoints.js"
+    found = {
+        path: set(re.findall(r'"([^"]+)"', names))
+        for path, names in re.findall(
+            r'"(/[^"]+)": Object\.freeze\(\[(.*?)\]\)', block.group(1), re.S
+        )
+    }
+    assert found == {path: set(names) for path, names in READ_ONLY_GET_ENDPOINTS.items()}
+
+
+@needs_node
+def test_the_real_extension_serves_a_get_of_market_data_and_refuses_any_other(
+    make_server, extensions
+):
+    server = make_server()
+    extensions(server, settings={"allowPlace": True})
+    assert server.wait_for_extension(15)
+    session = FidelitySession(BridgePage(server), allow_order_endpoints=True)
+    session.attach()
+    statistics = "/ftgw/digital/traderplus-api/api/key-statistics/v1"
+    answer = session.get_json(statistics, {"underlying": "TQQQ"})
+    assert answer["underlyingsymbol"] == "TQQQ" and answer["iv30percentile"] == 56
+    # The extension's own list, asked directly: allowing trading widens nothing.
+    for path, query in ((PLACE, {}), (PENDING, {}), (statistics, {"account": "Z1"})):
+        with pytest.raises(BridgeRefusal) as caught:
+            server.request("get", {"path": path, "query": query}, timeout=15)
+        assert caught.value.code in PRE_SEND_CODES, path
+
+
+@needs_node
+def test_the_host_collects_option_readings_through_the_real_extension(
+    bridge_host, extensions, tmp_path
+):
+    """The whole path: the host's collector, a FidelitySession, the bridge,
+    the real extension's `get`, and the series on disk."""
+    from engine.core.config import FidelityOptionsConfig
+    from fidelity_gateway.options_live import options_collector
+
+    extensions(bridge_host.server)
+    assert bridge_host.server.wait_for_extension(15)
+    options = FidelityOptionsConfig(symbols=("TQQQ",), expirations=2)
+    bridge_host._collect = options_collector(lambda: options, lambda: tmp_path)
+    result = bridge_host.run_collect("2026-11-12")
+    assert result["ok"], result["detail"]
+    assert result["detail"] == "TQQQ: 10 reading(s) (padded dates)"
+    written = sorted(p.name for p in tmp_path.iterdir())
+    assert "fidelity_TQQQ_SKEW_25D.csv" in written and len(written) == 10
+    assert bridge_host.server.connected, "collecting never dropped the extension"
 
 
 @needs_extension

@@ -51,6 +51,24 @@ def test_the_session_that_first_trades_on_a_release(release, session):
     assert R.reaction_day(pd.Timestamp(release)) == session
 
 
+def test_the_engine_reads_the_file_this_writes(tmp_path):
+    """One name and one shape on both sides: the live loop's later reaction
+    sessions are exactly what a refresh wrote, for the engine's companies."""
+    from engine.data import earnings_calendar
+
+    assert R.REACTION_FILE == earnings_calendar.REACTION_FILE
+    assert set(R.REACTION_REPORTERS) == set(earnings_calendar.MEGA_CAP_SYMBOLS)
+    after = LAST_KNOWN + timedelta(days=30)
+    while after.weekday() != 2:
+        after += timedelta(days=1)
+    fresh = releases(
+        ("NVDA", f"{after} 16:21"), ("AAPL", f"{LAST_KNOWN - timedelta(days=400)} 16:30")
+    )
+    R.earnings_lines(tmp_path, after + timedelta(days=5), lambda: fresh)
+    later = earnings_calendar.read_later_reaction_dates(tmp_path / R.REACTION_FILE)
+    assert later == {after + timedelta(days=1)}
+
+
 def test_reaction_days_are_the_listed_reporters_only():
     found = R.reaction_days(
         releases(
@@ -173,10 +191,10 @@ def rows(report: preflight.Report) -> dict[str, tuple[str, str]]:
 def test_preflight_warns_when_a_calendar_a_boost_reads_has_run_out():
     report = preflight.Report()
     boosted = config(event_day_boost_multiplier=2.5, earnings_day_boost_multiplier=1.5)
-    preflight.check_outside_data(report, boosted, today=max(FOMC_DECISION_DATES))
+    preflight.check_outside_data(report, boosted, today=LAST_KNOWN + timedelta(days=10))
     found = rows(report)
     assert found["FOMC calendar"][0] == preflight.PASS
-    assert found["earnings calendar"][0] == preflight.PASS
+    assert found["earnings calendar"] == (preflight.PASS, f"to {LAST_KNOWN}")
 
     report = preflight.Report()
     late = max(max(FOMC_DECISION_DATES), LAST_KNOWN) + timedelta(days=200)
@@ -185,7 +203,24 @@ def test_preflight_warns_when_a_calendar_a_boost_reads_has_run_out():
     assert found["FOMC calendar"][0] == preflight.WARN
     assert "event-day sizing (x2.5) is off" in found["FOMC calendar"][1]
     assert found["earnings calendar"][0] == preflight.WARN
+    assert "market-inputs" in found["earnings calendar"][1]
     assert report.render() == 0  # a warning never fails the run
+
+
+def test_preflight_counts_the_sessions_the_refresh_service_has_added(tmp_path, monkeypatch):
+    """A live loop reads the list and the file; so does the check."""
+    recent = LAST_KNOWN + timedelta(days=150)
+    while recent.weekday() >= 5:
+        recent += timedelta(days=1)
+    (tmp_path / R.REACTION_FILE).write_text(f"date,symbols\n{recent},NVDA\n")
+    monkeypatch.setenv("VAI_EXTERNAL_DIR", str(tmp_path))
+    report = preflight.Report()
+    preflight.check_outside_data(
+        report, config(earnings_day_boost_multiplier=1.5), today=recent + timedelta(days=20)
+    )
+    status, detail = rows(report)["earnings calendar"]
+    assert status == preflight.PASS
+    assert detail == f"to {recent}, 1 session(s) from {R.REACTION_FILE}"
 
 
 def test_preflight_says_nothing_about_a_calendar_no_boost_reads():
