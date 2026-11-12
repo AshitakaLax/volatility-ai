@@ -158,19 +158,27 @@ def check_outside_data(report: Report, config, today=None) -> None:
             )
 
     if float(params.get("earnings_day_boost_multiplier", 1.0) or 1.0) != 1.0:
-        from engine.data.earnings_calendar import EARNINGS_REACTION_DATES
+        from engine.data.earnings_calendar import (
+            EARNINGS_REACTION_DATES,
+            reaction_file,
+            read_later_reaction_dates,
+        )
 
-        last = max(EARNINGS_REACTION_DATES)
+        # What a live loop reads: the list, and the sessions after it in
+        # the file the refresh service writes from EDGAR.
+        later = read_later_reaction_dates(reaction_file())
+        last = max(EARNINGS_REACTION_DATES | later)
         if (today - last).days <= EARNINGS_STALE_DAYS:
-            report.add(PASS, "earnings calendar", f"to {last}")
+            source = f", {len(later)} session(s) from {reaction_file().name}" if later else ""
+            report.add(PASS, "earnings calendar", f"to {last}{source}")
         else:
             report.add(
                 WARN,
                 "earnings calendar",
                 f"ends {last}: earnings-day sizing "
-                f"(x{params['earnings_day_boost_multiplier']}) is off until "
-                "engine/data/earnings_calendar.py is extended "
-                "(tools/refresh_external.py writes earnings_reaction_days.csv)",
+                f"(x{params['earnings_day_boost_multiplier']}) is off. Is the market-inputs "
+                "service running with VAI_SEC_CONTACT set? It writes "
+                f"{reaction_file().name}, which a live loop reads",
             )
 
     if params.get("caution_min_votes") is not None and not params.get("caution_by_date"):

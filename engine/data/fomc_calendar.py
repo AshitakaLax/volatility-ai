@@ -67,12 +67,17 @@ on where the code happens to run.
 --------------------------------------------------------------------
 MAINTENANCE
 
-This list runs through 2026-07-29 (the last FOMC date on or before
-this repo's data cutoff at the time it was written). Dates beyond
-that are FUTURE meetings per the Fed's published schedule and are
-included where already confirmed; extending this list for later years
-is a data-entry task against the same federalreserve.gov source, not a
-design change.
+This list runs through 2027-12-08, the last meeting on the Federal
+Reserve's published schedule when it was extended on 2026-11-12. It had
+stopped at 2026-07-29, and until that day the decisions of 2026-09-16
+and 2026-10-28 went unflagged: a list that ends says nothing when it
+does.
+
+Extending it is a data-entry task against the same federalreserve.gov
+source, not a design change, and two things now say when it is due:
+tools/refresh_external.py reads the Fed's page on every run, writes it
+to data/external/fomc_calendar.csv and names each scheduled meeting this
+list lacks, and tools/preflight.py warns when no decision day lies ahead.
 """
 
 from __future__ import annotations
@@ -165,12 +170,24 @@ FOMC_DECISION_DATES: frozenset[date] = frozenset(
         (2025, 9, 17),
         (2025, 10, 29),
         (2025, 12, 10),
-        # 2026 (through this repo's data cutoff of 2026-08-21)
+        # 2026
         (2026, 1, 28),
         (2026, 3, 18),
         (2026, 4, 29),
         (2026, 6, 17),
         (2026, 7, 29),
+        (2026, 9, 16),
+        (2026, 10, 28),
+        (2026, 12, 9),
+        # 2027 (scheduled: the Federal Reserve's calendar page, read 2026-11-10)
+        (2027, 1, 27),
+        (2027, 3, 17),
+        (2027, 4, 28),
+        (2027, 6, 9),
+        (2027, 7, 28),
+        (2027, 9, 15),
+        (2027, 10, 27),
+        (2027, 12, 8),
     ]
 )
 

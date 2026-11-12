@@ -20,8 +20,12 @@ import pytest
 from engine.data.earnings_calendar import (
     EARNINGS_REACTION_DATES,
     MEGA_CAP_SYMBOLS,
+    REACTION_FILE,
     is_earnings_reaction_day,
     is_earnings_reaction_day_at,
+    is_live_earnings_reaction_day_at,
+    reaction_file,
+    read_later_reaction_dates,
 )
 from engine.data.fomc_calendar import FOMC_DECISION_DATES
 
@@ -35,7 +39,9 @@ EASTERN = ZoneInfo("America/New_York")
         date(2016, 1, 27),  # session after AAPL's 2016-01-26 after-close report
         date(2020, 3, 13),  # a reaction session inside the COVID crash week
         date(2023, 5, 25),  # session after NVDA's 2023-05-24 AI-guidance report
-        date(2026, 7, 31),  # most recent date in the calendar at write time
+        date(2026, 7, 31),  # the last date in the calendar as generated
+        date(2026, 8, 27),  # session after NVDA's 2026-08-26 report (from EDGAR)
+        date(2026, 11, 3),  # session after AAPL's 2026-11-02 report (from EDGAR)
     ],
 )
 def test_known_reaction_sessions_are_flagged(d):
@@ -56,10 +62,13 @@ def test_announcement_dates_and_ordinary_days_are_not_flagged(d):
 
 
 def test_the_calendar_is_the_documented_size():
-    """The module docstring quotes 296 sessions from 385 announcements.
-    If this changes, that docstring (and the measured-effect numbers
-    derived from it) must be regenerated together."""
-    assert len(EARNINGS_REACTION_DATES) == 296
+    """The module docstring quotes 296 sessions from 385 announcements as
+    generated (through 2026-07-31), which its measured-effect numbers were
+    taken on, and seven added from EDGAR since. If either changes, that
+    docstring must change with it."""
+    generated = [d for d in EARNINGS_REACTION_DATES if d <= date(2026, 7, 31)]
+    assert len(generated) == 296
+    assert len(EARNINGS_REACTION_DATES) == 296 + 7
 
 
 def test_every_date_is_a_weekday():
@@ -74,7 +83,7 @@ def test_every_date_falls_inside_the_dataset_window():
     """The calendar is only meaningful over the range it was generated
     for; a date outside it would silently never match a bar."""
     assert min(EARNINGS_REACTION_DATES) >= date(2016, 1, 1)
-    assert max(EARNINGS_REACTION_DATES) <= date(2026, 8, 21)
+    assert max(EARNINGS_REACTION_DATES) <= date(2026, 11, 3)
 
 
 def test_every_year_in_range_has_reaction_sessions():
@@ -128,3 +137,53 @@ def test_symbols_are_deduplicated_and_exclude_the_goog_share_class():
     assert len(set(MEGA_CAP_SYMBOLS)) == len(MEGA_CAP_SYMBOLS)
     assert "GOOGL" in MEGA_CAP_SYMBOLS
     assert "GOOG" not in MEGA_CAP_SYMBOLS
+
+
+# --- live: the list, and the sessions after it ---------------------------------
+
+LAST = max(EARNINGS_REACTION_DATES)
+
+
+def _file(tmp_path, *rows) -> object:
+    path = tmp_path / REACTION_FILE
+    path.write_text("date,symbols\n" + "".join(f"{day},{symbols}\n" for day, symbols in rows))
+    return path
+
+
+def test_the_file_adds_only_sessions_after_the_list_and_only_for_its_companies(tmp_path):
+    path = _file(
+        tmp_path,
+        ("2016-01-21", "NFLX"),  # before the list's end: the list already decides it
+        (str(LAST), "AAPL"),
+        ("2026-11-20", "NVDA"),
+        ("2026-11-21", "NVDA"),  # a Saturday: not a session
+        ("2026-12-11", "AVGO COST"),
+        ("2026-12-17", "MU"),  # not one of the nine
+        ("not a date", "NVDA"),
+        ("2027-01-28", ""),
+    )
+    assert read_later_reaction_dates(path) == {date(2026, 11, 20), date(2026, 12, 11)}
+
+
+def test_no_file_leaves_the_list_as_it_is(tmp_path):
+    assert read_later_reaction_dates(tmp_path / "absent.csv") == frozenset()
+    assert read_later_reaction_dates(tmp_path) == frozenset()  # a directory, not a file
+
+
+def test_a_live_loop_sees_a_later_session_and_a_backtest_does_not(tmp_path):
+    later = read_later_reaction_dates(_file(tmp_path, ("2026-11-20", "NVDA")))
+    morning = datetime(2026, 11, 20, 15, 0, tzinfo=UTC)  # 10:00 Eastern
+    assert is_live_earnings_reaction_day_at(morning, later) is True
+    assert is_earnings_reaction_day_at(morning) is False
+    assert date(2026, 11, 20) not in EARNINGS_REACTION_DATES
+    # A session in the list is flagged with or without the file.
+    listed = datetime(2026, 11, 3, 15, 0, tzinfo=UTC)
+    assert is_live_earnings_reaction_day_at(listed, frozenset()) is True
+    assert is_live_earnings_reaction_day_at(morning, frozenset()) is False
+
+
+def test_the_file_is_looked_for_where_the_refresh_writes_it(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAI_EXTERNAL_DIR", str(tmp_path))
+    assert reaction_file() == tmp_path / REACTION_FILE
+    monkeypatch.delenv("VAI_EXTERNAL_DIR")
+    assert reaction_file().parts[-3:] == ("data", "external", REACTION_FILE)

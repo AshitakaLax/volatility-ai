@@ -156,7 +156,7 @@ from engine.core.ledger import EXIT_AT_COST_TARGET, SHARE_EPSILON
 from engine.core.market_context import MarketContext
 from engine.core.retry_policy import AmbiguousSubmissionError
 from engine.core.venue_sessions import AFTER_HOURS, PRE_MARKET, REGULAR
-from engine.data.earnings_calendar import is_earnings_reaction_day_at
+from engine.data.earnings_calendar import is_live_earnings_reaction_day_at
 from engine.data.fomc_calendar import is_fomc_day_at
 from engine.data.implied_vol_signal import change_at
 from engine.data.intraday_profile import minutes_since_open
@@ -1992,7 +1992,9 @@ class LiveTradingLoop:
             open_lot_count=open_lot_count,
             bar_index=0,
             is_macro_event_day=is_fomc_day_at(timestamp),
-            is_earnings_reaction_day=is_earnings_reaction_day_at(timestamp),
+            # The list, and the sessions after it that the refresh service
+            # has read from EDGAR (engine/data/earnings_calendar.py, LIVE).
+            is_earnings_reaction_day=is_live_earnings_reaction_day_at(timestamp),
             time_of_day_flag=minutes_since_open(timestamp),
             volume=volume,
             event_intensity=event_intensity,
