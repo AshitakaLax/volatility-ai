@@ -58,6 +58,7 @@ def test_up_starts_what_must_keep_running_and_nothing_else(compose):
         "backup",
         "market-data",
         "market-inputs",
+        "tracking",
     }
     assert _services(compose, profile="champion") == {"paper"}
     assert _services(compose, profile="production") == {"live"}
@@ -319,6 +320,27 @@ def test_the_market_inputs_service_writes_where_the_traders_read(compose):
     args = build_parser().parse_args(command)
     assert args.daily == ["20:45", "07:30"]
     assert str(args.earnings_file) == "/app/data/earnings_releases_derived.csv"
+
+
+def test_the_tracking_service_reads_what_the_ui_reads_and_writes_only_its_record(compose):
+    """It compares each deployment's journals with a backtest: every ledger
+    folder and control directory `web` mounts, at the same paths (so
+    config/deployments.yaml names them for both), all read-only; one
+    writable folder, its own; and a command its parser takes."""
+    from tools.track_live import build_parser
+
+    service = compose["services"]["tracking"]
+    web = compose["services"]["web"]["volumes"]
+    writable = [m for m in service["volumes"] if not m.endswith(":ro")]
+    assert writable == ["./output/tracking:/app/output/tracking"]
+    for mount in web:
+        source, target = mount.split(":")[:2]
+        if target.startswith(("/app/state", "/app/controls/")):
+            assert f"{source}:{target}:ro" in service["volumes"], mount
+    assert "env_file" not in service
+    command = [part.replace("${VAI_TRACKING_AT:-20:40}", "20:40") for part in service["command"]]
+    args = build_parser().parse_args(command)
+    assert args.all and args.daily == "20:40"
 
 
 def test_tzdata_is_a_declared_dependency():

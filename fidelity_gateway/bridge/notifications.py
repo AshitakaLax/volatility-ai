@@ -15,7 +15,9 @@ to hear about. Each becomes a notification of one kind:
                    without saying it had stopped
   readiness        the connection is not ready to trade (and the one thing
                    to fix), not ready shortly before an open, or ready again
-  fidelity_signin  Fidelity signed you out, or no Fidelity tab is open
+  fidelity_signin  Fidelity signed you out, or no Fidelity tab is open; a
+                   sign-in and when Fidelity will end it; a reminder to sign
+                   in before the open (signin.py)
   account_check    a read-only account check failed, or passed again
   connected        the extension connected, or reconnected
   disconnected     the extension went away, and how
@@ -232,6 +234,7 @@ class Notifications:
         # status (cli.py on_order): a buy's fill is announced with its target.
         self._buy_targets: dict[str, float] = {}
         self._tab: str | None = None
+        self._session_open = False  # the host's word, each tick: a session is open
         self._refusals: dict[tuple[str, str], float] = {}
         self._check_failed = False
         self._causes: set[str] = set()  # readiness items announced by their own kind
@@ -404,21 +407,24 @@ class Notifications:
         """Where the extension's Fidelity tab is (session.tab_state). A
         sign-out, or no tab, is news; the first word after the bridge
         starts, when it is signed in, is how things are; signing in again is
-        said by readiness ("Ready to trade"). Remembered across the
-        extension reconnecting, so the same state is not said twice."""
+        said by readiness ("Ready to trade") and by the host (signin_notice:
+        when Fidelity will end it). Remembered across the extension
+        reconnecting, so the same state is not said twice. Critical while a
+        session is open: it stopped trading that minute."""
         with self._said:
             previous, self._tab = self._tab, state
             if state == previous:
                 return None
             if state == "signed_in":
                 self._causes.discard("fidelity")
+            severity = "critical" if self._session_open else "warning"
         if state == "signed_out":
             notification = self.publish(
                 "fidelity_signin",
                 "Fidelity signed you out",
                 "Sign in to Fidelity again in the browser the extension runs in. Nothing is "
                 "traded until you do.",
-                severity="warning",
+                severity=severity,
                 data={"state": state},
             )
         elif state == "no_tab":
@@ -427,7 +433,7 @@ class Notifications:
                 "No Fidelity tab is open",
                 "Open Fidelity in the browser the extension runs in, and sign in. Nothing is "
                 "traded until you do.",
-                severity="warning",
+                severity=severity,
                 data={"state": state},
             )
         else:
@@ -666,6 +672,7 @@ class Notifications:
         is news too.
         """
         with self._said:
+            self._session_open = session_open
             if verdict.get("ready"):
                 since, self._not_ready_since = self._not_ready_since, None
                 announced = self._announced is not None or bool(self._causes)
@@ -728,6 +735,14 @@ class Notifications:
                 "nextOpen": next_open,
             },
         )
+
+    def signin_notice(
+        self, title: str, body: str, *, severity: str = "info", data: dict | None = None
+    ) -> Notification | None:
+        """What the host's sign-in watch has to say (signin.py): a sign-in
+        and when Fidelity will end it, a reminder before the open, a session
+        about to end with the market open."""
+        return self.publish("fidelity_signin", title, body, severity=severity, data=data)
 
     def account_check(self, result: dict) -> Notification | None:
         """The host's read-only account check (host.run_check): a failure is

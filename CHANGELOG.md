@@ -1,5 +1,83 @@
 # Changelog
 
+## Feature: the Fidelity sign-in, watched and assisted
+
+**Fidelity ends a browser session about 10.5 hours after the sign-in,
+whatever the tab does** -- 6 of the 10 sign-ins in the bridge's journal
+ended 10.34 to 10.50 hours later, the rest sooner by hand. Last night's
+sign-in is therefore gone by the open, which is where the bridge's 18% of
+hours "not ready" came from. Two things were built; neither stores a
+password.
+
+**The bridge host now knows when the session ends, and says so in time**
+(`fidelity_gateway/bridge/signin.py`):
+
+- It follows the sign-in the tab is on and reads it back from its journal
+  after a restart. The readiness checklist's Fidelity item says "signed in
+  since 08:41 ET; Fidelity ends the session about 19:11 ET", and warns
+  (never blocks) when that is before the close.
+- A phone is reminded 60, 30 and 10 minutes before a regular open when the
+  tab is signed out, has no Fidelity tab, or is on a sign-in that will not
+  reach the close; told when a sign-in happens and when it will end; and
+  warned 30 minutes before a session ends with the market open. A sign-out
+  while a session is open is now critical. All as the existing
+  `fidelity_signin` kind, so the app needs no change.
+- `tools/track_live.py` counts bridge time not ready over the regular
+  session apart from the day the deployment trades, so the target --
+  under 1% of regular-session minutes -- can be read off the report.
+
+**The extension can press the sign-in button itself** (extension 0.9.0,
+off unless switched on in its settings): at a set time on a weekday, when
+the tab is on Fidelity's sign-in page and the browser's password manager
+has filled the form in. It reads no password, cannot answer a second
+factor, looks at most twice and presses at most once a day, and stops
+altogether when a press does not sign in. The engine has no command for it;
+it is told the outcome as a `signin` event and tells the phone.
+
+Decided against: a stored password or one-time-code secret on the server,
+and anything that disguises the click as a person's. The first puts the
+account's credentials beside the trading code; the second is evasion of
+Fidelity's own controls.
+
+Not established: whether Chrome releases a saved password to the page
+without a person's click (the extension reports "needs a click" when it
+does not), and what Fidelity's sign-in page does with a scripted press.
+Both need a morning's trial in the real browser. The reminders do not
+depend on either.
+
+## Feature: live against backtest, session by session
+
+**Every figure a decision here rests on is a backtest, and nothing compared
+one with what a deployment did.** `tools/track_live.py` (the compose
+`tracking` service, daily) reads each trader's journals and writes
+`output/tracking/`: whether it was watching each session, what it bought
+and sold, each filled order's price against its limit beside what the
+config's cost model charges, and a shadow backtest of the algorithm in
+force over the same days. It keeps its own record, because a trader's
+journals hold ten sessions.
+
+Its first run, on the journals to 2026-11-12:
+
+- **Fidelity's bridge was not ready for 18% of the hours it trades**, about
+  two and a half hours of every day: Fidelity signs the browser out
+  overnight, so the pre-market window passes before anyone signs in.
+- **Fills were better than the cost model assumes.** 116 of 119 orders
+  filled; the median fill was 0.3 bp inside its limit, where the model
+  charges 1.5 bp.
+- **The shadow backtest and the live book do not trade alike.** On Fidelity
+  the backtest of the same algorithm made 951 buys against 115 live, on a
+  capital figure (the config's `backtest.initial_cash`, $5,000) smaller
+  than the $26,938 the account bought. Why they differ is not established;
+  the report now says when a config's capital is not the account's.
+- **paper-ultimate placed no order in eight sessions**, while a backtest of
+  the algorithm now in force made 354 buys over them and sold them all at a
+  loss on a regime exit. The algorithm was changed during those sessions,
+  so only the later ones compare.
+
+The shadow starts from cash on the first tracked session and runs today's
+algorithm over all of them, so it is exact only for a trial begun on a
+fresh ledger; the report says when the algorithm changed.
+
 ## Feature: option-market readings collected daily through the Fidelity bridge, and the event calendars extended
 
 **The owner asked for TQQQ's option chain to be collected through the

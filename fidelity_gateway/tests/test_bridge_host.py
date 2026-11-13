@@ -642,3 +642,87 @@ def test_the_status_is_json_the_page_can_read(host):
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["readiness"]["items"][0]["id"] == "bridge"
     assert data["deployment"] == "fidelity" and data["mode"] == "live"
+
+
+MONDAY_0700 = datetime(2026, 10, 26, 7, 0, tzinfo=ZoneInfo("America/New_York")).timestamp()
+
+
+def _tab(host: BridgeHost, extension: FakeExtension, url: str, state: str) -> None:
+    _event(extension, "tab", {"url": url})
+    assert _wait_until(
+        lambda: (host.server.connection_report()["fidelity_tab"] or {}).get("state") == state
+    )
+    host.tick()
+
+
+def test_the_host_follows_the_sign_in_and_says_when_it_ends(place):
+    """Signed out before the open is reminded; the sign-in is announced with
+    the time Fidelity will end it, shown on the checklist, written to the
+    status -- and a host started again reads it back from its journal."""
+    clock = Clock(MONDAY_0700)
+    host = _host(place, clock=clock)
+    host.notifications.set_events(("fidelity_signin",))
+    extension = _extension(host)
+    try:
+        _tab(host, extension, SIGNIN, "signed_out")
+        clock.now = MONDAY_0700 + 90 * 60  # 08:30: an hour before the open
+        host.tick()
+        clock.now += 15 * 60  # 08:45
+        _tab(host, extension, PORTFOLIO, "signed_in")
+
+        titles = [n.title for n in host.notifications.recent()]
+        assert titles == [
+            "Fidelity signed you out",
+            "Sign in to Fidelity: the market opens in 60 min",
+            "Signed in to Fidelity",
+        ]
+        assert "about 19:15 ET" in host.notifications.recent()[-1].body
+        status = _status(host)
+        item = next(i for i in status["readiness"]["items"] if i["id"] == "fidelity")
+        assert item["state"] == "ok"
+        assert item["detail"] == (
+            "signed in since 08:45 ET; Fidelity ends the session about 19:15 ET"
+        )
+        assert status["sign_in"]["session_hours"] == 10.5
+        assert status["sign_in"]["expires"].startswith("2026-10-26T23:15:00")
+        assert "signin" in [event["kind"] for event in host.inbox.events()]
+    finally:
+        extension.close()
+        host.close()
+
+    clock.now += 3600
+    again = _host(place, clock=clock)
+    again.notifications.set_events(("fidelity_signin",))
+    extension = _extension(again)
+    try:
+        _tab(again, extension, PORTFOLIO, "signed_in")
+        assert _status(again)["sign_in"]["since"].startswith("2026-10-26T12:45:00")
+        assert again.notifications.recent() == [], "nothing it already said is said again"
+    finally:
+        extension.close()
+        again.close()
+
+
+def test_the_extensions_assisted_sign_in_is_journaled_told_and_kept_from_the_trader(host):
+    host.notifications.set_events(("fidelity_signin",))
+    extension = _extension(host)
+    trader = _attach(host)
+    try:
+        assert _wait_until(lambda: host.attached is not None)
+        _event(extension, "signin", {"outcome": "needs_click", "at": "2026-10-25T16:00:00Z"})
+        _event(extension, "signin", {"outcome": "opened"})
+        _event(extension, "signin", {"outcome": "<b>bold</b>"})
+        _event(extension, "tab", {"url": PORTFOLIO})
+        assert _wait_until(lambda: host.server.connection_report()["fidelity_tab"] is not None)
+
+        said = [(n.title, n.severity) for n in host.notifications.recent()]
+        assert said == [("Assisted sign-in needs a click", "warning")]
+        journal = [e for e in host.inbox.events() if e["kind"] == "signin"]
+        assert [e["assisted"] for e in journal] == ["needs_click", "opened"]
+        seen = []
+        while (event := _next(trader, 0.5)) is not None:
+            seen.append(event[0])
+        assert "tab" in seen and "signin" not in seen
+    finally:
+        trader.stop()
+        extension.close()

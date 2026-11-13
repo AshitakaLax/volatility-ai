@@ -455,6 +455,29 @@ def test_the_fidelity_tab_is_remembered_across_reconnects():
     assert hub.fidelity_tab("elsewhere") is None
 
 
+def test_a_sign_out_while_a_session_is_open_is_critical():
+    hub = _hub()
+    hub.fidelity_tab("signed_in")
+    hub.readiness({"ready": True}, now=0.0, session_open=True)
+    assert hub.fidelity_tab("signed_out").severity == "critical"
+    hub.readiness({"ready": False, "blocking": "fidelity"}, now=1.0, session_open=False)
+    hub.fidelity_tab("signed_in")
+    assert hub.fidelity_tab("no_tab").severity == "warning"
+
+
+def test_the_hosts_sign_in_watch_speaks_as_fidelity_signin():
+    hub = _hub()
+    said = hub.signin_notice(
+        "Sign in to Fidelity: the market opens in 10 min",
+        "Fidelity is signed out in the browser the extension runs in.",
+        severity="critical",
+        data={"reason": "reminder"},
+    )
+    assert (said.kind, said.severity) == ("fidelity_signin", "critical")
+    assert said.data == {"reason": "reminder"}
+    assert _hub(events=("buy",)).signin_notice("a", "b") is None, "the kind is switched off"
+
+
 def test_a_refusal_repeated_by_a_retrying_extension_is_said_once():
     now = [STARTED]
     hub = _hub(clock=lambda: now[0])

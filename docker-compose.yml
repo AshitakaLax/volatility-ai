@@ -13,6 +13,7 @@
 #   backup          ledgers + warehouse catalogs, daily        /workspace/backups
 #   market-data     every fund's bars into the warehouse, daily
 #   market-inputs   every outside series (vol, rates, credit, stress), twice daily
+#   tracking        live against backtest, session by session, daily
 #
 # Behind profiles, started only by name:
 #
@@ -364,6 +365,40 @@ services:
       - ./warehouse:/app/warehouse
     restart: unless-stopped
     mem_limit: 2g
+    cpu_shares: 256
+
+  # Live against backtest, session by session (tools/track_live.py): for
+  # every deployment in config/deployments.yaml, whether its trader was
+  # watching each session, what it bought and sold, how its orders filled
+  # against the config's cost model, and a shadow backtest of the algorithm in
+  # force over the same days. At start, then daily at VAI_TRACKING_AT (20:40
+  # Eastern, after the last traded window and the bar refresh). It reads the
+  # traders' journals, configs and ledgers' folders READ-ONLY, at the paths
+  # `web` sees them, and writes only ./output/tracking.
+  # One-off:  docker compose run --rm tracking --report
+  tracking:
+    <<: *app
+    entrypoint: ["python", "/app/tools/track_live.py"]
+    command: ["--all", "--daily", "${VAI_TRACKING_AT:-20:40}"]
+    environment:
+      <<: *env
+      VAI_WAREHOUSE_DIR: /app/warehouse
+      VAI_EXTERNAL_DIR: /app/data/external
+    volumes:
+      - ./config:/app/config:ro
+      - ./warehouse:/app/warehouse:ro
+      - ./data:/app/data:ro
+      - ./output/tracking:/app/output/tracking
+      - state:/app/state:ro
+      - state_ultimate:/app/state-ultimate:ro
+      - state_production:/app/state-production:ro
+      - state_fidelity:/app/state-fidelity:ro
+      - control_ultimate:/app/controls/paper-ultimate:ro
+      - control_champion:/app/controls/paper:ro
+      - control_production:/app/controls/live:ro
+      - control_fidelity:/app/controls/fidelity:ro
+    restart: unless-stopped
+    mem_limit: 4g
     cpu_shares: 256
 
   # ---- one-off tools: `docker compose run --rm <name> [args]` ----
