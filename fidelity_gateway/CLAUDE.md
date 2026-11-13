@@ -46,7 +46,7 @@ python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <numb
 | `recon.py` | Reconnaissance, not reconciliation: with `--cdp-url`, records your browser's traffic while you use it. Its launched-browser modes are kept for the record; Fidelity refuses them. |
 | `quotes.py` | `FidelityQuotes`: Fidelity's real-time quote (`getquote`, read-only) as the engine's second data source (`engine/core/quotes.QuoteSource`, `live.secondary_feed`). Its time fields (the bid and ask's, and the last trade's, separately: before the open Fidelity's last is yesterday's close) are not captured yet, so no quote is used until they are. |
 | `place_test_order.py` | Places one small order through the gated adapter — the manual end-to-end check. `--check-only` is the recovery report; `--bridge` goes through the extension instead of a debugging port. |
-| `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), `OrderReports` (the extension's order confirmations), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| host \| check`. `host.py` is the deployment's bridge host (below), `attach.py` a trader's end of it, `local.py` the line between them, `readiness.py` the ready-or-why checklist. The notifications apps hear: `Notifications` (`notifications.py`), served by `NotificationServer` (`notify_server.py`, `notify_protocol.py`), which the host runs. `book.py` reads the trading book apps are shown (open lots, last sales, today's profit) from the trader's ledger and fill journal, read-only. |
+| `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), `OrderReports` (the extension's order confirmations), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| host \| check`. `host.py` is the deployment's bridge host (below), `attach.py` a trader's end of it, `local.py` the line between them, `readiness.py` the ready-or-why checklist, `signin.py` when the sign-in began, when Fidelity ends it and what to say. The notifications apps hear: `Notifications` (`notifications.py`), served by `NotificationServer` (`notify_server.py`, `notify_protocol.py`), which the host runs. `book.py` reads the trading book apps are shown (open lots, last sales, today's profit) from the trader's ledger and fill journal, read-only. |
 | `tests/` | This section's own suite. `test_broker_selection.py`/`test_broker_contract.py` (the engine↔fidelity_gateway seam) live in the ROOT `tests/` instead — see `tests/CLAUDE.md`. |
 
 ## The browser-extension bridge
@@ -183,6 +183,26 @@ container log. `bridge/host.py`'s `BridgeHost` (the compose
   it and nothing is attached -- an account not yet read through this
   connection fails: a tab's address says signed in after Fidelity's session
   expired (10-26).
+- **The sign-in and when it ends** (`signin.py`, pure). Fidelity ends a
+  browser session about `SESSION_HOURS` (10.5, measured from this bridge's
+  journal) after the sign-in, whatever the tab does. `SignInWatch` follows
+  the tab's state through the host's ticks -- a sign-in is the tab leaving
+  the sign-in page; a reconnect on the signed-in site keeps the one it had
+  -- and is read back from the event journal when the host restarts. The
+  Fidelity item then says "signed in since 08:41 ET; Fidelity ends the
+  session about 19:11 ET", and **warns, never fails**, when that is before
+  the close of a regular session still to trade. An account check that
+  passes after the expected end forgets the start (the estimate was
+  wrong). The status carries `sign_in: {since, expires, session_hours}`.
+  It protects the regular session (09:30-16:00), where every order so far
+  was placed; one sign-in cannot span a 07:00-20:00 day.
+- **The extension's assisted sign-in is told, never asked for.** From
+  extension 0.9.0 a person may switch on a weekday-morning press of an
+  already-filled sign-in form (the extension's README). The extension
+  reports each look as a `signin` event carrying one outcome word; the
+  host journals it, words it itself (`signin.ASSISTED_OUTCOMES`) and tells
+  apps, and keeps it from an attached trader. Nothing in the engine can
+  start a sign-in, and no password or user name ever reaches it.
 - **Status and events** go to the deployment's control directory, under
   `bridge/` (a `ControlInbox` of its own): `status.json` every 15 s and on
   change, `events/<day>.jsonl` kept 14 days -- connects, disconnects with
@@ -222,8 +242,13 @@ repository. Each event is one *kind*, and `live.fidelity.bridge.notifications.ev
 - `readiness`: not ready for `READINESS_GRACE_SECONDS`, said once per cause;
   not ready within `NOT_READY_WARNING_MINUTES` of an open (critical, once per
   open); ready again after an outage that was said.
-- `fidelity_signin` (signed out, no tab), `account_check` (failed, or passed
-  after a failure), `connected`/`disconnected` (with the close code),
+- `fidelity_signin`: signed out or no tab (critical while a session is
+  open); a sign-in and when Fidelity will end it; a reminder 60, 30 and 10
+  minutes before a regular open when the tab is signed out, has no
+  Fidelity tab, or is on a sign-in that ends before the close (the last is
+  critical); a session about to end with the market open; and what the
+  extension's assisted sign-in did (`signin.py`).
+  `account_check` (failed, or passed after a failure), `connected`/`disconnected` (with the close code),
   `trading_switch`, `refused` (once per address and reason per 10 min),
   `bridge` (port taken, listening again, restarting with new settings).
 

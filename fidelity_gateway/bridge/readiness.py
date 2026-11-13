@@ -15,7 +15,9 @@ Each item is one link in the chain from this server to the account:
               every 20 s; a sleeping browser stops); a warning while another
               address was turned away in the last REFUSED_RECENTLY_SECONDS
   version     not older than the engine expects (a warning: it still trades)
-  fidelity    the extension's Fidelity tab is the signed-in site
+  fidelity    the extension's Fidelity tab is the signed-in site; with the
+              sign-in's start known (signin.py), when Fidelity is expected to
+              end it -- a warning when that is before the close
   trading     "Allow trading" on in the extension, for a deployment that
               places real orders
   account     the last read-only check of the account, since the extension
@@ -151,7 +153,7 @@ def _version(report: dict) -> dict:
     return _item("version", "ok", version)
 
 
-def _fidelity(report: dict) -> dict:
+def _fidelity(report: dict, signin: Any = None) -> dict:
     if not report.get("connected"):
         return _item("fidelity", "unknown", "no extension connected")
     tab = report.get("fidelity_tab") or None
@@ -159,6 +161,8 @@ def _fidelity(report: dict) -> dict:
         return _item("fidelity", "unknown", "the extension has not said where its tab is")
     state = tab.get("state")
     if state == "signed_in":
+        if signin is not None:
+            return _item("fidelity", "warn" if signin.short else "ok", signin.detail, signin.fix)
         return _item("fidelity", "ok", "signed in")
     if state == "signed_out":
         return _item(
@@ -230,6 +234,7 @@ def readiness(
     listen_error: str | None = None,
     check: dict | None = None,
     check_first: bool = False,
+    signin: Any = None,
 ) -> dict[str, Any]:
     """The checklist and its verdict:
     {"ready", "blocking" (the first failing item's id, or None), "summary",
@@ -238,12 +243,16 @@ def readiness(
     `check_first`: a connection is not ready until the account has been read
     through it -- what the bridge host asks while a session is open or near
     and no trader is attached, so the supervisor never starts one on a tab
-    that cannot answer (10-26). Otherwise an unchecked account is unknown."""
+    that cannot answer (10-26). Otherwise an unchecked account is unknown.
+
+    `signin`: the sign-in the tab is on (signin.Outlook: `detail`, `short`,
+    `fix`), when the host saw it begin. It words the Fidelity item, and warns
+    -- never fails -- when Fidelity will end the session before the close."""
     items = [
         _bridge(listening, listen_error, report),
         _extension(report, now),
         _version(report),
-        _fidelity(report),
+        _fidelity(report, signin),
         _trading(report, mode),
         _account(report, check, check_first),
     ]

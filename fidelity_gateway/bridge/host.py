@@ -99,6 +99,7 @@ from fidelity_gateway.bridge.server import (
     BridgeServer,
     BridgeUnavailable,
 )
+from fidelity_gateway.bridge.signin import SESSION_HOURS, SignInWatch, assisted_notice
 
 EASTERN = ZoneInfo("America/New_York")
 OPEN = day_time(9, 30)
@@ -140,6 +141,10 @@ COMMAND_POLL_SECONDS = 2.0
 # The readiness apps are shown is sent when what it says changes; its
 # details ("last heard 4 s ago") are refreshed at most this often.
 APP_STATUS_SECONDS = 60.0
+
+# The sign-in is read back from this many days of the journal: a session
+# lasts hours, and a weekend is two days.
+SIGNIN_REPLAY_DAYS = 4
 
 ALGORITHM_CALLS = ("algorithm.describe", "algorithm.set", "algorithm.reset")
 
@@ -362,6 +367,15 @@ class BridgeHost:
         self._auto_since: str | None = None
         self._next_auto_check = 0.0
 
+        # The sign-in the tab is on and when Fidelity will end it (signin.py),
+        # caught up from the journal so a restart does not forget it.
+        self._signin = SignInWatch()
+        if inbox is not None:
+            try:
+                self._signin.replay(inbox.events(SIGNIN_REPLAY_DAYS))
+            except Exception as exc:
+                self._log(f"[bridge-host] the sign-in was not read back: {exc}")
+
         self._seen: dict[str, Any] = {}
         self._verdict: dict | None = None
         self._standby_sent: dict | None = None
@@ -471,6 +485,11 @@ class BridgeHost:
         sends. Kept for whoever attaches next, and passed to whoever is
         attached now -- under one lock with the replay, so an attaching
         process sees every event exactly once, replayed or live."""
+        if name == "signin":
+            # The extension's assisted sign-in, reporting what it did: the
+            # host's to journal and tell a phone, never a trader's.
+            self._note_assisted_signin(data)
+            return
         with self._lock:
             if name == "request":
                 key = str(data.get("url"))
@@ -492,6 +511,21 @@ class BridgeHost:
             if name in ("request", "tab"):
                 for feed in self._feeds:
                     feed.put(name, data)
+
+    def _note_assisted_signin(self, data: dict) -> None:
+        outcome = str(data.get("outcome") or "")[:40]
+        if not outcome.replace("_", "").isalnum():
+            return
+        notice = assisted_notice(data)
+        self._journal(
+            "signin",
+            f"{notice.title}. {notice.body}" if notice else f"Assisted sign-in: {outcome}.",
+            assisted=outcome,
+        )
+        if notice is not None:
+            self.notifications.signin_notice(
+                notice.title, notice.body, severity=notice.severity, data=notice.data
+            )
 
     def _replay(self) -> list[list]:
         """What the extension has said that a process attaching now needs:
@@ -955,6 +989,7 @@ class BridgeHost:
         if not report["connected"] and (self._tab_event or self._requests):
             self._forget_extension()
         window = session_window(now, self._sessions)
+        self._watch_signin(report, now)
         verdict = readiness(
             listening=self._listening,
             listen_error=self._listen_error,
@@ -963,6 +998,7 @@ class BridgeHost:
             now=now,
             check=self.last_check,
             check_first=self._check_first(window, now),
+            signin=self._signin.outlook(now),
         )
         if (
             self._verdict is None
@@ -984,6 +1020,11 @@ class BridgeHost:
             opens_in_minutes=opens_in,
             next_open=window["next_open"].astimezone(UTC).isoformat(),
         )
+        for notice in self._signin.notices(now):
+            self._journal("signin", f"{notice.title}. {notice.body}", t=now)
+            self.notifications.signin_notice(
+                notice.title, notice.body, severity=notice.severity, data=notice.data
+            )
         self._tell_extension(verdict, window, now)
         self._auto_check(now, window, report)
         self._auto_collect(now)
@@ -991,6 +1032,18 @@ class BridgeHost:
         self._publish_app_status(verdict, window, now)
         self._publish_book(now)
         return self._write_status(report, verdict, window, now)
+
+    def _watch_signin(self, report: dict, now: float) -> None:
+        """Feed the sign-in watch: where the tab is, and an account check
+        that passed (a session alive past its expected end is not the one
+        the watch thought it was)."""
+        tab = (report.get("fidelity_tab") or {}).get("state") if report["connected"] else None
+        self._signin.observe(tab, now)
+        check = self.last_check
+        if check and check.get("ok"):
+            at = _seconds(check.get("at"))
+            if at is not None:
+                self._signin.confirmed(at)
 
     def _journal_changes(self, report: dict) -> None:
         seen = self._seen
@@ -1118,6 +1171,11 @@ class BridgeHost:
             "attached": self.attached,
             "readiness": verdict,
             "last_check": self.last_check,
+            "sign_in": {
+                "since": _iso(self._signin.since),
+                "expires": _iso(self._signin.expires),
+                "session_hours": SESSION_HOURS,
+            },
             "session_open": window["open"],
             "next_open": window["next_open"].astimezone(UTC).isoformat(),
             "build": self._build,

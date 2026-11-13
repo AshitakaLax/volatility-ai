@@ -134,6 +134,45 @@ def test_a_day_that_ends_not_ready_counts_to_its_end_and_a_silent_journal_says_n
     assert T.not_ready(later, at("07:00"), at("20:00")) is None
 
 
+def test_the_regular_session_is_counted_apart_from_the_day_it_trades():
+    """A 07:00-20:00 day signed in at 08:30 is 90 minutes not ready, none of
+    them in the regular session; a sign-out at noon counts in both."""
+    events = [
+        event("not_ready", "05:00", "Not ready: Fidelity tab: Fidelity signed you out"),
+        event("ready", "08:30", "Ready to trade."),
+        event("not_ready", "12:00", "Not ready: Fidelity tab: Fidelity signed you out"),
+        event("ready", "12:13", "Ready to trade."),
+    ]
+    row = T.track_session(
+        DAY, bars=[], fills=[], orders=[], events=events, span=(at("07:00"), at("20:00"))
+    )
+    assert row["bridge_not_ready"]["minutes"] == 103.0
+    assert row["bridge_not_ready_regular"]["minutes"] == 13.0
+    assert row["bridge_not_ready_regular"]["share"] == pytest.approx(13 / 390, abs=1e-4)
+
+    total = T.summarize([row, row])
+    assert total["bridge_not_ready_share"] == pytest.approx(206 / 1560, abs=1e-4)
+    assert total["bridge_not_ready_regular_share"] == pytest.approx(26 / 780, abs=1e-4)
+    assert total["bridge_not_ready_regular_minutes"] == 26.0
+    text = T.report("fidelity", [row], {})
+    assert "13% of the hours it trades; 3.3% of the regular session (13 min in all)." in text
+    assert "| 103 min (13 regular) |" in text
+
+
+def test_rows_stored_before_the_regular_split_still_report():
+    row = T.track_session(
+        DAY,
+        bars=[],
+        fills=[],
+        orders=[],
+        events=[event("not_ready", "05:00", "Not ready: x"), event("ready", "08:00")],
+        span=(at("07:00"), at("20:00")),
+    )
+    del row["bridge_not_ready_regular"]
+    assert T.summarize([row])["bridge_not_ready_regular_share"] is None
+    assert "8% of the hours it trades." in T.report("fidelity", [row], {})
+
+
 # -- activity and execution --------------------------------------------------------
 
 

@@ -1,5 +1,50 @@
 # Changelog
 
+## Feature: the Fidelity sign-in, watched and assisted
+
+**Fidelity ends a browser session about 10.5 hours after the sign-in,
+whatever the tab does** -- 6 of the 10 sign-ins in the bridge's journal
+ended 10.34 to 10.50 hours later, the rest sooner by hand. Last night's
+sign-in is therefore gone by the open, which is where the bridge's 18% of
+hours "not ready" came from. Two things were built; neither stores a
+password.
+
+**The bridge host now knows when the session ends, and says so in time**
+(`fidelity_gateway/bridge/signin.py`):
+
+- It follows the sign-in the tab is on and reads it back from its journal
+  after a restart. The readiness checklist's Fidelity item says "signed in
+  since 08:41 ET; Fidelity ends the session about 19:11 ET", and warns
+  (never blocks) when that is before the close.
+- A phone is reminded 60, 30 and 10 minutes before a regular open when the
+  tab is signed out, has no Fidelity tab, or is on a sign-in that will not
+  reach the close; told when a sign-in happens and when it will end; and
+  warned 30 minutes before a session ends with the market open. A sign-out
+  while a session is open is now critical. All as the existing
+  `fidelity_signin` kind, so the app needs no change.
+- `tools/track_live.py` counts bridge time not ready over the regular
+  session apart from the day the deployment trades, so the target --
+  under 1% of regular-session minutes -- can be read off the report.
+
+**The extension can press the sign-in button itself** (extension 0.9.0,
+off unless switched on in its settings): at a set time on a weekday, when
+the tab is on Fidelity's sign-in page and the browser's password manager
+has filled the form in. It reads no password, cannot answer a second
+factor, looks at most twice and presses at most once a day, and stops
+altogether when a press does not sign in. The engine has no command for it;
+it is told the outcome as a `signin` event and tells the phone.
+
+Decided against: a stored password or one-time-code secret on the server,
+and anything that disguises the click as a person's. The first puts the
+account's credentials beside the trading code; the second is evasion of
+Fidelity's own controls.
+
+Not established: whether Chrome releases a saved password to the page
+without a person's click (the extension reports "needs a click" when it
+does not), and what Fidelity's sign-in page does with a scripted press.
+Both need a morning's trial in the real browser. The reminders do not
+depend on either.
+
 ## Feature: live against backtest, session by session
 
 **Every figure a decision here rests on is a backtest, and nothing compared

@@ -34,7 +34,9 @@ WHAT A SESSION'S ROW SAYS
                 Not a count of bars: a thin fund's feed has minutes with no
                 print. For a Fidelity deployment, also how long its bridge
                 was not ready inside the day it trades, and the reasons
-                (the bridge host's event journal).
+                (the bridge host's event journal) -- and the same for the
+                regular session alone, 09:30-16:00, where a day that starts
+                at 07:00 and a sign-in that came at 08:30 do not count.
   activity      Orders placed, filled, cancelled and expired; buys and
                 their value; sells, their proceeds and realised profit;
                 sales below cost.
@@ -345,6 +347,9 @@ def track_session(
     }
     if events is not None and span is not None:
         row["bridge_not_ready"] = not_ready(events, *span)
+        row["bridge_not_ready_regular"] = not_ready(
+            events, _at(day, REGULAR_OPEN), _at(day, REGULAR_CLOSE)
+        )
     return row
 
 
@@ -594,6 +599,14 @@ def store(path: Path, rows: dict[str, dict]) -> None:
 # --------------------------------------------------------------------
 
 
+def _not_ready_share(spans: list[dict]) -> float | None:
+    """Minutes not ready over the minutes the spans cover; None with none."""
+    if not spans:
+        return None
+    covered = sum(b["minutes"] / b["share"] for b in spans if b["share"])
+    return round(sum(b["minutes"] for b in spans) / covered, 4) if covered else 0.0
+
+
 def summarize(rows: list[dict]) -> dict[str, Any]:
     """Totals over stored rows: sessions by status, what was realised, how
     orders filled, and the shadow beside them where it ran."""
@@ -602,6 +615,7 @@ def summarize(rows: list[dict]) -> dict[str, Any]:
     placed = sum(r["activity"]["orders_placed"] for r in rows)
     shadowed = [r for r in rows if r.get("shadow")]
     bridge = [r["bridge_not_ready"] for r in rows if r.get("bridge_not_ready")]
+    regular = [r["bridge_not_ready_regular"] for r in rows if r.get("bridge_not_ready_regular")]
     return {
         "sessions": len(rows),
         "traded": status.count("traded"),
@@ -613,14 +627,10 @@ def summarize(rows: list[dict]) -> dict[str, Any]:
         "realized_pnl": round(sum(r["activity"]["realized_pnl"] for r in rows), 2),
         "loss_sales": sum(r["activity"]["loss_sales"] for r in rows),
         "execution": execution_summary(orders, placed),
-        "bridge_not_ready_share": (
-            round(
-                sum(b["minutes"] for b in bridge)
-                / sum(b["minutes"] / b["share"] for b in bridge if b["share"]),
-                4,
-            )
-            if any(b["share"] for b in bridge)
-            else (0.0 if bridge else None)
+        "bridge_not_ready_share": _not_ready_share(bridge),
+        "bridge_not_ready_regular_share": _not_ready_share(regular),
+        "bridge_not_ready_regular_minutes": (
+            round(sum(b["minutes"] for b in regular), 1) if regular else None
         ),
         "shadow": (
             {
@@ -659,8 +669,15 @@ def report(deployment_id: str, rows: list[dict], meta: dict) -> str:
         + ".",
     ]
     if total["bridge_not_ready_share"] is not None:
+        inside = total.get("bridge_not_ready_regular_share")
         lines.append(
-            f"- **Bridge not ready:** {total['bridge_not_ready_share'] * 100:.0f}% of the hours it trades."
+            f"- **Bridge not ready:** {total['bridge_not_ready_share'] * 100:.0f}% of the hours it trades"
+            + (
+                f"; {inside * 100:.1f}% of the regular session "
+                f"({total['bridge_not_ready_regular_minutes']:.0f} min in all)."
+                if inside is not None
+                else "."
+            )
         )
     lines.append(
         f"- **Live:** {total['buys']} buys, {total['sells']} sells, ${total['realized_pnl']:,.2f} "
@@ -706,11 +723,14 @@ def report(deployment_id: str, rows: list[dict], meta: dict) -> str:
     for row in rows:
         have, act, ex = row["availability"], row["activity"], row["execution"]
         bridge = row.get("bridge_not_ready")
+        inside = row.get("bridge_not_ready_regular")
         shadow = row.get("shadow")
         status = have["status"] + (f" ({have['why']})" if have.get("why") else "")
+        away = "" if not bridge else f"{round(bridge['minutes'])} min"
+        if bridge and inside:
+            away += f" ({round(inside['minutes'])} regular)"
         lines.append(
-            f"| {row['session']} | {status} | {have['bars']} | "
-            f"{'' if not bridge else str(round(bridge['minutes'])) + ' min'} | "
+            f"| {row['session']} | {status} | {have['bars']} | {away} | "
             f"{act['orders_placed']} / {act['orders_filled']} | {act['buys']} | {act['sells']} | "
             f"${act['realized_pnl']:,.2f} | {_bps(ex.get('live_bps')) if ex['filled'] else ''} | "
             f"{_bps(ex.get('model_bps')) if ex['filled'] else ''} | "

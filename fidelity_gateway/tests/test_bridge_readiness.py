@@ -108,6 +108,26 @@ def test_signed_out_or_no_tab_blocks_but_another_fidelity_page_only_warns():
     assert elsewhere["ready"] is True and _state(elsewhere, "fidelity") == "warn"
 
 
+def test_a_known_sign_in_says_when_fidelity_ends_it_and_warns_never_blocks():
+    from fidelity_gateway.bridge.signin import Outlook
+
+    fine = Outlook(NOW - 3600, NOW + 9.5 * 3600, False, "signed in since 08:00 ET; ends 18:30 ET")
+    verdict = _verdict(signin=fine)
+    item = next(i for i in verdict["items"] if i["id"] == "fidelity")
+    assert (item["state"], item["detail"], item["fix"]) == ("ok", fine.detail, None)
+
+    short = Outlook(
+        NOW - 9 * 3600, NOW + 1.5 * 3600, True, "ends before the close", "sign in again"
+    )
+    verdict = _verdict(signin=short)
+    item = next(i for i in verdict["items"] if i["id"] == "fidelity")
+    assert verdict["ready"] is True, "it trades now"
+    assert (item["state"], item["fix"]) == ("warn", "sign in again")
+
+    out = _report(fidelity_tab={"state": "signed_out", "url": "x", "since": _iso(1)})
+    assert _verdict(out, signin=short)["blocking"] == "fidelity", "a sign-out is still a sign-out"
+
+
 def test_allow_trading_off_blocks_real_orders_but_not_a_preview_deployment():
     off = _report(permissions={"preview": True, "place": False})
     assert _verdict(off)["blocking"] == "trading"

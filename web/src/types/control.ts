@@ -283,6 +283,11 @@ export interface BridgeStatus {
   attached: BridgeAttached | null;
   readiness: Readiness;
   last_check: AccountCheck | null;
+  /** fidelity_gateway/bridge/signin.py: when the sign-in the tab is on
+   * began and when Fidelity is expected to end it (about `session_hours`
+   * later); nulls when the host did not see it begin. Absent from a host
+   * older than this field. The checklist's Fidelity item says it in words. */
+  sign_in?: { since: string | null; expires: string | null; session_hours: number };
   session_open: boolean;
   next_open: string | null;
   build: BuildInfo | null;
