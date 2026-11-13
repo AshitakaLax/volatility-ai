@@ -120,7 +120,7 @@ Every line must be `ok`. The ones worth reading:
 Then:
 
 ```bash
-docker compose up -d                 # web, paper-ultimate, backup, market-data, market-inputs
+docker compose up -d                 # web, paper-ultimate, backup, market-data, market-inputs, tracking
 docker compose ps
 docker compose logs -f paper
 ```
@@ -308,6 +308,33 @@ docker compose run --rm market-data --list              # the funds, and how eac
 
 A new fund is added in two places: `FUNDS` in `tools/refresh_warehouse.py`
 and `KNOWN_DATA` in `tools/export_ui_data.py` (a test holds them equal).
+
+### Live against backtest, daily
+
+`tracking` (`tools/track_live.py`) compares what each deployment did with
+what a backtest says. At start and daily at `VAI_TRACKING_AT` (20:40
+Eastern) it writes `output/tracking/report.md` and, per deployment,
+`output/tracking/<id>/sessions.jsonl`:
+
+- **Availability:** sessions traded, partial or missed, from the bars the
+  trader journaled; for Fidelity, how long the bridge was not ready inside
+  the hours it trades, and why.
+- **Execution:** each filled order's price against its limit, beside what
+  the config's cost model charges a backtest for that bar, and the share
+  of placed orders that filled.
+- **Shadow backtest:** the algorithm in force, on the warehouse's bars from
+  the first tracked session, with the config's costs and capital. It is
+  exact only for a trial begun on a fresh ledger; the report says when the
+  algorithm changed.
+
+A trader's journals keep ten sessions; the record here keeps every session
+it has seen. It mounts the ledgers' folders, the control directories and
+the configs read-only.
+
+```bash
+docker compose logs tracking                 # one line per deployment, each run
+docker compose run --rm tracking --report    # the stored report
+```
 
 ### Option readings, after each close
 

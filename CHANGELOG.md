@@ -1,5 +1,38 @@
 # Changelog
 
+## Feature: live against backtest, session by session
+
+**Every figure a decision here rests on is a backtest, and nothing compared
+one with what a deployment did.** `tools/track_live.py` (the compose
+`tracking` service, daily) reads each trader's journals and writes
+`output/tracking/`: whether it was watching each session, what it bought
+and sold, each filled order's price against its limit beside what the
+config's cost model charges, and a shadow backtest of the algorithm in
+force over the same days. It keeps its own record, because a trader's
+journals hold ten sessions.
+
+Its first run, on the journals to 2026-11-12:
+
+- **Fidelity's bridge was not ready for 18% of the hours it trades**, about
+  two and a half hours of every day: Fidelity signs the browser out
+  overnight, so the pre-market window passes before anyone signs in.
+- **Fills were better than the cost model assumes.** 116 of 119 orders
+  filled; the median fill was 0.3 bp inside its limit, where the model
+  charges 1.5 bp.
+- **The shadow backtest and the live book do not trade alike.** On Fidelity
+  the backtest of the same algorithm made 951 buys against 115 live, on a
+  capital figure (the config's `backtest.initial_cash`, $5,000) smaller
+  than the $26,938 the account bought. Why they differ is not established;
+  the report now says when a config's capital is not the account's.
+- **paper-ultimate placed no order in eight sessions**, while a backtest of
+  the algorithm now in force made 354 buys over them and sold them all at a
+  loss on a regime exit. The algorithm was changed during those sessions,
+  so only the later ones compare.
+
+The shadow starts from cash on the first tracked session and runs today's
+algorithm over all of them, so it is exact only for a trial begun on a
+fresh ledger; the report says when the algorithm changed.
+
 ## Feature: option-market readings collected daily through the Fidelity bridge, and the event calendars extended
 
 **The owner asked for TQQQ's option chain to be collected through the
