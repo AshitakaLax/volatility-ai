@@ -48,7 +48,7 @@ export function WarehouseTab() {
           Warehouse
         </h2>
         <span className="text-xs text-muted-foreground">
-          {status ? `as of ${new Date(status.at).toLocaleTimeString()}` : "loading…"}
+          {status ? `as of ${new Date(status.at).toLocaleTimeString()}` : "reading the warehouse…"}
           {status ? ` · up to date means through ${status.through}` : ""}
         </span>
         <Button

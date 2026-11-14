@@ -296,7 +296,8 @@ function CandidateRow({ candidate, onChanged }: { candidate: Candidate; onChange
         ) : null}
       </div>
       <p className="text-xs text-muted-foreground">
-        {candidate.strategy_id} · step {candidate.step} · target {candidate.profit_target} · backtest
+        {candidate.strategy_id} · step {fraction(candidate.step)} · target{" "}
+        {fraction(candidate.profit_target)} · backtest
         yield {percent(backtest.net_yield_pct)}, CAGR {percent(backtest.cagr_pct)}, max drawdown{" "}
         {percent(backtest.max_drawdown_pct)}
       </p>
@@ -413,4 +414,11 @@ function CandidateRow({ candidate, onChanged }: { candidate: Candidate; onChange
       {error ? <p className="text-xs text-loss">{error}</p> : null}
     </div>
   );
+}
+
+/** A step or target stored as a fraction (0.00097781), as the percent it is (0.098%). */
+function fraction(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "--";
+  const percentage = value * 100;
+  return `${percentage.toFixed(percentage < 1 ? 3 : 2).replace(/\.?0+$/, "")}%`;
 }

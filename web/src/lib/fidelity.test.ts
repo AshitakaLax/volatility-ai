@@ -13,7 +13,17 @@ import type {
   TraderStatus,
 } from "@/types/control";
 
-import { ago, attachedWords, chain, duration, goneFor, sessionTime, timeline, verdict } from "./fidelity";
+import {
+  ago,
+  attachedWords,
+  chain,
+  duration,
+  goneFor,
+  sessionTime,
+  signInLine,
+  timeline,
+  verdict,
+} from "./fidelity";
 
 // Saturday 2026-10-24, 12:00 Eastern.
 const NOW = Date.parse("2026-10-24T16:00:00Z");
@@ -248,6 +258,44 @@ describe("the timeline", () => {
       { t: 2, kind: "check", detail: "passed", ok: true },
     ]);
     expect(rows.map((r) => r.tone)).toEqual(["profit", "stuck"]);
+  });
+});
+
+describe("the sign-in's clock", () => {
+  const signedIn = (expires: string | null) =>
+    bridge({
+      connection: {
+        ...bridge().connection,
+        fidelity_tab: { state: "signed_in", url: null, since: iso(3600) },
+      },
+      sign_in: { since: iso(3600), expires, session_hours: 10.5 },
+    });
+
+  it("says when Fidelity will end it and how long is left", () => {
+    // Noon Eastern now; it ends at 15:10.
+    const line = signInLine(signedIn("2026-10-24T19:10:00Z"), NOW);
+    expect(line).toEqual({ text: "Signed in until 15:10 ET · 3 h 10 min left", tone: "neutral" });
+  });
+
+  it("warns in its last half hour, and once it should have ended", () => {
+    expect(signInLine(signedIn("2026-10-24T16:20:00Z"), NOW)?.tone).toBe("stuck");
+    const over = signInLine(signedIn("2026-10-24T15:00:00Z"), NOW);
+    expect(over?.tone).toBe("stuck");
+    expect(over?.text).toContain("sign in again");
+  });
+
+  it("says nothing it does not know", () => {
+    expect(signInLine(signedIn(null), NOW)).toBeNull();
+    expect(signInLine(bridge(), NOW)).toBeNull(); // a host older than the field
+    expect(signInLine(null, NOW)).toBeNull();
+    const out = bridge({
+      connection: {
+        ...bridge().connection,
+        fidelity_tab: { state: "signed_out", url: null, since: null },
+      },
+      sign_in: { since: iso(3600), expires: "2026-10-24T19:10:00Z", session_hours: 10.5 },
+    });
+    expect(signInLine(out, NOW)).toBeNull();
   });
 });
 

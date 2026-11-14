@@ -50,7 +50,7 @@ export function ServerCard({
           Server
         </CardTitle>
         <span className="text-xs text-muted-foreground">
-          {build.commit ?? "unknown build"}
+          {build.commit ?? "built without a commit"}
           {build.branch ? ` on ${build.branch}` : ""}
           {build.dirty ? " (uncommitted changes)" : ""} · up {duration(build.uptime_s / 3600)}
         </span>

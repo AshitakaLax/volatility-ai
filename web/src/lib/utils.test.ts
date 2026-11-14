@@ -31,6 +31,12 @@ describe("runUrl", () => {
     expect([...url.searchParams.keys()]).toEqual(["run"]);
   });
 
+  it("drops the opener's own place, so the run lands on its result", () => {
+    const url = new URL(runUrl("abc123", "http://localhost:8000/#live/fidelity"));
+    expect(url.hash).toBe("");
+    expect(url.searchParams.get("run")).toBe("abc123");
+  });
+
   it("url-encodes a run id that needs it", () => {
     const url = new URL(runUrl("has space/slash", "http://localhost:8000/"));
     expect(url.searchParams.get("run")).toBe("has space/slash");

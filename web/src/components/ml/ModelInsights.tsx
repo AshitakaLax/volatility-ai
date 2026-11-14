@@ -1,7 +1,15 @@
 import { FlaskConical, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { Badge, Card, CardContent, CardHeader, CardTitle, Select } from "@/components/ui/primitives";
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Select,
+  Skeleton,
+} from "@/components/ui/primitives";
 import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
@@ -125,7 +133,7 @@ export function ModelInsights() {
           ) : evaluationHint ? (
             <NotBuiltYet detail={evaluationHint} />
           ) : (
-            <p className="text-xs text-muted-foreground">Loading…</p>
+            <Skeleton className="h-24" />
           )}
         </CardContent>
       </Card>
@@ -149,7 +157,7 @@ export function ModelInsights() {
           ) : ablationHint ? (
             <NotBuiltYet detail={ablationHint} />
           ) : (
-            <p className="text-xs text-muted-foreground">Loading…</p>
+            <Skeleton className="h-24" />
           )}
         </CardContent>
       </Card>
@@ -182,7 +190,7 @@ function SourcesCard({ summary, error }: { summary: MlSeries[] | null; error: st
         {error ? (
           <NotBuiltYet detail={error} />
         ) : !summary ? (
-          <p className="text-xs text-muted-foreground">Loading…</p>
+          <Skeleton className="h-24" />
         ) : (
           <div className="space-y-3">
             <p className="tnum text-lg font-semibold">
@@ -217,7 +225,7 @@ function DatasetsCard({ summary, error }: { summary: ByTicker<Dataset> | null; e
         {error ? (
           <NotBuiltYet detail={error} />
         ) : !summary ? (
-          <p className="text-xs text-muted-foreground">Loading…</p>
+          <Skeleton className="h-24" />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

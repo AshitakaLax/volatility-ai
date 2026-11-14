@@ -46,6 +46,9 @@ import { ShardScheduleDialog } from "./ShardScheduleDialog";
 const ACTIVE_POLL_MS = 3000;
 const IDLE_POLL_MS = 10000;
 
+// More idle shards than this fold into a count.
+const FOLD_IDLE_OVER = 3;
+
 export function ShardPanel() {
   const [list, setList] = useState<ShardList | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +105,8 @@ export function ShardPanel() {
     };
   }, []);
 
+  const [showIdle, setShowIdle] = useState(false);
+
   const perform = useCallback(async (key: string, call: () => Promise<unknown>) => {
     setBusy(key);
     setActionError(null);
@@ -121,6 +126,14 @@ export function ShardPanel() {
   const summary = summarizeShards(shards);
   const remote = shards.filter((shard) => !shard.local).length;
   const allPaused = list?.paused ?? false;
+  // A row of idle machines says nothing a count does not: the ones doing
+  // something, paused, locked out or gone stay in view, the rest fold.
+  const quiet = shards.filter(
+    (shard) => shard.run === null && shard.conn === "online" && shard.state !== "paused" &&
+      shard.state !== "pausing" && shard.state !== "locked_out",
+  );
+  const fold = !showIdle && quiet.length > FOLD_IDLE_OVER;
+  const shown = fold ? shards.filter((shard) => !quiet.includes(shard)) : shards;
 
   const title = list
     ? [
@@ -145,7 +158,7 @@ export function ShardPanel() {
           {title}
         </span>
 
-        {shards.map((shard) => (
+        {shown.map((shard) => (
           <ShardChip
             key={shard.name}
             shard={shard}
@@ -163,6 +176,17 @@ export function ShardPanel() {
             onOpenSchedule={() => setEditing(shard)}
           />
         ))}
+
+        {quiet.length > FOLD_IDLE_OVER ? (
+          <button
+            type="button"
+            data-testid="shards-idle"
+            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            onClick={() => setShowIdle(!showIdle)}
+          >
+            {showIdle ? "Hide idle" : `${quiet.length} idle`}
+          </button>
+        ) : null}
 
         <div className="ml-auto flex items-center gap-2">
           {error ? <Badge tone="loss">engine host unreachable</Badge> : null}

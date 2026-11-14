@@ -59,10 +59,11 @@ export function ConnectionTimeline({ deploymentId }: { deploymentId: string }) {
           {shown.map((row) => (
             <li key={`${row.t}-${row.kind}`} className="flex items-baseline gap-2 text-xs">
               <span className={cn("mt-1 size-2 shrink-0 rounded-full", DOT[row.tone])} aria-hidden />
-              <span className="w-36 shrink-0 font-mono text-muted-foreground tabular-nums">
+              <span className="w-28 shrink-0 font-mono text-muted-foreground tabular-nums sm:w-36">
                 {when(row.t)}
               </span>
-              <span className="min-w-0">
+              {/* A journal line can carry an address with nowhere to break. */}
+              <span className="min-w-0 [overflow-wrap:anywhere]">
                 {row.text}
                 {row.span ? <span className="text-muted-foreground"> ({row.span})</span> : null}
               </span>
