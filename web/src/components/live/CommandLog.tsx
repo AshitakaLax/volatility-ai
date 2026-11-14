@@ -22,7 +22,10 @@ interface Props {
   onChange: () => void;
 }
 
-const SHOWN = 20;
+// The last few are what a glance wants; the rest is the audit trail, one
+// click away.
+const SHOWN = 5;
+const SHOWN_ALL = 50;
 
 function when(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : "--";
@@ -31,6 +34,10 @@ function when(iso: string | null): string {
 export function CommandLog({ deploymentId, commands, onChange }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [all, setAll] = useState(false);
+  // Anything still queued stays in view however old the rest is.
+  const queued = commands.filter((row) => row.status === "queued").length;
+  const shown = commands.slice(0, all ? SHOWN_ALL : Math.max(SHOWN, queued));
 
   const cancel = async (row: CommandRow) => {
     setBusy(row.id);
@@ -70,7 +77,7 @@ export function CommandLog({ deploymentId, commands, onChange }: Props) {
               </tr>
             </thead>
             <tbody>
-              {commands.slice(0, SHOWN).map((row) => (
+              {shown.map((row) => (
                 <tr key={row.id} className="border-b border-border/50 align-top last:border-0">
                   <td className="py-2 text-xs text-muted-foreground">{when(row.created_at)}</td>
                   <td className="py-2">
@@ -107,6 +114,15 @@ export function CommandLog({ deploymentId, commands, onChange }: Props) {
             </tbody>
           </table>
         )}
+        {commands.length > shown.length || all ? (
+          <button
+            type="button"
+            className="mt-2 text-xs text-muted-foreground underline"
+            onClick={() => setAll(!all)}
+          >
+            {all ? "Show the last few" : `Show all ${Math.min(commands.length, SHOWN_ALL)}`}
+          </button>
+        ) : null}
         {error ? <p className="mt-2 text-xs text-loss">{error}</p> : null}
       </CardContent>
     </Card>

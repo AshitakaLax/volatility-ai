@@ -6,8 +6,11 @@ import {
   FlaskConical,
   LineChart,
   ListChecks,
+  Monitor,
+  Moon,
+  Sun,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { ActiveRuns } from "@/components/backtest/ActiveRuns";
 import { BacktestResult } from "@/components/backtest/BacktestResult";
@@ -20,13 +23,18 @@ import { ModelInsights } from "@/components/ml/ModelInsights";
 import { WarehouseTab } from "@/components/warehouse/WarehouseTab";
 import { Button, Card, CardContent } from "@/components/ui/primitives";
 import { useBacktestRun } from "@/hooks/useBacktestRun";
+import { usePolled } from "@/hooks/usePolled";
 import { api } from "@/lib/api";
+import { pageTitle } from "@/lib/attention";
+import { parsePlace, placeHash, type Place, type Tab } from "@/lib/nav";
+import { nextTheme, setTheme, themeChoice, watchSystemTheme, type ThemeChoice } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { DEFAULT_FILTERS, type ExecutionFilters, type Report } from "@/types/backtest";
 
 /**
- * Section 1 (Backtesting) is the default view, and that ordering is the
- * brief's.
+ * The tabs keep the brief's order, Backtesting first. The page OPENS on
+ * Live -- the one looked at every day -- and where the reader is lives in
+ * the address (lib/nav.ts), so a reload or a bookmark returns there.
  *
  * "Backtest result" is a fourth tab rather than a panel inside
  * Backtesting: opening a run loads a whole report, and rendering that
@@ -38,10 +46,52 @@ import { DEFAULT_FILTERS, type ExecutionFilters, type Report } from "@/types/bac
  * is no run, so the page is useful before the API is up, which is also
  * how it was developed.
  */
-type Tab = "backtest" | "result" | "live" | "algorithms" | "ml" | "warehouse";
+const TITLE_POLL_MS = 30_000;
+
+const THEME_ICONS = { system: Monitor, light: Sun, dark: Moon } as const;
+
+function here(): Place {
+  return parsePlace(window.location.hash, window.location.search);
+}
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("backtest");
+  const [place, setPlace] = useState<Place>(here);
+  const tab = place.tab;
+  const [theme, setThemeChoice] = useState<ThemeChoice>(themeChoice);
+
+  // The address is the state: going somewhere writes it, and the back
+  // button (or an edited address) is read back.
+  const go = useCallback((next: Place) => {
+    setPlace(next);
+    const hash = placeHash(next);
+    if (window.location.hash !== hash) window.history.pushState(null, "", hash);
+  }, []);
+  const setTab = useCallback(
+    (next: Tab) => go({ tab: next, deployment: next === "live" ? place.deployment : null }),
+    [go, place.deployment],
+  );
+  const setDeployment = useCallback(
+    (deployment: string) => go({ tab: "live", deployment }),
+    [go],
+  );
+  useEffect(() => {
+    const read = () => setPlace(here());
+    window.addEventListener("hashchange", read);
+    window.addEventListener("popstate", read);
+    return () => {
+      window.removeEventListener("hashchange", read);
+      window.removeEventListener("popstate", read);
+    };
+  }, []);
+
+  useEffect(() => watchSystemTheme(), []);
+
+  // The browser tab says how real money stands -- or what needs attention --
+  // whichever page is open, so a pinned tab is worth a glance.
+  const deployments = usePolled(api.deployments, TITLE_POLL_MS);
+  useEffect(() => {
+    document.title = pageTitle(deployments.data ?? [], Date.now());
+  }, [deployments.data]);
   const [staticReport, setStaticReport] = useState<Report | null>(null);
   const [filters, setFilters] = useState<ExecutionFilters>(DEFAULT_FILTERS);
   const { run, batch, submit, attach, submitting, error } = useBacktestRun();
@@ -73,7 +123,7 @@ export default function App() {
   useEffect(() => {
     const runId = new URLSearchParams(window.location.search).get("run");
     if (!runId) return;
-    setTab("result");
+    // parsePlace already landed this tab on the result page.
     void attach(runId);
   }, [attach]);
 
@@ -98,8 +148,8 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border">
-        <div className="mx-auto flex max-w-[1600px] items-center gap-6 px-6 py-4">
-          <div className="flex flex-col leading-tight">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex shrink-0 flex-col leading-tight">
             <span className="text-sm font-semibold tracking-tight">volatility-ai</span>
             <span
               className="tnum text-[10px] text-muted-foreground"
@@ -109,7 +159,9 @@ export default function App() {
               web v{__WEB_VERSION__} · engine {engineVersion ? `v${engineVersion}` : "…"}
             </span>
           </div>
-          <nav className="flex gap-1">
+          {/* On a phone the tabs take their own row and scroll sideways
+              rather than pushing the page wider than the screen. */}
+          <nav className="order-last flex w-full min-w-0 gap-1 overflow-x-auto sm:order-none sm:w-auto">
             {(
               [
                 { id: "backtest", label: "Backtesting", icon: LineChart },
@@ -124,8 +176,9 @@ export default function App() {
                 key={id}
                 type="button"
                 onClick={() => setTab(id)}
+                aria-current={tab === id ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors",
+                  "flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm whitespace-nowrap transition-colors",
                   tab === id
                     ? "bg-secondary text-secondary-foreground"
                     : "text-muted-foreground hover:text-foreground",
@@ -136,8 +189,9 @@ export default function App() {
               </button>
             ))}
           </nav>
-          {report ? (
-            <span className="ml-auto text-xs text-muted-foreground">
+          <div className="ml-auto flex min-w-0 items-center gap-3">
+          {report && (tab === "backtest" || tab === "result") ? (
+            <span className="hidden truncate text-xs text-muted-foreground xl:inline">
               {report.name ? (
                 <span className="font-medium text-foreground">{report.name} · </span>
               ) : null}
@@ -146,12 +200,20 @@ export default function App() {
               {report.jobs && report.jobs > 1 ? ` · ${report.jobs} workers` : ""}
             </span>
           ) : null}
+            <ThemeButton
+              choice={theme}
+              onChange={(next) => {
+                setTheme(next);
+                setThemeChoice(next);
+              }}
+            />
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] space-y-4 px-6 py-6">
+      <main className="mx-auto max-w-[1600px] space-y-4 px-3 py-4 sm:px-6 sm:py-6">
         {tab === "live" ? (
-          <LiveTab />
+          <LiveTab chosen={place.deployment} onChoose={setDeployment} />
         ) : tab === "algorithms" ? (
           <AlgorithmsTab />
         ) : tab === "ml" ? (
@@ -212,5 +274,29 @@ export default function App() {
         )}
       </main>
     </div>
+  );
+}
+
+/** System, light, dark: one button that steps through them. */
+function ThemeButton({
+  choice,
+  onChange,
+}: {
+  choice: ThemeChoice;
+  onChange: (next: ThemeChoice) => void;
+}) {
+  const Icon = THEME_ICONS[choice];
+  const label = `Theme: ${choice}`;
+  return (
+    <button
+      type="button"
+      title={`${label}. Click to change.`}
+      aria-label={label}
+      data-testid="theme"
+      onClick={() => onChange(nextTheme(choice))}
+      className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+    >
+      <Icon className="size-4" />
+    </button>
   );
 }

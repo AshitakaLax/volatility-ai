@@ -47,7 +47,13 @@ const CHIPS: Record<RunState, { label: string; tone: Tone }> = {
 };
 
 /** The deployment's state as one chip, with the line under it. */
-export function chip(d: DeploymentSummary): { label: string; tone: Tone; detail: string } {
+export function chip(d: DeploymentSummary): {
+  label: string;
+  tone: Tone;
+  detail: string;
+  /** How to start one that is not running: for a tooltip, not the card. */
+  hint?: string;
+} {
   if (d.error) return { label: "Config error", tone: "loss", detail: d.error };
   if (!d.controllable || !d.status) {
     return {
@@ -62,9 +68,16 @@ export function chip(d: DeploymentSummary): { label: string; tone: Tone; detail:
     d.status.state === "waiting_for_broker" && d.broker === "fidelity"
       ? "Waiting for Fidelity"
       : known.label;
-  let detail = d.status.detail ?? "";
+  const detail = d.status.detail ?? "";
   if (d.status.state === "not_running" && d.service) {
-    detail = `${detail} -- start it with \`docker compose up -d ${d.service}\``;
+    return {
+      label,
+      // Not running is a state, not a failure: paper deployments are left
+      // off on purpose. What is wrong is said by lib/attention.ts.
+      tone: "neutral",
+      detail: "Not started",
+      hint: `${detail ? `${detail}. ` : ""}Start it with: docker compose up -d ${d.service}`,
+    };
   }
   return { label, tone, detail };
 }

@@ -606,7 +606,10 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
         {run ? <RunStatus run={run} /> : batch ? <BatchStatus batch={batch} /> : null}
       </CardHeader>
 
-      <CardContent className="flex flex-wrap items-end gap-4">
+      {/* Aligned by their labels: the fields differ in height (a grid step
+          carries its method and a line of help), and aligned by their
+          bottoms the short ones sank below the tall one's label. */}
+      <CardContent className="flex flex-wrap items-start gap-x-4 gap-y-5">
         <Field label="Name">
           <Input
             type="text"
@@ -765,6 +768,8 @@ export function ParameterForm({ onSubmit, run, batch, submitting, error, range, 
 
         <Button
           data-testid="run"
+          // Label-less among labelled fields: it sits on their controls' line.
+          className="mt-[22px]"
           onClick={submit}
           disabled={
             busy ||

@@ -69,6 +69,9 @@ export function timestamp(epochSeconds: number | null | undefined): string {
 export function runUrl(runId: string, base: string = window.location.href): string {
   const url = new URL(base);
   url.search = "";
+  // The opener's own place (#live, #backtest) is not the run's: without a
+  // hash, lib/nav.ts lands a ?run= address on the result page.
+  url.hash = "";
   url.searchParams.set("run", runId);
   return url.toString();
 }

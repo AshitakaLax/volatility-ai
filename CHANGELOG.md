@@ -1,5 +1,45 @@
 # Changelog
 
+## Feat: the website opens on what matters, and reads on a phone
+
+A review of the site as it runs found it opened on the parameter form,
+selected a paper deployment while real money said "Not ready" in a small
+pill, showed nothing over time, and was 757 px wide on a 390 px phone.
+
+- **It opens on Live, and the address says where you are** (`#live`,
+  `#live/fidelity`, `#backtest`; `web/src/lib/nav.ts`): a reload or a
+  bookmark returns there. Backtesting stays the first tab. `runUrl` drops
+  the opener's hash so a run still lands on its result.
+- **What needs attention is said first** (`lib/attention.ts`): a banner
+  on Live with the deployment, what is wrong and the fix; the same thing
+  in the browser tab's title, which otherwise says how real money stands;
+  and the deployment shown by default is real money that something
+  reports for, not the first listed.
+- **Performance over time** on Live: realised profit by session and
+  running, from the trader's journal, beside the shadow backtest, the
+  share of orders that filled and a bridge's minutes not ready where the
+  `tracking` service recorded them -- the new read-only
+  `GET /api/live/deployments/{id}/tracking` (`server/live.py`), which
+  slims that tool's `sessions.jsonl`.
+- **The Fidelity sign-in's clock** ("Signed in until 18:52 ET · 3 h left")
+  on its card and panel, from the bridge host's `sign_in`.
+- **Run history folds repeats**: neighbouring rows of one run with the
+  same configuration and figures show once with a count (43 of the first
+  50 TQQQ rows repeated another). Columns keep their own gutters.
+- **The wide-target warning knows a committed profile**: Daily Ultimate's
+  12% is the profile's own, so the warning that was always on is gone.
+- **Less to scroll past, less red**: the last five commands with "show
+  all", build and process folded away, idle shards folded into a count,
+  recent runs on an empty Backtest result page; drawdown is no longer red
+  in every row, "Not running" is a neutral state with its start command in
+  the tooltip, and durations read "4 h 22 min" rather than "15768s".
+- **Light and dark** (`lib/theme.ts`, following the system unless the
+  header's button chooses), skeletons while loading, and a layout that
+  fits a phone: the tabs scroll on their own row.
+
+The page's default tab changed from the brief's Backtesting to Live; the
+end-to-end test that pinned the old default now opens `#backtest`.
+
 ## Feature: the Fidelity sign-in, watched and assisted
 
 **Fidelity ends a browser session about 10.5 hours after the sign-in,

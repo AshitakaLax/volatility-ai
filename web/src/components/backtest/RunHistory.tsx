@@ -3,8 +3,19 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { RunHistoryFilterBar } from "@/components/backtest/RunHistoryFilterBar";
 import { Pagination } from "@/components/ui/Pagination";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Select } from "@/components/ui/primitives";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Field,
+  Select,
+  Skeleton,
+} from "@/components/ui/primitives";
 import { api } from "@/lib/api";
+import { foldRepeats } from "@/lib/historyRows";
 import {
   historyQueryBody,
   nextRunHistorySort,
@@ -298,6 +309,9 @@ export function RunHistory({ refreshToken }: Props) {
   const total = data?.total ?? 0;
   const totalUnfiltered = data?.total_unfiltered ?? 0;
   const pageRows = data?.rows ?? [];
+  // Forty rows saying one thing are one row saying it forty times.
+  const groups = foldRepeats(pageRows);
+  const folded = pageRows.length - groups.length;
   const firstIndex = data?.offset ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -365,7 +379,11 @@ export function RunHistory({ refreshToken }: Props) {
             here, including across a server restart.
           </p>
         ) : data === null ? (
-          <p className="text-sm text-muted-foreground">Loading {ticker ?? "history"}…</p>
+          <div className="space-y-2" aria-label={`Loading ${ticker ?? "history"}`}>
+            {[0, 1, 2, 3, 4, 5].map((line) => (
+              <Skeleton key={line} className="h-7" />
+            ))}
+          </div>
         ) : total === 0 ? (
           <p className="text-sm text-muted-foreground">
             No runs match these filters. Loosen a bound or{" "}
@@ -382,7 +400,13 @@ export function RunHistory({ refreshToken }: Props) {
           // Dimmed while the next page or filter result is on its way, so
           // a reader never mistakes the previous result for the new one.
           <table
-            className={cn("w-full min-w-[1080px] text-sm transition-opacity", loading && "opacity-50")}
+            className={cn(
+              // Every cell keeps its own gutter: without one a long name ran
+              // into the fund and the trade count into the window's date.
+              "w-full min-w-[1080px] text-sm transition-opacity [&_td]:px-1.5 [&_th]:px-1.5",
+              "[&_td:first-child]:pl-0 [&_th:first-child]:pl-0 [&_td:last-child]:pr-0",
+              loading && "opacity-50",
+            )}
             aria-busy={loading}
           >
             <thead>
@@ -464,7 +488,7 @@ export function RunHistory({ refreshToken }: Props) {
               </tr>
             </thead>
             <tbody className="tnum">
-              {pageRows.map((row, index) => {
+              {groups.map(({ row, count, index }) => {
                 const value = valueOf(row, spec.key);
                 const worst = valueOf(row, "worst_year_pct");
                 return (
@@ -488,12 +512,25 @@ export function RunHistory({ refreshToken }: Props) {
                     onClick={() => window.open(runUrl(row.run), "_blank", "noopener,noreferrer")}
                     title="Open this run in a new tab"
                   >
-                    <td className="py-2 text-muted-foreground">{firstIndex + index + 1}</td>
-                    <td
-                      className="max-w-[180px] truncate py-2 text-xs"
-                      title={row.name ?? undefined}
-                    >
-                      {row.name ?? <span className="text-muted-foreground">--</span>}
+                    <td className="py-2 whitespace-nowrap text-muted-foreground">
+                      {firstIndex + index + 1}
+                      {count > 1 ? `–${firstIndex + index + count}` : ""}
+                    </td>
+                    <td className="max-w-[210px] py-2 text-xs" title={row.name ?? undefined}>
+                      <span className="flex items-center gap-1.5">
+                        <span className="min-w-0 truncate">
+                          {row.name ?? <span className="text-muted-foreground">--</span>}
+                        </span>
+                        {count > 1 ? (
+                          <Badge
+                            className="shrink-0"
+                            data-testid="history-repeats"
+                            title={`${count} configurations of this run gave this same result; shown once`}
+                          >
+                            ×{count}
+                          </Badge>
+                        ) : null}
+                      </span>
                     </td>
                     <td className="py-2 font-medium">{row.ticker}</td>
                     <td className="py-2 text-right">
@@ -502,7 +539,7 @@ export function RunHistory({ refreshToken }: Props) {
                     <td className="py-2 text-right">
                       {row.target === null ? "--" : pct(row.target * 100, 3)}
                     </td>
-                    <td className="py-2 text-xs text-muted-foreground">
+                    <td className="py-2 text-xs whitespace-nowrap text-muted-foreground">
                       {row.model ?? "--"}
                       {row.rank === 0 ? (
                         <Badge className="ml-1.5">engine pick</Badge>
@@ -518,9 +555,9 @@ export function RunHistory({ refreshToken }: Props) {
                       )}
                     </td>
                     <td className="py-2 text-right">{pct(row.m.cagr_pct, 1)}</td>
-                    <td className="py-2 text-right text-loss">
-                      {pct(row.m.max_drawdown_pct, 1)}
-                    </td>
+                    {/* Not red: every row has a drawdown, and a column that is
+                        red top to bottom teaches the eye to skip red. */}
+                    <td className="py-2 text-right">{pct(row.m.max_drawdown_pct, 1)}</td>
                     <td
                       className={cn(
                         "py-2 text-right",
@@ -543,11 +580,11 @@ export function RunHistory({ refreshToken }: Props) {
                     >
                       {row.m.total_trades}
                     </td>
-                    <td className="py-2 text-xs text-muted-foreground">
+                    <td className="py-2 text-xs whitespace-nowrap text-muted-foreground">
                       {row.start?.slice(0, 10) ?? "--"} → {row.end?.slice(0, 10) ?? "--"}
                     </td>
                     <td
-                      className="py-2 text-xs text-muted-foreground"
+                      className="py-2 text-xs whitespace-nowrap text-muted-foreground"
                       title={
                         row.saved_at === null
                           ? "no recorded save time -- shown as now"
@@ -582,6 +619,12 @@ export function RunHistory({ refreshToken }: Props) {
             Some configurations never traded. A book that sits in cash has no drawdown and
             no losing year, so it tops those rankings without doing anything — check the
             trade count before reading a row as a result.
+          </p>
+        ) : null}
+        {folded > 0 ? (
+          <p className="mt-3 text-xs text-muted-foreground" data-testid="history-folded">
+            {folded} row{folded === 1 ? "" : "s"} on this page repeated the result above{" "}
+            {folded === 1 ? "it" : "them"} and {folded === 1 ? "is" : "are"} folded into it (×).
           </p>
         ) : null}
         <Pagination

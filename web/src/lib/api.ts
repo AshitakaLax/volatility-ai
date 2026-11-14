@@ -6,6 +6,7 @@
  * introducing one would make development and production differ in exactly
  * the way CORS bugs hide in.
  */
+import type { Tracking } from "@/lib/performance";
 import type {
   Bars,
   Catalog,
@@ -267,6 +268,13 @@ export const api = {
   deploymentFills: (id: string, sessions = 1) =>
     request<TraderFill[]>(
       `/api/live/deployments/${encodeURIComponent(id)}/fills?${query({ sessions })}`,
+    ),
+
+  /** Live against backtest, session by session, as the `tracking` service
+   * recorded it (tools/track_live.py); empty until it has run. */
+  deploymentTracking: (id: string, sessions = 120) =>
+    request<Tracking>(
+      `/api/live/deployments/${encodeURIComponent(id)}/tracking?${query({ sessions })}`,
     ),
 
   /** Each moment of each order's life in the last `sessions` sessions,

@@ -137,6 +137,18 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
   );
 }
 
+/** A block standing in for content that is loading: the page keeps its
+ * shape instead of jumping when the data arrives. */
+export function Skeleton({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn("animate-pulse rounded-md bg-secondary/60", className)}
+      {...props}
+    />
+  );
+}
+
 type Tone = "neutral" | "profit" | "loss" | "stuck";
 
 const TONES: Record<Tone, string> = {

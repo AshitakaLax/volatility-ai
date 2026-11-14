@@ -84,7 +84,9 @@ describe("the state chip", () => {
       status: { ...deployment().status!, state: "not_running", detail: "last report 9 min ago" },
     });
     expect(chip(d).label).toBe("Not running");
-    expect(chip(d).detail).toContain("docker compose up -d paper-ultimate");
+    // A state, not a failure: said quietly on the card, the command in its tooltip.
+    expect(chip(d)).toMatchObject({ tone: "neutral", detail: "Not started" });
+    expect(chip(d).hint).toContain("docker compose up -d paper-ultimate");
   });
 
   it("says when a config does not load", () => {

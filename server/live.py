@@ -43,9 +43,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -505,6 +507,74 @@ def deployment_orders(
     it ended -- the proof a limit order filled or did not."""
     inbox = _deployment(deployment_id).inbox()
     return inbox.orders(sessions) if inbox is not None else []
+
+
+def _tracking_dir() -> Path:
+    """Where tools/track_live.py keeps its record (its --out); the compose
+    file mounts the same folder into `web`. VAI_TRACKING_DIR for tests."""
+    return Path(os.environ.get("VAI_TRACKING_DIR") or "output/tracking")
+
+
+@router.get("/deployments/{deployment_id}/tracking")
+def deployment_tracking(
+    deployment_id: str,
+    sessions: int = Query(120, ge=1, le=1000),
+) -> dict[str, Any]:
+    """Live against backtest, session by session, oldest first: what the
+    `tracking` service (tools/track_live.py) recorded for this deployment --
+    whether the session was traded, its buys, sells and realised profit, how
+    its orders filled, a Fidelity bridge's minutes not ready in the regular
+    session, and the shadow backtest of the same days where it ran. Read
+    from that tool's sessions.jsonl; `sessions` is empty, not an error,
+    until it has run. The id is one config/deployments.yaml names: no route
+    takes a path."""
+    found = _deployment(deployment_id)
+    path = _tracking_dir() / found.id / "sessions.jsonl"
+    rows: list[dict[str, Any]] = []
+    updated_at: float | None = None
+    try:
+        text = path.read_text(encoding="utf-8")
+        updated_at = path.stat().st_mtime
+    except OSError:
+        text = ""
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(row, dict) or not row.get("session"):
+            continue
+        acts = row.get("activity") or {}
+        done = row.get("execution") or {}
+        shadow = row.get("shadow") or None
+        bridge = row.get("bridge_not_ready_regular") or None
+        rows.append(
+            {
+                "session": str(row["session"]),
+                "status": (row.get("availability") or {}).get("status", "unknown"),
+                "buys": acts.get("buys", 0),
+                "sells": acts.get("sells", 0),
+                "realized_pnl": acts.get("realized_pnl", 0.0),
+                "loss_sales": acts.get("loss_sales", 0),
+                "orders_placed": acts.get("orders_placed", 0),
+                "fill_share": done.get("fill_share"),
+                "live_bps": done.get("live_bps"),
+                "model_bps": done.get("model_bps"),
+                "not_ready_minutes": bridge.get("minutes") if isinstance(bridge, dict) else None,
+                "shadow": (
+                    {
+                        "buys": shadow.get("buys", 0),
+                        "sells": shadow.get("sells", 0),
+                        "realized_pnl": shadow.get("realized_pnl", 0.0),
+                        "return_pct": shadow.get("return_pct", 0.0),
+                    }
+                    if isinstance(shadow, dict)
+                    else None
+                ),
+            }
+        )
+    rows.sort(key=lambda r: r["session"])
+    return {"sessions": rows[-sessions:], "updated_at": updated_at}
 
 
 @router.get("/deployments/{deployment_id}/activity")

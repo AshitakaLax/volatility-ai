@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { api, type Health } from "@/lib/api";
 import { sameCode } from "@/lib/control";
+import { ago, duration } from "@/lib/fidelity";
 import { cn, usd } from "@/lib/utils";
 import type { DeploymentSummary } from "@/types/control";
 import type { ConnectionHealth, LiveState } from "@/types/telemetry";
@@ -38,11 +39,7 @@ interface Props {
 }
 
 function since(iso: string | null): string {
-  if (!iso) return "never";
-  const seconds = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (seconds < 90) return `${Math.round(seconds)}s ago`;
-  if (seconds < 5400) return `${Math.round(seconds / 60)}m ago`;
-  return `${Math.round(seconds / 3600)}h ago`;
+  return iso ? ago(iso, Date.now()) : "never";
 }
 
 export function DeploymentHealth({ state, health, deployment }: Props) {
@@ -103,11 +100,15 @@ export function DeploymentHealth({ state, health, deployment }: Props) {
           <span className="text-xs font-medium text-muted-foreground">Trader's build</span>
           <span className="flex items-center gap-1.5 font-mono text-sm">
             <GitBranch className="size-3.5" />
-            {trader?.commit ?? "commit not recorded"}
+            {/* The image carries a commit only when it was built with one;
+                the code's own fingerprint is always there. */}
+            {trader ? (trader.commit ?? `build ${trader.code ?? "unknown"}`) : "--"}
           </span>
-          <span className="font-mono text-xs text-muted-foreground">
-            code {trader?.code ?? "--"}
-          </span>
+          {trader?.commit ? (
+            <span className="font-mono text-xs text-muted-foreground">
+              build {trader.code ?? "--"}
+            </span>
+          ) : null}
           {same === null ? (
             <span className="text-xs text-muted-foreground">
               {trader ? "cannot compare with the web server" : "no report from the trader"}
@@ -129,10 +130,10 @@ export function DeploymentHealth({ state, health, deployment }: Props) {
           </span>
           {/* Said explicitly. This is persisted state, not a live feed. */}
           <span className="text-xs text-muted-foreground">
-            store written{" "}
+            ledger last written{" "}
             {state?.write_age_s === null || state?.write_age_s === undefined
               ? "--"
-              : `${Math.round(state.write_age_s)}s ago`}
+              : `${duration(state.write_age_s)} ago`}
           </span>
         </div>
 
@@ -154,7 +155,7 @@ export function DeploymentHealth({ state, health, deployment }: Props) {
           {/* The web server's own, said so: they describe this process, not
               the trader. Nulls rather than zeros outside a container. */}
           <span className="text-xs text-muted-foreground">
-            web server: {info ? `up ${Math.round(info.build.uptime_s / 60)}m` : "--"}
+            web server: {info ? `up ${duration(info.build.uptime_s)}` : "--"}
             {info?.container
               ? ` · ${info.container.mem_mb} / ${info.container.mem_limit_mb ?? "∞"} MB`
               : ""}
