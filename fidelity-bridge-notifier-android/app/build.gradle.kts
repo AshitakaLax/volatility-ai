@@ -13,8 +13,17 @@ android {
         applicationId = "io.github.ashitakalax.bridgenotifier"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // A release is named after its tag: the workflow sets
+        // BRIDGE_NOTIFIER_VERSION to it (v1.2.3), the app says 1.2.3 on its
+        // Connect page, and each release's code is higher than the last
+        // (1.2.3 is 10203). Any other build is a development one.
+        val release = providers.environmentVariable("BRIDGE_NOTIFIER_VERSION").orNull
+            ?.trim()?.removePrefix("v")
+            ?.takeIf { Regex("\\d{1,4}(\\.\\d{1,2}){0,2}").matches(it) }
+        val parts = release?.split('.')?.map { it.toInt() }.orEmpty()
+        versionCode = (parts.getOrElse(0) { 0 } * 10_000 + parts.getOrElse(1) { 0 } * 100 + parts.getOrElse(2) { 0 })
+            .coerceAtLeast(1)
+        versionName = release ?: "0.1.0-dev"
     }
 
     // A release is signed with your own key when BRIDGE_NOTIFIER_KEYSTORE

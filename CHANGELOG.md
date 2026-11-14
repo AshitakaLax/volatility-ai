@@ -413,6 +413,48 @@ picks the buys; the model only skips or shrinks them.
   mount of its trader's ledger (#44 added it for the book the phone shows) and
   still refuses a writable one or another trader's.
 
+## Feat: the Notifier app in the dark, and easier to live with
+
+The app's dark mode was broken rather than missing: the night theme switched
+the system's widgets to dark while every colour stayed light, so typed text
+was white on a white card and a blue title bar appeared. And several things
+got in the way every day. All in `fidelity-bridge-notifier-android/`.
+
+- **Dark mode.** `res/values-night/colors.xml` gives every named colour a
+  dark counterpart, and the night theme has no action bar. A fill (the top
+  card, a status mark, a filled button) now has its own colours
+  (`*_fill`, `on_fill`) apart from the status colours used as text, so
+  each can be right on either ground; every pair is at least 4.5:1 in the
+  dark. Inputs and checkboxes name their colours instead of taking the
+  theme's.
+- **It opens on Home**, not the settings page, once the bridge is set; a
+  tapped notification opens the Activity page.
+- **The Activity page survives a restart.** The bridge replays only what the
+  app has not seen, so the list was empty whenever Android restarted the
+  app. The last 200 are kept in the app's private storage (`History.kt`),
+  out of backups and device transfers.
+- **Away from home is not "Bridge out of reach".** `LinkAlarm` no longer
+  alarms while the phone has no network, or is on mobile data alone with a
+  bridge at a home-network address (`BridgeAddress.isLocalNetwork`); back on
+  a network that can reach it, the bridge has its allowance again.
+- **Stale figures say so** ("Not live: as the bridge last said at …"), the
+  top card retries when tapped, and Send test says when it cannot.
+- **The key**: a Paste button, and the whole `.env` line is accepted
+  (`ApiKeys.clean`). Pasted whole it used to pass for a key, every character
+  of it being in the key's alphabet, and then be refused by the bridge.
+- **Connect page**: buttons to the notification and battery settings when
+  either would stop alerts; the kinds grouped as the Activity page filters
+  them, with the sign-in kind's label saying it carries the reminders too;
+  "Stop watching" is a switch that shows what is so.
+- **Smaller**: the phone's 12- or 24-hour clock; a ripple on everything
+  tappable; status marks named for a screen reader; turning the phone keeps
+  what was typed and the chosen filter; the ongoing notification says
+  whether the bridge is ready to trade; a release's tag is the app's version
+  (`BRIDGE_NOTIFIER_VERSION`), shown on the Connect page.
+
+Built and linted in a container (no new lint findings); not yet seen on a
+phone.
+
 ## Feat: the Notifier app's four pages, and the book they show
 
 The Android app was one long screen of settings and status. It now opens on a

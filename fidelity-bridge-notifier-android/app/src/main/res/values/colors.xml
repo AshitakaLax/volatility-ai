@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- One blue accent; the status colours differ in lightness as well as hue. -->
+    <!-- One blue accent; the status colours differ in lightness as well as hue.
+         Every colour here has a dark counterpart in values-night/colors.xml,
+         except the *_fill ones and on_fill: a fill is a block of colour with
+         on_fill text over it, and reads the same on either ground. The plain
+         status and accent colours are for text and outlines on a card. -->
     <color name="primary">#1F4FC2</color>
     <color name="primary_dark">#163C96</color>
     <color name="accent">#1F4FC2</color>
+    <color name="accent_fill">#1F4FC2</color>
     <color name="accent_soft">#E8EEFC</color>
+    <color name="on_fill">#FFFFFF</color>
     <color name="ink">#111827</color>
     <color name="ink_soft">#374151</color>
     <color name="muted">#4B5563</color>
@@ -13,13 +19,17 @@
     <color name="line">#E5E7EB</color>
     <color name="line_strong">#D1D5DB</color>
     <color name="track">#E5E7EB</color>
+    <color name="ripple">#1F111827</color>
     <color name="status_ok">#1F7A55</color>
+    <color name="status_ok_fill">#1F7A55</color>
     <color name="status_ok_soft">#E3F3EC</color>
     <color name="status_warn">#B45309</color>
+    <color name="status_warn_fill">#B45309</color>
     <color name="status_warn_soft">#FDF0E1</color>
     <color name="status_bad">#B42318</color>
+    <color name="status_bad_fill">#B42318</color>
     <color name="status_bad_soft">#FDE8E7</color>
-    <color name="status_idle">#6B7280</color>
-    <color name="status_offline">#374151</color>
+    <color name="status_idle_fill">#6B7280</color>
+    <color name="status_offline_fill">#374151</color>
     <color name="ic_launcher_background">#0B5D4B</color>
 </resources>

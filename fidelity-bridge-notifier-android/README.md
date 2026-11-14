@@ -25,16 +25,24 @@ sees:
 
 Four pages:
 
-- **Connect**, at start-up (switch that off on the page): the bridge's address
-  and key, a three-step check that they work (reachable, key accepted, a test
-  notification received) and what to be told about.
-- **Home**: ready to trade or the one thing to fix, the readiness checklist link
-  by link, today's realised profit and the open lots' unrealised figure, the
-  day's buys and sales, the trading session and the last account check.
+- **Home**, where the app opens once the bridge is set: ready to trade or the
+  one thing to fix, the readiness checklist link by link, today's realised
+  profit and the open lots' unrealised figure, the day's buys and sales, the
+  trading session and the last account check. When the bridge cannot be
+  reached, tap the top card to try again now; what is below it is marked
+  "Not live" with the time the bridge last said it.
 - **Lots**: the open lots, each with where it sells and how far it has to go,
   or the last 20 sales with what each made.
 - **Activity**: the last 200 notifications, filtered to trades, problems or
-  the connection.
+  the connection. Kept on the phone, so it is still there after Android
+  restarts the app. Tapping a notification opens this page.
+- **Connect**, behind the gear on Home (and the first page until the bridge
+  is set): the bridge's address and key, a three-step check that they work
+  (reachable, key accepted, a test notification received), the **Watch the
+  bridge** switch, whether Android will let the alerts through, and what to
+  be told about. The app's version is at the bottom.
+
+It follows the phone's light or dark theme, and its 12- or 24-hour clock.
 
 Lots and today's profit come from the bridge's `book` (PROTOCOL.md); a bridge
 older than that shows the other pages as before.
@@ -105,19 +113,23 @@ In the app:
 1. Enter the bridge's address. `192.168.1.10` is enough: the port defaults
    to 8766 and the path to `/notifications`. Full `ws://` or `wss://` URLs
    work too.
-2. Paste the key that `keygen --notify` printed.
-3. Tap **Save and start watching**. Allow notifications when asked.
-4. Tap **Send a test notification** to check the whole path.
+2. Copy the key that `keygen --notify` printed and tap **Paste**. The whole
+   `.env` line (`FIDELITY_BRIDGE_NOTIFY_KEY=…`) works too: the name, quotes
+   and spaces around the key are dropped.
+3. Tap **Save and connect**. Allow notifications when asked.
+4. Tap **Send test** to check the whole path.
 
-Under **Notify me about**, choose which kinds appear as notifications.
-Everything still shows in the app's Recent list. The bridge's own `events`
-setting decides what is sent at all.
+Under **Notify me about**, choose which kinds appear as notifications,
+grouped as the Activity page filters them. Everything still shows on the
+Activity page. The bridge's own `events` setting decides what is sent at all.
+If notifications are off for the app, or Android may delay its connection to
+save battery, the card says so with a button that opens the setting.
 
 The app keeps a quiet ongoing notification while it watches. Android needs
-one to keep the connection open with the screen off. It starts again after a
-reboot if it was watching before. If notifications arrive late, exempt the
-app from battery optimisation (Settings → Apps → Bridge Notifier → Battery →
-Unrestricted).
+one to keep the connection open with the screen off. Once connected it says
+whether the bridge is ready to trade, or what is in the way. It starts again
+after a reboot if it was watching before. **Watch the bridge** on the Connect
+page turns watching off and on.
 
 ### What to expect
 
@@ -129,8 +141,13 @@ Unrestricted).
   alarms only if the bridge is still away after 10 minutes.
 - **After the phone was offline,** it catches up from what the bridge kept
   (up to 200 notifications per bridge run). Nothing is shown twice.
-- **The first time it connects,** what the bridge already kept goes into
-  the Recent list but is not announced.
+- **The first time it connects,** what the bridge already kept goes onto
+  the Activity page but is not announced.
+- **Away from home is not an alarm.** With no network, or on mobile data
+  alone when the bridge is at a home-network address (`192.168.…`,
+  `server.lan`), the app says the phone is off the bridge's network instead
+  of warning that the bridge is out of reach. Back on its Wi-Fi or a VPN, the
+  bridge has its two minutes again before that warning.
 
 ## Security
 
@@ -153,7 +170,7 @@ Unrestricted).
 |---|---|
 | `core/` | Plain Kotlin, no Android: the protocol (`Protocol.kt`), messages (`Messages.kt`), the connection with handshake, catch-up and reconnecting (`BridgeClient.kt`, on OkHttp), and the "out of reach" rule (`LinkAlarm.kt`). A Gradle build of its own, so it builds and tests without the Android SDK. |
 | `core/src/test/resources/vectors/` | The protocol vectors the bridge's tests reproduce too. |
-| `app/` | The Android app: a foreground service (`MonitorService.kt`) holding one `BridgeClient`, the phone's notifications (`Alerts.kt`), settings (`Prefs.kt`) and one screen (`MainActivity.kt`). Plain framework views; no AndroidX. |
+| `app/` | The Android app: a foreground service (`MonitorService.kt`) holding one `BridgeClient`, the phone's notifications (`Alerts.kt`), settings (`Prefs.kt`), the Activity page's history on disk (`History.kt`) and one activity (`MainActivity.kt`) over four pages (`*Screen.kt`) drawn from `Ui.kt`. Plain framework views; no AndroidX. Colours are named in `res/values/colors.xml`, with their dark counterparts in `res/values-night/`. |
 
 ## Develop
 
@@ -182,6 +199,11 @@ named after the release's tag (`fidelity-bridge-notifier-v1.2.0.apk`). In
 volatility-ai, `.github/workflows/android.yml` does this. In this folder as
 its own repository, `.github/workflows/ci.yml` does. A release saved as a
 draft gets its APK when it is published.
+
+The tag is also the app's version: `v1.2.3` builds an app that says 1.2.3 at
+the bottom of its Connect page, with a version code (10203) higher than the
+release before it. Tag releases as `v<major>.<minor>.<patch>`; any other
+build calls itself `0.1.0-dev`.
 
 The APK is signed with your own key. A phone installs an update only when it
 is signed with the same key as the installed app, so make the key once and

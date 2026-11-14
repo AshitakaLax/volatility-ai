@@ -1,5 +1,6 @@
 package io.github.ashitakalax.bridgenotifier.core
 
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -46,7 +47,7 @@ object EventKind {
         ENGINE -> "Engine started, paused, halted or stopped"
         SESSION -> "Session ended unexpectedly, or a second trader refused"
         READINESS -> "Not ready to trade, or ready again (and before the open)"
-        FIDELITY_SIGNIN -> "Fidelity signed out"
+        FIDELITY_SIGNIN -> "Fidelity sign-in: signed out, reminders before the open, a session about to end"
         ACCOUNT_CHECK -> "Account check failed, or passed again"
         CONNECTED -> "Extension connected or reconnected"
         DISCONNECTED -> "Extension disconnected"
@@ -85,7 +86,32 @@ data class Notification(
 ) {
     val isTest: Boolean get() = kind == EventKind.TEST
 
+    /** As the bridge sent it: what [parse] reads back. */
+    fun toJson(): JsonObject = JsonObject(
+        mapOf(
+            "id" to JsonPrimitive(id),
+            "stream" to JsonPrimitive(stream),
+            "kind" to JsonPrimitive(kind),
+            "severity" to JsonPrimitive(severity.name.lowercase()),
+            "title" to JsonPrimitive(title),
+            "body" to JsonPrimitive(body),
+            "at" to JsonPrimitive(at),
+            "data" to data,
+        ),
+    )
+
     companion object {
+        /** A list of them as text, for the app to keep between runs. */
+        fun encodeAll(notifications: List<Notification>): String =
+            JsonArray(notifications.map { it.toJson() }).toString()
+
+        /** What [encodeAll] wrote; anything unreadable is left out, never an error. */
+        fun decodeAll(text: String): List<Notification> = try {
+            (Json.parseToJsonElement(text) as? JsonArray).orEmpty().mapNotNull { parse(it as? JsonObject) }
+        } catch (_: IllegalArgumentException) {
+            emptyList()
+        }
+
         fun parse(obj: JsonObject?): Notification? {
             if (obj == null) return null
             val id = obj.long("id") ?: return null

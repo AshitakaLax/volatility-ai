@@ -1,10 +1,12 @@
 package io.github.ashitakalax.bridgenotifier
 
+import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import io.github.ashitakalax.bridgenotifier.core.Book
+import io.github.ashitakalax.bridgenotifier.core.BridgeClient
 import io.github.ashitakalax.bridgenotifier.core.ClosedLot
 import io.github.ashitakalax.bridgenotifier.core.OpenLot
 
@@ -19,6 +21,7 @@ class LotsScreen(private val ui: Ui) : Screen {
     private var last: MonitorState.Snapshot? = null
     private val eyebrow = ui.eyebrow("")
     private val filters = ui.row(gap = 6)
+    private val stale = ui.text("", size = 13f, color = R.color.status_warn)
     private val summary = ui.row()
     private val list = ui.column(gap = 8)
     override val view: View
@@ -30,14 +33,28 @@ class LotsScreen(private val ui: Ui) : Screen {
         filters.background = ui.rounded(R.color.line, radius = 12)
         filters.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(4))
         page.addView(filters)
+        page.addView(stale)
         page.addView(summary)
         page.addView(list)
         view = scroll
     }
 
+    override fun save(state: Bundle) {
+        state.putString(SHOW, show.name)
+    }
+
+    override fun restore(state: Bundle) {
+        show = Show.entries.firstOrNull { it.name == state.getString(SHOW) } ?: show
+    }
+
     override fun render(snapshot: MonitorState.Snapshot) {
         last = snapshot
         val book = snapshot.status.book
+        // Not connected: the lots as the bridge last said, and when.
+        val heardAt = snapshot.statusAt
+        val live = snapshot.link is BridgeClient.Link.Connected || heardAt == null || book == null
+        stale.visibility = if (live) View.GONE else View.VISIBLE
+        if (!live) stale.text = ui.string(R.string.stale, Format.clockAt(heardAt!!))
         eyebrow.text = listOfNotNull(
             "Fidelity",
             book?.symbol,
@@ -64,12 +81,15 @@ class LotsScreen(private val ui: Ui) : Screen {
             gravity = Gravity.CENTER
             minHeight = ui.dp(40)
             background = if (on) ui.rounded(R.color.card, radius = 9) else null
-            isClickable = true
-            isFocusable = true
             isSelected = on
-            setOnClickListener {
-                show = which
-                last?.let(::render)
+            if (on) {
+                isFocusable = true
+            } else {
+                background = ui.rounded(R.color.line, radius = 9)
+                ui.tappable(this) {
+                    show = which
+                    last?.let(::render)
+                }
             }
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -142,7 +162,7 @@ class LotsScreen(private val ui: Ui) : Screen {
         background = ui.rounded(R.color.track, radius = 3)
         contentDescription = "${(fraction * 100).toInt()}% of the way to its target"
         addView(
-            View(ui.context).apply { background = ui.rounded(if (fraction > 0f) R.color.status_ok else R.color.status_idle, radius = 3) },
+            View(ui.context).apply { background = ui.rounded(if (fraction > 0f) R.color.status_ok_fill else R.color.status_idle_fill, radius = 3) },
             LinearLayout.LayoutParams(0, ui.dp(6), fraction.coerceAtLeast(0.001f)),
         )
         addView(View(ui.context), LinearLayout.LayoutParams(0, ui.dp(6), (1f - fraction).coerceAtLeast(0.001f)))
@@ -177,5 +197,9 @@ class LotsScreen(private val ui: Ui) : Screen {
         value > 0 -> R.color.status_ok
         value < 0 -> R.color.status_bad
         else -> R.color.ink
+    }
+
+    private companion object {
+        const val SHOW = "lots_show"
     }
 }

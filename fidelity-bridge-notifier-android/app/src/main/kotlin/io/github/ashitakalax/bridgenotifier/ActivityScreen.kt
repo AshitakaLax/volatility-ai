@@ -1,5 +1,6 @@
 package io.github.ashitakalax.bridgenotifier
 
+import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -39,6 +40,14 @@ class ActivityScreen(private val ui: Ui) : Screen {
         view = scroll
     }
 
+    override fun save(state: Bundle) {
+        state.putString(FILTER, filter.name)
+    }
+
+    override fun restore(state: Bundle) {
+        filter = Filter.entries.firstOrNull { it.name == state.getString(FILTER) } ?: filter
+    }
+
     override fun render(snapshot: MonitorState.Snapshot) {
         last = snapshot
         subtitle.text = ui.string(R.string.activity_sub, MonitorState.RECENT)
@@ -61,7 +70,7 @@ class ActivityScreen(private val ui: Ui) : Screen {
     }
 
     private fun item(notification: Notification): View {
-        val (glyph, ink, chip) = look(notification)
+        val (glyph, ink, chip, said) = look(notification)
         return ui.card(padding = 12, gap = 0).apply {
             background = ui.rounded(R.color.card, radius = 12, stroke = R.color.line)
             addView(
@@ -70,6 +79,7 @@ class ActivityScreen(private val ui: Ui) : Screen {
                     addView(
                         ui.text(glyph, size = 15f, color = ink, bold = true).apply {
                             gravity = Gravity.CENTER
+                            contentDescription = ui.string(said)
                             background = ui.rounded(chip, radius = 10)
                         },
                         LinearLayout.LayoutParams(ui.dp(34), ui.dp(34)),
@@ -95,17 +105,20 @@ class ActivityScreen(private val ui: Ui) : Screen {
         }
     }
 
-    private data class Look(val glyph: String, val ink: Int, val chip: Int)
+    /** The mark beside an item: its glyph and colours, and what a screen reader says for it. */
+    private data class Look(val glyph: String, val ink: Int, val chip: Int, val said: Int)
 
     private fun look(notification: Notification): Look = when {
-        notification.kind == EventKind.BUY -> Look("↑", R.color.primary_dark, R.color.accent_soft)
-        notification.kind == EventKind.SELL -> Look("↓", R.color.status_ok, R.color.status_ok_soft)
-        notification.severity == Severity.CRITICAL -> Look("!", R.color.status_bad, R.color.status_bad_soft)
-        notification.severity == Severity.WARNING -> Look("!", R.color.status_warn, R.color.status_warn_soft)
-        else -> Look("•", R.color.ink_soft, R.color.line)
+        notification.kind == EventKind.BUY -> Look("↑", R.color.accent, R.color.accent_soft, R.string.glyph_buy)
+        notification.kind == EventKind.SELL -> Look("↓", R.color.status_ok, R.color.status_ok_soft, R.string.glyph_sell)
+        notification.severity == Severity.CRITICAL -> Look("!", R.color.status_bad, R.color.status_bad_soft, R.string.glyph_critical)
+        notification.severity == Severity.WARNING -> Look("!", R.color.status_warn, R.color.status_warn_soft, R.string.glyph_warning)
+        else -> Look("•", R.color.ink_soft, R.color.line, R.string.glyph_info)
     }
 
     companion object {
+        private const val FILTER = "activity_filter"
+
         /** Which filter a notification falls under (besides All). */
         fun groupOf(notification: Notification): Filter = when {
             notification.kind == EventKind.BUY || notification.kind == EventKind.SELL ||

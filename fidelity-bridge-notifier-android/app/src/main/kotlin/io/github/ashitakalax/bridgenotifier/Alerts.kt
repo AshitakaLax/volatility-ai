@@ -23,6 +23,9 @@ object Alerts {
     const val CHANNEL_WARNINGS = "warnings"
     const val CHANNEL_MONITOR = "monitor"
 
+    /** On the intent a notification opens the app with: the page to show. */
+    const val EXTRA_TAB = "io.github.ashitakalax.bridgenotifier.TAB"
+
     const val MONITOR_ID = 1
     private const val LINK_ID = 2
     private const val TEST_ID = 3
@@ -67,7 +70,7 @@ object Alerts {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.monitor_title))
             .setContentText(text)
-            .setContentIntent(openApp(context))
+            .setContentIntent(openApp(context, Tab.HOME))
             .setOngoing(true)
             .setShowWhen(false)
             .setCategory(AndroidNotification.CATEGORY_SERVICE)
@@ -103,6 +106,8 @@ object Alerts {
             notification.body,
             epochMillis(notification.at),
             color(context, notification.severity),
+            // The Activity page is where it is listed.
+            tab = Tab.ACTIVITY,
         )
     }
 
@@ -113,7 +118,7 @@ object Alerts {
         CHANNEL_WARNINGS,
         context.getString(R.string.link_lost_title),
         context.getString(R.string.link_lost_body, reason),
-        color = context.getColor(R.color.status_bad),
+        color = context.getColor(R.color.status_bad_fill),
     )
 
     /** ...and is back. Replaces the one above. */
@@ -123,7 +128,7 @@ object Alerts {
         CHANNEL_BRIDGE,
         context.getString(R.string.link_back_title),
         context.getString(R.string.link_back_body),
-        color = context.getColor(R.color.status_ok),
+        color = context.getColor(R.color.status_ok_fill),
     )
 
     /** The bridge refused the key, or is not a bridge: nothing more will come. */
@@ -133,7 +138,7 @@ object Alerts {
         CHANNEL_WARNINGS,
         context.getString(R.string.link_refused_title),
         reason,
-        color = context.getColor(R.color.status_bad),
+        color = context.getColor(R.color.status_bad_fill),
     )
 
     private fun show(
@@ -144,13 +149,14 @@ object Alerts {
         body: String,
         whenMillis: Long? = null,
         color: Int? = null,
+        tab: Tab = Tab.HOME,
     ) {
         val builder = AndroidNotification.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(AndroidNotification.BigTextStyle().bigText(body))
-            .setContentIntent(openApp(context))
+            .setContentIntent(openApp(context, tab))
             .setAutoCancel(true)
             .setShowWhen(true)
             .setWhen(whenMillis ?: System.currentTimeMillis())
@@ -159,15 +165,19 @@ object Alerts {
     }
 
     private fun color(context: Context, severity: Severity): Int? = when (severity) {
-        Severity.CRITICAL -> context.getColor(R.color.status_bad)
-        Severity.WARNING -> context.getColor(R.color.status_warn)
+        Severity.CRITICAL -> context.getColor(R.color.status_bad_fill)
+        Severity.WARNING -> context.getColor(R.color.status_warn_fill)
         Severity.INFO -> null
     }
 
-    private fun openApp(context: Context): PendingIntent = PendingIntent.getActivity(
+    /** Opens the app on [tab]: a notification leads to the page that says more about it. */
+    private fun openApp(context: Context, tab: Tab): PendingIntent = PendingIntent.getActivity(
         context,
-        0,
-        Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        // One pending intent per page: extras alone do not tell two apart.
+        tab.ordinal,
+        Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(EXTRA_TAB, tab.name),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
