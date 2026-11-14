@@ -12,10 +12,24 @@ object MonitorState {
     // As many as the bridge keeps for a replay: the Activity page's history.
     const val RECENT = 200
 
+    /** Whether the phone itself is somewhere the bridge can be reached from. */
+    enum class Phone {
+        ONLINE,
+
+        /** No network at all. */
+        OFFLINE,
+
+        /** On mobile data alone, and the bridge is at an address only its own network reaches. */
+        AWAY,
+    }
+
     data class Snapshot(
         val link: BridgeClient.Link = BridgeClient.Link.Idle,
         val status: BridgeStatus = BridgeStatus.UNKNOWN,
+        /** When [status] arrived, by the phone's clock; null before the first. */
+        val statusAt: Long? = null,
         val recent: List<Notification> = emptyList(),
+        val phone: Phone = Phone.ONLINE,
     )
 
     var snapshot = Snapshot()

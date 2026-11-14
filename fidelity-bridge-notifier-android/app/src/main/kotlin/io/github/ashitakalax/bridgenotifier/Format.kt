@@ -10,9 +10,18 @@ import kotlin.math.abs
 
 /** How money, shares and times read on the screens. */
 object Format {
-    private val clock = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
-    private val dayClock = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.US)
-    private val date = DateTimeFormatter.ofPattern("MMM d HH:mm", Locale.US)
+    /** The phone's own choice of 13:41 or 1:41 PM; the activity sets it as it comes forward. */
+    @Volatile
+    var twentyFourHour = true
+
+    private class Clocks(time: String) {
+        val clock: DateTimeFormatter = DateTimeFormatter.ofPattern(time, Locale.US)
+        val dayClock: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE $time", Locale.US)
+        val date: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d $time", Locale.US)
+    }
+
+    private val twentyFour = Clocks("HH:mm")
+    private val twelve = Clocks("h:mm a")
 
     fun money(value: Double): String = String.format(Locale.US, "$%,.2f", value)
 
@@ -25,16 +34,21 @@ object Format {
 
     fun percent(value: Double): String = String.format(Locale.US, "%.2f", value)
 
-    /** 13:41 today, Mon 13:41 this week, Oct 30 13:41 before that. */
+    /** 13:41 today, Mon 13:41 this week, Oct 30 13:41 before that (or 1:41 PM, as the phone is set). */
     fun clockTime(iso: String?, zone: ZoneId = ZoneId.systemDefault(), now: Instant = Instant.now()): String? {
         val millis = iso?.let(Alerts::epochMillis) ?: return null
+        return clockAt(millis, zone, now)
+    }
+
+    fun clockAt(millis: Long, zone: ZoneId = ZoneId.systemDefault(), now: Instant = Instant.now()): String {
+        val clocks = if (twentyFourHour) twentyFour else twelve
         val at = Instant.ofEpochMilli(millis).atZone(zone)
         val today: LocalDate = now.atZone(zone).toLocalDate() // LocalDate.ofInstant needs API 31
         val days = Duration.between(at.toLocalDate().atStartOfDay(zone), today.atStartOfDay(zone)).toDays()
         return when {
-            days == 0L -> clock.format(at)
-            days in 1..6 -> dayClock.format(at)
-            else -> date.format(at)
+            days == 0L -> clocks.clock.format(at)
+            days in 1..6 -> clocks.dayClock.format(at)
+            else -> clocks.date.format(at)
         }
     }
 

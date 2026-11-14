@@ -53,6 +53,31 @@ class BackoffAndAlarmTest {
     }
 
     @Test
+    fun aPhoneOffTheBridgesNetworkIsNotALostBridge() {
+        val alarm = LinkAlarm(graceMillis = 60_000)
+        alarm.lost(now = 0)
+        assertNull(alarm.check(now = 60_000, phoneCanReach = false))
+        assertNull(alarm.check(now = 3_600_000, phoneCanReach = false))
+        // Home again: the bridge has its allowance from here, not an alarm at the door.
+        alarm.phoneBack(now = 3_600_000)
+        assertEquals(3_660_000L, alarm.dueAt())
+        assertNull(alarm.check(now = 3_600_001))
+        assertNull(alarm.connected()) // it answers: nothing was ever announced
+    }
+
+    @Test
+    fun aBridgeStillAwayOnceThePhoneIsBackIsLost() {
+        val alarm = LinkAlarm(graceMillis = 60_000)
+        alarm.lost(now = 0)
+        assertNull(alarm.check(now = 60_000, phoneCanReach = false))
+        alarm.phoneBack(now = 100_000)
+        assertEquals(LinkAlarm.Alert.LOST, alarm.check(now = 160_000))
+        alarm.phoneBack(now = 200_000) // already announced: nothing starts again
+        assertNull(alarm.dueAt())
+        assertEquals(LinkAlarm.Alert.BACK, alarm.connected())
+    }
+
+    @Test
     fun aResetNeverAlarms() {
         val alarm = LinkAlarm(graceMillis = 60_000)
         alarm.lost(now = 0)

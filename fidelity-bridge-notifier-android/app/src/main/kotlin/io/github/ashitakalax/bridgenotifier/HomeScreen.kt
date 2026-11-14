@@ -1,6 +1,7 @@
 package io.github.ashitakalax.bridgenotifier
 
 import android.content.res.ColorStateList
+import android.os.Bundle
 import android.text.format.DateUtils
 import android.view.Gravity
 import android.view.View
@@ -15,6 +16,11 @@ interface Screen {
     val view: View
 
     fun render(snapshot: MonitorState.Snapshot)
+
+    /** What the page was showing, for when the activity is rebuilt (turned, the phone gone dark). */
+    fun save(state: Bundle) {}
+
+    fun restore(state: Bundle) {}
 }
 
 /**
@@ -36,7 +42,7 @@ class HomeScreen(
         val settings = ImageButton(ui.context).apply {
             setImageResource(R.drawable.ic_settings)
             imageTintList = ColorStateList.valueOf(ui.color(R.color.ink_soft))
-            background = ui.rounded(R.color.card, radius = 12, stroke = R.color.line)
+            background = ui.pressable(ui.rounded(R.color.card, radius = 12, stroke = R.color.line))
             contentDescription = ui.string(R.string.settings)
             setOnClickListener { go(Tab.CONNECT) }
         }
@@ -66,26 +72,27 @@ class HomeScreen(
         content.addView(hero(snapshot))
 
         val connected = snapshot.link is BridgeClient.Link.Connected
+        // Not connected: what follows is what the bridge last said, and when.
+        val heardAt = snapshot.statusAt
+        if (!connected && heardAt != null) {
+            content.addView(ui.text(ui.string(R.string.stale, Format.clockAt(heardAt)), size = 13f, color = R.color.status_warn))
+        }
         if (host != null && host.items.isNotEmpty()) {
             content.addView(
                 ui.card(padding = 12, gap = 0).apply {
                     setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(4))
                     host.items.forEachIndexed { index, item ->
-                        val (mark, fill) = if (!connected) {
-                            "?" to R.color.status_idle
-                        } else {
-                            when (item.state) {
-                                "ok" -> "✓" to R.color.status_ok
-                                "warn" -> "!" to R.color.status_warn
-                                "fail" -> "✗" to R.color.status_bad
-                                else -> "?" to R.color.status_idle
-                            }
+                        val (mark, fill, said) = when (if (connected) item.state else "unknown") {
+                            "ok" -> Triple("✓", R.color.status_ok_fill, R.string.mark_ok)
+                            "warn" -> Triple("!", R.color.status_warn_fill, R.string.mark_warn)
+                            "fail" -> Triple("✗", R.color.status_bad_fill, R.string.mark_fail)
+                            else -> Triple("?", R.color.status_idle_fill, R.string.mark_unknown)
                         }
                         addView(
                             ui.row(gap = 12).apply {
                                 minimumHeight = ui.dp(48)
                                 setPadding(0, ui.dp(6), 0, ui.dp(6))
-                                addView(ui.mark(mark, fill))
+                                addView(ui.mark(mark, fill, ui.string(said)))
                                 addView(
                                     ui.grow(
                                         ui.column().apply {
@@ -117,26 +124,45 @@ class HomeScreen(
     private fun hero(snapshot: MonitorState.Snapshot): View {
         val host = snapshot.status.bridge
         val link = snapshot.link
-        data class Hero(val fill: Int, val tag: String, val title: String, val detail: String)
+        data class Hero(val fill: Int, val tag: String, val title: String, val detail: String, val tap: (() -> Unit)? = null)
+        val offline = R.color.status_offline_fill
+        val bridgeHost = MonitorService.hostOf(prefs.url)
+        val trying = link is BridgeClient.Link.Waiting || link == BridgeClient.Link.Connecting
+        val retry = { MonitorService.retry(ui.context) }
+        val connecting = Hero(offline, ui.string(R.string.hero_connecting_tag), ui.string(R.string.hero_connecting_title, bridgeHost), "")
         val hero = when {
-            link is BridgeClient.Link.Refused -> Hero(R.color.status_bad, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_refused_title), link.reason)
-            link is BridgeClient.Link.Waiting && link.deliberate -> Hero(R.color.status_offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_restarting_title), link.reason)
-            link is BridgeClient.Link.Waiting -> Hero(R.color.status_offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_offline_title), link.reason)
-            link == BridgeClient.Link.Connecting -> Hero(R.color.status_offline, ui.string(R.string.hero_connecting_tag), ui.string(R.string.hero_connecting_title, MonitorService.hostOf(prefs.url)), "")
-            link !is BridgeClient.Link.Connected -> Hero(R.color.status_offline, ui.string(R.string.hero_idle_tag), ui.string(R.string.hero_idle_title), ui.string(R.string.hero_idle_detail))
-            host == null -> Hero(R.color.status_offline, ui.string(R.string.hero_unknown_tag), ui.string(R.string.hero_unknown_title), ui.string(R.string.hero_unknown_detail))
-            host.ready -> Hero(R.color.status_ok, ui.string(R.string.hero_ready_tag), ui.string(R.string.hero_ready_title), ui.string(R.string.hero_ready_detail))
-            else -> Hero(R.color.status_bad, ui.string(R.string.hero_blocked_tag), host.summary, host.fix?.let { ui.string(R.string.hero_fix, it) }.orEmpty())
+            link is BridgeClient.Link.Refused -> Hero(R.color.status_bad_fill, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_refused_title), ui.string(R.string.hero_refused_detail, link.reason)) { go(Tab.CONNECT) }
+            // The phone, not the bridge: said plainly, and never as an alarm.
+            trying && snapshot.phone == MonitorState.Phone.OFFLINE -> Hero(offline, ui.string(R.string.hero_phone_offline_tag), ui.string(R.string.hero_phone_offline_title), ui.string(R.string.hero_phone_offline_detail), retry)
+            trying && snapshot.phone == MonitorState.Phone.AWAY -> Hero(offline, ui.string(R.string.hero_phone_away_tag), ui.string(R.string.hero_phone_away_title), ui.string(R.string.hero_phone_away_detail, bridgeHost), retry)
+            link is BridgeClient.Link.Waiting && link.deliberate -> Hero(offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_restarting_title), ui.string(R.string.hero_retry_detail, sentence(link.reason)), retry)
+            link is BridgeClient.Link.Waiting -> Hero(offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_offline_title), ui.string(R.string.hero_retry_detail, sentence(link.reason)), retry)
+            link == BridgeClient.Link.Connecting -> connecting
+            link !is BridgeClient.Link.Connected -> when {
+                !prefs.isConfigured -> Hero(offline, ui.string(R.string.hero_idle_tag), ui.string(R.string.hero_idle_title), ui.string(R.string.hero_idle_detail)) { go(Tab.CONNECT) }
+                // Set to watch and the service not yet heard from: a moment, not a state.
+                prefs.monitoring -> connecting
+                else -> Hero(offline, ui.string(R.string.hero_idle_tag), ui.string(R.string.hero_stopped_title), ui.string(R.string.hero_stopped_detail)) {
+                    prefs.monitoring = true
+                    MonitorService.start(ui.context)
+                }
+            }
+            host == null -> Hero(offline, ui.string(R.string.hero_unknown_tag), ui.string(R.string.hero_unknown_title), ui.string(R.string.hero_unknown_detail))
+            host.ready -> Hero(R.color.status_ok_fill, ui.string(R.string.hero_ready_tag), ui.string(R.string.hero_ready_title), ui.string(R.string.hero_ready_detail))
+            else -> Hero(R.color.status_bad_fill, ui.string(R.string.hero_blocked_tag), host.summary, host.fix?.let { ui.string(R.string.hero_fix, it) }.orEmpty())
         }
         return ui.column(gap = 6).apply {
             background = ui.rounded(hero.fill, radius = 16)
             setPadding(ui.dp(18), ui.dp(18), ui.dp(18), ui.dp(18))
-            addView(ui.text(hero.tag, size = 13f, color = R.color.card, bold = true).apply { isAllCaps = true; letterSpacing = 0.04f })
-            addView(ui.text(hero.title, size = 22f, color = R.color.card, bold = true))
-            if (hero.detail.isNotEmpty()) addView(ui.text(hero.detail, color = R.color.card))
-            if (link == BridgeClient.Link.Idle || link == BridgeClient.Link.Stopped) setOnClickListener { go(Tab.CONNECT) }
+            addView(ui.text(hero.tag, size = 13f, color = R.color.on_fill, bold = true).apply { isAllCaps = true; letterSpacing = 0.04f })
+            addView(ui.text(hero.title, size = 22f, color = R.color.on_fill, bold = true))
+            if (hero.detail.isNotEmpty()) addView(ui.text(hero.detail, color = R.color.on_fill))
+            hero.tap?.let { ui.tappable(this, it) }
         }
     }
+
+    /** A reason the client gives in lower case, as the start of a sentence, without a full stop. */
+    private fun sentence(reason: String): String = reason.trim().trimEnd('.').replaceFirstChar(Char::uppercase)
 
     private fun profit(snapshot: MonitorState.Snapshot): View {
         val book = snapshot.status.book
@@ -171,7 +197,7 @@ class HomeScreen(
                     }
                 },
             )
-            setOnClickListener { go(Tab.LOTS) }
+            ui.tappable(this) { go(Tab.LOTS) }
         }
     }
 
@@ -179,8 +205,8 @@ class HomeScreen(
         addView(ui.text(label, size = 12f, color = R.color.muted))
         addView(ui.text(value?.toString() ?: "—", size = 22f, mono = true))
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        isClickable = true
-        setOnClickListener { go(target) }
+        contentDescription = "$label: ${value ?: ui.string(R.string.unknown)}"
+        ui.tappable(this) { go(target) }
     }
 
     private fun session(snapshot: MonitorState.Snapshot): View {
@@ -190,8 +216,8 @@ class HomeScreen(
             "running" -> Triple("Running", R.color.status_ok, R.color.status_ok_soft)
             "paused" -> Triple("Paused", R.color.status_warn, R.color.status_warn_soft)
             "halted" -> Triple("Halted", R.color.status_bad, R.color.status_bad_soft)
-            null -> Triple("Idle", R.color.status_offline, R.color.line)
-            else -> Triple(engine?.state.orEmpty().replaceFirstChar(Char::uppercase), R.color.status_offline, R.color.line)
+            null -> Triple("Idle", R.color.ink_soft, R.color.line)
+            else -> Triple(engine?.state.orEmpty().replaceFirstChar(Char::uppercase), R.color.ink_soft, R.color.line)
         }
         return ui.card(padding = 16, gap = 6).apply {
             addView(
@@ -233,8 +259,9 @@ class HomeScreen(
             addView(
                 ui.row(gap = 12).apply {
                     addView(
-                        ui.text(if (buy) "↑" else "↓", size = 16f, color = if (buy) R.color.primary_dark else R.color.status_ok, bold = true).apply {
+                        ui.text(if (buy) "↑" else "↓", size = 16f, color = if (buy) R.color.accent else R.color.status_ok, bold = true).apply {
                             gravity = Gravity.CENTER
+                            contentDescription = ui.string(if (buy) R.string.glyph_buy else R.string.glyph_sell)
                             background = ui.rounded(if (buy) R.color.accent_soft else R.color.status_ok_soft, radius = 10)
                         },
                         LinearLayout.LayoutParams(ui.dp(36), ui.dp(36)),
@@ -250,7 +277,7 @@ class HomeScreen(
                     addView(ui.text(ui.string(R.string.see_all), size = 13f, color = R.color.accent, bold = true), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
                 },
             )
-            setOnClickListener { go(Tab.ACTIVITY) }
+            ui.tappable(this) { go(Tab.ACTIVITY) }
         }
     }
 

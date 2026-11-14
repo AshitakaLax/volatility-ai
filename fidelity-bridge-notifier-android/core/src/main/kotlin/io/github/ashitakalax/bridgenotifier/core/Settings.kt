@@ -10,6 +10,21 @@ object ApiKeys {
     private val PATTERN = Regex("[A-Za-z0-9._~+/=-]{32,256}")
 
     fun looksValid(key: String): Boolean = PATTERN.matches(key)
+
+    // The line keygen appends to .env: FIDELITY_BRIDGE_NOTIFY_KEY=<key>. Every
+    // character of it is in the key's alphabet, so pasted whole it would look
+    // valid and then be refused by the bridge.
+    private val ENV_LINE = Regex("^(?:export\\s+)?[A-Z][A-Z0-9_]*_KEY\\s*=\\s*(.*)$")
+
+    /** The key out of what someone pasted: the .env line's name, quotes and spaces around it dropped. */
+    fun clean(text: String): String {
+        var key = text.trim()
+        ENV_LINE.find(key)?.let { key = it.groupValues[1].trim() }
+        if (key.length >= 2 && key.first() == key.last() && key.first() in "\"'") {
+            key = key.substring(1, key.length - 1).trim()
+        }
+        return key
+    }
 }
 
 /**
@@ -40,6 +55,31 @@ object BridgeAddress {
 
     /** Whether messages to it travel unencrypted (they are still sealed). */
     fun isPlainText(url: String): Boolean = url.startsWith("ws://")
+
+    /**
+     * Whether the address is one only its own network (or a VPN into it) can
+     * reach: a private or link-local IP, or a name with no public suffix. A
+     * phone on mobile data alone cannot reach such a bridge, and that is the
+     * phone being away, not the bridge being down.
+     */
+    fun isLocalNetwork(url: String): Boolean {
+        val named = try {
+            URI(url).host
+        } catch (_: URISyntaxException) {
+            null
+        }
+        val host = named?.lowercase()?.removePrefix("[")?.removeSuffix("]") ?: return false
+        val octets = host.split('.').map { it.toIntOrNull() }
+        if (octets.size == 4 && octets.all { it != null && it in 0..255 }) {
+            val (a, b) = octets.map { it!! }
+            return a == 10 || a == 127 || (a == 172 && b in 16..31) || (a == 192 && b == 168) ||
+                (a == 169 && b == 254) || (a == 100 && b in 64..127)
+        }
+        if (':' in host) return host == "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")
+        return '.' !in host || LOCAL_SUFFIXES.any { host.endsWith(it) }
+    }
+
+    private val LOCAL_SUFFIXES = listOf(".lan", ".local", ".home", ".internal", ".home.arpa")
 }
 
 /** The last notification the app saw: which bridge run, which number. */

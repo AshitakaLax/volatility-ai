@@ -43,9 +43,9 @@ class Prefs(context: Context) : PositionStore {
         get() = prefs.getBoolean(ALERT_UNREACHABLE, true)
         set(value) = prefs.edit().putBoolean(ALERT_UNREACHABLE, value).apply()
 
-    /** Whether the app opens on its Connect page; off, it opens on Home once set up. */
+    /** Whether the app opens on its Connect page; off (the default), it opens on Home once set up. */
     var openConnectAtStart: Boolean
-        get() = prefs.getBoolean(OPEN_CONNECT, true)
+        get() = prefs.getBoolean(OPEN_CONNECT, false)
         set(value) = prefs.edit().putBoolean(OPEN_CONNECT, value).apply()
 
     /** How long the bridge may be unreachable before that is worth saying. */

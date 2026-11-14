@@ -34,6 +34,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # The release's tag names the app's version (app/build.gradle.kts);
+      # empty for any other build, which is then a development one.
+      BRIDGE_NOTIFIER_VERSION: ${{ github.event.release.tag_name }}
     defaults:
       run:
         working-directory: fidelity-bridge-notifier-android

@@ -1,8 +1,11 @@
 package io.github.ashitakalax.bridgenotifier
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -43,7 +46,7 @@ class Ui(val context: Context) {
         gravity = Gravity.CENTER_VERTICAL
     }
 
-    /** White, a hairline border, rounded corners. */
+    /** The card colour, a hairline border, rounded corners. */
     fun card(padding: Int = 16, gap: Int = 8): LinearLayout = column(gap).apply {
         background = rounded(R.color.card, radius = 14, stroke = R.color.line)
         setPadding(dp(padding), dp(padding), dp(padding), dp(padding))
@@ -53,6 +56,18 @@ class Ui(val context: Context) {
         setColor(color(fill))
         cornerRadius = dp(radius).toFloat()
         if (stroke != null) setStroke(dp(1), color(stroke))
+    }
+
+    /** [content] with a ripple over it while pressed: what makes a thing feel tappable. */
+    fun pressable(content: Drawable): Drawable =
+        RippleDrawable(ColorStateList.valueOf(color(R.color.ripple)), content, null)
+
+    /** Makes [view] a button: its background ripples, it takes focus, it calls [onClick]. */
+    fun tappable(view: View, onClick: () -> Unit) {
+        view.background?.let { view.background = pressable(it) }
+        view.isClickable = true
+        view.isFocusable = true
+        view.setOnClickListener { onClick() }
     }
 
     fun text(
@@ -80,9 +95,10 @@ class Ui(val context: Context) {
     /** A section's label inside a card. */
     fun label(value: CharSequence): TextView = text(value, size = 13f, color = R.color.ink_soft, bold = true)
 
-    /** A round status mark: ✓, !, ✗ or ? on its colour. */
-    fun mark(symbol: String, fill: Int): TextView = text(symbol, size = 13f, color = R.color.card, bold = true).apply {
+    /** A round status mark: ✓, !, ✗ or ? on its colour, read aloud as [description]. */
+    fun mark(symbol: String, fill: Int, description: String): TextView = text(symbol, size = 13f, color = R.color.on_fill, bold = true).apply {
         gravity = Gravity.CENTER
+        contentDescription = description
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(color(fill))
@@ -98,18 +114,18 @@ class Ui(val context: Context) {
         typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         minHeight = dp(48)
         stateListAnimator = null
-        setTextColor(color(if (filled) R.color.card else R.color.accent))
-        background = rounded(if (filled) R.color.accent else R.color.card, radius = 12, stroke = R.color.accent)
+        setTextColor(color(if (filled) R.color.on_fill else R.color.accent))
+        background = pressable(rounded(if (filled) R.color.accent_fill else R.color.card, radius = 12, stroke = if (filled) R.color.accent_fill else R.color.accent))
         setOnClickListener { onClick() }
     }
 
     /** A toggle chip: selected is filled with the accent. */
     fun chip(value: CharSequence, selected: Boolean, onClick: () -> Unit): TextView =
-        text(value, size = 13f, color = if (selected) R.color.card else R.color.ink_soft, bold = selected).apply {
+        text(value, size = 13f, color = if (selected) R.color.on_fill else R.color.ink_soft, bold = selected).apply {
             gravity = Gravity.CENTER
             minHeight = dp(40)
             setPadding(dp(14), 0, dp(14), 0)
-            background = rounded(if (selected) R.color.accent else R.color.card, radius = 20, stroke = if (selected) R.color.accent else R.color.line_strong)
+            background = pressable(rounded(if (selected) R.color.accent_fill else R.color.card, radius = 20, stroke = if (selected) R.color.accent_fill else R.color.line_strong))
             isClickable = true
             isFocusable = true
             contentDescription = value

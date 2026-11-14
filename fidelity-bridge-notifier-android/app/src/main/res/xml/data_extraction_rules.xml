@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The settings hold the bridge's notification key: never backed up, never
-     copied to another phone. -->
+<!-- The settings hold the bridge's notification key, and the files hold the
+     Activity page's history of trades: never backed up, never copied to
+     another phone. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="." />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="." />
     </device-transfer>
 </data-extraction-rules>
