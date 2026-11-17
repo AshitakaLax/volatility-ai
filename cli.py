@@ -1007,6 +1007,14 @@ def cmd_live(args: argparse.Namespace) -> int:
             # the extension are where an operator looks, and on 10-23 the
             # cause (the bridge's port taken) was in neither.
             why = _startup_failure(lifecycle, final_state.value)
+            if inbox is not None and final_state.value == "RECONCILIATION_REQUIRED":
+                # Local and broker state disagree: what a paper trial counts as
+                # an accounting discrepancy (engine/promotion_record.py).
+                from time import time as _epoch
+
+                inbox.record_incident(
+                    {"t": _epoch(), "kind": "accounting_discrepancies", "detail": why}
+                )
             if inbox is not None:
                 inbox.write_status(
                     state="recovery_required",
@@ -1488,8 +1496,10 @@ def _run_trading_loop(
     was connected; it is handed the broker and its listeners here.
     """
     import signal
+    import time
 
     from engine.core.build_info import identity
+    from engine.core.retry_policy import AmbiguousSubmissionError
     from engine.core.secrets import load_live_credentials
     from engine.data.alpaca_market_data import AlpacaMarketData
     from engine.data.historical_data import AlpacaHistoricalData
@@ -1570,6 +1580,11 @@ def _run_trading_loop(
         if inbox is not None:
             inbox.record_fill(fill)
 
+    def on_incident(incident: dict) -> None:
+        # What a paper trial's gate counts (engine/promotion_record.py).
+        if inbox is not None:
+            inbox.record_incident(incident)
+
     buy_targets: dict[str, float] = {}
 
     def on_order(event: dict) -> None:
@@ -1600,6 +1615,7 @@ def _run_trading_loop(
             calendar=calendar,
             order_listener=on_order,
             transition=algorithm.transition() if algorithm is not None else None,
+            incident_listener=on_incident,
         )
         if inbox is not None and loop.recent_bars:
             # The sessions before this one, for the Live page's chart: the
@@ -1617,7 +1633,7 @@ def _run_trading_loop(
         if prepared is not None:
             first = prepared.loop
             first.attach_broker(broker)
-            first.set_listeners(tick=on_tick, fill=on_fill, order=on_order)
+            first.set_listeners(tick=on_tick, fill=on_fill, order=on_order, incident=on_incident)
             # The page may have switched the algorithm while the engine waited
             # for its broker (the supervisor-side commands): trade that one.
             if algorithm is not None:
@@ -1636,6 +1652,16 @@ def _run_trading_loop(
         store.close()
         return 1
     current = {"loop": first, "config": config, "reload": False, "stop": False}
+    # This session's incidents are journaled from here on: the row that lets
+    # a paper trial count its zeros as measured rather than unknown.
+    on_incident(
+        {
+            "t": time.time(),
+            "kind": "watching",
+            "detail": "the trader journals its incidents this session",
+            "strategy_id": config.strategy.strategy_id,
+        }
+    )
 
     if inbox is not None:
         from engine.trading.operator_control import LoopControl, account_tag
@@ -1793,6 +1819,10 @@ def _run_trading_loop(
         print(f"Trading loop aborted: {type(e).__name__}: {e}", file=sys.stderr)
         aborted = f"{type(e).__name__}: {e}"
         exit_code = 1
+        if not isinstance(e, AmbiguousSubmissionError):  # the loop journaled that one
+            on_incident(
+                {"t": time.time(), "kind": "unhandled_exceptions", "detail": f"aborted: {aborted}"}
+            )
     finally:
         if algorithm is not None:
             algorithm.on_apply = None

@@ -11,6 +11,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
+from engine.trading.control_inbox import INCIDENT_KINDS, ControlInbox
 from research.strategies import live_profiles
 from server import algorithms
 from server.app import app
@@ -121,19 +122,134 @@ def test_a_trial_switches_a_paper_deployment_and_refuses_real_money(client, depl
     assert command["reason"] == f"Paper trial of {candidate_id}"
 
 
+DAY = 86400.0
+
+
+def start(client, candidate_id, deployment="paper"):
+    response = client.post(
+        f"/api/algorithms/{candidate_id}/trial",
+        json={"deployment": deployment, "operator": "tester"},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def apply_queued(entry, at: float) -> list[str]:
+    """The trader's side: claim every queued command and apply it at `at`."""
+    inbox = ControlInbox(entry["control_dir"], clock=lambda: at)
+    applied = []
+    for command in inbox.queued():
+        assert inbox.claim(command)
+        inbox.record(command, "applied", "test")
+        applied.append(command.id)
+    return applied
+
+
+def journal(entry, *, bars=(), fills=(), orders=(), incidents=()):
+    inbox = ControlInbox(entry["control_dir"], clock=time.time)
+    inbox.record_bars([{"t": t, "o": 1, "h": 1, "l": 1, "c": 1, "v": 1} for t in bars])
+    for t in fills:
+        inbox.record_fill({"t": t, "side": "buy", "qty": 1.0, "price": 1.0})
+    for t in orders:
+        inbox.record_order({"t": t, "order": f"o{t}", "event": "placed"})
+    for row in incidents:
+        inbox.record_incident(row)
+
+
+def evaluate_it(client, candidate_id):
+    response = client.post(f"/api/algorithms/{candidate_id}/evaluate")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_nothing_is_evaluated_before_the_trials_switch_is_applied(client, deployments):  # noqa: F811
+    candidate_id = add(client).json()["id"]
+    body = start(client, candidate_id)
+    assert body["trial"]["window"]["state"] == "pending"
+    refused = client.post(f"/api/algorithms/{candidate_id}/evaluate")
+    assert refused.status_code == 409 and "nothing counts yet" in refused.json()["detail"]
+
+
 def test_a_trial_cannot_pass_while_the_incident_counters_are_unmeasured(
     client,
     deployments,  # noqa: F811
 ):
     candidate_id = add(client).json()["id"]
-    client.post(
-        f"/api/algorithms/{candidate_id}/trial", json={"deployment": "paper", "operator": "tester"}
-    )
-    body = client.post(f"/api/algorithms/{candidate_id}/evaluate").json()
+    start(client, candidate_id)
+    t0 = time.time() - 3 * DAY
+    apply_queued(deployments["paper"], at=t0)
+    journal(deployments["paper"], bars=[t0 + 60, t0 + DAY + 60])  # a trader with no incident row
+    body = evaluate_it(client, candidate_id)
     verdict = body["trial"]["evaluation"]
     assert verdict["passed"] is False and body["promotion"] is None
+    assert set(verdict["unmeasured"]) == set(INCIDENT_KINDS)
     assert any("not measured" in failure for failure in verdict["failures"])
     assert any("paper_trading_days" in failure for failure in verdict["failures"])
+
+
+def test_a_trial_counts_only_while_its_own_algorithm_traded(client, deployments):  # noqa: F811
+    """Two trials on one deployment: each is credited with what its own
+    algorithm did, from its switch being applied to the next one being
+    applied -- never with the other's fills."""
+    first = add(client).json()["id"]
+    second = add(client, run="fff000aaa111").json()["id"]
+    t0 = time.time() - 4 * DAY
+    start(client, first)
+    apply_queued(deployments["paper"], at=t0)
+    start(client, second)
+    apply_queued(deployments["paper"], at=t0 + 2 * DAY)
+    journal(
+        deployments["paper"],
+        bars=[t0 - 60, t0 + 60, t0 + DAY + 60, t0 + 2 * DAY + 60],
+        fills=[t0 - 30, t0 + 70, t0 + 2 * DAY + 70, t0 + 2 * DAY + 80],
+        orders=[t0 + 65, t0 + 2 * DAY + 65],
+    )
+
+    rows = {c["id"]: c for c in client.get("/api/algorithms").json()["candidates"]}
+    assert rows[first]["trial"]["window"]["state"] == "ended"
+    assert f"Paper trial of {second}" in rows[first]["trial"]["window"]["detail"]
+    assert rows[second]["trial"]["window"]["state"] == "running"
+
+    record = evaluate_it(client, first)["trial"]["evaluation"]["record"]
+    assert (record["paper_trading_days"], record["fill_count"], record["decision_count"]) == (
+        2.0,
+        1,
+        1,
+    )
+    record = evaluate_it(client, second)["trial"]["evaluation"]["record"]
+    assert (record["paper_trading_days"], record["fill_count"], record["decision_count"]) == (
+        1.0,
+        2,
+        1,
+    )
+    # An ended trial may be removed; the running one stays.
+    assert client.delete(f"/api/algorithms/candidates/{first}").status_code == 200
+    assert client.delete(f"/api/algorithms/candidates/{second}").status_code == 409
+
+
+def test_journaled_incidents_are_measured_and_each_fails_the_trial(client, deployments):  # noqa: F811
+    candidate_id = add(client).json()["id"]
+    start(client, candidate_id)
+    t0 = time.time() - 3 * DAY
+    apply_queued(deployments["paper"], at=t0)
+    sessions = [t0 + 60, t0 + DAY + 60]
+    journal(
+        deployments["paper"],
+        bars=sessions,
+        incidents=[{"t": t + 1, "kind": "watching", "detail": "on"} for t in sessions],
+    )
+    verdict = evaluate_it(client, candidate_id)["trial"]["evaluation"]
+    assert verdict["unmeasured"] == []
+    assert not any("not measured" in failure for failure in verdict["failures"])
+    assert not any("violations" in failure for failure in verdict["failures"])
+
+    journal(
+        deployments["paper"],
+        incidents=[{"t": t0 + DAY + 90, "kind": "no_loss_violations", "detail": "refused"}],
+    )
+    verdict = evaluate_it(client, candidate_id)["trial"]["evaluation"]
+    assert verdict["record"]["no_loss_violations"] == 1
+    assert any("no-loss guard violations: 1" in failure for failure in verdict["failures"])
 
 
 def promote(client, candidate_id, reason="my own call"):
@@ -235,6 +351,19 @@ def test_time_since_the_trial_started_is_what_is_counted():
     )
     assert (record.paper_trading_days, record.fill_count, record.decision_count) == (3.0, 1, 1)
     assert record.unresolved_reconciliations == 1
+
+
+def test_the_counters_are_measured_only_when_every_traded_session_was_watched():
+    from engine.promotion_record import UNMEASURED, unmeasured
+
+    t0 = time.time() - 10 * DAY
+    bars = [{"t": t0 + DAY * d + 3600} for d in range(3)]
+    watched = [{"t": t0 + DAY * d + 60, "kind": "watching"} for d in range(3)]
+    assert unmeasured(started_at=t0, bars=bars, incidents=watched) == ()
+    assert unmeasured(started_at=t0, bars=bars, incidents=watched[:2]) == UNMEASURED
+    assert unmeasured(started_at=t0, bars=bars, incidents=None) == UNMEASURED
+    # A window that ends before the unwatched session does not need it.
+    assert unmeasured(started_at=t0, ended_at=t0 + 2 * DAY, bars=bars, incidents=watched[:2]) == ()
 
 
 def test_the_module_is_the_only_writer(client):

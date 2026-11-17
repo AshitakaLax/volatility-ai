@@ -20,7 +20,7 @@ other engine package at import time.
 | `brokers/` | `alpaca_broker.py`, `broker_selection.py` | the Alpaca `LiveBroker`; `broker_selection` imports each SDK **inside** `build_broker()` so picking one never loads the other (Fidelity lives in `fidelity_gateway/`) |
 | `ui/` | `dashboard.py` | Streamlit view of a running deployment |
 | `roadmap.md` | | everything the engine still needs for every ranked-list algorithm to trade: within the owner's rules (multi-asset book, adaptive execution, Level 1/2 data from Fidelity, a point-in-time warehouse for fundamentals and other outside data, a stock universe, live text, model registry, library-id readiness, sub-minute loop), then the owner decisions (loss exits, shorts, options, futures, market making, crypto) and compute |
-| `promotion.py`, `promotion_record.py` | | the paper→live gate, and a paper trial's record read from the trader's journals (counters nobody journals are *unmeasured* and fail it) |
+| `promotion.py`, `promotion_record.py` | | the paper→live gate, and a paper trial's record read from the trader's journals inside the trial's window (its incident counters come from the `incidents` journal, and count as measured only for sessions the trader marked `watching`; otherwise *unmeasured*, and they fail it) |
 | `tests/` | | this section's own suite — see `tests/CLAUDE.md` for what stays here versus moves to the root `tests/` |
 
 ## The canonical decision cycle (`trading/decision_cycle.py`)

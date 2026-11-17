@@ -2066,6 +2066,23 @@ class TestWhatTheTraderReports:
         too_many = client.get("/api/live/deployments/test-paper/bars", params={"sessions": 99})
         assert too_many.status_code == 422
 
+    def test_a_poll_asks_only_for_the_fills_and_orders_after_what_it_has(
+        self, client, store, tmp_path
+    ):
+        import time
+
+        inbox = self._inbox(tmp_path)
+        now = time.time()
+        for t in (now - 30, now - 20, now - 10):
+            inbox.record_fill({"t": t, "side": "buy", "lot": "a", "qty": 1.0, "price": 1.5})
+            inbox.record_order({"t": t, "order": "o", "event": "placed"})
+        for journal in ("fills", "orders"):
+            url = f"/api/live/deployments/test-paper/{journal}"
+            assert len(client.get(url).json()) == 3
+            newer = client.get(url, params={"since": now - 20}).json()
+            assert [row["t"] for row in newer] == [now - 10]
+            assert client.get(url, params={"since": now}).json() == []
+
     def test_the_tracking_record_is_served_session_by_session(
         self, client, store, tmp_path, monkeypatch
     ):

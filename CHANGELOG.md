@@ -23,6 +23,37 @@ gaps turned that into a halt nothing could clear:
   in the position check (`reconciliation.py`); any other gap still halts.
   Nothing is booked by reconciliation: the loop books the fill from the
   broker at its first poll, before it decides anything.
+## Fix: a paper trial counts only its own algorithm, and can pass
+
+Three trials had been started on one paper deployment; only the last one
+traded, yet the evaluation counted every fill the deployment made since a
+trial was queued, so the first two would have been credited with the
+third's 115 buys. And four of the gate's counters were never journaled,
+so no trial could pass without the owner's sign-off.
+
+- **A trial's window** (`server/algorithms.py` `_trial_window`): from the
+  moment its switch was APPLIED (the command's result -- a next-session
+  switch leaves the old algorithm trading until then) to the next
+  algorithm change applied after it, by another trial or by hand. The
+  evaluation counts bars, orders, fills and incidents in that window only,
+  refuses a trial whose switch is still queued or never applied, and
+  every candidate carries `trial.window` (pending, running, ended,
+  never_ran). An ended trial can be evaluated on its window, tried again
+  or removed.
+- **The incidents journal** (`engine/trading/control_inbox.py`
+  `incidents/`): the trader records a sale the no-loss guard refused to
+  book, a fill the ledger could not place, a window audit or startup
+  reconciliation where venue and ledger disagree, a decision met again
+  whose first submission never confirmed, an ambiguous submission, and
+  an aborted loop. The counters are MEASURED only when every session the
+  trial traded carries the journal's `watching` row -- a trader from
+  before this build leaves them unmeasured, and the trial still fails
+  closed on them (`engine/promotion_record.py`).
+- **The Live page's journals poll incrementally**: `?since=` on
+  `/fills` and `/orders` (`server/live.py`) returns only newer rows, the
+  hooks append them, and Trades and Orders show a page at a time (50 and
+  25) instead of every row -- a busy paper trial books hundreds of fills
+  a session, which the page had downloaded and rendered again every 15 s.
 
 ## Feat: the website opens on what matters, and reads on a phone
 

@@ -10,17 +10,9 @@ import {
   Moon,
   Sun,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 
-import { ActiveRuns } from "@/components/backtest/ActiveRuns";
-import { BacktestResult } from "@/components/backtest/BacktestResult";
-import { ParameterForm } from "@/components/backtest/ParameterForm";
-import { RunHistory } from "@/components/backtest/RunHistory";
-import { ShardPanel } from "@/components/backtest/ShardPanel";
-import { AlgorithmsTab } from "@/components/algorithms/AlgorithmsTab";
 import { LiveTab } from "@/components/live/LiveTab";
-import { ModelInsights } from "@/components/ml/ModelInsights";
-import { WarehouseTab } from "@/components/warehouse/WarehouseTab";
 import { Button, Card, CardContent } from "@/components/ui/primitives";
 import { useBacktestRun } from "@/hooks/useBacktestRun";
 import { usePolled } from "@/hooks/usePolled";
@@ -30,6 +22,34 @@ import { parsePlace, placeHash, type Place, type Tab } from "@/lib/nav";
 import { nextTheme, setTheme, themeChoice, watchSystemTheme, type ThemeChoice } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { DEFAULT_FILTERS, type ExecutionFilters, type Report } from "@/types/backtest";
+
+// Every tab but Live is its own chunk, fetched the first time it is opened:
+// the page opens on Live, and the backtest form, result charts, warehouse and
+// ML views were most of the one bundle it downloaded before showing it.
+const ActiveRuns = lazy(() =>
+  import("@/components/backtest/ActiveRuns").then((m) => ({ default: m.ActiveRuns })),
+);
+const BacktestResult = lazy(() =>
+  import("@/components/backtest/BacktestResult").then((m) => ({ default: m.BacktestResult })),
+);
+const ParameterForm = lazy(() =>
+  import("@/components/backtest/ParameterForm").then((m) => ({ default: m.ParameterForm })),
+);
+const RunHistory = lazy(() =>
+  import("@/components/backtest/RunHistory").then((m) => ({ default: m.RunHistory })),
+);
+const ShardPanel = lazy(() =>
+  import("@/components/backtest/ShardPanel").then((m) => ({ default: m.ShardPanel })),
+);
+const AlgorithmsTab = lazy(() =>
+  import("@/components/algorithms/AlgorithmsTab").then((m) => ({ default: m.AlgorithmsTab })),
+);
+const ModelInsights = lazy(() =>
+  import("@/components/ml/ModelInsights").then((m) => ({ default: m.ModelInsights })),
+);
+const WarehouseTab = lazy(() =>
+  import("@/components/warehouse/WarehouseTab").then((m) => ({ default: m.WarehouseTab })),
+);
 
 /**
  * The tabs keep the brief's order, Backtesting first. The page OPENS on
@@ -212,66 +232,68 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-[1600px] space-y-4 px-3 py-4 sm:px-6 sm:py-6">
-        {tab === "live" ? (
-          <LiveTab chosen={place.deployment} onChoose={setDeployment} />
-        ) : tab === "algorithms" ? (
-          <AlgorithmsTab />
-        ) : tab === "ml" ? (
-          <ModelInsights />
-        ) : tab === "warehouse" ? (
-          <WarehouseTab />
-        ) : tab === "result" ? (
-          <BacktestResult
-            report={report}
-            run={run}
-            filters={filters}
-            onFiltersChange={setFilters}
-            onLoadIntoForm={stageCell}
-          />
-        ) : (
-          <>
-            {/* Above the form on purpose: which machines are connected
-                decides where a sweep submitted below will actually run. */}
-            <ShardPanel />
-
-            <ParameterForm
-              onSubmit={(request) => submit(request)}
+        <Suspense fallback={<p className="text-sm text-muted-foreground">Loading…</p>}>
+          {tab === "live" ? (
+            <LiveTab chosen={place.deployment} onChoose={setDeployment} />
+          ) : tab === "algorithms" ? (
+            <AlgorithmsTab />
+          ) : tab === "ml" ? (
+            <ModelInsights />
+          ) : tab === "warehouse" ? (
+            <WarehouseTab />
+          ) : tab === "result" ? (
+            <BacktestResult
+              report={report}
               run={run}
-              batch={batch}
-              submitting={submitting}
-              error={error}
-              range={filters.range}
-              staged={staged}
+              filters={filters}
+              onFiltersChange={setFilters}
+              onLoadIntoForm={stageCell}
             />
+          ) : (
+            <>
+              {/* Above the form on purpose: which machines are connected
+                  decides where a sweep submitted below will actually run. */}
+              <ShardPanel />
 
-            {submittedReportReady ? (
-              <Card>
-                <CardContent className="flex items-center justify-between gap-4 pt-5">
-                  <p className="text-sm text-muted-foreground">
-                    Run complete
-                    {run?.report?.name
-                      ? ` — ${run.report.name}`
-                      : ""}
-                    . The chart, trade log and sweep surface are on the Backtest result tab.
-                  </p>
-                  <Button variant="outline" onClick={() => setTab("result")}>
-                    Backtest result
-                    <ArrowRight className="size-3.5" />
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : null}
+              <ParameterForm
+                onSubmit={(request) => submit(request)}
+                run={run}
+                batch={batch}
+                submitting={submitting}
+                error={error}
+                range={filters.range}
+                staged={staged}
+              />
 
-            {/* Selecting a run from either of these opens it in its own
-                browser tab (runUrl() in lib/utils.ts), which lands on
-                the Backtest result tab -- so an in-progress submission
-                here is never displaced by a click meant to glance at
-                something else. */}
-            <ActiveRuns onSettled={() => setHistoryToken((value) => value + 1)} />
+              {submittedReportReady ? (
+                <Card>
+                  <CardContent className="flex items-center justify-between gap-4 pt-5">
+                    <p className="text-sm text-muted-foreground">
+                      Run complete
+                      {run?.report?.name
+                        ? ` — ${run.report.name}`
+                        : ""}
+                      . The chart, trade log and sweep surface are on the Backtest result tab.
+                    </p>
+                    <Button variant="outline" onClick={() => setTab("result")}>
+                      Backtest result
+                      <ArrowRight className="size-3.5" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : null}
 
-            <RunHistory refreshToken={historyToken} />
-          </>
-        )}
+              {/* Selecting a run from either of these opens it in its own
+                  browser tab (runUrl() in lib/utils.ts), which lands on
+                  the Backtest result tab -- so an in-progress submission
+                  here is never displaced by a click meant to glance at
+                  something else. */}
+              <ActiveRuns onSettled={() => setHistoryToken((value) => value + 1)} />
+
+              <RunHistory refreshToken={historyToken} />
+            </>
+          )}
+        </Suspense>
       </main>
     </div>
   );
