@@ -192,6 +192,76 @@ def test_broker_confirmed_fill_on_a_known_live_order_is_adopted(store):
     assert any("0.0 -> 4.0" in r for r in report.repairs_applied)
 
 
+def _in_flight(side, filled_qty=0.0):
+    order = _local_order(state=OrderState.SUBMITTED, filled_qty=filled_qty)
+    order.side = side
+    return {"cid-1": order}
+
+
+def test_an_adopted_buy_fill_explains_the_shares_nobody_booked_yet(store):
+    """2026-11-16: the broker filled a buy after the process stopped."""
+    _seed_one_open_lot(store, shares=10.0)
+    report = Reconciler(store).reconcile(
+        BrokerSnapshot(
+            positions={"TQQQ": 14.0},
+            orders={"cid-1": _broker_order(state=OrderState.FILLED, filled_qty=4.0)},
+        ),
+        local_orders=_in_flight("buy"),
+    )
+    assert report.ready, report.diagnostic()
+
+
+def test_an_adopted_sell_fill_explains_the_shares_already_gone(store):
+    _seed_one_open_lot(store, shares=10.0)
+    report = Reconciler(store).reconcile(
+        BrokerSnapshot(
+            positions={"TQQQ": 7.0},
+            orders={"cid-1": _broker_order(state=OrderState.PARTIALLY_FILLED, filled_qty=4.0)},
+        ),
+        local_orders=_in_flight("sell", filled_qty=1.0),
+    )
+    assert report.ready, report.diagnostic()
+
+
+def test_a_position_that_is_all_the_unbooked_fill(store):
+    report = Reconciler(store).reconcile(
+        BrokerSnapshot(
+            positions={"TQQQ": 4.0},
+            orders={"cid-1": _broker_order(state=OrderState.FILLED, filled_qty=4.0)},
+        ),
+        local_orders=_in_flight("buy"),
+    )
+    assert report.ready, report.diagnostic()
+
+
+def test_an_adopted_fill_explains_only_its_own_shares(store):
+    breaker = CircuitBreaker()
+    _seed_one_open_lot(store, shares=10.0)
+    report = Reconciler(store, circuit_breaker=breaker).reconcile(
+        BrokerSnapshot(
+            positions={"TQQQ": 15.0},
+            orders={"cid-1": _broker_order(state=OrderState.FILLED, filled_qty=4.0)},
+        ),
+        local_orders=_in_flight("buy"),
+    )
+    assert not report.ready
+    assert "delta +1.0" in report.diagnostic()
+    assert breaker.state is CircuitBreakerState.HALTED_NEW_BUYS
+
+
+def test_an_adopted_fill_of_unknown_side_explains_nothing(store):
+    _seed_one_open_lot(store, shares=10.0)
+    report = Reconciler(store).reconcile(
+        BrokerSnapshot(
+            positions={"TQQQ": 14.0},
+            orders={"cid-1": _broker_order(state=OrderState.FILLED, filled_qty=4.0)},
+        ),
+        local_orders=_in_flight(None),
+    )
+    assert not report.ready
+    assert "POSITION_MISMATCH" in report.diagnostic()
+
+
 def test_fill_reported_against_a_locally_terminal_order_is_ambiguous(store):
     report = Reconciler(store).reconcile(
         BrokerSnapshot(orders={"cid-1": _broker_order(state=OrderState.FILLED, filled_qty=10.0)}),

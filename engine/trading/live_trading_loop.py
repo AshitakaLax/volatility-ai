@@ -164,7 +164,12 @@ from engine.data.tick_validation import TickValidator
 from engine.execution import limit_pricing
 from engine.execution.cost_models import ZeroCostModel
 from engine.execution.fill_accounting import FillTracker, extract_alpaca_fill
-from engine.execution.order_lifecycle import TERMINAL_STATES, OrderState, map_broker_status
+from engine.execution.order_lifecycle import (
+    TERMINAL_STATES,
+    OrderRecord,
+    OrderState,
+    map_broker_status,
+)
 from engine.trading import decision_cycle
 from engine.trading.duplicate_order_guard import DuplicateOrderGuard
 from engine.trading.live_history import EASTERN, last_sessions
@@ -439,6 +444,42 @@ class _TrackedOrder:
             reserve=float(raw.get("reserve") or 0.0),
             cancel_reason=raw.get("cancel_reason"),
         )
+
+
+def in_flight_orders(store, symbol: str) -> dict:
+    """The orders a store holds as still in flight, as startup reconciliation
+    reads them ({client_order_id: OrderRecord}): what they had filled when
+    the last process stopped, and their side.
+
+    With them a fill the broker confirmed after that process stopped, under
+    our own client order id, is explained rather than halting as a position
+    nobody booked; the loop books it from the broker at its first poll,
+    before it decides anything. Unreadable state answers {}: the position
+    check then halts on any gap as before, and building the loop refuses
+    that state with its own explanation (_restore_open_orders).
+    """
+    raw = store.get_meta(_META_OPEN_ORDERS)
+    if raw is None:
+        return {}
+    try:
+        tracked = [_TrackedOrder.from_dict(entry) for entry in json.loads(raw)]
+    except (TypeError, ValueError, KeyError):
+        return {}
+    records = {}
+    for order in tracked:
+        filled = float(order.tracker.cumulative_qty)
+        records[order.client_order_id] = OrderRecord(
+            client_order_id=order.client_order_id,
+            # A notional buy names no shares: what it asked for is unknown
+            # here, and reconciliation reads only what it filled.
+            requested_qty=float(order.qty or 0.0),
+            symbol=symbol,
+            state=OrderState.PARTIALLY_FILLED if filled > 0 else OrderState.SUBMITTED,
+            filled_qty=filled,
+            avg_fill_price=(order.tracker.cumulative_notional / filled) if filled > 0 else 0.0,
+            side=order.kind,
+        )
+    return records
 
 
 @dataclass
@@ -1529,14 +1570,19 @@ class LiveTradingLoop:
             logger.warning(f"Order listener failed (ignored): {type(exc).__name__}: {exc}")
 
     def settle_in_flight(self) -> bool:
-        """in_flight_settled for a shutdown on the venue's windows: orders the
-        last tick cancelled are asked about (at most every
-        SETTLE_POLL_SECONDS), so a cancel the venue confirms during the
-        shutdown's window counts as settled rather than as an order left in
-        flight."""
+        """in_flight_settled for a shutdown that asks the broker: orders still
+        in flight are asked about (at most every SETTLE_POLL_SECONDS) and
+        what they did is booked as any tick books it, so a fill or a cancel
+        confirmed during the shutdown's window counts as settled rather than
+        as an order left in flight.
+
+        Every deployment's shutdown, not only one on the venue's windows: on
+        2026-11-16 a buy placed by the session's last tick filled 3 s after
+        the loop stopped, the shutdown (reading only its own table) waited
+        out its window and halted the trader for a fill nobody asked about."""
         if not self.state.open_orders:
             return True
-        if self.calendar is None or self.broker is None:
+        if self.broker is None:
             return False
         moment = time.monotonic()
         if self._last_settle_poll is None or moment - self._last_settle_poll >= SETTLE_POLL_SECONDS:

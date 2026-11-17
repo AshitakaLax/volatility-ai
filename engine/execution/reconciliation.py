@@ -33,6 +33,9 @@ from engine.execution.order_lifecycle import TERMINAL_STATES, OrderState
 
 logger = logging.getLogger("Optimizer")
 
+# What a fill of a known order does to the broker's position.
+_POSITION_SIGN = {"buy": 1.0, "sell": -1.0}
+
 
 class ReconciliationOutcome(StrEnum):
     """Terminal outcome of one reconciliation pass."""
@@ -167,8 +170,11 @@ class Reconciler:
         repairs: list = []
         observations: list = []
 
-        self._reconcile_orders(snapshot, local_orders, discrepancies, repairs, observations)
-        self._reconcile_positions(snapshot, discrepancies)
+        in_flight: dict = {}
+        self._reconcile_orders(
+            snapshot, local_orders, discrepancies, repairs, observations, in_flight
+        )
+        self._reconcile_positions(snapshot, discrepancies, in_flight)
         self._reconcile_cash(snapshot, expected_cash, discrepancies)
 
         if discrepancies:
@@ -198,7 +204,7 @@ class Reconciler:
     # --- decision table rows ---
 
     def _reconcile_orders(
-        self, snapshot, local_orders, discrepancies, repairs, observations=None
+        self, snapshot, local_orders, discrepancies, repairs, observations=None, in_flight=None
     ) -> None:
         """Compare orders in both directions, appending findings in place.
 
@@ -208,6 +214,12 @@ class Reconciler:
         broker order we never decided, a fill count that went backwards,
         a live local order the broker has never seen -- is recorded as a
         discrepancy and halts.
+
+        An adopted fill whose side is known goes into in_flight
+        ({symbol: signed shares}): the part of the broker's position the
+        local lots cannot show yet, because nothing has booked it. The
+        trader books it from the broker (its own poll of the orders it
+        tracks) before it decides anything; this module books nothing.
         """
         for client_order_id, broker_order in snapshot.orders.items():
             local = local_orders.get(client_order_id)
@@ -300,6 +312,12 @@ class Reconciler:
                         f"Order {client_order_id!r}: adopted broker-confirmed fill "
                         f"{local.filled_qty} -> {broker_filled}"
                     )
+                    sign = _POSITION_SIGN.get(getattr(local, "side", None))
+                    symbol = broker_order.get("symbol") or local.symbol
+                    if in_flight is not None and sign is not None and symbol:
+                        in_flight[symbol] = in_flight.get(symbol, 0.0) + sign * (
+                            broker_filled - local.filled_qty
+                        )
                 else:
                     discrepancies.append(
                         Discrepancy(
@@ -359,11 +377,21 @@ class Reconciler:
                 )
             )
 
-    def _reconcile_positions(self, snapshot, discrepancies) -> None:
+    def _reconcile_positions(self, snapshot, discrepancies, in_flight=None) -> None:
         """ "Position quantity mismatch -> RECONCILIATION_REQUIRED; never
         invent a fill." Reuses the store's own comparison so there is
-        one definition of a position mismatch, not two."""
-        report = self.store.compare_with_broker(snapshot.positions)
+        one definition of a position mismatch, not two.
+
+        The local lots are compared with the broker's position LESS the
+        adopted fills not yet booked (in_flight): exactly what the lots
+        must hold until the trader books them. Any other gap still halts.
+        """
+        positions = dict(snapshot.positions)
+        for symbol, shares in (in_flight or {}).items():
+            positions[symbol] = positions.get(symbol, 0.0) - shares
+            if abs(positions[symbol]) <= self.QTY_EPSILON:
+                del positions[symbol]  # the whole position is the unbooked fill
+        report = self.store.compare_with_broker(positions)
         if report.agrees:
             return
         for symbol, sides in report.quantity_mismatches.items():

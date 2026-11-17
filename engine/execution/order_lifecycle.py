@@ -191,6 +191,9 @@ class OrderRecord:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     submitted_at: datetime | None = None
     last_update_at: datetime | None = None
+    # "buy" or "sell" where known: what a fill does to the position. None
+    # leaves reconciliation unable to explain a position by this order's fill.
+    side: str | None = None
 
     @property
     def remaining_qty(self) -> float:
