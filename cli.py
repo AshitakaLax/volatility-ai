@@ -977,10 +977,24 @@ def cmd_live(args: argparse.Namespace) -> int:
         broker.ping()
         connected["broker"] = broker
 
+    # The orders the last process left in flight, so a fill Alpaca confirmed
+    # after it stopped is recognised as ours rather than halting as a
+    # position nobody booked (2026-11-16); the loop books it at its first
+    # poll. Alpaca only: Fidelity's snapshot keys an order by our client
+    # order id only once this process has seen it placed, so there an
+    # in-flight order would read as absent at the broker.
+    if fidelity:
+        local_orders = None
+    else:
+        from engine.trading.live_trading_loop import in_flight_orders
+
+        local_orders = in_flight_orders(store, config.backtest.symbol)
+
     try:
         final_state = lifecycle.start(
             connect_broker=_connect_broker,
             broker_snapshot_provider=lambda: connected["broker"].snapshot(),
+            local_orders=local_orders,
             **(prepared.lifecycle_hooks() if prepared is not None else {}),
         )
 
@@ -1815,9 +1829,10 @@ def _run_trading_loop(
 
     loop = current["loop"]
     final = lifecycle.shutdown(
-        # On the venue's windows the orders the last tick cancelled are asked
-        # about while the shutdown waits, so a confirmed cancel settles.
-        in_flight_settled=loop.settle_in_flight if prepared is not None else loop.in_flight_settled,
+        # Orders still in flight are asked about while the shutdown waits, so
+        # a fill or cancel the broker confirms meanwhile is booked and settles
+        # -- a buy the last tick placed included (2026-11-16).
+        in_flight_settled=loop.settle_in_flight,
         persist_state=loop.persist_state,
         close_connections=store.close,
     )

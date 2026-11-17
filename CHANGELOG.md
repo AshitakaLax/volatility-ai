@@ -1,5 +1,28 @@
 # Changelog
 
+## Fix: a buy the session's last tick placed no longer halts the trader
+
+On 2026-11-16 the paper trader's last tick placed a buy and the loop
+stopped at once, its tick budget spent. Alpaca filled it 3 s later. Two
+gaps turned that into a halt nothing could clear:
+
+- **The shutdown never asked the broker.** Off the venue's windows it
+  waited on `in_flight_settled`, which reads only the loop's own table, so
+  an order in flight could not settle: 30 s, then RECONCILIATION_REQUIRED.
+  Every shutdown now waits on `settle_in_flight`, which asks the broker
+  about the orders still in flight (every 5 s) and books what they did as
+  a tick does. It no longer needs a venue calendar.
+- **Startup reconciled share totals only.** `cli.py` passed no local
+  orders, so the fill the ledger had kept as in flight read as
+  shares nobody booked, and every start halted again; resetting the
+  breaker could not help. Startup now passes the orders the store holds
+  in flight (`live_trading_loop.in_flight_orders`, Alpaca only: Fidelity's
+  snapshot names our client order id only for orders the same process
+  placed). A fill the broker confirms on one of them, under our id and
+  with a known side (`OrderRecord.side`), explains exactly its own shares
+  in the position check (`reconciliation.py`); any other gap still halts.
+  Nothing is booked by reconciliation: the loop books the fill from the
+  broker at its first poll, before it decides anything.
 ## Fix: a paper trial counts only its own algorithm, and can pass
 
 Three trials had been started on one paper deployment; only the last one
