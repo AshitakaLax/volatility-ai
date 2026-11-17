@@ -505,6 +505,59 @@ def test_a_sell_below_cost_basis_is_never_booked(store):
     assert len(loop.ledger.open_lots) == 1, "the lot must stay open"
 
 
+def test_a_sale_the_guard_refuses_to_book_is_an_incident_for_the_paper_trial(store):
+    """What engine/promotion_record.py counts as a no-loss violation: told to
+    the incident listener with the order and lot, and nothing else is."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    incidents = []
+    loop = _loop_with_an_open_lot(store, broker, market, buy_price=98.0, qty=10.0)
+    loop.set_listeners(incident=incidents.append)
+    lot = loop.ledger.open_lots[0]
+    market.push(lot.target_sell_price + 1.0, ts=BASE_TS + timedelta(minutes=3))
+    loop.run_once()
+    assert incidents == [], "an ordinary sell is no incident"
+    _, qty, _, sell_cid = broker.sells[0]
+    broker.fill(sell_cid, qty=qty, price=50.0)
+    market.push(lot.target_sell_price + 1.0, ts=BASE_TS + timedelta(minutes=4))
+    loop.run_once()
+
+    (incident,) = incidents
+    assert incident["kind"] == "no_loss_violations"
+    assert (incident["order"], incident["lot"]) == (sell_cid, lot.order_id)
+    assert isinstance(incident["t"], float) and incident["detail"]
+
+
+def test_a_decision_an_earlier_process_claimed_but_never_confirmed_is_an_incident(store):
+    """The crash between the guard's claim and the broker's answer: whether
+    an order exists is unknown. The guard refuses to send it again, and the
+    paper trial counts it as a duplicate-order incident -- once."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    incidents = []
+    market.push(100.0)
+    loop = make_loop(store, broker, market, incident_listener=incidents.append)
+    loop.run_once()
+    buy_at = BASE_TS + timedelta(minutes=1)
+    claimed = loop._decision_id("BUY", buy_at)
+    store.record_processed_event(claimed, "buy_submission")  # the earlier process's claim
+    market.push(98.0, ts=buy_at)
+    loop.run_once()
+    loop.run_once()  # the same bar read again
+
+    assert broker.buys == [], "the guard never sends it again"
+    (incident,) = incidents
+    assert incident["kind"] == "duplicate_order_incidents" and incident["order"] == claimed
+
+
+def test_a_failing_incident_listener_never_stops_a_tick(store):
+    def broken(_incident):
+        raise RuntimeError("journal unavailable")
+
+    loop = make_loop(store, incident_listener=broken)
+    loop._report_incident("no_loss_violations", "test")  # logged, not raised
+
+
 def test_a_halt_never_liquidates(store):
     """A halt stops trading; it does not unwind the book.
 

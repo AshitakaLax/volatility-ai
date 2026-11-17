@@ -1,8 +1,10 @@
 import { ArrowLeftRight } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { Pager } from "@/components/ui/Pager";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { tradeTotals } from "@/lib/control";
+import { pageOf } from "@/lib/paging";
 import { cn, usd } from "@/lib/utils";
 import type { TraderFill } from "@/types/control";
 
@@ -23,7 +25,9 @@ interface Props {
   onSessions: (sessions: number) => void;
 }
 
-const SHOWN = 50;
+// A page of the table: a busy session books hundreds of fills, and every one
+// a row re-rendered on each poll is what made "show all" slow.
+const PAGE = 50;
 
 /** Where a bought lot sells: journalled with the fill, else its price x (1 + target). */
 function lotTarget(fill: TraderFill): number | null {
@@ -32,9 +36,9 @@ function lotTarget(fill: TraderFill): number | null {
 }
 
 export function TradesCard({ fills, sessions, onSessions }: Props) {
-  const [all, setAll] = useState(false);
-  const rows = [...(fills ?? [])].reverse();
-  const totals = tradeTotals(fills ?? []);
+  const [page, setPage] = useState(0);
+  const rows = useMemo(() => [...(fills ?? [])].reverse(), [fills]);
+  const totals = useMemo(() => tradeTotals(fills ?? []), [fills]);
   return (
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
@@ -52,7 +56,10 @@ export function TradesCard({ fills, sessions, onSessions }: Props) {
           <select
             className="rounded border border-border bg-background px-1 py-0.5"
             value={sessions}
-            onChange={(event) => onSessions(Number(event.currentTarget.value))}
+            onChange={(event) => {
+              setPage(0);
+              onSessions(Number(event.currentTarget.value));
+            }}
           >
             <option value={1}>today</option>
             <option value={5}>5 sessions</option>
@@ -83,7 +90,7 @@ export function TradesCard({ fills, sessions, onSessions }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {(all ? rows : rows.slice(0, SHOWN)).map((fill, index) => (
+                {pageOf(rows, page, PAGE).map((fill, index) => (
                   <tr key={`${fill.t}-${fill.lot}-${index}`} className="border-b border-border/50 last:border-0">
                     <td className="py-1.5 text-xs text-muted-foreground">
                       {new Date(fill.t * 1000).toLocaleString([], {
@@ -125,15 +132,7 @@ export function TradesCard({ fills, sessions, onSessions }: Props) {
                 ))}
               </tbody>
             </table>
-            {rows.length > SHOWN && !all ? (
-              <button
-                type="button"
-                className="mt-2 text-xs text-muted-foreground underline"
-                onClick={() => setAll(true)}
-              >
-                Show all {rows.length}
-              </button>
-            ) : null}
+            <Pager page={page} rows={rows.length} size={PAGE} onPage={setPage} />
           </>
         )}
       </CardContent>

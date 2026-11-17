@@ -488,25 +488,37 @@ def deployment_bars(
 def deployment_fills(
     deployment_id: str,
     sessions: int = Query(1, ge=1, le=_MAX_JOURNAL_SESSIONS),
+    since: float | None = Query(None, ge=0),
 ) -> list[dict[str, Any]]:
     """Every fill the trader booked in the last `sessions` sessions, oldest
     first, with what each sale fetched against what its lot cost -- the
-    figure the ledger does not keep."""
+    figure the ledger does not keep. With `since` (epoch seconds), only
+    those booked after it: what a page that already has the rest polls for."""
     inbox = _deployment(deployment_id).inbox()
-    return inbox.fills(sessions) if inbox is not None else []
+    return _after(inbox.fills(sessions) if inbox is not None else [], since)
 
 
 @router.get("/deployments/{deployment_id}/orders")
 def deployment_orders(
     deployment_id: str,
     sessions: int = Query(1, ge=1, le=_MAX_JOURNAL_SESSIONS),
+    since: float | None = Query(None, ge=0),
 ) -> list[dict[str, Any]]:
     """Each moment of each order's life in the last `sessions` sessions,
     oldest first: placed (its window and limit), partly filled, filled,
     cancel requested (and why: its time-to-live, its window's end), and how
-    it ended -- the proof a limit order filled or did not."""
+    it ended -- the proof a limit order filled or did not. `since` as for
+    fills."""
     inbox = _deployment(deployment_id).inbox()
-    return inbox.orders(sessions) if inbox is not None else []
+    return _after(inbox.orders(sessions) if inbox is not None else [], since)
+
+
+def _after(rows: list[dict[str, Any]], since: float | None) -> list[dict[str, Any]]:
+    """The journal rows after `since`: a busy paper trial books hundreds of
+    fills a session, and a page polling every 15 seconds needs only the new."""
+    if since is None:
+        return rows
+    return [row for row in rows if float(row.get("t", 0)) > since]
 
 
 def _tracking_dir() -> Path:

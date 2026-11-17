@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { actionsFor, pickLabel, promotionKind, trialBlocker } from "@/lib/algorithms";
+import { actionsFor, pickLabel, promotionKind, trialBlocker, trialLine } from "@/lib/algorithms";
 import type { Candidate } from "@/types/algorithms";
 
 const base = {
@@ -42,6 +42,18 @@ describe("what a candidate can do next", () => {
     expect(actionsFor(base)).toContain("override");
     expect(actionsFor({ ...base, stage: "paper_trial" })).toEqual(["evaluate", "override"]);
     expect(actionsFor({ ...base, stage: "promoted" })).toEqual(["publish"]);
+    const trial = { deployment: "paper", started_at: 0, started: "x", command: "c", evaluation: null };
+    const window = { from: "a", until: "b", detail: "Ended b: Paper trial of y (by me)." };
+    const ended = {
+      ...base,
+      stage: "paper_trial" as const,
+      trial: { ...trial, window: { ...window, state: "ended" as const } },
+    };
+    expect(actionsFor(ended)).toEqual(["evaluate", "trial", "override", "delete"]);
+    const never = { ...ended, trial: { ...trial, window: { ...window, state: "never_ran" as const } } };
+    expect(actionsFor(never)).toEqual(["trial", "override", "delete"]);
+    expect(trialLine(ended)).toBe("Trial on paper from a until b. Ended b: Paper trial of y (by me).");
+    expect(trialLine(base)).toBeNull();
     expect(actionsFor({ ...base, stage: "published" })).toEqual([]);
   });
 
