@@ -1,7 +1,10 @@
 import { ListChecks } from "lucide-react";
+import { useMemo, useState } from "react";
 
+import { Pager } from "@/components/ui/Pager";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { orderRows, outcomeWords, sessionWords, windowWords } from "@/lib/orders";
+import { pageOf } from "@/lib/paging";
 import { cn, usd } from "@/lib/utils";
 import type { OrderEvent, WindowSummary } from "@/types/control";
 
@@ -26,6 +29,9 @@ const OUTCOME_TONE = {
   rejected: "loss",
 } as const;
 
+// Orders a page: a busy paper trial places hundreds a session.
+const PAGE = 25;
+
 export function OrdersCard({
   events,
   lastWindow,
@@ -33,7 +39,8 @@ export function OrdersCard({
   events: OrderEvent[] | null;
   lastWindow: WindowSummary | null | undefined;
 }) {
-  const rows = orderRows(events ?? []);
+  const [page, setPage] = useState(0);
+  const rows = useMemo(() => orderRows(events ?? []), [events]);
   if (!rows.length && !lastWindow) return null;
   return (
     <Card>
@@ -81,7 +88,7 @@ export function OrdersCard({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {pageOf(rows, page, PAGE).map((row) => (
                   <tr key={row.order} className="border-t border-border/50">
                     <td className="py-1 pr-2 tabular-nums">
                       {row.placedAt
@@ -110,6 +117,7 @@ export function OrdersCard({
                 ))}
               </tbody>
             </table>
+            <Pager page={page} rows={rows.length} size={PAGE} onPage={setPage} />
           </div>
         ) : null}
       </CardContent>

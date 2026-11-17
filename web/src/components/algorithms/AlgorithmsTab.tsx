@@ -22,6 +22,7 @@ import {
   STAGE_LABEL,
   STAGES,
   trialBlocker,
+  trialLine,
   type CandidateAction,
 } from "@/lib/algorithms";
 import { rememberedOperator, rememberOperator } from "@/lib/control";
@@ -302,9 +303,7 @@ function CandidateRow({ candidate, onChanged }: { candidate: Candidate; onChange
         {percent(backtest.max_drawdown_pct)}
       </p>
       {candidate.trial ? (
-        <p className="text-xs">
-          Trial on <code>{candidate.trial.deployment}</code> since {candidate.trial.started}
-        </p>
+        <p className="text-xs">{trialLine(candidate)}</p>
       ) : trialBlocker(candidate) && candidate.stage === "candidate" ? (
         <p className="text-xs text-muted-foreground">{trialBlocker(candidate)}</p>
       ) : null}

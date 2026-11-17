@@ -13,7 +13,8 @@ export interface Promotion {
   passed: boolean;
   manual?: boolean;
   failures: string[];
-  /** Counters nobody journals yet: each fails a paper trial. */
+  /** Incident counters the trader did not journal for every session of the
+   * trial: each fails it (their zeros are not evidence). */
   unmeasured?: string[];
   criteria?: Record<string, number>;
   record?: Record<string, number | string>;
@@ -21,15 +22,31 @@ export interface Promotion {
   by?: string;
   at?: string;
   evaluated_at?: string;
+  /** The window the evaluation counted (ISO times; `until` null while it runs). */
+  window?: { from: string | null; until: string | null; state: TrialState };
+}
+
+/** pending: its switch is still queued; never_ran: the switch was rejected,
+ * expired, superseded or cancelled; ended: another algorithm took the deployment. */
+export type TrialState = "pending" | "running" | "ended" | "never_ran" | "unknown";
+
+/** When the trial's algorithm actually traded its deployment: from its switch
+ * being applied to the next algorithm change (server/algorithms.py _trial_window). */
+export interface TrialWindow {
+  state: TrialState;
+  from: string | null;
+  until: string | null;
+  detail: string;
 }
 
 export interface Trial {
   deployment: string;
-  /** Epoch seconds the trial's counting starts from. */
+  /** Epoch seconds the trial was queued. */
   started_at: number;
   started: string;
   command: string | null;
   evaluation: Promotion | null;
+  window?: TrialWindow;
 }
 
 export interface Candidate {

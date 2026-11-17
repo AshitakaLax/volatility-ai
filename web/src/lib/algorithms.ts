@@ -23,8 +23,20 @@ export function actionsFor(candidate: Candidate): CandidateAction[] {
         "override",
         "delete",
       ];
-    case "paper_trial":
+    case "paper_trial": {
+      // Another algorithm took its deployment (or its switch never applied):
+      // it can still be judged on its own window, tried again, or removed.
+      const state = candidate.trial?.window?.state;
+      if (state === "ended" || state === "never_ran") {
+        return [
+          ...(state === "ended" ? (["evaluate"] as const) : []),
+          ...(candidate.paper_deployments.length > 0 ? (["trial"] as const) : []),
+          "override",
+          "delete",
+        ];
+      }
       return ["evaluate", "override"];
+    }
     case "promoted":
       return ["publish"];
     case "published":
@@ -44,6 +56,24 @@ export function trialBlocker(candidate: Candidate): string | null {
       .join("; ")}`;
   }
   return `No paper deployment trades ${candidate.symbols.join(", ")}: a trial needs one (a paper account for that fund).`;
+}
+
+/** Where the trial stands, in a line: when its algorithm traded and, once it
+ * stopped, why. Null for a candidate with no trial. */
+export function trialLine(candidate: Candidate): string | null {
+  const trial = candidate.trial;
+  if (!trial) return null;
+  const on = `Trial on ${trial.deployment}`;
+  const window = trial.window;
+  if (!window) return `${on} since ${trial.started}`;
+  switch (window.state) {
+    case "running":
+      return `${on}, trading since ${window.from ?? trial.started}`;
+    case "ended":
+      return `${on} from ${window.from} until ${window.until}. ${window.detail}`;
+    default:
+      return `${on} (queued ${trial.started}): ${window.detail}`;
+  }
 }
 
 /** "paper trial" or "owner sign-off (manual)" for a promoted candidate. */
