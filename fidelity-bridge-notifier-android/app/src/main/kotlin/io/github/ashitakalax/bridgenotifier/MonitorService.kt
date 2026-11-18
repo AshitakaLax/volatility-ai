@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
+import io.github.ashitakalax.bridgenotifier.core.Account
 import io.github.ashitakalax.bridgenotifier.core.BridgeClient
 import io.github.ashitakalax.bridgenotifier.core.BridgeStatus
 import io.github.ashitakalax.bridgenotifier.core.ClientSettings
@@ -19,21 +20,26 @@ import io.github.ashitakalax.bridgenotifier.core.Notification
 import java.net.URI
 
 /**
- * Watches the bridge: a foreground service holding one BridgeClient, so the
- * connection outlives the screen. It turns what the bridge says into phone
- * notifications -- those of the kinds switched on in the app -- and says so
- * itself when the bridge has been out of reach longer than the grace.
+ * Watches every account: a foreground service holding one BridgeClient per
+ * account, so the connections outlive the screen. It turns what each says
+ * into phone notifications -- those of the kinds switched on for that account,
+ * none for one muted -- and says so itself when one has been out of reach
+ * longer than the grace.
  */
 class MonitorService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var prefs: Prefs
 
-    @Volatile
-    private var client: BridgeClient? = null
-    private var alarm = LinkAlarm(0)
-    private var lastReason = ""
+    /** One account's connection, and what the service keeps about it. Main thread only. */
+    private inner class Watch(var account: Account) {
+        var client: BridgeClient? = null
+        var alarm = LinkAlarm(prefs.unreachableGraceMillis)
+        var lastReason = ""
+        val checkAlarm = Runnable { checkLinkAlarm(this) }
+    }
+
+    private val watches = mutableMapOf<String, Watch>()
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
-    private val checkAlarm = Runnable { checkLinkAlarm() }
 
     override fun onCreate() {
         super.onCreate()
@@ -51,14 +57,15 @@ class MonitorService : Service() {
                 stopWatching()
                 return START_NOT_STICKY
             }
-            ACTION_TEST -> if (client == null) {
+            ACTION_TEST -> if (watches.isEmpty()) {
                 stopSelf()
                 return START_NOT_STICKY
             } else {
-                client?.requestTest()
+                val id = intent?.getStringExtra(EXTRA_ACCOUNT) ?: prefs.currentId
+                watches[id]?.client?.requestTest()
             }
             ACTION_RESTART -> {
-                closeClient()
+                closeClients()
                 startWatching()
             }
             // ACTION_START, or null: restarted by the system after it had to stop us.
@@ -68,49 +75,57 @@ class MonitorService : Service() {
     }
 
     override fun onDestroy() {
-        closeClient()
+        closeClients()
         super.onDestroy()
     }
 
     private fun startWatching() {
         // First, always: a service started in the foreground must say so
         // within seconds, even one about to stop.
-        goForeground(getString(R.string.monitor_connecting, hostOf(prefs.url)))
+        goForeground(getString(R.string.monitor_starting))
+        MonitorState.setAccounts(prefs.accounts, prefs.currentId)
         if (!prefs.isConfigured) {
             stopWatching()
             return
         }
-        if (client != null) return
-        alarm = LinkAlarm(prefs.unreachableGraceMillis)
-        val watcher = Watcher()
-        val next = BridgeClient(
-            ClientSettings(
-                url = prefs.url,
-                apiKey = prefs.apiKey,
-                clientName = "Notifier on ${Build.MODEL}",
-                clientVersion = BuildConfig.VERSION_NAME,
-            ),
-            watcher,
-            prefs,
-        )
-        watcher.owner = next
-        client = next
-        next.start()
+        if (watches.isNotEmpty()) return
+        for (account in prefs.accounts) {
+            val watch = Watch(account)
+            val watcher = Watcher(account.id, watch)
+            val client = BridgeClient(
+                ClientSettings(
+                    url = account.url,
+                    apiKey = account.apiKey,
+                    clientName = "Notifier on ${Build.MODEL}",
+                    clientVersion = BuildConfig.VERSION_NAME,
+                ),
+                watcher,
+                prefs.positions(account.id),
+            )
+            watch.client = client
+            watches[account.id] = watch
+            client.start()
+        }
         watchNetwork()
+        updateMonitor()
     }
 
     private fun stopWatching() {
-        closeClient()
-        MonitorState.update { it.copy(link = BridgeClient.Link.Stopped) }
+        closeClients()
+        MonitorState.update { snapshot ->
+            snapshot.copy(states = snapshot.states.mapValues { (_, state) -> state.copy(link = BridgeClient.Link.Stopped) })
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    private fun closeClient() {
-        client?.stop()
-        client = null
-        main.removeCallbacks(checkAlarm)
-        alarm.reset()
+    private fun closeClients() {
+        for (watch in watches.values) {
+            watch.client?.stop()
+            main.removeCallbacks(watch.checkAlarm)
+            watch.alarm.reset()
+        }
+        watches.clear()
         networkCallback?.let { connectivity.unregisterNetworkCallback(it) }
         networkCallback = null
     }
@@ -124,11 +139,11 @@ class MonitorService : Service() {
         }
     }
 
-    /** Back on a network: try the bridge now rather than at the end of the wait. */
+    /** Back on a network: try every listener now rather than at the end of its wait. */
     private fun watchNetwork() {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                client?.reconnectNow()
+                main.post { watches.values.forEach { it.client?.reconnectNow() } }
             }
         }
         connectivity.registerDefaultNetworkCallback(callback)
@@ -136,75 +151,106 @@ class MonitorService : Service() {
     }
 
     /**
-     * One client's listener. The client calls it on its own thread; everything
-     * is handed to the main one, and dropped there if that client has since
-     * been replaced or stopped -- its last words must not overwrite the next's.
+     * One account's listener. The client calls it on its own thread; everything
+     * is handed to the main one, and dropped there if that account's watch has
+     * since been replaced or stopped -- its last words must not overwrite the next's.
      */
-    private inner class Watcher : BridgeClient.Listener {
-        var owner: BridgeClient? = null
-
+    private inner class Watcher(private val id: String, private val watch: Watch) : BridgeClient.Listener {
         private fun onMain(block: () -> Unit) {
-            main.post { if (owner != null && client === owner) block() }
+            main.post { if (watches[id] === watch) block() }
         }
 
-        override fun onLink(link: BridgeClient.Link) = onMain { onLinkChanged(link) }
+        override fun onLink(link: BridgeClient.Link) = onMain { onLinkChanged(watch, link) }
 
         override fun onNotification(notification: Notification, fresh: Boolean) =
-            onMain { onNotificationReceived(notification, fresh) }
+            onMain { onNotificationReceived(watch, notification, fresh) }
 
-        override fun onStatus(status: BridgeStatus) = onMain { MonitorState.update { it.copy(status = status) } }
+        override fun onStatus(status: BridgeStatus) = onMain {
+            MonitorState.updateAccount(id) { it.copy(status = status) }
+        }
     }
 
-    private fun onLinkChanged(link: BridgeClient.Link) {
-        MonitorState.update { it.copy(link = link) }
-        val host = hostOf(prefs.url)
+    /**
+     * [watch]'s account as saved now: muting it, on the Connect page, changes
+     * what is said without a reconnect.
+     */
+    private fun current(watch: Watch): Account =
+        prefs.account(watch.account.id)?.also { watch.account = it } ?: watch.account
+
+    private fun onLinkChanged(watch: Watch, link: BridgeClient.Link) {
+        val account = current(watch)
+        MonitorState.updateAccount(account.id) { it.copy(link = link) }
+        val sayLinks = prefs.alertWhenUnreachable && account.alertsLinks
         when (link) {
             is BridgeClient.Link.Connected -> {
-                if (alarm.connected() == LinkAlarm.Alert.BACK && prefs.alertWhenUnreachable) {
-                    Alerts.postLinkBack(this)
+                // The hello says what this stream is about: keep it, so the
+                // pages wear the right colour while offline too.
+                val learned = account.learned(link.hello.account)
+                if (learned != account) {
+                    prefs.change(account.id) { it.learned(link.hello.account) }?.let { watch.account = it }
+                    MonitorState.setAccounts(prefs.accounts, prefs.currentId)
                 }
-                Alerts.updateMonitor(this, getString(R.string.monitor_connected, host))
+                if (watch.alarm.connected() == LinkAlarm.Alert.BACK && sayLinks) {
+                    Alerts.postLinkBack(this, learned)
+                }
             }
             is BridgeClient.Link.Waiting -> {
-                lastReason = link.reason
-                // A goodbye is the always-on bridge restarting: given longer to come back.
-                alarm.lost(SystemClock.uptimeMillis(), restarting = link.deliberate)
-                scheduleAlarmCheck()
-                Alerts.updateMonitor(
-                    this,
-                    if (link.deliberate) {
-                        getString(R.string.monitor_bridge_restarting, host)
-                    } else {
-                        getString(R.string.monitor_waiting, host, link.reason)
-                    },
-                )
+                watch.lastReason = link.reason
+                // A goodbye is the always-on listener restarting: given longer to come back.
+                watch.alarm.lost(SystemClock.uptimeMillis(), restarting = link.deliberate)
+                scheduleAlarmCheck(watch)
             }
             is BridgeClient.Link.Refused -> {
-                alarm.reset()
-                Alerts.postRefused(this, link.reason)
-                Alerts.updateMonitor(this, getString(R.string.monitor_refused))
+                watch.alarm.reset()
+                if (account.alertsLinks) Alerts.postRefused(this, account, link.reason)
             }
-            BridgeClient.Link.Connecting -> Alerts.updateMonitor(this, getString(R.string.monitor_connecting, host))
-            BridgeClient.Link.Idle, BridgeClient.Link.Stopped -> Unit
+            BridgeClient.Link.Connecting, BridgeClient.Link.Idle, BridgeClient.Link.Stopped -> Unit
+        }
+        updateMonitor()
+    }
+
+    private fun onNotificationReceived(watch: Watch, notification: Notification, fresh: Boolean) {
+        val account = current(watch)
+        MonitorState.updateAccount(account.id) {
+            it.copy(recent = (listOf(notification) + it.recent).take(MonitorState.RECENT))
+        }
+        if (fresh && account.alerts(notification)) {
+            Alerts.post(this, notification, account)
         }
     }
 
-    private fun onNotificationReceived(notification: Notification, fresh: Boolean) {
-        MonitorState.update { it.copy(recent = (listOf(notification) + it.recent).take(MonitorState.RECENT)) }
-        if (fresh && notification.kind !in prefs.disabledKinds) {
-            Alerts.post(this, notification)
+    /** The ongoing notification: each account's link in a few words. */
+    private fun updateMonitor() {
+        val snapshot = MonitorState.snapshot
+        val text = watches.values.joinToString(" · ") { watch ->
+            val host = hostOf(watch.account.url)
+            val words = when (val link = snapshot.stateOf(watch.account.id).link) {
+                is BridgeClient.Link.Connected -> getString(R.string.monitor_connected, host)
+                is BridgeClient.Link.Waiting -> if (link.deliberate) {
+                    getString(R.string.monitor_bridge_restarting, host)
+                } else {
+                    getString(R.string.monitor_waiting, host, link.reason)
+                }
+                is BridgeClient.Link.Refused -> getString(R.string.monitor_refused)
+                else -> getString(R.string.monitor_connecting, host)
+            }
+            if (watches.size > 1) "${watch.account.name}: $words" else words
         }
+        Alerts.updateMonitor(this, text.ifEmpty { getString(R.string.monitor_starting) })
     }
 
-    private fun scheduleAlarmCheck() {
-        val due = alarm.dueAt() ?: return
-        main.removeCallbacks(checkAlarm)
-        main.postDelayed(checkAlarm, maxOf(0L, due - SystemClock.uptimeMillis()))
+    private fun scheduleAlarmCheck(watch: Watch) {
+        val due = watch.alarm.dueAt() ?: return
+        main.removeCallbacks(watch.checkAlarm)
+        main.postDelayed(watch.checkAlarm, maxOf(0L, due - SystemClock.uptimeMillis()))
     }
 
-    private fun checkLinkAlarm() {
-        if (alarm.check(SystemClock.uptimeMillis()) == LinkAlarm.Alert.LOST && prefs.alertWhenUnreachable) {
-            Alerts.postLinkLost(this, lastReason)
+    private fun checkLinkAlarm(watch: Watch) {
+        if (watches[watch.account.id] !== watch) return
+        if (watch.alarm.check(SystemClock.uptimeMillis()) != LinkAlarm.Alert.LOST) return
+        val account = current(watch)
+        if (prefs.alertWhenUnreachable && account.alertsLinks) {
+            Alerts.postLinkLost(this, account, watch.lastReason)
         }
     }
 
@@ -213,12 +259,13 @@ class MonitorService : Service() {
         private const val ACTION_RESTART = "io.github.ashitakalax.bridgenotifier.RESTART"
         private const val ACTION_STOP = "io.github.ashitakalax.bridgenotifier.STOP"
         private const val ACTION_TEST = "io.github.ashitakalax.bridgenotifier.TEST"
+        private const val EXTRA_ACCOUNT = "account"
 
         fun start(context: Context) {
             context.startForegroundService(intent(context, ACTION_START))
         }
 
-        /** With new settings: a new connection, the same service. */
+        /** With new settings: new connections, the same service. */
         fun restart(context: Context) {
             context.startForegroundService(intent(context, ACTION_RESTART))
         }
@@ -227,8 +274,9 @@ class MonitorService : Service() {
             context.startService(intent(context, ACTION_STOP))
         }
 
-        fun requestTest(context: Context) {
-            context.startService(intent(context, ACTION_TEST))
+        /** A test notification from one account's listener: the current one's by default. */
+        fun requestTest(context: Context, accountId: String? = null) {
+            context.startService(intent(context, ACTION_TEST).putExtra(EXTRA_ACCOUNT, accountId))
         }
 
         private fun intent(context: Context, action: String) =

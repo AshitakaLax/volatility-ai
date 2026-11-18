@@ -1,8 +1,13 @@
 # Fidelity Bridge Notifier (Android)
 
-A small Android app that tells you, as it happens, what the
-[volatility-ai](https://github.com/AshitakaLax/volatility-ai) Fidelity Bridge
-sees:
+A small Android app that tells you, as it happens, what your
+[volatility-ai](https://github.com/AshitakaLax/volatility-ai) accounts are
+doing: a Fidelity account through its Fidelity Bridge, and Alpaca
+deployments through the trader notifier. It watches as many accounts as you
+add, and each wears its broker's colour: **Alpaca yellow, Fidelity green**,
+on the page behind it, on its badge and on its notifications.
+
+From the Fidelity Bridge:
 
 - **Trades:** a buy or a sell filled (or partly filled), and optionally
   each order accepted, cancelled or expired.
@@ -23,24 +28,38 @@ sees:
   refused a connection from an address it does not allow. And if the phone
   cannot reach it for 2 minutes, the app says so, and again when it is back.
 
-Four pages:
+From the trader notifier, for each Alpaca deployment: buys (and where each
+lot sells), sales (and what each made), orders placed, cancelled or rejected,
+the engine starting, pausing and stopping, a trading window's summary, and a
+trader that stops reporting -- read from the files the trader keeps, so
+nothing has to change in the trader itself.
 
-- **Connect**, at start-up (switch that off on the page): the bridge's address
-  and key, a three-step check that they work (reachable, key accepted, a test
-  notification received) and what to be told about.
-- **Home**: ready to trade or the one thing to fix, the readiness checklist link
-  by link, today's realised profit and the open lots' unrealised figure, the
-  day's buys and sales, the trading session and the last account check.
+Four pages, each for the account shown. With more than one account, a chip
+per account over the page switches between them.
+
+- **Connect**, at start-up (switch that off on the page): your accounts, each
+  a listener's address and key; a three-step check that the one selected
+  works (reachable, key accepted, a test notification received); and what to
+  be told about.
+- **Home**: for Fidelity, ready to trade or the one thing to fix and the
+  readiness checklist link by link; for Alpaca, what its trader says it is
+  doing (trading, buys paused, waiting for the open, not reporting). Then
+  today's realised profit and the open lots' unrealised figure, the day's buys
+  and sales, the trading session and, for Fidelity, the last account check.
 - **Lots**: the open lots, each with where it sells and how far it has to go,
   or the last 20 sales with what each made.
 - **Activity**: the last 200 notifications, filtered to trades, problems or
   the connection.
 
-Lots and today's profit come from the bridge's `book` (PROTOCOL.md); a bridge
-older than that shows the other pages as before.
+Lots and today's profit come from the listener's `book` (PROTOCOL.md); a bridge
+older than that shows the other pages as before. Each notification is headed
+with its account's name.
 
 It only listens. Nothing it sends can place, cancel or change anything. The
-one thing it may ask the bridge for is a test notification.
+one thing it may ask a listener for is a test notification. It holds no
+broker key: Alpaca's API keys can trade, so the app never asks Alpaca
+anything, and hears only what the trader notifier reads from the trader's
+own files.
 
 This folder is self-contained, as if it were its own repository. Inside
 volatility-ai, nothing imports it, and the bridge's tests only read its
@@ -84,6 +103,30 @@ Run nothing else on port 8766, and don't forward it from your router. To get
 notifications away from home, put the phone and the bridge on one VPN (for
 example WireGuard or Tailscale) and allow that VPN's addresses instead.
 
+## Set up the trader notifier (Alpaca)
+
+In volatility-ai it is the `trader-notifier` service (`docs/DEPLOY.md`,
+section 6). It reads every Alpaca deployment in `config/deployments.yaml`,
+read-only, and serves each on port 8767.
+
+1. **Make its key**, again a key of its own:
+   ```bash
+   python -m fidelity_gateway.bridge keygen --notifier
+   ```
+   This appends `VAI_NOTIFIER_KEY` to `.env` and prints the key once.
+2. **Open it to your network** in `.env` (it listens on loopback otherwise):
+   ```bash
+   VAI_NOTIFIER_HOST=0.0.0.0
+   VAI_NOTIFIER_ALLOW=192.168.1.0/24
+   ```
+3. **Start it:** `docker compose --profile notifier up -d trader-notifier`.
+   Its log names each deployment's address:
+   `[notifier] Ultimate (paper) (alpaca, paper): apps may connect at ws://…:8767/notifications/paper-ultimate`.
+   `/notifications` alone is the first deployment.
+
+Or by hand, to try it out:
+`python -m fidelity_gateway.bridge notifier --host 0.0.0.0 --allow-client 192.168.1.0/24`.
+
 ## Install the app
 
 Download the APK attached to the latest
@@ -100,18 +143,31 @@ Or build it with the Android SDK (Android Studio, or the command line with
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-In the app:
+In the app, for each account:
 
-1. Enter the bridge's address. `192.168.1.10` is enough: the port defaults
-   to 8766 and the path to `/notifications`. Full `ws://` or `wss://` URLs
-   work too.
-2. Paste the key that `keygen --notify` printed.
-3. Tap **Save and start watching**. Allow notifications when asked.
-4. Tap **Send a test notification** to check the whole path.
+1. Enter its address. For the Fidelity bridge, `192.168.1.10` is enough: the
+   port defaults to 8766 and the path to `/notifications`. For the trader
+   notifier, `192.168.1.10:8767` is its first deployment, and
+   `192.168.1.10:8767/notifications/live` another. Full `ws://` or `wss://`
+   URLs work too.
+2. Paste the key that `keygen --notify` (Fidelity) or `keygen --notifier`
+   (Alpaca) printed.
+3. Tap **Save and connect**. Allow notifications when asked.
+4. Tap **Send test** to check the whole path.
+5. **Add an account** for the next one. Tap an account in the list to edit
+   or remove it.
 
-Under **Notify me about**, choose which kinds appear as notifications.
-Everything still shows in the app's Recent list. The bridge's own `events`
-setting decides what is sent at all.
+The account takes its name and broker from what its listener says when it
+connects; until then, one on port 8767 is taken to be Alpaca. An app that
+was set up with one bridge before keeps it, as its first account.
+
+Under **Notify me about**, choose which kinds the account being edited
+turns into notifications; each account has its own, so switching off an
+Alpaca paper deployment's buys and sells leaves Fidelity's alone. **Mute**
+an account to keep the phone quiet about it entirely, its link alerts
+included. Everything still shows on its Activity page, and a test you send
+still arrives. The listener's own `events` setting decides what is sent at
+all.
 
 The app keeps a quiet ongoing notification while it watches. Android needs
 one to keep the connection open with the screen off. It starts again after a
@@ -153,7 +209,8 @@ Unrestricted).
 |---|---|
 | `core/` | Plain Kotlin, no Android: the protocol (`Protocol.kt`), messages (`Messages.kt`), the connection with handshake, catch-up and reconnecting (`BridgeClient.kt`, on OkHttp), and the "out of reach" rule (`LinkAlarm.kt`). A Gradle build of its own, so it builds and tests without the Android SDK. |
 | `core/src/test/resources/vectors/` | The protocol vectors the bridge's tests reproduce too. |
-| `app/` | The Android app: a foreground service (`MonitorService.kt`) holding one `BridgeClient`, the phone's notifications (`Alerts.kt`), settings (`Prefs.kt`) and one screen (`MainActivity.kt`). Plain framework views; no AndroidX. |
+| `core/src/main/.../Accounts.kt` | The accounts the app keeps (address, key, and the broker and label the hello said), as one JSON list. |
+| `app/` | The Android app: a foreground service (`MonitorService.kt`) holding one `BridgeClient` per account, the phone's notifications (`Alerts.kt`), settings (`Prefs.kt`), each broker's colours (`BrokerLook.kt`) and one screen (`MainActivity.kt`) with four pages. Plain framework views; no AndroidX. |
 
 ## Develop
 

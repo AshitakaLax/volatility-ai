@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import io.github.ashitakalax.bridgenotifier.core.Account
+import io.github.ashitakalax.bridgenotifier.core.Broker
 import io.github.ashitakalax.bridgenotifier.core.EventKind
 import io.github.ashitakalax.bridgenotifier.core.Notification
 import io.github.ashitakalax.bridgenotifier.core.Severity
@@ -24,7 +26,6 @@ object Alerts {
     const val CHANNEL_MONITOR = "monitor"
 
     const val MONITOR_ID = 1
-    private const val LINK_ID = 2
     private const val TEST_ID = 3
 
     fun createChannels(context: Context) {
@@ -78,8 +79,8 @@ object Alerts {
             .notify(MONITOR_ID, monitorNotification(context, text))
     }
 
-    /** One of the bridge's notifications. */
-    fun post(context: Context, notification: Notification) {
+    /** One of an account's notifications, headed with the account's name. */
+    fun post(context: Context, notification: Notification, account: Account) {
         val channel = when {
             notification.severity != Severity.INFO -> CHANNEL_WARNINGS
             notification.kind in setOf(
@@ -102,38 +103,54 @@ object Alerts {
             notification.title,
             notification.body,
             epochMillis(notification.at),
-            color(context, notification.severity),
+            color(context, notification.severity) ?: brokerColor(context, account),
+            account.name,
         )
     }
 
-    /** The app's own: the bridge has been out of reach for a while. */
-    fun postLinkLost(context: Context, reason: String) = show(
+    /** The app's own: an account's listener has been out of reach for a while. */
+    fun postLinkLost(context: Context, account: Account, reason: String) = show(
         context,
-        LINK_ID,
+        linkId(account),
         CHANNEL_WARNINGS,
         context.getString(R.string.link_lost_title),
         context.getString(R.string.link_lost_body, reason),
         color = context.getColor(R.color.status_bad),
+        account = account.name,
     )
 
     /** ...and is back. Replaces the one above. */
-    fun postLinkBack(context: Context) = show(
+    fun postLinkBack(context: Context, account: Account) = show(
         context,
-        LINK_ID,
+        linkId(account),
         CHANNEL_BRIDGE,
         context.getString(R.string.link_back_title),
         context.getString(R.string.link_back_body),
         color = context.getColor(R.color.status_ok),
+        account = account.name,
     )
 
-    /** The bridge refused the key, or is not a bridge: nothing more will come. */
-    fun postRefused(context: Context, reason: String) = show(
+    /** The listener refused the key, or is not one: nothing more will come from it. */
+    fun postRefused(context: Context, account: Account, reason: String) = show(
         context,
-        LINK_ID,
+        linkId(account),
         CHANNEL_WARNINGS,
         context.getString(R.string.link_refused_title),
         reason,
         color = context.getColor(R.color.status_bad),
+        account = account.name,
+    )
+
+    /** Each account's link notice replaces its own, never another account's. */
+    private fun linkId(account: Account): Int = 100 + (account.id.hashCode() and 0x1ff)
+
+    /** The colour each broker wears in the app: yellow for Alpaca, green for Fidelity. */
+    fun brokerColor(context: Context, account: Account?): Int = context.getColor(
+        when (account?.broker) {
+            Broker.ALPACA -> R.color.alpaca_strong
+            Broker.FIDELITY -> R.color.fidelity_strong
+            else -> R.color.accent
+        },
     )
 
     private fun show(
@@ -144,6 +161,7 @@ object Alerts {
         body: String,
         whenMillis: Long? = null,
         color: Int? = null,
+        account: String? = null,
     ) {
         val builder = AndroidNotification.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
@@ -155,6 +173,7 @@ object Alerts {
             .setShowWhen(true)
             .setWhen(whenMillis ?: System.currentTimeMillis())
         if (color != null) builder.setColor(color)
+        if (account != null) builder.setSubText(account)
         context.notificationManager.notify(id, builder.build())
     }
 

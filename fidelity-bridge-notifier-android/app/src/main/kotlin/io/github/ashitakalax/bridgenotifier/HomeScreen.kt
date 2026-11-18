@@ -7,8 +7,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import io.github.ashitakalax.bridgenotifier.core.Account
+import io.github.ashitakalax.bridgenotifier.core.Broker
 import io.github.ashitakalax.bridgenotifier.core.BridgeClient
 import io.github.ashitakalax.bridgenotifier.core.EventKind
+import io.github.ashitakalax.bridgenotifier.core.TraderStatus
 
 /** One of the app's pages: a view, redrawn from each snapshot. */
 interface Screen {
@@ -18,13 +21,13 @@ interface Screen {
 }
 
 /**
- * The connection at a glance: ready to trade or the one thing to fix, the
- * readiness chain, today's profit, the day's counts, the trading session and
- * the latest trade.
+ * The account shown, at a glance: for Fidelity, ready to trade or the one
+ * thing to fix and the readiness chain; for Alpaca, what its trader says it is
+ * doing. Then today's profit, the day's counts, the trading session and the
+ * latest trade.
  */
 class HomeScreen(
     private val ui: Ui,
-    private val prefs: Prefs,
     private val go: (Tab) -> Unit,
 ) : Screen {
     private val eyebrow = ui.eyebrow("")
@@ -61,7 +64,7 @@ class HomeScreen(
         val status = snapshot.status
         val host = status.bridge
         val book = status.book
-        eyebrow.text = listOfNotNull("Fidelity", host?.symbol ?: book?.symbol).joinToString(" · ")
+        eyebrow.text = eyebrowLine(snapshot.account, host?.symbol ?: book?.symbol)
         content.removeAllViews()
         content.addView(hero(snapshot))
 
@@ -114,16 +117,28 @@ class HomeScreen(
         latestTrade(snapshot)?.let(content::addView)
     }
 
+    /** "Alpaca · Ultimate (paper) · TQQQ", "Fidelity · RSP". */
+    private fun eyebrowLine(account: Account?, symbol: String?): String {
+        val label = account?.label?.takeIf { it.isNotBlank() && it != account.broker.label }
+        val broker = account?.let { if (label == null) it.brokerLine else it.broker.label }
+        return listOfNotNull(broker, label, symbol).joinToString(" · ")
+    }
+
+    private data class Hero(val fill: Int, val tag: String, val title: String, val detail: String)
+
     private fun hero(snapshot: MonitorState.Snapshot): View {
         val host = snapshot.status.bridge
         val link = snapshot.link
-        data class Hero(val fill: Int, val tag: String, val title: String, val detail: String)
+        val account = snapshot.account
+        val where = account?.name ?: ""
         val hero = when {
             link is BridgeClient.Link.Refused -> Hero(R.color.status_bad, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_refused_title), link.reason)
-            link is BridgeClient.Link.Waiting && link.deliberate -> Hero(R.color.status_offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_restarting_title), link.reason)
-            link is BridgeClient.Link.Waiting -> Hero(R.color.status_offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_offline_title), link.reason)
-            link == BridgeClient.Link.Connecting -> Hero(R.color.status_offline, ui.string(R.string.hero_connecting_tag), ui.string(R.string.hero_connecting_title, MonitorService.hostOf(prefs.url)), "")
+            link is BridgeClient.Link.Waiting && link.deliberate -> Hero(R.color.status_offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_restarting_title, where), link.reason)
+            link is BridgeClient.Link.Waiting -> Hero(R.color.status_offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_offline_title, where), link.reason)
+            link == BridgeClient.Link.Connecting -> Hero(R.color.status_offline, ui.string(R.string.hero_connecting_tag), ui.string(R.string.hero_connecting_title, MonitorService.hostOf(account?.url ?: "")), "")
             link !is BridgeClient.Link.Connected -> Hero(R.color.status_offline, ui.string(R.string.hero_idle_tag), ui.string(R.string.hero_idle_title), ui.string(R.string.hero_idle_detail))
+            // An Alpaca deployment has no bridge to be ready: its trader says how it is.
+            host == null && (account?.broker == Broker.ALPACA || snapshot.status.trader != null) -> traderHero(snapshot.status.trader)
             host == null -> Hero(R.color.status_offline, ui.string(R.string.hero_unknown_tag), ui.string(R.string.hero_unknown_title), ui.string(R.string.hero_unknown_detail))
             host.ready -> Hero(R.color.status_ok, ui.string(R.string.hero_ready_tag), ui.string(R.string.hero_ready_title), ui.string(R.string.hero_ready_detail))
             else -> Hero(R.color.status_bad, ui.string(R.string.hero_blocked_tag), host.summary, host.fix?.let { ui.string(R.string.hero_fix, it) }.orEmpty())
@@ -135,6 +150,41 @@ class HomeScreen(
             addView(ui.text(hero.title, size = 22f, color = R.color.card, bold = true))
             if (hero.detail.isNotEmpty()) addView(ui.text(hero.detail, color = R.color.card))
             if (link == BridgeClient.Link.Idle || link == BridgeClient.Link.Stopped) setOnClickListener { go(Tab.CONNECT) }
+        }
+    }
+
+    /** What the trader of an Alpaca deployment says it is doing. */
+    private fun traderHero(trader: TraderStatus?): Hero {
+        if (trader == null) {
+            return Hero(R.color.status_offline, ui.string(R.string.hero_unknown_tag), ui.string(R.string.hero_unreported_title), ui.string(R.string.hero_unreported_detail))
+        }
+        val words = trader.state.replace('_', ' ')
+        val said = listOfNotNull(words, trader.detail).joinToString(": ")
+        if (trader.stale) {
+            val quietly = trader.state in setOf("stopped", "disabled")
+            return Hero(
+                if (quietly) R.color.status_offline else R.color.status_bad,
+                ui.string(R.string.hero_quiet_tag),
+                ui.string(R.string.hero_quiet_title),
+                ui.string(R.string.hero_quiet_detail, ago(trader.updatedAt), said),
+            )
+        }
+        val detail = trader.detail.orEmpty()
+        return when (trader.state) {
+            "trading" -> Hero(R.color.status_ok, ui.string(R.string.hero_trading_tag), ui.string(R.string.hero_trading_title), detail.takeIf { it != "trading" }.orEmpty())
+            "starting" -> Hero(R.color.status_ok, ui.string(R.string.hero_starting_tag), ui.string(R.string.hero_starting_title), detail)
+            "winding_down" -> Hero(R.color.status_warn, ui.string(R.string.hero_winding_tag), ui.string(R.string.hero_winding_title), detail)
+            "buys_paused" -> Hero(R.color.status_warn, ui.string(R.string.hero_paused_tag), detail.ifEmpty { ui.string(R.string.hero_paused_title) }, "")
+            "waiting_for_broker", "restarting" -> Hero(R.color.status_warn, ui.string(R.string.hero_trader_tag), words.replaceFirstChar(Char::uppercase), detail)
+            "recovery_required" -> Hero(R.color.status_bad, ui.string(R.string.hero_recovery_tag), ui.string(R.string.hero_recovery_title), detail)
+            "stopping", "stopped" -> Hero(R.color.status_offline, ui.string(R.string.hero_stopped_tag), ui.string(R.string.hero_stopped_title), detail)
+            "waiting_for_open" -> Hero(
+                R.color.status_offline,
+                ui.string(R.string.hero_waiting_tag),
+                ui.string(R.string.hero_waiting_title),
+                trader.nextOpen?.let { ui.string(R.string.hero_waiting_detail, ago(it)) } ?: detail,
+            )
+            else -> Hero(R.color.status_offline, ui.string(R.string.hero_trader_tag), words.replaceFirstChar(Char::uppercase), detail)
         }
     }
 
@@ -189,9 +239,9 @@ class HomeScreen(
         val (state, fill, soft) = when (engine?.state) {
             "running" -> Triple("Running", R.color.status_ok, R.color.status_ok_soft)
             "paused" -> Triple("Paused", R.color.status_warn, R.color.status_warn_soft)
-            "halted" -> Triple("Halted", R.color.status_bad, R.color.status_bad_soft)
+            "halted", "recovery_required" -> Triple("Halted", R.color.status_bad, R.color.status_bad_soft)
             null -> Triple("Idle", R.color.status_offline, R.color.line)
-            else -> Triple(engine?.state.orEmpty().replaceFirstChar(Char::uppercase), R.color.status_offline, R.color.line)
+            else -> Triple(engine?.state.orEmpty().replace('_', ' ').replaceFirstChar(Char::uppercase), R.color.status_offline, R.color.line)
         }
         return ui.card(padding = 16, gap = 6).apply {
             addView(
@@ -206,9 +256,11 @@ class HomeScreen(
                     )
                 },
             )
+            val trader = snapshot.status.trader
             val line = when {
                 engine != null -> listOfNotNull(engine.mode, engine.symbol, engine.detail).joinToString(" · ")
                 host != null && !host.sessionOpen -> ui.string(R.string.session_closed, ago(host.nextOpen))
+                trader?.nextOpen != null && !trader.running -> ui.string(R.string.session_closed, ago(trader.nextOpen))
                 else -> ui.string(R.string.session_none)
             }
             addView(ui.text(line))

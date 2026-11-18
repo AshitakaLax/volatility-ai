@@ -1,6 +1,8 @@
 package io.github.ashitakalax.bridgenotifier
 
+import android.app.AlertDialog
 import android.text.InputType
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
@@ -8,26 +10,52 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
+import io.github.ashitakalax.bridgenotifier.core.Account
+import io.github.ashitakalax.bridgenotifier.core.Accounts
 import io.github.ashitakalax.bridgenotifier.core.ApiKeys
 import io.github.ashitakalax.bridgenotifier.core.BridgeAddress
 import io.github.ashitakalax.bridgenotifier.core.BridgeClient
 import io.github.ashitakalax.bridgenotifier.core.EventKind
 
 /**
- * The settings and connection page, shown at start-up: the bridge's address
- * and key, a three-step check that they work, and what to be told about.
+ * The settings and connection page, shown at start-up: the accounts the app
+ * watches -- each a listener's address and key, a Fidelity bridge or the
+ * trader notifier's Alpaca deployments -- the one being edited, a three-step
+ * check that it works, and what that account is to notify the phone about.
  */
 class ConnectScreen(
     private val ui: Ui,
     private val prefs: Prefs,
     private val onConnected: () -> Unit,
 ) : Screen {
+    private val accountList = ui.column(gap = 8)
+    private val formHeader = ui.row(gap = 8)
     private val address = input(ui.string(R.string.address_hint), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
     private val key = input(ui.string(R.string.key_hint), HIDDEN_KEY)
     private val checks = ui.column(gap = 12)
     private val plainText = ui.text(ui.string(R.string.plaintext_warning), size = 13f, color = R.color.status_warn)
     private val notificationsOff = ui.text(ui.string(R.string.notifications_off), size = 13f, color = R.color.status_bad)
+    private val remove = TextView(ui.context).apply {
+        text = ui.string(R.string.account_remove)
+        setTextColor(ui.color(R.color.status_bad))
+        minHeight = ui.dp(44)
+        gravity = Gravity.CENTER_VERTICAL
+        setOnClickListener { confirmRemove() }
+    }
     private var keyShown = false
+
+    // What the account being edited notifies about: rebuilt when it changes.
+    private val notifyHeader = ui.row(gap = 8)
+    private val mutes = ui.column(gap = 0)
+    private val kindBoxes = mutableListOf<CheckBox>()
+    private var mutesFor: String? = null
+
+    /** Adding a new account rather than editing the one shown. */
+    private var adding = false
+
+    /** The account whose address and key the fields hold, so a redraw keeps what is typed. */
+    private var filledFor: String? = null
+    private var last: MonitorState.Snapshot? = null
 
     override val view: View
 
@@ -37,8 +65,22 @@ class ConnectScreen(
         page.addView(ui.text(ui.string(R.string.connect_title), size = 26f, bold = true))
         page.addView(ui.text(ui.string(R.string.connect_intro), color = R.color.muted))
 
-        address.setText(prefs.url)
-        key.setText(prefs.apiKey)
+        page.addView(
+            ui.card(gap = 8).apply {
+                addView(ui.label(ui.string(R.string.accounts_header)))
+                addView(accountList)
+                addView(
+                    ui.button(ui.string(R.string.account_add), filled = false) {
+                        adding = true
+                        filledFor = null
+                        address.setText("")
+                        key.setText("")
+                        last?.let(::render)
+                    },
+                )
+            },
+        )
+
         val showKey = ImageButton(ui.context).apply {
             setImageResource(R.drawable.ic_eye)
             imageTintList = android.content.res.ColorStateList.valueOf(ui.color(R.color.ink_soft))
@@ -52,6 +94,8 @@ class ConnectScreen(
         }
         page.addView(
             ui.card(gap = 6).apply {
+                addView(formHeader)
+                addView(spacer(4))
                 addView(ui.label(ui.string(R.string.address_label)))
                 addView(address)
                 addView(ui.text(ui.string(R.string.address_help), size = 12f, color = R.color.muted))
@@ -60,6 +104,7 @@ class ConnectScreen(
                 addView(ui.label(ui.string(R.string.key_label)))
                 addView(keyRow)
                 addView(ui.text(ui.string(R.string.key_help), size = 12f, color = R.color.muted))
+                addView(remove)
             },
         )
 
@@ -70,20 +115,17 @@ class ConnectScreen(
             },
         )
 
-        val kinds = ui.column(gap = 0)
-        for (kind in EventKind.ALL) {
-            kinds.addView(
-                checkbox(EventKind.label(kind), kind !in prefs.disabledKinds) { on ->
-                    prefs.disabledKinds = if (on) prefs.disabledKinds - kind else prefs.disabledKinds + kind
-                },
-            )
-        }
         page.addView(
             ui.card(gap = 4).apply {
-                addView(ui.label(ui.string(R.string.header_notify_me)))
+                addView(notifyHeader)
                 addView(notificationsOff)
-                addView(kinds)
+                addView(mutes)
+            },
+        )
+        page.addView(
+            ui.card(gap = 2).apply {
                 addView(checkbox(ui.string(R.string.alert_unreachable), prefs.alertWhenUnreachable) { prefs.alertWhenUnreachable = it })
+                addView(ui.text(ui.string(R.string.alert_unreachable_help), size = 12f, color = R.color.muted))
             },
         )
         page.addView(
@@ -97,7 +139,7 @@ class ConnectScreen(
                 text = ui.string(R.string.stop_watching)
                 setTextColor(ui.color(R.color.muted))
                 minHeight = ui.dp(48)
-                gravity = android.view.Gravity.CENTER
+                gravity = Gravity.CENTER
                 setOnClickListener {
                     prefs.monitoring = false
                     MonitorService.stop(ui.context)
@@ -107,8 +149,13 @@ class ConnectScreen(
 
         val footer = ui.row(gap = 10).apply {
             setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(16))
-            setBackgroundColor(ui.color(R.color.ground))
-            addView(ui.grow(ui.button(ui.string(R.string.send_test), filled = false) { MonitorService.requestTest(ui.context) }))
+            addView(
+                ui.grow(
+                    ui.button(ui.string(R.string.send_test), filled = false) {
+                        if (!adding) MonitorService.requestTest(ui.context, prefs.currentId)
+                    },
+                ),
+            )
             addView(
                 ui.button(ui.string(R.string.save_and_watch), filled = true) { saveAndWatch() },
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f),
@@ -122,13 +169,133 @@ class ConnectScreen(
         }
     }
 
+    /** The account the form edits: none while adding one, or before there is any. */
+    private fun editing(snapshot: MonitorState.Snapshot): Account? = if (adding) null else snapshot.account
+
     override fun render(snapshot: MonitorState.Snapshot) {
-        plainText.visibility = if (BridgeAddress.isPlainText(prefs.url)) View.VISIBLE else View.GONE
+        last = snapshot
+        val account = editing(snapshot)
+        if (account != null && account.id != filledFor) {
+            filledFor = account.id
+            address.setText(account.url)
+            key.setText(account.apiKey)
+        }
+        renderAccounts(snapshot, account)
+        renderHeader(account)
+        remove.visibility = if (account != null) View.VISIBLE else View.GONE
+        plainText.visibility = if (BridgeAddress.isPlainText(account?.url ?: address.text.toString())) View.VISIBLE else View.GONE
         notificationsOff.visibility = if (Alerts.notificationsEnabled(ui.context)) View.GONE else View.VISIBLE
-        val host = MonitorService.hostOf(prefs.url)
-        val link = snapshot.link
+        renderChecks(snapshot, account)
+        renderMutes(account)
+    }
+
+    /**
+     * The account's own switches. Read from what is saved, not the snapshot,
+     * and saved at once: the service reads them for each notification.
+     */
+    private fun renderMutes(account: Account?) {
+        val key = account?.let { "${it.id}\u0000${it.name}" }
+        if (key != mutesFor) {
+            mutesFor = key
+            notifyHeader.removeAllViews()
+            mutes.removeAllViews()
+            kindBoxes.clear()
+            notifyHeader.addView(ui.grow(ui.label(ui.string(R.string.header_notify_me))))
+            val saved = account?.let { prefs.account(it.id) }
+            if (account == null || saved == null) {
+                mutes.addView(ui.text(ui.string(R.string.notify_save_first), size = 13f, color = R.color.muted))
+            } else {
+                notifyHeader.addView(ui.badge(account.name, BrokerLook.of(account.broker)))
+                mutes.addView(
+                    checkbox(ui.string(R.string.account_mute, account.name), saved.muted) { on ->
+                        prefs.change(account.id) { it.copy(muted = on) }
+                        MonitorState.setAccounts(prefs.accounts, prefs.currentId)
+                    },
+                )
+                mutes.addView(ui.text(ui.string(R.string.account_mute_help), size = 12f, color = R.color.muted))
+                for (kind in EventKind.ALL) {
+                    val box = checkbox(EventKind.label(kind), kind !in saved.mutedKinds) { on ->
+                        prefs.change(account.id) {
+                            it.copy(mutedKinds = if (on) it.mutedKinds - kind else it.mutedKinds + kind)
+                        }
+                    }
+                    kindBoxes += box
+                    mutes.addView(box)
+                }
+            }
+        }
+        val muted = account?.let { prefs.account(it.id)?.muted } ?: false
+        kindBoxes.forEach { it.isEnabled = !muted }
+    }
+
+    private fun renderAccounts(snapshot: MonitorState.Snapshot, editing: Account?) {
+        accountList.removeAllViews()
+        if (snapshot.accounts.isEmpty()) {
+            accountList.addView(ui.text(ui.string(R.string.accounts_none), size = 13f, color = R.color.muted))
+        }
+        for (account in snapshot.accounts) {
+            val look = BrokerLook.of(account.broker)
+            val on = account.id == editing?.id
+            accountList.addView(
+                ui.row(gap = 10).apply {
+                    minimumHeight = ui.dp(56)
+                    setPadding(ui.dp(12), ui.dp(8), ui.dp(12), ui.dp(8))
+                    background = ui.rounded(if (on) look.ground else R.color.card, radius = 12, stroke = if (on) look.strong else R.color.line)
+                    addView(ui.badge(account.broker.label, look))
+                    addView(
+                        ui.grow(
+                            ui.column().apply {
+                                addView(ui.text(account.name, bold = true))
+                                addView(
+                                    ui.text(
+                                        listOfNotNull(
+                                            MonitorService.hostOf(account.url),
+                                            linkWords(snapshot.stateOf(account.id).link),
+                                            ui.string(R.string.account_muted_short).takeIf { account.muted },
+                                        ).joinToString(" · "),
+                                        size = 12f,
+                                        color = R.color.muted,
+                                    ),
+                                )
+                            },
+                        ),
+                    )
+                    isClickable = true
+                    isSelected = on
+                    contentDescription = ui.string(R.string.account_edit, account.name)
+                    setOnClickListener {
+                        adding = false
+                        prefs.currentId = account.id
+                        MonitorState.setAccounts(prefs.accounts, account.id)
+                    }
+                },
+            )
+        }
+    }
+
+    private fun renderHeader(account: Account?) {
+        formHeader.removeAllViews()
+        if (account == null) {
+            formHeader.addView(ui.label(ui.string(R.string.account_new_header)))
+            return
+        }
+        formHeader.addView(ui.badge(account.brokerLine, BrokerLook.of(account.broker)))
+        formHeader.addView(ui.grow(ui.label(account.name)))
+    }
+
+    private fun linkWords(link: BridgeClient.Link): String = when (link) {
+        is BridgeClient.Link.Connected -> ui.string(R.string.link_connected)
+        is BridgeClient.Link.Waiting -> ui.string(R.string.link_waiting, link.reason)
+        is BridgeClient.Link.Refused -> ui.string(R.string.link_refused)
+        BridgeClient.Link.Connecting -> ui.string(R.string.link_connecting)
+        BridgeClient.Link.Idle, BridgeClient.Link.Stopped -> ui.string(R.string.link_idle)
+    }
+
+    private fun renderChecks(snapshot: MonitorState.Snapshot, account: Account?) {
+        val host = MonitorService.hostOf(account?.url ?: "")
+        val link = if (account != null) snapshot.link else BridgeClient.Link.Idle
         val reached = link is BridgeClient.Link.Connected || link is BridgeClient.Link.Refused
-        val test = snapshot.recent.firstOrNull { it.isTest }
+        val test = if (account != null) snapshot.recent.firstOrNull { it.isTest } else null
         checks.removeAllViews()
         checks.addView(
             step(
@@ -199,13 +366,48 @@ class ConnectScreen(
             key.error = ui.string(R.string.error_key)
             return
         }
-        if (url != prefs.url) prefs.forgetPosition()
-        prefs.url = url
-        prefs.apiKey = typed
+        val existing = if (adding) null else prefs.account(prefs.currentId)
+        val account = when {
+            existing == null -> Account(Accounts.newId(prefs.accounts), url, typed, broker = Accounts.guessBroker(url))
+            existing.url != url -> {
+                // A different listener: what the old one kept is not news, and
+                // what it said it was about is for the new one's hello to say.
+                prefs.forgetPosition(existing.id)
+                existing.copy(url = url, apiKey = typed, label = "", broker = Accounts.guessBroker(url), paper = null)
+            }
+            else -> existing.copy(apiKey = typed)
+        }
+        prefs.save(account)
+        prefs.currentId = account.id
         prefs.monitoring = true
+        adding = false
+        filledFor = account.id
         address.setText(url)
+        MonitorState.setAccounts(prefs.accounts, account.id)
         MonitorService.restart(ui.context)
         onConnected()
+    }
+
+    private fun confirmRemove() {
+        val account = prefs.account(prefs.currentId) ?: return
+        AlertDialog.Builder(ui.context)
+            .setTitle(ui.string(R.string.account_remove_title, account.name))
+            .setMessage(ui.string(R.string.account_remove_body))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(ui.string(R.string.account_remove_confirm)) { _, _ ->
+                prefs.remove(account.id)
+                filledFor = null
+                MonitorState.setAccounts(prefs.accounts, prefs.currentId)
+                if (prefs.isConfigured) {
+                    MonitorService.restart(ui.context)
+                } else {
+                    prefs.monitoring = false
+                    MonitorService.stop(ui.context)
+                    address.setText("")
+                    key.setText("")
+                }
+            }
+            .show()
     }
 
     private fun toggleKey(button: ImageButton) {
@@ -217,8 +419,10 @@ class ConnectScreen(
 
     private fun input(hint: String, type: Int): EditText = EditText(ui.context).apply {
         this.hint = hint
-        inputType = type
+        // Single line first: setting it replaces the transformation, so set
+        // after the input type it would show a password field's key in clear.
         isSingleLine = true
+        inputType = type
         typeface = android.graphics.Typeface.MONOSPACE
         textSize = 14f
         minHeight = ui.dp(48)

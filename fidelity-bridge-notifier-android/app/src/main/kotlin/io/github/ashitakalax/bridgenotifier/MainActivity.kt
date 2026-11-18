@@ -8,7 +8,9 @@ import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 
 /** The app's pages. Connect is the settings page; the other three have tabs. */
@@ -16,11 +18,18 @@ enum class Tab { CONNECT, HOME, LOTS, ACTIVITY }
 
 /**
  * Four pages over a tab bar: Connect at start-up (until switched off there),
- * then Home, Lots and Activity. Each page redraws from MonitorState's snapshot.
+ * then Home, Lots and Activity. Each page redraws from MonitorState's snapshot,
+ * for the account shown: the whole screen wears that account's broker colour
+ * (Alpaca yellow, Fidelity green), and with more than one account a chip each
+ * over the page switches between them.
  */
 class MainActivity : Activity() {
     private lateinit var prefs: Prefs
+    private lateinit var ui: Ui
     private lateinit var screens: Map<Tab, Screen>
+    private lateinit var root: View
+    private lateinit var accountBar: View
+    private lateinit var accountChips: LinearLayout
     private lateinit var container: FrameLayout
     private lateinit var nav: View
     private lateinit var navRule: View
@@ -32,14 +41,18 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         prefs = Prefs(this)
-        val ui = Ui(this)
+        ui = Ui(this)
+        MonitorState.setAccounts(prefs.accounts, prefs.currentId)
         screens = mapOf(
             Tab.CONNECT to ConnectScreen(ui, prefs) { show(Tab.HOME) },
-            Tab.HOME to HomeScreen(ui, prefs, ::show),
+            Tab.HOME to HomeScreen(ui, ::show),
             Tab.LOTS to LotsScreen(ui),
             Tab.ACTIVITY to ActivityScreen(ui),
         )
         container = findViewById(R.id.screen)
+        root = findViewById(R.id.root)
+        accountBar = findViewById(R.id.account_bar)
+        accountChips = findViewById(R.id.account_chips)
         nav = findViewById(R.id.nav)
         navRule = findViewById(R.id.nav_rule)
         tabs = mapOf(
@@ -99,7 +112,35 @@ class MainActivity : Activity() {
     }
 
     private fun render(snapshot: MonitorState.Snapshot) {
+        wear(snapshot)
         screens.getValue(current).render(snapshot)
+    }
+
+    /** The account shown's colour on the whole screen, and the chips to switch. */
+    @Suppress("DEPRECATION") // statusBarColor: this app opts out of edge-to-edge (values-v35)
+    private fun wear(snapshot: MonitorState.Snapshot) {
+        val look = BrokerLook.of(snapshot.account?.broker)
+        root.setBackgroundColor(getColor(look.ground))
+        window.statusBarColor = getColor(look.ground)
+        val many = snapshot.accounts.size > 1 && current != Tab.CONNECT
+        accountBar.visibility = if (many) View.VISIBLE else View.GONE
+        accountChips.removeAllViews()
+        if (!many) return
+        for (account in snapshot.accounts) {
+            accountChips.addView(
+                ui.accountChip(
+                    if (account.muted) getString(R.string.chip_muted, account.name) else account.name,
+                    BrokerLook.of(account.broker),
+                    selected = account.id == snapshot.account?.id,
+                ) {
+                    prefs.currentId = account.id
+                    MonitorState.setAccounts(prefs.accounts, account.id)
+                },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    marginEnd = ui.dp(8)
+                },
+            )
+        }
     }
 
     private fun askToNotify() {

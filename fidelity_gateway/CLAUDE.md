@@ -29,6 +29,8 @@ python -m fidelity_gateway.bridge host --config config/fidelity_live.yaml --sock
 python -m fidelity_gateway.bridge build-extension   # after a pull: then Reload now in the popup
 python -m fidelity_gateway.bridge keygen --notify   # the notification app's own key
 python -m fidelity_gateway.bridge serve --notify    # a bare bridge with the apps' listener, to try it out
+python -m fidelity_gateway.bridge keygen --notifier # the trader notifier's key, VAI_NOTIFIER_KEY
+python -m fidelity_gateway.bridge notifier          # the same app's notifications for Alpaca deployments
 python -m fidelity_gateway.place_test_order --account <number> --check-only [--bridge]
 python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <number> \
     --i-understand-this-logs-into-my-real-brokerage-account
@@ -46,7 +48,7 @@ python -m fidelity_gateway.recon --cdp-url http://localhost:9222 --account <numb
 | `recon.py` | Reconnaissance, not reconciliation: with `--cdp-url`, records your browser's traffic while you use it. Its launched-browser modes are kept for the record; Fidelity refuses them. |
 | `quotes.py` | `FidelityQuotes`: Fidelity's real-time quote (`getquote`, read-only) as the engine's second data source (`engine/core/quotes.QuoteSource`, `live.secondary_feed`). Its time fields (the bid and ask's, and the last trade's, separately: before the open Fidelity's last is yesterday's close) are not captured yet, so no quote is used until they are. |
 | `place_test_order.py` | Places one small order through the gated adapter — the manual end-to-end check. `--check-only` is the recovery report; `--bridge` goes through the extension instead of a debugging port. |
-| `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), `OrderReports` (the extension's order confirmations), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| host \| check`. `host.py` is the deployment's bridge host (below), `attach.py` a trader's end of it, `local.py` the line between them, `readiness.py` the ready-or-why checklist, `signin.py` when the sign-in began, when Fidelity ends it and what to say. The notifications apps hear: `Notifications` (`notifications.py`), served by `NotificationServer` (`notify_server.py`, `notify_protocol.py`), which the host runs. `book.py` reads the trading book apps are shown (open lots, last sales, today's profit) from the trader's ledger and fill journal, read-only. |
+| `bridge/` | The browser-extension route. `BridgeServer` (WebSocket, client allow/block lists, HMAC handshake), `BridgePage` (stands in for a Playwright page, so `FidelitySession` is unchanged), `OrderReports` (the extension's order confirmations), the API key in `.env`, and `python -m fidelity_gateway.bridge keygen \| serve \| host \| check`. `host.py` is the deployment's bridge host (below), `attach.py` a trader's end of it, `local.py` the line between them, `readiness.py` the ready-or-why checklist, `signin.py` when the sign-in began, when Fidelity ends it and what to say. The notifications apps hear: `Notifications` (`notifications.py`), served by `NotificationServer` (`notify_server.py`, `notify_protocol.py`), which the host runs. `book.py` reads the trading book apps are shown (open lots, last sales, today's profit) from the trader's ledger and fill journal, read-only. `trader_notifier.py` tells the same app about Alpaca deployments, which no bridge sees, from their traders' journals (below). |
 | `tests/` | This section's own suite. `test_broker_selection.py`/`test_broker_contract.py` (the engine↔fidelity_gateway seam) live in the ROOT `tests/` instead — see `tests/CLAUDE.md`. |
 
 ## The browser-extension bridge
@@ -295,6 +297,47 @@ repository. Each event is one *kind*, and `live.fidelity.bridge.notifications.ev
   verdict and checklist, attached process, last account check, next open --
   sent when its meaning changes, its wording refreshed at most every
   `APP_STATUS_SECONDS`. Never a key, nor the bridge's address.
+
+### The trader notifier: Alpaca deployments
+
+An Alpaca trading loop opens no bridge (`cli.py` builds an `AlpacaBroker`
+directly), so nothing above hears it. `trader_notifier.py` reads what its
+trader already keeps -- `status.json`, `fills/` and `orders/` in the control
+directory, and the ledger through `book.py` -- and serves it to the same app
+in the same protocol and kinds. `python -m fidelity_gateway.bridge notifier`,
+the compose `trader-notifier` service (`notifier` profile).
+
+- **Which deployments:** `config/deployments.yaml` (`$VAI_DEPLOYMENTS`), at
+  the paths it names -- the service mounts each volume there, read-only.
+  Every Alpaca deployment with a `control_dir` by default, or `--deployment`.
+  Broker, paper and symbol come from each config read as YAML, unvalidated,
+  with the engine's defaults; an unreadable config falls back to the
+  registry's `broker` and leaves paper unknown.
+- **One `NotificationServer`, a route per deployment** (`NotifyRoute`):
+  `/notifications/<id>`, and the first at `/notifications`, port 8767. Each
+  route's hello carries `account` -- `{id, label, broker, paper, symbol}` --
+  and the bridge host's carries Fidelity's, which is how the app colours
+  itself by broker.
+- **`TraderWatch.poll`**, every `POLL_SECONDS` from one thread: complete new
+  journal lines (`JournalTail`, by byte offset) become `buy`/`sell`
+  (`target_price`, `pnl` after costs; a loss is a warning) and
+  `order_update`/`order_problem` (placed, cancelled, expired, rejected -- a
+  fill is the fill journal's); the loop's status words map onto the engine's
+  (`trading` -> running, `buys_paused` -> paused, ...) and a change is
+  `engine`; a new `last_window` is `window`; a trader going stale
+  (server/live.py's rule) is `session`, once, and back again if that was
+  said -- not after it said `stopped` or `disabled`. Status parts: `engine`
+  (None between sessions), `trader` (its own report), `book` (every
+  `BOOK_SECONDS`, and at once after a fill).
+- **The first poll is a baseline:** what is already in the journals, and
+  the state it finds, are history. A restarted notifier is a new stream
+  with nothing kept, so nothing is told twice; what was journaled while it
+  was down is missed rather than replayed.
+- **Its own key,** `VAI_NOTIFIER_KEY`; `load_notifier_key` refuses
+  `FIDELITY_BRIDGE_API_KEY` and `FIDELITY_BRIDGE_NOTIFY_KEY`.
+- **Read-only:** it writes nothing, holds no broker key and imports no
+  broker. `ControlInbox`'s readers never create a directory, so a `:ro`
+  mount is enough.
 
 ## Live trading through the bridge
 

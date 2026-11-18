@@ -41,7 +41,7 @@ class ActivityScreen(private val ui: Ui) : Screen {
 
     override fun render(snapshot: MonitorState.Snapshot) {
         last = snapshot
-        subtitle.text = ui.string(R.string.activity_sub, MonitorState.RECENT)
+        subtitle.text = ui.string(R.string.activity_sub, MonitorState.RECENT, snapshot.account?.name ?: ui.string(R.string.app_name))
         chips.removeAllViews()
         for (each in Filter.entries) {
             chips.addView(

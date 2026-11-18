@@ -22,4 +22,14 @@
     <color name="status_idle">#6B7280</color>
     <color name="status_offline">#374151</color>
     <color name="ic_launcher_background">#0B5D4B</color>
+
+    <!-- Each broker's colour, so it is plain which account a page shows: the
+         page's ground behind the white cards, and a strong one for its badge
+         and its notifications. Alpaca yellow, Fidelity green. -->
+    <color name="alpaca_ground">#FFF1B8</color>
+    <color name="alpaca_strong">#E0B000</color>
+    <color name="alpaca_on_strong">#3D2F00</color>
+    <color name="fidelity_ground">#D9F0E0</color>
+    <color name="fidelity_strong">#1F7A55</color>
+    <color name="fidelity_on_strong">#FFFFFF</color>
 </resources>

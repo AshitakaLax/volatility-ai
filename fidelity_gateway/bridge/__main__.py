@@ -1,10 +1,11 @@
 """
-python -m fidelity_gateway.bridge keygen | serve | host | check | build-extension
+python -m fidelity_gateway.bridge keygen | serve | host | notifier | check | build-extension
 
   keygen   Create the API key: append FIDELITY_BRIDGE_API_KEY to .env and
            print it once, for pasting into the extension's welcome form.
            --notify makes the notification app's key instead,
-           FIDELITY_BRIDGE_NOTIFY_KEY.
+           FIDELITY_BRIDGE_NOTIFY_KEY; --notifier the trader notifier's,
+           VAI_NOTIFIER_KEY.
   serve    Run the bridge until Ctrl-C, reporting connections and the
            extension's order confirmations. --notify also runs the
            listener the Fidelity Bridge Notifier app connects to.
@@ -15,6 +16,10 @@ python -m fidelity_gateway.bridge keygen | serve | host | check | build-extensio
            directory for the Live page and the supervisor. With the config's
            live.fidelity.bridge.notifications enabled, it also runs the
            listener the Notifier app connects to.
+  notifier The same app's notifications for Alpaca deployments, which no
+           bridge sees (trader_notifier.py, the trader-notifier service):
+           read-only from each trader's status, fill and order journals and
+           ledger, one path per deployment.
   check    Read-only end-to-end proof: wait for the extension, show what
            it reports about its recent orders, then read the account's
            orders, positions and settled cash through it.
@@ -45,6 +50,7 @@ from fidelity_gateway.bridge import DEFAULT_ALLOWED_CLIENTS, build_notifier, ope
 from fidelity_gateway.bridge.ip_policy import AddressPolicy
 from fidelity_gateway.bridge.keys import (
     API_KEY_ENV_VAR,
+    NOTIFIER_KEY_ENV_VAR,
     NOTIFY_KEY_ENV_VAR,
     default_env_file,
     generate_api_key,
@@ -59,6 +65,7 @@ from fidelity_gateway.bridge.notify_server import (
 )
 from fidelity_gateway.bridge.order_reports import OrderReports
 from fidelity_gateway.bridge.server import DEFAULT_HOST, DEFAULT_PORT, BridgeError, BridgeServer
+from fidelity_gateway.bridge.trader_notifier import DEFAULT_NOTIFIER_HOST, DEFAULT_NOTIFIER_PORT
 from fidelity_gateway.bridge.versions import EXTENSION_ROOT, version_advice
 from fidelity_gateway.session import FidelitySession, FidelitySessionError
 
@@ -190,10 +197,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     keygen.add_argument(
         "--print-only", action="store_true", help="Print a fresh key and write nothing."
     )
-    keygen.add_argument(
+    which = keygen.add_mutually_exclusive_group()
+    which.add_argument(
         "--notify",
         action="store_true",
         help=f"Make the notification app's key, {NOTIFY_KEY_ENV_VAR}, instead of the extension's.",
+    )
+    which.add_argument(
+        "--notifier",
+        action="store_true",
+        help=f"Make the trader notifier's key, {NOTIFIER_KEY_ENV_VAR}, instead of the extension's.",
     )
 
     serve = commands.add_parser("serve", help="Run the bridge until Ctrl-C.")
@@ -241,6 +254,59 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"Where {API_KEY_ENV_VAR} is read from when it is not in the environment.",
     )
 
+    notifier = commands.add_parser(
+        "notifier",
+        help="Tell the Notifier app about Alpaca deployments, from their traders' journals.",
+    )
+    notifier.add_argument(
+        "--deployments",
+        type=Path,
+        default=None,
+        help="The deployment registry. Default: $VAI_DEPLOYMENTS, else config/deployments.yaml.",
+    )
+    notifier.add_argument(
+        "--deployment",
+        action="append",
+        default=[],
+        metavar="ID",
+        help="A deployment to follow. Repeat for more. Default: every Alpaca deployment.",
+    )
+    notifier.add_argument(
+        "--host",
+        default=DEFAULT_NOTIFIER_HOST,
+        help="Address to listen on. The default takes this computer only; use 0.0.0.0 for a "
+        "phone on your network, with --allow-client.",
+    )
+    notifier.add_argument("--port", type=int, default=DEFAULT_NOTIFIER_PORT, help="Default: 8767.")
+    notifier.add_argument(
+        "--allow-client",
+        action="append",
+        default=None,
+        metavar="IP_OR_CIDR",
+        help="An app's address that may connect, e.g. 192.168.1.0/24. Repeat, or separate "
+        "with commas. Default: 127.0.0.1 and ::1.",
+    )
+    notifier.add_argument(
+        "--block-client",
+        action="append",
+        default=[],
+        metavar="IP_OR_CIDR",
+        help="Always refused, even when also allowed. Repeat, or separate with commas.",
+    )
+    notifier.add_argument(
+        "--events",
+        type=_event_list,
+        default=DEFAULT_EVENTS,
+        metavar="KIND,KIND",
+        help=f"What apps are told. Default: {','.join(DEFAULT_EVENTS)}.",
+    )
+    notifier.add_argument(
+        "--env-file",
+        type=Path,
+        default=None,
+        help=f"Where {NOTIFIER_KEY_ENV_VAR} is read from when it is not in the environment.",
+    )
+
     build = commands.add_parser(
         "build-extension",
         help="Build the extension from its submodule, for the browser to reload.",
@@ -254,13 +320,19 @@ def run_keygen(args: argparse.Namespace) -> int:
         print(generate_api_key())
         return 0
     path = args.env_file or default_env_file()
-    name = NOTIFY_KEY_ENV_VAR if args.notify else API_KEY_ENV_VAR
-    key = write_api_key(path, name=name)
-    where = (
-        "the Fidelity Bridge Notifier app's settings"
+    name = (
+        NOTIFY_KEY_ENV_VAR
         if args.notify
-        else "the Fidelity Bridge extension's settings"
+        else NOTIFIER_KEY_ENV_VAR
+        if getattr(args, "notifier", False)
+        else API_KEY_ENV_VAR
     )
+    key = write_api_key(path, name=name)
+    where = {
+        NOTIFY_KEY_ENV_VAR: "the Bridge Notifier app's Fidelity account",
+        NOTIFIER_KEY_ENV_VAR: "the Bridge Notifier app's Alpaca account",
+        API_KEY_ENV_VAR: "the Fidelity Bridge extension's settings",
+    }[name]
     print(f"Wrote {name} to {path}.\n\nPaste this key into {where}:\n\n    {key}\n")
     return 0
 
@@ -271,7 +343,17 @@ def run_serve(args: argparse.Namespace, stop: threading.Event | None = None) -> 
         args.allow_client or DEFAULT_ALLOWED_CLIENTS, args.block_client
     )
     notify = notify_settings(args)
-    notifier = build_notifier(notify, key, env_file=args.env_file, log=_stderr) if notify else None
+    notifier = (
+        build_notifier(
+            notify,
+            key,
+            env_file=args.env_file,
+            log=_stderr,
+            account={"label": "Fidelity Bridge", "broker": "fidelity"},
+        )
+        if notify
+        else None
+    )
     server = BridgeServer(
         key,
         host=args.host,
@@ -392,7 +474,20 @@ def run_host(args: argparse.Namespace, stop: threading.Event | None = None) -> i
         # The app's key is read each time: a key added to .env is picked up
         # by the next retry, or a config edit.
         return build_notifier(
-            notify, key, notifications=notifications, env_file=args.env_file, log=_stderr
+            notify,
+            key,
+            notifications=notifications,
+            env_file=args.env_file,
+            log=_stderr,
+            # What the app's hello says this stream is about: it colours the
+            # app by broker (fidelity-bridge-notifier-android, PROTOCOL.md).
+            account={
+                "id": args.deployment or "fidelity",
+                "label": "Fidelity",
+                "broker": "fidelity",
+                "paper": False,
+                "symbol": settings()[1],
+            },
         )
 
     settings = lambda: _load_fidelity(config_path)  # noqa: E731 -- re-read on a change
@@ -438,6 +533,44 @@ def run_host(args: argparse.Namespace, stop: threading.Event | None = None) -> i
 
     _stderr(f"[bridge-host] trading loops attach at {args.socket}")
     host.run(stop, config_changed=config_changed)
+    return 0
+
+
+def _addresses(entries: list[str] | None) -> list[str]:
+    """--allow-client / --block-client values, each possibly a comma list."""
+    return [part.strip() for entry in entries or () for part in entry.split(",") if part.strip()]
+
+
+def run_notifier(args: argparse.Namespace, stop: threading.Event | None = None) -> int:
+    """Until SIGTERM or Ctrl-C (or `stop`): the trader notifier."""
+    from fidelity_gateway.bridge.trader_notifier import (
+        TraderNotifier,
+        load_deployments,
+        load_notifier_key,
+    )
+
+    stop = stop or threading.Event()
+
+    def _stop(_signum, _frame) -> None:
+        stop.set()
+
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _stop)
+        signal.signal(signal.SIGINT, _stop)
+
+    deployments = load_deployments(args.deployments, only=tuple(args.deployment))
+    allowed = _addresses(args.allow_client) or list(DEFAULT_ALLOWED_CLIENTS)
+    notifier = TraderNotifier(
+        deployments,
+        load_notifier_key(env_file=args.env_file),
+        host=args.host,
+        port=args.port,
+        policy=AddressPolicy.from_entries(allowed, _addresses(args.block_client)),
+        events=args.events,
+        log=_stderr,
+    )
+    _stderr(f"[notifier] allowed clients: {', '.join(allowed)}")
+    notifier.run(stop)
     return 0
 
 
@@ -539,6 +672,7 @@ def main(argv: list[str] | None = None) -> int:
         "keygen": run_keygen,
         "serve": run_serve,
         "host": run_host,
+        "notifier": run_notifier,
         "check": run_check,
         "build-extension": run_build_extension,
     }

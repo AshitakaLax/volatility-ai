@@ -482,3 +482,27 @@ def test_build_notifier_refuses_a_host_name_in_the_allowlist(monkeypatch):
     monkeypatch.setenv(NOTIFY_KEY_ENV_VAR, NOTIFY_KEY)
     with pytest.raises(ConfigurationError, match="Host names"):
         build_notifier(NotifySettings(port=0, allowed_clients=("my-phone",)), BridgeApiKey(API_KEY))
+
+
+def test_the_hello_names_the_account_its_stream_is_about(monkeypatch):
+    # The app colours itself by broker from this (its PROTOCOL.md, "hello").
+    monkeypatch.setenv(NOTIFY_KEY_ENV_VAR, NOTIFY_KEY)
+    account = {"id": "fidelity", "label": "Fidelity", "broker": "fidelity", "paper": False}
+    server = build_notifier(
+        NotifySettings(port=0, allowed_clients=("127.0.0.1",)),
+        BridgeApiKey(API_KEY),
+        account=account,
+    )
+    server.start()
+    try:
+        app = _app(server)
+        assert app.hello["account"] == account
+        app.close()
+    finally:
+        server.stop()
+
+
+def test_a_bridge_that_names_no_account_sends_none(notifier):
+    app = _app(notifier)
+    assert "account" not in app.hello
+    app.close()

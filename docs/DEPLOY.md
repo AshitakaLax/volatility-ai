@@ -230,6 +230,38 @@ Its weeks in paper are the record `engine/promotion.py` needs before any
 real capital. Read `config/ultimate_paper.yaml`'s header first, which
 lists how live differs from the backtest.
 
+### On your phone
+
+The Bridge Notifier app (`fidelity-bridge-notifier-android/`) shows the
+Alpaca deployments too, through `trader-notifier`
+(`fidelity_gateway/bridge/trader_notifier.py`): buys with where each lot
+sells, sales with what they made, rejected orders, the engine starting,
+pausing and stopping, a trader that stops reporting, and the open lots and
+today's profit. It reads each trader's `status.json`, fill and order
+journals and ledger, read-only, and holds no broker key: nothing it does
+can touch an order. In the app an Alpaca account wears yellow, a Fidelity
+one green.
+
+1. `python -m fidelity_gateway.bridge keygen --notifier` writes
+   `VAI_NOTIFIER_KEY` to `.env` and prints it once. It is a key of its own:
+   the notifier refuses the bridge's keys.
+2. In `.env`, open it to the phone's network (loopback otherwise):
+   ```bash
+   VAI_NOTIFIER_HOST=0.0.0.0
+   VAI_NOTIFIER_ALLOW=192.168.1.0/24
+   ```
+3. `docker compose --profile notifier up -d trader-notifier`. Its log names
+   each deployment's address: `ws://<this server>:8767/notifications/<id>`,
+   and `/notifications` for the first in `config/deployments.yaml`
+   (`paper-ultimate`).
+4. In the app, **Add an account**: this server's address with `:8767`
+   (`192.168.1.10:8767`), and the key. Another deployment is
+   `192.168.1.10:8767/notifications/live`.
+
+It tells only what changes after it starts: fills already journaled are
+history, not news. Like the bridge's port, never forward 8767 from the
+router; away from home, use a VPN.
+
 ---
 
 ## 7. Backups

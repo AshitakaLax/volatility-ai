@@ -13,6 +13,11 @@ purpose: the extension's lets whoever holds it pose as the extension and
 receive every request the engine makes, while this one only ever reads
 notifications -- and a phone is the device most likely to be lost.
 
+VAI_NOTIFIER_KEY is the trader notifier's (trader_notifier.py), the listener
+that tells the same app about Alpaca deployments. It reads notifications
+only too, and is its own key so that the two listeners prove nothing to
+each other: a connection meant for one cannot be passed off as the other's.
+
 It follows engine/core/secrets.py's policy:
   * never on the command line (no flag accepts it),
   * never in a log line or exception message (BridgeApiKey's repr is
@@ -41,6 +46,9 @@ from engine.core.secrets import REDACTED
 
 API_KEY_ENV_VAR = "FIDELITY_BRIDGE_API_KEY"
 NOTIFY_KEY_ENV_VAR = "FIDELITY_BRIDGE_NOTIFY_KEY"
+#: The trader notifier's (trader_notifier.py): it reads notifications only, and
+#: is a key of its own so nothing proved to one listener counts at the other.
+NOTIFIER_KEY_ENV_VAR = "VAI_NOTIFIER_KEY"
 MIN_KEY_LENGTH = 32
 MAX_KEY_LENGTH = 256
 
@@ -56,6 +64,11 @@ _KEY_USES = {
     NOTIFY_KEY_ENV_VAR: (
         "keygen --notify",
         "the Fidelity Bridge Notifier app's settings",
+        "lock out every app that holds the old one",
+    ),
+    NOTIFIER_KEY_ENV_VAR: (
+        "keygen --notifier",
+        "the Bridge Notifier app's account for the trader notifier",
         "lock out every app that holds the old one",
     ),
 }

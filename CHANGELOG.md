@@ -1,5 +1,57 @@
 # Changelog
 
+## Feature: Alpaca accounts in the phone app, yellow beside Fidelity's green
+
+**The Bridge Notifier app watched one Fidelity bridge; it now watches any
+number of accounts, Alpaca deployments among them.** An Alpaca trading loop
+opens no bridge, so nothing told the phone about it -- yet everything worth
+saying was already in the files its trader keeps: `status.json`, the fill
+and order journals, the ledger. `fidelity_gateway/bridge/trader_notifier.py`
+reads them, read-only, and serves them in the bridge's own protocol and
+notification kinds:
+
+- **What it says:** a buy with where its lot sells, a sale with what it made
+  after costs (a loss -- only ever a regime exit -- as a warning), an order
+  placed, cancelled, expired or rejected, the engine starting, running,
+  paused or stopped, a window's summary, and a trader that stops reporting
+  (server/live.py's staleness rule), then reports again. Plus the book: open
+  lots, the last sales, today's profit, through `book.py` as Fidelity's.
+- **One listener, a path per deployment:** port 8767,
+  `/notifications/<id>`, the first deployment also at `/notifications`.
+  `NotificationServer` gained routes for it. Each hello now names its
+  account (`id`, `label`, `broker`, `paper`, `symbol`) -- the Fidelity
+  bridge's too -- so the app knows which broker it is looking at.
+- **Its own key,** `VAI_NOTIFIER_KEY` (`keygen --notifier`); it refuses
+  either of the bridge's, so the two listeners prove nothing to each other.
+- **Only what changes after it starts is news.** A restart is a new stream
+  with nothing kept, so a phone is never told the same fill twice; a fill
+  journaled while it was down is missed, not replayed.
+- The compose service `trader-notifier`, behind the `notifier` profile,
+  mounts every state and control volume read-only.
+
+**In the app** (`fidelity-bridge-notifier-android/`): a list of accounts on
+the Connect page (the old single bridge becomes the first), one connection
+each, a chip per account over the pages, and each notification headed
+with its account's name. The page shown wears its broker's colour --
+**Alpaca yellow, Fidelity green** -- as do its badge and notifications. An
+Alpaca account's Home says what its trader reports (trading, buys paused,
+waiting for the open, not reporting), where a Fidelity one shows its
+readiness chain.
+
+**What to be told about is now each account's own.** One list of kinds for
+every bridge stopped making sense once a paper deployment that fills ~220
+times a day sat beside a real-money one: switching off its buys silenced
+Fidelity's too. Each account keeps its own kinds and a **Mute** switch (no
+phone notifications at all, link alerts included; its Activity page and a
+requested test still get through). The service reads them as each
+notification arrives, so a change needs no reconnect. The old shared list
+is copied to every account once, then dropped.
+
+Decided against: putting Alpaca keys on the phone and asking Alpaca
+directly. Alpaca's API keys can trade, which would end the app's promise
+that it only listens, and Alpaca knows positions, not the lots and targets
+the engine trades by.
+
 ## Feature: the Fidelity sign-in, watched and assisted
 
 **Fidelity ends a browser session about 10.5 hours after the sign-in,

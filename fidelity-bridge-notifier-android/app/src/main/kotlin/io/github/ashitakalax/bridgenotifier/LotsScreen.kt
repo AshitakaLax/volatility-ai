@@ -39,7 +39,7 @@ class LotsScreen(private val ui: Ui) : Screen {
         last = snapshot
         val book = snapshot.status.book
         eyebrow.text = listOfNotNull(
-            "Fidelity",
+            snapshot.account?.name,
             book?.symbol,
             book?.lastPrice?.let { "last ${Format.money(it)}" },
         ).joinToString(" · ")

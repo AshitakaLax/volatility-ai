@@ -338,15 +338,54 @@ data class Book(
 }
 
 /**
+ * The trader's own report, from a listener that reads it out of the
+ * trader's files (the trader notifier, for an Alpaca deployment): the loop
+ * during a session, the supervisor between them. Null from a Fidelity bridge,
+ * whose readiness says the same and more.
+ */
+data class TraderStatus(
+    /** The trader's own word: trading, buys_paused, winding_down, stopped, waiting_for_open, ... */
+    val state: String,
+    val detail: String?,
+    /** "loop" during a session, "supervisor" between them. */
+    val process: String?,
+    /** It has stopped reporting: what it last said is no longer true. */
+    val stale: Boolean,
+    /** A trading loop that is reporting and has not ended. */
+    val running: Boolean,
+    val nextOpen: String?,
+    val lastTickAt: String?,
+    val updatedAt: String?,
+) {
+    companion object {
+        fun parse(obj: JsonObject?): TraderStatus? {
+            val state = obj?.string("state") ?: return null
+            return TraderStatus(
+                state = state,
+                detail = obj.string("detail"),
+                process = obj.string("process"),
+                stale = obj.bool("stale") != false,
+                running = obj.bool("running") == true,
+                nextOpen = obj.string("nextOpen"),
+                lastTickAt = obj.string("lastTickAt"),
+                updatedAt = obj.string("updatedAt"),
+            )
+        }
+    }
+}
+
+/**
  * What the bridge shows apps: the extension's side, a trading session's
  * engine (null between sessions), the bridge host's readiness (null
- * without a host) and the trading book (null without a trader to read).
+ * without a host), the trading book (null without a trader to read) and
+ * the trader's own report (only from the trader notifier).
  */
 data class BridgeStatus(
     val extension: ExtensionStatus?,
     val engine: EngineStatus?,
     val bridge: HostStatus? = null,
     val book: Book? = null,
+    val trader: TraderStatus? = null,
 ) {
     companion object {
         val UNKNOWN = BridgeStatus(null, null, null)
@@ -356,12 +395,58 @@ data class BridgeStatus(
             engine = EngineStatus.parse(obj?.get("engine") as? JsonObject),
             bridge = HostStatus.parse(obj?.get("bridge") as? JsonObject),
             book = Book.parse(obj?.get("book") as? JsonObject),
+            trader = TraderStatus.parse(obj?.get("trader") as? JsonObject),
         )
     }
 }
 
-/** The bridge's first sealed message: this run's stream, what it sends, how things are. */
-data class Hello(val stream: String, val events: List<String>, val status: BridgeStatus)
+/** Which broker a stream is about. */
+enum class Broker(val label: String) {
+    FIDELITY("Fidelity"),
+    ALPACA("Alpaca"),
+    OTHER("Other");
+
+    companion object {
+        /** The hello's `broker`. Absent means Fidelity: every bridge older than this was one. */
+        fun parse(text: String?): Broker = when (text?.lowercase()) {
+            null, "", "fidelity" -> FIDELITY
+            "alpaca" -> ALPACA
+            else -> OTHER
+        }
+    }
+}
+
+/** The hello's `account`: what this stream is about. Every field is optional. */
+data class AccountInfo(
+    val id: String?,
+    val label: String?,
+    val broker: Broker,
+    val paper: Boolean?,
+    val symbol: String?,
+) {
+    companion object {
+        fun parse(obj: JsonObject?): AccountInfo? = obj?.let {
+            AccountInfo(
+                id = it.string("id"),
+                label = it.string("label"),
+                broker = Broker.parse(it.string("broker")),
+                paper = it.bool("paper"),
+                symbol = it.string("symbol"),
+            )
+        }
+    }
+}
+
+/**
+ * The bridge's first sealed message: this run's stream, what it sends, how
+ * things are, and -- from a listener new enough to say -- which account.
+ */
+data class Hello(
+    val stream: String,
+    val events: List<String>,
+    val status: BridgeStatus,
+    val account: AccountInfo? = null,
+)
 
 /** A sealed message from the bridge, after the handshake. */
 sealed interface BridgeMessage {
@@ -387,6 +472,7 @@ sealed interface BridgeMessage {
                         events = (obj["events"] as? JsonArray).orEmpty()
                             .mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content },
                         status = BridgeStatus.parse(obj["status"] as? JsonObject),
+                        account = AccountInfo.parse(obj["account"] as? JsonObject),
                     ),
                 )
             } ?: Unknown
