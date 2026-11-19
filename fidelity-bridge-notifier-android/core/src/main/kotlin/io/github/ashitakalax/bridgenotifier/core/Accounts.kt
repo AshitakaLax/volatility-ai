@@ -30,6 +30,13 @@ data class Account(
     val muted: Boolean = false,
     /** The kinds this account is not to buzz the phone about. Everything else is shown. */
     val mutedKinds: Set<String> = emptySet(),
+    /**
+     * Its trades summed up in one note after the close (DailySummary) rather
+     * than said one by one; a trade that is a problem is still said at once.
+     */
+    val summary: Boolean = false,
+    /** Quiet until this moment (epoch milliseconds): a notification's "Mute 1 h". */
+    val mutedUntil: Long? = null,
 ) {
     /** What the screens call it. */
     val name: String get() = label.ifBlank { broker.label }
@@ -37,15 +44,24 @@ data class Account(
     /** "Alpaca · paper", "Fidelity": the broker and, when known, paper money. */
     val brokerLine: String get() = if (paper == true) "${broker.label} · paper" else broker.label
 
-    /**
-     * Whether [notification] is worth a phone notification. A test always is:
-     * the app asked for it, to see that notifications get through.
-     */
-    fun alerts(notification: Notification): Boolean =
-        notification.isTest || (!muted && notification.kind !in mutedKinds)
+    /** Whether the account is quiet at [now]: muted, or muted for a while that has not run out. */
+    fun mutedAt(now: Long): Boolean = muted || mutedFor(now)
 
-    /** Whether losing or regaining this account's listener, or a refused key, is said. */
-    val alertsLinks: Boolean get() = !muted
+    /** Muted for a while (and not for good) at [now]. */
+    fun mutedFor(now: Long): Boolean = mutedUntil != null && now < mutedUntil
+
+    /**
+     * Whether [notification] is worth a phone notification at [now]. A test
+     * always is: the app asked for it, to see that notifications get through.
+     */
+    fun alerts(notification: Notification, now: Long): Boolean = notification.isTest || (
+        !mutedAt(now) &&
+            notification.kind !in mutedKinds &&
+            !(summary && notification.kind in EventKind.TRADES && notification.severity == Severity.INFO)
+        )
+
+    /** Whether losing or regaining this account's listener, or a refused key, is said at [now]. */
+    fun alertsLinks(now: Long): Boolean = !mutedAt(now)
 
     /** This account, with what a hello said about it. A bridge that said nothing changes nothing. */
     fun learned(info: AccountInfo?): Account = if (info == null) {
@@ -86,6 +102,8 @@ object Accounts {
                     if (account.mutedKinds.isNotEmpty()) {
                         put("mutedKinds", buildJsonArray { account.mutedKinds.sorted().forEach { add(JsonPrimitive(it)) } })
                     }
+                    if (account.summary) put("summary", true)
+                    account.mutedUntil?.let { put("mutedUntil", it) }
                 },
             )
         }
@@ -112,6 +130,8 @@ object Accounts {
                     ?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
                     ?.toSet()
                     .orEmpty(),
+                summary = obj.bool("summary") ?: false,
+                mutedUntil = obj.long("mutedUntil"),
             )
         }.distinctBy { it.id }
     }

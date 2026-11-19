@@ -13,8 +13,12 @@ android {
         applicationId = "io.github.ashitakalax.bridgenotifier"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        // Bump both with every change to the app: the update check compares
+        // versionName with the one the release's APK is named after.
+        versionCode = 3
+        versionName = "0.3.0"
+        // Where the update check looks for a newer APK (Updates in core).
+        buildConfigField("String", "RELEASES_REPO", "\"AshitakaLax/volatility-ai\"")
     }
 
     // A release is signed with your own key when BRIDGE_NOTIFIER_KEYSTORE

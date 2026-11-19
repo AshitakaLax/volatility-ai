@@ -160,11 +160,17 @@ network.
              "openCost": 5037.80, "unrealized": -4.21,
              "closed": [{"id": "…", "qty": 1, "buyPrice": 218.10, "sellPrice": 220.28,
                          "pnl": 2.18, "reason": "profit_target", "boughtAt": "…", "soldAt": "…"}],
-             "today": {"realized": 8.72, "sales": 4, "buys": 7}}
+             "today": {"realized": 8.72, "sales": 4, "buys": 7},
+             "days": [{"date": "2026-11-03", "realized": 8.72, "sales": 4, "buys": 7},
+                      {"date": "2026-11-02", "realized": -1.25, "sales": 2, "buys": 3}]}
     ```
     `open` is newest first; `closed` is the last 20 sales, newest first, `pnl`
     after costs. `unrealized` is the open lots at `lastPrice`, before costs.
-    `today` is the market's calendar day (New York). `boughtAt` is `null` when
+    `today` is the market's calendar day (New York). `days` is each market
+    day the fill journal still has with a fill (the trader keeps 10
+    sessions; at most 30 are sent), newest first, today's included: what an
+    app keeps as its profit history, so it reaches back further than the
+    journal. A bridge older than this sends no `days`. `boughtAt` is `null` when
     the journal no longer reaches back to the buy.
   - `trader` is the trader's own report, from the trader notifier only (a
     Fidelity bridge's readiness says the same and more):

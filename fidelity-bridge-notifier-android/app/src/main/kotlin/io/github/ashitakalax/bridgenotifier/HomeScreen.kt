@@ -1,17 +1,19 @@
 package io.github.ashitakalax.bridgenotifier
 
 import android.content.res.ColorStateList
-import android.text.format.DateUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import io.github.ashitakalax.bridgenotifier.core.Account
-import io.github.ashitakalax.bridgenotifier.core.Broker
 import io.github.ashitakalax.bridgenotifier.core.BridgeClient
+import io.github.ashitakalax.bridgenotifier.core.DayFigures
 import io.github.ashitakalax.bridgenotifier.core.EventKind
-import io.github.ashitakalax.bridgenotifier.core.TraderStatus
+import io.github.ashitakalax.bridgenotifier.core.ProfitHistory
+import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /** One of the app's pages: a view, redrawn from each snapshot. */
 interface Screen {
@@ -23,15 +25,31 @@ interface Screen {
 /**
  * The account shown, at a glance: for Fidelity, ready to trade or the one
  * thing to fix and the readiness chain; for Alpaca, what its trader says it is
- * doing. Then today's profit, the day's counts, the trading session and the
- * latest trade.
+ * doing -- and whether that is live or when it was last heard. Then today's
+ * profit, the day's counts, the profit history day by day, the trading
+ * session and the latest trade.
  */
 class HomeScreen(
     private val ui: Ui,
+    private val prefs: Prefs,
     private val go: (Tab) -> Unit,
 ) : Screen {
+    /** The history's span: two weeks, a month, three months, a year. */
+    private enum class Span(val days: Long, val label: Int) {
+        TWO_WEEKS(14, R.string.span_2w),
+        MONTH(31, R.string.span_1m),
+        QUARTER(92, R.string.span_3m),
+        YEAR(366, R.string.span_1y),
+    }
+
     private val eyebrow = ui.eyebrow("")
+    private val freshness = ui.text(size = 12f, bold = true)
     private val content = ui.column(gap = 12)
+    private var span = Span.MONTH
+    private var last: MonitorState.Snapshot? = null
+    private val chart = HistoryChart(ui)
+    private val picked = ui.text(size = 12f, color = R.color.ink_soft, mono = true)
+    private val dayFormat = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
     override val view: View
 
     init {
@@ -50,6 +68,7 @@ class HomeScreen(
                         ui.column().apply {
                             addView(eyebrow)
                             addView(ui.title(ui.string(R.string.home_title)))
+                            addView(freshness)
                         },
                     ),
                 )
@@ -58,13 +77,20 @@ class HomeScreen(
         )
         page.addView(content)
         view = scroll
+        chart.onPick = { day -> picked.text = pickedLine(day) }
     }
 
     override fun render(snapshot: MonitorState.Snapshot) {
         val status = snapshot.status
         val host = status.bridge
         val book = status.book
+        last = snapshot
         eyebrow.text = eyebrowLine(snapshot.account, host?.symbol ?: book?.symbol)
+        val state = snapshot.stateOf(snapshot.account?.id)
+        val (fresh, freshColor) = Verdict.freshness(ui, state, snapshot.account?.id?.let(prefs::heardAt))
+        freshness.text = ui.string(R.string.fresh_dot, fresh)
+        freshness.setTextColor(ui.color(freshColor))
+        freshness.visibility = if (snapshot.account == null) View.GONE else View.VISIBLE
         content.removeAllViews()
         content.addView(hero(snapshot))
 
@@ -113,9 +139,77 @@ class HomeScreen(
                 addView(tile(ui.string(R.string.tile_sells), book?.salesToday, Tab.ACTIVITY))
             },
         )
+        snapshot.account?.let { content.addView(history(it.id)) }
         content.addView(session(snapshot))
         latestTrade(snapshot)?.let(content::addView)
     }
+
+    /**
+     * The profit history: each trading day's realised profit over the span
+     * picked, its total and best and worst days, and the day touched.
+     */
+    private fun history(id: String): View {
+        val today = ProfitHistory.marketDay(Instant.now())
+        val days = ProfitHistory.since(prefs.history(id), today.minusDays(span.days - 1))
+        return ui.card(padding = 16, gap = 8).apply {
+            addView(ui.label(ui.string(R.string.history_header)))
+            addView(
+                ui.row(gap = 6).apply {
+                    for (each in Span.entries) {
+                        addView(
+                            ui.chip(ui.string(each.label), selected = each == span) {
+                                span = each
+                                last?.let(::render)
+                            },
+                            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                        )
+                    }
+                },
+            )
+            if (days.isEmpty()) {
+                addView(ui.text(ui.string(R.string.history_empty), size = 13f, color = R.color.muted))
+                addView(ui.text(ui.string(R.string.history_kept), size = 12f, color = R.color.muted))
+                return@apply
+            }
+            val total = days.sumOf { it.realized }
+            addView(
+                ui.row(gap = 8).apply {
+                    gravity = Gravity.BOTTOM
+                    addView(ui.text(Format.signedMoney(total), size = 22f, color = gainColor(total), mono = true))
+                    addView(
+                        ui.grow(
+                            ui.text(
+                                ui.context.resources.getQuantityString(R.plurals.history_over, days.size, days.size),
+                                size = 12f,
+                                color = R.color.muted,
+                            ),
+                        ),
+                    )
+                },
+            )
+            val best = days.maxBy { it.realized }
+            val worst = days.minBy { it.realized }
+            addView(
+                ui.text(
+                    ui.string(R.string.history_best_worst, Format.signedMoney(best.realized), dayFormat.format(best.date), Format.signedMoney(worst.realized), dayFormat.format(worst.date)),
+                    size = 12f,
+                    color = R.color.muted,
+                ),
+            )
+            (chart.parent as? ViewGroup)?.removeView(chart)
+            (picked.parent as? ViewGroup)?.removeView(picked)
+            chart.days = days
+            picked.text = pickedLine(chart.pickedDay)
+            addView(chart)
+            addView(picked)
+            addView(ui.text(ui.string(R.string.history_kept), size = 12f, color = R.color.muted))
+        }
+    }
+
+    /** "Tue Nov 3: +$8.72 · 4 sales, 7 buys". */
+    private fun pickedLine(day: DayFigures?): String = day?.let {
+        ui.string(R.string.history_picked, dayFormat.format(it.date), Format.signedMoney(it.realized), it.sales, it.buys)
+    }.orEmpty()
 
     /** "Alpaca · Ultimate (paper) · TQQQ", "Fidelity · RSP". */
     private fun eyebrowLine(account: Account?, symbol: String?): String {
@@ -124,25 +218,9 @@ class HomeScreen(
         return listOfNotNull(broker, label, symbol).joinToString(" · ")
     }
 
-    private data class Hero(val fill: Int, val tag: String, val title: String, val detail: String)
-
     private fun hero(snapshot: MonitorState.Snapshot): View {
-        val host = snapshot.status.bridge
         val link = snapshot.link
-        val account = snapshot.account
-        val where = account?.name ?: ""
-        val hero = when {
-            link is BridgeClient.Link.Refused -> Hero(R.color.status_bad, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_refused_title), link.reason)
-            link is BridgeClient.Link.Waiting && link.deliberate -> Hero(R.color.status_offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_restarting_title, where), link.reason)
-            link is BridgeClient.Link.Waiting -> Hero(R.color.status_offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_offline_title, where), link.reason)
-            link == BridgeClient.Link.Connecting -> Hero(R.color.status_offline, ui.string(R.string.hero_connecting_tag), ui.string(R.string.hero_connecting_title, MonitorService.hostOf(account?.url ?: "")), "")
-            link !is BridgeClient.Link.Connected -> Hero(R.color.status_offline, ui.string(R.string.hero_idle_tag), ui.string(R.string.hero_idle_title), ui.string(R.string.hero_idle_detail))
-            // An Alpaca deployment has no bridge to be ready: its trader says how it is.
-            host == null && (account?.broker == Broker.ALPACA || snapshot.status.trader != null) -> traderHero(snapshot.status.trader)
-            host == null -> Hero(R.color.status_offline, ui.string(R.string.hero_unknown_tag), ui.string(R.string.hero_unknown_title), ui.string(R.string.hero_unknown_detail))
-            host.ready -> Hero(R.color.status_ok, ui.string(R.string.hero_ready_tag), ui.string(R.string.hero_ready_title), ui.string(R.string.hero_ready_detail))
-            else -> Hero(R.color.status_bad, ui.string(R.string.hero_blocked_tag), host.summary, host.fix?.let { ui.string(R.string.hero_fix, it) }.orEmpty())
-        }
+        val hero = Verdict.of(ui, snapshot.account, snapshot.stateOf(snapshot.account?.id))
         return ui.column(gap = 6).apply {
             background = ui.rounded(hero.fill, radius = 16)
             setPadding(ui.dp(18), ui.dp(18), ui.dp(18), ui.dp(18))
@@ -150,41 +228,6 @@ class HomeScreen(
             addView(ui.text(hero.title, size = 22f, color = R.color.card, bold = true))
             if (hero.detail.isNotEmpty()) addView(ui.text(hero.detail, color = R.color.card))
             if (link == BridgeClient.Link.Idle || link == BridgeClient.Link.Stopped) setOnClickListener { go(Tab.CONNECT) }
-        }
-    }
-
-    /** What the trader of an Alpaca deployment says it is doing. */
-    private fun traderHero(trader: TraderStatus?): Hero {
-        if (trader == null) {
-            return Hero(R.color.status_offline, ui.string(R.string.hero_unknown_tag), ui.string(R.string.hero_unreported_title), ui.string(R.string.hero_unreported_detail))
-        }
-        val words = trader.state.replace('_', ' ')
-        val said = listOfNotNull(words, trader.detail).joinToString(": ")
-        if (trader.stale) {
-            val quietly = trader.state in setOf("stopped", "disabled")
-            return Hero(
-                if (quietly) R.color.status_offline else R.color.status_bad,
-                ui.string(R.string.hero_quiet_tag),
-                ui.string(R.string.hero_quiet_title),
-                ui.string(R.string.hero_quiet_detail, ago(trader.updatedAt), said),
-            )
-        }
-        val detail = trader.detail.orEmpty()
-        return when (trader.state) {
-            "trading" -> Hero(R.color.status_ok, ui.string(R.string.hero_trading_tag), ui.string(R.string.hero_trading_title), detail.takeIf { it != "trading" }.orEmpty())
-            "starting" -> Hero(R.color.status_ok, ui.string(R.string.hero_starting_tag), ui.string(R.string.hero_starting_title), detail)
-            "winding_down" -> Hero(R.color.status_warn, ui.string(R.string.hero_winding_tag), ui.string(R.string.hero_winding_title), detail)
-            "buys_paused" -> Hero(R.color.status_warn, ui.string(R.string.hero_paused_tag), detail.ifEmpty { ui.string(R.string.hero_paused_title) }, "")
-            "waiting_for_broker", "restarting" -> Hero(R.color.status_warn, ui.string(R.string.hero_trader_tag), words.replaceFirstChar(Char::uppercase), detail)
-            "recovery_required" -> Hero(R.color.status_bad, ui.string(R.string.hero_recovery_tag), ui.string(R.string.hero_recovery_title), detail)
-            "stopping", "stopped" -> Hero(R.color.status_offline, ui.string(R.string.hero_stopped_tag), ui.string(R.string.hero_stopped_title), detail)
-            "waiting_for_open" -> Hero(
-                R.color.status_offline,
-                ui.string(R.string.hero_waiting_tag),
-                ui.string(R.string.hero_waiting_title),
-                trader.nextOpen?.let { ui.string(R.string.hero_waiting_detail, ago(it)) } ?: detail,
-            )
-            else -> Hero(R.color.status_offline, ui.string(R.string.hero_trader_tag), words.replaceFirstChar(Char::uppercase), detail)
         }
     }
 
@@ -320,8 +363,5 @@ class HomeScreen(
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(1))
     }
 
-    private fun ago(iso: String?): String {
-        val millis = iso?.let(Alerts::epochMillis) ?: return ui.string(R.string.unknown)
-        return DateUtils.getRelativeTimeSpanString(millis).toString()
-    }
+    private fun ago(iso: String?): String = Format.ago(iso) ?: ui.string(R.string.unknown)
 }

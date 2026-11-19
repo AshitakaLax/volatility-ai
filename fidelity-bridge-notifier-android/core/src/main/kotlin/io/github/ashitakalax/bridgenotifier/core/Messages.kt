@@ -38,6 +38,9 @@ object EventKind {
         ACCOUNT_CHECK, CONNECTED, DISCONNECTED, TRADING_SWITCH, REFUSED, BRIDGE, WINDOW,
     )
 
+    /** The trades themselves: what an account summing up its day (Account.summary) folds into one note. */
+    val TRADES = setOf(BUY, SELL, ORDER_UPDATE, WINDOW)
+
     fun label(kind: String): String = when (kind) {
         BUY -> "Buys filled"
         SELL -> "Sells filled"
@@ -316,6 +319,12 @@ data class Book(
     val realizedToday: Double,
     val salesToday: Int,
     val buysToday: Int,
+    /**
+     * Each market day the fill journal reaches back to (10 sessions on the
+     * trader), newest first; empty from a listener older than this. The app
+     * keeps the longer history itself (ProfitHistory).
+     */
+    val days: List<DayFigures> = emptyList(),
 ) {
     companion object {
         fun parse(obj: JsonObject?): Book? = obj?.let {
@@ -332,6 +341,7 @@ data class Book(
                 realizedToday = today?.double("realized") ?: 0.0,
                 salesToday = today?.long("sales")?.toInt() ?: 0,
                 buysToday = today?.long("buys")?.toInt() ?: 0,
+                days = (it["days"] as? JsonArray).orEmpty().mapNotNull { day -> DayFigures.parse(day as? JsonObject) },
             )
         }
     }

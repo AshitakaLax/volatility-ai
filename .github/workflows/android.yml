@@ -83,8 +83,13 @@ jobs:
               echo "$message" >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
+          # Named after the app's own version first: the app's update check
+          # (core/.../Updates.kt) reads it from here, since a release of the
+          # repository need not change the app.
+          version=$(sed -n 's/^ *versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
+          if [ -z "$version" ]; then echo "::error::no versionName in app/build.gradle.kts"; exit 1; fi
           mkdir -p "$RUNNER_TEMP/apk"
-          cp "$apk" "$RUNNER_TEMP/apk/fidelity-bridge-notifier-${TAG:-${GITHUB_SHA::7}}${suffix}.apk"
+          cp "$apk" "$RUNNER_TEMP/apk/fidelity-bridge-notifier-${version}-${TAG:-${GITHUB_SHA::7}}${suffix}.apk"
           ls -l "$RUNNER_TEMP/apk"
       - uses: actions/upload-artifact@v4
         with:

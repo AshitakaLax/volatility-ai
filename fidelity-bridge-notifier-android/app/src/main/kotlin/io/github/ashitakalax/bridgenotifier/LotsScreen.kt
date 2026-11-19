@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import io.github.ashitakalax.bridgenotifier.core.Book
+import io.github.ashitakalax.bridgenotifier.core.BridgeClient
 import io.github.ashitakalax.bridgenotifier.core.ClosedLot
 import io.github.ashitakalax.bridgenotifier.core.OpenLot
 
@@ -35,6 +36,11 @@ class LotsScreen(private val ui: Ui) : Screen {
         view = scroll
     }
 
+    /** The sales rather than the open lots (a sale's notification opens on them), or back. */
+    fun showSales(sales: Boolean) {
+        show = if (sales) Show.CLOSED else Show.OPEN
+    }
+
     override fun render(snapshot: MonitorState.Snapshot) {
         last = snapshot
         val book = snapshot.status.book
@@ -42,6 +48,9 @@ class LotsScreen(private val ui: Ui) : Screen {
             snapshot.account?.name,
             book?.symbol,
             book?.lastPrice?.let { "last ${Format.money(it)}" },
+            // Out of reach: these are the figures as last heard.
+            book?.asOf?.takeIf { snapshot.link !is BridgeClient.Link.Connected }
+                ?.let(Format::clockTime)?.let { ui.string(R.string.lots_as_of, it) },
         ).joinToString(" · ")
         filters.removeAllViews()
         filters.addView(segment(ui.string(R.string.lots_open, book?.open?.size ?: 0), Show.OPEN))

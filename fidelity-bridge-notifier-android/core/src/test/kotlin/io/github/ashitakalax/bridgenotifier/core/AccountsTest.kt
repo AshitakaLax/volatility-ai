@@ -12,6 +12,11 @@ import org.junit.Test
 class AccountsTest {
     private fun obj(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
 
+    private fun note(kind: String, severity: Severity = Severity.INFO) = Notification(
+        id = 1, stream = "s", kind = kind, severity = severity, title = "t", body = "b",
+        at = "2026-11-18T15:00:00Z", data = JsonObject(emptyMap()),
+    )
+
     private fun hello(text: String): Hello =
         (BridgeMessage.parse(obj(text)) as BridgeMessage.HelloMessage).hello
 
@@ -93,29 +98,57 @@ class AccountsTest {
 
     @Test
     fun eachAccountMutesForItself() {
-        fun note(kind: String) = Notification(
-            id = 1, stream = "s", kind = kind, severity = Severity.INFO, title = "t", body = "b",
-            at = "2026-11-18T15:00:00Z", data = JsonObject(emptyMap()),
-        )
         val alpaca = Account("a2", "ws://h:8767/notifications", "k".repeat(40), broker = Broker.ALPACA)
             .copy(mutedKinds = setOf(EventKind.BUY, EventKind.SELL))
-        assertFalse(alpaca.alerts(note(EventKind.BUY)))
-        assertTrue(alpaca.alerts(note(EventKind.ORDER_PROBLEM)))
+        assertFalse(alpaca.alerts(note(EventKind.BUY), NOW))
+        assertTrue(alpaca.alerts(note(EventKind.ORDER_PROBLEM), NOW))
         // A kind this app does not know yet is shown, as before.
-        assertTrue(alpaca.alerts(note("margin_call")))
-        assertTrue(alpaca.alertsLinks)
+        assertTrue(alpaca.alerts(note("margin_call"), NOW))
+        assertTrue(alpaca.alertsLinks(NOW))
 
         val silent = alpaca.copy(muted = true)
-        assertFalse(silent.alerts(note(EventKind.ORDER_PROBLEM)))
-        assertFalse(silent.alertsLinks)
+        assertFalse(silent.alerts(note(EventKind.ORDER_PROBLEM), NOW))
+        assertFalse(silent.alertsLinks(NOW))
         // The test asked for from the Connect page gets through regardless.
-        assertTrue(silent.alerts(note(EventKind.TEST)))
+        assertTrue(silent.alerts(note(EventKind.TEST), NOW))
 
         assertEquals(listOf(silent), Accounts.decode(Accounts.encode(listOf(silent))))
         // Saved before there was muting: nothing muted.
         val old = Accounts.decode("""[{"id":"a1","url":"ws://h:8766/n","apiKey":"k"}]""").single()
         assertFalse(old.muted)
         assertEquals(emptySet<String>(), old.mutedKinds)
+    }
+
+    @Test
+    fun mutedForAnHourIsQuietUntilTheHourIsUp() {
+        val account = Account("a1", "ws://h:8766/notifications", "k".repeat(40))
+            .copy(mutedUntil = NOW + 3_600_000)
+        val problem = note(EventKind.ORDER_PROBLEM, Severity.WARNING)
+        assertTrue(account.mutedFor(NOW))
+        assertFalse(account.alerts(problem, NOW))
+        assertFalse(account.alertsLinks(NOW + 3_599_999))
+        assertTrue(account.alerts(problem, NOW + 3_600_000))
+        assertTrue(account.alertsLinks(NOW + 3_600_000))
+        assertFalse(account.mutedAt(NOW + 3_600_000))
+        assertEquals(listOf(account), Accounts.decode(Accounts.encode(listOf(account))))
+    }
+
+    @Test
+    fun anAccountSummingUpItsDaySaysOnlyTheTradesThatAreProblems() {
+        val account = Account("a1", "ws://h:8767/notifications", "k".repeat(40), broker = Broker.ALPACA)
+            .copy(summary = true)
+        for (kind in EventKind.TRADES) assertFalse(kind, account.alerts(note(kind), NOW))
+        // A sale below cost (a regime exit) is a warning: still said at once.
+        assertTrue(account.alerts(note(EventKind.SELL, Severity.WARNING), NOW))
+        assertTrue(account.alerts(note(EventKind.WINDOW, Severity.CRITICAL), NOW))
+        // Everything that is not a trade is as before.
+        assertTrue(account.alerts(note(EventKind.ENGINE), NOW))
+        assertTrue(account.alerts(note(EventKind.ORDER_PROBLEM), NOW))
+        assertTrue(account.copy(summary = false).alerts(note(EventKind.BUY), NOW))
+        assertEquals(listOf(account), Accounts.decode(Accounts.encode(listOf(account))))
+        val old = Accounts.decode("""[{"id":"a1","url":"ws://h:8766/n","apiKey":"k"}]""").single()
+        assertFalse(old.summary)
+        assertNull(old.mutedUntil)
     }
 
     @Test
@@ -130,5 +163,9 @@ class AccountsTest {
         assertEquals(1, kept.size)
         // No broker saved: guessed from the address.
         assertEquals(Broker.ALPACA, kept.single().broker)
+    }
+
+    private companion object {
+        const val NOW = 1_800_000_000_000L
     }
 }

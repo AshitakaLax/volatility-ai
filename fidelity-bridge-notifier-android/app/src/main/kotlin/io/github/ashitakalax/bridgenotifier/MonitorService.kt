@@ -15,16 +15,21 @@ import io.github.ashitakalax.bridgenotifier.core.Account
 import io.github.ashitakalax.bridgenotifier.core.BridgeClient
 import io.github.ashitakalax.bridgenotifier.core.BridgeStatus
 import io.github.ashitakalax.bridgenotifier.core.ClientSettings
+import io.github.ashitakalax.bridgenotifier.core.DailySummary
 import io.github.ashitakalax.bridgenotifier.core.LinkAlarm
 import io.github.ashitakalax.bridgenotifier.core.Notification
+import io.github.ashitakalax.bridgenotifier.core.ProfitHistory
 import java.net.URI
+import java.time.Instant
 
 /**
  * Watches every account: a foreground service holding one BridgeClient per
  * account, so the connections outlive the screen. It turns what each says
  * into phone notifications -- those of the kinds switched on for that account,
  * none for one muted -- and says so itself when one has been out of reach
- * longer than the grace.
+ * longer than the grace. It keeps each account's profit history from the
+ * books it hears, and once a minute it sees whether an end-of-day summary is
+ * due, and whether it is time to ask GitHub about a newer app.
  */
 class MonitorService : Service() {
     private val main = Handler(Looper.getMainLooper())
@@ -40,6 +45,15 @@ class MonitorService : Service() {
 
     private val watches = mutableMapOf<String, Watch>()
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    /** Once a minute while watching: the summaries due, and the update check. */
+    private val tick = object : Runnable {
+        override fun run() {
+            checkSummaries()
+            UpdateChecker.maybeCheck(this@MonitorService)
+            main.postDelayed(this, TICK_MILLIS)
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -75,6 +89,7 @@ class MonitorService : Service() {
     }
 
     override fun onDestroy() {
+        rememberHeard()
         closeClients()
         super.onDestroy()
     }
@@ -108,9 +123,12 @@ class MonitorService : Service() {
         }
         watchNetwork()
         updateMonitor()
+        main.removeCallbacks(tick)
+        main.post(tick)
     }
 
     private fun stopWatching() {
+        rememberHeard()
         closeClients()
         MonitorState.update { snapshot ->
             snapshot.copy(states = snapshot.states.mapValues { (_, state) -> state.copy(link = BridgeClient.Link.Stopped) })
@@ -126,8 +144,17 @@ class MonitorService : Service() {
             watch.alarm.reset()
         }
         watches.clear()
+        main.removeCallbacks(tick)
         networkCallback?.let { connectivity.unregisterNetworkCallback(it) }
         networkCallback = null
+    }
+
+    /** When each account still connected was last heard: for a later start, until it is heard again. */
+    private fun rememberHeard() {
+        val now = System.currentTimeMillis()
+        for (id in watches.keys) {
+            if (MonitorState.snapshot.stateOf(id).link is BridgeClient.Link.Connected) prefs.setHeardAt(id, now)
+        }
     }
 
     private fun goForeground(text: String) {
@@ -168,8 +195,39 @@ class MonitorService : Service() {
         override fun onMissed(notifications: List<Notification>, fresh: Boolean) =
             onMain { onMissedReceived(watch, notifications, fresh) }
 
-        override fun onStatus(status: BridgeStatus) = onMain {
-            MonitorState.updateAccount(id) { it.copy(status = status) }
+        override fun onStatus(status: BridgeStatus) = onMain { onStatusReceived(watch, status) }
+    }
+
+    /** What the listener says now; its book's days go into the account's history. */
+    private fun onStatusReceived(watch: Watch, status: BridgeStatus) {
+        val id = watch.account.id
+        status.book?.let { prefs.recordBook(id, it) }
+        MonitorState.updateAccount(id) { it.copy(status = status, heardAt = System.currentTimeMillis()) }
+        // A trader that just stopped for the day: its summary need not wait for the tick.
+        checkSummaries()
+    }
+
+    /**
+     * Each account summing up its day (Account.summary) whose day is over:
+     * one note, for the latest day that traded. An account out of reach is
+     * waited for until extended hours end; muted, the day passes unsaid.
+     */
+    private fun checkSummaries() {
+        val now = Instant.now()
+        for (watch in watches.values) {
+            val account = current(watch)
+            if (!account.summary) continue
+            val state = MonitorState.snapshot.stateOf(account.id)
+            // Connected and its book in: the figures are the listener's, not what was last heard.
+            val heard = state.link is BridgeClient.Link.Connected && state.status.book != null
+            val done = prefs.summaryDone(account.id)
+                ?: ProfitHistory.marketDay(now).minusDays(1).also { prefs.setSummaryDone(account.id, it) }
+            val trading = DailySummary.trading(state.status)
+            val due = DailySummary.due(now, done, trading, heard, prefs.history(account.id)) ?: continue
+            prefs.setSummaryDone(account.id, due.through)
+            val day = due.day ?: continue
+            if (account.mutedAt(now.toEpochMilli())) continue
+            Alerts.postSummary(this, account, day, state.status.book, heard, now)
         }
     }
 
@@ -182,8 +240,16 @@ class MonitorService : Service() {
 
     private fun onLinkChanged(watch: Watch, link: BridgeClient.Link) {
         val account = current(watch)
-        MonitorState.updateAccount(account.id) { it.copy(link = link) }
-        val sayLinks = prefs.alertWhenUnreachable && account.alertsLinks
+        val now = System.currentTimeMillis()
+        val wasConnected = MonitorState.snapshot.stateOf(account.id).link is BridgeClient.Link.Connected
+        val connected = link is BridgeClient.Link.Connected
+        // Connected, it is heard all along (the listener pings every 20 s); on
+        // losing it, that is when it was last heard.
+        if (wasConnected && !connected) prefs.setHeardAt(account.id, now)
+        MonitorState.updateAccount(account.id) {
+            it.copy(link = link, heardAt = if (connected || wasConnected) now else it.heardAt)
+        }
+        val sayLinks = prefs.alertWhenUnreachable && account.alertsLinks(now)
         when (link) {
             is BridgeClient.Link.Connected -> {
                 // The hello says what this stream is about: keep it, so the
@@ -205,7 +271,7 @@ class MonitorService : Service() {
             }
             is BridgeClient.Link.Refused -> {
                 watch.alarm.reset()
-                if (account.alertsLinks) Alerts.postRefused(this, account, link.reason)
+                if (account.alertsLinks(now)) Alerts.postRefused(this, account, link.reason)
             }
             BridgeClient.Link.Connecting, BridgeClient.Link.Idle, BridgeClient.Link.Stopped -> Unit
         }
@@ -214,10 +280,11 @@ class MonitorService : Service() {
 
     private fun onNotificationReceived(watch: Watch, notification: Notification, fresh: Boolean) {
         val account = current(watch)
+        val now = System.currentTimeMillis()
         MonitorState.updateAccount(account.id) {
-            it.copy(recent = (listOf(notification) + it.recent).take(MonitorState.RECENT))
+            it.copy(recent = (listOf(notification) + it.recent).take(MonitorState.RECENT), heardAt = now)
         }
-        if (fresh && account.alerts(notification)) {
+        if (fresh && account.alerts(notification, now)) {
             Alerts.post(this, notification, account)
         }
     }
@@ -229,11 +296,12 @@ class MonitorService : Service() {
      */
     private fun onMissedReceived(watch: Watch, notifications: List<Notification>, fresh: Boolean) {
         val account = current(watch)
+        val now = System.currentTimeMillis()
         MonitorState.updateAccount(account.id) {
-            it.copy(recent = (notifications.asReversed() + it.recent).take(MonitorState.RECENT))
+            it.copy(recent = (notifications.asReversed() + it.recent).take(MonitorState.RECENT), heardAt = now)
         }
         if (!fresh) return
-        val worth = notifications.filter(account::alerts)
+        val worth = notifications.filter { account.alerts(it, now) }
         worth.lastOrNull()?.let { latest -> Alerts.post(this, latest, account, alsoMissed = worth.size - 1) }
     }
 
@@ -267,7 +335,7 @@ class MonitorService : Service() {
         if (watches[watch.account.id] !== watch) return
         if (watch.alarm.check(SystemClock.uptimeMillis()) != LinkAlarm.Alert.LOST) return
         val account = current(watch)
-        if (prefs.alertWhenUnreachable && account.alertsLinks) {
+        if (prefs.alertWhenUnreachable && account.alertsLinks(System.currentTimeMillis())) {
             Alerts.postLinkLost(this, account, watch.lastReason)
         }
     }
@@ -278,6 +346,7 @@ class MonitorService : Service() {
         private const val ACTION_STOP = "io.github.ashitakalax.bridgenotifier.STOP"
         private const val ACTION_TEST = "io.github.ashitakalax.bridgenotifier.TEST"
         private const val EXTRA_ACCOUNT = "account"
+        private const val TICK_MILLIS = 60_000L
 
         fun start(context: Context) {
             context.startForegroundService(intent(context, ACTION_START))

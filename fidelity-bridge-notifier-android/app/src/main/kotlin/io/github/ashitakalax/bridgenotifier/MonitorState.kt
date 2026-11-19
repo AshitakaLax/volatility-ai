@@ -19,6 +19,8 @@ object MonitorState {
         val link: BridgeClient.Link = BridgeClient.Link.Idle,
         val status: BridgeStatus = BridgeStatus.UNKNOWN,
         val recent: List<Notification> = emptyList(),
+        /** When its listener was last heard (epoch milliseconds), in this run of the app. */
+        val heardAt: Long? = null,
     )
 
     data class Snapshot(

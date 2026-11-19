@@ -43,6 +43,11 @@
                 android:value="Keeps a connection open to the user's own trading bridge, to show its notifications as they happen." />
         </service>
 
+        <!-- A notification's "Mute 1 h" button. Only this app's notifications reach it. -->
+        <receiver
+            android:name=".AlertActions"
+            android:exported="false" />
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">

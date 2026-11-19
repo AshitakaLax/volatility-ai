@@ -3,10 +3,15 @@ package io.github.ashitakalax.bridgenotifier
 import android.content.Context
 import io.github.ashitakalax.bridgenotifier.core.Account
 import io.github.ashitakalax.bridgenotifier.core.Accounts
+import io.github.ashitakalax.bridgenotifier.core.Book
 import io.github.ashitakalax.bridgenotifier.core.Broker
+import io.github.ashitakalax.bridgenotifier.core.DayFigures
 import io.github.ashitakalax.bridgenotifier.core.EventKind
 import io.github.ashitakalax.bridgenotifier.core.Position
 import io.github.ashitakalax.bridgenotifier.core.PositionStore
+import io.github.ashitakalax.bridgenotifier.core.ProfitHistory
+import io.github.ashitakalax.bridgenotifier.core.Updates
+import java.time.LocalDate
 
 /**
  * The app's settings, its accounts, and where each left off. Private to the
@@ -53,8 +58,82 @@ class Prefs(context: Context) {
     fun remove(id: String) {
         accounts = accounts.filterNot { it.id == id }
         forgetPosition(id)
+        histories.remove(id)
+        prefs.edit().remove(HISTORY + id).remove(SUMMARY_DONE + id).remove(HEARD + id).apply()
         if (prefs.getString(CURRENT, null) == id) prefs.edit().remove(CURRENT).apply()
     }
+
+    /** [id]'s profit, day by day, oldest first: what the listener sent, kept longer than it keeps it. */
+    fun history(id: String): List<DayFigures> =
+        histories.getOrPut(id) { ProfitHistory.decode(prefs.getString(HISTORY + id, null)) }
+
+    /** [book]'s days into [id]'s history; true if that changed it. */
+    fun recordBook(id: String, book: Book): Boolean {
+        val before = history(id)
+        val after = ProfitHistory.merge(before, book)
+        if (after == before) return false
+        histories[id] = after
+        prefs.edit().putString(HISTORY + id, ProfitHistory.encode(after)).apply()
+        return true
+    }
+
+    /** The last market day [id]'s end-of-day note covered (DailySummary). */
+    fun summaryDone(id: String): LocalDate? =
+        prefs.getString(SUMMARY_DONE + id, null)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+
+    fun setSummaryDone(id: String, day: LocalDate) {
+        prefs.edit().putString(SUMMARY_DONE + id, day.toString()).apply()
+    }
+
+    /** When [id]'s listener was last heard (epoch milliseconds), kept for when the app starts out of reach. */
+    fun heardAt(id: String): Long? = prefs.getLong(HEARD + id, 0L).takeIf { it > 0 }
+
+    fun setHeardAt(id: String, at: Long) {
+        prefs.edit().putLong(HEARD + id, at).apply()
+    }
+
+    /** Whether the app asks GitHub, twice a day at most, whether a newer version is out. On unless switched off. */
+    var checkUpdates: Boolean
+        get() = prefs.getBoolean(CHECK_UPDATES, true)
+        set(value) = prefs.edit().putBoolean(CHECK_UPDATES, value).apply()
+
+    /** When GitHub was last asked (epoch milliseconds); 0 never. */
+    var updateCheckedAt: Long
+        get() = prefs.getLong(UPDATE_CHECKED, 0L)
+        set(value) = prefs.edit().putLong(UPDATE_CHECKED, value).apply()
+
+    /** What GitHub last said was the latest release. */
+    var latestRelease: Updates.Release?
+        get() {
+            val tag = prefs.getString(RELEASE_TAG, null) ?: return null
+            val page = prefs.getString(RELEASE_PAGE, null) ?: return null
+            return Updates.Release(prefs.getString(RELEASE_VERSION, null), tag, page, prefs.getBoolean(RELEASE_DEBUG, false))
+        }
+        set(value) {
+            prefs.edit().apply {
+                if (value == null) {
+                    remove(RELEASE_TAG).remove(RELEASE_PAGE).remove(RELEASE_VERSION).remove(RELEASE_DEBUG)
+                } else {
+                    putString(RELEASE_TAG, value.tag).putString(RELEASE_PAGE, value.page)
+                        .putString(RELEASE_VERSION, value.version).putBoolean(RELEASE_DEBUG, value.debugOnly)
+                }
+            }.apply()
+        }
+
+    /** Why the last check failed; null when it worked. */
+    var updateError: String?
+        get() = prefs.getString(UPDATE_ERROR, null)
+        set(value) = prefs.edit().putString(UPDATE_ERROR, value).apply()
+
+    /** The newer version a notification already said is out, so it is said once. */
+    var announcedVersion: String?
+        get() = prefs.getString(ANNOUNCED, null)
+        set(value) = prefs.edit().putString(ANNOUNCED, value).apply()
+
+    /** The newer version whose banner was closed. */
+    var dismissedVersion: String?
+        get() = prefs.getString(DISMISSED, null)
+        set(value) = prefs.edit().putString(DISMISSED, value).apply()
 
     /** Whether the app should be watching: survives a reboot. */
     var monitoring: Boolean
@@ -144,6 +223,21 @@ class Prefs(context: Context) {
         const val UNREACHABLE_GRACE = "unreachable_grace_ms"
         const val STREAM = "position_stream_"
         const val LAST_ID = "position_id_"
+        const val HISTORY = "history_"
+        const val SUMMARY_DONE = "summary_done_"
+        const val HEARD = "heard_at_"
+        const val CHECK_UPDATES = "check_updates"
+        const val UPDATE_CHECKED = "update_checked_at"
+        const val UPDATE_ERROR = "update_error"
+        const val RELEASE_TAG = "release_tag"
+        const val RELEASE_PAGE = "release_page"
+        const val RELEASE_VERSION = "release_version"
+        const val RELEASE_DEBUG = "release_debug_only"
+        const val ANNOUNCED = "update_announced"
+        const val DISMISSED = "update_dismissed"
+
+        /** Each account's history, read once: every screen and the service share one process. Main thread only. */
+        val histories = mutableMapOf<String, List<DayFigures>>()
 
         // Before accounts: one bridge.
         const val LEGACY_URL = "url"

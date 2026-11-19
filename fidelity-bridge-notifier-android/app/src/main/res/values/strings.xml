@@ -6,6 +6,7 @@
     <string name="nav_home">Home</string>
     <string name="nav_lots">Lots</string>
     <string name="nav_activity">Activity</string>
+    <string name="chip_all">All</string>
 
     <!-- Connect: the settings and connection page -->
     <string name="connect_title">Your accounts</string>
@@ -50,6 +51,10 @@
     <string name="account_mute_help">Muted, it never buzzes the phone. What it says still shows on its Activity page, and a test you send still arrives.</string>
     <string name="account_muted_short">muted</string>
     <string name="chip_muted">%1$s (muted)</string>
+    <string name="account_muted_until">Quiet until %1$s, from a notification. Tap to unmute.</string>
+    <string name="muted_until_toast">%1$s muted until %2$s</string>
+    <string name="account_summary">Trades in one end-of-day summary</string>
+    <string name="account_summary_help">Buys, sales, orders and trading windows stop buzzing one by one: one note after the close sums up the day (after 20:05 New York if the trader is still going). A trade that is a problem, like a sale below cost, still comes at once, and every trade is still on Activity.</string>
     <plurals name="missed_more">
         <item quantity="one">%1$s · and %2$d more while away</item>
         <item quantity="other">%1$s · and %2$d more while away</item>
@@ -65,7 +70,22 @@
     <string name="lock_setting_help">Asked when the app opens, and when it comes back after a minute away. It locks the app\'s pages only: notifications still arrive.</string>
     <string name="lock_unavailable">This phone has no screen lock, so the app cannot be locked. Set a PIN, pattern or password in Android\'s settings.</string>
     <string name="open_at_start">Open this page at start-up</string>
-    <string name="open_at_start_help">Off: start on Home once an account is set</string>
+    <string name="open_at_start_help">Off: start on Home once an account is set (on All accounts, with more than one)</string>
+    <string name="update_setting">Tell me when a newer version is out</string>
+    <string name="update_setting_help">Asks GitHub for this app\'s latest release twice a day at most. Nothing about you or your accounts is sent, and nothing is installed by itself: the release page opens in your browser.</string>
+    <string name="update_check_now">Check now</string>
+    <string name="update_get_version">Get %1$s</string>
+    <string name="update_installed">This is %1$s.</string>
+    <string name="update_checking">Asking GitHub…</string>
+    <string name="update_failed">Could not ask GitHub: %1$s.</string>
+    <string name="update_latest">Latest release: %1$s (%2$s), checked %3$s.</string>
+    <string name="update_no_version">no app version in its name</string>
+    <string name="update_never">Not checked yet.</string>
+    <string name="update_title">Bridge Notifier %1$s is out</string>
+    <string name="update_body">You have %1$s. Open the release and install its APK over this one: your accounts and keys stay.</string>
+    <string name="update_body_reinstall">You have %1$s. One of the two is a debug build, so Android installs the new one only after this app is uninstalled, which forgets its accounts and keys.</string>
+    <string name="update_get">Get it</string>
+    <string name="update_dismiss">Close</string>
     <string name="plaintext_warning">ws:// is not encrypted. Messages are signed, so they cannot be forged, but anyone on this network can read them. From outside your home network, reach the bridge over a VPN (WireGuard, Tailscale). Never open its port to the internet.</string>
     <string name="notifications_off">Notifications are off for this app, so nothing will be shown. Turn them on in the system settings.</string>
     <string name="send_test">Send test</string>
@@ -133,6 +153,40 @@
     <string name="latest_trade">Latest trade</string>
     <string name="see_all">All</string>
     <string name="unknown">unknown</string>
+    <string name="fresh_live">Live</string>
+    <string name="fresh_heard">Last heard %1$s</string>
+    <string name="fresh_never">Not heard from yet</string>
+    <string name="fresh_dot">● %1$s</string>
+    <string name="history_header">Profit history</string>
+    <string name="span_2w">2W</string>
+    <string name="span_1m">1M</string>
+    <string name="span_3m">3M</string>
+    <string name="span_1y">1Y</string>
+    <plurals name="history_over">
+        <item quantity="one">realised over %1$d trading day</item>
+        <item quantity="other">realised over %1$d trading days</item>
+    </plurals>
+    <string name="history_best_worst">Best %1$s (%2$s) · worst %3$s (%4$s)</string>
+    <string name="history_picked">%1$s: %2$s · %3$d sales, %4$d buys</string>
+    <string name="history_description">Profit by day: %1$d trading days, %2$s in all</string>
+    <string name="history_empty">No trades in this span yet.</string>
+    <string name="history_kept">Kept on this phone from what the listener sends. The listener itself reaches back 10 trading days, so the history grows from when this version started listening.</string>
+
+    <!-- All accounts -->
+    <string name="overview_title">All accounts</string>
+    <plurals name="overview_count">
+        <item quantity="one">%1$d account</item>
+        <item quantity="other">%1$d accounts</item>
+    </plurals>
+    <string name="overview_today">Today</string>
+    <string name="overview_real">Real money</string>
+    <string name="overview_paper">Paper</string>
+    <string name="overview_counts">%1$d buys · %2$d sales</string>
+    <string name="overview_partial">Some accounts are out of reach: theirs are the figures last heard.</string>
+    <string name="overview_trades">Buys · sales</string>
+    <string name="overview_trades_value">%1$d · %2$d</string>
+    <string name="overview_open">Open %1$s</string>
+    <string name="unrealized_short">Unrealised</string>
 
     <!-- Lots -->
     <string name="lots_title">Lots</string>
@@ -152,6 +206,7 @@
     <string name="reason_signal">Regime exit</string>
     <string name="lots_empty_open">No open lots.</string>
     <string name="lots_empty_closed">No sales in the journal yet.</string>
+    <string name="lots_as_of">as of %1$s</string>
     <string name="lots_no_book">This listener sends no book yet. Update it to see lots here.</string>
 
     <!-- Activity -->
@@ -170,6 +225,10 @@
     <string name="channel_bridge_description">The extension connecting, its trading switch, the engine starting and stopping, ready to trade again</string>
     <string name="channel_warnings">Warnings</string>
     <string name="channel_warnings_description">Orders rejected or unknown, not ready to trade, Fidelity signed out, failed account checks, the engine paused or halted, the bridge out of reach</string>
+    <string name="channel_summary">Daily summary</string>
+    <string name="channel_summary_description">One note after the close for each account that sums up its trades</string>
+    <string name="channel_updates">App updates</string>
+    <string name="channel_updates_description">A newer version of this app is out</string>
     <string name="channel_monitor">Watching</string>
     <string name="channel_monitor_description">The ongoing notification Android needs while the app keeps its connection open</string>
 
@@ -186,4 +245,24 @@
     <string name="link_back_title">Reachable again</string>
     <string name="link_back_body">Anything it said meanwhile follows.</string>
     <string name="link_refused_title">Connection refused</string>
+
+    <!-- A notification's buttons, and the end-of-day summary -->
+    <string name="action_lots">Lots</string>
+    <string name="action_mute_hour">Mute 1 h</string>
+    <string name="summary_title_today">%1$s today</string>
+    <string name="summary_title_day">%2$s: %1$s</string>
+    <plurals name="summary_buys">
+        <item quantity="one">%1$d buy</item>
+        <item quantity="other">%1$d buys</item>
+    </plurals>
+    <plurals name="summary_sales">
+        <item quantity="one">%1$d sale</item>
+        <item quantity="other">%1$d sales</item>
+    </plurals>
+    <plurals name="summary_open">
+        <item quantity="one">%1$d lot open</item>
+        <item quantity="other">%1$d lots open</item>
+    </plurals>
+    <string name="summary_open_unrealised">%1$s, %2$s unrealised.</string>
+    <string name="summary_not_heard">The listener is out of reach: these are the figures last heard.</string>
 </resources>

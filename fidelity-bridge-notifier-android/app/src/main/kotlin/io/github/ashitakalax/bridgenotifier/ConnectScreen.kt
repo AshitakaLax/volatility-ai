@@ -16,12 +16,17 @@ import io.github.ashitakalax.bridgenotifier.core.ApiKeys
 import io.github.ashitakalax.bridgenotifier.core.BridgeAddress
 import io.github.ashitakalax.bridgenotifier.core.BridgeClient
 import io.github.ashitakalax.bridgenotifier.core.EventKind
+import io.github.ashitakalax.bridgenotifier.core.ProfitHistory
+import java.time.Instant
 
 /**
  * The settings and connection page, shown at start-up: the accounts the app
  * watches -- each a listener's address and key, a Fidelity bridge or the
  * trader notifier's Alpaca deployments -- the one being edited, a three-step
- * check that it works, and what that account is to notify the phone about.
+ * check that it works, and what that account is to notify the phone about
+ * (its trades one by one or in one note after the close, muted, or muted
+ * for an hour from a notification). Then the app's own settings, and its
+ * version against the latest release.
  */
 class ConnectScreen(
     private val ui: Ui,
@@ -48,8 +53,24 @@ class ConnectScreen(
     // What the account being edited notifies about: rebuilt when it changes.
     private val notifyHeader = ui.row(gap = 8)
     private val mutes = ui.column(gap = 0)
-    private val kindBoxes = mutableListOf<CheckBox>()
+    private val kindBoxes = mutableMapOf<String, CheckBox>()
     private var mutesFor: String? = null
+    private val mutedFor = ui.text(size = 12f, color = R.color.accent, bold = true).apply {
+        minHeight = ui.dp(36)
+        gravity = Gravity.CENTER_VERTICAL
+    }
+
+    // The app's version, and the latest release's.
+    private val updateLine = ui.text(size = 12f, color = R.color.muted)
+    private val updateGet = ui.button("", filled = true) {
+        prefs.latestRelease?.page?.let { page ->
+            try {
+                ui.context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(page)))
+            } catch (_: android.content.ActivityNotFoundException) {
+                updateLine.text = page
+            }
+        }
+    }
 
     /** Adding a new account rather than editing the one shown. */
     private var adding = false
@@ -143,6 +164,26 @@ class ConnectScreen(
             },
         )
         page.addView(
+            ui.card(gap = 6).apply {
+                addView(checkbox(ui.string(R.string.update_setting), prefs.checkUpdates) { prefs.checkUpdates = it })
+                addView(ui.text(ui.string(R.string.update_setting_help), size = 12f, color = R.color.muted))
+                addView(updateLine)
+                addView(
+                    ui.row(gap = 8).apply {
+                        addView(
+                            ui.grow(
+                                ui.button(ui.string(R.string.update_check_now), filled = false) {
+                                    UpdateChecker.maybeCheck(ui.context, force = true)
+                                    last?.let(::render)
+                                },
+                            ),
+                        )
+                        addView(updateGet, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    },
+                )
+            },
+        )
+        page.addView(
             TextView(ui.context).apply {
                 text = ui.string(R.string.stop_watching)
                 setTextColor(ui.color(R.color.muted))
@@ -196,6 +237,31 @@ class ConnectScreen(
         lockUnavailable.visibility = if (LockGate.available(ui.context)) View.GONE else View.VISIBLE
         renderChecks(snapshot, account)
         renderMutes(account)
+        renderUpdates()
+    }
+
+    /** This app's version, what GitHub last said is the latest, and when. */
+    private fun renderUpdates() {
+        val release = prefs.latestRelease
+        val checked = prefs.updateCheckedAt.takeIf { it > 0 }
+        val error = prefs.updateError
+        updateLine.text = listOfNotNull(
+            ui.string(R.string.update_installed, BuildConfig.VERSION_NAME + if (BuildConfig.DEBUG) " (debug)" else ""),
+            when {
+                UpdateChecker.asking -> ui.string(R.string.update_checking)
+                error != null -> ui.string(R.string.update_failed, error)
+                release != null && checked != null -> ui.string(
+                    R.string.update_latest,
+                    release.version ?: ui.string(R.string.update_no_version),
+                    release.tag,
+                    Format.relative(checked),
+                )
+                else -> ui.string(R.string.update_never)
+            },
+        ).joinToString(" ")
+        val available = UpdateChecker.available(prefs)
+        updateGet.visibility = if (available != null) View.VISIBLE else View.INVISIBLE
+        if (available != null) updateGet.text = ui.string(R.string.update_get_version, available.version ?: available.tag)
     }
 
     /**
@@ -222,19 +288,41 @@ class ConnectScreen(
                     },
                 )
                 mutes.addView(ui.text(ui.string(R.string.account_mute_help), size = 12f, color = R.color.muted))
+                (mutedFor.parent as? ViewGroup)?.removeView(mutedFor)
+                mutedFor.setOnClickListener {
+                    prefs.change(account.id) { it.copy(mutedUntil = null) }
+                    MonitorState.setAccounts(prefs.accounts, prefs.currentId)
+                }
+                mutes.addView(mutedFor)
+                mutes.addView(
+                    checkbox(ui.string(R.string.account_summary), saved.summary) { on ->
+                        prefs.change(account.id) { it.copy(summary = on) }
+                        // From today on: a note for the days before would be old news.
+                        if (on) prefs.setSummaryDone(account.id, ProfitHistory.marketDay(Instant.now()).minusDays(1))
+                        last?.let(::render)
+                    },
+                )
+                mutes.addView(ui.text(ui.string(R.string.account_summary_help), size = 12f, color = R.color.muted))
                 for (kind in EventKind.ALL) {
                     val box = checkbox(EventKind.label(kind), kind !in saved.mutedKinds) { on ->
                         prefs.change(account.id) {
                             it.copy(mutedKinds = if (on) it.mutedKinds - kind else it.mutedKinds + kind)
                         }
                     }
-                    kindBoxes += box
+                    kindBoxes[kind] = box
                     mutes.addView(box)
                 }
             }
         }
-        val muted = account?.let { prefs.account(it.id)?.muted } ?: false
-        kindBoxes.forEach { it.isEnabled = !muted }
+        val saved = account?.let { prefs.account(it.id) }
+        val now = System.currentTimeMillis()
+        val until = saved?.mutedUntil?.takeIf { saved.mutedFor(now) && !saved.muted }
+        mutedFor.visibility = if (until != null) View.VISIBLE else View.GONE
+        if (until != null) mutedFor.text = ui.string(R.string.account_muted_until, Format.clockAt(until))
+        // Muted, none of them buzz; summing up the day, the trades fold into its note.
+        kindBoxes.forEach { (kind, box) ->
+            box.isEnabled = saved?.muted != true && !(saved?.summary == true && kind in EventKind.TRADES)
+        }
     }
 
     private fun renderAccounts(snapshot: MonitorState.Snapshot, editing: Account?) {
@@ -260,7 +348,7 @@ class ConnectScreen(
                                         listOfNotNull(
                                             MonitorService.hostOf(account.url),
                                             linkWords(snapshot.stateOf(account.id).link),
-                                            ui.string(R.string.account_muted_short).takeIf { account.muted },
+                                            ui.string(R.string.account_muted_short).takeIf { account.mutedAt(System.currentTimeMillis()) },
                                         ).joinToString(" · "),
                                         size = 12f,
                                         color = R.color.muted,

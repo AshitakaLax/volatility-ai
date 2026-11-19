@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from engine.trading.control_inbox import ControlInbox
-from fidelity_gateway.bridge.book import BOOK_SECONDS, CLOSED_SHOWN, read_book
+from fidelity_gateway.bridge.book import BOOK_SECONDS, CLOSED_SHOWN, DAYS_SHOWN, read_book
 from fidelity_gateway.bridge.host import BridgeHost
 from fidelity_gateway.bridge.notifications import Notifications
 from fidelity_gateway.tests.test_bridge_host import Clock, _fidelity, _make_server
@@ -109,6 +109,37 @@ def test_today_counts_only_todays_sales_and_closed_lists_the_last_twenty(ledger)
         1.5,
     )
     assert book["today"] == {"realized": 37.5, "sales": 25, "buys": 0}
+
+
+def test_each_day_in_the_journal_has_its_totals_newest_first(ledger):
+    sale = {"side": "sell", "lot": "s", "qty": 1.0, "price": 220.0, "cost": 218.0}
+    fills = [
+        {**sale, "t": YESTERDAY, "pnl": 2.25},
+        {**sale, "t": YESTERDAY + 60, "pnl": -0.5},
+        {"t": YESTERDAY + 120, "side": "buy", "lot": "b1", "qty": 1.0, "price": 219.0},
+        {"t": NOW - 60, "side": "buy", "lot": "b2", "qty": 1.0, "price": 219.0},
+        {**sale, "t": NOW, "pnl": 1.0 / 3},
+        # Not a fill the totals count.
+        {"t": NOW, "side": "adjust", "qty": 1.0},
+    ]
+    book = _book(ledger, State(), Inbox(fills=fills))
+    assert book["days"] == [
+        {"date": "2026-11-03", "realized": 0.33, "sales": 1, "buys": 1},
+        {"date": "2026-11-02", "realized": 1.75, "sales": 2, "buys": 1},
+    ]
+    # Today's entry and `today` agree.
+    assert book["today"] == {"realized": 0.33, "sales": 1, "buys": 1}
+
+
+def test_days_stop_at_days_shown(ledger):
+    day = 24 * 3600
+    fills = [
+        {"t": NOW - i * day, "side": "buy", "lot": f"b{i}", "qty": 1.0, "price": 1.0}
+        for i in range(DAYS_SHOWN + 5)
+    ]
+    book = _book(ledger, State(), Inbox(fills=fills))
+    assert len(book["days"]) == DAYS_SHOWN
+    assert book["days"][0]["date"] == "2026-11-03"
 
 
 def test_the_last_price_falls_back_to_the_journal_bars(ledger):

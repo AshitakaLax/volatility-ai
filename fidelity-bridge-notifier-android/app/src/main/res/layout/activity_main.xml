@@ -28,6 +28,20 @@
             android:orientation="horizontal" />
     </HorizontalScrollView>
 
+    <!-- A newer app is out (UpdateChecker): MainActivity fills it. -->
+    <LinearLayout
+        android:id="@+id/update_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="12dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="8dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="4dp"
+        android:visibility="gone" />
+
     <FrameLayout
         android:id="@+id/screen"
         android:layout_width="match_parent"

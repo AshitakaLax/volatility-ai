@@ -65,6 +65,51 @@ keys must be usable with nobody there for notifications to keep arriving,
 so tying them to the owner's presence (a Keystore key needing
 authentication) was decided against.
 
+**App 0.3.0: easier to live with across several accounts.**
+- **End-of-day summary.** paper-ultimate makes about 220 fills a day, and
+  muting was all-or-nothing. With "Trades in one end-of-day summary" on, an
+  account's info-level trades stop buzzing, and one note sums up the day.
+  Warnings still come through, such as a sale below cost or a window that
+  needs a look. The app works the note out itself from the book, so the
+  protocol gains no kind and both listeners get it.
+  - **When:** 16:05 New York once the trader has stopped, or 20:05 if it is
+    trading after hours.
+  - **Waiting:** while the listener is out of reach, nothing is decided
+    before 20:05. A morning start therefore can't mark yesterday done before
+    the book arrives, which the emulator test caught.
+  - **Away for days:** the phone gets one note for the latest day that
+    traded.
+- **Profit history.** The book gains `days`, each journal day's totals
+  (`book.py`). The trader keeps only 10 sessions of fills, and the ledger
+  keeps no sale times, so the app keeps the longer history itself
+  (`History.kt`). It replaces its own figures with the listener's for the
+  days the listener still has, since those are complete. Home charts it over
+  2 weeks to a year.
+- **Notifications open where they are about.** Each one gets its own pending
+  intent (Android matches pending intents by request code, not by extras),
+  so a tap opens:
+  - a buy or sale on Lots, a sale on its recent sales;
+  - a problem on Activity;
+  - readiness on Home.
+  
+  Each has a Mute 1 h button (`Account.mutedUntil`), and a trade has a Lots
+  one. Android groups an app's notifications: tapping the collapsed group
+  opens the app as it was, and tapping one notification in the expanded
+  group opens its page.
+- **All accounts.** A page with every account at once. Real money and paper
+  are totalled apart and never summed. With more than one account, the app
+  opens on it.
+- **Freshness.** "Live", or "Last heard 4 minutes ago" when an account's
+  listener is out of reach, on Home and All accounts. It is kept across
+  restarts, and the page redraws every 30 seconds.
+- **Update check.** The app asks GitHub for the latest release twice a day
+  at most, and says once per version that a newer one is out. It downloads
+  nothing. A repository release need not change the app, so the release
+  APK is now named after the app's version as well as the tag
+  (`fidelity-bridge-notifier-0.3.0-v1.0.4.apk`), and `versionName` must go
+  up with every app change. Older APK names carry no version and are never
+  offered.
+
 Decided against: putting Alpaca keys on the phone and asking Alpaca
 directly. Alpaca's API keys can trade, which would end the app's promise
 that it only listens, and Alpaca knows positions, not the lots and targets
