@@ -13,11 +13,18 @@ android {
         applicationId = "io.github.ashitakalax.bridgenotifier"
         minSdk = 26
         targetSdk = 35
-        // Bump both with every change to the app: the update check compares
-        // versionName with the one the release's APK is named after.
-        versionCode = 3
-        versionName = "0.3.0"
-        // Where the update check looks for a newer APK (Updates in core).
+        // A release is named after its tag: the workflow sets
+        // BRIDGE_NOTIFIER_VERSION to it (v1.2.3), the app says 1.2.3 on its
+        // Connect page, and each release's code is higher than the last
+        // (1.2.3 is 10203). Any other build is a development one.
+        val release = providers.environmentVariable("BRIDGE_NOTIFIER_VERSION").orNull
+            ?.trim()?.removePrefix("v")
+            ?.takeIf { Regex("\\d{1,4}(\\.\\d{1,2}){0,2}").matches(it) }
+        val parts = release?.split('.')?.map { it.toInt() }.orEmpty()
+        versionCode = (parts.getOrElse(0) { 0 } * 10_000 + parts.getOrElse(1) { 0 } * 100 + parts.getOrElse(2) { 0 })
+            .coerceAtLeast(1)
+        versionName = release ?: "0.1.0-dev"
+        // Where the update check looks for a newer release (Updates in core).
         buildConfigField("String", "RELEASES_REPO", "\"AshitakaLax/volatility-ai\"")
     }
 

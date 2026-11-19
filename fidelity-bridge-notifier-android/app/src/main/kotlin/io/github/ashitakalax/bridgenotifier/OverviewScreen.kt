@@ -30,7 +30,7 @@ class OverviewScreen(
         val settings = ImageButton(ui.context).apply {
             setImageResource(R.drawable.ic_settings)
             imageTintList = ColorStateList.valueOf(ui.color(R.color.ink_soft))
-            background = ui.rounded(R.color.card, radius = 12, stroke = R.color.line)
+            background = ui.pressable(ui.rounded(R.color.card, radius = 12, stroke = R.color.line))
             contentDescription = ui.string(R.string.settings)
             setOnClickListener { go(Tab.CONNECT) }
         }
@@ -106,7 +106,7 @@ class OverviewScreen(
     private fun card(snapshot: MonitorState.Snapshot, account: Account): View {
         val look = BrokerLook.of(account.broker)
         val state = snapshot.stateOf(account.id)
-        val verdict = Verdict.of(ui, account, state)
+        val verdict = Verdict.of(ui, prefs, account, state)
         val (fresh, freshColor) = Verdict.freshness(ui, state, prefs.heardAt(account.id))
         val book = state.status.book
         val now = System.currentTimeMillis()
@@ -149,10 +149,8 @@ class OverviewScreen(
                     addView(figure(ui.string(R.string.overview_trades), book?.let { ui.string(R.string.overview_trades_value, it.buysToday, it.salesToday) }, null))
                 },
             )
-            isClickable = true
-            isFocusable = true
             contentDescription = ui.string(R.string.overview_open, account.name)
-            setOnClickListener { open(account) }
+            ui.tappable(this) { open(account) }
         }
     }
 

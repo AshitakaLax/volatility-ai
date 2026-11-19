@@ -14,13 +14,28 @@ object MonitorState {
     // As many as a listener keeps for a replay: the Activity page's history.
     const val RECENT = 200
 
+    /** Whether the phone itself is somewhere an account's listener can be reached from. */
+    enum class Phone {
+        ONLINE,
+
+        /** No network at all. */
+        OFFLINE,
+
+        /** On mobile data alone, and the listener is at an address only its own network reaches. */
+        AWAY,
+    }
+
     /** One account's connection and what it said. */
     data class AccountState(
         val link: BridgeClient.Link = BridgeClient.Link.Idle,
         val status: BridgeStatus = BridgeStatus.UNKNOWN,
+        /** When [status] arrived, by the phone's clock; null before the first. */
+        val statusAt: Long? = null,
         val recent: List<Notification> = emptyList(),
         /** When its listener was last heard (epoch milliseconds), in this run of the app. */
         val heardAt: Long? = null,
+        /** Whether the phone can be where this account's listener is. */
+        val phone: Phone = Phone.ONLINE,
     )
 
     data class Snapshot(
@@ -39,6 +54,8 @@ object MonitorState {
         val link: BridgeClient.Link get() = current.link
         val status: BridgeStatus get() = current.status
         val recent: List<Notification> get() = current.recent
+        val statusAt: Long? get() = current.statusAt
+        val phone: Phone get() = current.phone
     }
 
     var snapshot = Snapshot()

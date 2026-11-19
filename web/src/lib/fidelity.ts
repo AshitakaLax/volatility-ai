@@ -158,6 +158,38 @@ export function verdict(d: DeploymentSummary, now: number): Verdict {
   };
 }
 
+// The last half hour of a sign-in is worth a second look.
+const SIGN_IN_ENDING_S = 30 * 60;
+
+/**
+ * How long the Fidelity sign-in has left: "Signed in until 18:52 ET · 3 h 10
+ * min left". Fidelity ends a browser session about ten and a half hours
+ * after it began whatever happens in it (fidelity_gateway/bridge/signin.py),
+ * so this is the one clock that decides whether the afternoon is covered.
+ * null when the tab is not signed in, or the host did not see it begin.
+ */
+export function signInLine(
+  bridge: BridgeStatus | null | undefined,
+  now: number,
+): { text: string; tone: Tone } | null {
+  const expires = bridge?.sign_in?.expires;
+  if (!bridge || bridge.stale || !expires) return null;
+  if (bridge.connection.fidelity_tab?.state !== "signed_in") return null;
+  const at = Date.parse(expires);
+  if (Number.isNaN(at)) return null;
+  const left = (at - now) / 1000;
+  if (left <= 0) {
+    return {
+      text: `Fidelity was expected to end this sign-in at ${sessionTime(expires, now)}; sign in again`,
+      tone: "stuck",
+    };
+  }
+  return {
+    text: `Signed in until ${sessionTime(expires, now)} · ${duration(left)} left`,
+    tone: left < SIGN_IN_ENDING_S ? "stuck" : "neutral",
+  };
+}
+
 function capital(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

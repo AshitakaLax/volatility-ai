@@ -12,7 +12,7 @@ import {
   fidelityChip,
   rememberedOperator,
 } from "@/lib/control";
-import { ago, attachedWords, chain, goneFor, verdict } from "@/lib/fidelity";
+import { ago, attachedWords, chain, goneFor, signInLine, verdict } from "@/lib/fidelity";
 import { cn, usd } from "@/lib/utils";
 import type { DeploymentDetail, DeploymentSummary } from "@/types/control";
 
@@ -58,9 +58,10 @@ export function FidelityPanel({
   const now = useNow(1000);
   const bridge = deployment.bridge;
   const summary = verdict(deployment, now);
+  const signIn = signInLine(bridge, now);
 
   return (
-    <Card className="border-loss/40">
+    <Card className={summary.tone === "loss" ? "border-loss/40" : undefined}>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle className="flex items-center gap-2">
           <PlugZap className="size-4" />
@@ -71,6 +72,15 @@ export function FidelityPanel({
           <Badge tone={summary.tone} title={summary.detail}>
             {summary.label}
           </Badge>
+          {signIn ? (
+            <Badge
+              tone={signIn.tone}
+              data-testid="sign-in-clock"
+              title="Fidelity ends a browser session about ten and a half hours after sign-in, whatever happens in it"
+            >
+              {signIn.text}
+            </Badge>
+          ) : null}
           {bridge && !deployment.setup ? (
             <CheckNow deployment={deployment} onSent={onSent} />
           ) : null}

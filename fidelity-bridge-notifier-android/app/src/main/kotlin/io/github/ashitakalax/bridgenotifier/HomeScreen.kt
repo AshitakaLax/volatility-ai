@@ -1,6 +1,7 @@
 package io.github.ashitakalax.bridgenotifier
 
 import android.content.res.ColorStateList
+import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -20,6 +21,11 @@ interface Screen {
     val view: View
 
     fun render(snapshot: MonitorState.Snapshot)
+
+    /** What the page was showing, for when the activity is rebuilt (turned, the phone gone dark). */
+    fun save(state: Bundle) {}
+
+    fun restore(state: Bundle) {}
 }
 
 /**
@@ -57,7 +63,7 @@ class HomeScreen(
         val settings = ImageButton(ui.context).apply {
             setImageResource(R.drawable.ic_settings)
             imageTintList = ColorStateList.valueOf(ui.color(R.color.ink_soft))
-            background = ui.rounded(R.color.card, radius = 12, stroke = R.color.line)
+            background = ui.pressable(ui.rounded(R.color.card, radius = 12, stroke = R.color.line))
             contentDescription = ui.string(R.string.settings)
             setOnClickListener { go(Tab.CONNECT) }
         }
@@ -80,6 +86,14 @@ class HomeScreen(
         chart.onPick = { day -> picked.text = pickedLine(day) }
     }
 
+    override fun save(state: Bundle) {
+        state.putString(SPAN, span.name)
+    }
+
+    override fun restore(state: Bundle) {
+        span = Span.entries.firstOrNull { it.name == state.getString(SPAN) } ?: span
+    }
+
     override fun render(snapshot: MonitorState.Snapshot) {
         val status = snapshot.status
         val host = status.bridge
@@ -100,21 +114,17 @@ class HomeScreen(
                 ui.card(padding = 12, gap = 0).apply {
                     setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(4))
                     host.items.forEachIndexed { index, item ->
-                        val (mark, fill) = if (!connected) {
-                            "?" to R.color.status_idle
-                        } else {
-                            when (item.state) {
-                                "ok" -> "✓" to R.color.status_ok
-                                "warn" -> "!" to R.color.status_warn
-                                "fail" -> "✗" to R.color.status_bad
-                                else -> "?" to R.color.status_idle
-                            }
+                        val (mark, fill, said) = when (if (connected) item.state else "unknown") {
+                            "ok" -> Triple("✓", R.color.status_ok_fill, R.string.mark_ok)
+                            "warn" -> Triple("!", R.color.status_warn_fill, R.string.mark_warn)
+                            "fail" -> Triple("✗", R.color.status_bad_fill, R.string.mark_fail)
+                            else -> Triple("?", R.color.status_idle_fill, R.string.mark_unknown)
                         }
                         addView(
                             ui.row(gap = 12).apply {
                                 minimumHeight = ui.dp(48)
                                 setPadding(0, ui.dp(6), 0, ui.dp(6))
-                                addView(ui.mark(mark, fill))
+                                addView(ui.mark(mark, fill, ui.string(said)))
                                 addView(
                                     ui.grow(
                                         ui.column().apply {
@@ -208,7 +218,13 @@ class HomeScreen(
 
     /** "Tue Nov 3: +$8.72 · 4 sales, 7 buys". */
     private fun pickedLine(day: DayFigures?): String = day?.let {
-        ui.string(R.string.history_picked, dayFormat.format(it.date), Format.signedMoney(it.realized), it.sales, it.buys)
+        ui.string(
+            R.string.history_picked,
+            dayFormat.format(it.date),
+            Format.signedMoney(it.realized),
+            ui.context.resources.getQuantityString(R.plurals.summary_sales, it.sales, it.sales),
+            ui.context.resources.getQuantityString(R.plurals.summary_buys, it.buys, it.buys),
+        )
     }.orEmpty()
 
     /** "Alpaca · Ultimate (paper) · TQQQ", "Fidelity · RSP". */
@@ -219,15 +235,22 @@ class HomeScreen(
     }
 
     private fun hero(snapshot: MonitorState.Snapshot): View {
-        val link = snapshot.link
-        val hero = Verdict.of(ui, snapshot.account, snapshot.stateOf(snapshot.account?.id))
+        val hero = Verdict.of(ui, prefs, snapshot.account, snapshot.stateOf(snapshot.account?.id))
         return ui.column(gap = 6).apply {
             background = ui.rounded(hero.fill, radius = 16)
             setPadding(ui.dp(18), ui.dp(18), ui.dp(18), ui.dp(18))
-            addView(ui.text(hero.tag, size = 13f, color = R.color.card, bold = true).apply { isAllCaps = true; letterSpacing = 0.04f })
-            addView(ui.text(hero.title, size = 22f, color = R.color.card, bold = true))
-            if (hero.detail.isNotEmpty()) addView(ui.text(hero.detail, color = R.color.card))
-            if (link == BridgeClient.Link.Idle || link == BridgeClient.Link.Stopped) setOnClickListener { go(Tab.CONNECT) }
+            addView(ui.text(hero.tag, size = 13f, color = R.color.on_fill, bold = true).apply { isAllCaps = true; letterSpacing = 0.04f })
+            addView(ui.text(hero.title, size = 22f, color = R.color.on_fill, bold = true))
+            if (hero.detail.isNotEmpty()) addView(ui.text(hero.detail, color = R.color.on_fill))
+            when (hero.action) {
+                Verdict.Action.CONNECT -> ui.tappable(this) { go(Tab.CONNECT) }
+                Verdict.Action.RETRY -> ui.tappable(this) { MonitorService.retry(ui.context) }
+                Verdict.Action.WATCH -> ui.tappable(this) {
+                    prefs.monitoring = true
+                    MonitorService.start(ui.context)
+                }
+                null -> Unit
+            }
         }
     }
 
@@ -264,7 +287,7 @@ class HomeScreen(
                     }
                 },
             )
-            setOnClickListener { go(Tab.LOTS) }
+            ui.tappable(this) { go(Tab.LOTS) }
         }
     }
 
@@ -272,8 +295,8 @@ class HomeScreen(
         addView(ui.text(label, size = 12f, color = R.color.muted))
         addView(ui.text(value?.toString() ?: "—", size = 22f, mono = true))
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        isClickable = true
-        setOnClickListener { go(target) }
+        contentDescription = "$label: ${value ?: ui.string(R.string.unknown)}"
+        ui.tappable(this) { go(target) }
     }
 
     private fun session(snapshot: MonitorState.Snapshot): View {
@@ -283,8 +306,8 @@ class HomeScreen(
             "running" -> Triple("Running", R.color.status_ok, R.color.status_ok_soft)
             "paused" -> Triple("Paused", R.color.status_warn, R.color.status_warn_soft)
             "halted", "recovery_required" -> Triple("Halted", R.color.status_bad, R.color.status_bad_soft)
-            null -> Triple("Idle", R.color.status_offline, R.color.line)
-            else -> Triple(engine?.state.orEmpty().replace('_', ' ').replaceFirstChar(Char::uppercase), R.color.status_offline, R.color.line)
+            null -> Triple("Idle", R.color.ink_soft, R.color.line)
+            else -> Triple(engine?.state.orEmpty().replace('_', ' ').replaceFirstChar(Char::uppercase), R.color.ink_soft, R.color.line)
         }
         return ui.card(padding = 16, gap = 6).apply {
             addView(
@@ -328,8 +351,9 @@ class HomeScreen(
             addView(
                 ui.row(gap = 12).apply {
                     addView(
-                        ui.text(if (buy) "↑" else "↓", size = 16f, color = if (buy) R.color.primary_dark else R.color.status_ok, bold = true).apply {
+                        ui.text(if (buy) "↑" else "↓", size = 16f, color = if (buy) R.color.accent else R.color.status_ok, bold = true).apply {
                             gravity = Gravity.CENTER
+                            contentDescription = ui.string(if (buy) R.string.glyph_buy else R.string.glyph_sell)
                             background = ui.rounded(if (buy) R.color.accent_soft else R.color.status_ok_soft, radius = 10)
                         },
                         LinearLayout.LayoutParams(ui.dp(36), ui.dp(36)),
@@ -345,7 +369,7 @@ class HomeScreen(
                     addView(ui.text(ui.string(R.string.see_all), size = 13f, color = R.color.accent, bold = true), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
                 },
             )
-            setOnClickListener { go(Tab.ACTIVITY) }
+            ui.tappable(this) { go(Tab.ACTIVITY) }
         }
     }
 
@@ -364,4 +388,8 @@ class HomeScreen(
     }
 
     private fun ago(iso: String?): String = Format.ago(iso) ?: ui.string(R.string.unknown)
+
+    private companion object {
+        const val SPAN = "home_span"
+    }
 }

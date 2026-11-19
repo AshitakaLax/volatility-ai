@@ -10,21 +10,25 @@ import okhttp3.Request
 
 /**
  * Whether a newer app is out: the latest release on GitHub, and the APK
- * attached to it. The release workflow names that APK after the app's own
- * version (`fidelity-bridge-notifier-0.3.0-v1.0.4.apk`; `-debug` when no
- * signing key was set up), since a release of the repository need not
- * change the app. A release whose APK says no version is not taken for a
- * newer one.
+ * attached to it. A release's tag is the app's version (app/build.gradle.kts
+ * builds v1.2.3 as 1.2.3), so the tag is compared with the version
+ * installed. A release without the app's APK (`fidelity-bridge-notifier-…apk`)
+ * is not taken for one, nor is any release by a development build
+ * (`0.1.0-dev`), which has no release to be older than.
  *
  * It asks GitHub one thing, the latest release of a public repository: no
  * account, nothing about the phone but the app's name and version.
  */
 object Updates {
-    private val APK = Regex("""^fidelity-bridge-notifier-(\d+(?:\.\d+)*)(?:-.*?)?(-debug)?\.apk$""")
+    private val APK = Regex("""^fidelity-bridge-notifier-.+\.apk$""")
+    private val VERSION = Regex("""^v?(\d+(?:\.\d+)*)$""")
+
+    /** A build from no release: `0.1.0-dev`. */
+    fun isDevelopment(version: String): Boolean = version.endsWith("-dev")
 
     /** The latest release, as far as it matters here. */
     data class Release(
-        /** The app version its APK carries; null when its name does not say. */
+        /** The app version it carries (its tag, without the v); null when it has no APK or its tag is not a version. */
         val version: String?,
         val tag: String,
         /** The release's page, to open in a browser. */
@@ -32,8 +36,9 @@ object Updates {
         /** Only a debug APK: installing it means uninstalling the app first. */
         val debugOnly: Boolean,
     ) {
-        /** Whether this release has an app newer than [installed]. */
-        fun newerThan(installed: String): Boolean = version != null && compare(version, installed) > 0
+        /** Whether this release has an app newer than [installed]; never for a development build. */
+        fun newerThan(installed: String): Boolean =
+            version != null && !isDevelopment(installed) && compare(version, installed) > 0
     }
 
     fun latestUrl(repo: String): String = "https://api.github.com/repos/$repo/releases/latest"
@@ -45,10 +50,14 @@ object Updates {
         val page = obj.string("html_url") ?: return null
         val apks = (obj["assets"] as? JsonArray).orEmpty()
             .mapNotNull { (it as? JsonObject)?.string("name") }
-            .mapNotNull { name -> APK.matchEntire(name)?.let { it.groupValues[1] to (it.groupValues[2].isNotEmpty()) } }
-        val signed = apks.firstOrNull { (_, debug) -> !debug }
-        val chosen = signed ?: apks.firstOrNull()
-        return Release(version = chosen?.first, tag = tag, page = page, debugOnly = chosen != null && signed == null)
+            .filter { APK.matches(it) }
+        val version = VERSION.matchEntire(tag)?.groupValues?.get(1)?.takeIf { apks.isNotEmpty() }
+        return Release(
+            version = version,
+            tag = tag,
+            page = page,
+            debugOnly = apks.isNotEmpty() && apks.all { it.endsWith("-debug.apk") },
+        )
     }
 
     /** 0.10.0 after 0.9.2: numbers compared one by one, a missing one as 0. */

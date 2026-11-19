@@ -31,6 +31,8 @@
     <string name="key_label">App key</string>
     <string name="key_hint">The listener\'s app key</string>
     <string name="key_help">On the listener\'s computer, run python -m fidelity_gateway.bridge keygen --notify (Fidelity) or keygen --notifier (Alpaca) and paste the key it prints. Never the extension\'s key.</string>
+    <string name="paste_key">Paste</string>
+    <string name="paste_empty">Nothing to paste. Copy the key first.</string>
     <string name="show_key">Show key</string>
     <string name="hide_key">Hide key</string>
     <string name="check_header">Connection check</string>
@@ -86,11 +88,31 @@
     <string name="update_body_reinstall">You have %1$s. One of the two is a debug build, so Android installs the new one only after this app is uninstalled, which forgets its accounts and keys.</string>
     <string name="update_get">Get it</string>
     <string name="update_dismiss">Close</string>
+    <string name="group_app">This app</string>
+    <string name="watching">Watch your accounts</string>
+    <string name="watching_on">On: the app keeps its connections open and shows what each listener says, with the screen off too.</string>
+    <string name="watching_off">Off: nothing is shown or announced until this is on again.</string>
+    <string name="watching_unset">Enter an account\'s address and key, then Save and connect.</string>
+    <string name="notifications_turn_on">Turn notifications on</string>
+    <string name="battery_restricted">Android may delay or stop this app\'s connections to save battery, so alerts can arrive late.</string>
+    <string name="battery_allow">Let it run in the background</string>
+    <string name="settings_unavailable">This phone does not offer that setting here. Look under Settings, Apps, Bridge Notifier.</string>
+    <string name="test_asked">Asked %1$s for a test notification.</string>
+    <string name="test_not_connected">Not connected to %1$s, so no test can be sent. Save and connect first.</string>
+    <string name="mark_ok">OK</string>
+    <string name="mark_warn">Warning</string>
+    <string name="mark_fail">Failed</string>
+    <string name="mark_unknown">Not known</string>
+    <string name="mark_step">Step %1$s, not done yet</string>
+    <string name="glyph_buy">Buy</string>
+    <string name="glyph_sell">Sell</string>
+    <string name="glyph_critical">Critical</string>
+    <string name="glyph_warning">Warning</string>
+    <string name="glyph_info">Information</string>
     <string name="plaintext_warning">ws:// is not encrypted. Messages are signed, so they cannot be forged, but anyone on this network can read them. From outside your home network, reach the bridge over a VPN (WireGuard, Tailscale). Never open its port to the internet.</string>
-    <string name="notifications_off">Notifications are off for this app, so nothing will be shown. Turn them on in the system settings.</string>
+    <string name="notifications_off">Notifications are off for this app, so nothing will be shown.</string>
     <string name="send_test">Send test</string>
     <string name="save_and_watch">Save and connect</string>
-    <string name="stop_watching">Stop watching</string>
     <string name="error_address">Not an address. Try 192.168.1.10, my-server.lan:8766 or ws://host:8766/notifications.</string>
     <string name="error_key">Keys are 32 to 256 letters, digits or ._~+/=- with no spaces.</string>
 
@@ -105,6 +127,17 @@
     <string name="hero_offline_tag">No connection</string>
     <string name="hero_offline_title">Can\'t reach %1$s</string>
     <string name="hero_refused_title">The listener refused the key</string>
+    <string name="hero_refused_detail">%1$s Tap to check the address and key.</string>
+    <string name="hero_retry_detail">%1$s. Tap to try again now.</string>
+    <string name="hero_phone_offline_tag">Phone offline</string>
+    <string name="hero_phone_offline_title">This phone has no network</string>
+    <string name="hero_phone_offline_detail">What the listener says meanwhile follows when the phone is back online. Tap to try again now.</string>
+    <string name="hero_phone_away_tag">Away</string>
+    <string name="hero_phone_away_title">Off the listener\'s network</string>
+    <string name="hero_phone_away_detail">On mobile data alone the phone cannot reach %1$s. Join its Wi-Fi or turn on your VPN; what it says meanwhile follows then.</string>
+    <string name="hero_unwatched_title">Watching is off</string>
+    <string name="hero_unwatched_detail">Nothing is shown or announced until it is on. Tap to start watching again.</string>
+    <string name="stale">Not live: as last said at %1$s.</string>
     <string name="hero_connecting_tag">Connecting</string>
     <string name="hero_connecting_title">Reaching %1$s…</string>
     <string name="hero_restarting_title">%1$s is restarting</string>
@@ -167,7 +200,7 @@
         <item quantity="other">realised over %1$d trading days</item>
     </plurals>
     <string name="history_best_worst">Best %1$s (%2$s) · worst %3$s (%4$s)</string>
-    <string name="history_picked">%1$s: %2$s · %3$d sales, %4$d buys</string>
+    <string name="history_picked">%1$s: %2$s · %3$s, %4$s</string>
     <string name="history_description">Profit by day: %1$d trading days, %2$s in all</string>
     <string name="history_empty">No trades in this span yet.</string>
     <string name="history_kept">Kept on this phone from what the listener sends. The listener itself reaches back 10 trading days, so the history grows from when this version started listening.</string>
@@ -236,6 +269,10 @@
     <string name="monitor_starting">Starting…</string>
     <string name="monitor_connecting">Connecting to %1$s…</string>
     <string name="monitor_connected">Connected to %1$s</string>
+    <string name="monitor_ready">Ready to trade</string>
+    <string name="monitor_not_ready">Not ready: %1$s</string>
+    <string name="monitor_phone_offline">This phone is offline; what your accounts say follows when it is back</string>
+    <string name="monitor_phone_away">Off your listeners\' network: join its Wi-Fi or turn on your VPN</string>
     <string name="monitor_waiting">%1$s unreachable: %2$s</string>
     <string name="monitor_bridge_restarting">%1$s is restarting; reconnecting</string>
     <string name="monitor_refused">not watching: the key was refused</string>

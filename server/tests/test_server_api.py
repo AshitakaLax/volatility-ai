@@ -2066,6 +2066,62 @@ class TestWhatTheTraderReports:
         too_many = client.get("/api/live/deployments/test-paper/bars", params={"sessions": 99})
         assert too_many.status_code == 422
 
+    def test_a_poll_asks_only_for_the_fills_and_orders_after_what_it_has(
+        self, client, store, tmp_path
+    ):
+        import time
+
+        inbox = self._inbox(tmp_path)
+        now = time.time()
+        for t in (now - 30, now - 20, now - 10):
+            inbox.record_fill({"t": t, "side": "buy", "lot": "a", "qty": 1.0, "price": 1.5})
+            inbox.record_order({"t": t, "order": "o", "event": "placed"})
+        for journal in ("fills", "orders"):
+            url = f"/api/live/deployments/test-paper/{journal}"
+            assert len(client.get(url).json()) == 3
+            newer = client.get(url, params={"since": now - 20}).json()
+            assert [row["t"] for row in newer] == [now - 10]
+            assert client.get(url, params={"since": now}).json() == []
+
+    def test_the_tracking_record_is_served_session_by_session(
+        self, client, store, tmp_path, monkeypatch
+    ):
+        """What tools/track_live.py stored, slimmed to what the Live page
+        draws; nothing stored is an empty record, not an error."""
+        import json
+
+        monkeypatch.setenv("VAI_TRACKING_DIR", str(tmp_path / "tracking"))
+        empty = client.get("/api/live/deployments/test-paper/tracking").json()
+        assert empty == {"sessions": [], "updated_at": None}
+
+        folder = tmp_path / "tracking" / "test-paper"
+        folder.mkdir(parents=True)
+        rows = [
+            {
+                "session": "2026-11-11",
+                "availability": {"status": "traded"},
+                "activity": {"buys": 2, "sells": 1, "realized_pnl": 4.5, "orders_placed": 4},
+                "execution": {"fill_share": 0.75, "live_bps": 1.2, "model_bps": 2.0},
+                "orders": [{"qty": 1}],
+                "shadow": {"buys": 3, "sells": 2, "realized_pnl": 6.0, "return_pct": 0.1},
+                "bridge_not_ready_regular": {"minutes": 13.0, "share": 0.03},
+            },
+            {"session": "2026-11-10", "availability": {"status": "missed"}, "activity": {}},
+        ]
+        text = "".join(json.dumps(row) + "\n" for row in rows) + "not json\n"
+        (folder / "sessions.jsonl").write_text(text, encoding="utf-8")
+        out = client.get("/api/live/deployments/test-paper/tracking").json()
+        first, second = out["sessions"]
+        assert [first["session"], second["session"]] == ["2026-11-10", "2026-11-11"]
+        assert first["status"] == "missed" and first["shadow"] is None and first["buys"] == 0
+        assert second["realized_pnl"] == 4.5 and second["fill_share"] == 0.75
+        assert second["shadow"]["realized_pnl"] == 6.0 and second["not_ready_minutes"] == 13.0
+        assert "orders" not in second, "each order's detail stays in the tool's own record"
+        assert out["updated_at"] is not None
+        last = client.get("/api/live/deployments/test-paper/tracking", params={"sessions": 1})
+        assert [row["session"] for row in last.json()["sessions"]] == ["2026-11-11"]
+        assert client.get("/api/live/deployments/nope/tracking").status_code == 404
+
     def test_each_orders_life_comes_from_its_journal(self, client, store, tmp_path):
         """The proof a limit order outside the regular session filled or did
         not: each moment of its life, as the trader wrote it."""

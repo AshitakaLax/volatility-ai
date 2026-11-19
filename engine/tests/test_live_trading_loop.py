@@ -505,6 +505,59 @@ def test_a_sell_below_cost_basis_is_never_booked(store):
     assert len(loop.ledger.open_lots) == 1, "the lot must stay open"
 
 
+def test_a_sale_the_guard_refuses_to_book_is_an_incident_for_the_paper_trial(store):
+    """What engine/promotion_record.py counts as a no-loss violation: told to
+    the incident listener with the order and lot, and nothing else is."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    incidents = []
+    loop = _loop_with_an_open_lot(store, broker, market, buy_price=98.0, qty=10.0)
+    loop.set_listeners(incident=incidents.append)
+    lot = loop.ledger.open_lots[0]
+    market.push(lot.target_sell_price + 1.0, ts=BASE_TS + timedelta(minutes=3))
+    loop.run_once()
+    assert incidents == [], "an ordinary sell is no incident"
+    _, qty, _, sell_cid = broker.sells[0]
+    broker.fill(sell_cid, qty=qty, price=50.0)
+    market.push(lot.target_sell_price + 1.0, ts=BASE_TS + timedelta(minutes=4))
+    loop.run_once()
+
+    (incident,) = incidents
+    assert incident["kind"] == "no_loss_violations"
+    assert (incident["order"], incident["lot"]) == (sell_cid, lot.order_id)
+    assert isinstance(incident["t"], float) and incident["detail"]
+
+
+def test_a_decision_an_earlier_process_claimed_but_never_confirmed_is_an_incident(store):
+    """The crash between the guard's claim and the broker's answer: whether
+    an order exists is unknown. The guard refuses to send it again, and the
+    paper trial counts it as a duplicate-order incident -- once."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    incidents = []
+    market.push(100.0)
+    loop = make_loop(store, broker, market, incident_listener=incidents.append)
+    loop.run_once()
+    buy_at = BASE_TS + timedelta(minutes=1)
+    claimed = loop._decision_id("BUY", buy_at)
+    store.record_processed_event(claimed, "buy_submission")  # the earlier process's claim
+    market.push(98.0, ts=buy_at)
+    loop.run_once()
+    loop.run_once()  # the same bar read again
+
+    assert broker.buys == [], "the guard never sends it again"
+    (incident,) = incidents
+    assert incident["kind"] == "duplicate_order_incidents" and incident["order"] == claimed
+
+
+def test_a_failing_incident_listener_never_stops_a_tick(store):
+    def broken(_incident):
+        raise RuntimeError("journal unavailable")
+
+    loop = make_loop(store, incident_listener=broken)
+    loop._report_incident("no_loss_violations", "test")  # logged, not raised
+
+
 def test_a_halt_never_liquidates(store):
     """A halt stops trading; it does not unwind the book.
 
@@ -822,6 +875,113 @@ def test_in_flight_settled_reports_outstanding_orders(store):
     market.push(98.0, ts=BASE_TS + timedelta(minutes=1))
     loop.run_once()
     assert loop.in_flight_settled() is False, "a submitted order is still in flight"
+
+
+# --- a buy the session's last tick placed (2026-11-16) ---
+#
+# The last tick placed a buy and the loop stopped; Alpaca filled it 3 s
+# later. The shutdown read only its own table, so it halted; the next
+# startup compared share totals, saw shares nobody had booked, and halted
+# again, every start.
+
+
+def _last_tick_buys(store):
+    """A first buy filled and booked, then a second placed by the last tick."""
+    broker = FakeBroker()
+    market = FakeMarketData()
+    market.push(100.0)
+    loop = make_loop(store, broker, market)
+    loop.run_once()
+    market.push(98.0, ts=BASE_TS + timedelta(minutes=1))
+    loop.run_once()
+    first = broker.buys[0][2]
+    broker.fill(first, 51.0, 98.0)
+    market.push(96.0, ts=BASE_TS + timedelta(minutes=2))
+    loop.run_once()
+    assert len(broker.buys) == 2 and len(loop.ledger.open_lots) == 1
+    return loop, broker, market, broker.buys[1][2]
+
+
+def test_the_shutdown_asks_the_broker_about_a_buy_still_in_flight(store, monkeypatch):
+    """On a regular-session deployment too: no venue calendar."""
+    loop, broker, _, last = _last_tick_buys(store)
+    assert loop.calendar is None
+    assert loop.settle_in_flight() is False, "not filled yet"
+
+    broker.fill(last, 52.0, 96.0)
+    import engine.trading.live_trading_loop as module
+
+    later = module.time.monotonic() + 10
+    monkeypatch.setattr(module.time, "monotonic", lambda: later)
+    assert loop.settle_in_flight() is True
+    assert sum(lot.shares for lot in loop.ledger.open_lots) == pytest.approx(103.0)
+    assert loop.state.cash == pytest.approx(100_000.0 - 51.0 * 98.0 - 52.0 * 96.0)
+
+
+def _snapshot(broker, position):
+    from engine.execution.order_lifecycle import map_broker_status
+    from engine.execution.reconciliation import BrokerSnapshot
+
+    return BrokerSnapshot(
+        positions={"TQQQ": position},
+        orders={
+            cid: {
+                "state": map_broker_status(order.status),
+                "filled_qty": order.filled_qty,
+                "avg_fill_price": order.filled_avg_price,
+                "symbol": "TQQQ",
+            }
+            for cid, order in broker.orders.items()
+        },
+    )
+
+
+def test_startup_recognises_a_fill_confirmed_after_the_last_process_stopped(store):
+    from engine.execution.reconciliation import Reconciler
+    from engine.trading.live_trading_loop import in_flight_orders
+
+    loop, broker, market, last = _last_tick_buys(store)
+    loop.persist_state()  # the shutdown stopped without settling
+    broker.fill(last, 52.0, 96.0)
+    snapshot = _snapshot(broker, 103.0)
+
+    before = Reconciler(store).reconcile(snapshot)
+    assert not before.ready, "share totals alone cannot explain the unbooked fill"
+    assert "POSITION_MISMATCH" in before.diagnostic()
+
+    orders = in_flight_orders(store, "TQQQ")
+    assert set(orders) == {last} and orders[last].side == "buy"
+    report = Reconciler(store).reconcile(snapshot, local_orders=orders)
+    assert report.ready, report.diagnostic()
+
+    # The next process books it from the broker before it decides anything.
+    restarted = make_loop(store, broker, market)
+    outcome = restarted.run_once()
+    assert outcome.fills_applied == 1
+    assert sum(lot.shares for lot in restarted.ledger.open_lots) == pytest.approx(103.0)
+    assert restarted.state.open_orders == {}
+
+
+def test_startup_still_halts_on_shares_the_in_flight_fill_does_not_explain(store):
+    from engine.execution.reconciliation import Reconciler
+    from engine.trading.live_trading_loop import in_flight_orders
+
+    loop, broker, _, last = _last_tick_buys(store)
+    loop.persist_state()
+    broker.fill(last, 52.0, 96.0)
+    report = Reconciler(store).reconcile(
+        _snapshot(broker, 104.0), local_orders=in_flight_orders(store, "TQQQ")
+    )
+    assert not report.ready
+    assert "POSITION_MISMATCH" in report.diagnostic()
+
+
+def test_no_in_flight_orders_when_none_were_kept(store):
+    from engine.trading.live_trading_loop import in_flight_orders
+
+    assert in_flight_orders(store, "TQQQ") == {}
+    store.set_meta("live.open_orders", "not json")
+    assert in_flight_orders(store, "TQQQ") == {}, "the loop refuses that state itself"
 
 
 # --- signal exits, end to end through the live loop ---

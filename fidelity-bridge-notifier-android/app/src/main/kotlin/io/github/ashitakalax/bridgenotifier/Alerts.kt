@@ -164,7 +164,7 @@ object Alerts {
         CHANNEL_WARNINGS,
         context.getString(R.string.link_lost_title),
         context.getString(R.string.link_lost_body, reason),
-        context.getColor(R.color.status_bad),
+        context.getColor(R.color.status_bad_fill),
     )
 
     /** ...and is back. Replaces the one above. */
@@ -174,7 +174,7 @@ object Alerts {
         CHANNEL_BRIDGE,
         context.getString(R.string.link_back_title),
         context.getString(R.string.link_back_body),
-        context.getColor(R.color.status_ok),
+        context.getColor(R.color.status_ok_fill),
     )
 
     /** The listener refused the key, or is not one: nothing more will come from it. */
@@ -184,7 +184,7 @@ object Alerts {
         CHANNEL_WARNINGS,
         context.getString(R.string.link_refused_title),
         reason,
-        context.getColor(R.color.status_bad),
+        context.getColor(R.color.status_bad_fill),
     )
 
     private fun linkNotice(context: Context, account: Account, channel: String, title: String, body: String, color: Int) {
@@ -295,8 +295,8 @@ object Alerts {
     }
 
     private fun color(context: Context, severity: Severity): Int? = when (severity) {
-        Severity.CRITICAL -> context.getColor(R.color.status_bad)
-        Severity.WARNING -> context.getColor(R.color.status_warn)
+        Severity.CRITICAL -> context.getColor(R.color.status_bad_fill)
+        Severity.WARNING -> context.getColor(R.color.status_warn_fill)
         Severity.INFO -> null
     }
 

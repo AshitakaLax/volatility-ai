@@ -13,7 +13,7 @@ data class BrokerLook(val ground: Int, val strong: Int, val onStrong: Int) {
         fun of(broker: Broker?): BrokerLook = when (broker) {
             Broker.ALPACA -> BrokerLook(R.color.alpaca_ground, R.color.alpaca_strong, R.color.alpaca_on_strong)
             Broker.FIDELITY -> BrokerLook(R.color.fidelity_ground, R.color.fidelity_strong, R.color.fidelity_on_strong)
-            Broker.OTHER, null -> BrokerLook(R.color.ground, R.color.accent, R.color.card)
+            Broker.OTHER, null -> BrokerLook(R.color.ground, R.color.accent_fill, R.color.on_fill)
         }
     }
 }

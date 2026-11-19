@@ -38,10 +38,11 @@ Four pages, each for the account shown. With more than one account, a chip
 per account over the page switches between them, and an **All** chip opens
 the fifth.
 
-- **Connect**, at start-up (switch that off on the page): your accounts, each
+- **Connect**, until an account is set (or at every start, if switched on
+  there): your accounts, each
   a listener's address and key; a three-step check that the one selected
-  works (reachable, key accepted, a test notification received); and what to
-  be told about.
+  works (reachable, key accepted, a test notification received); the switch
+  that starts and stops watching; and what to be told about.
 - **All accounts**, with more than one (where the app opens once set up):
   today's realised profit, open lots and trades, real money and paper totalled
   apart, never added together; then a card each with its state, whether that
@@ -50,7 +51,7 @@ the fifth.
   readiness checklist link by link; for Alpaca, what its trader says it is
   doing (trading, buys paused, waiting for the open, not reporting) -- and
   **Live**, or **Last heard 12 minutes ago** when its listener is out of
-  reach. Then today's realised profit and the open lots' unrealised figure,
+  reach (tap the top card to try again now). Then today's realised profit and the open lots' unrealised figure,
   the day's buys and sales, the **profit history** (each trading day's
   realised profit as a bar, over 2 weeks, a month, 3 months or a year, with
   the total and the best and worst days; touch a bar for its day), the
@@ -58,7 +59,15 @@ the fifth.
 - **Lots**: the open lots, each with where it sells and how far it has to go,
   or the last 20 sales with what each made.
 - **Activity**: the last 200 notifications, filtered to trades, problems or
-  the connection.
+  the connection. Kept on the phone, so it is still there after Android
+  restarts the app. Tapping a notification opens this page.
+- **Connect**, behind the gear on Home (and the first page until the bridge
+  is set): the bridge's address and key, a three-step check that they work
+  (reachable, key accepted, a test notification received), the **Watch the
+  bridge** switch, whether Android will let the alerts through, and what to
+  be told about. The app's version is at the bottom.
+
+It follows the phone's light or dark theme, and its 12- or 24-hour clock.
 
 Lots and today's profit come from the listener's `book` (PROTOCOL.md); a bridge
 older than that shows the other pages as before. The listener reaches back 10
@@ -168,8 +177,10 @@ In the app, for each account:
    notifier, `192.168.1.10:8767` is its first deployment, and
    `192.168.1.10:8767/notifications/live` another. Full `ws://` or `wss://`
    URLs work too.
-2. Paste the key that `keygen --notify` (Fidelity) or `keygen --notifier`
-   (Alpaca) printed.
+2. Copy the key that `keygen --notify` (Fidelity) or `keygen --notifier`
+   (Alpaca) printed and tap **Paste**. The whole `.env` line
+   (`FIDELITY_BRIDGE_NOTIFY_KEY=…`) works too: the name, quotes and spaces
+   around the key are dropped.
 3. Tap **Save and connect**. Allow notifications when asked.
 4. Tap **Send test** to check the whole path.
 5. **Add an account** for the next one. Tap an account in the list to edit
@@ -180,13 +191,16 @@ connects; until then, one on port 8767 is taken to be Alpaca. An app that
 was set up with one bridge before keeps it, as its first account.
 
 Under **Notify me about**, choose which kinds the account being edited
-turns into notifications; each account has its own, so switching off an
+turns into notifications, grouped as the Activity page filters them; each
+account has its own, so switching off an
 Alpaca paper deployment's buys and sells leaves Fidelity's alone. **Mute**
 an account to keep the phone quiet about it entirely, its link alerts
 included. Everything still shows on its Activity page, and a test you send
 still arrives. A notification's **Mute 1 h** does the same for an hour; the
 Connect page says until when, and a tap there ends it. The listener's own
-`events` setting decides what is sent at all.
+`events` setting decides what is sent at all. If notifications are off for
+the app, or Android may delay its connections to save battery, the card says
+so with a button that opens the setting.
 
 **Trades in one end-of-day summary** is for a busy account (a paper
 deployment that trades hundreds of times a day): its buys, sales, orders and
@@ -200,10 +214,10 @@ reach, and a phone away for days gets one note for the latest day that
 traded.
 
 The app keeps a quiet ongoing notification while it watches. Android needs
-one to keep the connection open with the screen off. It starts again after a
-reboot if it was watching before. If notifications arrive late, exempt the
-app from battery optimisation (Settings → Apps → Bridge Notifier → Battery →
-Unrestricted).
+one to keep the connection open with the screen off. Once connected it says
+whether the bridge is ready to trade, or what is in the way. It starts again
+after a reboot if it was watching before. **Watch the bridge** on the Connect
+page turns watching off and on.
 
 ### What to expect
 
@@ -219,7 +233,12 @@ Unrestricted).
   account notifies about) is shown, headed "and 4 more while away"; every
   one is on the Activity page.
 - **The first time it connects,** what the bridge already kept goes into
-  the Recent list but is not announced.
+  the Activity page but is not announced.
+- **Away from home is not an alarm.** With no network, or on mobile data
+  alone when a listener is at a home-network address (`192.168.…`,
+  `server.lan`), the app says the phone is off that listener's network
+  instead of warning that it is out of reach. Back on its Wi-Fi or a VPN, the
+  listener has its two minutes again before that warning.
 - **A newer version is announced once:** the app asks GitHub for the latest
   release twice a day at most (switch that off on the Connect page, which also
   shows the version you have and checks on demand). A notification and a
@@ -261,7 +280,7 @@ Unrestricted).
 | `core/src/main/.../History.kt` | Each account's profit day by day: the listener's `days` merged into what the app kept. |
 | `core/src/main/.../DailySummary.kt` | When an account's end-of-day note is due, and for which day. |
 | `core/src/main/.../Updates.kt` | The latest release on GitHub, and whether its APK is a newer app. |
-| `app/` | The Android app: a foreground service (`MonitorService.kt`) holding one `BridgeClient` per account, the phone's notifications (`Alerts.kt`), settings (`Prefs.kt`), each broker's colours (`BrokerLook.kt`), the lock (`LockGate.kt`: BiometricPrompt on Android 10+, the screen-lock check before), a notification's Mute 1 h (`AlertActions.kt`), the update check (`UpdateChecker.kt`), the history chart (`HistoryChart.kt`) and one screen (`MainActivity.kt`) with five pages (`OverviewScreen.kt` is All accounts). Plain framework views; no AndroidX. |
+| `app/` | The Android app: a foreground service (`MonitorService.kt`) holding one `BridgeClient` per account, the phone's notifications (`Alerts.kt`), settings (`Prefs.kt`), each account's Activity list on disk (`Recents.kt`), each broker's colours (`BrokerLook.kt`), the lock (`LockGate.kt`: BiometricPrompt on Android 10+, the screen-lock check before), a notification's Mute 1 h (`AlertActions.kt`), the update check (`UpdateChecker.kt`), the history chart (`HistoryChart.kt`) and one screen (`MainActivity.kt`) with five pages (`OverviewScreen.kt` is All accounts). Plain framework views; no AndroidX. Colours are named in `res/values/colors.xml`, with their dark counterparts in `res/values-night/`. |
 
 ## Develop
 
@@ -286,14 +305,17 @@ Gradle 8.14 (wrapper included).
 ## Releases
 
 Publishing a GitHub release builds the app and attaches the APK to it,
-named after the app's version and the release's tag
-(`fidelity-bridge-notifier-0.3.0-v1.2.0.apk`). The app's update check reads
-its version from that name, so **bump `versionName` and `versionCode`** in
-`app/build.gradle.kts` with every change to the app: a release whose APK
-carries the version already installed is not offered as an update. In
+named after the release's tag (`fidelity-bridge-notifier-v1.2.0.apk`). In
 volatility-ai, `.github/workflows/android.yml` does this. In this folder as
 its own repository, `.github/workflows/ci.yml` does. A release saved as a
 draft gets its APK when it is published.
+
+The tag is also the app's version: `v1.2.3` builds an app that says 1.2.3 at
+the bottom of its Connect page, with a version code (10203) higher than the
+release before it. Tag releases as `v<major>.<minor>.<patch>`; any other
+build calls itself `0.1.0-dev`. The app's update check compares that tag with
+the latest release's, so each release is offered to the app built before it;
+a `0.1.0-dev` build is never told it is out of date.
 
 The APK is signed with your own key. A phone installs an update only when it
 is signed with the same key as the installed app, so make the key once and

@@ -3,11 +3,11 @@ package io.github.ashitakalax.bridgenotifier.core
 /**
  * Decides when losing the bridge is worth a notification of the app's own.
  *
- * The bridge cannot say it died, and the phone cannot tell a dead bridge
- * from its own lost network: either way, a connection that drops and is not
- * back within [graceMillis] raises [Alert.LOST] once, and coming back after
- * that raises [Alert.BACK]. A drop that heals inside the grace -- Wi-Fi
- * handing over -- raises nothing.
+ * The bridge cannot say it died: a connection that drops and is not back
+ * within [graceMillis] raises [Alert.LOST] once, and coming back after that
+ * raises [Alert.BACK]. A drop that heals inside the grace -- Wi-Fi handing
+ * over -- raises nothing. Neither does one while the caller says the phone
+ * itself is off the bridge's network ([check], [phoneBack]).
  *
  * The bridge runs as an always-on service, so it says goodbye only to
  * restart (a deploy, a config change). That is given [restartGraceMillis]:
@@ -49,12 +49,25 @@ class LinkAlarm(
         alerted = false
     }
 
-    /** LOST once, when the allowance has run out. */
-    fun check(now: Long): Alert? {
+    /**
+     * LOST once, when the allowance has run out -- unless the phone itself is
+     * off any network that could reach the bridge ([phoneCanReach] false):
+     * then it is the phone that is away, and nothing is said.
+     */
+    fun check(now: Long, phoneCanReach: Boolean = true): Alert? {
         val since = lostAt ?: return null
-        if (alerted || now - since < allowed) return null
+        if (alerted || !phoneCanReach || now - since < allowed) return null
         alerted = true
         return Alert.LOST
+    }
+
+    /**
+     * The phone is back on a network that could reach the bridge. A bridge
+     * still out of reach is given its allowance again from here, so coming
+     * home is not itself an alarm.
+     */
+    fun phoneBack(now: Long) {
+        if (lostAt != null && !alerted) lostAt = now
     }
 
     /** When [check] next has something to say, or null. */

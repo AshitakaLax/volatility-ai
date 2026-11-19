@@ -153,9 +153,9 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(LOCK_APP, true)
         set(value) = prefs.edit().putBoolean(LOCK_APP, value).apply()
 
-    /** Whether the app opens on its Connect page; off, it opens on Home once set up. */
+    /** Whether the app opens on its Connect page; off (the default), it opens on Home once set up. */
     var openConnectAtStart: Boolean
-        get() = prefs.getBoolean(OPEN_CONNECT, true)
+        get() = prefs.getBoolean(OPEN_CONNECT, false)
         set(value) = prefs.edit().putBoolean(OPEN_CONNECT, value).apply()
 
     /** How long a listener may be unreachable before that is worth saying. */
@@ -189,7 +189,7 @@ class Prefs(context: Context) {
         val key = prefs.getString(LEGACY_KEY, null).orEmpty()
         val edit = prefs.edit().putString(ACCOUNTS, Accounts.encode(emptyList()))
         if (url.isNotEmpty() && key.isNotEmpty()) {
-            val id = "a1"
+            val id = FIRST_ACCOUNT
             edit.putString(ACCOUNTS, Accounts.encode(listOf(Account(id, url, key, broker = Broker.FIDELITY))))
                 .putString(CURRENT, id)
             prefs.getString(LEGACY_STREAM, null)?.let { stream ->
@@ -213,40 +213,43 @@ class Prefs(context: Context) {
         prefs.edit().remove(DISABLED_KINDS).remove(ENABLED_KINDS_BEFORE).apply()
     }
 
-    private companion object {
-        const val ACCOUNTS = "accounts"
-        const val CURRENT = "current_account"
-        const val MONITORING = "monitoring"
-        const val ALERT_UNREACHABLE = "alert_unreachable"
-        const val OPEN_CONNECT = "open_connect_at_start"
-        const val LOCK_APP = "lock_app"
-        const val UNREACHABLE_GRACE = "unreachable_grace_ms"
-        const val STREAM = "position_stream_"
-        const val LAST_ID = "position_id_"
-        const val HISTORY = "history_"
-        const val SUMMARY_DONE = "summary_done_"
-        const val HEARD = "heard_at_"
-        const val CHECK_UPDATES = "check_updates"
-        const val UPDATE_CHECKED = "update_checked_at"
-        const val UPDATE_ERROR = "update_error"
-        const val RELEASE_TAG = "release_tag"
-        const val RELEASE_PAGE = "release_page"
-        const val RELEASE_VERSION = "release_version"
-        const val RELEASE_DEBUG = "release_debug_only"
-        const val ANNOUNCED = "update_announced"
-        const val DISMISSED = "update_dismissed"
+    companion object {
+        /** The id the single bridge of before accounts became (migrate), and Recents' old list with it. */
+        const val FIRST_ACCOUNT = "a1"
+
+        private const val ACCOUNTS = "accounts"
+        private const val CURRENT = "current_account"
+        private const val MONITORING = "monitoring"
+        private const val ALERT_UNREACHABLE = "alert_unreachable"
+        private const val OPEN_CONNECT = "open_connect_at_start"
+        private const val LOCK_APP = "lock_app"
+        private const val UNREACHABLE_GRACE = "unreachable_grace_ms"
+        private const val STREAM = "position_stream_"
+        private const val LAST_ID = "position_id_"
+        private const val HISTORY = "history_"
+        private const val SUMMARY_DONE = "summary_done_"
+        private const val HEARD = "heard_at_"
+        private const val CHECK_UPDATES = "check_updates"
+        private const val UPDATE_CHECKED = "update_checked_at"
+        private const val UPDATE_ERROR = "update_error"
+        private const val RELEASE_TAG = "release_tag"
+        private const val RELEASE_PAGE = "release_page"
+        private const val RELEASE_VERSION = "release_version"
+        private const val RELEASE_DEBUG = "release_debug_only"
+        private const val ANNOUNCED = "update_announced"
+        private const val DISMISSED = "update_dismissed"
 
         /** Each account's history, read once: every screen and the service share one process. Main thread only. */
-        val histories = mutableMapOf<String, List<DayFigures>>()
+        private val histories = mutableMapOf<String, List<DayFigures>>()
 
         // Before accounts: one bridge.
-        const val LEGACY_URL = "url"
-        const val LEGACY_KEY = "api_key"
-        const val LEGACY_STREAM = "position_stream"
-        const val LEGACY_ID = "position_id"
+        private const val LEGACY_URL = "url"
+        private const val LEGACY_KEY = "api_key"
+        private const val LEGACY_STREAM = "position_stream"
+        private const val LEGACY_ID = "position_id"
 
         // Before each account had its own: one list of kinds for every bridge.
-        const val DISABLED_KINDS = "disabled_kinds"
-        const val ENABLED_KINDS_BEFORE = "kinds"
+        private const val DISABLED_KINDS = "disabled_kinds"
+        private const val ENABLED_KINDS_BEFORE = "kinds"
     }
 }

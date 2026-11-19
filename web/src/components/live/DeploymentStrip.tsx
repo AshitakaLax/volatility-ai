@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/primitives";
 import { useNow } from "@/hooks/useNow";
 import { algorithmName, byBroker, chip, sharedAccounts, type BrokerSection } from "@/lib/control";
-import { verdict } from "@/lib/fidelity";
+import { signInLine, verdict } from "@/lib/fidelity";
 import { cn, usd } from "@/lib/utils";
 import type { DeploymentSummary } from "@/types/control";
 
@@ -57,7 +57,9 @@ function Section({
     <section
       className={cn(
         "rounded-lg border p-3",
-        fidelity ? "border-loss/40 bg-loss/5" : "border-border bg-secondary/10",
+        // Real money through a browser is marked by its badge and its
+        // verdict; a red frame around it read as an alarm on a good day.
+        fidelity ? "border-stuck/30 bg-secondary/10" : "border-border bg-secondary/10",
       )}
     >
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
@@ -72,7 +74,7 @@ function Section({
             : "No Alpaca deployment is registered in config/deployments.yaml."}
         </p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {section.deployments.map((deployment) => (
             <DeploymentCard
               key={deployment.id}
@@ -107,12 +109,13 @@ function DeploymentCard({
   // A Fidelity deployment's connection, as its bridge host judges it:
   // ready, trading, or the one thing to fix -- between sessions too.
   const fidelity = deployment.broker === "fidelity" ? verdict(deployment, now) : null;
+  const signIn = signInLine(deployment.bridge, now);
   return (
     <button
       type="button"
       onClick={onSelect}
       className={cn(
-        "rounded-lg border bg-card p-3 text-left transition-colors",
+        "min-w-0 rounded-lg border bg-card p-3 text-left transition-colors",
         selected ? "border-primary ring-1 ring-primary/40" : "border-border hover:bg-secondary/30",
       )}
     >
@@ -170,8 +173,13 @@ function DeploymentCard({
               </div>
             </>
           )}
+          {signIn ? (
+            <div className={cn("mt-1 text-xs", signIn.tone === "stuck" ? "text-stuck" : "text-muted-foreground")}>
+              {signIn.text}
+            </div>
+          ) : null}
           {state.detail ? (
-            <div className="mt-1 truncate text-xs text-muted-foreground" title={state.detail}>
+            <div className="mt-1 truncate text-xs text-muted-foreground" title={state.hint ?? state.detail}>
               {state.detail}
             </div>
           ) : null}

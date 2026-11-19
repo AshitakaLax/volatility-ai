@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from engine.core.exceptions import ConfigurationError
-from engine.promotion_record import build_record, evaluate
+from engine.promotion_record import build_record, evaluate, unmeasured
 from research.strategies import live_profiles
 from server import history, history_query, live_control, live_registry
 
@@ -103,6 +103,94 @@ def candidates() -> list[dict[str, Any]]:
     return found
 
 
+# The commands that change which algorithm a deployment trades: the next one
+# applied after a trial's own switch ends that trial's window.
+_ALGORITHM_COMMANDS = ("switch_algorithm", "revert_algorithm")
+_COMMANDS_READ = 1000
+
+
+def _epoch(iso: str | None) -> float | None:
+    try:
+        return datetime.fromisoformat(str(iso)).timestamp() if iso else None
+    except ValueError:
+        return None
+
+
+def _iso(seconds: float | None) -> str | None:
+    if seconds is None:
+        return None
+    return datetime.fromtimestamp(seconds, UTC).isoformat(timespec="seconds")
+
+
+def _trial_window(trial: dict[str, Any]) -> dict[str, Any]:
+    """When the trial's algorithm actually traded its deployment, from the
+    deployment's own command record: from the moment its switch was APPLIED
+    (not queued -- a next-session switch leaves the old algorithm trading
+    until then) until the next algorithm change applied after it, by another
+    trial or by hand. A deployment's journals hold every algorithm it ran, so
+    this window is all a trial may count.
+
+    state: pending (its switch is still queued), running, ended, never_ran
+    (its switch was rejected, expired, superseded or cancelled) or unknown
+    (the deployment or its control directory is gone). A trial recorded
+    without its command id counts from when it was queued, as before."""
+    window: dict[str, Any] = {"state": "unknown", "from": None, "until": None, "detail": ""}
+    try:
+        inbox = live_registry.get(trial["deployment"]).inbox()
+    except live_registry.UnknownDeployment:
+        return {**window, "detail": "Its deployment is gone."}
+    if inbox is None:
+        return {**window, "detail": "The deployment has no control directory."}
+    history = inbox.history(limit=_COMMANDS_READ)
+    command_id = trial.get("command")
+    own = next((row for row in history if row["id"] == command_id), None)
+    if command_id and own is None:
+        return {**window, "detail": "Its switch command is no longer on record."}
+    if own is not None and own["status"] in ("queued", "applying"):
+        return {
+            **window,
+            "state": "pending",
+            "detail": f"Its switch is {own['status']} ({own.get('timing')}); nothing counts yet.",
+        }
+    if own is not None and own["status"] != "applied":
+        return {
+            **window,
+            "state": "never_ran",
+            "detail": f"Its switch was {own['status']}"
+            + (f": {own['detail']}" if own.get("detail") else "."),
+        }
+    start = _epoch(own.get("finished_at")) if own is not None else float(trial["started_at"])
+    if start is None:
+        return {**window, "detail": "Its switch has no applied time."}
+    later = sorted(
+        (
+            (moment, row)
+            for row in history
+            if row["type"] in _ALGORITHM_COMMANDS
+            and row["status"] == "applied"
+            and row["id"] != command_id
+            and (moment := _epoch(row.get("finished_at"))) is not None
+            and moment > start
+        ),
+        key=lambda pair: pair[0],
+    )
+    if later:
+        moment, row = later[0]
+        return {
+            "state": "ended",
+            "from": start,
+            "until": moment,
+            "detail": f"Ended {_iso(moment)}: {row.get('reason') or row['type']}"
+            f" (by {row.get('operator') or 'unknown'}).",
+        }
+    return {"state": "running", "from": start, "until": None, "detail": ""}
+
+
+def _trial_over(candidate: dict[str, Any]) -> bool:
+    trial = candidate.get("trial")
+    return bool(trial) and _trial_window(trial)["state"] in ("ended", "never_ran")
+
+
 def _stage(candidate: dict[str, Any]) -> str:
     if (live_profiles.profiles_dir() / f"{candidate['id']}.yaml").exists():
         return "published"
@@ -144,8 +232,16 @@ def _wire(candidate: dict[str, Any]) -> dict[str, Any]:
         except Exception:  # a deployment whose config is missing fits nothing
             continue
         fits.append(deployment.id)
+    trial = candidate.get("trial")
+    if trial:
+        window = _trial_window(trial)
+        trial = {
+            **trial,
+            "window": {**window, "from": _iso(window["from"]), "until": _iso(window["until"])},
+        }
     return {
         **candidate,
+        "trial": trial,
         "stage": _stage(candidate),
         "paper_deployments": fits,
         **({"paper_refused": refused} if refused else {}),
@@ -266,7 +362,8 @@ def add_candidate(body: CandidateRequest) -> dict[str, Any]:
 @router.delete("/candidates/{candidate_id}", dependencies=[Depends(live_control.same_origin)])
 def delete_candidate(candidate_id: str) -> dict[str, Any]:
     candidate = _read(candidate_id)
-    if _stage(candidate) in ("paper_trial", "published"):
+    stage = _stage(candidate)
+    if stage == "published" or (stage == "paper_trial" and not _trial_over(candidate)):
         raise HTTPException(status_code=409, detail="It is on trial or published; it stays.")
     path = _candidate_path(candidate_id)
     path.unlink()
@@ -344,15 +441,30 @@ def evaluate_trial(candidate_id: str) -> dict[str, Any]:
     inbox = deployment.inbox()
     if inbox is None:
         raise HTTPException(status_code=409, detail="The deployment has no control directory.")
+    window = _trial_window(trial)
+    if window["state"] in ("pending", "never_ran", "unknown"):
+        raise HTTPException(status_code=409, detail=f"Nothing to evaluate: {window['detail']}")
+    started_at, ended_at = float(window["from"]), window["until"]
+    bars = inbox.bars(sessions=_SESSIONS_KEPT)
+    incidents = inbox.incidents(sessions=_SESSIONS_KEPT)
     record = build_record(
         deployment.id,
-        started_at=float(trial["started_at"]),
-        bars=inbox.bars(sessions=_SESSIONS_KEPT),
+        started_at=started_at,
+        ended_at=ended_at,
+        bars=bars,
         fills=inbox.fills(sessions=_SESSIONS_KEPT),
         orders=inbox.orders(sessions=_SESSIONS_KEPT),
-        halted_for_reconciliation=_halted_for_reconciliation(inbox.status() or {}),
+        incidents=incidents,
+        # A halt the deployment is in now is this trial's only while it trades.
+        halted_for_reconciliation=ended_at is None
+        and _halted_for_reconciliation(inbox.status() or {}),
     )
-    verdict = {**evaluate(record), "evaluated_at": _now()}
+    gaps = unmeasured(started_at=started_at, ended_at=ended_at, bars=bars, incidents=incidents)
+    verdict = {
+        **evaluate(record, unmeasured=gaps),
+        "window": {"from": _iso(started_at), "until": _iso(ended_at), "state": window["state"]},
+        "evaluated_at": _now(),
+    }
     trial["evaluation"] = verdict
     candidate["trial"] = trial
     candidate["promotion"] = verdict if verdict["passed"] else None

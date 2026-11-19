@@ -6,12 +6,14 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import io.github.ashitakalax.bridgenotifier.core.Account
+import io.github.ashitakalax.bridgenotifier.core.BridgeAddress
 import io.github.ashitakalax.bridgenotifier.core.BridgeClient
 import io.github.ashitakalax.bridgenotifier.core.BridgeStatus
 import io.github.ashitakalax.bridgenotifier.core.ClientSettings
@@ -27,9 +29,11 @@ import java.time.Instant
  * account, so the connections outlive the screen. It turns what each says
  * into phone notifications -- those of the kinds switched on for that account,
  * none for one muted -- and says so itself when one has been out of reach
- * longer than the grace. It keeps each account's profit history from the
- * books it hears, and once a minute it sees whether an end-of-day summary is
- * due, and whether it is time to ask GitHub about a newer app.
+ * longer than the grace -- but not while the phone itself is offline, or
+ * away from a listener's home network. It keeps each account's Activity
+ * list on disk and its profit history from the books it hears, and once a
+ * minute it sees whether an end-of-day summary is due, and whether it is
+ * time to ask GitHub about a newer app.
  */
 class MonitorService : Service() {
     private val main = Handler(Looper.getMainLooper())
@@ -45,6 +49,14 @@ class MonitorService : Service() {
 
     private val watches = mutableMapOf<String, Watch>()
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var monitorText = ""
+
+    /** The network the phone is on now; null for none. */
+    private var network: NetworkCapabilities? = null
+
+    /** The accounts whose Activity list changed since it was last written. */
+    private val unsaved = mutableSetOf<String>()
+    private val saveRecents = Runnable { saveRecents() }
 
     /** Once a minute while watching: the summaries due, and the update check. */
     private val tick = object : Runnable {
@@ -82,6 +94,10 @@ class MonitorService : Service() {
                 closeClients()
                 startWatching()
             }
+            ACTION_RETRY -> {
+                startWatching()
+                watches.values.forEach { it.client?.reconnectNow() }
+            }
             // ACTION_START, or null: restarted by the system after it had to stop us.
             else -> startWatching()
         }
@@ -103,7 +119,11 @@ class MonitorService : Service() {
             stopWatching()
             return
         }
-        if (watches.isNotEmpty()) return
+        if (watches.isNotEmpty()) {
+            // Already watching: put back the line the "starting" above replaced.
+            showMonitorText(force = true)
+            return
+        }
         for (account in prefs.accounts) {
             val watch = Watch(account)
             val watcher = Watcher(account.id, watch)
@@ -121,8 +141,10 @@ class MonitorService : Service() {
             watches[account.id] = watch
             client.start()
         }
+        network = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
         watchNetwork()
-        updateMonitor()
+        phoneChanged()
+        showMonitorText(force = true)
         main.removeCallbacks(tick)
         main.post(tick)
     }
@@ -145,6 +167,8 @@ class MonitorService : Service() {
         }
         watches.clear()
         main.removeCallbacks(tick)
+        main.removeCallbacks(saveRecents)
+        saveRecents()
         networkCallback?.let { connectivity.unregisterNetworkCallback(it) }
         networkCallback = null
     }
@@ -158,6 +182,7 @@ class MonitorService : Service() {
     }
 
     private fun goForeground(text: String) {
+        monitorText = text
         val notification = Alerts.monitorNotification(this, text)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(Alerts.MONITOR_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -166,15 +191,60 @@ class MonitorService : Service() {
         }
     }
 
-    /** Back on a network: try every listener now rather than at the end of its wait. */
+    /**
+     * Back on a network: try every listener now rather than at the end of its
+     * wait. And which network: none, or mobile data alone with a listener at
+     * a home address, is the phone being away rather than the listener down.
+     */
     private fun watchNetwork() {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 main.post { watches.values.forEach { it.client?.reconnectNow() } }
             }
+
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                main.post {
+                    this@MonitorService.network = capabilities
+                    phoneChanged()
+                }
+            }
+
+            override fun onLost(network: Network) {
+                main.post {
+                    this@MonitorService.network = null
+                    phoneChanged()
+                }
+            }
         }
         connectivity.registerDefaultNetworkCallback(callback)
         networkCallback = callback
+    }
+
+    /** Where the phone is, for [account]'s listener. */
+    private fun phoneFor(account: Account): MonitorState.Phone {
+        val capabilities = network ?: return MonitorState.Phone.OFFLINE
+        val mobileOnly = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+            !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+            !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+            !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+        return if (mobileOnly && BridgeAddress.isLocalNetwork(account.url)) MonitorState.Phone.AWAY else MonitorState.Phone.ONLINE
+    }
+
+    /** The network changed: each account learns where the phone is for it. */
+    private fun phoneChanged() {
+        for (watch in watches.values) {
+            val phone = phoneFor(watch.account)
+            if (phone == MonitorState.snapshot.stateOf(watch.account.id).phone) continue
+            MonitorState.updateAccount(watch.account.id) { it.copy(phone = phone) }
+            if (phone == MonitorState.Phone.ONLINE) {
+                // Somewhere the listener can be reached from again: it has its
+                // allowance from here before being called lost.
+                watch.alarm.phoneBack(SystemClock.uptimeMillis())
+                scheduleAlarmCheck(watch)
+                watch.client?.reconnectNow()
+            }
+        }
+        showMonitorText()
     }
 
     /**
@@ -198,11 +268,26 @@ class MonitorService : Service() {
         override fun onStatus(status: BridgeStatus) = onMain { onStatusReceived(watch, status) }
     }
 
+    /** [id]'s Activity list changed: kept for the next run, a replay of many written once, when it settles. */
+    private fun recentChanged(id: String) {
+        unsaved += id
+        main.removeCallbacks(saveRecents)
+        main.postDelayed(saveRecents, SAVE_RECENTS_AFTER_MILLIS)
+    }
+
+    private fun saveRecents() {
+        val recents = NotifierApplication.recents(this)
+        for (id in unsaved) recents.save(id, MonitorState.snapshot.stateOf(id).recent)
+        unsaved.clear()
+    }
+
     /** What the listener says now; its book's days go into the account's history. */
     private fun onStatusReceived(watch: Watch, status: BridgeStatus) {
         val id = watch.account.id
         status.book?.let { prefs.recordBook(id, it) }
-        MonitorState.updateAccount(id) { it.copy(status = status, heardAt = System.currentTimeMillis()) }
+        val now = System.currentTimeMillis()
+        MonitorState.updateAccount(id) { it.copy(status = status, statusAt = now, heardAt = now) }
+        showMonitorText()
         // A trader that just stopped for the day: its summary need not wait for the tick.
         checkSummaries()
     }
@@ -275,7 +360,7 @@ class MonitorService : Service() {
             }
             BridgeClient.Link.Connecting, BridgeClient.Link.Idle, BridgeClient.Link.Stopped -> Unit
         }
-        updateMonitor()
+        showMonitorText()
     }
 
     private fun onNotificationReceived(watch: Watch, notification: Notification, fresh: Boolean) {
@@ -287,6 +372,7 @@ class MonitorService : Service() {
         if (fresh && account.alerts(notification, now)) {
             Alerts.post(this, notification, account)
         }
+        recentChanged(account.id)
     }
 
     /**
@@ -300,29 +386,44 @@ class MonitorService : Service() {
         MonitorState.updateAccount(account.id) {
             it.copy(recent = (notifications.asReversed() + it.recent).take(MonitorState.RECENT), heardAt = now)
         }
+        recentChanged(account.id)
         if (!fresh) return
         val worth = notifications.filter { account.alerts(it, now) }
         worth.lastOrNull()?.let { latest -> Alerts.post(this, latest, account, alsoMissed = worth.size - 1) }
     }
 
-    /** The ongoing notification: each account's link in a few words. */
-    private fun updateMonitor() {
+    /**
+     * The ongoing notification: each account's link in a few words -- once
+     * connected, whether it is ready to trade -- and the phone's own
+     * offline or away first. Redrawn only when it reads differently.
+     */
+    private fun showMonitorText(force: Boolean = false) {
+        if (watches.isEmpty()) return
         val snapshot = MonitorState.snapshot
         val text = watches.values.joinToString(" · ") { watch ->
             val host = hostOf(watch.account.url)
-            val words = when (val link = snapshot.stateOf(watch.account.id).link) {
-                is BridgeClient.Link.Connected -> getString(R.string.monitor_connected, host)
-                is BridgeClient.Link.Waiting -> if (link.deliberate) {
-                    getString(R.string.monitor_bridge_restarting, host)
-                } else {
-                    getString(R.string.monitor_waiting, host, link.reason)
+            val state = snapshot.stateOf(watch.account.id)
+            val bridge = state.status.bridge
+            val words = when (val link = state.link) {
+                is BridgeClient.Link.Connected -> when {
+                    bridge == null -> getString(R.string.monitor_connected, host)
+                    bridge.ready -> getString(R.string.monitor_ready)
+                    else -> getString(R.string.monitor_not_ready, bridge.summary)
                 }
                 is BridgeClient.Link.Refused -> getString(R.string.monitor_refused)
-                else -> getString(R.string.monitor_connecting, host)
+                else -> when {
+                    state.phone == MonitorState.Phone.OFFLINE -> getString(R.string.monitor_phone_offline)
+                    state.phone == MonitorState.Phone.AWAY -> getString(R.string.monitor_phone_away)
+                    link is BridgeClient.Link.Waiting && link.deliberate -> getString(R.string.monitor_bridge_restarting, host)
+                    link is BridgeClient.Link.Waiting -> getString(R.string.monitor_waiting, host, link.reason)
+                    else -> getString(R.string.monitor_connecting, host)
+                }
             }
             if (watches.size > 1) "${watch.account.name}: $words" else words
         }
-        Alerts.updateMonitor(this, text.ifEmpty { getString(R.string.monitor_starting) })
+        if (text == monitorText && !force) return
+        monitorText = text
+        Alerts.updateMonitor(this, text)
     }
 
     private fun scheduleAlarmCheck(watch: Watch) {
@@ -333,7 +434,9 @@ class MonitorService : Service() {
 
     private fun checkLinkAlarm(watch: Watch) {
         if (watches[watch.account.id] !== watch) return
-        if (watch.alarm.check(SystemClock.uptimeMillis()) != LinkAlarm.Alert.LOST) return
+        // A phone that is offline or away has not lost the listener; it says so quietly instead.
+        val canReach = MonitorState.snapshot.stateOf(watch.account.id).phone == MonitorState.Phone.ONLINE
+        if (watch.alarm.check(SystemClock.uptimeMillis(), canReach) != LinkAlarm.Alert.LOST) return
         val account = current(watch)
         if (prefs.alertWhenUnreachable && account.alertsLinks(System.currentTimeMillis())) {
             Alerts.postLinkLost(this, account, watch.lastReason)
@@ -347,6 +450,8 @@ class MonitorService : Service() {
         private const val ACTION_TEST = "io.github.ashitakalax.bridgenotifier.TEST"
         private const val EXTRA_ACCOUNT = "account"
         private const val TICK_MILLIS = 60_000L
+        private const val ACTION_RETRY = "io.github.ashitakalax.bridgenotifier.RETRY"
+        private const val SAVE_RECENTS_AFTER_MILLIS = 1_000L
 
         fun start(context: Context) {
             context.startForegroundService(intent(context, ACTION_START))
@@ -359,6 +464,11 @@ class MonitorService : Service() {
 
         fun stop(context: Context) {
             context.startService(intent(context, ACTION_STOP))
+        }
+
+        /** Try every listener now instead of at the end of its wait. */
+        fun retry(context: Context) {
+            context.startForegroundService(intent(context, ACTION_RETRY))
         }
 
         /** A test notification from one account's listener: the current one's by default. */

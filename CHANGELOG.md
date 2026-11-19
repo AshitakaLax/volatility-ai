@@ -65,7 +65,7 @@ keys must be usable with nobody there for notifications to keep arriving,
 so tying them to the owner's presence (a Keystore key needing
 authentication) was decided against.
 
-**App 0.3.0: easier to live with across several accounts.**
+**The app, easier to live with across several accounts.**
 - **End-of-day summary.** paper-ultimate makes about 220 fills a day, and
   muting was all-or-nothing. With "Trades in one end-of-day summary" on, an
   account's info-level trades stop buzzing, and one note sums up the day.
@@ -104,16 +104,118 @@ authentication) was decided against.
   restarts, and the page redraws every 30 seconds.
 - **Update check.** The app asks GitHub for the latest release twice a day
   at most, and says once per version that a newer one is out. It downloads
-  nothing. A repository release need not change the app, so the release
-  APK is now named after the app's version as well as the tag
-  (`fidelity-bridge-notifier-0.3.0-v1.0.4.apk`), and `versionName` must go
-  up with every app change. Older APK names carry no version and are never
-  offered.
+  nothing. A release's tag is the app's version (the dark-mode change below
+  builds v1.2.3 as 1.2.3), so the check compares tags. A release with no APK
+  attached is not offered, and a `0.1.0-dev` build is never told it is old.
+- **Merged with "the app in the dark":** that change was made on the
+  single-bridge app. Its features now work per account:
+  - a phone offline or away from a listener's network (`AWAY` depends on
+    each account's address);
+  - the kept Activity list (`Recents.kt`, a file per account, the old one
+    becoming the first account's);
+  - the readiness line in the ongoing notification.
+  
+  The broker page colours gained dark versions.
 
 Decided against: putting Alpaca keys on the phone and asking Alpaca
 directly. Alpaca's API keys can trade, which would end the app's promise
 that it only listens, and Alpaca knows positions, not the lots and targets
 the engine trades by.
+
+## Fix: a buy the session's last tick placed no longer halts the trader
+
+On 2026-11-16 the paper trader's last tick placed a buy and the loop
+stopped at once, its tick budget spent. Alpaca filled it 3 s later. Two
+gaps turned that into a halt nothing could clear:
+
+- **The shutdown never asked the broker.** Off the venue's windows it
+  waited on `in_flight_settled`, which reads only the loop's own table, so
+  an order in flight could not settle: 30 s, then RECONCILIATION_REQUIRED.
+  Every shutdown now waits on `settle_in_flight`, which asks the broker
+  about the orders still in flight (every 5 s) and books what they did as
+  a tick does. It no longer needs a venue calendar.
+- **Startup reconciled share totals only.** `cli.py` passed no local
+  orders, so the fill the ledger had kept as in flight read as
+  shares nobody booked, and every start halted again; resetting the
+  breaker could not help. Startup now passes the orders the store holds
+  in flight (`live_trading_loop.in_flight_orders`, Alpaca only: Fidelity's
+  snapshot names our client order id only for orders the same process
+  placed). A fill the broker confirms on one of them, under our id and
+  with a known side (`OrderRecord.side`), explains exactly its own shares
+  in the position check (`reconciliation.py`); any other gap still halts.
+  Nothing is booked by reconciliation: the loop books the fill from the
+  broker at its first poll, before it decides anything.
+## Fix: a paper trial counts only its own algorithm, and can pass
+
+Three trials had been started on one paper deployment; only the last one
+traded, yet the evaluation counted every fill the deployment made since a
+trial was queued, so the first two would have been credited with the
+third's 115 buys. And four of the gate's counters were never journaled,
+so no trial could pass without the owner's sign-off.
+
+- **A trial's window** (`server/algorithms.py` `_trial_window`): from the
+  moment its switch was APPLIED (the command's result -- a next-session
+  switch leaves the old algorithm trading until then) to the next
+  algorithm change applied after it, by another trial or by hand. The
+  evaluation counts bars, orders, fills and incidents in that window only,
+  refuses a trial whose switch is still queued or never applied, and
+  every candidate carries `trial.window` (pending, running, ended,
+  never_ran). An ended trial can be evaluated on its window, tried again
+  or removed.
+- **The incidents journal** (`engine/trading/control_inbox.py`
+  `incidents/`): the trader records a sale the no-loss guard refused to
+  book, a fill the ledger could not place, a window audit or startup
+  reconciliation where venue and ledger disagree, a decision met again
+  whose first submission never confirmed, an ambiguous submission, and
+  an aborted loop. The counters are MEASURED only when every session the
+  trial traded carries the journal's `watching` row -- a trader from
+  before this build leaves them unmeasured, and the trial still fails
+  closed on them (`engine/promotion_record.py`).
+- **The Live page's journals poll incrementally**: `?since=` on
+  `/fills` and `/orders` (`server/live.py`) returns only newer rows, the
+  hooks append them, and Trades and Orders show a page at a time (50 and
+  25) instead of every row -- a busy paper trial books hundreds of fills
+  a session, which the page had downloaded and rendered again every 15 s.
+
+## Feat: the website opens on what matters, and reads on a phone
+
+A review of the site as it runs found it opened on the parameter form,
+selected a paper deployment while real money said "Not ready" in a small
+pill, showed nothing over time, and was 757 px wide on a 390 px phone.
+
+- **It opens on Live, and the address says where you are** (`#live`,
+  `#live/fidelity`, `#backtest`; `web/src/lib/nav.ts`): a reload or a
+  bookmark returns there. Backtesting stays the first tab. `runUrl` drops
+  the opener's hash so a run still lands on its result.
+- **What needs attention is said first** (`lib/attention.ts`): a banner
+  on Live with the deployment, what is wrong and the fix; the same thing
+  in the browser tab's title, which otherwise says how real money stands;
+  and the deployment shown by default is real money that something
+  reports for, not the first listed.
+- **Performance over time** on Live: realised profit by session and
+  running, from the trader's journal, beside the shadow backtest, the
+  share of orders that filled and a bridge's minutes not ready where the
+  `tracking` service recorded them -- the new read-only
+  `GET /api/live/deployments/{id}/tracking` (`server/live.py`), which
+  slims that tool's `sessions.jsonl`.
+- **The Fidelity sign-in's clock** ("Signed in until 18:52 ET · 3 h left")
+  on its card and panel, from the bridge host's `sign_in`.
+- **Run history folds repeats**: neighbouring rows of one run with the
+  same configuration and figures show once with a count (43 of the first
+  50 TQQQ rows repeated another). Columns keep their own gutters.
+- **The wide-target warning knows a committed profile**: Daily Ultimate's
+  12% is the profile's own, so the warning that was always on is gone.
+- **Less to scroll past, less red**: the last five commands with "show
+  all", build and process folded away, idle shards folded into a count,
+  recent runs on an empty Backtest result page; drawdown is no longer red
+  in every row, "Not running" is a neutral state with its start command in
+  the tooltip, and durations read "4 h 22 min" rather than "15768s".
+- **Light and dark** (`lib/theme.ts`, following the system unless the
+  header's button chooses), skeletons while loading, and a layout that
+  fits a phone: the tabs scroll on their own row.
+
+The page's default tab changed from the brief's Backtesting to Live; the
+end-to-end test that pinned the old default now opens `#backtest`.
 
 ## Feature: the Fidelity sign-in, watched and assisted
 
@@ -527,6 +629,48 @@ picks the buys; the model only skips or shrinks them.
 - `tools/tests/test_compose_deployment.py` allows the `fidelity-bridge`'s read-only
   mount of its trader's ledger (#44 added it for the book the phone shows) and
   still refuses a writable one or another trader's.
+
+## Feat: the Notifier app in the dark, and easier to live with
+
+The app's dark mode was broken rather than missing: the night theme switched
+the system's widgets to dark while every colour stayed light, so typed text
+was white on a white card and a blue title bar appeared. And several things
+got in the way every day. All in `fidelity-bridge-notifier-android/`.
+
+- **Dark mode.** `res/values-night/colors.xml` gives every named colour a
+  dark counterpart, and the night theme has no action bar. A fill (the top
+  card, a status mark, a filled button) now has its own colours
+  (`*_fill`, `on_fill`) apart from the status colours used as text, so
+  each can be right on either ground; every pair is at least 4.5:1 in the
+  dark. Inputs and checkboxes name their colours instead of taking the
+  theme's.
+- **It opens on Home**, not the settings page, once the bridge is set; a
+  tapped notification opens the Activity page.
+- **The Activity page survives a restart.** The bridge replays only what the
+  app has not seen, so the list was empty whenever Android restarted the
+  app. The last 200 are kept in the app's private storage (`History.kt`),
+  out of backups and device transfers.
+- **Away from home is not "Bridge out of reach".** `LinkAlarm` no longer
+  alarms while the phone has no network, or is on mobile data alone with a
+  bridge at a home-network address (`BridgeAddress.isLocalNetwork`); back on
+  a network that can reach it, the bridge has its allowance again.
+- **Stale figures say so** ("Not live: as the bridge last said at …"), the
+  top card retries when tapped, and Send test says when it cannot.
+- **The key**: a Paste button, and the whole `.env` line is accepted
+  (`ApiKeys.clean`). Pasted whole it used to pass for a key, every character
+  of it being in the key's alphabet, and then be refused by the bridge.
+- **Connect page**: buttons to the notification and battery settings when
+  either would stop alerts; the kinds grouped as the Activity page filters
+  them, with the sign-in kind's label saying it carries the reminders too;
+  "Stop watching" is a switch that shows what is so.
+- **Smaller**: the phone's 12- or 24-hour clock; a ripple on everything
+  tappable; status marks named for a screen reader; turning the phone keeps
+  what was typed and the chosen filter; the ongoing notification says
+  whether the bridge is ready to trade; a release's tag is the app's version
+  (`BRIDGE_NOTIFIER_VERSION`), shown on the Connect page.
+
+Built and linted in a container (no new lint findings); not yet seen on a
+phone.
 
 ## Feat: the Notifier app's four pages, and the book they show
 

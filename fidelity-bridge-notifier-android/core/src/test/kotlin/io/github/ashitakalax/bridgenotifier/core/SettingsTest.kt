@@ -38,4 +38,36 @@ class SettingsTest {
         assertFalse(ApiKeys.looksValid("a".repeat(257)))
         assertFalse(ApiKeys.looksValid("a".repeat(31) + " "))
     }
+
+    @Test
+    fun aPastedKeyLosesTheEnvLinesNameItsQuotesAndItsSpaces() {
+        val key = "Ab0._~+/-".repeat(4) + "=="
+        for (pasted in listOf(
+            key,
+            "  $key\n",
+            "FIDELITY_BRIDGE_NOTIFY_KEY=$key",
+            "FIDELITY_BRIDGE_NOTIFY_KEY = \"$key\"",
+            "export FIDELITY_BRIDGE_NOTIFY_KEY='$key'",
+            "\"$key\"",
+        )) {
+            assertEquals(pasted, key, ApiKeys.clean(pasted))
+        }
+        // The whole line would have passed for a key.
+        assertTrue(ApiKeys.looksValid("FIDELITY_BRIDGE_NOTIFY_KEY=$key"))
+        assertEquals("", ApiKeys.clean("   "))
+    }
+
+    @Test
+    fun anAddressOnlyItsOwnNetworkReachesIsLocal() {
+        for (local in listOf(
+            "192.168.1.10", "10.0.0.5", "172.16.4.1", "172.31.0.9", "100.101.102.103", "169.254.1.1",
+            "127.0.0.1", "server.lan", "nas.local", "homeserver", "[fd00::5]", "[fe80::1]",
+        )) {
+            assertTrue(local, BridgeAddress.isLocalNetwork(BridgeAddress.parse(local)!!))
+        }
+        for (public in listOf("8.8.8.8", "172.32.0.1", "100.128.0.1", "bridge.example.com", "wss://bridge.example:443", "[2001:db8::1]")) {
+            assertFalse(public, BridgeAddress.isLocalNetwork(BridgeAddress.parse(public)!!))
+        }
+        assertFalse(BridgeAddress.isLocalNetwork(""))
+    }
 }

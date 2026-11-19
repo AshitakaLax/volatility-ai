@@ -17,18 +17,21 @@ npm run build          # tsc -b && vite build -> dist/ (mounted by server/app.py
 
 ```
 src/
-├── App.tsx                # tab shell: "backtest" | "result" | "live" | "algorithms" | "ml" | "warehouse" — that order is deliberate
+├── App.tsx                # tab shell: "backtest" | "result" | "live" | "algorithms" | "ml" | "warehouse" — that order is deliberate;
+│                          #   opens on Live, and the tab (and Live's deployment) is in the address: lib/nav.ts (#live/fidelity)
 ├── components/
 │   ├── backtest/          # ParameterForm (+ CompositionEditor for the composed model: buy x sell, several of
 │   │                      #   each = the matrix; lib/composition.ts)/ActiveRuns/ShardPanel/RunHistory live on "backtest";
 │   │                      #   CompositionMatrix is a composed run's buy x sell heatmap; BacktestResult
 │   │                      #   (chart, trade log, sweep matrix, fund comparison) is the "result" tab
-│   ├── live/               # LiveTab: DeploymentStrip (Alpaca and Fidelity sections), OverviewCard (fund,
+│   ├── live/               # LiveTab: what needs attention first (lib/attention.ts, also the browser tab's title and the
+│   │                      #   deployment shown by default), DeploymentStrip (Alpaca and Fidelity sections), OverviewCard (fund,
 │   │                      #   book, today's trades, what the trader will do next), FidelityPanel (the
 │   │                      #   connection: verdict, ConnectionChain, what runs, Check connection,
 │   │                      #   ConnectionTimeline -- lib/fidelity.ts), ControlBar (commands -> server/live_control.py),
 │   │                      #   AlgorithmPanel, LivePriceChart (the TRADER's bars + its fills), TradesCard,
-│   │                      #   LiveOrderLedger, CommandLog, DeploymentHealth (trader's build), ActivityCard
+│   │                      #   LiveOrderLedger, PerformanceCard (realised profit by session beside the tracking service's
+│   │                      #   shadow backtest -- lib/performance.ts), CommandLog, DeploymentHealth (trader's build), ActivityCard
 │   ├── algorithms/         # AlgorithmsTab: candidates -> paper trial -> promoted -> live profile (server/algorithms.py; lib/algorithms.ts)
 │   ├── ml/                 # ModelInsights — reads server/ml_insights.py's read-only artifacts
 │   ├── warehouse/          # WarehouseTab (polls server/warehouse_status.py): funds, sweeps, storage, server
@@ -55,6 +58,15 @@ src/
   (`/api/live/ws`, `/api/backtest/ws/{id}`), not at a separate `/ws` path —
   a naive separate proxy entry would 404 on the upgrade in a way that
   looks like a dead server, not a routing miss.
+- **Light and dark both ship.** `index.css` carries the two palettes; `lib/theme.ts`
+  follows the system unless the header's button chose one (kept in this
+  browser). Colour a new component with the tokens (`text-foreground`,
+  `bg-card`, `text-profit`), never a literal, and look at it in both.
+- **Red means something is wrong.** `text-loss` on a figure every row has
+  (a drawdown) or on a state that is a choice (a paper deployment left off)
+  teaches the eye to skip it; what is wrong goes through `lib/attention.ts`.
+- **The page must fit a phone.** Wide tables scroll inside their own card
+  (`overflow-x-auto`); nothing may make the page itself wider than the screen.
 - Types in `types/*.ts` mirror `server/`'s response shapes by hand — there
   is no shared schema generation, so a backend field rename needs a
   matching edit here. The wire omits what can be derived: a `Param` is

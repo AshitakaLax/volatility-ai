@@ -31,6 +31,27 @@ class MessagesTest {
     }
 
     @Test
+    fun notificationsKeptBetweenRunsReadBackTheSame() {
+        val kept = listOf("sell" to "warning", "buy" to "info", "readiness" to "critical").mapIndexed { index, (kind, severity) ->
+            Notification.parse(
+                obj(
+                    """{"id":$index,"stream":"s1","kind":"$kind","severity":"$severity","title":"T$index",
+                    "body":"quotes \" and ${'$'}","at":"2026-10-24T14:31:07+00:00","data":{"qty":$index}}""",
+                ),
+            )!!
+        }
+        assertEquals(kept, Notification.decodeAll(Notification.encodeAll(kept)))
+        assertEquals(emptyList<Notification>(), Notification.decodeAll(Notification.encodeAll(emptyList())))
+    }
+
+    @Test
+    fun aDamagedFileOfNotificationsIsAnEmptyHistory() {
+        for (bad in listOf("", "{", "{}", "[1, \"x\", {\"id\": 1}]", "null")) {
+            assertEquals(bad, emptyList<Notification>(), Notification.decodeAll(bad))
+        }
+    }
+
+    @Test
     fun aReplayIsMarked() {
         val message = BridgeMessage.parse(
             obj("""{"type":"notification","replay":true,"notification":{"id":1,"stream":"s","kind":"buy","title":"t"}}"""),

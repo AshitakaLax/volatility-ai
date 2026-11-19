@@ -6,6 +6,7 @@
  * introducing one would make development and production differ in exactly
  * the way CORS bugs hide in.
  */
+import type { Tracking } from "@/lib/performance";
 import type {
   Bars,
   Catalog,
@@ -263,17 +264,26 @@ export const api = {
     ),
 
   /** Every fill the trader booked in the last `sessions` sessions, oldest
-   * first, each sale with what it fetched against what its lot cost. */
-  deploymentFills: (id: string, sessions = 1) =>
+   * first, each sale with what it fetched against what its lot cost. With
+   * `since` (epoch seconds), only those after it -- what a poll needs. */
+  deploymentFills: (id: string, sessions = 1, since?: number) =>
     request<TraderFill[]>(
-      `/api/live/deployments/${encodeURIComponent(id)}/fills?${query({ sessions })}`,
+      `/api/live/deployments/${encodeURIComponent(id)}/fills?${query({ sessions, since })}`,
+    ),
+
+  /** Live against backtest, session by session, as the `tracking` service
+   * recorded it (tools/track_live.py); empty until it has run. */
+  deploymentTracking: (id: string, sessions = 120) =>
+    request<Tracking>(
+      `/api/live/deployments/${encodeURIComponent(id)}/tracking?${query({ sessions })}`,
     ),
 
   /** Each moment of each order's life in the last `sessions` sessions,
-   * oldest first: placed, filled, cancelled (and why), expired. */
-  deploymentOrders: (id: string, sessions = 1) =>
+   * oldest first: placed, filled, cancelled (and why), expired. `since` as
+   * for fills. */
+  deploymentOrders: (id: string, sessions = 1, since?: number) =>
     request<OrderEvent[]>(
-      `/api/live/deployments/${encodeURIComponent(id)}/orders?${query({ sessions })}`,
+      `/api/live/deployments/${encodeURIComponent(id)}/orders?${query({ sessions, since })}`,
     ),
 
   liveBars: (symbol: string, limit = 780) =>

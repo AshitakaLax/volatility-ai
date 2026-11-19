@@ -5,15 +5,18 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.format.DateFormat
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsetsController
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -64,13 +67,16 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        matchSystemBars()
         prefs = Prefs(this)
         ui = Ui(this)
         root = findViewById(R.id.root)
         gate = LockGate(this, ui, prefs, root) { locked ->
             wear(MonitorState.snapshot)
-            // Asked once the owner is in, not over the lock.
-            if (!locked && !askedToNotify) {
+            // Asked once the owner is in, not over the lock, and once there is
+            // something to be notified about: on Save and connect the first
+            // time (ConnectScreen), here from then on.
+            if (!locked && !askedToNotify && prefs.isConfigured) {
                 askedToNotify = true
                 askToNotify()
             }
@@ -79,7 +85,7 @@ class MainActivity : Activity() {
         MonitorState.setAccounts(prefs.accounts, prefs.currentId)
         lots = LotsScreen(ui)
         screens = mapOf(
-            Tab.CONNECT to ConnectScreen(ui, prefs) { show(Tab.HOME) },
+            Tab.CONNECT to ConnectScreen(ui, prefs, ::askToNotify) { show(Tab.HOME) },
             Tab.OVERVIEW to OverviewScreen(ui, prefs, open = { account -> pick(account.id, Tab.HOME) }, go = ::show),
             Tab.HOME to HomeScreen(ui, prefs, ::show),
             Tab.LOTS to lots,
@@ -98,6 +104,8 @@ class MainActivity : Activity() {
         )
         tabs.forEach { (tab, view) -> view.setOnClickListener { show(tab) } }
 
+        // Turned, or the phone went dark: back to the same page, as it was.
+        savedInstanceState?.let { state -> screens.values.forEach { it.restore(state) } }
         val saved = savedInstanceState?.getString(TAB)?.let(::tabNamed)
         val asked = if (savedInstanceState == null) opened(intent) else null
         show(saved ?: asked ?: if (!prefs.isConfigured || prefs.openConnectAtStart) Tab.CONNECT else landing())
@@ -140,10 +148,12 @@ class MainActivity : Activity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putString(TAB, current.name)
+        screens.values.forEach { it.save(outState) }
     }
 
     override fun onStart() {
         super.onStart()
+        Format.twentyFourHour = DateFormat.is24HourFormat(this)
         stopObserving = MonitorState.observe(::render)
         // Locked, the app's card in Recents must not show the page either.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(!prefs.lockApp)
@@ -280,6 +290,18 @@ class MainActivity : Activity() {
         } catch (_: android.content.ActivityNotFoundException) {
             android.widget.Toast.makeText(this, url, android.widget.Toast.LENGTH_LONG).show()
         }
+    }
+
+    /**
+     * Dark icons on the light bars, light ones on the dark: the theme says so
+     * for the status bar, and this for the navigation bar too where the
+     * system can be told (Android 11 on).
+     */
+    private fun matchSystemBars() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val night = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+        window.insetsController?.setSystemBarsAppearance(if (night) 0 else light, light)
     }
 
     private fun askToNotify() {

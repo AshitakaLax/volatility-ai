@@ -284,7 +284,9 @@ class TestTheBrowserActuallyRendersIt:
             page = context.new_page()
             errors: list[str] = []
             page.on("pageerror", lambda error: errors.append(str(error)))
-            page.goto(base_url, wait_until="networkidle", timeout=60_000)
+            # The page opens on Live; these tests are about Backtesting, which
+            # is an address away (web/src/lib/nav.ts).
+            page.goto(f"{base_url.rstrip('/')}/#backtest", wait_until="networkidle", timeout=60_000)
             page.errors = errors  # type: ignore[attr-defined]
             yield page
             browser.close()
@@ -301,8 +303,9 @@ class TestTheBrowserActuallyRendersIt:
         assert page.locator("text=volatility-ai").first.is_visible()
         assert not page.errors, f"page errors: {page.errors}"  # type: ignore[attr-defined]
 
-    def test_the_backtesting_view_is_the_default(self, page):
-        """Section 1 is the priority view, per the brief."""
+    def test_the_backtesting_view_has_its_own_address(self, page):
+        """Backtesting is the first tab, per the brief, and #backtest opens it:
+        the page itself opens on Live, the one looked at every day."""
         assert page.locator("text=Run a backtest").first.is_visible()
 
     def test_the_history_table_is_visible_on_load(self, page):

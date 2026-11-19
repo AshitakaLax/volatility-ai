@@ -17,38 +17,43 @@ class UpdatesTest {
     """.trimIndent()
 
     @Test
-    fun theApkNamesTheAppsVersion() {
-        val signed = Updates.parse(release("fidelity-bridge-notifier-0.3.0-v1.0.4.apk"))!!
-        assertEquals("0.3.0", signed.version)
+    fun theReleasesTagIsTheAppsVersion() {
+        val signed = Updates.parse(release("fidelity-bridge-notifier-v1.0.4.apk"))!!
+        assertEquals("1.0.4", signed.version)
         assertEquals("v1.0.4", signed.tag)
         assertEquals("https://github.com/o/r/releases/tag/v1.0.4", signed.page)
         assertFalse(signed.debugOnly)
-        assertTrue(signed.newerThan("0.2.0"))
-        assertFalse(signed.newerThan("0.3.0"))
-        assertFalse(signed.newerThan("0.10.0"))
+        assertTrue(signed.newerThan("1.0.3"))
+        assertFalse(signed.newerThan("1.0.4"))
+        assertFalse(signed.newerThan("1.10.0"))
     }
 
     @Test
     fun aDebugOnlyReleaseSaysSo() {
-        val debug = Updates.parse(release("fidelity-bridge-notifier-0.3.0-v1.0.4-debug.apk"))!!
-        assertEquals("0.3.0", debug.version)
+        val debug = Updates.parse(release("fidelity-bridge-notifier-v1.0.4-debug.apk"))!!
+        assertEquals("1.0.4", debug.version)
         assertTrue(debug.debugOnly)
         // With both, the signed one.
-        val both = Updates.parse(
-            release("fidelity-bridge-notifier-0.3.0-v1.0.4-debug.apk", "fidelity-bridge-notifier-0.3.0-v1.0.4.apk"),
-        )!!
+        val both = Updates.parse(release("fidelity-bridge-notifier-v1.0.4-debug.apk", "fidelity-bridge-notifier-v1.0.4.apk"))!!
         assertFalse(both.debugOnly)
     }
 
     @Test
-    fun anApkThatSaysNoVersionIsNeverNewer() {
-        // Named before the app's version was in the name.
-        val old = Updates.parse(release("fidelity-bridge-notifier-v1.0.3-debug.apk", tag = "v1.0.3"))!!
-        assertNull(old.version)
-        assertFalse(old.newerThan("0.0.1"))
-        assertNull(Updates.parse(release(tag = "v1.0.5")).let { it!!.version })
+    fun aReleaseWithoutTheAppOrAVersionIsNeverNewer() {
+        // No APK attached (yet): nothing to install.
+        val bare = Updates.parse(release("notes.txt", tag = "v1.0.5"))!!
+        assertNull(bare.version)
+        assertFalse(bare.newerThan("0.0.1"))
+        assertNull(Updates.parse(release("fidelity-bridge-notifier-nightly.apk", tag = "nightly"))!!.version)
         assertNull(Updates.parse("not json"))
         assertNull(Updates.parse("""{"message":"Not Found"}"""))
+    }
+
+    @Test
+    fun aDevelopmentBuildIsNeverToldItIsOld() {
+        val release = Updates.parse(release("fidelity-bridge-notifier-v9.0.0.apk", tag = "v9.0.0"))!!
+        assertTrue(Updates.isDevelopment("0.1.0-dev"))
+        assertFalse(release.newerThan("0.1.0-dev"))
     }
 
     @Test
@@ -64,18 +69,18 @@ class UpdatesTest {
     fun itAsksGitHubForTheLatestRelease() {
         val server = MockWebServer().apply { start() }
         try {
-            server.enqueue(MockResponse().setBody(release("fidelity-bridge-notifier-0.4.1-v1.0.6.apk", tag = "v1.0.6")))
+            server.enqueue(MockResponse().setBody(release("fidelity-bridge-notifier-v1.0.6.apk", tag = "v1.0.6")))
             server.enqueue(MockResponse().setResponseCode(404))
             val client = OkHttpClient.Builder().addInterceptor { chain ->
                 // GitHub's address, sent to the test server instead.
                 val asked = chain.request()
                 chain.proceed(asked.newBuilder().url(server.url(asked.url.encodedPath)).build())
             }.build()
-            assertEquals("0.4.1", Updates.fetch("o/r", "0.3.0", client).version)
+            assertEquals("1.0.6", Updates.fetch("o/r", "1.0.4", client).version)
             val asked = server.takeRequest()
             assertEquals("/repos/o/r/releases/latest", asked.path)
-            assertEquals("BridgeNotifier/0.3.0", asked.getHeader("User-Agent"))
-            assertTrue(runCatching { Updates.fetch("o/r", "0.3.0", client) }.exceptionOrNull() is IOException)
+            assertEquals("BridgeNotifier/1.0.4", asked.getHeader("User-Agent"))
+            assertTrue(runCatching { Updates.fetch("o/r", "1.0.4", client) }.exceptionOrNull() is IOException)
         } finally {
             server.shutdown()
         }

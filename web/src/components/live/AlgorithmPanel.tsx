@@ -141,7 +141,18 @@ export function AlgorithmPanel({ deployment, onSent }: Props) {
                   reports {view.live ? algorithmLabel(view.live) : "the old one"}).
                 </div>
               ) : null}
-              <TargetCheck current={view.current} configFile={view.config_file} />
+              <TargetCheck
+                current={view.current}
+                configFile={view.config_file}
+                reviewed={view.profiles.some(
+                  (profile) =>
+                    profile.id === view.override?.profile &&
+                    profile.strategy_id === view.current.strategy_id &&
+                    profile.profit_target !== null &&
+                    view.current.profit_target !== null &&
+                    Math.abs(profile.profit_target - view.current.profit_target) <= 1e-9,
+                )}
+              />
             </div>
             <Parameters current={view.current} configFile={view.config_file} />
 
@@ -250,14 +261,25 @@ function nameOf(deployment: DeploymentSummary, view: AlgorithmView): string {
 }
 
 // A target an order of magnitude wider than a grid's is worth a second
-// look, unless the deployment's own config file states it: Ultimate's 30%
-// calm-lot target is deliberate, the same 30% meant as 0.3% stranded 94 lots.
+// look, unless the deployment's own config file states it -- Ultimate's 30%
+// calm-lot target is deliberate, the same 30% meant as 0.3% stranded 94 lots
+// -- or it is a committed profile's own (`reviewed`): Daily Ultimate's 12%
+// was chosen and written down, and a warning that is always on is not read.
 const IMPLAUSIBLE_TARGET = 0.05;
 
-function TargetCheck({ current, configFile }: { current: Algorithm; configFile: Algorithm }) {
+function TargetCheck({
+  current,
+  configFile,
+  reviewed,
+}: {
+  current: Algorithm;
+  configFile: Algorithm;
+  reviewed: boolean;
+}) {
   const target = current.profit_target;
   if (
     target === null ||
+    reviewed ||
     target <= IMPLAUSIBLE_TARGET ||
     (configFile.profit_target !== null && Math.abs(target - configFile.profit_target) <= 1e-9)
   ) {
@@ -266,7 +288,8 @@ function TargetCheck({ current, configFile }: { current: Algorithm; configFile: 
   return (
     <p className="flex items-start gap-2 pt-1 text-xs text-loss">
       <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />A {(target * 100).toFixed(2)}% profit
-      target is far wider than a grid's and is not the config file's. Check it is not a decimal
+      target is far wider than a grid's and is neither the config file's nor a committed
+      profile's. Check it is not a decimal
       place: a target the market will not reach leaves capital committed indefinitely.
     </p>
   );

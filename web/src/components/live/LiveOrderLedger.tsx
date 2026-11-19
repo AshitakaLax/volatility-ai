@@ -94,7 +94,7 @@ export function LiveOrderLedger({ lots, lastPrice }: Props) {
         </div>
         
         <div className="flex items-center gap-4">
-          <div className="relative max-w-sm flex-1">
+          <div className="relative min-w-0 max-w-sm flex-1">
             <Search className="absolute left-2.5 top-2 size-4 text-muted-foreground" />
             <Input
               placeholder="Search by order ID..."
@@ -106,7 +106,7 @@ export function LiveOrderLedger({ lots, lastPrice }: Props) {
           <Select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="w-40"
+            className="w-36 shrink-0"
           >
             <option value="all">All statuses</option>
             <option value="at_target">At target</option>

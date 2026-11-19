@@ -133,6 +133,12 @@ the trader's status file -- engine/trading/operator_control.py):
                 tick's bar -- the feed the loop actually traded on.
   fills         every fill as it is booked, to fill_listener: the ledger
                 keeps lots, never what a sale fetched.
+  incidents     what the paper-trial gate counts (engine/promotion.py), to
+                incident_listener as it happens: a sale the no-loss guard
+                refused to book, a fill the ledger could not place or a
+                window whose position disagrees with the venue's, and a
+                decision met again whose first submission never confirmed
+                or an ambiguous submission. (cli.py adds the crash.)
 
 None of it feeds back into a decision, and none of it may stop a tick: a
 report that fails is dropped.
@@ -164,9 +170,14 @@ from engine.data.tick_validation import TickValidator
 from engine.execution import limit_pricing
 from engine.execution.cost_models import ZeroCostModel
 from engine.execution.fill_accounting import FillTracker, extract_alpaca_fill
-from engine.execution.order_lifecycle import TERMINAL_STATES, OrderState, map_broker_status
+from engine.execution.order_lifecycle import (
+    TERMINAL_STATES,
+    OrderRecord,
+    OrderState,
+    map_broker_status,
+)
 from engine.trading import decision_cycle
-from engine.trading.duplicate_order_guard import DuplicateOrderGuard
+from engine.trading.duplicate_order_guard import DecisionState, DuplicateOrderGuard
 from engine.trading.live_history import EASTERN, last_sessions
 from engine.trading.no_loss_guard import NoLossViolation, SellReason, validate_sell
 from engine.trading.risk_manager import CircuitBreaker, RiskManager
@@ -441,6 +452,42 @@ class _TrackedOrder:
         )
 
 
+def in_flight_orders(store, symbol: str) -> dict:
+    """The orders a store holds as still in flight, as startup reconciliation
+    reads them ({client_order_id: OrderRecord}): what they had filled when
+    the last process stopped, and their side.
+
+    With them a fill the broker confirmed after that process stopped, under
+    our own client order id, is explained rather than halting as a position
+    nobody booked; the loop books it from the broker at its first poll,
+    before it decides anything. Unreadable state answers {}: the position
+    check then halts on any gap as before, and building the loop refuses
+    that state with its own explanation (_restore_open_orders).
+    """
+    raw = store.get_meta(_META_OPEN_ORDERS)
+    if raw is None:
+        return {}
+    try:
+        tracked = [_TrackedOrder.from_dict(entry) for entry in json.loads(raw)]
+    except (TypeError, ValueError, KeyError):
+        return {}
+    records = {}
+    for order in tracked:
+        filled = float(order.tracker.cumulative_qty)
+        records[order.client_order_id] = OrderRecord(
+            client_order_id=order.client_order_id,
+            # A notional buy names no shares: what it asked for is unknown
+            # here, and reconciliation reads only what it filled.
+            requested_qty=float(order.qty or 0.0),
+            symbol=symbol,
+            state=OrderState.PARTIALLY_FILLED if filled > 0 else OrderState.SUBMITTED,
+            filled_qty=filled,
+            avg_fill_price=(order.tracker.cumulative_notional / filled) if filled > 0 else 0.0,
+            side=order.kind,
+        )
+    return records
+
+
 @dataclass
 class _LoopState:
     """The scalars that survive a restart, alongside the persisted lots."""
@@ -532,6 +579,7 @@ class LiveTradingLoop:
         order_listener: Callable[[dict], None] | None = None,
         now: Callable[[], datetime] | None = None,
         transition: dict | None = None,
+        incident_listener: Callable[[dict], None] | None = None,
     ) -> None:
         """Assemble the loop and load durable state.
 
@@ -554,7 +602,9 @@ class LiveTradingLoop:
         WINDOWS); order_listener is told each moment of an order's life;
         `now` is the wall clock those windows are read against. `broker` may
         be None to build the loop -- and replay its history -- before the
-        broker is connected (attach_broker).
+        broker is connected (attach_broker). incident_listener is told each
+        incident the promotion gate counts ({"t", "kind", "detail", ...};
+        module docstring), and like the others can never stop a tick.
 
         history_provider(symbol, sessions) returns that many sessions of
         regular-hours minute bars (a DataFrame: UTC index, open/high/low/
@@ -623,6 +673,11 @@ class LiveTradingLoop:
         self._tick_listener = tick_listener
         self._fill_listener = fill_listener
         self._order_listener = order_listener
+        self._incident_listener = incident_listener
+        # The decisions this process has asked the duplicate guard to submit
+        # (_submit_once): one it finds claimed but unconfirmed is an incident
+        # only if an EARLIER process claimed it (_met_again).
+        self._attempted: set[str] = set()
         self.calendar = calendar
         self._now = now or (lambda: datetime.now(UTC))
         # On the venue's windows: the traded window this tick is in, the last
@@ -1102,10 +1157,11 @@ class LiveTradingLoop:
 
     # --- on the venue's own windows (module docstring) ---
 
-    def set_listeners(self, *, tick=None, fill=None, order=None) -> None:
-        """Who hears the ticks, fills and order events of a loop built before
-        its trading process was (cli.py's engine-first start)."""
+    def set_listeners(self, *, tick=None, fill=None, order=None, incident=None) -> None:
+        """Who hears the ticks, fills, order events and incidents of a loop
+        built before its trading process was (cli.py's engine-first start)."""
         self._tick_listener, self._fill_listener, self._order_listener = tick, fill, order
+        self._incident_listener = incident
 
     def attach_broker(self, broker) -> None:
         """The broker, once it is connected: a loop built before it (cli.py's
@@ -1442,6 +1498,7 @@ class LiveTradingLoop:
                     f"after the {window.session} window the venue holds {held:g} {self.symbol} "
                     f"and the ledger {booked:g}. Reconcile before buying again."
                 )
+                self._report_incident("accounting_discrepancies", problem)
         if problem is not None:
             summary["problem"] = problem
             logger.error(f"WINDOW AUDIT: {problem}")
@@ -1529,14 +1586,19 @@ class LiveTradingLoop:
             logger.warning(f"Order listener failed (ignored): {type(exc).__name__}: {exc}")
 
     def settle_in_flight(self) -> bool:
-        """in_flight_settled for a shutdown on the venue's windows: orders the
-        last tick cancelled are asked about (at most every
-        SETTLE_POLL_SECONDS), so a cancel the venue confirms during the
-        shutdown's window counts as settled rather than as an order left in
-        flight."""
+        """in_flight_settled for a shutdown that asks the broker: orders still
+        in flight are asked about (at most every SETTLE_POLL_SECONDS) and
+        what they did is booked as any tick books it, so a fill or a cancel
+        confirmed during the shutdown's window counts as settled rather than
+        as an order left in flight.
+
+        Every deployment's shutdown, not only one on the venue's windows: on
+        2026-11-16 a buy placed by the session's last tick filled 3 s after
+        the loop stopped, the shutdown (reading only its own table) waited
+        out its window and halted the trader for a fill nobody asked about."""
         if not self.state.open_orders:
             return True
-        if self.calendar is None or self.broker is None:
+        if self.broker is None:
             return False
         moment = time.monotonic()
         if self._last_settle_poll is None or moment - self._last_settle_poll >= SETTLE_POLL_SECONDS:
@@ -1580,12 +1642,15 @@ class LiveTradingLoop:
                 self._decision_not_sent()
                 self._note_broker_unavailable(exc)
                 self._report_tick("broker_unavailable", acted=False, detail=str(exc))
-            except AmbiguousSubmissionError:
+            except AmbiguousSubmissionError as exc:
                 # It is unknown whether an order reached the broker.
                 # Halting and stopping is the only safe response --
                 # continuing to trade could double an existing position.
                 # Re-raised after halting so the process exits into a
                 # state a human must clear.
+                self._report_incident(
+                    "duplicate_order_incidents", f"ambiguous order submission: {exc}"
+                )
                 self.circuit_breaker.halt_for_reconciliation(
                     "Ambiguous order submission -- unknown whether the broker received an "
                     "order. Reconcile by client order ID before resuming."
@@ -1666,6 +1731,18 @@ class LiveTradingLoop:
             self._fill_listener({"t": datetime.now(UTC).timestamp(), **fields})
         except Exception as exc:
             logger.warning(f"Fill listener failed (ignored): {type(exc).__name__}: {exc}")
+
+    def _report_incident(self, kind: str, detail: str, **fields) -> None:
+        """Tell the incident listener what the promotion gate must count
+        (control_inbox.INCIDENT_KINDS). Never raises."""
+        if self._incident_listener is None:
+            return
+        try:
+            self._incident_listener(
+                {"t": datetime.now(UTC).timestamp(), "kind": kind, "detail": detail, **fields}
+            )
+        except Exception as exc:
+            logger.warning(f"Incident listener failed (ignored): {type(exc).__name__}: {exc}")
 
     def _report_tick(self, reason: str, **fields) -> None:
         """Tell the tick listener what this tick did. A listener that
@@ -1829,8 +1906,12 @@ class LiveTradingLoop:
                     prev_close=self.state.prev_close,
                     reason=tracked.sell_reason,
                 )
-            except NoLossViolation:
-                continue  # logged by the guard; left visible for reconciliation
+            except NoLossViolation as exc:
+                # Logged by the guard; left visible for reconciliation.
+                self._report_incident(
+                    "no_loss_violations", str(exc), order=tracked.client_order_id, lot=lot_id
+                )
+                continue
             cost = lot.buy_price * qty
             self.state.credit_sale(economics.net_sell_proceeds, self.settlement_days)
             self.ledger.close_lot(lot, sell_qty=qty, execution_price=delta.avg_price)
@@ -1844,10 +1925,12 @@ class LiveTradingLoop:
             f"{len(tracked.exit_lot_ids)} lot(s); cash={self.state.cash:.2f}"
         )
         if remaining > 1e-6:
-            logger.error(
+            detail = (
                 f"Exit {tracked.client_order_id!r} filled {remaining} shares more than its "
                 "open lots held. Not applied -- reconcile."
             )
+            logger.error(detail)
+            self._report_incident("accounting_discrepancies", detail, order=tracked.client_order_id)
 
     def _apply_sell_fill(self, tracked: _TrackedOrder, delta) -> None:
         """Close (or reduce) a lot from a confirmed sell increment.
@@ -1866,10 +1949,12 @@ class LiveTradingLoop:
             (lot for lot in self.ledger.open_lots if lot.order_id == tracked.lot_order_id), None
         )
         if lot is None:
-            logger.error(
+            detail = (
                 f"Sell fill for {tracked.client_order_id!r} references lot "
                 f"{tracked.lot_order_id!r}, which is not open. Not applying -- reconcile."
             )
+            logger.error(detail)
+            self._report_incident("accounting_discrepancies", detail, order=tracked.client_order_id)
             return
 
         try:
@@ -1881,10 +1966,13 @@ class LiveTradingLoop:
                 prev_close=self.state.prev_close,
                 reason=tracked.sell_reason,
             )
-        except NoLossViolation:
+        except NoLossViolation as exc:
             # Already logged by the guard. Deliberately not applied:
             # refusing to book it leaves the position visible and
             # reconcilable rather than quietly realizing a loss.
+            self._report_incident(
+                "no_loss_violations", str(exc), order=tracked.client_order_id, lot=lot.order_id
+            )
             return
 
         cost = lot.buy_price * delta.qty
@@ -2068,7 +2156,7 @@ class LiveTradingLoop:
         for order in harvest[: max(0, self.config.live.max_sells_per_tick - submitted)]:
             lot, qty = order.lot, order.quantity
             decision_id = self._decision_id("SELL", context.timestamp, lot.order_id)
-            outcome = self.guard.submit_once(
+            outcome = self._submit_once(
                 decision_id,
                 lambda cid, lot=lot, qty=qty: str(
                     self.broker.submit_sell(
@@ -2140,7 +2228,7 @@ class LiveTradingLoop:
                 buffer=self.config.live.exit_limit_buffer,
             ).price
         decision_id = self._decision_id("SELL", context.timestamp, "exit")
-        outcome = self.guard.submit_once(
+        outcome = self._submit_once(
             decision_id,
             lambda cid: str(
                 self.broker.submit_sell(
@@ -2283,7 +2371,7 @@ class LiveTradingLoop:
             return str(placed["order"].id)
 
         decision_id = self._decision_id("BUY", context.timestamp)
-        outcome = self.guard.submit_once(decision_id, submit, event_kind="buy_submission")
+        outcome = self._submit_once(decision_id, submit, event_kind="buy_submission")
         if not outcome.submitted_now:
             return 0
 
@@ -2346,6 +2434,34 @@ class LiveTradingLoop:
                 buffer=self.config.live.exit_limit_buffer,
             )
         return limit_pricing.grid_buy(context.price, quote, max_spread=orders.max_spread)
+
+    def _submit_once(self, decision_id: str, submit, *, event_kind: str):
+        """The duplicate guard's submit_once, remembering which decisions
+        this process attempted."""
+        attempted_before = decision_id in self._attempted
+        self._attempted.add(decision_id)
+        outcome = self.guard.submit_once(decision_id, submit, event_kind=event_kind)
+        if not outcome.submitted_now and not attempted_before:
+            self._met_again(outcome)
+        return outcome
+
+    def _met_again(self, outcome) -> None:
+        """A decision the duplicate guard refused to submit twice, met for the
+        first time in this process. Met again once ACKNOWLEDGED is routine (a
+        tick re-reading its bar, _decision_id). Met while only SUBMITTED --
+        claimed by an earlier process, no broker reference ever came back, a
+        crash between the claim and the broker's answer -- an order may or
+        may not exist for it, which the paper trial counts as a
+        duplicate-order incident. One this process claimed itself and whose
+        submission raised is not: BrokerUnavailableError means nothing was
+        sent, and AmbiguousSubmissionError is reported where it is caught."""
+        if outcome.state is DecisionState.SUBMITTED:
+            self._report_incident(
+                "duplicate_order_incidents",
+                f"decision {outcome.decision_id} met again with its first submission "
+                "never confirmed; an order may exist for it -- reconcile by client order id",
+                order=outcome.decision_id,
+            )
 
     def _decision_id(self, decision_type: str, timestamp: datetime, suffix: str = "") -> str:
         """The stable id used as both the audit key and the Alpaca

@@ -30,6 +30,9 @@ LAYOUT -- one directory per deployment, a volume both containers mount
   status.json               what the trader is doing, rewritten as it works
   bars/<session>.jsonl      the minute bars the trader traded on
   fills/<session>.jsonl     every fill it booked, with its price
+  incidents/<session>.jsonl what the promotion gate counts (INCIDENT_KINDS),
+                            and a "watching" row per session the trader
+                            journaled them -- engine/promotion_record.py
   bridge/                   a Fidelity deployment's bridge host (fidelity_gateway/
                             bridge/host.py): its own inbox, status.json and
                             events/<day>.jsonl -- the same layout, one level down
@@ -112,9 +115,22 @@ _LOCK = threading.Lock()
 # each keeps. "events" is the bridge host's: connects, disconnects, sign-outs.
 # "orders" is each order's life (placed, filled, cancelled, expired, and why);
 # "quotes" every quote read from a second source, for research on the feeds.
-JOURNALS = ("bars", "fills", "events", "orders", "quotes")
+# "incidents" is what the promotion gate counts and nothing else journals:
+# each a row of one of INCIDENT_KINDS, plus a WATCHING row each time a trader
+# starts a session with the journal wired -- the proof its zeros were measured.
+JOURNALS = ("bars", "fills", "events", "orders", "quotes", "incidents")
 JOURNAL_SESSIONS = 10
-_KEEP = {"events": 14}
+_KEEP = {"events": 14, "incidents": 60}
+
+# The promotion gate's incident counters (engine/promotion.py), by the
+# PaperTradingRecord field each fills.
+INCIDENT_KINDS = (
+    "accounting_discrepancies",
+    "duplicate_order_incidents",
+    "no_loss_violations",
+    "unhandled_exceptions",
+)
+WATCHING = "watching"
 _JOURNAL_FILE = re.compile(r"^\d{4}-\d{2}-\d{2}\.jsonl$")
 _EASTERN = ZoneInfo("America/New_York")
 
@@ -447,6 +463,18 @@ class ControlInbox:
         """Append one quote read from a second source ({"t", "bid", "ask",
         "last", "at", "source", ...})."""
         return self._append("quotes", [quote])
+
+    def record_incident(self, incident: dict) -> int:
+        """Append one incident ({"t": epoch seconds, "kind": one of
+        INCIDENT_KINDS or WATCHING, "detail", ...})."""
+        if incident.get("kind") not in (*INCIDENT_KINDS, WATCHING):
+            logger.warning(f"Not journaled: unknown incident kind {incident.get('kind')!r}")
+            return 0
+        return self._append("incidents", [incident])
+
+    def incidents(self, sessions: int = 1) -> list[dict]:
+        """The last `sessions` sessions' incidents and watching rows, oldest first."""
+        return sorted(self._journal("incidents", sessions), key=lambda row: row["t"])
 
     def orders(self, sessions: int = 1) -> list[dict]:
         """The last `sessions` sessions' order events, oldest first."""

@@ -6,6 +6,7 @@ import { ConfigurationList } from "@/components/backtest/ConfigurationList";
 import { FilterPanel } from "@/components/backtest/FilterPanel";
 import { FundComparison } from "@/components/backtest/FundComparison";
 import { ProfileProposal } from "@/components/backtest/ProfileProposal";
+import { RecentRuns } from "@/components/backtest/RecentRuns";
 import { RiskRewardMetrics } from "@/components/backtest/RiskRewardMetrics";
 import { SweepMatrix } from "@/components/backtest/SweepMatrix";
 import { SweepSummary } from "@/components/backtest/SweepSummary";
@@ -233,15 +234,7 @@ export function BacktestResult({
         </Card>
       );
     }
-    return (
-      <Card>
-        <CardContent className="pt-5 text-sm text-muted-foreground">
-          No run loaded. Open one from <span className="text-foreground">Run history</span> or{" "}
-          <span className="text-foreground">Active runs</span> on the Backtesting tab, or submit a
-          new backtest there.
-        </CardContent>
-      </Card>
-    );
+    return <RecentRuns />;
   }
 
   const showSweepDetails = configurations.length > 1;

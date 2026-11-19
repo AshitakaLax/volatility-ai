@@ -1,6 +1,16 @@
 package io.github.ashitakalax.bridgenotifier
 
+import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
+import android.content.ClipboardManager
+import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Typeface
+import android.net.Uri
+import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -9,7 +19,9 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.Switch
 import android.widget.TextView
+import android.widget.Toast
 import io.github.ashitakalax.bridgenotifier.core.Account
 import io.github.ashitakalax.bridgenotifier.core.Accounts
 import io.github.ashitakalax.bridgenotifier.core.ApiKeys
@@ -23,14 +35,16 @@ import java.time.Instant
  * The settings and connection page, shown at start-up: the accounts the app
  * watches -- each a listener's address and key, a Fidelity bridge or the
  * trader notifier's Alpaca deployments -- the one being edited, a three-step
- * check that it works, and what that account is to notify the phone about
- * (its trades one by one or in one note after the close, muted, or muted
- * for an hour from a notification). Then the app's own settings, and its
- * version against the latest release.
+ * check that it works, the switch that starts and stops watching, whether
+ * Android will let the alerts through, and what that account is to notify
+ * the phone about (its trades one by one or in one note after the close,
+ * muted, or muted for an hour from a notification). Then the app's own
+ * settings, and its version against the latest release.
  */
 class ConnectScreen(
     private val ui: Ui,
     private val prefs: Prefs,
+    private val askToNotify: () -> Unit,
     private val onConnected: () -> Unit,
 ) : Screen {
     private val accountList = ui.column(gap = 8)
@@ -39,7 +53,16 @@ class ConnectScreen(
     private val key = input(ui.string(R.string.key_hint), HIDDEN_KEY)
     private val checks = ui.column(gap = 12)
     private val plainText = ui.text(ui.string(R.string.plaintext_warning), size = 13f, color = R.color.status_warn)
-    private val notificationsOff = ui.text(ui.string(R.string.notifications_off), size = 13f, color = R.color.status_bad)
+    private val notificationsOff = notice(R.string.notifications_off, R.color.status_bad, R.string.notifications_turn_on, ::openNotificationSettings)
+    private val batteryRestricted = notice(R.string.battery_restricted, R.color.status_warn, R.string.battery_allow, ::askForBattery)
+    private val watching = Switch(ui.context).apply {
+        text = ui.string(R.string.watching)
+        textSize = 15f
+        typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        setTextColor(ui.color(R.color.ink))
+        minHeight = ui.dp(48)
+    }
+    private val watchingHelp = ui.text("", size = 12f, color = R.color.muted)
     private val lockUnavailable = ui.text(ui.string(R.string.lock_unavailable), size = 12f, color = R.color.status_warn)
     private val remove = TextView(ui.context).apply {
         text = ui.string(R.string.account_remove)
@@ -105,13 +128,21 @@ class ConnectScreen(
 
         val showKey = ImageButton(ui.context).apply {
             setImageResource(R.drawable.ic_eye)
-            imageTintList = android.content.res.ColorStateList.valueOf(ui.color(R.color.ink_soft))
-            background = ui.rounded(R.color.card, radius = 10, stroke = R.color.line_strong)
+            imageTintList = ColorStateList.valueOf(ui.color(R.color.ink_soft))
+            background = ui.pressable(ui.rounded(R.color.card, radius = 10, stroke = R.color.line_strong))
             contentDescription = ui.string(R.string.show_key)
             setOnClickListener { toggleKey(this) }
         }
+        val paste = ui.text(ui.string(R.string.paste_key), size = 13f, color = R.color.accent, bold = true).apply {
+            gravity = Gravity.CENTER
+            minHeight = ui.dp(48)
+            setPadding(ui.dp(12), 0, ui.dp(12), 0)
+            background = ui.rounded(R.color.card, radius = 10, stroke = R.color.line_strong)
+            ui.tappable(this, ::pasteKey)
+        }
         val keyRow = ui.row(gap = 8).apply {
             addView(ui.grow(key))
+            addView(paste, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ui.dp(48)))
             addView(showKey, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
         }
         page.addView(
@@ -139,8 +170,16 @@ class ConnectScreen(
 
         page.addView(
             ui.card(gap = 4).apply {
+                addView(watching)
+                addView(watchingHelp)
+            },
+        )
+
+        page.addView(
+            ui.card(gap = 4).apply {
                 addView(notifyHeader)
                 addView(notificationsOff)
+                addView(batteryRestricted)
                 addView(mutes)
             },
         )
@@ -183,26 +222,12 @@ class ConnectScreen(
                 )
             },
         )
-        page.addView(
-            TextView(ui.context).apply {
-                text = ui.string(R.string.stop_watching)
-                setTextColor(ui.color(R.color.muted))
-                minHeight = ui.dp(48)
-                gravity = Gravity.CENTER
-                setOnClickListener {
-                    prefs.monitoring = false
-                    MonitorService.stop(ui.context)
-                }
-            },
-        )
 
         val footer = ui.row(gap = 10).apply {
             setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(16))
             addView(
                 ui.grow(
-                    ui.button(ui.string(R.string.send_test), filled = false) {
-                        if (!adding) MonitorService.requestTest(ui.context, prefs.currentId)
-                    },
+                    ui.button(ui.string(R.string.send_test), filled = false, ::sendTest),
                 ),
             )
             addView(
@@ -234,10 +259,42 @@ class ConnectScreen(
         remove.visibility = if (account != null) View.VISIBLE else View.GONE
         plainText.visibility = if (BridgeAddress.isPlainText(account?.url ?: address.text.toString())) View.VISIBLE else View.GONE
         notificationsOff.visibility = if (Alerts.notificationsEnabled(ui.context)) View.GONE else View.VISIBLE
+        batteryRestricted.visibility = if (batteryUnrestricted()) View.GONE else View.VISIBLE
+        renderWatching()
         lockUnavailable.visibility = if (LockGate.available(ui.context)) View.GONE else View.VISIBLE
         renderChecks(snapshot, account)
         renderMutes(account)
         renderUpdates()
+    }
+
+    /** The switch shows what is so; set without its listener hearing it. */
+    private fun renderWatching() {
+        watching.setOnCheckedChangeListener(null)
+        watching.isEnabled = prefs.isConfigured
+        watching.isChecked = prefs.monitoring && prefs.isConfigured
+        watching.setOnCheckedChangeListener { _, on -> watch(on) }
+        watchingHelp.text = ui.string(
+            when {
+                !prefs.isConfigured -> R.string.watching_unset
+                prefs.monitoring -> R.string.watching_on
+                else -> R.string.watching_off
+            },
+        )
+    }
+
+    /** What was typed and not yet saved survives the activity being rebuilt. */
+    override fun save(state: Bundle) {
+        state.putString(ADDRESS, address.text.toString())
+        state.putString(KEY, key.text.toString())
+        state.putBoolean(ADDING, adding)
+    }
+
+    override fun restore(state: Bundle) {
+        adding = state.getBoolean(ADDING, false)
+        state.getString(ADDRESS)?.let { address.setText(it) }
+        state.getString(KEY)?.let { key.setText(it) }
+        // What was typed is for the account being edited: the next render keeps it.
+        filledFor = if (adding) null else prefs.currentId
     }
 
     /** This app's version, what GitHub last said is the latest, and when. */
@@ -303,14 +360,18 @@ class ConnectScreen(
                     },
                 )
                 mutes.addView(ui.text(ui.string(R.string.account_summary_help), size = 12f, color = R.color.muted))
-                for (kind in EventKind.ALL) {
-                    val box = checkbox(EventKind.label(kind), kind !in saved.mutedKinds) { on ->
-                        prefs.change(account.id) {
-                            it.copy(mutedKinds = if (on) it.mutedKinds - kind else it.mutedKinds + kind)
+                for ((header, kinds) in groups()) {
+                    mutes.addView(spacer(6))
+                    mutes.addView(ui.eyebrow(ui.string(header)))
+                    for (kind in kinds) {
+                        val box = checkbox(EventKind.label(kind), kind !in saved.mutedKinds) { on ->
+                            prefs.change(account.id) {
+                                it.copy(mutedKinds = if (on) it.mutedKinds - kind else it.mutedKinds + kind)
+                            }
                         }
+                        kindBoxes[kind] = box
+                        mutes.addView(box)
                     }
-                    kindBoxes[kind] = box
-                    mutes.addView(box)
                 }
             }
         }
@@ -357,10 +418,9 @@ class ConnectScreen(
                             },
                         ),
                     )
-                    isClickable = true
                     isSelected = on
                     contentDescription = ui.string(R.string.account_edit, account.name)
-                    setOnClickListener {
+                    ui.tappable(this) {
                         adding = false
                         prefs.currentId = account.id
                         MonitorState.setAccounts(prefs.accounts, account.id)
@@ -437,9 +497,9 @@ class ConnectScreen(
     private fun step(label: String, detail: String, mark: Mark, number: String): View = ui.row(gap = 10).apply {
         addView(
             when (mark) {
-                Mark.OK -> ui.mark("✓", R.color.status_ok)
-                Mark.FAIL -> ui.mark("!", R.color.status_bad)
-                Mark.PENDING -> ui.mark(number, R.color.status_idle)
+                Mark.OK -> ui.mark("✓", R.color.status_ok_fill, ui.string(R.string.mark_ok))
+                Mark.FAIL -> ui.mark("!", R.color.status_bad_fill, ui.string(R.string.mark_fail))
+                Mark.PENDING -> ui.mark(number, R.color.status_idle_fill, ui.string(R.string.mark_step, number))
             },
         )
         addView(
@@ -456,11 +516,14 @@ class ConnectScreen(
         val url = BridgeAddress.parse(address.text.toString())
         if (url == null) {
             address.error = ui.string(R.string.error_address)
+            address.requestFocus()
             return
         }
-        val typed = key.text.toString().trim()
+        // The whole .env line pasted in is the key too.
+        val typed = ApiKeys.clean(key.text.toString())
         if (!ApiKeys.looksValid(typed)) {
             key.error = ui.string(R.string.error_key)
+            key.requestFocus()
             return
         }
         val existing = if (adding) null else prefs.account(prefs.currentId)
@@ -470,6 +533,8 @@ class ConnectScreen(
                 // A different listener: what the old one kept is not news, and
                 // what it said it was about is for the new one's hello to say.
                 prefs.forgetPosition(existing.id)
+                NotifierApplication.recents(ui.context).clear(existing.id)
+                MonitorState.updateAccount(existing.id) { it.copy(recent = emptyList()) }
                 existing.copy(url = url, apiKey = typed, label = "", broker = Accounts.guessBroker(url), paper = null)
             }
             else -> existing.copy(apiKey = typed)
@@ -480,9 +545,91 @@ class ConnectScreen(
         adding = false
         filledFor = account.id
         address.setText(url)
+        key.setText(typed)
         MonitorState.setAccounts(prefs.accounts, account.id)
         MonitorService.restart(ui.context)
+        askToNotify()
         onConnected()
+    }
+
+    private fun watch(on: Boolean) {
+        prefs.monitoring = on
+        if (on) MonitorService.start(ui.context) else MonitorService.stop(ui.context)
+        last?.let(::render)
+    }
+
+    /** A test from the account being edited's listener: said plainly when there is none to ask. */
+    private fun sendTest() {
+        val account = if (adding) null else prefs.account(prefs.currentId)
+        val connected = account != null && MonitorState.snapshot.stateOf(account.id).link is BridgeClient.Link.Connected
+        if (connected) MonitorService.requestTest(ui.context, account?.id)
+        val name = account?.name ?: ui.string(R.string.account_new_header)
+        Toast.makeText(ui.context, ui.string(if (connected) R.string.test_asked else R.string.test_not_connected, name), Toast.LENGTH_LONG).show()
+    }
+
+    private fun pasteKey() {
+        val clipboard = ui.context.getSystemService(ClipboardManager::class.java)
+        val pasted = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ui.context)?.toString()
+        val cleaned = pasted?.let(ApiKeys::clean).orEmpty()
+        if (cleaned.isEmpty()) {
+            toast(R.string.paste_empty)
+            return
+        }
+        key.setText(cleaned)
+        key.setSelection(key.text.length)
+        key.error = if (ApiKeys.looksValid(cleaned)) null else ui.string(R.string.error_key)
+    }
+
+    /** The notification kinds under the headings the Activity page filters by; a kind not placed goes last. */
+    private fun groups(): List<Pair<Int, List<String>>> {
+        val trades = listOf(EventKind.BUY, EventKind.SELL, EventKind.ORDER_UPDATE, EventKind.WINDOW)
+        val problems = listOf(
+            EventKind.ORDER_PROBLEM, EventKind.READINESS, EventKind.FIDELITY_SIGNIN, EventKind.ACCOUNT_CHECK, EventKind.SESSION,
+        )
+        val connection = EventKind.ALL - trades.toSet() - problems.toSet()
+        return listOf(
+            R.string.filter_trades to trades,
+            R.string.filter_problems to problems,
+            R.string.filter_connection to connection,
+        )
+    }
+
+    private fun batteryUnrestricted(): Boolean =
+        ui.context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(ui.context.packageName) != false
+
+    /** Android's own dialog to exempt this app; its list of apps where that dialog is not offered. */
+    @SuppressLint("BatteryLife") // Sideloaded, and holding connections open is the app's whole job.
+    private fun askForBattery() {
+        try {
+            ui.context.startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ui.context.packageName}")),
+            )
+        } catch (_: ActivityNotFoundException) {
+            open(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        }
+    }
+
+    private fun openNotificationSettings() {
+        open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ui.context.packageName))
+    }
+
+    private fun open(intent: Intent) {
+        try {
+            ui.context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            toast(R.string.settings_unavailable)
+        }
+    }
+
+    private fun toast(message: Int) {
+        Toast.makeText(ui.context, message, Toast.LENGTH_LONG).show()
+    }
+
+    /** A warning with the one button that deals with it. */
+    private fun notice(message: Int, color: Int, action: Int, onClick: () -> Unit): View = ui.column(gap = 6).apply {
+        setPadding(0, ui.dp(4), 0, ui.dp(8))
+        addView(ui.text(ui.string(message), size = 13f, color = color))
+        addView(ui.button(ui.string(action), filled = false, onClick))
     }
 
     private fun confirmRemove() {
@@ -493,6 +640,7 @@ class ConnectScreen(
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(ui.string(R.string.account_remove_confirm)) { _, _ ->
                 prefs.remove(account.id)
+                NotifierApplication.recents(ui.context).clear(account.id)
                 filledFor = null
                 MonitorState.setAccounts(prefs.accounts, prefs.currentId)
                 if (prefs.isConfigured) {
@@ -510,6 +658,7 @@ class ConnectScreen(
     private fun toggleKey(button: ImageButton) {
         keyShown = !keyShown
         key.inputType = if (keyShown) SHOWN_KEY else HIDDEN_KEY
+        key.typeface = Typeface.MONOSPACE
         key.setSelection(key.text.length)
         button.contentDescription = ui.string(if (keyShown) R.string.hide_key else R.string.show_key)
     }
@@ -520,8 +669,11 @@ class ConnectScreen(
         // after the input type it would show a password field's key in clear.
         isSingleLine = true
         inputType = type
-        typeface = android.graphics.Typeface.MONOSPACE
+        typeface = Typeface.MONOSPACE
         textSize = 14f
+        // Said outright: the theme's own would be the dark theme's white on this card.
+        setTextColor(ui.color(R.color.ink))
+        setHintTextColor(ui.color(R.color.muted))
         minHeight = ui.dp(48)
         setPadding(ui.dp(12), 0, ui.dp(12), 0)
         background = ui.rounded(R.color.card, radius = 10, stroke = R.color.line_strong)
@@ -532,6 +684,10 @@ class ConnectScreen(
             text = label
             textSize = 14f
             setTextColor(ui.color(R.color.ink))
+            buttonTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(ui.color(R.color.accent), ui.color(R.color.muted)),
+            )
             minHeight = ui.dp(44)
             isChecked = checked
             setOnCheckedChangeListener { _, on -> onChange(on) }
@@ -544,5 +700,8 @@ class ConnectScreen(
     private companion object {
         const val HIDDEN_KEY = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         const val SHOWN_KEY = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        const val ADDRESS = "connect_address"
+        const val KEY = "connect_key"
+        const val ADDING = "connect_adding"
     }
 }
