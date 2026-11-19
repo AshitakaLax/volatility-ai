@@ -35,6 +35,8 @@ class Lot:
 class State:
     lots: list = field(default_factory=list)
     last_price: float | None = None
+    cash: float | None = None
+    unsettled: float = 0.0
 
 
 class Inbox:
@@ -140,6 +142,38 @@ def test_days_stop_at_days_shown(ledger):
     book = _book(ledger, State(), Inbox(fills=fills))
     assert len(book["days"]) == DAYS_SHOWN
     assert book["days"][0]["date"] == "2026-11-03"
+
+
+def test_funds_are_the_cash_what_it_can_spend_and_the_lots_at_the_last_price(ledger):
+    state = State(
+        lots=[Lot("a", 218.0, 1.0, 220.18), Lot("b", 219.0, 2.0, 221.19)],
+        last_price=220.0,
+        cash=1000.0,
+        unsettled=250.0,
+    )
+    assert _book(ledger, state, Inbox())["funds"] == {
+        "value": 1660.0,  # the cash, settling included, and 3 shares at 220
+        "cash": 1000.0,
+        "unsettled": 250.0,
+        "available": 750.0,
+    }
+
+
+def test_with_lots_open_and_no_price_the_value_is_unknown_not_the_cash(ledger):
+    state = State(lots=[Lot("a", 218.0, 1.0, 220.18)], cash=1000.0)
+    funds = _book(ledger, state, Inbox())["funds"]
+    assert funds["value"] is None and funds["available"] == 1000.0
+
+
+def test_no_lots_is_worth_its_cash_and_settling_never_makes_it_negative(ledger):
+    funds = _book(ledger, State(cash=100.0, unsettled=150.0), Inbox())["funds"]
+    assert funds["value"] == 100.0 and funds["available"] == 0.0
+
+
+def test_a_ledger_without_its_cash_or_no_ledger_has_no_funds(ledger):
+    assert _book(ledger, State(), Inbox())["funds"] is None
+    sale = {"t": NOW, "side": "sell", "lot": "a", "qty": 1.0, "price": 1.0, "pnl": 0.1}
+    assert read_book(None, Inbox(fills=[sale]), symbol="RSP", now=NOW)["funds"] is None
 
 
 def test_the_last_price_falls_back_to_the_journal_bars(ledger):

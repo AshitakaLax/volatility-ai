@@ -44,15 +44,22 @@ the fifth.
   works (reachable, key accepted, a test notification received); the switch
   that starts and stops watching; and what to be told about.
 - **All accounts**, with more than one (where the app opens once set up):
-  today's realised profit, open lots and trades, real money and paper totalled
-  apart, never added together; then a card each with its state, whether that
-  is live or when it was last heard, and its day so far. Tap one for its Home.
+  today's realised profit, open lots and trades, and what the accounts are
+  worth and have free to trade, real money and paper totalled apart, never
+  added together; then a card each with its state, whether that is live or
+  when it was last heard, its day so far, and its value, what is available,
+  what is unsettled and what share of the value is free. Tap one for its Home.
 - **Home**: for Fidelity, ready to trade or the one thing to fix and the
   readiness checklist link by link; for Alpaca, what its trader says it is
   doing (trading, buys paused, waiting for the open, not reporting) -- and
   **Live**, or **Last heard 12 minutes ago** when its listener is out of
   reach (tap the top card to try again now). Then today's realised profit and the open lots' unrealised figure,
-  the day's buys and sales, the **profit history** (each trading day's
+  the day's buys and sales, the **account value** (the cash and the open lots
+  at the last price), what is **available to trade** (the cash less sales
+  still settling) with the **unsettled** amount beside it, and what share of
+  the value is free -- the money the
+  trader manages, from its ledger, which at a broker may be less than the
+  whole account -- the **profit history** (each trading day's
   realised profit as a bar, over 2 weeks, a month, 3 months or a year, with
   the total and the best and worst days; touch a bar for its day), the
   trading session and, for Fidelity, the last account check.

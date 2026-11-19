@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import io.github.ashitakalax.bridgenotifier.core.Account
+import io.github.ashitakalax.bridgenotifier.core.Book
 import io.github.ashitakalax.bridgenotifier.core.BridgeClient
 import io.github.ashitakalax.bridgenotifier.core.DayFigures
 import io.github.ashitakalax.bridgenotifier.core.EventKind
@@ -32,8 +33,8 @@ interface Screen {
  * The account shown, at a glance: for Fidelity, ready to trade or the one
  * thing to fix and the readiness chain; for Alpaca, what its trader says it is
  * doing -- and whether that is live or when it was last heard. Then today's
- * profit, the day's counts, the profit history day by day, the trading
- * session and the latest trade.
+ * profit, the day's counts, what the account is worth and has free to trade,
+ * the profit history day by day, the trading session and the latest trade.
  */
 class HomeScreen(
     private val ui: Ui,
@@ -149,6 +150,7 @@ class HomeScreen(
                 addView(tile(ui.string(R.string.tile_sells), book?.salesToday, Tab.ACTIVITY))
             },
         )
+        if (snapshot.account != null) content.addView(funds(book))
         snapshot.account?.let { content.addView(history(it.id)) }
         content.addView(session(snapshot))
         latestTrade(snapshot)?.let(content::addView)
@@ -289,6 +291,71 @@ class HomeScreen(
             )
             ui.tappable(this) { go(Tab.LOTS) }
         }
+    }
+
+    /**
+     * The account's value, what of it is free to trade and what share that
+     * is, from the trader's ledger (the book's funds): the money it manages,
+     * which at a broker may be less than the whole account.
+     */
+    private fun funds(book: Book?): View = ui.card(padding = 16, gap = 6).apply {
+        val funds = book?.funds
+        val lots = book?.open?.size ?: 0
+        addView(ui.label(ui.string(R.string.funds_value)))
+        if (funds == null) {
+            addView(ui.text("—", size = 26f, mono = true))
+            addView(ui.text(ui.string(R.string.funds_none), size = 12f, color = R.color.muted))
+            return@apply
+        }
+        addView(ui.text(funds.value?.let(Format::money) ?: "—", size = 26f, mono = true))
+        // What it can spend now, and beside it the sales still settling: the
+        // cash that is the account's but not yet to spend (T+1 at Fidelity).
+        addView(
+            ui.row(gap = 12).apply {
+                gravity = Gravity.TOP
+                addView(
+                    ui.grow(
+                        ui.column(gap = 2).apply {
+                            addView(ui.text(ui.string(R.string.funds_available), size = 13f, color = R.color.ink_soft))
+                            addView(ui.text(Format.money(funds.available), size = 17f, bold = true, mono = true))
+                        },
+                    ),
+                )
+                addView(
+                    ui.column(gap = 2).apply {
+                        gravity = Gravity.END
+                        addView(ui.text(ui.string(R.string.funds_unsettled), size = 13f, color = R.color.ink_soft).apply { gravity = Gravity.END })
+                        addView(ui.text(Format.money(funds.unsettled), size = 17f, mono = true).apply { gravity = Gravity.END })
+                    },
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+                )
+            },
+        )
+        val share = funds.availableShare
+        if (share != null) {
+            addView(shareBar(share))
+            addView(ui.text(ui.string(R.string.funds_share, Format.share(share)), size = 12f, color = R.color.ink_soft))
+        }
+        val small = listOfNotNull(
+            if (funds.value == null) ui.string(R.string.funds_no_price) else null,
+            funds.invested?.takeIf { lots > 0 }?.let {
+                ui.context.resources.getQuantityString(R.plurals.funds_invested, lots, Format.money(it), lots)
+            },
+        ).joinToString(" · ")
+        if (small.isNotEmpty()) addView(ui.text(small, size = 12f, color = R.color.muted))
+        addView(ui.text(ui.string(R.string.funds_whose), size = 12f, color = R.color.muted))
+        ui.tappable(this) { go(Tab.LOTS) }
+    }
+
+    /** A bar filled to [fraction]: the share of the value free to trade. */
+    private fun shareBar(fraction: Double): View = LinearLayout(ui.context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        background = ui.rounded(R.color.track, radius = 4)
+        contentDescription = ui.string(R.string.funds_share, Format.share(fraction))
+        val filled = fraction.toFloat().coerceIn(0.001f, 0.999f)
+        addView(View(ui.context).apply { background = ui.rounded(R.color.accent_fill, radius = 4) }, LinearLayout.LayoutParams(0, ui.dp(8), filled))
+        addView(View(ui.context), LinearLayout.LayoutParams(0, ui.dp(8), 1f - filled))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(8))
     }
 
     private fun tile(label: String, value: Int?, target: Tab): View = ui.card(padding = 12, gap = 2).apply {

@@ -7,6 +7,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /** How money, shares and times read on the screens. */
 object Format {
@@ -39,6 +40,19 @@ object Format {
         if (qty == Math.rint(qty)) qty.toLong().toString() else String.format(Locale.US, "%.4f", qty).trimEnd('0')
 
     fun percent(value: Double): String = String.format(Locale.US, "%.2f", value)
+
+    /** $252,608: whole dollars, for a figure in a narrow column. */
+    fun wholeMoney(value: Double): String = String.format(Locale.US, "$%,.0f", value)
+
+    /** 82% for 0.82; "<1%" and ">99%" rather than a rounded 0% or 100% that is not true. */
+    fun share(fraction: Double): String {
+        val whole = (fraction * 100).roundToInt()
+        return when {
+            fraction > 0 && whole == 0 -> "<1%"
+            fraction < 1 && whole == 100 -> ">99%"
+            else -> "$whole%"
+        }
+    }
 
     /** 13:41 today, Mon 13:41 this week, Oct 30 13:41 before that (or 1:41 PM, as the phone is set). */
     fun clockTime(iso: String?, zone: ZoneId = ZoneId.systemDefault(), now: Instant = Instant.now()): String? {

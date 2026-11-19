@@ -162,7 +162,9 @@ network.
                          "pnl": 2.18, "reason": "profit_target", "boughtAt": "…", "soldAt": "…"}],
              "today": {"realized": 8.72, "sales": 4, "buys": 7},
              "days": [{"date": "2026-11-03", "realized": 8.72, "sales": 4, "buys": 7},
-                      {"date": "2026-11-02", "realized": -1.25, "sales": 2, "buys": 3}]}
+                      {"date": "2026-11-02", "realized": -1.25, "sales": 2, "buys": 3}],
+             "funds": {"value": 25012.40, "cash": 19970.39, "unsettled": 220.28,
+                       "available": 19750.11}}
     ```
     `open` is newest first; `closed` is the last 20 sales, newest first, `pnl`
     after costs. `unrealized` is the open lots at `lastPrice`, before costs.
@@ -171,7 +173,14 @@ network.
     sessions; at most 30 are sent), newest first, today's included: what an
     app keeps as its profit history, so it reaches back further than the
     journal. A bridge older than this sends no `days`. `boughtAt` is `null` when
-    the journal no longer reaches back to the buy.
+    the journal no longer reaches back to the buy. `funds` is the
+    deployment's money as its ledger keeps it: `cash` (sales still settling
+    included), `unsettled` (those sales, T+1 at Fidelity), `available` (what
+    the trader can spend now: `cash` less `unsettled`, never below 0) and
+    `value` (`cash` and the open lots at `lastPrice`; `null` with lots open and
+    no price, never the cash alone). It is the money the trader manages, not
+    the whole brokerage account. `null` when the ledger has not recorded its
+    cash; absent from a listener older than this.
   - `trader` is the trader's own report, from the trader notifier only (a
     Fidelity bridge's readiness says the same and more):
     ```json

@@ -186,6 +186,32 @@ class MessagesTest {
     }
 
     @Test
+    fun theBookCarriesTheFundsAndWhatShareIsFree() {
+        val funds = Funds.parse(obj("""{"value":1660.0,"cash":1000.0,"unsettled":250.0,"available":750.0}"""))!!
+        assertEquals(1660.0, funds.value!!, 1e-9)
+        assertEquals(750.0, funds.available, 1e-9)
+        assertEquals(660.0, funds.invested!!, 1e-9)
+        assertEquals(750.0 / 1660.0, funds.availableShare!!, 1e-9)
+        val book = Book.parse(obj("""{"open":[],"funds":{"value":null,"cash":5.0,"unsettled":0.0,"available":5.0}}"""))!!
+        assertNull(book.funds!!.value) // lots open and no price: unknown, not the cash
+        assertNull(book.funds!!.availableShare)
+        assertNull(Book.parse(obj("""{"open":[]}"""))!!.funds) // a listener older than this
+        assertNull(Funds.parse(obj("""{"value":10.0}"""))) // no cash, no funds
+    }
+
+    @Test
+    fun fundsAddUpAndAnUnknownValueStaysUnknown() {
+        val a = Funds(value = 100.0, cash = 40.0, unsettled = 0.0, available = 40.0)
+        val b = Funds(value = 300.0, cash = 60.0, unsettled = 10.0, available = 50.0)
+        val total = Funds.total(listOf(a, b))!!
+        assertEquals(400.0, total.value!!, 1e-9)
+        assertEquals(90.0, total.available, 1e-9)
+        assertEquals(90.0 / 400.0, total.availableShare!!, 1e-9)
+        assertNull(Funds.total(listOf(a, b.copy(value = null)))!!.value)
+        assertNull(Funds.total(emptyList()))
+    }
+
+    @Test
     fun aBridgeWithoutABookHasNone() {
         val status = (BridgeMessage.parse(obj("""{"type":"status","status":{}}""")) as BridgeMessage.StatusMessage).status
         assertNull(status.book)
