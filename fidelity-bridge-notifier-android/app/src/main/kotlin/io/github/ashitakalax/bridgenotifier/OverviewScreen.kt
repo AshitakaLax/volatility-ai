@@ -8,12 +8,14 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import io.github.ashitakalax.bridgenotifier.core.Account
 import io.github.ashitakalax.bridgenotifier.core.BridgeClient
+import io.github.ashitakalax.bridgenotifier.core.Funds
 
 /**
- * Every account on one page, with more than one: today's totals -- real
- * money and paper apart, never added together -- then a card each with its
- * state, how fresh that is, and its day so far. Tapping a card opens that
- * account's Home.
+ * Every account on one page, with more than one: today's totals and what
+ * the accounts are worth and have free to trade -- real money and paper
+ * apart, never added together -- then a card each with its state, how fresh
+ * that is, its day so far and its funds. Tapping a card opens that account's
+ * Home.
  */
 class OverviewScreen(
     private val ui: Ui,
@@ -60,7 +62,7 @@ class OverviewScreen(
         for (account in snapshot.accounts) content.addView(card(snapshot, account))
     }
 
-    /** Today's realised and open figures, summed within real money and within paper. */
+    /** Today's realised and open figures and the funds, summed within real money and within paper. */
     private fun totals(snapshot: MonitorState.Snapshot, groups: Map<Boolean, List<Account>>): View = ui.card(padding = 16, gap = 10).apply {
         addView(ui.label(ui.string(R.string.overview_today)))
         for ((paper, accounts) in groups) {
@@ -82,6 +84,21 @@ class OverviewScreen(
                                         color = R.color.muted,
                                     ),
                                 )
+                                Funds.total(books.mapNotNull { it.funds })?.let { funds ->
+                                    val value = funds.value
+                                    val share = funds.availableShare
+                                    addView(
+                                        ui.text(
+                                            if (value != null && share != null) {
+                                                ui.string(R.string.overview_funds, Format.wholeMoney(value), Format.wholeMoney(funds.available), Format.share(share), Format.wholeMoney(funds.unsettled))
+                                            } else {
+                                                ui.string(R.string.overview_funds_unknown, Format.wholeMoney(funds.available), Format.wholeMoney(funds.unsettled))
+                                            },
+                                            size = 12f,
+                                            color = R.color.ink_soft,
+                                        ),
+                                    )
+                                }
                             },
                         ),
                     )
@@ -149,6 +166,17 @@ class OverviewScreen(
                     addView(figure(ui.string(R.string.overview_trades), book?.let { ui.string(R.string.overview_trades_value, it.buysToday, it.salesToday) }, null))
                 },
             )
+            val funds = book?.funds
+            if (funds != null) {
+                addView(
+                    ui.row(gap = 8).apply {
+                        addView(figure(ui.string(R.string.funds_value_short), funds.value?.let(Format::wholeMoney), null))
+                        addView(figure(ui.string(R.string.funds_available_short), Format.wholeMoney(funds.available), null))
+                        addView(figure(ui.string(R.string.funds_unsettled), Format.wholeMoney(funds.unsettled), null))
+                        addView(figure(ui.string(R.string.funds_share_short), funds.availableShare?.let(Format::share), null))
+                    },
+                )
+            }
             contentDescription = ui.string(R.string.overview_open, account.name)
             ui.tappable(this) { open(account) }
         }

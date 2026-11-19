@@ -351,6 +351,8 @@ data class Book(
      * keeps the longer history itself (ProfitHistory).
      */
     val days: List<DayFigures> = emptyList(),
+    /** What the deployment is worth and has free to trade; null from a listener older than this, or a ledger with no cash yet. */
+    val funds: Funds? = null,
 ) {
     companion object {
         fun parse(obj: JsonObject?): Book? = obj?.let {
@@ -368,6 +370,52 @@ data class Book(
                 salesToday = today?.long("sales")?.toInt() ?: 0,
                 buysToday = today?.long("buys")?.toInt() ?: 0,
                 days = (it["days"] as? JsonArray).orEmpty().mapNotNull { day -> DayFigures.parse(day as? JsonObject) },
+                funds = Funds.parse(it["funds"] as? JsonObject),
+            )
+        }
+    }
+}
+
+/**
+ * The deployment's money, from its ledger (the book's `funds`): what the
+ * trader manages, not the whole brokerage account, which may hold more.
+ */
+data class Funds(
+    /** The cash and the open lots at the last price; null with lots open and no price. */
+    val value: Double?,
+    /** All the cash, sales still settling included. */
+    val cash: Double,
+    /** Sales not yet settled (T+1 at Fidelity): the deployment's, not yet to spend. */
+    val unsettled: Double,
+    /** What the trader can spend now: the cash less what is settling. */
+    val available: Double,
+) {
+    /** The open lots at the last price; null when the value is unknown. */
+    val invested: Double? get() = value?.let { (it - cash).coerceAtLeast(0.0) }
+
+    /** How much of the value is free to trade, 0 to 1; null when the value is unknown or nothing. */
+    val availableShare: Double? get() = value?.takeIf { it > 0 }?.let { (available / it).coerceIn(0.0, 1.0) }
+
+    companion object {
+        fun parse(obj: JsonObject?): Funds? {
+            val cash = obj?.double("cash") ?: return null
+            return Funds(
+                value = obj.double("value"),
+                cash = cash,
+                unsettled = obj.double("unsettled") ?: 0.0,
+                available = obj.double("available") ?: cash,
+            )
+        }
+
+        /** Several deployments' funds added up (one kind of money: real or paper); null when none has any. */
+        fun total(all: List<Funds>): Funds? {
+            if (all.isEmpty()) return null
+            val values = all.map { it.value }
+            return Funds(
+                value = if (values.any { it == null }) null else values.sumOf { it!! },
+                cash = all.sumOf { it.cash },
+                unsettled = all.sumOf { it.unsettled },
+                available = all.sumOf { it.available },
             )
         }
     }

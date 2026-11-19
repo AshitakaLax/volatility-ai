@@ -1,12 +1,14 @@
 """
-The trading book an app is shown: open lots, the last sales, today's profit.
+The trading book an app is shown: open lots, the last sales, today's profit,
+and what the deployment is worth and has free to trade.
 
 The bridge host puts it in the status apps hear (`book`, PROTOCOL.md in
 fidelity-bridge-notifier-android), refreshed every BOOK_SECONDS. It is read,
 never written, from two things the trader already keeps:
 
-  the ledger      the open lots, their cost and target, and the last price
-                  (engine.data.dashboard_data.load_state, as the Live page
+  the ledger      the open lots, their cost and target, the last price, and
+                  the cash with what of it is still settling (`funds`;
+                  engine.data.dashboard_data.load_state, as the Live page
                   reads it; the bridge mounts the trader's state read-only)
   the fill journal  every booked fill (ControlInbox.fills, in the control
                   directory the bridge and trader share): when each lot was
@@ -146,6 +148,33 @@ def read_book(
             "buys": sum(1 for f in fills if f.get("side") == "buy" and is_today(f)),
         },
         "days": _days(fills, day_of),
+        "funds": _funds(state, open_lots, last),
+    }
+
+
+def _funds(state: Any, open_lots: list[dict], last: float | None) -> dict[str, Any] | None:
+    """What the deployment's ledger holds: its cash, what of that is sales
+    still settling (T+1 at Fidelity), what it can spend now (`available`,
+    DeploymentState.buying_power's rule), and its `value` -- the cash and
+    the open lots at the last price (DeploymentState.equity's rule: None
+    with lots open and no price, never the cash alone). None without a
+    ledger that has recorded its cash."""
+    cash = getattr(state, "cash", None) if state is not None else None
+    if cash is None:
+        return None
+    cash = float(cash)
+    unsettled = float(getattr(state, "unsettled", 0.0) or 0.0)
+    if not open_lots:
+        value: float | None = cash
+    elif last:
+        value = cash + sum(lot["qty"] for lot in open_lots) * float(last)
+    else:
+        value = None
+    return {
+        "value": _money(value) if value is not None else None,
+        "cash": _money(cash),
+        "unsettled": _money(unsettled),
+        "available": _money(max(0.0, cash - unsettled)),
     }
 
 

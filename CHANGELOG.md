@@ -1,5 +1,32 @@
 # Changelog
 
+## Feature: the phone app shows each account's value and what it has free to trade
+
+**Each account's Home in the Bridge Notifier app now shows what it is worth,
+what it can spend, and what share of its value that is; All accounts shows
+the same per account and in its real-money and paper totals.** The figures
+were already in the ledger the book reads (`load_state`'s cash and
+unsettled), so `fidelity_gateway/bridge/book.py` adds them to the book both
+listeners send, as `funds`:
+
+- **`value`** is the cash and the open lots at the last price, by
+  `DeploymentState.equity`'s rule: with lots open and no price it is unknown
+  (`null`), never the cash alone dressed up as the account's worth.
+- **`available`** is the cash less sales still settling (T+1 at Fidelity),
+  floored at 0: `DeploymentState.buying_power`, the figure the trader itself
+  can spend. `cash` and `unsettled` are sent too: the unsettled amount sits
+  beside what is available, on Home and on All accounts, and Home says what
+  is in open lots.
+- **The share free to trade** is `available / value`, worked out in the app
+  (`Funds.availableShare`), shown as a bar and a percentage; "<1%" and ">99%"
+  rather than a rounded 0% or 100% that is not true.
+- **It is the deployment's money, not the brokerage account's.** The card
+  says so: at Fidelity the ledger tracks the budget the trader was given,
+  and the account may hold more.
+- An older listener sends no `funds`; the app shows a dash and says it is
+  waiting for the ledger's cash. A ledger that never recorded its cash sends
+  `null`.
+
 ## Feature: Alpaca accounts in the phone app, yellow beside Fidelity's green
 
 **The Bridge Notifier app watched one Fidelity bridge; it now watches any
