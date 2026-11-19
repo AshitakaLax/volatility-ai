@@ -35,6 +35,7 @@ class ConnectScreen(
     private val checks = ui.column(gap = 12)
     private val plainText = ui.text(ui.string(R.string.plaintext_warning), size = 13f, color = R.color.status_warn)
     private val notificationsOff = ui.text(ui.string(R.string.notifications_off), size = 13f, color = R.color.status_bad)
+    private val lockUnavailable = ui.text(ui.string(R.string.lock_unavailable), size = 12f, color = R.color.status_warn)
     private val remove = TextView(ui.context).apply {
         text = ui.string(R.string.account_remove)
         setTextColor(ui.color(R.color.status_bad))
@@ -130,6 +131,13 @@ class ConnectScreen(
         )
         page.addView(
             ui.card(gap = 2).apply {
+                addView(checkbox(ui.string(R.string.lock_setting), prefs.lockApp) { prefs.lockApp = it })
+                addView(ui.text(ui.string(R.string.lock_setting_help), size = 12f, color = R.color.muted))
+                addView(lockUnavailable)
+            },
+        )
+        page.addView(
+            ui.card(gap = 2).apply {
                 addView(checkbox(ui.string(R.string.open_at_start), prefs.openConnectAtStart) { prefs.openConnectAtStart = it })
                 addView(ui.text(ui.string(R.string.open_at_start_help), size = 12f, color = R.color.muted))
             },
@@ -185,6 +193,7 @@ class ConnectScreen(
         remove.visibility = if (account != null) View.VISIBLE else View.GONE
         plainText.visibility = if (BridgeAddress.isPlainText(account?.url ?: address.text.toString())) View.VISIBLE else View.GONE
         notificationsOff.visibility = if (Alerts.notificationsEnabled(ui.context)) View.GONE else View.VISIBLE
+        lockUnavailable.visibility = if (LockGate.available(ui.context)) View.GONE else View.VISIBLE
         renderChecks(snapshot, account)
         renderMutes(account)
     }

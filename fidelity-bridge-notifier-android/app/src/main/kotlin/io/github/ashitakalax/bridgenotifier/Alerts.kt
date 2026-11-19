@@ -79,8 +79,11 @@ object Alerts {
             .notify(MONITOR_ID, monitorNotification(context, text))
     }
 
-    /** One of an account's notifications, headed with the account's name. */
-    fun post(context: Context, notification: Notification, account: Account) {
+    /**
+     * One of an account's notifications, headed with the account's name --
+     * and, for the latest of several missed while away, how many more came.
+     */
+    fun post(context: Context, notification: Notification, account: Account, alsoMissed: Int = 0) {
         val channel = when {
             notification.severity != Severity.INFO -> CHANNEL_WARNINGS
             notification.kind in setOf(
@@ -104,7 +107,11 @@ object Alerts {
             notification.body,
             epochMillis(notification.at),
             color(context, notification.severity) ?: brokerColor(context, account),
-            account.name,
+            if (alsoMissed > 0) {
+                context.resources.getQuantityString(R.plurals.missed_more, alsoMissed, account.name, alsoMissed)
+            } else {
+                account.name
+            },
         )
     }
 

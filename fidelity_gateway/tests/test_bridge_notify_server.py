@@ -169,6 +169,7 @@ def test_a_reconnecting_app_is_sent_what_it_missed_as_replays(notifier):
     for n in range(3):
         hub.publish("buy", f"n{n}", "")
     app = _app(notifier, since={"stream": "s1", "id": 1})
+    assert app.hello["backlog"] == 2, "the hello says how many replays follow"
     first = app.receive()
     second = app.receive()
     assert [first["replay"], second["replay"]] == [True, True]
@@ -177,6 +178,9 @@ def test_a_reconnecting_app_is_sent_what_it_missed_as_replays(notifier):
     live = app.receive_until(lambda m: m["type"] == "notification")
     assert live["notification"]["id"] == 4 and "replay" not in live
     app.close()
+    caught_up = _app(notifier, since={"stream": "s1", "id": 4})
+    assert caught_up.hello["backlog"] == 0
+    caught_up.close()
 
 
 def test_status_changes_are_sent(notifier):

@@ -446,6 +446,8 @@ data class Hello(
     val events: List<String>,
     val status: BridgeStatus,
     val account: AccountInfo? = null,
+    /** How many replays follow; null from a bridge older than that. */
+    val backlog: Int? = null,
 )
 
 /** A sealed message from the bridge, after the handshake. */
@@ -473,6 +475,7 @@ sealed interface BridgeMessage {
                             .mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content },
                         status = BridgeStatus.parse(obj["status"] as? JsonObject),
                         account = AccountInfo.parse(obj["account"] as? JsonObject),
+                        backlog = obj.long("backlog")?.takeIf { it >= 0 }?.toInt(),
                     ),
                 )
             } ?: Unknown

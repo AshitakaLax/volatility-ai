@@ -165,6 +165,9 @@ class MonitorService : Service() {
         override fun onNotification(notification: Notification, fresh: Boolean) =
             onMain { onNotificationReceived(watch, notification, fresh) }
 
+        override fun onMissed(notifications: List<Notification>, fresh: Boolean) =
+            onMain { onMissedReceived(watch, notifications, fresh) }
+
         override fun onStatus(status: BridgeStatus) = onMain {
             MonitorState.updateAccount(id) { it.copy(status = status) }
         }
@@ -217,6 +220,21 @@ class MonitorService : Service() {
         if (fresh && account.alerts(notification)) {
             Alerts.post(this, notification, account)
         }
+    }
+
+    /**
+     * What was missed while away, as one: every one listed, but only the
+     * latest the account would have notified about shown, with how many
+     * more came -- not a stack of them on reconnecting.
+     */
+    private fun onMissedReceived(watch: Watch, notifications: List<Notification>, fresh: Boolean) {
+        val account = current(watch)
+        MonitorState.updateAccount(account.id) {
+            it.copy(recent = (notifications.asReversed() + it.recent).take(MonitorState.RECENT))
+        }
+        if (!fresh) return
+        val worth = notifications.filter(account::alerts)
+        worth.lastOrNull()?.let { latest -> Alerts.post(this, latest, account, alsoMissed = worth.size - 1) }
     }
 
     /** The ongoing notification: each account's link in a few words. */

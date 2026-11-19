@@ -19,9 +19,9 @@ it on purpose:
 Each connection must pass, in order, the client ADDRESS policy, the
 ORIGIN check (no web page), and the HANDSHAKE (notify_protocol.py); after
 that every frame, both ways, is sealed. An app is then sent a "hello" --
-this run's stream, the kinds it sends, the status now -- then every kept
-notification after the (stream, id) it says it last saw, marked as a
-replay, then each one as it happens and the status whenever it changes.
+this run's stream, the kinds it sends, the status now, how many replays
+follow (backlog) -- then every kept notification after the (stream, id) it
+says it last saw, marked as a replay, then each one as it happens and the status whenever it changes.
 When the bridge stops it says "goodbye" first, so an app can tell a
 deliberate stop from a lost connection.
 
@@ -345,6 +345,9 @@ class NotificationServer:
             "stream": hub.stream,
             "events": list(hub.events),
             "status": subscription.status,
+            # How many replays follow, so an app can tell where catching up
+            # ends and announce the latest of them rather than every one.
+            "backlog": len(subscription.backlog),
         }
         if route.account is not None:
             hello["account"] = dict(route.account)

@@ -50,8 +50,20 @@
     <string name="account_mute_help">Muted, it never buzzes the phone. What it says still shows on its Activity page, and a test you send still arrives.</string>
     <string name="account_muted_short">muted</string>
     <string name="chip_muted">%1$s (muted)</string>
+    <plurals name="missed_more">
+        <item quantity="one">%1$s · and %2$d more while away</item>
+        <item quantity="other">%1$s · and %2$d more while away</item>
+    </plurals>
     <string name="alert_unreachable">Tell me when an account cannot be reached for 2 minutes (10 while it restarts)</string>
     <string name="alert_unreachable_help">For every account that is not muted</string>
+    <string name="lock_title">Locked</string>
+    <string name="lock_body">Unlock with your fingerprint, face or screen lock to see your accounts. Notifications keep arriving while the app is locked.</string>
+    <string name="lock_button">Unlock</string>
+    <string name="lock_prompt_title">Unlock Bridge Notifier</string>
+    <string name="lock_prompt_subtitle">Your accounts and their keys</string>
+    <string name="lock_setting">Lock with fingerprint, face or screen lock</string>
+    <string name="lock_setting_help">Asked when the app opens, and when it comes back after a minute away. It locks the app\'s pages only: notifications still arrive.</string>
+    <string name="lock_unavailable">This phone has no screen lock, so the app cannot be locked. Set a PIN, pattern or password in Android\'s settings.</string>
     <string name="open_at_start">Open this page at start-up</string>
     <string name="open_at_start_help">Off: start on Home once an account is set</string>
     <string name="plaintext_warning">ws:// is not encrypted. Messages are signed, so they cannot be forged, but anyone on this network can read them. From outside your home network, reach the bridge over a VPN (WireGuard, Tailscale). Never open its port to the internet.</string>

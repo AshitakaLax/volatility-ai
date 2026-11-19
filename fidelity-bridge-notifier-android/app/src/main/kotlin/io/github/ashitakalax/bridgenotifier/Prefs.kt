@@ -66,6 +66,14 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(ALERT_UNREACHABLE, true)
         set(value) = prefs.edit().putBoolean(ALERT_UNREACHABLE, value).apply()
 
+    /**
+     * Whether the app asks for a fingerprint, face or the screen lock when it
+     * opens (and after a minute away). On unless switched off.
+     */
+    var lockApp: Boolean
+        get() = prefs.getBoolean(LOCK_APP, true)
+        set(value) = prefs.edit().putBoolean(LOCK_APP, value).apply()
+
     /** Whether the app opens on its Connect page; off, it opens on Home once set up. */
     var openConnectAtStart: Boolean
         get() = prefs.getBoolean(OPEN_CONNECT, true)
@@ -132,6 +140,7 @@ class Prefs(context: Context) {
         const val MONITORING = "monitoring"
         const val ALERT_UNREACHABLE = "alert_unreachable"
         const val OPEN_CONNECT = "open_connect_at_start"
+        const val LOCK_APP = "lock_app"
         const val UNREACHABLE_GRACE = "unreachable_grace_ms"
         const val STREAM = "position_stream_"
         const val LAST_ID = "position_id_"

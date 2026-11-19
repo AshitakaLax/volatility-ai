@@ -317,7 +317,9 @@ the compose `trader-notifier` service (`notifier` profile).
   `/notifications/<id>`, and the first at `/notifications`, port 8767. Each
   route's hello carries `account` -- `{id, label, broker, paper, symbol}` --
   and the bridge host's carries Fidelity's, which is how the app colours
-  itself by broker.
+  itself by broker. Every hello also says its `backlog` (how many replays
+  follow), so the app can show only the latest missed notification on
+  reconnecting, not each.
 - **`TraderWatch.poll`**, every `POLL_SECONDS` from one thread: complete new
   journal lines (`JournalTail`, by byte offset) become `buy`/`sell`
   (`target_price`, `pnl` after costs; a loss is a warning) and

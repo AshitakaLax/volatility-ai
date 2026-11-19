@@ -58,6 +58,9 @@ class BridgeClient(
     private val handshakeTimeoutMillis: Long = 15_000,
     // The bridge is always on: a goodbye is a restart, back in seconds.
     private val goodbyeRetryMillis: Long = 5_000,
+    // A bridge that does not say how many replays follow has sent them all
+    // once it has been quiet this long: they go out back to back.
+    private val catchUpQuietMillis: Long = 1_000,
 ) {
     sealed interface Link {
         data object Idle : Link
@@ -81,6 +84,17 @@ class BridgeClient(
          * fresh: history to list, not to announce.
          */
         fun onNotification(notification: Notification, fresh: Boolean) {}
+
+        /**
+         * Everything missed while away, oldest first, in one go once the
+         * bridge has sent it all -- so an app can announce the latest rather
+         * than each. [fresh] as for [onNotification]. Unless overridden, each
+         * is handed to [onNotification] in turn.
+         */
+        fun onMissed(notifications: List<Notification>, fresh: Boolean) {
+            notifications.forEach { onNotification(it, fresh) }
+        }
+
         fun onStatus(status: BridgeStatus) {}
     }
 
@@ -149,6 +163,8 @@ class BridgeClient(
 
     private fun ended(ending: Attempt, reason: String) {
         if (attempt !== ending) return
+        // What came before the connection dropped is still worth having.
+        ending.caughtUp()
         attempt = null
         if (stopped) return
         val goodbye = ending.goodbye
@@ -175,6 +191,14 @@ class BridgeClient(
         private var bridgeNonce = ""
         private var appNonce = ""
         private var channel: Channel? = null
+
+        // Catching up: the replays sent after the hello, held until the last
+        // has come so they can be handed over as one.
+        private var catchingUp = false
+        private var expected: Int? = null
+        private var replays = 0
+        private val missed = mutableListOf<Notification>()
+        private var quiet: ScheduledFuture<*>? = null
 
         val ready: Boolean get() = stage == Stage.READY
 
@@ -298,25 +322,71 @@ class BridgeClient(
                 is BridgeMessage.HelloMessage -> if (stage == Stage.HELLO) {
                     stage = Stage.READY
                     backoff.reset()
+                    expected = parsed.hello.backlog
+                    catchingUp = expected != 0
                     listener.onLink(Link.Connected(parsed.hello))
                     listener.onStatus(parsed.hello.status)
                 }
                 is BridgeMessage.NotificationMessage -> if (stage == Stage.READY) deliver(parsed)
-                is BridgeMessage.StatusMessage -> if (stage == Stage.READY) listener.onStatus(parsed.status)
-                is BridgeMessage.Goodbye -> goodbye = parsed.reason
+                is BridgeMessage.StatusMessage -> if (stage == Stage.READY) {
+                    caughtUp()
+                    listener.onStatus(parsed.status)
+                }
+                is BridgeMessage.Goodbye -> {
+                    caughtUp()
+                    goodbye = parsed.reason
+                }
                 BridgeMessage.Unknown -> Unit
             }
         }
 
         private fun deliver(message: BridgeMessage.NotificationMessage) {
             val notification = message.notification
+            if (message.replay && catchingUp) return hold(notification)
+            caughtUp()
             if (notification.isTest) return listener.onNotification(notification, fresh = true)
-            val last = positions.load()
-            if (last != null && last.stream == notification.stream && notification.id <= last.id) {
-                return // already seen
-            }
+            if (seen(notification)) return
             positions.save(Position(notification.stream, notification.id))
             listener.onNotification(notification, fresh = !message.replay || since != null)
+        }
+
+        private fun seen(notification: Notification): Boolean {
+            val last = positions.load() ?: return false
+            return last.stream == notification.stream && notification.id <= last.id
+        }
+
+        /** One replay while catching up: kept for the batch, unless already seen. */
+        private fun hold(notification: Notification) {
+            replays += 1
+            if (!seen(notification)) missed += notification
+            val count = expected
+            if (count != null) {
+                if (replays >= count) caughtUp()
+            } else {
+                quiet?.cancel(false)
+                quiet = executor.schedule(
+                    { if (attempt === this@Attempt) caughtUp() },
+                    catchUpQuietMillis,
+                    TimeUnit.MILLISECONDS,
+                )
+            }
+        }
+
+        /**
+         * Catching up is over -- the last replay came, something else did, or
+         * the connection ended: hand what was missed over as one, and only
+         * then remember it as seen.
+         */
+        fun caughtUp() {
+            catchingUp = false
+            quiet?.cancel(false)
+            quiet = null
+            if (missed.isEmpty()) return
+            val batch = missed.toList()
+            missed.clear()
+            val last = batch.last()
+            positions.save(Position(last.stream, last.id))
+            listener.onMissed(batch, fresh = since != null)
         }
     }
 

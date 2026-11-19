@@ -31,6 +31,8 @@ class AccountsTest {
     @Test
     fun aBridgeOlderThanThatSaysNothingAndAnUnknownBrokerIsOther() {
         assertNull(hello("""{"type":"hello","stream":"s","status":{}}""").account)
+        assertNull(hello("""{"type":"hello","stream":"s","status":{}}""").backlog)
+        assertEquals(3, hello("""{"type":"hello","stream":"s","status":{},"backlog":3}""").backlog)
         val other = hello("""{"type":"hello","stream":"s","status":{},"account":{"broker":"ibkr"}}""")
         assertEquals(Broker.OTHER, other.account?.broker)
         assertEquals(Broker.FIDELITY, Broker.parse(null))

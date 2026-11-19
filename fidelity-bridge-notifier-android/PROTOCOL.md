@@ -92,7 +92,12 @@ network.
 ## Bridge → app
 
 - **hello**, always first:
-  `{"type": "hello", "protocol": "…", "stream": "<random per bridge run>", "events": ["buy", …], "status": {…}, "account": {…}}`
+  `{"type": "hello", "protocol": "…", "stream": "<random per bridge run>", "events": ["buy", …], "status": {…}, "backlog": 3, "account": {…}}`
+  - `backlog` is how many `replay: true` notifications follow, so an app
+    knows where catching up ends: the app announces only the latest of them
+    (of the kinds it shows) with a count of the rest, and lists them all. A
+    bridge older than this sends none; the app then takes catching up to end
+    at the first message that is not a replay, or a second after the last.
   - `account` says what this stream is about, each field optional:
     ```json
     {"id": "paper-ultimate", "label": "Ultimate (paper)", "broker": "alpaca",

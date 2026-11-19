@@ -21,7 +21,8 @@ enum class Tab { CONNECT, HOME, LOTS, ACTIVITY }
  * then Home, Lots and Activity. Each page redraws from MonitorState's snapshot,
  * for the account shown: the whole screen wears that account's broker colour
  * (Alpaca yellow, Fidelity green), and with more than one account a chip each
- * over the page switches between them.
+ * over the page switches between them. LockGate asks for the owner's
+ * fingerprint, face or screen lock before any of it shows.
  */
 class MainActivity : Activity() {
     private lateinit var prefs: Prefs
@@ -34,7 +35,9 @@ class MainActivity : Activity() {
     private lateinit var nav: View
     private lateinit var navRule: View
     private lateinit var tabs: Map<Tab, TextView>
+    private lateinit var gate: LockGate
     private var current = Tab.HOME
+    private var askedToNotify = false
     private var stopObserving: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,6 +45,16 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         prefs = Prefs(this)
         ui = Ui(this)
+        root = findViewById(R.id.root)
+        gate = LockGate(this, ui, prefs, root) { locked ->
+            wear(MonitorState.snapshot)
+            // Asked once the owner is in, not over the lock.
+            if (!locked && !askedToNotify) {
+                askedToNotify = true
+                askToNotify()
+            }
+        }
+        addContentView(gate.view, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         MonitorState.setAccounts(prefs.accounts, prefs.currentId)
         screens = mapOf(
             Tab.CONNECT to ConnectScreen(ui, prefs) { show(Tab.HOME) },
@@ -50,7 +63,6 @@ class MainActivity : Activity() {
             Tab.ACTIVITY to ActivityScreen(ui),
         )
         container = findViewById(R.id.screen)
-        root = findViewById(R.id.root)
         accountBar = findViewById(R.id.account_bar)
         accountChips = findViewById(R.id.account_chips)
         nav = findViewById(R.id.nav)
@@ -65,7 +77,6 @@ class MainActivity : Activity() {
         val saved = savedInstanceState?.getString(TAB)?.let { name -> Tab.values().firstOrNull { it.name == name } }
         show(saved ?: if (!prefs.isConfigured || prefs.openConnectAtStart) Tab.CONNECT else Tab.HOME)
 
-        askToNotify()
         // Watching, but the process was gone (an update, the system): pick it up again.
         if (prefs.monitoring && prefs.isConfigured) MonitorService.start(this)
     }
@@ -78,12 +89,22 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart()
         stopObserving = MonitorState.observe(::render)
+        // Locked, the app's card in Recents must not show the page either.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(!prefs.lockApp)
+        gate.started()
     }
 
     override fun onStop() {
+        gate.stopped()
         stopObserving?.invoke()
         stopObserving = null
         super.onStop()
+    }
+
+    @Deprecated("Activity.onActivityResult; this app has no AndroidX")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        if (!gate.onActivityResult(requestCode, resultCode)) super.onActivityResult(requestCode, resultCode, data)
     }
 
     @Deprecated("Activity.onBackPressed; this app has no AndroidX")
@@ -121,7 +142,8 @@ class MainActivity : Activity() {
     private fun wear(snapshot: MonitorState.Snapshot) {
         val look = BrokerLook.of(snapshot.account?.broker)
         root.setBackgroundColor(getColor(look.ground))
-        window.statusBarColor = getColor(look.ground)
+        // Locked, not even the colour says which account was showing.
+        window.statusBarColor = getColor(if (gate.locked) R.color.ground else look.ground)
         val many = snapshot.accounts.size > 1 && current != Tab.CONNECT
         accountBar.visibility = if (many) View.VISIBLE else View.GONE
         accountChips.removeAllViews()

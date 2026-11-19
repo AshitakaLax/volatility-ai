@@ -184,7 +184,10 @@ Unrestricted).
   shows "The bridge is restarting" and reconnects within seconds. It
   alarms only if the bridge is still away after 10 minutes.
 - **After the phone was offline,** it catches up from what the bridge kept
-  (up to 200 notifications per bridge run). Nothing is shown twice.
+  (up to 200 notifications per bridge run). Nothing is shown twice, and the
+  phone is not buried: only the latest of what was missed (of the kinds that
+  account notifies about) is shown, headed "and 4 more while away"; every
+  one is on the Activity page.
 - **The first time it connects,** what the bridge already kept goes into
   the Recent list but is not announced.
 
@@ -200,6 +203,14 @@ Unrestricted).
   yourself.
 - **The key is stored in the app's private storage,** excluded from backups
   and device transfers.
+- **The app locks itself.** It asks for your fingerprint, face or screen
+  lock (PIN, pattern or password) when it opens, and when it comes back
+  after a minute away; until then a lock screen covers the pages, and its
+  card in Recents shows nothing (Android 13 and later). The lock guards the
+  app's pages, your accounts and their keys, not the connections: the
+  service keeps listening and notifications keep arriving. A phone with no
+  screen lock cannot lock the app, and the Connect page says so. Switch it
+  off there under **Lock with fingerprint, face or screen lock**.
 
 [PROTOCOL.md](PROTOCOL.md) is the full wire protocol.
 
@@ -210,7 +221,8 @@ Unrestricted).
 | `core/` | Plain Kotlin, no Android: the protocol (`Protocol.kt`), messages (`Messages.kt`), the connection with handshake, catch-up and reconnecting (`BridgeClient.kt`, on OkHttp), and the "out of reach" rule (`LinkAlarm.kt`). A Gradle build of its own, so it builds and tests without the Android SDK. |
 | `core/src/test/resources/vectors/` | The protocol vectors the bridge's tests reproduce too. |
 | `core/src/main/.../Accounts.kt` | The accounts the app keeps (address, key, and the broker and label the hello said), as one JSON list. |
-| `app/` | The Android app: a foreground service (`MonitorService.kt`) holding one `BridgeClient` per account, the phone's notifications (`Alerts.kt`), settings (`Prefs.kt`), each broker's colours (`BrokerLook.kt`) and one screen (`MainActivity.kt`) with four pages. Plain framework views; no AndroidX. |
+| `core/src/main/.../AppLock.kt` | When the app asks for its owner again: on opening, and after a minute away. |
+| `app/` | The Android app: a foreground service (`MonitorService.kt`) holding one `BridgeClient` per account, the phone's notifications (`Alerts.kt`), settings (`Prefs.kt`), each broker's colours (`BrokerLook.kt`), the lock (`LockGate.kt`: BiometricPrompt on Android 10+, the screen-lock check before) and one screen (`MainActivity.kt`) with four pages. Plain framework views; no AndroidX. |
 
 ## Develop
 

@@ -47,6 +47,24 @@ requested test still get through). The service reads them as each
 notification arrives, so a change needs no reconnect. The old shared list
 is copied to every account once, then dropped.
 
+**Reconnecting no longer buries the phone.** An app back from being offline
+was replayed everything it missed, and posted each -- a stack of a dozen
+for a paper deployment's morning. The hello now says how many replays
+follow (`backlog`); the client holds them until the last has come (or, from
+a bridge older than that, until something else arrives or a second passes)
+and hands them over as one. The app lists every one and shows only the
+latest the account would notify about, headed "and N more while away".
+
+**The app locks itself.** It asks for a fingerprint, face or the screen lock
+when it opens and after a minute away (`LockGate.kt`, `AppLock.kt`):
+Android's BiometricPrompt from Android 10, weak biometrics allowed since
+nothing is decrypted with them, the screen lock as the fallback; on 8 and 9
+the system's screen-lock check. On by default; a phone with no screen lock
+opens as before, and says why. It locks the pages, not the service: the
+keys must be usable with nobody there for notifications to keep arriving,
+so tying them to the owner's presence (a Keystore key needing
+authentication) was decided against.
+
 Decided against: putting Alpaca keys on the phone and asking Alpaca
 directly. Alpaca's API keys can trade, which would end the app's promise
 that it only listens, and Alpaca knows positions, not the lots and targets

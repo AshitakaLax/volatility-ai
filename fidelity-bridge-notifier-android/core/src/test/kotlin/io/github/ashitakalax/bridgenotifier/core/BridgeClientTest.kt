@@ -63,13 +63,45 @@ class BridgeClientTest {
             session.send(FakeBridge.notification(4, replay = true)) // already seen: dropped
             session.send(FakeBridge.notification(5, replay = true))
         }
-        client(MemoryPositionStore(Position("s1", 4)))
+        val positions = MemoryPositionStore(Position("s1", 4))
+        client(positions)
         val since = bridge.auths.poll(5, TimeUnit.SECONDS)!!["since"]!!.jsonObject
         assertEquals("s1", since["stream"]!!.jsonPrimitive.content)
         assertEquals(4L, since["id"]!!.jsonPrimitive.long)
-        val (notification, fresh) = recorder.nextNotification()
-        assertEquals(5L, notification.id)
-        assertTrue("missed while away: news", fresh)
+        // A bridge that does not say how many follow: the batch ends when it goes quiet.
+        assertEquals(listOf(5L) to true, recorder.nextBatch())
+        assertEquals(Position("s1", 5), positions.load())
+    }
+
+    @Test
+    fun whatWasMissedArrivesAsOneBatchOnceTheLastHasCome() {
+        bridge.accept { session ->
+            session.send(FakeBridge.hello(backlog = 3))
+            session.send(FakeBridge.notification(5, replay = true))
+            session.send(FakeBridge.notification(6, replay = true))
+            session.send(FakeBridge.notification(7, replay = true))
+            session.send(FakeBridge.notification(8))
+        }
+        val positions = MemoryPositionStore(Position("s1", 4))
+        client(positions)
+        assertEquals(listOf(5L, 6L, 7L) to true, recorder.nextBatch())
+        val (live, fresh) = recorder.nextNotification()
+        assertEquals(8L, live.id)
+        assertTrue(fresh)
+        assertNull("none of the missed came one by one", recorder.notifications.poll(200, TimeUnit.MILLISECONDS))
+        assertEquals(Position("s1", 8), positions.load())
+    }
+
+    @Test
+    fun aBatchCutShortByADroppedConnectionIsStillHandedOver() {
+        bridge.accept { session ->
+            session.send(FakeBridge.hello(backlog = 5))
+            session.send(FakeBridge.notification(1, replay = true))
+            session.send(FakeBridge.notification(2, replay = true))
+            session.socket.close(1000, null)
+        }
+        client(MemoryPositionStore(Position("s1", 0)))
+        assertEquals(listOf(1L, 2L) to true, recorder.nextBatch())
     }
 
     @Test
@@ -80,7 +112,7 @@ class BridgeClientTest {
             session.send(FakeBridge.notification(2))
         }
         client()
-        assertEquals(1L to false, recorder.nextNotification().let { it.first.id to it.second })
+        assertEquals(listOf(1L) to false, recorder.nextBatch())
         assertEquals(2L to true, recorder.nextNotification().let { it.first.id to it.second })
     }
 
