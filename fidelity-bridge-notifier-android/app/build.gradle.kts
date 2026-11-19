@@ -24,6 +24,8 @@ android {
         versionCode = (parts.getOrElse(0) { 0 } * 10_000 + parts.getOrElse(1) { 0 } * 100 + parts.getOrElse(2) { 0 })
             .coerceAtLeast(1)
         versionName = release ?: "0.1.0-dev"
+        // Where the update check looks for a newer release (Updates in core).
+        buildConfigField("String", "RELEASES_REPO", "\"AshitakaLax/volatility-ai\"")
     }
 
     // A release is signed with your own key when BRIDGE_NOTIFIER_KEYSTORE

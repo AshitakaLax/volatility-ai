@@ -1,5 +1,127 @@
 # Changelog
 
+## Feature: Alpaca accounts in the phone app, yellow beside Fidelity's green
+
+**The Bridge Notifier app watched one Fidelity bridge; it now watches any
+number of accounts, Alpaca deployments among them.** An Alpaca trading loop
+opens no bridge, so nothing told the phone about it -- yet everything worth
+saying was already in the files its trader keeps: `status.json`, the fill
+and order journals, the ledger. `fidelity_gateway/bridge/trader_notifier.py`
+reads them, read-only, and serves them in the bridge's own protocol and
+notification kinds:
+
+- **What it says:** a buy with where its lot sells, a sale with what it made
+  after costs (a loss -- only ever a regime exit -- as a warning), an order
+  placed, cancelled, expired or rejected, the engine starting, running,
+  paused or stopped, a window's summary, and a trader that stops reporting
+  (server/live.py's staleness rule), then reports again. Plus the book: open
+  lots, the last sales, today's profit, through `book.py` as Fidelity's.
+- **One listener, a path per deployment:** port 8767,
+  `/notifications/<id>`, the first deployment also at `/notifications`.
+  `NotificationServer` gained routes for it. Each hello now names its
+  account (`id`, `label`, `broker`, `paper`, `symbol`) -- the Fidelity
+  bridge's too -- so the app knows which broker it is looking at.
+- **Its own key,** `VAI_NOTIFIER_KEY` (`keygen --notifier`); it refuses
+  either of the bridge's, so the two listeners prove nothing to each other.
+- **Only what changes after it starts is news.** A restart is a new stream
+  with nothing kept, so a phone is never told the same fill twice; a fill
+  journaled while it was down is missed, not replayed.
+- The compose service `trader-notifier`, behind the `notifier` profile,
+  mounts every state and control volume read-only.
+
+**In the app** (`fidelity-bridge-notifier-android/`): a list of accounts on
+the Connect page (the old single bridge becomes the first), one connection
+each, a chip per account over the pages, and each notification headed
+with its account's name. The page shown wears its broker's colour --
+**Alpaca yellow, Fidelity green** -- as do its badge and notifications. An
+Alpaca account's Home says what its trader reports (trading, buys paused,
+waiting for the open, not reporting), where a Fidelity one shows its
+readiness chain.
+
+**What to be told about is now each account's own.** One list of kinds for
+every bridge stopped making sense once a paper deployment that fills ~220
+times a day sat beside a real-money one: switching off its buys silenced
+Fidelity's too. Each account keeps its own kinds and a **Mute** switch (no
+phone notifications at all, link alerts included; its Activity page and a
+requested test still get through). The service reads them as each
+notification arrives, so a change needs no reconnect. The old shared list
+is copied to every account once, then dropped.
+
+**Reconnecting no longer buries the phone.** An app back from being offline
+was replayed everything it missed, and posted each -- a stack of a dozen
+for a paper deployment's morning. The hello now says how many replays
+follow (`backlog`); the client holds them until the last has come (or, from
+a bridge older than that, until something else arrives or a second passes)
+and hands them over as one. The app lists every one and shows only the
+latest the account would notify about, headed "and N more while away".
+
+**The app locks itself.** It asks for a fingerprint, face or the screen lock
+when it opens and after a minute away (`LockGate.kt`, `AppLock.kt`):
+Android's BiometricPrompt from Android 10, weak biometrics allowed since
+nothing is decrypted with them, the screen lock as the fallback; on 8 and 9
+the system's screen-lock check. On by default; a phone with no screen lock
+opens as before, and says why. It locks the pages, not the service: the
+keys must be usable with nobody there for notifications to keep arriving,
+so tying them to the owner's presence (a Keystore key needing
+authentication) was decided against.
+
+**The app, easier to live with across several accounts.**
+- **End-of-day summary.** paper-ultimate makes about 220 fills a day, and
+  muting was all-or-nothing. With "Trades in one end-of-day summary" on, an
+  account's info-level trades stop buzzing, and one note sums up the day.
+  Warnings still come through, such as a sale below cost or a window that
+  needs a look. The app works the note out itself from the book, so the
+  protocol gains no kind and both listeners get it.
+  - **When:** 16:05 New York once the trader has stopped, or 20:05 if it is
+    trading after hours.
+  - **Waiting:** while the listener is out of reach, nothing is decided
+    before 20:05. A morning start therefore can't mark yesterday done before
+    the book arrives, which the emulator test caught.
+  - **Away for days:** the phone gets one note for the latest day that
+    traded.
+- **Profit history.** The book gains `days`, each journal day's totals
+  (`book.py`). The trader keeps only 10 sessions of fills, and the ledger
+  keeps no sale times, so the app keeps the longer history itself
+  (`History.kt`). It replaces its own figures with the listener's for the
+  days the listener still has, since those are complete. Home charts it over
+  2 weeks to a year.
+- **Notifications open where they are about.** Each one gets its own pending
+  intent (Android matches pending intents by request code, not by extras),
+  so a tap opens:
+  - a buy or sale on Lots, a sale on its recent sales;
+  - a problem on Activity;
+  - readiness on Home.
+  
+  Each has a Mute 1 h button (`Account.mutedUntil`), and a trade has a Lots
+  one. Android groups an app's notifications: tapping the collapsed group
+  opens the app as it was, and tapping one notification in the expanded
+  group opens its page.
+- **All accounts.** A page with every account at once. Real money and paper
+  are totalled apart and never summed. With more than one account, the app
+  opens on it.
+- **Freshness.** "Live", or "Last heard 4 minutes ago" when an account's
+  listener is out of reach, on Home and All accounts. It is kept across
+  restarts, and the page redraws every 30 seconds.
+- **Update check.** The app asks GitHub for the latest release twice a day
+  at most, and says once per version that a newer one is out. It downloads
+  nothing. A release's tag is the app's version (the dark-mode change below
+  builds v1.2.3 as 1.2.3), so the check compares tags. A release with no APK
+  attached is not offered, and a `0.1.0-dev` build is never told it is old.
+- **Merged with "the app in the dark":** that change was made on the
+  single-bridge app. Its features now work per account:
+  - a phone offline or away from a listener's network (`AWAY` depends on
+    each account's address);
+  - the kept Activity list (`Recents.kt`, a file per account, the old one
+    becoming the first account's);
+  - the readiness line in the ongoing notification.
+  
+  The broker page colours gained dark versions.
+
+Decided against: putting Alpaca keys on the phone and asking Alpaca
+directly. Alpaca's API keys can trade, which would end the app's promise
+that it only listens, and Alpaca knows positions, not the lots and targets
+the engine trades by.
+
 ## Fix: a buy the session's last tick placed no longer halts the trader
 
 On 2026-11-16 the paper trader's last tick placed a buy and the loop

@@ -25,6 +25,12 @@ object Format {
 
     fun money(value: Double): String = String.format(Locale.US, "$%,.2f", value)
 
+    /** "4 minutes ago", "in 2 hours": a moment (epoch milliseconds) from now. */
+    fun relative(millis: Long): String = android.text.format.DateUtils.getRelativeTimeSpanString(millis).toString()
+
+    /** [relative] for an ISO-8601 moment; null when it is not one. */
+    fun ago(iso: String?): String? = iso?.let(Alerts::epochMillis)?.let(::relative)
+
     /** +$8.72 or −$4.21 (a true minus sign). */
     fun signedMoney(value: Double): String = (if (value < 0) "−" else "+") + money(abs(value))
 

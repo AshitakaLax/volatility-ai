@@ -23,4 +23,10 @@
     <color name="status_bad_soft">#3F1A17</color>
     <color name="status_idle_fill">#596273</color>
     <color name="status_offline_fill">#2F3745</color>
+
+    <!-- Each broker's page in the dark: the same yellow and green, deep enough
+         behind the dark cards. The strong colours are fills with their own ink,
+         and stay as they are. -->
+    <color name="alpaca_ground">#2B2612</color>
+    <color name="fidelity_ground">#10291D</color>
 </resources>

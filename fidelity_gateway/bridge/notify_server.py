@@ -19,11 +19,18 @@ it on purpose:
 Each connection must pass, in order, the client ADDRESS policy, the
 ORIGIN check (no web page), and the HANDSHAKE (notify_protocol.py); after
 that every frame, both ways, is sealed. An app is then sent a "hello" --
-this run's stream, the kinds it sends, the status now -- then every kept
-notification after the (stream, id) it says it last saw, marked as a
-replay, then each one as it happens and the status whenever it changes.
+this run's stream, the kinds it sends, the status now, how many replays
+follow (backlog) -- then every kept notification after the (stream, id) it
+says it last saw, marked as a replay, then each one as it happens and the status whenever it changes.
 When the bridge stops it says "goodbye" first, so an app can tell a
 deliberate stop from a lost connection.
+
+One listener may serve several hubs, each at its own PATH (NotifyRoute):
+the trader notifier (trader_notifier.py) serves one per deployment, at
+/notifications/<id>, and its first at /notifications. Each route may name
+the ACCOUNT its stream is about -- an id, a label, the broker, paper or real
+money -- and the hello says it, so an app can tell a Fidelity stream from an
+Alpaca one without being told by hand.
 
 An app that cannot keep up is disconnected rather than allowed to hold
 anything up; it reconnects and catches up from what is kept.
@@ -38,7 +45,7 @@ import json
 import queue
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from http import HTTPStatus
@@ -106,6 +113,16 @@ class NotifySettings:
         )
 
 
+@dataclass(frozen=True)
+class NotifyRoute:
+    """What one path serves: a hub, and the account its stream is about
+    ({"id", "label", "broker", "paper", "symbol"}, each optional), which the
+    hello carries as `account`. None says nothing about an account."""
+
+    notifications: Notifications
+    account: dict | None = None
+
+
 def _client_text(value: Any, limit: int = 60) -> str:
     """What an app says about itself, safe for one log line."""
     if not isinstance(value, str):
@@ -128,8 +145,17 @@ def _since(value: Any) -> tuple[str, int] | None:
 class _App:
     """One authenticated app connection."""
 
-    def __init__(self, connection: Any, channel: Channel, peer: str, client: Any, since) -> None:
+    def __init__(
+        self,
+        connection: Any,
+        channel: Channel,
+        peer: str,
+        client: Any,
+        since,
+        route: NotifyRoute,
+    ) -> None:
         self.connection = connection
+        self.route = route
         self.channel = channel
         self.peer = peer
         client = client if isinstance(client, dict) else {}
@@ -162,7 +188,10 @@ class _App:
 
 
 class NotificationServer:
-    """Listens for apps and sends them the bridge's notifications."""
+    """Listens for apps and sends them the bridge's notifications.
+
+    `notifications` is served at /notifications, with `account` in its
+    hello; `routes` adds other paths, each its own hub and account."""
 
     def __init__(
         self,
@@ -176,6 +205,8 @@ class NotificationServer:
         log: Callable[[str], None] | None = None,
         max_apps: int = MAX_APPS,
         clock: Callable[[], float] = time.monotonic,
+        account: dict | None = None,
+        routes: Mapping[str, NotifyRoute] | None = None,
     ) -> None:
         if not isinstance(api_key, BridgeApiKey):
             raise ConfigurationError(
@@ -183,6 +214,13 @@ class NotificationServer:
             )
         self._key = api_key
         self._notifications = notifications
+        self._routes: dict[str, NotifyRoute] = {
+            NOTIFY_PATH: NotifyRoute(notifications, dict(account) if account else None)
+        }
+        for path, route in (routes or {}).items():
+            if not path.startswith("/") or "?" in path:
+                raise ConfigurationError(f"A notification route must be a path, not {path!r}.")
+            self._routes[path] = route
         self._host = host
         self._requested_port = port
         self._policy = policy or AddressPolicy(["127.0.0.1", "::1"])
@@ -259,6 +297,15 @@ class NotificationServer:
         return f"ws://{host}:{self.port}{NOTIFY_PATH}"
 
     @property
+    def paths(self) -> tuple[str, ...]:
+        """Every path served: /notifications first."""
+        return tuple(self._routes)
+
+    def url_for(self, path: str) -> str:
+        host = f"[{self._host}]" if ":" in self._host else self._host
+        return f"ws://{host}:{self.port}{path}"
+
+    @property
     def app_count(self) -> int:
         with self._lock:
             return len(self._apps)
@@ -266,7 +313,7 @@ class NotificationServer:
     # -- the HTTP upgrade: address and origin -------------------------------
 
     def _process_request(self, connection: Any, request: Any) -> Any:
-        if request.path.split("?", 1)[0] != NOTIFY_PATH:
+        if request.path.split("?", 1)[0] not in self._routes:
             return connection.respond(HTTPStatus.NOT_FOUND, "Not found.\n")
         peer = str(connection.remote_address[0])
         allowed, reason = self._policy.evaluate(peer)
@@ -285,17 +332,25 @@ class NotificationServer:
         from websockets.exceptions import ConnectionClosed
 
         peer = str(connection.remote_address[0])
-        app = self._handshake(connection, peer)
+        path = connection.request.path.split("?", 1)[0] if connection.request else NOTIFY_PATH
+        route = self._routes.get(path) or self._routes[NOTIFY_PATH]
+        app = self._handshake(connection, peer, route)
         if app is None:
             return
-        subscription = self._notifications.subscribe(app.offer, since=app.since)
+        hub = route.notifications
+        subscription = hub.subscribe(app.offer, since=app.since)
         hello = {
             "type": "hello",
             "protocol": NOTIFY_PROTOCOL,
-            "stream": self._notifications.stream,
-            "events": list(self._notifications.events),
+            "stream": hub.stream,
+            "events": list(hub.events),
             "status": subscription.status,
+            # How many replays follow, so an app can tell where catching up
+            # ends and announce the latest of them rather than every one.
+            "backlog": len(subscription.backlog),
         }
+        if route.account is not None:
+            hello["account"] = dict(route.account)
         writer = threading.Thread(
             target=self._write,
             args=(app, hello, subscription.backlog),
@@ -324,7 +379,7 @@ class NotificationServer:
                 self._writers.pop(app, None)
             self._log(f"[notify] {app.label} disconnected")
 
-    def _handshake(self, connection: Any, peer: str) -> _App | None:
+    def _handshake(self, connection: Any, peer: str, route: NotifyRoute) -> _App | None:
         nonce = new_nonce()
         connection.send(
             json.dumps({"type": "challenge", "protocol": NOTIFY_PROTOCOL, "nonce": nonce})
@@ -357,6 +412,7 @@ class NotificationServer:
             peer,
             auth.get("client"),
             _since(auth.get("since")),
+            route,
         )
         with self._lock:
             refusal = (
@@ -398,7 +454,7 @@ class NotificationServer:
     def _test_notification(self, app: _App) -> dict:
         return Notification(
             id=0,
-            stream=self._notifications.stream,
+            stream=app.route.notifications.stream,
             kind="test",
             severity="info",
             title="Test notification",

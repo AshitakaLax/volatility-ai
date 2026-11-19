@@ -1,12 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The screen (built by MainActivity's screens) over the tab bar. The Connect
-     screen hides the tab bar: it has its own Save and connect. -->
+<!-- The screen (built by MainActivity's screens) over the tab bar, on the
+     ground colour of the account shown: yellow for Alpaca, green for Fidelity.
+     The Connect screen hides the tab bar: it has its own Save and connect. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/ground"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
+
+    <!-- With more than one account: a chip each, the one shown filled with its
+         broker's colour. MainActivity fills it; hidden on Connect. -->
+    <HorizontalScrollView
+        android:id="@+id/account_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="12dp"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/account_chips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
+    <!-- A newer app is out (UpdateChecker): MainActivity fills it. -->
+    <LinearLayout
+        android:id="@+id/update_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="12dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="8dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="4dp"
+        android:visibility="gone" />
 
     <FrameLayout
         android:id="@+id/screen"

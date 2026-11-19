@@ -24,6 +24,15 @@ bare bridge, to try it out. The bridge refuses, before any handshake:
 - a request with a web page's `Origin` (`http://…`, `https://…` or `null`) (HTTP 403);
 - any other path (HTTP 404).
 
+**The trader notifier** speaks the same protocol for deployments no bridge
+sees -- volatility-ai's Alpaca deployments
+(`fidelity_gateway/bridge/trader_notifier.py`, the `trader-notifier`
+service). It reads each trader's status, fill and order journals and ledger,
+and serves one stream per deployment from one port, 8767 by default:
+`/notifications/<deployment>` for each, and `/notifications` for the first.
+Its key is `VAI_NOTIFIER_KEY` (`keygen --notifier`). An app keeps one
+connection per account: each address and key is an account of its own.
+
 ## The key
 
 `FIDELITY_BRIDGE_NOTIFY_KEY`: 32 to 256 characters of `A-Z a-z 0-9 . _ ~ + / = -`.
@@ -83,7 +92,20 @@ network.
 ## Bridge → app
 
 - **hello**, always first:
-  `{"type": "hello", "protocol": "…", "stream": "<random per bridge run>", "events": ["buy", …], "status": {…}}`
+  `{"type": "hello", "protocol": "…", "stream": "<random per bridge run>", "events": ["buy", …], "status": {…}, "backlog": 3, "account": {…}}`
+  - `backlog` is how many `replay: true` notifications follow, so an app
+    knows where catching up ends: the app announces only the latest of them
+    (of the kinds it shows) with a count of the rest, and lists them all. A
+    bridge older than this sends none; the app then takes catching up to end
+    at the first message that is not a replay, or a second after the last.
+  - `account` says what this stream is about, each field optional:
+    ```json
+    {"id": "paper-ultimate", "label": "Ultimate (paper)", "broker": "alpaca",
+     "paper": true, "symbol": "TQQQ"}
+    ```
+    `broker` is `fidelity` or `alpaca` (others may come: show them). A
+    bridge older than this sends no `account`: it is Fidelity. The app
+    colours an account by it, yellow for Alpaca and green for Fidelity.
 - **notification**:
   `{"type": "notification", "notification": {"id", "stream", "kind", "severity", "title", "body", "at", "data"}, "replay": true?}`
   - `id` counts from 1 within `stream`. A test notification has id `0`, and
@@ -138,12 +160,33 @@ network.
              "openCost": 5037.80, "unrealized": -4.21,
              "closed": [{"id": "…", "qty": 1, "buyPrice": 218.10, "sellPrice": 220.28,
                          "pnl": 2.18, "reason": "profit_target", "boughtAt": "…", "soldAt": "…"}],
-             "today": {"realized": 8.72, "sales": 4, "buys": 7}}
+             "today": {"realized": 8.72, "sales": 4, "buys": 7},
+             "days": [{"date": "2026-11-03", "realized": 8.72, "sales": 4, "buys": 7},
+                      {"date": "2026-11-02", "realized": -1.25, "sales": 2, "buys": 3}]}
     ```
     `open` is newest first; `closed` is the last 20 sales, newest first, `pnl`
     after costs. `unrealized` is the open lots at `lastPrice`, before costs.
-    `today` is the market's calendar day (New York). `boughtAt` is `null` when
+    `today` is the market's calendar day (New York). `days` is each market
+    day the fill journal still has with a fill (the trader keeps 10
+    sessions; at most 30 are sent), newest first, today's included: what an
+    app keeps as its profit history, so it reaches back further than the
+    journal. A bridge older than this sends no `days`. `boughtAt` is `null` when
     the journal no longer reaches back to the buy.
+  - `trader` is the trader's own report, from the trader notifier only (a
+    Fidelity bridge's readiness says the same and more):
+    ```json
+    "trader": {"state": "trading", "detail": null, "process": "loop",
+               "stale": false, "running": true, "nextOpen": null,
+               "lastTickAt": "…", "updatedAt": "…", "openLots": 3, "openOrders": 0}
+    ```
+    `state` is its own word (`trading`, `buys_paused`, `winding_down`,
+    `stopped`, `recovery_required`; between sessions the supervisor's
+    `waiting_for_open`, `closed`, `disabled`, …). `stale`: it has stopped
+    reporting, so what it last said is no longer true. `running`: a trading
+    loop, reporting, not ended. `null` before any trader has reported. The
+    trader notifier's `engine` is the loop's state in the bridge's words
+    (`running`, `paused`, `stopped`, …), `null` between sessions; it sends no
+    `extension` and no `bridge`.
 - **goodbye**, `{"type": "goodbye", "reason": "…"}`: the bridge is
   stopping on purpose. The host runs all the time, so this is a restart (a
   deploy, a config change) and it is back within seconds. The connection

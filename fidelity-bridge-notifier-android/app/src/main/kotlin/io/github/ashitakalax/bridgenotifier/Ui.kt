@@ -6,6 +6,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -126,6 +128,39 @@ class Ui(val context: Context) {
             minHeight = dp(40)
             setPadding(dp(14), 0, dp(14), 0)
             background = pressable(rounded(if (selected) R.color.accent_fill else R.color.card, radius = 20, stroke = if (selected) R.color.accent_fill else R.color.line_strong))
+            isClickable = true
+            isFocusable = true
+            contentDescription = value
+            isSelected = selected
+            setOnClickListener { onClick() }
+        }
+
+    /** A small pill in a broker's colour: "Alpaca", "Fidelity". */
+    fun badge(value: CharSequence, look: BrokerLook): TextView =
+        text(value, size = 11f, color = look.onStrong, bold = true).apply {
+            isAllCaps = true
+            letterSpacing = 0.04f
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            background = rounded(look.strong, radius = 8)
+        }
+
+    /** An account's chip: filled with its broker's colour when it is the one shown. */
+    fun accountChip(value: CharSequence, look: BrokerLook, selected: Boolean, onClick: () -> Unit): TextView =
+        text(
+            // Not shown: a dot in its broker's colour says which it is.
+            if (selected) {
+                value
+            } else {
+                SpannableString("●  $value").apply { setSpan(ForegroundColorSpan(color(look.strong)), 0, 1, 0) }
+            },
+            size = 13f,
+            color = if (selected) look.onStrong else R.color.ink,
+            bold = selected,
+        ).apply {
+            gravity = Gravity.CENTER
+            minHeight = dp(40)
+            setPadding(dp(14), 0, dp(14), 0)
+            background = pressable(rounded(if (selected) look.strong else R.color.card, radius = 20, stroke = look.strong))
             isClickable = true
             isFocusable = true
             contentDescription = value

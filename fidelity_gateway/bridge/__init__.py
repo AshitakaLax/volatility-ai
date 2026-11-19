@@ -179,11 +179,13 @@ def build_notifier(
     notifications: Notifications | None = None,
     env_file: Path | None = None,
     log: Callable[[str], None] = _stderr,
+    account: dict | None = None,
 ) -> NotificationServer:
     """The listener apps connect to, not yet started, serving
     `notifications` (a new hub for `settings.events` if none is given). Its
     key is FIDELITY_BRIDGE_NOTIFY_KEY, and must not be the extension's: a
-    phone holding that one could pose as the extension."""
+    phone holding that one could pose as the extension. `account` is what
+    its hello tells apps the stream is about (notify_server.NotifyRoute)."""
     key = load_api_key(env_file=env_file, name=NOTIFY_KEY_ENV_VAR)
     if key.value == extension_key.value:
         raise ConfigurationError(
@@ -198,4 +200,5 @@ def build_notifier(
         port=settings.port,
         policy=AddressPolicy.from_entries(settings.allowed_clients, settings.blocked_clients),
         log=log,
+        account=account,
     )

@@ -39,6 +39,11 @@ class LotsScreen(private val ui: Ui) : Screen {
         view = scroll
     }
 
+    /** The sales rather than the open lots (a sale's notification opens on them), or back. */
+    fun showSales(sales: Boolean) {
+        show = if (sales) Show.CLOSED else Show.OPEN
+    }
+
     override fun save(state: Bundle) {
         state.putString(SHOW, show.name)
     }
@@ -50,13 +55,13 @@ class LotsScreen(private val ui: Ui) : Screen {
     override fun render(snapshot: MonitorState.Snapshot) {
         last = snapshot
         val book = snapshot.status.book
-        // Not connected: the lots as the bridge last said, and when.
+        // Not connected: the lots as its listener last said, and when.
         val heardAt = snapshot.statusAt
         val live = snapshot.link is BridgeClient.Link.Connected || heardAt == null || book == null
         stale.visibility = if (live) View.GONE else View.VISIBLE
         if (!live) stale.text = ui.string(R.string.stale, Format.clockAt(heardAt!!))
         eyebrow.text = listOfNotNull(
-            "Fidelity",
+            snapshot.account?.name,
             book?.symbol,
             book?.lastPrice?.let { "last ${Format.money(it)}" },
         ).joinToString(" · ")

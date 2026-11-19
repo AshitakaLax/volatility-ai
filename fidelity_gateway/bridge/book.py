@@ -10,7 +10,10 @@ never written, from two things the trader already keeps:
                   reads it; the bridge mounts the trader's state read-only)
   the fill journal  every booked fill (ControlInbox.fills, in the control
                   directory the bridge and trader share): when each lot was
-                  bought, every sale with what it fetched and made
+                  bought, every sale with what it fetched and made, and each
+                  day's totals (`days`) as far back as the journal reaches --
+                  the trader keeps 10 sessions, so the app keeps the longer
+                  history itself
 
 Nothing here can change an order, a lot or the ledger. Either source missing
 leaves its part empty rather than failing: "nothing yet" is an answer.
@@ -19,7 +22,7 @@ leaves its part empty rather than failing: "nothing yet" is an answer.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -28,6 +31,9 @@ from zoneinfo import ZoneInfo
 # notification at once, so this only paces the figures.
 BOOK_SECONDS = 30.0
 CLOSED_SHOWN = 20
+# Days of totals sent at most: the journal keeps fewer (JOURNAL_SESSIONS in
+# engine/trading/control_inbox.py), so this only bounds a longer one.
+DAYS_SHOWN = 30
 # Sessions of fill journal read: enough to find when an open lot was bought
 # and to fill the last CLOSED_SHOWN sales on a quiet week.
 JOURNAL_SESSIONS = 30
@@ -102,8 +108,11 @@ def read_book(
 
     today = datetime.fromtimestamp(now, _MARKET).date()
 
+    def day_of(fill: dict) -> date:
+        return datetime.fromtimestamp(float(fill["t"]), _MARKET).date()
+
     def is_today(fill: dict) -> bool:
-        return datetime.fromtimestamp(float(fill["t"]), _MARKET).date() == today
+        return day_of(fill) == today
 
     sales = [fill for fill in fills if fill.get("side") == "sell"]
     closed = []
@@ -136,7 +145,28 @@ def read_book(
             "sales": len(sold_today),
             "buys": sum(1 for f in fills if f.get("side") == "buy" and is_today(f)),
         },
+        "days": _days(fills, day_of),
     }
 
 
-__all__ = ["BOOK_SECONDS", "CLOSED_SHOWN", "read_book"]
+def _days(fills: list[dict], day_of: Callable[[dict], date]) -> list[dict[str, Any]]:
+    """Each market day in the journal with a fill: what its sales made after
+    costs, and how many sales and buys. Newest first, at most DAYS_SHOWN."""
+    totals: dict[date, dict[str, Any]] = {}
+    for fill in fills:
+        side = fill.get("side")
+        if side not in ("buy", "sell"):
+            continue
+        day = totals.setdefault(day_of(fill), {"realized": 0.0, "sales": 0, "buys": 0})
+        if side == "sell":
+            day["sales"] += 1
+            day["realized"] += float(fill.get("pnl") or 0.0)
+        else:
+            day["buys"] += 1
+    return [
+        {"date": day.isoformat(), **figures, "realized": _money(figures["realized"])}
+        for day, figures in sorted(totals.items(), reverse=True)[:DAYS_SHOWN]
+    ]
+
+
+__all__ = ["BOOK_SECONDS", "CLOSED_SHOWN", "DAYS_SHOWN", "read_book"]

@@ -91,10 +91,11 @@ class FakeBridge(private val apiKey: String = TEST_KEY) {
     fun close() = server.shutdown()
 
     companion object {
-        fun hello(stream: String = "s1") = buildJsonObject {
+        fun hello(stream: String = "s1", backlog: Int? = null) = buildJsonObject {
             put("type", "hello")
             put("protocol", NotifyProtocol.PROTOCOL)
             put("stream", stream)
+            if (backlog != null) put("backlog", backlog)
             put("events", kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.JsonPrimitive("buy"))))
             put("status", buildJsonObject {
                 put("extension", buildJsonObject { put("connected", true); put("version", "1.4.0") })
@@ -122,6 +123,7 @@ class FakeBridge(private val apiKey: String = TEST_KEY) {
 class Recorder : BridgeClient.Listener {
     val links = LinkedBlockingQueue<BridgeClient.Link>()
     val notifications = LinkedBlockingQueue<Pair<Notification, Boolean>>()
+    val batches = LinkedBlockingQueue<Pair<List<Notification>, Boolean>>()
     val statuses = LinkedBlockingQueue<BridgeStatus>()
 
     override fun onLink(link: BridgeClient.Link) {
@@ -132,9 +134,18 @@ class Recorder : BridgeClient.Listener {
         notifications.add(notification to fresh)
     }
 
+    override fun onMissed(notifications: List<Notification>, fresh: Boolean) {
+        batches.add(notifications to fresh)
+    }
+
     override fun onStatus(status: BridgeStatus) {
         statuses.add(status)
     }
+
+    fun nextBatch(): Pair<List<Long>, Boolean> =
+        (batches.poll(5, TimeUnit.SECONDS) ?: throw AssertionError("no batch")).let { (list, fresh) ->
+            list.map { it.id } to fresh
+        }
 
     inline fun <reified T : BridgeClient.Link> awaitLink(): T {
         while (true) {

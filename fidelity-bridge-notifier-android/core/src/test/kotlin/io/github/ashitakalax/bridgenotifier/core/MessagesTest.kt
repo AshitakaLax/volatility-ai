@@ -159,7 +159,10 @@ class MessagesTest {
                             {"id":"b","qty":1,"buyPrice":219.0}],
                     "closed":[{"id":"c","qty":1.0,"buyPrice":218.1,"sellPrice":220.28,"pnl":2.18,
                                "reason":"profit_target","soldAt":"2026-11-03T18:36:00+00:00"}],
-                    "today":{"realized":8.72,"sales":4,"buys":7}}}}""",
+                    "today":{"realized":8.72,"sales":4,"buys":7},
+                    "days":[{"date":"2026-11-03","realized":8.72,"sales":4,"buys":7},
+                            {"date":"not a date","realized":1.0},
+                            {"date":"2026-11-02","realized":-1.5,"sales":2,"buys":0}]}}}""",
                 ),
             ) as BridgeMessage.StatusMessage
             ).status
@@ -173,6 +176,13 @@ class MessagesTest {
         assertEquals(4, book.salesToday)
         assertEquals(7, book.buysToday)
         assertEquals(-0.14, book.unrealized!!, 1e-9)
+        assertEquals(
+            listOf(
+                DayFigures(java.time.LocalDate.of(2026, 11, 3), 8.72, 4, 7),
+                DayFigures(java.time.LocalDate.of(2026, 11, 2), -1.5, 2, 0),
+            ),
+            book.days,
+        )
     }
 
     @Test

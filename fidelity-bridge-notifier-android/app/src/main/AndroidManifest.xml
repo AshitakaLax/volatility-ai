@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- The app lock: a fingerprint or face before the pages show (LockGate). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- To ask, from the Connect page, that Android not delay the connection
          to save battery. Asking shows the system's own dialog; nothing is
          changed without the answer given there. -->
@@ -47,6 +49,11 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps a connection open to the user's own trading bridge, to show its notifications as they happen." />
         </service>
+
+        <!-- A notification's "Mute 1 h" button. Only this app's notifications reach it. -->
+        <receiver
+            android:name=".AlertActions"
+            android:exported="false" />
 
         <receiver
             android:name=".BootReceiver"

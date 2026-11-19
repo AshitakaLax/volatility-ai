@@ -2,14 +2,19 @@ package io.github.ashitakalax.bridgenotifier
 
 import android.content.res.ColorStateList
 import android.os.Bundle
-import android.text.format.DateUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import io.github.ashitakalax.bridgenotifier.core.Account
 import io.github.ashitakalax.bridgenotifier.core.BridgeClient
+import io.github.ashitakalax.bridgenotifier.core.DayFigures
 import io.github.ashitakalax.bridgenotifier.core.EventKind
+import io.github.ashitakalax.bridgenotifier.core.ProfitHistory
+import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /** One of the app's pages: a view, redrawn from each snapshot. */
 interface Screen {
@@ -24,17 +29,33 @@ interface Screen {
 }
 
 /**
- * The connection at a glance: ready to trade or the one thing to fix, the
- * readiness chain, today's profit, the day's counts, the trading session and
- * the latest trade.
+ * The account shown, at a glance: for Fidelity, ready to trade or the one
+ * thing to fix and the readiness chain; for Alpaca, what its trader says it is
+ * doing -- and whether that is live or when it was last heard. Then today's
+ * profit, the day's counts, the profit history day by day, the trading
+ * session and the latest trade.
  */
 class HomeScreen(
     private val ui: Ui,
     private val prefs: Prefs,
     private val go: (Tab) -> Unit,
 ) : Screen {
+    /** The history's span: two weeks, a month, three months, a year. */
+    private enum class Span(val days: Long, val label: Int) {
+        TWO_WEEKS(14, R.string.span_2w),
+        MONTH(31, R.string.span_1m),
+        QUARTER(92, R.string.span_3m),
+        YEAR(366, R.string.span_1y),
+    }
+
     private val eyebrow = ui.eyebrow("")
+    private val freshness = ui.text(size = 12f, bold = true)
     private val content = ui.column(gap = 12)
+    private var span = Span.MONTH
+    private var last: MonitorState.Snapshot? = null
+    private val chart = HistoryChart(ui)
+    private val picked = ui.text(size = 12f, color = R.color.ink_soft, mono = true)
+    private val dayFormat = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
     override val view: View
 
     init {
@@ -53,6 +74,7 @@ class HomeScreen(
                         ui.column().apply {
                             addView(eyebrow)
                             addView(ui.title(ui.string(R.string.home_title)))
+                            addView(freshness)
                         },
                     ),
                 )
@@ -61,22 +83,32 @@ class HomeScreen(
         )
         page.addView(content)
         view = scroll
+        chart.onPick = { day -> picked.text = pickedLine(day) }
+    }
+
+    override fun save(state: Bundle) {
+        state.putString(SPAN, span.name)
+    }
+
+    override fun restore(state: Bundle) {
+        span = Span.entries.firstOrNull { it.name == state.getString(SPAN) } ?: span
     }
 
     override fun render(snapshot: MonitorState.Snapshot) {
         val status = snapshot.status
         val host = status.bridge
         val book = status.book
-        eyebrow.text = listOfNotNull("Fidelity", host?.symbol ?: book?.symbol).joinToString(" · ")
+        last = snapshot
+        eyebrow.text = eyebrowLine(snapshot.account, host?.symbol ?: book?.symbol)
+        val state = snapshot.stateOf(snapshot.account?.id)
+        val (fresh, freshColor) = Verdict.freshness(ui, state, snapshot.account?.id?.let(prefs::heardAt))
+        freshness.text = ui.string(R.string.fresh_dot, fresh)
+        freshness.setTextColor(ui.color(freshColor))
+        freshness.visibility = if (snapshot.account == null) View.GONE else View.VISIBLE
         content.removeAllViews()
         content.addView(hero(snapshot))
 
         val connected = snapshot.link is BridgeClient.Link.Connected
-        // Not connected: what follows is what the bridge last said, and when.
-        val heardAt = snapshot.statusAt
-        if (!connected && heardAt != null) {
-            content.addView(ui.text(ui.string(R.string.stale, Format.clockAt(heardAt)), size = 13f, color = R.color.status_warn))
-        }
         if (host != null && host.items.isNotEmpty()) {
             content.addView(
                 ui.card(padding = 12, gap = 0).apply {
@@ -117,52 +149,110 @@ class HomeScreen(
                 addView(tile(ui.string(R.string.tile_sells), book?.salesToday, Tab.ACTIVITY))
             },
         )
+        snapshot.account?.let { content.addView(history(it.id)) }
         content.addView(session(snapshot))
         latestTrade(snapshot)?.let(content::addView)
     }
 
-    private fun hero(snapshot: MonitorState.Snapshot): View {
-        val host = snapshot.status.bridge
-        val link = snapshot.link
-        data class Hero(val fill: Int, val tag: String, val title: String, val detail: String, val tap: (() -> Unit)? = null)
-        val offline = R.color.status_offline_fill
-        val bridgeHost = MonitorService.hostOf(prefs.url)
-        val trying = link is BridgeClient.Link.Waiting || link == BridgeClient.Link.Connecting
-        val retry = { MonitorService.retry(ui.context) }
-        val connecting = Hero(offline, ui.string(R.string.hero_connecting_tag), ui.string(R.string.hero_connecting_title, bridgeHost), "")
-        val hero = when {
-            link is BridgeClient.Link.Refused -> Hero(R.color.status_bad_fill, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_refused_title), ui.string(R.string.hero_refused_detail, link.reason)) { go(Tab.CONNECT) }
-            // The phone, not the bridge: said plainly, and never as an alarm.
-            trying && snapshot.phone == MonitorState.Phone.OFFLINE -> Hero(offline, ui.string(R.string.hero_phone_offline_tag), ui.string(R.string.hero_phone_offline_title), ui.string(R.string.hero_phone_offline_detail), retry)
-            trying && snapshot.phone == MonitorState.Phone.AWAY -> Hero(offline, ui.string(R.string.hero_phone_away_tag), ui.string(R.string.hero_phone_away_title), ui.string(R.string.hero_phone_away_detail, bridgeHost), retry)
-            link is BridgeClient.Link.Waiting && link.deliberate -> Hero(offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_restarting_title), ui.string(R.string.hero_retry_detail, sentence(link.reason)), retry)
-            link is BridgeClient.Link.Waiting -> Hero(offline, ui.string(R.string.hero_offline_tag), ui.string(R.string.hero_offline_title), ui.string(R.string.hero_retry_detail, sentence(link.reason)), retry)
-            link == BridgeClient.Link.Connecting -> connecting
-            link !is BridgeClient.Link.Connected -> when {
-                !prefs.isConfigured -> Hero(offline, ui.string(R.string.hero_idle_tag), ui.string(R.string.hero_idle_title), ui.string(R.string.hero_idle_detail)) { go(Tab.CONNECT) }
-                // Set to watch and the service not yet heard from: a moment, not a state.
-                prefs.monitoring -> connecting
-                else -> Hero(offline, ui.string(R.string.hero_idle_tag), ui.string(R.string.hero_stopped_title), ui.string(R.string.hero_stopped_detail)) {
-                    prefs.monitoring = true
-                    MonitorService.start(ui.context)
-                }
+    /**
+     * The profit history: each trading day's realised profit over the span
+     * picked, its total and best and worst days, and the day touched.
+     */
+    private fun history(id: String): View {
+        val today = ProfitHistory.marketDay(Instant.now())
+        val days = ProfitHistory.since(prefs.history(id), today.minusDays(span.days - 1))
+        return ui.card(padding = 16, gap = 8).apply {
+            addView(ui.label(ui.string(R.string.history_header)))
+            addView(
+                ui.row(gap = 6).apply {
+                    for (each in Span.entries) {
+                        addView(
+                            ui.chip(ui.string(each.label), selected = each == span) {
+                                span = each
+                                last?.let(::render)
+                            },
+                            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                        )
+                    }
+                },
+            )
+            if (days.isEmpty()) {
+                addView(ui.text(ui.string(R.string.history_empty), size = 13f, color = R.color.muted))
+                addView(ui.text(ui.string(R.string.history_kept), size = 12f, color = R.color.muted))
+                return@apply
             }
-            host == null -> Hero(offline, ui.string(R.string.hero_unknown_tag), ui.string(R.string.hero_unknown_title), ui.string(R.string.hero_unknown_detail))
-            host.ready -> Hero(R.color.status_ok_fill, ui.string(R.string.hero_ready_tag), ui.string(R.string.hero_ready_title), ui.string(R.string.hero_ready_detail))
-            else -> Hero(R.color.status_bad_fill, ui.string(R.string.hero_blocked_tag), host.summary, host.fix?.let { ui.string(R.string.hero_fix, it) }.orEmpty())
+            val total = days.sumOf { it.realized }
+            addView(
+                ui.row(gap = 8).apply {
+                    gravity = Gravity.BOTTOM
+                    addView(ui.text(Format.signedMoney(total), size = 22f, color = gainColor(total), mono = true))
+                    addView(
+                        ui.grow(
+                            ui.text(
+                                ui.context.resources.getQuantityString(R.plurals.history_over, days.size, days.size),
+                                size = 12f,
+                                color = R.color.muted,
+                            ),
+                        ),
+                    )
+                },
+            )
+            val best = days.maxBy { it.realized }
+            val worst = days.minBy { it.realized }
+            addView(
+                ui.text(
+                    ui.string(R.string.history_best_worst, Format.signedMoney(best.realized), dayFormat.format(best.date), Format.signedMoney(worst.realized), dayFormat.format(worst.date)),
+                    size = 12f,
+                    color = R.color.muted,
+                ),
+            )
+            (chart.parent as? ViewGroup)?.removeView(chart)
+            (picked.parent as? ViewGroup)?.removeView(picked)
+            chart.days = days
+            picked.text = pickedLine(chart.pickedDay)
+            addView(chart)
+            addView(picked)
+            addView(ui.text(ui.string(R.string.history_kept), size = 12f, color = R.color.muted))
         }
+    }
+
+    /** "Tue Nov 3: +$8.72 · 4 sales, 7 buys". */
+    private fun pickedLine(day: DayFigures?): String = day?.let {
+        ui.string(
+            R.string.history_picked,
+            dayFormat.format(it.date),
+            Format.signedMoney(it.realized),
+            ui.context.resources.getQuantityString(R.plurals.summary_sales, it.sales, it.sales),
+            ui.context.resources.getQuantityString(R.plurals.summary_buys, it.buys, it.buys),
+        )
+    }.orEmpty()
+
+    /** "Alpaca · Ultimate (paper) · TQQQ", "Fidelity · RSP". */
+    private fun eyebrowLine(account: Account?, symbol: String?): String {
+        val label = account?.label?.takeIf { it.isNotBlank() && it != account.broker.label }
+        val broker = account?.let { if (label == null) it.brokerLine else it.broker.label }
+        return listOfNotNull(broker, label, symbol).joinToString(" · ")
+    }
+
+    private fun hero(snapshot: MonitorState.Snapshot): View {
+        val hero = Verdict.of(ui, prefs, snapshot.account, snapshot.stateOf(snapshot.account?.id))
         return ui.column(gap = 6).apply {
             background = ui.rounded(hero.fill, radius = 16)
             setPadding(ui.dp(18), ui.dp(18), ui.dp(18), ui.dp(18))
             addView(ui.text(hero.tag, size = 13f, color = R.color.on_fill, bold = true).apply { isAllCaps = true; letterSpacing = 0.04f })
             addView(ui.text(hero.title, size = 22f, color = R.color.on_fill, bold = true))
             if (hero.detail.isNotEmpty()) addView(ui.text(hero.detail, color = R.color.on_fill))
-            hero.tap?.let { ui.tappable(this, it) }
+            when (hero.action) {
+                Verdict.Action.CONNECT -> ui.tappable(this) { go(Tab.CONNECT) }
+                Verdict.Action.RETRY -> ui.tappable(this) { MonitorService.retry(ui.context) }
+                Verdict.Action.WATCH -> ui.tappable(this) {
+                    prefs.monitoring = true
+                    MonitorService.start(ui.context)
+                }
+                null -> Unit
+            }
         }
     }
-
-    /** A reason the client gives in lower case, as the start of a sentence, without a full stop. */
-    private fun sentence(reason: String): String = reason.trim().trimEnd('.').replaceFirstChar(Char::uppercase)
 
     private fun profit(snapshot: MonitorState.Snapshot): View {
         val book = snapshot.status.book
@@ -215,9 +305,9 @@ class HomeScreen(
         val (state, fill, soft) = when (engine?.state) {
             "running" -> Triple("Running", R.color.status_ok, R.color.status_ok_soft)
             "paused" -> Triple("Paused", R.color.status_warn, R.color.status_warn_soft)
-            "halted" -> Triple("Halted", R.color.status_bad, R.color.status_bad_soft)
+            "halted", "recovery_required" -> Triple("Halted", R.color.status_bad, R.color.status_bad_soft)
             null -> Triple("Idle", R.color.ink_soft, R.color.line)
-            else -> Triple(engine?.state.orEmpty().replaceFirstChar(Char::uppercase), R.color.ink_soft, R.color.line)
+            else -> Triple(engine?.state.orEmpty().replace('_', ' ').replaceFirstChar(Char::uppercase), R.color.ink_soft, R.color.line)
         }
         return ui.card(padding = 16, gap = 6).apply {
             addView(
@@ -232,9 +322,11 @@ class HomeScreen(
                     )
                 },
             )
+            val trader = snapshot.status.trader
             val line = when {
                 engine != null -> listOfNotNull(engine.mode, engine.symbol, engine.detail).joinToString(" · ")
                 host != null && !host.sessionOpen -> ui.string(R.string.session_closed, ago(host.nextOpen))
+                trader?.nextOpen != null && !trader.running -> ui.string(R.string.session_closed, ago(trader.nextOpen))
                 else -> ui.string(R.string.session_none)
             }
             addView(ui.text(line))
@@ -295,8 +387,9 @@ class HomeScreen(
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(1))
     }
 
-    private fun ago(iso: String?): String {
-        val millis = iso?.let(Alerts::epochMillis) ?: return ui.string(R.string.unknown)
-        return DateUtils.getRelativeTimeSpanString(millis).toString()
+    private fun ago(iso: String?): String = Format.ago(iso) ?: ui.string(R.string.unknown)
+
+    private companion object {
+        const val SPAN = "home_span"
     }
 }

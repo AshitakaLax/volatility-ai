@@ -26,6 +26,9 @@
 #                extension stays connected to, and the trader that attaches
 #                to it each session.
 #                      docker compose --profile fidelity up -d fidelity-bridge fidelity
+#   notifier     the phone app's notifications for the Alpaca deployments,
+#                read-only from their traders' journals (port 8767).
+#                      docker compose --profile notifier up -d trader-notifier
 #   tools        one-offs:  docker compose run --rm test -q
 #                           docker compose run --rm preflight
 #                           docker compose run --rm check
@@ -277,6 +280,47 @@ services:
       - state_fidelity:/app/state
       - control_fidelity:/app/control
       - bridge_fidelity:/app/bridge
+
+  # The Bridge Notifier app's notifications for the ALPACA deployments, which
+  # no bridge sees (fidelity_gateway/bridge/trader_notifier.py): fills, order
+  # problems, the engine starting, pausing and stopping, a trader that stops
+  # reporting, and the book. READ-ONLY: every volume is mounted :ro, at the
+  # paths config/deployments.yaml names, and it holds no broker key. Each
+  # deployment is at ws://<this server>:8767/notifications/<id>, the first
+  # (paper-ultimate) at /notifications too. docs/DEPLOY.md, section 6.
+  #
+  # Its own key, VAI_NOTIFIER_KEY in .env (`python -m fidelity_gateway.bridge
+  # keygen --notifier`); without one it stops and says how to make one. It
+  # listens on loopback until .env sets VAI_NOTIFIER_HOST=0.0.0.0 and
+  # VAI_NOTIFIER_ALLOW to the phone's network (192.168.1.0/24; commas for
+  # more). Host networking, as fidelity-bridge, so it sees the phone's real
+  # address for that list. Never forward 8767 from the router.
+  trader-notifier:
+    <<: *app
+    profiles: [notifier]
+    network_mode: host
+    entrypoint: ["python", "-m", "fidelity_gateway.bridge", "notifier"]
+    command:
+      - "--host"
+      - "${VAI_NOTIFIER_HOST:-127.0.0.1}"
+      - "--allow-client"
+      - "${VAI_NOTIFIER_ALLOW:-127.0.0.1}"
+    restart: unless-stopped
+    stop_grace_period: 10s
+    mem_limit: 512m
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *env
+    volumes:
+      - ./config:/app/config:ro
+      - state:/app/state:ro
+      - state_ultimate:/app/state-ultimate:ro
+      - state_production:/app/state-production:ro
+      - control_ultimate:/app/controls/paper-ultimate:ro
+      - control_champion:/app/controls/paper:ro
+      - control_production:/app/controls/live:ro
 
   # Daily at VAI_BACKUP_AT: every ledger and the warehouse catalogs into
   # VAI_BACKUP_DIR (default /workspace/backups, this host's separate backup
