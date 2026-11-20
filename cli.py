@@ -1195,6 +1195,48 @@ def _control_inbox(args):
     return ControlInbox(args.control_dir)
 
 
+def _session_risk(args, config, inbox):
+    """The session's risk report overlay (research/risk_overlay/live.py), or
+    None when the config takes no reports or there is no control directory.
+    A failure to read it is never a reason not to trade: the session then
+    trades as configured, which is what a missing report means."""
+    if inbox is None or config.risk.overlay is None:
+        return None
+    from research.risk_overlay.live import SessionRisk
+
+    try:
+        risk = SessionRisk(
+            config,
+            args.control_dir,
+            inbox=inbox,
+            log=lambda message: print(message, flush=True),
+        )
+        risk.start()
+    except Exception as exc:
+        print(
+            f"The risk report could not be read ({type(exc).__name__}: {exc}); this session "
+            "trades as configured.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return None
+    return risk
+
+
+def _risk_report_handlers(args, config, inbox, risk=None) -> dict:
+    """apply_risk_report / clear_risk_report for the Live page, or {}."""
+    if inbox is None or config.risk.overlay is None:
+        return {}
+    from research.risk_overlay.live import handlers
+
+    return handlers(
+        config,
+        args.control_dir,
+        inbox=inbox,
+        on_change=risk.refresh if risk is not None else None,
+    )
+
+
 def _trades_extended(config) -> bool:
     """Whether the deployment trades outside the regular session."""
     return bool(config.live.extended_hours) or any(
@@ -1413,6 +1455,9 @@ class _EngineFirst:
             loop=lambda: self.loop,
             stop=lambda _why: None,  # a disable is seen as control.stopping
             heartbeat_seconds=15.0,
+            # A report sent while the engine waits for its broker is archived
+            # now; the trading loop reads it when it starts.
+            extra=_risk_report_handlers(self.args, self.config, self.inbox) or None,
             status_fields=lambda: {
                 "engine": self.engine,
                 "broker": self.config.live.broker,
@@ -1652,6 +1697,27 @@ def _run_trading_loop(
         store.close()
         return 1
     current = {"loop": first, "config": config, "reload": False, "stop": False}
+    # THE NIGHTLY RISK REPORT (docs/daily_risk_report_plan.md): this session's,
+    # from risk_reports/, mapped again with the morning's outside data. In
+    # advisory mode it is reported in status.json and nothing else; in
+    # enforce mode its overlay is set on the loop's own RiskManager, which the
+    # clamp and the grid step read -- and swapped in place, between ticks,
+    # when a later report tightens the session.
+    risk = _session_risk(args, config, inbox)
+
+    def _enforce_overlay(_overlay=None) -> None:
+        if risk is None:
+            return
+        from engine.core.risk_overlay import OverlaySchedule
+
+        enforced = risk.enforced()
+        current["loop"].risk_manager.set_overlay(
+            OverlaySchedule([enforced]) if enforced is not None and enforced.session else None
+        )
+
+    if risk is not None:
+        risk.listeners.append(_enforce_overlay)
+        _enforce_overlay()
     # This session's incidents are journaled from here on: the row that lets
     # a paper trial count its zeros as measured rather than unknown.
     on_incident(
@@ -1678,22 +1744,24 @@ def _run_trading_loop(
             current["reload"] = True
             current["loop"].request_stop()
 
+        extra = (
+            algorithm_handlers(
+                algorithm,
+                symbol=config.backtest.symbol,
+                paper=config.live.paper_trading,
+                on_rewarm=_rewarm,
+            )
+            if algorithm is not None
+            else {}
+        )
+        extra.update(_risk_report_handlers(args, config, inbox, risk))
         control = LoopControl(
             inbox,
             breaker=circuit_breaker,
             loop=lambda: current["loop"],
             stop=_stop_for_operator,
             heartbeat_seconds=float(config.live.poll_interval_seconds),
-            extra=(
-                algorithm_handlers(
-                    algorithm,
-                    symbol=config.backtest.symbol,
-                    paper=config.live.paper_trading,
-                    on_rewarm=_rewarm,
-                )
-                if algorithm is not None
-                else None
-            ),
+            extra=extra or None,
             status_fields=lambda: {
                 "algorithm": {
                     "strategy_id": current["config"].strategy.strategy_id,
@@ -1718,6 +1786,9 @@ def _run_trading_loop(
                 # (a Fidelity session signed out, the extension's trading
                 # switch off, Alpaca down); None when it can.
                 "broker_unavailable": current["loop"].broker_unavailable,
+                # The session's risk report: in force (enforce) or suggested
+                # (advisory), or none -- trading as configured.
+                "risk_overlay": risk.status() if risk is not None else None,
                 **_fidelity_status(config, connection),
                 # On the venue's windows: the engine's own readiness, apart
                 # from the broker's, and how the last window went.
@@ -1800,6 +1871,7 @@ def _run_trading_loop(
             new_config = algorithm.effective_config()
             current["loop"] = build(new_config, build_strategy(new_config, registry))
             current["config"] = new_config
+            _enforce_overlay()  # the rebuilt loop has a fresh RiskManager
             if current["reload"]:  # another change arrived meanwhile
                 current["loop"].request_stop()
             algorithm.mark_live(new_config)

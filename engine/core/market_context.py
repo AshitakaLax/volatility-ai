@@ -152,6 +152,15 @@ class MarketContext:
     # realized-vol readings tools/probe_vol_filtered_regime.py measured
     # its filter against. >= 0.0 when known.
     expected_volatility: float = -1.0
+    # --- The nightly risk report (engine/core/risk_overlay.py) -------------
+    #
+    # The strategy's own day-level levers this session's ENFORCED report
+    # stands in for: "governor" (DailyUltimateSizing's caution) and
+    # "event_boosts" (the FOMC and earnings-day multipliers). Empty on every
+    # session no enforced report set -- every run before reports existed,
+    # every advisory session -- so nothing changes there. Filled where the
+    # backtest and the live loop build their contexts.
+    report_supersedes: frozenset = frozenset()
 
     @property
     def price(self) -> float:

@@ -15,9 +15,11 @@ Risk semantics (implementation_task_specs.md Task 3.1):
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from enum import StrEnum
 
 from engine.core.exceptions import ConfigurationError
+from engine.core.risk_overlay import OverlaySchedule, SessionOverlay
 from engine.core.validation import validate_positive_int, validate_unit_interval
 
 logger = logging.getLogger("Optimizer")
@@ -248,8 +250,16 @@ class RiskManager:
         dd_exposure_start: float | None = None,
         dd_exposure_full: float = 0.60,
         dd_exposure_floor_pct: float = 0.0,
+        overlay: OverlaySchedule | None = None,
     ):
         """Configure the risk limits; every one defaults to unlimited.
+
+        overlay -- the nightly risk report's sessions
+        (engine/core/risk_overlay.py): an ENFORCED session's overlay may
+        pause new buys, black out windows, shrink each buy and lower the
+        exposure ceiling, and nothing else. None (the default), an
+        advisory overlay, or a clamp call without `at` is exactly today's
+        clamp.
 
         max_total_exposure and max_total_exposure_pct are two names for
         the same setting (the former is what src/live_execution.py
@@ -324,6 +334,20 @@ class RiskManager:
         self.dd_exposure_start = dd_exposure_start
         self.dd_exposure_full = dd_exposure_full
         self.dd_exposure_floor_pct = dd_exposure_floor_pct
+        self.overlay = overlay
+
+    def set_overlay(self, overlay: OverlaySchedule | None) -> None:
+        """Swap the schedule in place: a report that tightens a session
+        already trading reaches the next tick without a rebuild."""
+        self.overlay = overlay
+
+    def overlay_at(self, at: datetime | None) -> SessionOverlay | None:
+        """The ENFORCED overlay of the session `at` falls on, or None (no
+        schedule, no time, NEUTRAL, or advisory: nothing to apply)."""
+        if self.overlay is None or at is None:
+            return None
+        found = self.overlay.at(at)
+        return found if found.enforced and found.changes_trading else None
 
     def _effective_exposure_pct(self, drawdown: float) -> float | None:
         """The exposure ceiling clamp_trade_value should apply THIS bar:
@@ -347,10 +371,19 @@ class RiskManager:
         frac = (drawdown - self.dd_exposure_start) / span
         return base - frac * (base - self.dd_exposure_floor_pct)
 
-    def exposure_ceiling(self, drawdown: float = 0.0) -> float | None:
+    def exposure_ceiling(self, drawdown: float = 0.0, at: datetime | None = None) -> float | None:
         """The share of equity open lots may hold at `drawdown` (None: no
-        ceiling) -- what clamp_trade_value applies, for a report to name."""
-        return self._effective_exposure_pct(drawdown)
+        ceiling) -- what clamp_trade_value applies, for a report to name.
+        With `at`, an enforced overlay's ceiling is taken with min()."""
+        effective = self._effective_exposure_pct(drawdown)
+        overlay = self.overlay_at(at)
+        if overlay is not None and overlay.exposure_ceiling is not None:
+            return (
+                overlay.exposure_ceiling
+                if effective is None
+                else min(effective, overlay.exposure_ceiling)
+            )
+        return effective
 
     def clamp_trade_value(
         self,
@@ -359,6 +392,7 @@ class RiskManager:
         cash: float,
         open_lot_count: int,
         drawdown: float = 0.0,
+        at: datetime | None = None,
     ) -> float:
         """Both static limits default to None -> unlimited, matching
         current behavior. Takes plain values (not a context object) so
@@ -392,10 +426,26 @@ class RiskManager:
         is where every other portfolio-level control (max_concurrent_lots,
         the static exposure cap, the live-only CircuitBreaker) already
         lives.
+
+        `at` -- the moment of the buy, for the nightly risk report's
+        overlay (docs/daily_risk_report_plan.md, "The engine seam"). The
+        order is the lot cap, then the overlay's pause, then its blackout,
+        then its buy multiplier, then min(the drawdown-ramped ceiling, the
+        overlay's). With no schedule, an advisory one, or `at=None` (a buy
+        the strategy exempts) the result is bit-for-bit what it was.
         """
         if self.max_concurrent_lots is not None and open_lot_count >= self.max_concurrent_lots:
             return 0.0
-        effective_pct = self._effective_exposure_pct(drawdown)
+        overlay = self.overlay_at(at)
+        if overlay is not None:
+            if overlay.pause or overlay.in_blackout(at):
+                return 0.0
+            proposed_value = proposed_value * overlay.buy_multiplier
+        effective_pct = (
+            self.exposure_ceiling(drawdown, at)
+            if overlay is not None
+            else (self._effective_exposure_pct(drawdown))
+        )
         if effective_pct is not None:
             max_dollars = equity * effective_pct
             deployed = equity - cash

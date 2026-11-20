@@ -565,10 +565,15 @@ def exposure_metrics(blotter, close, equity, scored_from) -> dict:
     }
 
 
-def run_one(spec: dict) -> dict:
+def run_one(spec: dict, prepare=None, on_result=None) -> dict:
     """One configuration, reduced to its metrics. `spec` may name a
     `stress` scenario (tools/stress_paths.py), a `start` other than START,
-    and an `end`, the last session it loads."""
+    and an `end`, the last session it loads.
+
+    `prepare(kwargs, frame)` may change the sweep's kwargs before it runs
+    (tools/probe_risk_overlay.py hands the RiskManager a risk report
+    schedule); `on_result(sim_result, row, frame, out)` sees the finished
+    simulation before it is let go."""
     import pandas as pd
 
     from engine.core.config import BacktestConfig
@@ -588,6 +593,8 @@ def run_one(spec: dict) -> dict:
     frame = session_bars(cls, bars, config.strategy.strategy_params)
     kwargs = config.to_run_sweep_kwargs(cls)
     kwargs.update(n_jobs=1, return_full_results=False)
+    if prepare is not None:
+        prepare(kwargs, frame)
     out: dict[str, Any] = {k: spec[k] for k in ("stage", "name", "fund", "meta")}
     out["stress"], out["start"], out["end"] = spec.get("stress"), spec.get("start"), spec.get("end")
     out["params"] = config.strategy.strategy_params
@@ -616,6 +623,8 @@ def run_one(spec: dict) -> dict:
                 for k in ("CAGR %", "Max Drawdown %", "Trade Count", "Signal Exit Count")
             }
             out["equity"] = {str(k.date()): round(float(v), 2) for k, v in scored.items()}
+            if on_result is not None:
+                on_result(sim_result, row, frame, out)
 
         def close_sweep(self):
             pass

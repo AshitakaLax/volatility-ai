@@ -10,6 +10,7 @@
  */
 import { chip, type Tone } from "@/lib/control";
 import { verdict } from "@/lib/fidelity";
+import { refusal } from "@/lib/riskReport";
 import type { DeploymentSummary } from "@/types/control";
 
 export interface Attention {
@@ -52,6 +53,12 @@ export function attention(deployments: DeploymentSummary[], now: number): Attent
     }
     if (d.ledger?.halt && d.status?.state !== "buys_paused") {
       add("Buys halted", d.ledger.halt, null, "stuck");
+    }
+    // A session without a report is not attention (it trades as configured);
+    // a report the trader refused is.
+    const refused = refusal(d.risk_reports, now);
+    if (refused) {
+      add("Risk report refused", refused, "Check the report and send it again from the risk report panel.", "stuck");
     }
   }
   // Real money first, then the order they are listed in.

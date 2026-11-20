@@ -28,6 +28,8 @@ LAYOUT -- one directory per deployment, a volume both containers mount
   cancelled/<ns>-<id>.json  withdrawn by the server before a claim
   desired.json              whether sessions should run; the trader writes it
   status.json               what the trader is doing, rewritten as it works
+  risk_reports/<session>.json  the nightly risk report each session took
+                            (research/risk_overlay/archive.py)
   bars/<session>.jsonl      the minute bars the trader traded on
   fills/<session>.jsonl     every fill it booked, with its price
   incidents/<session>.jsonl what the promotion gate counts (INCIDENT_KINDS),
@@ -86,6 +88,11 @@ COMMAND_TYPES = (
     "revert_algorithm",
     "rewarm",
     "reset_paper_ledger",
+    # The nightly risk report for the session after it, and withdrawing one
+    # before that session opens (docs/daily_risk_report_plan.md). Applied by
+    # research/risk_overlay/control.py, which archives it in risk_reports/.
+    "apply_risk_report",
+    "clear_risk_report",
     # Read-only: a Fidelity deployment's bridge host checks the account
     # through the extension. Queued in its own inbox (bridge/), never a
     # trader's.

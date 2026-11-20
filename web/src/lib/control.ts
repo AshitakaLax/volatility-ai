@@ -246,6 +246,8 @@ const LABELS: Record<CommandType, string> = {
   revert_algorithm: "Revert algorithm",
   rewarm: "Re-warm",
   reset_paper_ledger: "Fresh paper ledger",
+  apply_risk_report: "Risk report",
+  clear_risk_report: "Withdraw risk report",
   check_connection: "Check connection",
 };
 

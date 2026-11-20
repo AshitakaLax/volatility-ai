@@ -58,6 +58,34 @@ describe("what needs the reader", () => {
     expect(attention([paper, idle, fidelity(true)], NOW)).toEqual([]);
   });
 
+  it("says a refused risk report, while it is recent, and never a missing one", () => {
+    const refused = (finished_at: string) =>
+      deployment({
+        id: "paper",
+        label: "Ultimate (paper)",
+        status: status("closed"),
+        risk_reports: {
+          takes: true,
+          why_not: null,
+          settings: { mode: "advisory", mapping: "v1", levers: { daily: true, spacing: true, weekly: true } },
+          last: {
+            id: "abc",
+            status: "rejected",
+            detail: "the report does not pass the audit (1 problem(s)): symbol: missing",
+            created_at: finished_at,
+            finished_at,
+            operator: "owner",
+          },
+        },
+      });
+    const [item] = attention([refused("2026-11-14T03:00:00Z")], NOW);
+    expect(item?.title).toBe("Risk report refused");
+    expect(item?.detail).toContain("symbol: missing");
+    expect(attention([refused("2026-11-12T03:00:00Z")], NOW)).toEqual([]);
+    const none = deployment({ id: "p", status: status("closed"), risk_reports: { takes: true, why_not: null, settings: null, last: null } });
+    expect(attention([none], NOW)).toEqual([]);
+  });
+
   it("names a Fidelity connection that cannot trade, with its fix", () => {
     const [item] = attention([paper, fidelity(false)], NOW);
     expect(item).toMatchObject({

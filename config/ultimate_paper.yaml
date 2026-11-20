@@ -81,6 +81,12 @@ risk:
   dd_exposure_start: 0.05
   dd_exposure_full: 0.2
   dd_exposure_floor_pct: 0.1
+  # The nightly risk report (docs/daily_risk_report_plan.md): ADVISORY --
+  # each session's overlay is built from the evening's report, shown on the
+  # Live page, archived and shadowed, and the session trades this file as
+  # written. A lever is enforced only after it passes its gate.
+  overlay:
+    mode: advisory
 execution:
   on_flat_reentry: stale_reference
   intrabar_priority: sell_first
@@ -113,3 +119,4 @@ live:
     enable_disable: true
     algorithm_changes: true
     ledger_reset: true
+    risk_reports: true

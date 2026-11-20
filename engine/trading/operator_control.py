@@ -39,7 +39,13 @@ Handler = Callable[[Command], str]
 # A newer queued command of the same family replaces an older one that has
 # not been applied: two queued algorithm switches mean the operator changed
 # their mind, not "switch twice".
-_FAMILY = {"switch_algorithm": "algorithm", "revert_algorithm": "algorithm"}
+_FAMILY = {
+    "switch_algorithm": "algorithm",
+    "revert_algorithm": "algorithm",
+    # Two queued reports: the newer is the one meant (docs/daily_risk_report_plan.md).
+    "apply_risk_report": "risk_report",
+    "clear_risk_report": "risk_report",
+}
 
 # States a disabled deployment reports as "disabled" instead.
 _WAITING = {"waiting_for_open", "closed", "restarting", "waiting_for_broker"}

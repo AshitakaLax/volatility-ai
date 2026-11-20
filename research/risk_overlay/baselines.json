@@ -1,0 +1,18 @@
+{
+  "funds": {
+    "TQQQ": {
+      "computed_at": "2026-11-20",
+      "es5_pct": {
+        "next_month": -33.07,
+        "next_quarter": -56.2308
+      },
+      "move_pct": 3.5624,
+      "source": "proxy-v1 median over the research window (tools/build_proxy_reports.py)",
+      "window": [
+        "2016-01-04",
+        "2026-11-19"
+      ]
+    }
+  },
+  "note": "Frozen baselines for research/risk_overlay/mapping.py; written by tools/build_proxy_reports.py --baselines. Do not edit by hand."
+}

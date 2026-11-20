@@ -79,6 +79,13 @@ METRIC_KEYS = frozenset(
         "Average Hold Duration",
         "Sharpe",
         "Sortino",
+        # The nightly risk report's overlay, on a run that enforces a
+        # schedule (research/optimization/optimization_controller.py).
+        "Overlay Sessions",
+        "Overlay Paused Sessions",
+        "Overlay Mean Step Multiplier",
+        "Overlay Buys Withheld",
+        "Overlay Dollars Withheld",
     }
 )
 

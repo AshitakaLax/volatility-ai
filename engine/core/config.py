@@ -192,6 +192,9 @@ class RiskConfig:
     dd_exposure_start: float | None = None
     dd_exposure_full: float = 0.60
     dd_exposure_floor_pct: float = 0.0
+    # The nightly risk report's overlay (docs/daily_risk_report_plan.md);
+    # None: this deployment takes no reports.
+    overlay: RiskOverlayConfig | None = None
 
     def build(self) -> RiskManager:
         """Construct the real RiskManager this config describes.
@@ -213,6 +216,194 @@ class RiskConfig:
             dd_exposure_full=self.dd_exposure_full,
             dd_exposure_floor_pct=self.dd_exposure_floor_pct,
         )
+
+
+OVERLAY_MODES = ("advisory", "enforce")
+OVERLAY_SOURCES = ("reports", "proxy", "synthetic", "schedule")
+OVERLAY_HORIZONS = ("next_month", "next_quarter", "max")
+OVERLAY_RESETS = ("monday", "five_sessions")
+OVERLAY_SUPERSEDABLE = ("governor", "event_boosts")
+OVERLAY_EXEMPTIONS = ("reversal",)
+
+
+@dataclass(frozen=True)
+class OverlaySpacingConfig:
+    """risk.overlay.spacing -- lever B: the grid step widened on a day the
+    report expects a large move, step x (move / baseline) ^ exponent, at
+    most max_multiplier, never narrower than live.step."""
+
+    enabled: bool = True
+    exponent: float = 1.0
+    max_multiplier: float = 4.0
+    target_follows: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "enabled": self.enabled,
+            "exponent": self.exponent,
+            "max_multiplier": self.max_multiplier,
+            "target_follows": self.target_follows,
+        }
+
+
+@dataclass(frozen=True)
+class OverlayWeeklyConfig:
+    """risk.overlay.weekly -- lever G: an exposure ceiling held for the
+    week from the report's 21- (and 63-) session tail risk."""
+
+    enabled: bool = True
+    horizon: str = "next_month"
+    slope: float = 0.5
+    reset: str = "monday"
+    max_age_days: int = 7
+
+    def to_dict(self) -> dict:
+        return {
+            "enabled": self.enabled,
+            "horizon": self.horizon,
+            "slope": self.slope,
+            "reset": self.reset,
+            "max_age_days": self.max_age_days,
+        }
+
+
+@dataclass(frozen=True)
+class RiskOverlayConfig:
+    """risk.overlay: whether, and how, the nightly risk report sets a
+    session's risk (docs/daily_risk_report_plan.md, "Config").
+
+    `advisory` (the default) builds the overlay exactly as `enforce` would,
+    reports, archives and shadows it, and trades the YAML. `enforce` trades
+    it. A report can only take risk away from what this file trades
+    (engine/core/risk_overlay.py); the two exceptions -- `supersedes`
+    naming the governor, `spacing.target_follows` -- are this file's own.
+    Real money stays advisory until its paper gate passes: validate()
+    refuses `enforce` on a live, real-money config.
+    """
+
+    mode: str = "advisory"
+    mapping: str = "v1"
+    source: str = "reports"
+    path: str | None = None
+    exposure_floor: float = 0.10
+    exempt: tuple = OVERLAY_EXEMPTIONS
+    blackout_minutes: float = 0.0
+    supersedes: tuple = OVERLAY_SUPERSEDABLE
+    daily: bool = True
+    spacing: OverlaySpacingConfig = field(default_factory=OverlaySpacingConfig)
+    weekly: OverlayWeeklyConfig = field(default_factory=OverlayWeeklyConfig)
+
+    def to_dict(self) -> dict:
+        return {
+            "mode": self.mode,
+            "mapping": self.mapping,
+            "source": self.source,
+            "path": self.path,
+            "exposure_floor": self.exposure_floor,
+            "exempt": list(self.exempt),
+            "blackout_minutes": self.blackout_minutes,
+            "supersedes": list(self.supersedes),
+            "daily": self.daily,
+            "spacing": self.spacing.to_dict(),
+            "weekly": self.weekly.to_dict(),
+        }
+
+    def check(self, *, live: bool, paper: bool) -> None:
+        """Raise ConfigurationError for a setting that cannot be traded as
+        written. `live`: this config runs a deployment; `paper`: on paper."""
+        where = "risk.overlay"
+        validate_one_of(self.mode, OVERLAY_MODES, f"{where}.mode")
+        if not isinstance(self.mapping, str) or not self.mapping:
+            raise ConfigurationError(f"{where}.mapping must name a mapping, got {self.mapping!r}")
+        validate_one_of(self.source, OVERLAY_SOURCES, f"{where}.source")
+        if live and self.source != "reports":
+            raise ConfigurationError(
+                f"{where}.source must be reports in a live config: proxy, synthetic and schedule "
+                "are backtest sources"
+            )
+        if live and self.path is not None:
+            raise ConfigurationError(
+                f"{where}.path is a backtest setting; a trader reads its own risk_reports/"
+            )
+        # A backtest of `reports` with no path has no reports: every session
+        # NEUTRAL (a deployment's config as tools/track_live.py shadows it).
+        if not live and self.source in ("proxy", "synthetic", "schedule") and not self.path:
+            raise ConfigurationError(f"{where}.source {self.source} needs {where}.path")
+        if not 0.0 < float(self.exposure_floor) <= 1.0:
+            raise ConfigurationError(
+                f"{where}.exposure_floor must be in (0, 1], got {self.exposure_floor}"
+            )
+        for name, values, known in (
+            ("exempt", self.exempt, OVERLAY_EXEMPTIONS),
+            ("supersedes", self.supersedes, OVERLAY_SUPERSEDABLE),
+        ):
+            unknown = set(values) - set(known)
+            if unknown:
+                raise ConfigurationError(
+                    f"{where}.{name} names unknown {sorted(unknown)}; known: {list(known)}"
+                )
+        validate_non_negative(self.blackout_minutes, f"{where}.blackout_minutes")
+        for name, value in (
+            ("daily", self.daily),
+            ("spacing.enabled", self.spacing.enabled),
+            ("spacing.target_follows", self.spacing.target_follows),
+            ("weekly.enabled", self.weekly.enabled),
+        ):
+            if not isinstance(value, bool):
+                raise ConfigurationError(f"{where}.{name} must be true or false, got {value!r}")
+        validate_positive(self.spacing.exponent, f"{where}.spacing.exponent")
+        if float(self.spacing.max_multiplier) < 1.0:
+            raise ConfigurationError(
+                f"{where}.spacing.max_multiplier must be at least 1 (the step never narrows), "
+                f"got {self.spacing.max_multiplier}"
+            )
+        validate_one_of(self.weekly.horizon, OVERLAY_HORIZONS, f"{where}.weekly.horizon")
+        validate_positive(self.weekly.slope, f"{where}.weekly.slope")
+        validate_one_of(self.weekly.reset, OVERLAY_RESETS, f"{where}.weekly.reset")
+        validate_positive_int(self.weekly.max_age_days, f"{where}.weekly.max_age_days")
+        if live and not paper and self.mode == "enforce":
+            raise ConfigurationError(
+                f"{where}.mode is enforce on a real-money deployment. Real money runs a report "
+                "advisory until a lever passes its paper gate and the owner decides "
+                "(docs/daily_risk_report_plan.md, Gates and Phase 4): keep mode: advisory."
+            )
+
+
+_OVERLAY_KEYS = tuple(RiskOverlayConfig().to_dict())
+_SPACING_KEYS = tuple(OverlaySpacingConfig().to_dict())
+_WEEKLY_KEYS = tuple(OverlayWeeklyConfig().to_dict())
+
+
+def _parse_overlay(data) -> RiskOverlayConfig | None:
+    """risk.overlay: unknown settings refused, values kept as given for
+    check() to name (a "false" read as true is the mistake to avoid)."""
+    if data is None:
+        return None
+    if not isinstance(data, dict):
+        raise ConfigurationError(f"risk.overlay must be a mapping, got {data!r}")
+
+    def known(section: dict, keys: tuple, where: str) -> dict:
+        if not isinstance(section, dict):
+            raise ConfigurationError(f"{where} must be a mapping, got {section!r}")
+        unknown = set(section) - set(keys)
+        if unknown:
+            raise ConfigurationError(
+                f"{where} has no setting(s) {sorted(unknown)}; known: {list(keys)}"
+            )
+        return section
+
+    data = known(data, _OVERLAY_KEYS, "risk.overlay")
+    spacing = OverlaySpacingConfig(
+        **known(data.get("spacing") or {}, _SPACING_KEYS, "risk.overlay.spacing")
+    )
+    weekly = OverlayWeeklyConfig(
+        **known(data.get("weekly") or {}, _WEEKLY_KEYS, "risk.overlay.weekly")
+    )
+    rest = {key: value for key, value in data.items() if key not in ("spacing", "weekly")}
+    for name in ("exempt", "supersedes"):
+        if name in rest:
+            rest[name] = _as_string_tuple(rest[name], f"risk.overlay.{name}")
+    return RiskOverlayConfig(**rest, spacing=spacing, weekly=weekly)
 
 
 @dataclass(frozen=True)
@@ -783,6 +974,11 @@ class LiveControlConfig:
     algorithm_changes: bool = False
     profiles_only: bool = False
     ledger_reset: bool = False
+    # Whether the Live page may submit the nightly risk report for this
+    # deployment (apply_risk_report; docs/daily_risk_report_plan.md). What a
+    # report then does is the deployment's own risk.overlay -- in advisory
+    # mode, nothing to its trading.
+    risk_reports: bool = False
 
     def effective(self, paper_trading: bool) -> LiveControlConfig:
         """These grants with the real-money rules applied."""
@@ -790,17 +986,27 @@ class LiveControlConfig:
             return self
         return replace(self, profiles_only=True, ledger_reset=False)
 
-    def to_dict(self) -> dict:
+    def grants(self) -> dict:
+        """Every grant, as set."""
         return {
             "resume_buys": self.resume_buys,
             "enable_disable": self.enable_disable,
             "algorithm_changes": self.algorithm_changes,
             "profiles_only": self.profiles_only,
             "ledger_reset": self.ledger_reset,
+            "risk_reports": self.risk_reports,
         }
 
+    def to_dict(self) -> dict:
+        """The grants as a config writes them. risk_reports only when set,
+        so every config written before it existed keeps its exact hash."""
+        grants = self.grants()
+        if grants["risk_reports"] is False:
+            del grants["risk_reports"]
+        return grants
 
-_CONTROL_FIELDS = tuple(LiveControlConfig().to_dict())
+
+_CONTROL_FIELDS = tuple(LiveControlConfig().grants())
 
 
 @dataclass(frozen=True)
@@ -1015,6 +1221,7 @@ class BacktestConfig:
             dd_exposure_start=risk_data.get("dd_exposure_start"),
             dd_exposure_full=risk_data.get("dd_exposure_full", 0.60),
             dd_exposure_floor_pct=risk_data.get("dd_exposure_floor_pct", 0.0),
+            overlay=_parse_overlay(risk_data.get("overlay")),
         )
 
         search_data = data.get("search", {})
@@ -1161,6 +1368,10 @@ class BacktestConfig:
         # ordering/ramp-base logic a second time here -- see
         # src/risk_manager.py's constructor for the authoritative checks.
         self.risk.build()
+        if self.risk.overlay is not None:
+            self.risk.overlay.check(
+                live=bool(self.live.enabled), paper=bool(self.live.paper_trading)
+            )
 
         validate_one_of(self.search.strategy, ("grid", "bayesian", "random"), "search.strategy")
         validate_one_of(self.search.direction, ("maximize", "minimize"), "search.direction")
@@ -1195,7 +1406,7 @@ class BacktestConfig:
                 f"live.exit_limit_buffer must be in [0, 0.1) -- a fraction of the price "
                 f"(0.005 is 0.5%), got {self.live.exit_limit_buffer}"
             )
-        for name, value in self.live.control.to_dict().items():
+        for name, value in self.live.control.grants().items():
             if not isinstance(value, bool):
                 raise ConfigurationError(
                     f"live.control.{name} must be true or false, got {value!r}"
@@ -1466,6 +1677,12 @@ class BacktestConfig:
                 "dd_exposure_start": self.risk.dd_exposure_start,
                 "dd_exposure_full": self.risk.dd_exposure_full,
                 "dd_exposure_floor_pct": self.risk.dd_exposure_floor_pct,
+                # Only when set, so every config written before it keeps its hash.
+                **(
+                    {"overlay": self.risk.overlay.to_dict()}
+                    if self.risk.overlay is not None
+                    else {}
+                ),
             },
             "search": {
                 "strategy": self.search.strategy,
@@ -1583,6 +1800,15 @@ class BacktestConfig:
             "strategy_params_grid": expand_strategy_params(self.strategy.strategy_params),
             "cost_model": self.costs.build(),
             "risk_manager": self.risk.build(),
+            # The nightly risk report's schedule, which run_sweep builds from
+            # this section (research/risk_overlay/schedules.py). Only for an
+            # ENFORCED overlay: advisory trades the YAML, and every config
+            # without one gets exactly the kwargs it always did.
+            **(
+                {"risk_overlay": self.risk.overlay}
+                if self.risk.overlay is not None and self.risk.overlay.mode == "enforce"
+                else {}
+            ),
             "on_flat_reentry": self.execution.on_flat_reentry,
             "fill_model": self.execution.fill_model,
             "intrabar_priority": self.execution.intrabar_priority,

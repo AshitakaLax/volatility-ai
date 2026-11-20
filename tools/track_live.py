@@ -423,6 +423,117 @@ def track_deployment(deployment, now: datetime) -> list[dict]:
 
 
 # --------------------------------------------------------------------
+# The nightly risk report: its score, and whether it was followed
+# --------------------------------------------------------------------
+
+
+def daily_closes(bars: Iterable[dict]) -> dict[date, float]:
+    """Each session's last regular-hours close in the trader's bar journal."""
+    out: dict[date, tuple[float, float]] = {}
+    for bar in bars:
+        try:
+            moment = _eastern(float(bar["t"]))
+            close = float(bar["c"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not REGULAR_OPEN <= moment.time() < REGULAR_CLOSE:
+            continue
+        day = moment.date()
+        if day not in out or float(bar["t"]) >= out[day][0]:
+            out[day] = (float(bar["t"]), close)
+    return {day: close for day, (_t, close) in out.items()}
+
+
+def add_risk(deployment, config, rows: list[dict]) -> None:
+    """For each session row with an archived risk report: the report's
+    tier and words, whether its suggestion was followed, and its forecast
+    scored against the session (tools/score_risk_reports.py). A session
+    without a report gets none: it traded as configured."""
+    from engine.core.risk_report import parse_report
+    from research.risk_overlay.archive import ReportArchive
+    from research.risk_overlay.control import first_window
+    from tools.score_risk_reports import followed, score_session
+
+    inbox = deployment.inbox()
+    if inbox is None:
+        return
+    archive = ReportArchive.in_control_dir(inbox.root)
+    commands = inbox.history(limit=500)
+    closes = daily_closes(inbox.bars(JOURNAL_WINDOW))
+    days = sorted(closes)
+    for row in rows:
+        session = date.fromisoformat(row["session"])
+        entry = archive.current(session)
+        if entry is None:
+            continue
+        overlay = (entry.get("start") or {}).get("overlay") or entry.get("overlay") or {}
+        mapped = entry.get("mapped") or {}
+        part: dict[str, Any] = {
+            "sha256": entry.get("sha256"),
+            "mode": entry.get("mode"),
+            "outcome": entry.get("outcome"),
+            "tier": mapped.get("tier"),
+            "abstained": mapped.get("abstained"),
+            "summary": (entry.get("start") or {}).get("summary") or entry.get("summary"),
+            "followed": followed(
+                overlay,
+                commands,
+                session=session,
+                opens=first_window(config, session),
+                mode=str(entry.get("mode") or "advisory"),
+            ),
+        }
+        audit = parse_report(entry.get("report") or {})
+        if audit.ok:
+            before = [d for d in days if d < session]
+            after = [d for d in days if d > session]
+            part["score"] = score_session(
+                audit.require(),
+                prior_close=closes[before[-1]] if before else None,
+                close=closes.get(session),
+                week_close=closes[after[3]] if len(after) >= 4 else None,
+                implied_move_pct=(entry.get("inputs") or {}).get("implied_move_pct"),
+            )
+        row["risk"] = part
+
+
+def add_risk_shadows(deployment, config, algorithm: dict, rows: dict, *, load=None) -> None:
+    """Beside the shadow, two more for a deployment that takes reports
+    (docs/daily_risk_report_plan.md, Advisory mode): AS SUGGESTED -- the
+    same backtest with every archived report's overlay enforced -- and NO
+    REPORT -- without any. AS TRADED is whichever of the two the
+    deployment's mode traded. Each session with a report gets all three in
+    its `risk` part, so the Live page can say what following the
+    suggestion would have changed."""
+    from dataclasses import replace
+
+    inbox = deployment.inbox()
+    if inbox is None or not rows:
+        return
+    from research.risk_overlay.archive import ReportArchive
+
+    archive = ReportArchive.in_control_dir(inbox.root)
+    if not archive.sessions():
+        return
+    base = shadow_config(config, algorithm)
+    since = date.fromisoformat(next(iter(rows)))
+    overlay = replace(config.risk.overlay, mode="enforce", source="reports", path=str(archive.root))
+    suggested = replace(base, risk=replace(base.risk, overlay=overlay))
+    plain = replace(base, risk=replace(base.risk, overlay=None))
+    with_reports = shadow_sessions(suggested, since, load=load)
+    without = shadow_sessions(plain, since, load=load)
+    traded = with_reports if config.risk.overlay.mode == "enforce" else without
+    for session, row in rows.items():
+        if not row.get("risk"):
+            continue
+        row["risk"]["shadows"] = {
+            "as_suggested": with_reports.get(session),
+            "no_report": without.get(session),
+            "as_traded": traded.get(session),
+        }
+
+
+# --------------------------------------------------------------------
 # The shadow backtest
 # --------------------------------------------------------------------
 
@@ -767,6 +878,8 @@ def run_deployment(
     path = out / deployment.id / "sessions.jsonl"
     fresh = track_deployment(deployment, now)
     config = deployment.config()
+    if config.risk.overlay is not None:
+        add_risk(deployment, config, fresh)
     algorithm, source = algorithm_in_force(deployment)
     named = (
         f"{algorithm['strategy_id']} step {algorithm['step']} target {algorithm['profit_target']}"
@@ -792,6 +905,11 @@ def run_deployment(
                 row["shadow"] = found.get(session)
         except Exception as exc:  # the journals' record stands without it
             meta["shadow_error"] = f"{type(exc).__name__}: {exc}"[:300]
+        if config.risk.overlay is not None:
+            try:
+                add_risk_shadows(deployment, config, algorithm, rows, load=load)
+            except Exception as exc:
+                meta["risk_shadow_error"] = f"{type(exc).__name__}: {exc}"[:300]
     store(path, rows)
     text = report(deployment.id, list(rows.values()), meta)
     write_atomic(out / deployment.id / "report.md", text)

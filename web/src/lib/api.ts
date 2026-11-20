@@ -38,6 +38,7 @@ import type {
   TrialRequest,
 } from "@/types/algorithms";
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
+import type { RiskReportPreview, RiskReports } from "@/types/riskReport";
 import type {
   AlgorithmView,
   BridgeEvent,
@@ -296,6 +297,21 @@ export const api = {
    * Accepted is not applied: the returned command's status says when. */
   sendCommand: (id: string, body: CommandRequest) =>
     post<QueuedCommand>(`/api/live/deployments/${encodeURIComponent(id)}/commands`, body),
+
+  /** What a pasted risk report would do to one deployment: its audit, the
+   * session it is for, the overlay. Writes and queues nothing. */
+  previewRiskReport: (id: string, report: unknown) =>
+    post<RiskReportPreview>(
+      `/api/live/deployments/${encodeURIComponent(id)}/risk-report/preview`,
+      { report },
+    ),
+
+  /** The risk reports the deployment's trader archived, newest first, and
+   * the overlay its next session would trade under. */
+  riskReports: (id: string, sessions = 30) =>
+    request<RiskReports>(
+      `/api/live/deployments/${encodeURIComponent(id)}/risk-reports?${query({ sessions })}`,
+    ),
 
   /** What the deployment trades, its profiles and every strategy's live
    * capability here. */

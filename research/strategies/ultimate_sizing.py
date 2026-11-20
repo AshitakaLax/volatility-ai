@@ -409,6 +409,13 @@ class UltimateSizing(GatedLocalReferenceSizing):
             return reference * (1.0 - step)
         return super()._grid_trigger_level(context, last_buy_price, step)
 
+    def risk_overlay_exempt(self) -> bool:
+        """In turbulent mode every buy is a capitulation reversal lot
+        (_grid_trigger_level above): a risk report's pause, where the
+        deployment exempts "reversal", lands on the calm grid alone -- the
+        form the risk governor measured (docs/daily_risk_report_plan.md)."""
+        return self.mode == TURBULENT
+
     def reversal_open(self, context: MarketContext) -> int:
         """Open reversal lots. The engine does not tell a strategy when a lot
         sells, so the tagged set can be stale between retargeting walks;

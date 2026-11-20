@@ -19,6 +19,13 @@ costs:
 risk:
   max_concurrent_lots: null
   max_total_exposure: null
+  # The nightly risk report (docs/daily_risk_report_plan.md): ADVISORY --
+  # each session's overlay is built from the evening's report, shown on the
+  # Live page, archived and shadowed, and the session trades this file as
+  # written. Real money stays advisory until a lever passes its paper gate
+  # and the owner decides (validate() refuses enforce here).
+  overlay:
+    mode: advisory
 search:
   strategy: grid
   rank_by: Capital Velocity Index
@@ -48,3 +55,5 @@ live:
     resume_buys: true
     enable_disable: true
     algorithm_changes: true
+    # The nightly risk report, advisory (risk.overlay above); its id typed back.
+    risk_reports: true

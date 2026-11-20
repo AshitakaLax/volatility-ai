@@ -411,6 +411,10 @@ class DailyUltimateSizing(DailyTakeProfit, UltimateSizing):
         self._caution_reading: Reading | None = None
         self.cautious = False
         self.cautious_sessions = 0
+        # Sessions the governor would have paused that an enforced risk
+        # report stood in for (MarketContext.report_supersedes "governor").
+        self.caution_superseded = False
+        self.superseded_sessions = 0
 
     def record_tick(self, context: MarketContext) -> None:
         super().record_tick(context)
@@ -426,11 +430,19 @@ class DailyUltimateSizing(DailyTakeProfit, UltimateSizing):
             if day != self._caution_day:
                 self._caution_day = day
                 if self._caution_map is not None:
-                    self.cautious = bool(self._caution_map.get(day, False))
+                    governed = bool(self._caution_map.get(day, False))
                 else:
                     self._caution_reading = self._governor.reading(day)
-                    self.cautious = self._caution_reading.paused
+                    governed = self._caution_reading.paused
+                # A session an enforced risk report set takes the report's
+                # word for the day (docs/daily_risk_report_plan.md, "The
+                # report's priority"): its own tiers decide, the governor
+                # stands down. A session with no report keeps the governor.
+                superseded = "governor" in context.report_supersedes
+                self.cautious = governed and not superseded
+                self.caution_superseded = governed and superseded
                 self.cautious_sessions += self.cautious
+                self.superseded_sessions += self.caution_superseded
 
     def _grid_trigger_level(
         self, context: MarketContext, last_buy_price: float, step: float
@@ -443,6 +455,11 @@ class DailyUltimateSizing(DailyTakeProfit, UltimateSizing):
         out = super().diagnostics()
         if self._caution_map is not None or self._governor is not None:
             out.update(caution_paused=self.cautious, caution_sessions=self.cautious_sessions)
+            if self.superseded_sessions:
+                out.update(
+                    caution_superseded=self.caution_superseded,
+                    caution_superseded_sessions=self.superseded_sessions,
+                )
         reading = self._caution_reading
         if reading is not None:
             out.update(

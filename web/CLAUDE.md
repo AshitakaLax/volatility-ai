@@ -32,6 +32,7 @@ src/
 │   │                      #   AlgorithmPanel, LivePriceChart (the TRADER's bars + its fills), TradesCard,
 │   │                      #   LiveOrderLedger, PerformanceCard (realised profit by session beside the tracking service's
 │   │                      #   shadow backtest -- lib/performance.ts), CommandLog, DeploymentHealth (trader's build), ActivityCard
+│   │                      #   RiskReportPanel (paste, check and apply the nightly risk report -- lib/riskReport.ts) and RiskReportHistory,
 │   ├── algorithms/         # AlgorithmsTab: candidates -> paper trial -> promoted -> live profile (server/algorithms.py; lib/algorithms.ts)
 │   ├── ml/                 # ModelInsights — reads server/ml_insights.py's read-only artifacts
 │   ├── warehouse/          # WarehouseTab (polls server/warehouse_status.py): funds, sweeps, storage, server

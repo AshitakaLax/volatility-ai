@@ -336,6 +336,11 @@ def _control_for(args) -> SupervisorControl | None:
             paper=config.live.paper_trading,
             broker_book=lambda: broker_book(config.live.paper_trading),
         )
+        # The nightly risk report, archived for the next session's trader
+        # (research/risk_overlay/live.py): between sessions is when it arrives.
+        from research.risk_overlay.live import handlers as risk_report_handlers
+
+        extra.update(risk_report_handlers(config, args.control_dir, inbox=inbox))
     except Exception as exc:
         # The session still runs; only the page's algorithm commands are
         # refused (as "cannot be applied by this trader") until it loads.

@@ -50,8 +50,12 @@ Two more things live here that are not `BacktestConfig`s:
 
 What the Live page may do to a deployment is that deployment's own
 `live.control` (`LiveControlConfig`): pausing buys is always allowed;
-`resume_buys`, `enable_disable`, `algorithm_changes` and `ledger_reset` are
+`resume_buys`, `enable_disable`, `algorithm_changes`, `ledger_reset` and
+`risk_reports` (the nightly risk report, docs/daily_risk_report_plan.md) are
 off unless granted, and real money is profiles-only with no ledger reset.
+What a report does is the config's own `risk.overlay`: `mode: advisory`
+(shown, archived, shadowed, nothing traded) on every deployment for now;
+real money cannot be set to `enforce` until a lever passes its paper gate.
 
 `fidelity_local.yaml.example` is a template for local Fidelity-broker
 credentials — copy, don't edit in place, and never commit the real one.

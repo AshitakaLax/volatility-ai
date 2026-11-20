@@ -1,6 +1,6 @@
 # Daily risk report — the nightly LLM forecast as the next session's risk
 
-Nov 20, 2026 · **A plan: nothing here is built or measured yet** · for the TQQQ deployments
+Nov 20, 2026 · **Phases 0 and 1 are built; Phase 2's tools are built and its runs are pending** ([the measurement](research/risk-overlay.md)) · for the TQQQ deployments
 (`paper`, `paper-ultimate`, `live`, `fidelity`) · the owner's decisions are recorded in
 [Owner decisions](#owner-decisions)
 
@@ -67,7 +67,7 @@ path from a bar to an order, or let a browser raise a limit above what the revie
 ## Tonight's report, audited
 
 The 2026-11-20 report is kept as `tests/fixtures/risk_reports/tqqq_2026-11-20.json`. It is stamped
-02:38 UTC, which is 21:38 ET on Nov 19, so its target session is Thursday Nov 20.
+02:38 UTC, which is 21:38 ET on Thursday Nov 19, so its target session is Friday Nov 20.
 
 - **Its arithmetic holds.** Every horizon sums to 1.0000, the CDFs chain, the quantiles are
   monotone, `prob_positive` equals 1 − CDF(0) and the weights sum to 1.00.

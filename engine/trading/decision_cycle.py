@@ -72,6 +72,30 @@ def lot_tag(strategy) -> str | None:
     return tag
 
 
+def overlay_exempt(strategy, overlay) -> bool:
+    """Whether the buy about to be made escapes the session's risk report
+    overlay: the overlay names "reversal" among its exemptions and the
+    strategy says this buy is one (SizingStrategy.risk_overlay_exempt).
+    Asked once per buy, like lot_tag; duck-typed, so a strategy without the
+    hook exempts nothing."""
+    if overlay is None or "reversal" not in getattr(overlay, "exempt", ()):
+        return False
+    hook = getattr(strategy, "risk_overlay_exempt", None)
+    return bool(hook()) if hook is not None else False
+
+
+def buy_moment(strategy, risk_manager, context: MarketContext):
+    """The `at` a buy's risk clamp is asked with: the bar's time, so the
+    session's enforced risk report overlay applies -- or None for a buy the
+    strategy exempts (and wherever there is no overlay, which the clamp
+    treats identically)."""
+    overlay_at = getattr(risk_manager, "overlay_at", None)
+    overlay = overlay_at(context.timestamp) if overlay_at is not None else None
+    if overlay is None or overlay_exempt(strategy, overlay):
+        return None
+    return context.timestamp
+
+
 def adjust_open_lot_targets(
     strategy,
     ledger,
@@ -348,9 +372,16 @@ def evaluate_grid_decision(
         return GridDecision(context=context, triggered=False)
 
     proposed = strategy.calculate_trade_value(context if sizing_context is None else sizing_context)
-    clamped = risk_manager.clamp_trade_value(
-        proposed, context.equity, cash, context.open_lot_count, context.drawdown
-    )
+    at = buy_moment(strategy, risk_manager, context)
+    if at is None:
+        # No enforced overlay, or an exempt buy: the clamp exactly as before.
+        clamped = risk_manager.clamp_trade_value(
+            proposed, context.equity, cash, context.open_lot_count, context.drawdown
+        )
+    else:
+        clamped = risk_manager.clamp_trade_value(
+            proposed, context.equity, cash, context.open_lot_count, context.drawdown, at=at
+        )
     return GridDecision(
         context=context,
         triggered=True,

@@ -38,6 +38,13 @@ backtest:
   # allocation_pct of it buys at least one whole share: Fidelity orders are
   # whole shares, and a buy worth less than one share stops the loop.
   initial_cash: 5000.0
+# The nightly risk report (docs/daily_risk_report_plan.md), ADVISORY: shown
+# on the Live page, archived and shadowed; the session trades this file. Real
+# money stays advisory until a lever passes its paper gate. A report is for
+# one fund: one written for TQQQ abstains on a deployment that trades RSP.
+risk:
+  overlay:
+    mode: advisory
 execution:
   # T+1: proceeds in a cash IRA cannot be spent until they settle.
   settlement_days: 1
@@ -54,6 +61,8 @@ live:
   # halt (a pause, a book that disagrees with the account) is cleared by hand.
   control:
     resume_buys: true
+    # The Live page may send the nightly risk report (risk.overlay above).
+    risk_reports: true
   # Fidelity's own trading windows (docs/DEPLOY.md, "Pre-market and
   # after-hours"): pre_market 07:00-09:28 ET, regular, after_hours to 20:00.
   # Naming them starts the engine engine_lead_minutes before the first and
