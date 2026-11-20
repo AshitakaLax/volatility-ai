@@ -177,6 +177,15 @@ class SizingStrategy(ABC):
         it from anything else (a target value, say)."""
         return None
 
+    def risk_overlay_exempt(self) -> bool:
+        """Whether the buy about to be made is one a risk report's pause does
+        not stop (engine/core/risk_overlay.py's `exempt`: "reversal"). Asked
+        once per buy, beside next_lot_tag (decision_cycle.overlay_exempt), and
+        only when an enforced overlay names the exemption. Default False:
+        every buy is the grid's. The Ultimate family answers True in its
+        turbulent mode, where every buy is a capitulation reversal lot."""
+        return False
+
     @abstractmethod
     def record_tick(self, context: MarketContext) -> None:
         """Called once per bar in the target execution sequence

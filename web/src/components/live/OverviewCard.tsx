@@ -12,6 +12,7 @@ import {
   tradeTotals,
   type Line,
 } from "@/lib/control";
+import { overlayLine } from "@/lib/riskReport";
 import { cn, usd } from "@/lib/utils";
 import type { DeploymentDetail, TraderFill } from "@/types/control";
 import type { LiveState } from "@/types/telemetry";
@@ -54,6 +55,9 @@ export function OverviewCard({ deployment, state, fills }: Props) {
   const now = nowLine(deployment);
   const regime = regimeLine(status?.now?.strategy);
   const revert = shadowLine(deployment);
+  // The session's risk report as the running trader holds it: in force,
+  // suggested (advisory), or none -- trading as configured.
+  const risk = status && !status.stale ? overlayLine(status.risk_overlay) : null;
   const cash = status && !status.stale && status.cash != null ? status.cash : state?.cash;
 
   return (
@@ -125,11 +129,12 @@ export function OverviewCard({ deployment, state, fills }: Props) {
           </p>
         ) : null}
 
-        {now || regime || revert ? (
+        {now || regime || revert || risk ? (
           <div className="space-y-1 rounded-md border border-border bg-secondary/30 p-3 text-sm">
             {now ? <p className={TONE_TEXT[now.tone]}>{now.text}</p> : null}
             {regime ? <p className="text-muted-foreground">{regime}</p> : null}
             {revert ? <p className={TONE_TEXT[revert.tone]}>{revert.text}</p> : null}
+            {risk ? <p className={TONE_TEXT[risk.tone]}>{risk.text}</p> : null}
           </div>
         ) : null}
 

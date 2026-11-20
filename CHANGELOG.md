@@ -1,5 +1,87 @@
 # Changelog
 
+## Feature: the nightly risk report, advisory first (docs/daily_risk_report_plan.md, Phases 0-2)
+
+**The evening's LLM risk report can now be pasted on the Live page, checked,
+and applied to any deployment that takes reports. Each trader archives it
+for the next session and shows it as that session's suggestion: advisory,
+so nothing trades differently.** Every lever is built for enforce mode, and
+measured before any deployment enforces one.
+
+What a report reaches:
+- **The engine seam.** One parser and audit (`engine/core/risk_report.py`)
+  and a bounded overlay (`engine/core/risk_overlay.py`). The overlay can
+  only take risk away: a pause, a buy multiplier at most 1, an exposure
+  ceiling, a grid step that only widens, catalyst blackouts.
+- **The clamp and the step.** `RiskManager` takes an `OverlaySchedule`, and
+  its clamp applies the lot cap, then the pause, the blackout, the
+  multiplier and the ceiling's min. The grid step and an opt-in target widen
+  through `session_step`/`session_target` at every call site, in backtest
+  and live alike.
+- **Bit-for-bit with no schedule.** With no schedule, an advisory one, or a
+  buy the strategy exempts, nothing changes: the regression baseline is
+  untouched, and `tests/test_risk_overlay_parity.py` gives the same buys in
+  backtest and live under one schedule.
+- **The strategies' own day-level levers.** `MarketContext.report_supersedes`
+  makes the risk governor and the FOMC and earnings boosts stand down on a
+  session an enforced report set. Ultimate's turbulent reversal buys are
+  exempt from a pause (`SizingStrategy.risk_overlay_exempt`).
+- **The mapping decides, not the LLM.** `research/risk_overlay/mapping.py`
+  holds mapping v1: the plan's abstentions, five components, provisional
+  tier thresholds, grid spacing (lever B) and the weekly cap (lever G).
+  It is pure, versioned and monotone, and tonight's report maps to tier 3
+  with the step x1.7-2.4, as the plan pins.
+
+Getting a report in:
+- **Two commands, applied by the trader.** `apply_risk_report` and
+  `clear_risk_report` need `live.control.risk_reports`. The trader (loop or
+  supervisor) parses and maps the report again and writes
+  `risk_reports/<session>.json`, under the plan's rules: one session per
+  report, and once a session opens a report may tighten it, never loosen it.
+  Real money takes one report a session and needs its id typed back.
+- **The Live page.** A panel to paste or drop the report, Check it (a
+  preview that writes nothing) and Apply it to the deployments ticked. Each
+  deployment gets a history card, and the overview card carries the
+  trader's line ("in force", "suggested" or "none"). A refused report is an
+  attention item; a missing one is not.
+- **The config.** `risk.overlay` is frozen and validated up front, and
+  enforce mode is refused on real money until a lever passes its paper
+  gate. It and the grant are written into a config's `to_dict()` only when
+  set, so every existing config keeps its hash. The paper, paper-ultimate
+  and production configs take reports in advisory mode; so does the
+  Fidelity example.
+
+Scoring it:
+- **Every night.** The tracking service scores each forecast: [p05, p95]
+  coverage, PIT and pinball loss against a naive normal at VXN's implied
+  move (`tools/score_risk_reports.py`). It records whether a suggested pause
+  was followed, and runs the as-suggested and no-report shadows.
+
+Phase 2's tools, built and tested, **not yet run on the real data**
+(docs/research/risk-overlay.md says why and gives the commands):
+- **The proxy.** `research/risk_overlay/proxy.py` and
+  `tools/build_proxy_reports.py` build the proxy reports, freeze each
+  fund's baselines and calibrate the tiers by frequency.
+- **Reports at a chosen accuracy.** `research/risk_overlay/synthetic.py`
+  builds them, holding the proxy's tier frequencies at every accuracy.
+- **The probe.** `tools/probe_risk_overlay.py` runs every stage on the
+  champion grid, Ultimate and Daily Ultimate, and its report reads the
+  nulls and the value-of-accuracy curves.
+
+Until `baselines.json` exists, the mappings abstain: every session trades as
+configured.
+
+A result row now carries its risk section (`risk_*`) when one is set, and an
+enforced schedule's hash. Runs that differ only in risk no longer collide in
+the warehouse, so runs with risk limits hash differently from before. Runs
+without risk limits are unchanged.
+
+**Deploy order:** today's code rejects `live.control.risk_reports`. Rebuild
+the image before the main checkout's `config/` takes these files, or the
+next session start refuses its config. `fidelity_live.yaml` is git-ignored:
+add its `risk.overlay` and grant by hand. The Fidelity deployment trades
+RSP, so a TQQQ report abstains for it.
+
 ## Feature: the phone app shows each account's value and what it has free to trade
 
 **Each account's Home in the Bridge Notifier app now shows what it is worth,

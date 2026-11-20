@@ -14,6 +14,7 @@ rather than keeping parallel copies that could drift apart.
 
 import concurrent.futures
 import contextlib
+import copy
 import dataclasses
 import logging
 import time
@@ -26,6 +27,7 @@ from engine.core.exceptions import ConfigurationError, DataValidationError
 from engine.core.idempotency import ProcessedEventStore
 from engine.core.ledger import SHARE_EPSILON, AssetLotLedger
 from engine.core.market_context import MarketContext, SimulationResult
+from engine.core.risk_overlay import OverlaySchedule, SessionOverlay, session_step, session_target
 from engine.core.validation import validate_run_sweep_config
 from engine.data import data_validation
 from engine.data.earnings_calendar import EARNINGS_REACTION_DATES
@@ -242,6 +244,71 @@ def _validate_warm_up(warm_up_daily: pd.DataFrame | None, data: pd.DataFrame) ->
         )
 
 
+_NO_SUPERSEDES: frozenset = frozenset()
+
+
+def risk_identity(risk_manager) -> dict:
+    """The risk section and the risk report schedule as part of a result's
+    identity (docs/daily_risk_report_plan.md, "Engine support for a
+    schedule"). split_row hashes a key it does not know as a parameter, so
+    two runs that differ only in risk no longer collide as one simulation
+    -- the failure the execution flags above were added for. Only what is
+    SET is written: a run with no risk limits and no schedule keeps the
+    exact row, and hash, it always had."""
+    if risk_manager is None:
+        return {}
+    out: dict = {}
+    if getattr(risk_manager, "max_concurrent_lots", None) is not None:
+        out["risk_max_concurrent_lots"] = risk_manager.max_concurrent_lots
+    if getattr(risk_manager, "max_total_exposure_pct", None) is not None:
+        out["risk_max_total_exposure"] = risk_manager.max_total_exposure_pct
+    if getattr(risk_manager, "dd_exposure_start", None) is not None:
+        out["risk_dd_exposure_start"] = risk_manager.dd_exposure_start
+        out["risk_dd_exposure_full"] = risk_manager.dd_exposure_full
+        out["risk_dd_exposure_floor_pct"] = risk_manager.dd_exposure_floor_pct
+    schedule = getattr(risk_manager, "overlay", None)
+    if schedule is not None and len(schedule):
+        overlays = [overlay for _session, overlay in schedule.items()]
+        out["risk_overlay_schedule"] = schedule.content_hash()[:16]
+        out["risk_overlay_mapping"] = ",".join(sorted({o.mapping_id or "none" for o in overlays}))
+        out["risk_overlay_mode"] = ",".join(sorted({o.mode for o in overlays}))
+    return out
+
+
+class _OverlayStats:
+    """A run's account of the nightly risk report's overlay: how many
+    sessions it set, how many it paused, the mean step multiplier over them,
+    and the buys and dollars its sessions held back (every clamp on those
+    sessions, the lot cap and drawdown ramp included). Metrics, not
+    parameters (engine/warehouse/duckdb_sink.METRIC_KEYS)."""
+
+    def __init__(self) -> None:
+        self._sessions: dict = {}
+        self.withheld_buys = 0
+        self.withheld_dollars = 0.0
+
+    def see(self, session, overlay: SessionOverlay | None) -> None:
+        if overlay is not None and session not in self._sessions:
+            self._sessions[session] = overlay
+
+    def buy(self, proposed: float, approved: float) -> None:
+        if approved < proposed:
+            self.withheld_buys += 1
+            self.withheld_dollars += float(proposed) - float(approved)
+
+    def metrics(self) -> dict:
+        overlays = list(self._sessions.values())
+        return {
+            "Overlay Sessions": len(overlays),
+            "Overlay Paused Sessions": sum(1 for o in overlays if o.pause),
+            "Overlay Mean Step Multiplier": (
+                sum(o.step_multiplier for o in overlays) / len(overlays) if overlays else 1.0
+            ),
+            "Overlay Buys Withheld": self.withheld_buys,
+            "Overlay Dollars Withheld": round(self.withheld_dollars, 2),
+        }
+
+
 def _strategy_name(strategy_class) -> str:
     """Human-readable name for whatever run_sweep was handed.
 
@@ -408,6 +475,7 @@ def _run_one_combination(
             **params,
             **warmed,
             **execution_flags,
+            **risk_identity(risk_manager),
             **result.metrics,
         }
         return result_row, result
@@ -598,6 +666,21 @@ class OptimizationController:
                 index = index.tz_localize("UTC")
             self._eastern_index_cache = index.tz_convert(_EASTERN_TZ)
         return self._eastern_index_cache
+
+    def _overlays_by_bar(self, schedule: OverlaySchedule | None) -> list | None:
+        """Each bar's ENFORCED risk report overlay (None where its session
+        has none), from `schedule` -- looked up once per session. None when
+        there is no schedule or nothing in it is enforced: the bar loop then
+        runs exactly as it did before reports existed."""
+        if schedule is None or not len(schedule):
+            return None
+        by_session: dict = {}
+        for session, overlay in schedule.items():
+            if overlay.enforced and overlay.changes_trading:
+                by_session[session] = overlay
+        if not by_session:
+            return None
+        return [by_session.get(day) for day in self._eastern_dates]
 
     @property
     def _eastern_dates(self):
@@ -946,6 +1029,13 @@ class OptimizationController:
         event_intensity = self._event_intensity
         minutes_to_event = self._minutes_to_event
         implied_vol_change = self._implied_vol_change
+        # THE NIGHTLY RISK REPORT (docs/daily_risk_report_plan.md): an
+        # enforced overlay per session, from the RiskManager's schedule --
+        # read once per session, not per bar. No schedule, or an advisory
+        # one, leaves every bar exactly as before: the step is the
+        # combination's, the context supersedes nothing, the clamp is today's.
+        overlay_of_bar = self._overlays_by_bar(getattr(risk_manager, "overlay", None))
+        overlay_stats = _OverlayStats() if overlay_of_bar is not None else None
 
         for bar_index, row in enumerate(self.data.itertuples()):
             timestamp = row.Index
@@ -1002,6 +1092,10 @@ class OptimizationController:
             if current_dd > state.max_drawdown:
                 state.max_drawdown = current_dd
 
+            bar_overlay = overlay_of_bar[bar_index] if overlay_of_bar is not None else None
+            bar_step = session_step(step, bar_overlay) if bar_overlay is not None else step
+            if overlay_stats is not None:
+                overlay_stats.see(self._eastern_dates[bar_index], bar_overlay)
             context = MarketContext(
                 timestamp=timestamp,
                 open=row.open,
@@ -1021,6 +1115,9 @@ class OptimizationController:
                 event_intensity=float(event_intensity[bar_index]),
                 minutes_to_event=float(minutes_to_event[bar_index]),
                 implied_vol_change=float(implied_vol_change[bar_index]),
+                report_supersedes=(
+                    bar_overlay.supersedes if bar_overlay is not None else _NO_SUPERSEDES
+                ),
             )
 
             # Every bar, unconditionally -- B4. Routed through the shared
@@ -1226,12 +1323,12 @@ class OptimizationController:
                     risk_manager,
                     context,
                     state.last_buy_price,
-                    step,
+                    bar_step,
                     state.buying_power,
                 )
             else:
                 trigger_level = strategy_instance._grid_trigger_level(
-                    context, state.last_buy_price, step
+                    context, state.last_buy_price, bar_step
                 )
                 buy_fill_price = trigger_level
                 if intrabar_fill in ("open_or_level", "causal"):
@@ -1247,13 +1344,15 @@ class OptimizationController:
                     risk_manager,
                     context,
                     state.last_buy_price,
-                    step,
+                    bar_step,
                     state.cash,
                     triggered=row.low <= trigger_level,
                     sizing_context=fill_context,
                 )
             if decision.triggered:
                 trade_value = decision.clamped_trade_value
+                if overlay_stats is not None and bar_overlay is not None:
+                    overlay_stats.buy(decision.proposed_trade_value, trade_value)
 
                 if state.buying_power >= trade_value and trade_value > 0:
                     order = oms.execute_buy(symbol, trade_value, buy_fill_price)
@@ -1269,6 +1368,17 @@ class OptimizationController:
                         total_buy_outlay = (effective_price * filled_qty) + buy_cost
                         per_share_cost_basis = total_buy_outlay / filled_qty
 
+                        # The lot's target: the combination's, unless an
+                        # enforced overlay opts the session's lots into a
+                        # wider one (spacing.target_follows) and the buy is
+                        # not one it exempts -- as the live loop does.
+                        lot_target = (
+                            session_target(target, bar_overlay)
+                            if bar_overlay is not None
+                            and not decision_cycle.overlay_exempt(strategy_instance, bar_overlay)
+                            else target
+                        )
+
                         def _apply_buy_fill(
                             order=order,
                             context=context,
@@ -1278,6 +1388,7 @@ class OptimizationController:
                             filled_qty=filled_qty,
                             buy_fill_price=buy_fill_price,
                             rsi_at_fill=rsi_value,
+                            lot_target=lot_target,
                         ):
                             """Side effects of one confirmed buy, applied at most once.
 
@@ -1293,7 +1404,7 @@ class OptimizationController:
                                 symbol,
                                 per_share_cost_basis,
                                 filled_qty,
-                                target,
+                                lot_target,
                                 entry_tag=decision_cycle.lot_tag(strategy_instance),
                             )
                             state.cash -= total_buy_outlay
@@ -1344,6 +1455,8 @@ class OptimizationController:
         # make a strategy quietly dumping inventory look like one that
         # simply performed worse.
         metrics["Signal Exit Count"] = signal_exit_count[0]
+        if overlay_stats is not None:
+            metrics.update(overlay_stats.metrics())
         # Assigned here rather than in PerformanceAnalyzer for the same
         # reason "Max Drawdown %" is: it is derived from the drawdown
         # this loop tracks per bar, and computing it in two places would
@@ -1512,6 +1625,7 @@ class OptimizationController:
         search_direction: str = "maximize",
         result_sink=None,
         warm_up_daily: pd.DataFrame | None = None,
+        risk_overlay=None,
     ) -> pd.DataFrame:
         """
         Creates a parametric multi-dimensional sweep.
@@ -1642,6 +1756,17 @@ class OptimizationController:
         _validate_warm_up(warm_up_daily, self.data)
         cost_model = cost_model if cost_model is not None else ZeroCostModel()
         risk_manager = risk_manager if risk_manager is not None else RiskManager()
+        if risk_overlay is not None:
+            # A config's risk.overlay (engine/core/config.py, enforce mode
+            # only): the archive or schedule file it names, read once for the
+            # whole sweep over this data's sessions, on a copy of the
+            # manager so the caller's is left as it was.
+            from research.risk_overlay.schedules import schedule_for_run
+
+            schedule = schedule_for_run(risk_overlay, symbol, sorted(set(self._eastern_dates)))
+            if schedule is not None:
+                risk_manager = copy.copy(risk_manager)
+                risk_manager.set_overlay(schedule)
         results = []
         full_results = []
 

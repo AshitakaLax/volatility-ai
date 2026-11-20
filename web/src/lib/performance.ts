@@ -30,6 +30,28 @@ export interface TrackedSession {
   /** A Fidelity bridge's minutes not ready in the regular session. */
   not_ready_minutes: number | null;
   shadow: { buys: number; sells: number; realized_pnl: number; return_pct: number } | null;
+  /** The session's risk report as the tracking service scored it; absent without one. */
+  risk?: TrackedRisk | null;
+}
+
+/** tools/track_live.py's `risk` part, slimmed by server/live.py. */
+export interface TrackedRisk {
+  tier: number | null;
+  abstained: boolean | null;
+  mode: "advisory" | "enforce" | null;
+  summary: string | null;
+  /** Whether a suggested pause was made (tools/score_risk_reports.py followed). */
+  followed: "followed" | "late" | "not_followed" | "not_actionable" | "enforced" | null;
+  score: {
+    return_pct: number;
+    in_90: boolean;
+    in_50: boolean;
+    pit: number;
+    skill: number | null;
+    move_ratio: number;
+  } | null;
+  /** The as-traded, as-suggested and no-report shadows, once they run. */
+  shadows?: Record<string, { realized_pnl: number; return_pct: number } | null> | null;
 }
 
 export interface Tracking {

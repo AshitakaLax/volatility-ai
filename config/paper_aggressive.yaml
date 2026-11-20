@@ -77,6 +77,12 @@ costs:
 risk:
   max_concurrent_lots: 6000
   max_total_exposure: null
+  # The nightly risk report (docs/daily_risk_report_plan.md): ADVISORY --
+  # each session's overlay is built from the evening's report, shown on the
+  # Live page, archived and shadowed, and the session trades this file as
+  # written. A lever is enforced only after it passes its gate.
+  overlay:
+    mode: advisory
 
 execution:
   on_flat_reentry: stale_reference
@@ -140,3 +146,4 @@ live:
     enable_disable: true
     algorithm_changes: true
     ledger_reset: true
+    risk_reports: true

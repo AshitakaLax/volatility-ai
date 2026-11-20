@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import UTC, date, datetime
 from typing import Any, Literal
 from urllib.parse import urlparse
 
@@ -44,9 +45,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from engine.core.exceptions import ConfigurationError
+from engine.core.risk_report import parse_report
 from engine.data.dashboard_data import DashboardError, load_state
 from engine.trading.control_inbox import Command, InvalidCommand
 from research.composition.catalog import catalog as composition_catalog
+from research.risk_overlay.preview import preview as preview_risk_report
+from research.risk_overlay.preview import takes_reports
 from research.strategies import live_profiles
 from research.strategies.live_algorithm import LEGACY_MODES, AlgorithmControl, impact
 from research.strategies.param_schema import describe_params
@@ -71,6 +75,10 @@ _GRANT: dict[str, str | None] = {
     "revert_algorithm": "algorithm_changes",
     "rewarm": "algorithm_changes",
     "reset_paper_ledger": "ledger_reset",
+    # The nightly risk report (docs/daily_risk_report_plan.md): what it then
+    # does is the deployment's own risk.overlay -- advisory, nothing traded.
+    "apply_risk_report": "risk_reports",
+    "clear_risk_report": "risk_reports",
     # Read-only, through a Fidelity deployment's bridge host: never a grant.
     "check_connection": None,
 }
@@ -123,6 +131,8 @@ class CommandRequest(BaseModel):
         "revert_algorithm",
         "rewarm",
         "reset_paper_ledger",
+        "apply_risk_report",
+        "clear_risk_report",
         "check_connection",
     ]
     args: dict[str, Any] = Field(default_factory=dict)
@@ -173,6 +183,25 @@ def _checked_args(body: CommandRequest, deployment: Deployment) -> dict[str, Any
         if mode not in ("now", "wind_down"):
             raise HTTPException(status_code=422, detail="disable mode must be now or wind_down")
         return {"mode": mode}
+    if body.type == "apply_risk_report":
+        if set(args) - {"report"} or not isinstance(args.get("report"), dict):
+            raise HTTPException(status_code=422, detail="apply_risk_report takes {report: {...}}")
+        audit = parse_report(args["report"])
+        if not audit.ok:
+            raise HTTPException(
+                status_code=422,
+                detail="The report does not pass the audit: "
+                + "; ".join(f"{f.where}: {f.message}" for f in audit.errors[:8]),
+            )
+        return {"report": args["report"]}
+    if body.type == "clear_risk_report":
+        try:
+            session = date.fromisoformat(str(args.get("session")))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail="clear_risk_report takes {session: YYYY-MM-DD}"
+            ) from exc
+        return {"session": session.isoformat()}
     if body.type == "resume_buys":
         reset = args.get("reset_drawdown_baseline", False)
         if not isinstance(reset, bool):
@@ -211,6 +240,13 @@ def _check_preconditions(deployment: Deployment, kind: str) -> None:
             raise HTTPException(
                 status_code=409,
                 detail=f"{deployment.id} has no Fidelity bridge host to check a connection with.",
+            )
+        return
+    if kind in ("apply_risk_report", "clear_risk_report"):
+        takes, why = takes_reports(deployment.config(), deployment.caps)
+        if not takes:
+            raise HTTPException(
+                status_code=409, detail=f"{deployment.id} takes no risk reports: {why}."
             )
         return
     if kind == "reset_paper_ledger" and inbox is not None and inbox.desired()["enabled"]:
@@ -456,6 +492,39 @@ def algorithm_check(deployment_id: str, body: ChangeRequest) -> dict[str, Any]:
         else body.model_dump(exclude={"profile_id"})
     )
     return check_change(deployment, args)
+
+
+def _now() -> datetime:
+    """The preview's clock (tests replace it: they never read the wall clock)."""
+    return datetime.now(UTC)
+
+
+class RiskReportRequest(BaseModel):
+    """A pasted report, to check against one deployment."""
+
+    report: dict[str, Any]
+
+
+@router.post("/{deployment_id}/risk-report/preview", dependencies=[Depends(same_origin)])
+def risk_report_preview(deployment_id: str, body: RiskReportRequest) -> dict[str, Any]:
+    """What the report would do to this deployment: its audit, the session
+    it is for, the overlay the deployment's mapping makes of it, and whether
+    applying it now would apply, replace, tighten or be refused. Reads the
+    config, the archive and the bar journal; writes and queues nothing."""
+    deployment = _deployment(deployment_id)
+    inbox = deployment.inbox()
+    return {
+        "deployment": deployment.id,
+        "label": deployment.label,
+        **preview_risk_report(
+            deployment.config(),
+            deployment.caps,
+            control_dir=deployment.control_dir,
+            report=body.report,
+            inbox=inbox,
+            now=_now(),
+        ),
+    }
 
 
 @router.post("/{deployment_id}/commands", status_code=202, dependencies=[Depends(same_origin)])

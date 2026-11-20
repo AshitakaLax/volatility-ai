@@ -24,6 +24,8 @@ import { LivePriceChart } from "./LivePriceChart";
 import { OrdersCard } from "./OrdersCard";
 import { OverviewCard } from "./OverviewCard";
 import { PerformanceCard } from "./PerformanceCard";
+import { RiskReportHistory } from "./RiskReportHistory";
+import { RiskReportPanel } from "./RiskReportPanel";
 import { TradesCard } from "./TradesCard";
 
 /**
@@ -86,6 +88,7 @@ export function LiveTab({ chosen, onChoose }: Props) {
           </CardContent>
         </Card>
       ) : null}
+      <RiskReportPanel deployments={listed} onSent={refreshAll} />
       {deployments.data && listed.length === 0 ? (
         <Card>
           <CardContent className="pt-5 text-sm text-muted-foreground">
@@ -119,6 +122,7 @@ export function LiveTab({ chosen, onChoose }: Props) {
           <TradesCard fills={trades.fills} sessions={sessions} onSessions={setSessions} />
           <LiveOrderLedger lots={live.state?.lots ?? []} lastPrice={live.state?.last_px ?? null} />
           {selected ? <PerformanceCard deploymentId={selected} /> : null}
+          {selected && detail?.risk_reports?.settings ? <RiskReportHistory deploymentId={selected} /> : null}
         </>
       ) : null}
       {detail && set ? (

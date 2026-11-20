@@ -8,6 +8,7 @@
  * and its LEDGER is read mode=ro. A command is an intent the trader applies
  * between ticks or between sessions; its own `status` says when it has.
  */
+import type { RiskReportsSummary, TraderRiskOverlay } from "@/types/riskReport";
 import type { Composition, Param, ParamValue } from "@/types/backtest";
 import type { LiveState } from "@/types/telemetry";
 
@@ -39,6 +40,8 @@ export interface Caps {
   algorithm_changes: boolean;
   profiles_only: boolean;
   ledger_reset: boolean;
+  /** Whether the Live page may send it the nightly risk report. */
+  risk_reports?: boolean;
 }
 
 export type Broker = "alpaca" | "fidelity";
@@ -220,6 +223,8 @@ export interface TraderStatus {
    * apart from the broker's, and how the last trading window went. */
   engine?: EngineStatus | null;
   last_window?: WindowSummary | null;
+  /** The session's risk report: in force, suggested, or none. */
+  risk_overlay?: TraderRiskOverlay | null;
   /** True when no report arrived in three heartbeats: state is then "not_running". */
   stale: boolean;
 }
@@ -428,6 +433,8 @@ export interface DeploymentSummary {
   pending?: number;
   /** A Fidelity deployment's bridge host; null when none has reported. */
   bridge?: BridgeStatus | null;
+  /** Whether the page may send it the nightly risk report, and its last one. */
+  risk_reports?: RiskReportsSummary;
 }
 
 export type CommandType =
@@ -439,6 +446,9 @@ export type CommandType =
   | "revert_algorithm"
   | "rewarm"
   | "reset_paper_ledger"
+  /** The nightly risk report for the next session, and withdrawing it before that session opens. */
+  | "apply_risk_report"
+  | "clear_risk_report"
   /** Read-only: the bridge host checks the account through the extension. */
   | "check_connection";
 

@@ -998,9 +998,15 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
             return 0.0
         value = self._baseline_capital * self.per_lot_pct
         boost = 1.0
-        if context.is_macro_event_day:
+        # On a session an enforced risk report set with `event_boosts`
+        # superseded, the report accounts for the day's catalysts itself
+        # (its catalyst component, merged with these same calendars): the
+        # three boosts below stand down, each x1. Every other session -- no
+        # report, or an advisory one -- keeps them exactly.
+        boosted = "event_boosts" not in context.report_supersedes
+        if boosted and context.is_macro_event_day:
             boost = max(boost, self.event_day_boost_multiplier)
-        if context.is_earnings_reaction_day:
+        if boosted and context.is_earnings_reaction_day:
             boost = max(boost, self.earnings_day_boost_multiplier)
         # event_intensity (src/event_calendar.py) is a minute-precise,
         # index-weighted REFINEMENT of the same claim
@@ -1017,7 +1023,7 @@ class HighFrequencyLocalReferenceSizing(SizingStrategy):
         # how much of that multiplier applies. A single non-tracked
         # symbol's release contributes 0.0 intensity and this evaluates
         # to boost's floor, same as an ordinary bar.
-        if context.event_intensity > 0:
+        if boosted and context.event_intensity > 0:
             weighted = (
                 1.0
                 + (self.weighted_event_boost_multiplier - 1.0)

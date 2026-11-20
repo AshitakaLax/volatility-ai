@@ -59,6 +59,8 @@ from engine.data.dashboard_data import (
     load_bars,
     load_state,
 )
+from research.risk_overlay.archive import ReportArchive, session_overlay
+from research.risk_overlay.preview import overlay_settings, takes_reports
 from research.strategies import live_profiles
 from research.strategies.live_algorithm import algorithm_summary, override_path
 from research.strategies.sizing_indicators import WilderRSI
@@ -185,6 +187,9 @@ def run_state(status: dict | None, now: float) -> dict[str, Any]:
         # apart from the broker's, and how the last trading window went.
         "engine",
         "last_window",
+        # The session's risk report: in force (enforce) or suggested
+        # (advisory), or none (research/risk_overlay/live.py).
+        "risk_overlay",
     )
     if not status:
         return {
@@ -243,7 +248,23 @@ def command_history(deployment: Deployment, limit: int = 50) -> list[dict[str, A
         if inbox is not None:
             rows.extend(inbox.history(limit=limit))
     rows.sort(key=lambda row: row["seq"], reverse=True)
-    return rows[:limit]
+    return [_slim_command(row) for row in rows[:limit]]
+
+
+def _slim_command(row: dict[str, Any]) -> dict[str, Any]:
+    """A risk report travels whole as its command's arguments (~6 KB); the
+    log names it instead -- GET .../risk-reports?full=true has the report."""
+    report = (row.get("args") or {}).get("report")
+    if row.get("type") != "apply_risk_report" or not isinstance(report, dict):
+        return row
+    from engine.core.risk_report import report_sha256
+
+    stub = {
+        "symbol": report.get("symbol"),
+        "as_of": report.get("as_of"),
+        "sha256": report_sha256(report),
+    }
+    return {**row, "args": {"report": stub}}
 
 
 def _ledger(deployment: Deployment) -> dict[str, Any]:
@@ -391,7 +412,10 @@ def deployment_summary(deployment: Deployment) -> dict[str, Any]:
         "algorithm": algorithm_in_force(deployment, config, status),
         "controllable": inbox is not None,
         # Pausing new buys only reduces exposure, so it is always allowed.
-        "caps": {"pause_buys": True, **caps.to_dict()},
+        "caps": {"pause_buys": True, **caps.grants()},
+        # Whether the Live page may send it the nightly risk report, and how
+        # its config uses one (docs/daily_risk_report_plan.md).
+        "risk_reports": {**_risk_reports_summary(config, caps), "last": _last_report(commands)},
         "status": status,
         "desired": inbox.desired() if inbox is not None else dict(_NOT_CONTROLLED),
         "ledger": _ledger(deployment),
@@ -399,6 +423,115 @@ def deployment_summary(deployment: Deployment) -> dict[str, Any]:
         # A Fidelity deployment's bridge host: up between sessions, so this
         # is what says whether the connection is ready when no loop runs.
         "bridge": bridge_state(bridge_inbox.status(), now) if bridge_inbox is not None else None,
+    }
+
+
+def _now() -> datetime:
+    """The clock the risk-report routes read (tests replace it)."""
+    return datetime.now().astimezone()
+
+
+def _last_report(commands: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The newest apply_risk_report and what came of it: a refusal is
+    something the page says (web/src/lib/attention.ts)."""
+    for row in commands:  # newest first
+        if row.get("type") == "apply_risk_report":
+            return {
+                "id": row.get("id"),
+                "status": row.get("status"),
+                "detail": row.get("detail"),
+                "created_at": row.get("created_at"),
+                "finished_at": row.get("finished_at"),
+                "operator": row.get("operator"),
+            }
+    return None
+
+
+def _risk_reports_summary(config, caps) -> dict[str, Any]:
+    takes, why = takes_reports(config, caps)
+    return {"takes": takes, "why_not": why, "settings": overlay_settings(config)}
+
+
+def upcoming_session(now: datetime):
+    """The session a report sent now would be for: tomorrow's after today's
+    close, today's before it (engine/core/risk_report.target_session, with a
+    moment inside a session read as that session)."""
+    from engine.core.trading_calendar import EASTERN, SESSION_CLOSE, is_session, next_session
+
+    local = now.astimezone(EASTERN)
+    day = local.date()
+    if is_session(day) and local.time() < SESSION_CLOSE:
+        return day
+    return next_session(day)
+
+
+def _slim_entry(entry: dict[str, Any], full: bool) -> dict[str, Any]:
+    mapped = entry.get("mapped") or {}
+    row = {
+        "session": entry.get("session"),
+        "source": entry.get("source"),
+        "received_at": entry.get("received_at"),
+        "operator": entry.get("operator"),
+        "as_of": entry.get("as_of"),
+        "sha256": entry.get("sha256"),
+        "mode": entry.get("mode"),
+        "mapping_id": entry.get("mapping_id"),
+        "outcome": entry.get("outcome"),
+        "summary": entry.get("summary"),
+        "overlay": entry.get("overlay"),
+        "tier": mapped.get("tier"),
+        "score": mapped.get("score"),
+        "components": mapped.get("components"),
+        "abstained": mapped.get("abstained"),
+        "reasons": mapped.get("reasons") or [],
+        "warnings": sum(1 for f in entry.get("findings") or [] if f.get("level") == "warning"),
+        "start": entry.get("start"),
+        "receipts": entry.get("receipts") or [],
+    }
+    if full:
+        row["report"] = entry.get("report")
+        row["findings"] = entry.get("findings")
+    return row
+
+
+@router.get("/deployments/{deployment_id}/risk-reports")
+def deployment_risk_reports(
+    deployment_id: str,
+    sessions: int = Query(30, ge=1, le=400),
+    full: bool = False,
+) -> dict[str, Any]:
+    """The nightly risk reports this deployment's trader archived
+    (risk_reports/ in its control directory, research/risk_overlay/archive.py),
+    newest first, and the overlay the next session would trade under as the
+    trader would read it now. Read-only; `full` adds each raw report."""
+    found = _deployment(deployment_id)
+    try:
+        config = found.config()
+        caps = found.caps
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=f"its config does not load: {exc}") from exc
+    summary = _risk_reports_summary(config, caps)
+    if found.control_dir is None:
+        return {**summary, "next": None, "sessions": []}
+    archive = ReportArchive.in_control_dir(found.control_dir)
+    entries = archive.entries()[-sessions:]
+    upcoming = None
+    if config.risk.overlay is not None:
+        now = _now()
+        session = upcoming_session(now)
+        overlay, entry = session_overlay(archive, session, config.risk.overlay, as_of=now)
+        upcoming = {
+            "session": session.isoformat(),
+            "overlay": overlay.to_dict(),
+            "summary": overlay.describe()
+            if entry or overlay.changes_trading
+            else "no report: trading as configured",
+            "has_report": entry is not None,
+        }
+    return {
+        **summary,
+        "next": upcoming,
+        "sessions": [_slim_entry(e, full) for e in reversed(entries)],
     }
 
 
@@ -521,6 +654,28 @@ def _after(rows: list[dict[str, Any]], since: float | None) -> list[dict[str, An
     return [row for row in rows if float(row.get("t", 0)) > since]
 
 
+def _slim_risk(part: Any) -> dict[str, Any] | None:
+    if not isinstance(part, dict):
+        return None
+    score = part.get("score") if isinstance(part.get("score"), dict) else None
+    return {
+        "tier": part.get("tier"),
+        "abstained": part.get("abstained"),
+        "mode": part.get("mode"),
+        "summary": part.get("summary"),
+        "followed": (part.get("followed") or {}).get("status"),
+        "score": (
+            {
+                key: score.get(key)
+                for key in ("return_pct", "in_90", "in_50", "pit", "skill", "move_ratio")
+            }
+            if score
+            else None
+        ),
+        "shadows": part.get("shadows"),
+    }
+
+
 def _tracking_dir() -> Path:
     """Where tools/track_live.py keeps its record (its --out); the compose
     file mounts the same folder into `web`. VAI_TRACKING_DIR for tests."""
@@ -573,6 +728,9 @@ def deployment_tracking(
                 "live_bps": done.get("live_bps"),
                 "model_bps": done.get("model_bps"),
                 "not_ready_minutes": bridge.get("minutes") if isinstance(bridge, dict) else None,
+                # The session's risk report: its tier, whether its suggestion
+                # was followed, its forecast scored (tools/score_risk_reports.py).
+                "risk": _slim_risk(row.get("risk")),
                 "shadow": (
                     {
                         "buys": shadow.get("buys", 0),

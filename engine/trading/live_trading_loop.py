@@ -161,6 +161,7 @@ from engine.core.idempotency import compute_decision_id
 from engine.core.ledger import EXIT_AT_COST_TARGET, SHARE_EPSILON
 from engine.core.market_context import MarketContext
 from engine.core.retry_policy import AmbiguousSubmissionError
+from engine.core.risk_overlay import session_step, session_target
 from engine.core.venue_sessions import AFTER_HOURS, PRE_MARKET, REGULAR
 from engine.data.earnings_calendar import is_live_earnings_reaction_day_at
 from engine.data.fomc_calendar import is_fomc_day_at
@@ -1667,10 +1668,19 @@ class LiveTradingLoop:
         IT SAYS ABOUT ITSELF). Never raises: a report is not a reason to stop
         a tick."""
         try:
-            level = _buy_level(self.strategy, context, self.state.last_buy_price, self.step)
+            step = self._session_step(context)
+            level = _buy_level(self.strategy, context, self.state.last_buy_price, step)
             cap = getattr(self.risk_manager, "max_concurrent_lots", None)
+            overlay = self._session_overlay(context)
+            governed = overlay is not None and not decision_cycle.overlay_exempt(
+                self.strategy, overlay
+            )
             if not self.circuit_breaker.allows_new_buys:
                 blocked = f"buys paused: {self.circuit_breaker.reason}"
+            elif governed and overlay.pause:
+                blocked = "tonight's risk report pauses new grid buys this session"
+            elif governed and overlay.in_blackout(context.timestamp):
+                blocked = "inside a risk report catalyst blackout"
             elif level is None:
                 blocked = "the strategy buys at no price right now"
             elif self._spendable() <= 0:
@@ -1678,10 +1688,20 @@ class LiveTradingLoop:
             elif cap is not None and len(self.ledger.open_lots) >= cap:
                 blocked = f"at its limit of {cap} open lots"
             elif self._exposure_room(context) < 0.01:
-                ceiling = self.risk_manager.exposure_ceiling(context.drawdown)
+                at = self._clamp_at(context)
+                ceiling = (
+                    self.risk_manager.exposure_ceiling(context.drawdown, at)
+                    if at is not None
+                    else self.risk_manager.exposure_ceiling(context.drawdown)
+                )
                 blocked = (
                     f"at its exposure ceiling: open lots may hold {ceiling:.0%} of equity "
                     f"at a {context.drawdown:.1%} drawdown"
+                    + (
+                        " (the risk report's ceiling)"
+                        if governed and overlay.exposure_ceiling is not None
+                        else ""
+                    )
                 )
             else:
                 blocked = None
@@ -1694,6 +1714,9 @@ class LiveTradingLoop:
                 "blocked": blocked,
                 "strategy": _diagnostics(self.strategy),
             }
+            if overlay is not None:
+                # The session's step, widened by the enforced risk report.
+                self.decision["step"] = step
             if self.calendar is not None:
                 upcoming = self.calendar.next_window(self._now())
                 self.decision["window"] = self.window.to_dict() if self.window else None
@@ -2088,7 +2111,15 @@ class LiveTradingLoop:
             event_intensity=event_intensity,
             minutes_to_event=minutes_to_event,
             implied_vol_change=change_at(self._implied_vol_series, timestamp),
+            report_supersedes=self._supersedes_at(timestamp),
         )
+
+    def _supersedes_at(self, timestamp) -> frozenset:
+        """The day-level levers an enforced risk report stands in for this
+        session (MarketContext.report_supersedes); empty without one."""
+        overlay_at = getattr(getattr(self, "risk_manager", None), "overlay_at", None)
+        overlay = overlay_at(timestamp) if overlay_at is not None else None
+        return overlay.supersedes if overlay is not None else frozenset()
 
     # --- order submission ---
 
@@ -2316,7 +2347,7 @@ class LiveTradingLoop:
             self.risk_manager,
             context,
             self.state.last_buy_price,
-            self.step,
+            self._session_step(context),
             self.state.buying_power,
         )
         if not decision.triggered:
@@ -2381,7 +2412,7 @@ class LiveTradingLoop:
             kind="buy",
             tracker=FillTracker(decision_id),
             trigger_price=context.price,
-            profit_target=self.profit_target,
+            profit_target=self._lot_target(context),
             entry_tag=decision_cycle.lot_tag(self.strategy),
             **self._window_fields(limit=limit_price, qty=qty, reserve=trade_value),
         )
@@ -2389,31 +2420,64 @@ class LiveTradingLoop:
         self._order_event(self.state.open_orders[decision_id], "placed")
         return 1
 
+    # --- the nightly risk report's overlay (engine/core/risk_overlay.py) ---
+
+    def _session_overlay(self, context: MarketContext):
+        """The session's ENFORCED risk report overlay, or None -- advisory
+        mode, no report, or a RiskManager without a schedule."""
+        overlay_at = getattr(self.risk_manager, "overlay_at", None)
+        return overlay_at(context.timestamp) if overlay_at is not None else None
+
+    def _session_step(self, context: MarketContext) -> float:
+        """The grid step this session's buys trigger on: live.step, widened
+        by an enforced overlay -- the same session_step the backtest uses."""
+        overlay = self._session_overlay(context)
+        return session_step(self.step, overlay) if overlay is not None else self.step
+
+    def _lot_target(self, context: MarketContext) -> float:
+        """The profit target a lot bought now carries: live.profit_target,
+        unless an enforced overlay opts this session's lots into a wider
+        one (spacing.target_follows) and the buy is not one it exempts."""
+        overlay = self._session_overlay(context)
+        if overlay is None or decision_cycle.overlay_exempt(self.strategy, overlay):
+            return self.profit_target
+        return session_target(self.profit_target, overlay)
+
+    def _clamp_at(self, context: MarketContext):
+        """The `at` a clamp of a buy now is asked with (decision_cycle.buy_moment)."""
+        return decision_cycle.buy_moment(self.strategy, self.risk_manager, context)
+
+    def _clamp(self, value: float, context: MarketContext) -> float:
+        at = self._clamp_at(context)
+        args = (
+            value,
+            context.equity,
+            self.state.buying_power,
+            context.open_lot_count,
+            context.drawdown,
+        )
+        if at is None:
+            return self.risk_manager.clamp_trade_value(*args)
+        return self.risk_manager.clamp_trade_value(*args, at=at)
+
     def _exposure_room(self, context: MarketContext) -> float:
         """Dollars a buy may still add under the exposure ceiling, or
         infinity with none -- for the report only; the buy itself is clamped
         in decision_cycle.evaluate_grid_decision."""
         ceiling = getattr(self.risk_manager, "exposure_ceiling", None)
-        if ceiling is None or ceiling(context.drawdown) is None:
+        at = self._clamp_at(context)
+        if (
+            ceiling is None
+            or (ceiling(context.drawdown, at) if at is not None else ceiling(context.drawdown))
+            is None
+        ):
             return math.inf
-        return self.risk_manager.clamp_trade_value(
-            context.equity,
-            context.equity,
-            self.state.buying_power,
-            context.open_lot_count,
-            context.drawdown,
-        )
+        return self._clamp(context.equity, context)
 
     def _whole_share_refusal(self, context: MarketContext, price: float) -> str | None:
         """Why one whole share at `price` may not be bought, or None."""
         venue = type(self.broker).__name__
-        clamped = self.risk_manager.clamp_trade_value(
-            price,
-            context.equity,
-            self.state.buying_power,
-            context.open_lot_count,
-            context.drawdown,
-        )
+        clamped = self._clamp(price, context)
         if clamped < price:
             return f"one whole share (${price:.2f}) is over the risk limit; {venue} buys whole shares only"
         if self._spendable() < price:
