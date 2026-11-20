@@ -1,7 +1,7 @@
 # The risk report overlay: the measurement
 
 Nov 20, 2026 · Phase 2 of [docs/daily_risk_report_plan.md](../daily_risk_report_plan.md) ·
-**The tools are built and tested; the runs on the real data have not been made yet** (see
+**The proxy, the baselines and the tier thresholds are built and frozen; the engine runs follow** (see
 [Status](#status))
 
 The plan's question: how much should a nightly risk report change a session's buying, on which
@@ -17,19 +17,24 @@ The code for every stage exists and is tested on synthetic data:
 |---|---|---|
 | Proxy reports, built causally from the outside lake and the fund's bars | `research/risk_overlay/proxy.py`, `tools/build_proxy_reports.py` | `research/tests/test_proxy_reports.py` |
 | Each fund's frozen baselines (median expected move, median 21/63-session ES5) | `tools/build_proxy_reports.py --baselines` → `research/risk_overlay/baselines.json` | `research/tests/test_risk_overlay_mapping.py` |
-| The tier thresholds set by frequency on the proxy, 2011–2018 | `tools/build_proxy_reports.py --calibrate` | |
+| The tier thresholds set by frequency on the proxy, 2011–2018 | `tools/build_proxy_reports.py --calibrate` | `tools/tests/test_build_proxy_reports.py` |
 | Reports at a chosen accuracy (mixture, noisy, proxy+, and the error knobs) | `research/risk_overlay/synthetic.py` | `research/tests/test_synthetic_reports.py` |
 | A backtest's schedule from an archive or a schedule file | `research/risk_overlay/schedules.py`, `risk.overlay.source`/`path` | `research/tests/test_risk_overlay_control.py` |
 | Every stage, its report, and the AUC check | `tools/probe_risk_overlay.py` | `tools/tests/test_probe_risk_overlay.py` |
 
-**Not yet run:**
-- No proxy archive has been built.
-- `baselines.json` does not exist yet, so the mappings abstain for every fund ("no frozen
-  baseline").
-- The tier thresholds are still the plan's provisional 0.35, 0.55 and 0.75.
+**Built and frozen on Nov 20, 2026** (step 1 below):
+- **The TQQQ proxy archive:** 3,994 reports, 2011-01-04 to 2026-11-19, every one passing the
+  audit.
+- **TQQQ's baselines** (`research/risk_overlay/baselines.json`, over 2016-01-04 to 2026-11-19):
+  a median expected move of 3.56%, and median expected shortfalls of −33.1% at 21 sessions and
+  −56.2% at 63.
+- **The tier thresholds:** S from 0.1002 (tier 1), 0.30075 (tier 2) and 0.4618 (tier 3), set on
+  the 2,011 sessions of 2011–2018. They put 10.0% of those sessions in tier 3, 13.9% in tier 2,
+  25.1% in tier 1 and 51.0% in tier 0, against the plan's 10/15/25/50. They were frozen before
+  any backtest of the overlay. Over 2019–2026 the same thresholds give tier 3 on about 19% of
+  sessions, because those years were rougher.
 
-Running them needs the worktree's tools to read the warehouse and `data/external/`. The session
-that built them was not permitted to. The commands are below.
+The engine runs (steps 2 and 3) follow.
 
 ## Reproducing it
 
@@ -142,6 +147,13 @@ scale.
 
 ## Where this differs from the plan, and why
 
+- **Ties in the calibration.** S takes few values on the proxy: four of its five components
+  are categorical, and the volatility one is 0 on 74% of 2011–2018's sessions. One value, 0.10,
+  is 15% of them by itself. A plain quantile lands on such a tie, and `S ≥ threshold` then takes
+  the whole tie into the higher tier. The first calibration did that, giving 36/37/17/10% where
+  the plan asks for 50/25/15/10%. `calibrate()` now picks, at each boundary, the cut nearest the
+  plan's share, at a midpoint between two values so no score sits on a threshold.
+
 - **No `tools/build_synthetic_reports.py`.** Writing about 2,500 synthetic archives of 2,700
   reports each would be about 30 GB. Each worker builds its synthetic history in memory from the
   proxy archive and the truths, deterministically from the run's family, accuracy and seed, so
@@ -158,6 +170,37 @@ scale.
 
 ## Results
 
-*Pending the runs above.* When they exist:
+### The cheap check: does the proxy's S rank the bad sessions?
+
+A session is bad for a book when fewer of the lots it bought reached their target within 21
+sessions than on the book's median session. The median is 1.0 for all three books, so bad means
+some lot did not. The pooled AUC across 2016–2026 has a 95% interval from a month-block
+bootstrap:
+
+| Book | Buying sessions | Bad | AUC of S | Bad rate in tiers 0 / 1 / 2 / 3 |
+|---|---|---|---|---|
+| grid | 2,737 | 269 | 0.570 (0.516–0.625) | 7.6% / 10.3% / 10.4% / 13.7% |
+| ultimate | 846 | 353 | 0.449 (0.377–0.521) | 45% / 39% / 48% / 18% |
+| daily | 725 | 162 | 0.469 (0.390–0.553) | 23% / 23% / 28% / 9% |
+
+Year by year (`--stage auc`) the AUC swings with no pattern: 0.39–0.67 for the grid, 0.31–0.67
+for Ultimate and 0.33–0.73 for Daily Ultimate.
+
+- **Grid:** S ranks the bad sessions only weakly, though in the right direction, and the bad rate
+  rises steadily with the tier.
+- **Ultimate and Daily Ultimate:** S does not rank them. Their tier 3 sessions were their best
+  buying days, and their bad rate in tier 3 is less than half that of tier 0. This matches the
+  risk governor's finding that outside data does not help Daily Ultimate.
+- **Gap risk and skew:** no component ranks better than S, and these two rank at chance on
+  every book.
+
+By the plan's rule, a schedule built on the proxy is not expected to help either Ultimate
+book. The engine runs below were made anyway, for two reasons. The accuracy curves ask a
+different question: how good a report would have to be, not how good the proxy is. And the
+grid passes the check weakly.
+
+### The engine runs
+
+*Pending.* When they exist:
 - the `--report` output belongs beside this page;
 - the gates' verdict for each lever is written here.

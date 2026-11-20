@@ -20,6 +20,8 @@ from research.risk_overlay.mapping import (
     GAP_SCORES,
     REGIME_SCORES,
     TAIL_SCORES,
+    THRESHOLDS_PROVISIONAL,
+    TIER_THRESHOLDS,
     MappingInputs,
     map_report,
     tier_of,
@@ -265,7 +267,10 @@ class TestTheCalendar:
 
 class TestPieces:
     def test_tiers_by_score(self):
-        assert [tier_of(s) for s in (0.0, 0.34, 0.35, 0.6, 0.75, 1.0)] == [0, 0, 1, 2, 3, 3]
+        # v1's frozen thresholds: a change is a new mapping id, never an edit.
+        assert TIER_THRESHOLDS == (0.1002, 0.30075, 0.4618) and not THRESHOLDS_PROVISIONAL
+        scores = (0.0, 0.1, 0.1002, 0.3, 0.30075, 0.46, 0.4618, 1.0)
+        assert [tier_of(s) for s in scores] == [0, 0, 1, 1, 2, 2, 3, 3]
 
     def test_realised_volatility_and_the_proxy_move(self):
         closes = [100.0, 101.0, 99.0, 102.0, 100.0, 103.0, 101.0]

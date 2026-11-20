@@ -27,9 +27,9 @@ MAPPING v1
    the proxy's move replaces it (for the tiers and for spacing), and the
    reasons say so.
 2. SCORE S in [0, 1], the weighted mean of five components (WEIGHTS).
-3. TIER by S (TIER_THRESHOLDS, PROVISIONAL until calibrated by frequency on
-   the proxy over 2011-2018 and frozen): 0 as configured; 1 buys x0.75; 2
-   buys x0.5 and open lots held to 50% of equity; 3 no new grid buys.
+3. TIER by S (TIER_THRESHOLDS, calibrated by frequency on the proxy over
+   2011-2018 and frozen): 0 as configured; 1 buys x0.75; 2 buys x0.5 and
+   open lots held to 50% of equity; 3 no new grid buys.
 
 Beside the tiers, two levers of their own:
 
@@ -83,10 +83,15 @@ TAIL_SCORES = {"bullish_tail": 0.0, "neutral": 0.5, "bearish_tail": 1.0}
 # The volatility component: 0 at the baseline move, 1 at 2.5x it.
 VOL_FULL_RATIO = 2.5
 
-# PROVISIONAL (the plan's numbers before calibration): tier 1 from S 0.35,
-# tier 2 from 0.55, tier 3 from 0.75.
-TIER_THRESHOLDS: tuple[float, float, float] = (0.35, 0.55, 0.75)
-THRESHOLDS_PROVISIONAL = True
+# FROZEN 2026-11-20 by `tools/build_proxy_reports.py --calibrate` on the TQQQ
+# proxy over 2011-01-03..2018-12-31 (2,011 sessions, baselines.json's TQQQ
+# entry): the plan's frequencies -- tier 3 on the riskiest 10%, tier 2 the
+# next 15%, tier 1 the next 25% -- came out 10.0%, 13.9% and 25.1% (S takes
+# few values, so a tie sits on one side of each). Set by frequency alone,
+# before any backtest of the overlay; a change is a new mapping id. The plan's
+# provisional numbers were 0.35, 0.55 and 0.75.
+TIER_THRESHOLDS: tuple[float, float, float] = (0.1002, 0.30075, 0.4618)
+THRESHOLDS_PROVISIONAL = False
 
 
 @dataclass(frozen=True)

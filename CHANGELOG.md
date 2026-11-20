@@ -27,8 +27,10 @@ What a report reaches:
   session an enforced report set. Ultimate's turbulent reversal buys are
   exempt from a pause (`SizingStrategy.risk_overlay_exempt`).
 - **The mapping decides, not the LLM.** `research/risk_overlay/mapping.py`
-  holds mapping v1: the plan's abstentions, five components, provisional
-  tier thresholds, grid spacing (lever B) and the weekly cap (lever G).
+  holds mapping v1: the plan's abstentions, five components, the tier
+  thresholds set by frequency (S 0.1002, 0.30075 and 0.4618, frozen on the
+  TQQQ proxy over 2011-2018), grid spacing (lever B) and the weekly cap
+  (lever G).
   It is pure, versioned and monotone, and tonight's report maps to tier 3
   with the step x1.7-2.4, as the plan pins.
 
@@ -68,8 +70,14 @@ Phase 2's tools, built and tested, **not yet run on the real data**
   champion grid, Ultimate and Daily Ultimate, and its report reads the
   nulls and the value-of-accuracy curves.
 
-Until `baselines.json` exists, the mappings abstain: every session trades as
-configured.
+TQQQ's baselines are frozen in `research/risk_overlay/baselines.json`: a
+3.56% median expected move, and a -33.1% and -56.2% median 21- and 63-session
+ES5. A fund without an entry still abstains. The calibration keeps a tied
+score on one side of a threshold. A plain quantile had taken the whole tie
+into the higher tier and given 36/37/17/10% where the plan asks 50/25/15/10%.
+The measurement so far is in `docs/research/risk-overlay.md`. The proxy's S
+ranks the grid's bad sessions only weakly (AUC 0.57) and neither Ultimate
+book's.
 
 A result row now carries its risk section (`risk_*`) when one is set, and an
 enforced schedule's hash. Runs that differ only in risk no longer collide in

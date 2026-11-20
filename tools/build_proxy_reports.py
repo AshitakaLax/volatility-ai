@@ -33,7 +33,9 @@ import json
 import shutil
 import statistics
 import sys
+from bisect import bisect_left
 from datetime import date
+from itertools import pairwise
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -159,16 +161,57 @@ def calibrate(symbol: str, entries: list[dict]) -> dict:
         mapped = map_report(report, entry_inputs(entry, report, symbol, baseline), settings)
         if mapped.score is not None:
             scores.append(mapped.score)
-    scores.sort()
-    n = len(scores)
+    thresholds = thresholds_for(scores, TIER_SHARES)
+    return {
+        "sessions": len(scores),
+        "thresholds": list(thresholds),
+        "shares": tier_shares(scores, thresholds),
+        "window": [low, high],
+    }
 
-    def above(share: float) -> float:
-        return round(scores[max(0, min(n - 1, round(n * (1 - share))))], 4)
 
-    t3 = above(TIER_SHARES[0])
-    t2 = above(TIER_SHARES[0] + TIER_SHARES[1])
-    t1 = above(sum(TIER_SHARES))
-    return {"sessions": n, "thresholds": [t1, t2, t3], "window": [low, high]}
+def threshold_at(scores: list[float], share: float) -> float:
+    """The threshold that puts the share of `scores` at or above it closest
+    to `share`.
+
+    S takes few values on the proxy (four of its five components are
+    categorical, and the volatility one is 0 on every calm session), so a
+    quantile lands on a tie, and `S >= quantile` would take the whole tie into
+    the higher tier: 2011-2018's 0.10 alone is 15% of its sessions. A tie
+    falls wholly on one side of a threshold, so the candidates are the
+    midpoints between neighbouring values (no score sits on one) and the
+    lowest value; the nearest share wins, the higher threshold on a draw."""
+    values = sorted(set(scores))
+    if not values:
+        raise ValueError("no scores to calibrate on")
+    ordered = sorted(scores)
+    n = len(ordered)
+    candidates = [values[0], *((a + b) / 2 for a, b in pairwise(values))]
+
+    def miss(threshold: float) -> tuple[float, float]:
+        at_or_above = n - bisect_left(ordered, threshold)
+        return abs(at_or_above / n - share), -threshold
+
+    return round(min(candidates, key=miss), 6)
+
+
+def thresholds_for(
+    scores: list[float], shares: tuple[float, float, float]
+) -> tuple[float, float, float]:
+    """(tier 1, tier 2, tier 3) thresholds for `shares` of sessions in tiers
+    3, 2 and 1 (TIER_SHARES)."""
+    t3 = threshold_at(scores, shares[0])
+    t2 = threshold_at(scores, shares[0] + shares[1])
+    t1 = threshold_at(scores, sum(shares))
+    return t1, t2, t3
+
+
+def tier_shares(scores: list[float], thresholds: tuple[float, float, float]) -> list[float]:
+    """The share of `scores` in tiers 0-3 under `thresholds`."""
+    counts = [0, 0, 0, 0]
+    for score in scores:
+        counts[sum(1 for t in thresholds if score >= t)] += 1
+    return [round(c / len(scores), 4) for c in counts] if scores else counts
 
 
 def main(argv: list[str] | None = None) -> int:
