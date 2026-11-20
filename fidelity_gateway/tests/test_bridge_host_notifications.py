@@ -27,7 +27,7 @@ from fidelity_gateway.bridge.keys import BridgeApiKey
 from fidelity_gateway.bridge.notifications import READINESS_GRACE_SECONDS, Notifications
 from fidelity_gateway.bridge.notify_server import NotificationServer
 from fidelity_gateway.tests.bridge_support import NOTIFY_KEY, FakeApp, FakeExtension
-from fidelity_gateway.tests.test_bridge_host import Clock, _fidelity, _make_server
+from fidelity_gateway.tests.test_bridge_host import SUNDAY, Clock, _fidelity, _make_server
 
 pytest.importorskip("websockets")
 
@@ -82,11 +82,20 @@ def place():
 
 @pytest.fixture
 def world(place):
-    clock = Clock()
+    # A Sunday, as test_bridge_host's _host: on the wall clock, a run within
+    # minutes of an open read "Not ready for the open" and an account check.
+    # The bridge shares the clock, so "last heard" ages with the host's.
+    clock = Clock(SUNDAY)
     config = Config()
     notifiers = Notifiers()
+
+    def make_server(settings, on_event):
+        server = _make_server(settings, on_event)
+        server._clock = clock
+        return server
+
     host = BridgeHost(
-        make_server=_make_server,
+        make_server=make_server,
         settings=config,
         socket_path=place / "bridge.sock",
         inbox=ControlInbox(place / "control" / "bridge", clock=clock),
@@ -306,7 +315,7 @@ def test_stopping_the_host_says_goodbye_to_apps(world):
 
 
 def test_without_a_notifications_section_no_listener_runs(place):
-    clock = Clock()
+    clock = Clock(SUNDAY)
     notifiers = Notifiers()
     host = BridgeHost(
         make_server=_make_server,
