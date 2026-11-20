@@ -354,9 +354,15 @@ def test_time_since_the_trial_started_is_what_is_counted():
 
 
 def test_the_counters_are_measured_only_when_every_traded_session_was_watched():
+    from datetime import datetime
+
+    from engine.core.trading_calendar import EASTERN
     from engine.promotion_record import UNMEASURED, unmeasured
 
-    t0 = time.time() - 10 * DAY
+    # A fixed morning, not the wall clock: sessions are Eastern dates, and from
+    # an anchor after 23:00 ET the bars (+1 h) land a date after the watching
+    # rows (+1 min), which failed this test for the last hour of every day.
+    t0 = datetime(2026, 11, 2, 9, 30, tzinfo=EASTERN).timestamp()
     bars = [{"t": t0 + DAY * d + 3600} for d in range(3)]
     watched = [{"t": t0 + DAY * d + 60, "kind": "watching"} for d in range(3)]
     assert unmeasured(started_at=t0, bars=bars, incidents=watched) == ()

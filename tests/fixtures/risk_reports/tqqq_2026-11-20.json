@@ -1,0 +1,481 @@
+{
+  "schema_version": "1.1.0",
+  "symbol": "TQQQ",
+  "as_of": "2026-11-20T02:38:15Z",
+  "base_price": 48.26,
+  "return_type": "simple_pct",
+  "model": "eod_regime_conditioned_forecast",
+  "execution_signals": {
+    "data_quality": {
+      "confidence_score": 0.86,
+      "source_coverage": "primary_verified",
+      "missing_inputs": [
+        "DXY_nov19_close",
+        "HY_OAS_credit_spread_nov19",
+        "TQQQ_25d_put_call_skew_nov19"
+      ]
+    },
+    "regime": "high_vol_downtrend",
+    "volatility_state": "extreme",
+    "implied_vs_realized_vol_spread_pct": 13.2,
+    "expected_1d_move_pct": 8.38,
+    "skew_bias": "bearish_tail",
+    "overnight_gap_risk": "high",
+    "kelly_fraction_cap": 0.15,
+    "next_day_catalysts": [
+      {
+        "time_utc": "13:25",
+        "event": "Fed Governor Christopher Waller Speaks",
+        "impact": "medium"
+      },
+      {
+        "time_utc": "15:00",
+        "event": "University of Michigan Consumer Sentiment & Inflation Expectations (1Y/5Y)",
+        "impact": "high"
+      },
+      {
+        "time_utc": "15:00",
+        "event": "BLS State Employment and Unemployment (October 2026)",
+        "impact": "low"
+      },
+      {
+        "time_utc": "17:15",
+        "event": "Fed Governor Lisa Cook Speaks",
+        "impact": "medium"
+      },
+      {
+        "time_utc": "18:00",
+        "event": "Baker Hughes U.S. Rig Count",
+        "impact": "low"
+      }
+    ],
+    "suggested_strategy_weights": {
+      "momentum_trend": 0.15,
+      "mean_reversion": 0.15,
+      "volatility_harvesting": 0.25,
+      "cash_defensive": 0.45
+    }
+  },
+  "horizons": {
+    "tomorrow": {
+      "label": "Tomorrow (1D)",
+      "trading_days": 1,
+      "bin_width_pct": 0.5,
+      "underflow_prob": 0.372,
+      "overflow_prob": 0.3506,
+      "bins": [
+        {
+          "min_pct": -2.5,
+          "max_pct": -2.0,
+          "prob": 0.0268,
+          "cdf": 0.3988
+        },
+        {
+          "min_pct": -2.0,
+          "max_pct": -1.5,
+          "prob": 0.0274,
+          "cdf": 0.4262
+        },
+        {
+          "min_pct": -1.5,
+          "max_pct": -1.0,
+          "prob": 0.0279,
+          "cdf": 0.4541
+        },
+        {
+          "min_pct": -1.0,
+          "max_pct": -0.5,
+          "prob": 0.0282,
+          "cdf": 0.4823
+        },
+        {
+          "min_pct": -0.5,
+          "max_pct": 0.0,
+          "prob": 0.0284,
+          "cdf": 0.5107
+        },
+        {
+          "min_pct": 0.0,
+          "max_pct": 0.5,
+          "prob": 0.0284,
+          "cdf": 0.5391
+        },
+        {
+          "min_pct": 0.5,
+          "max_pct": 1.0,
+          "prob": 0.0282,
+          "cdf": 0.5673
+        },
+        {
+          "min_pct": 1.0,
+          "max_pct": 1.5,
+          "prob": 0.0279,
+          "cdf": 0.5952
+        },
+        {
+          "min_pct": 1.5,
+          "max_pct": 2.0,
+          "prob": 0.0274,
+          "cdf": 0.6226
+        },
+        {
+          "min_pct": 2.0,
+          "max_pct": 2.5,
+          "prob": 0.0268,
+          "cdf": 0.6494
+        }
+      ],
+      "summary": {
+        "mean_pct": -0.37,
+        "median_pct": -0.19,
+        "std_pct": 7.91,
+        "prob_positive": 0.4893,
+        "expected_shortfall_5pct": -18.6,
+        "quantiles_pct": {
+          "p01": -22.01,
+          "p05": -13.42,
+          "p25": -5.04,
+          "p75": 4.55,
+          "p95": 11.95,
+          "p99": 18.85
+        }
+      }
+    },
+    "next_week": {
+      "label": "Next Week (5D)",
+      "trading_days": 5,
+      "bin_width_pct": 1.0,
+      "underflow_prob": 0.3811,
+      "overflow_prob": 0.3414,
+      "bins": [
+        {
+          "min_pct": -5.0,
+          "max_pct": -4.0,
+          "prob": 0.0271,
+          "cdf": 0.4082
+        },
+        {
+          "min_pct": -4.0,
+          "max_pct": -3.0,
+          "prob": 0.0276,
+          "cdf": 0.4358
+        },
+        {
+          "min_pct": -3.0,
+          "max_pct": -2.0,
+          "prob": 0.0281,
+          "cdf": 0.4639
+        },
+        {
+          "min_pct": -2.0,
+          "max_pct": -1.0,
+          "prob": 0.0283,
+          "cdf": 0.4922
+        },
+        {
+          "min_pct": -1.0,
+          "max_pct": 0.0,
+          "prob": 0.0285,
+          "cdf": 0.5207
+        },
+        {
+          "min_pct": 0.0,
+          "max_pct": 1.0,
+          "prob": 0.0284,
+          "cdf": 0.5491
+        },
+        {
+          "min_pct": 1.0,
+          "max_pct": 2.0,
+          "prob": 0.0281,
+          "cdf": 0.5772
+        },
+        {
+          "min_pct": 2.0,
+          "max_pct": 3.0,
+          "prob": 0.0277,
+          "cdf": 0.6049
+        },
+        {
+          "min_pct": 3.0,
+          "max_pct": 4.0,
+          "prob": 0.0272,
+          "cdf": 0.6321
+        },
+        {
+          "min_pct": 4.0,
+          "max_pct": 5.0,
+          "prob": 0.0265,
+          "cdf": 0.6586
+        }
+      ],
+      "summary": {
+        "mean_pct": -1.02,
+        "median_pct": -0.72,
+        "std_pct": 15.5,
+        "prob_positive": 0.4793,
+        "expected_shortfall_5pct": -36.1,
+        "quantiles_pct": {
+          "p01": -42.31,
+          "p05": -26.55,
+          "p25": -10.38,
+          "p75": 8.75,
+          "p95": 23.37,
+          "p99": 36.4
+        }
+      }
+    },
+    "next_month": {
+      "label": "Next Month (21D)",
+      "trading_days": 21,
+      "bin_width_pct": 2.0,
+      "underflow_prob": 0.3415,
+      "overflow_prob": 0.3084,
+      "bins": [
+        {
+          "min_pct": -10.0,
+          "max_pct": -8.0,
+          "prob": 0.0334,
+          "cdf": 0.3749
+        },
+        {
+          "min_pct": -8.0,
+          "max_pct": -6.0,
+          "prob": 0.0346,
+          "cdf": 0.4095
+        },
+        {
+          "min_pct": -6.0,
+          "max_pct": -4.0,
+          "prob": 0.0355,
+          "cdf": 0.445
+        },
+        {
+          "min_pct": -4.0,
+          "max_pct": -2.0,
+          "prob": 0.0361,
+          "cdf": 0.4811
+        },
+        {
+          "min_pct": -2.0,
+          "max_pct": 0.0,
+          "prob": 0.0363,
+          "cdf": 0.5174
+        },
+        {
+          "min_pct": 0.0,
+          "max_pct": 2.0,
+          "prob": 0.0363,
+          "cdf": 0.5537
+        },
+        {
+          "min_pct": 2.0,
+          "max_pct": 4.0,
+          "prob": 0.0359,
+          "cdf": 0.5896
+        },
+        {
+          "min_pct": 4.0,
+          "max_pct": 6.0,
+          "prob": 0.0351,
+          "cdf": 0.6247
+        },
+        {
+          "min_pct": 6.0,
+          "max_pct": 8.0,
+          "prob": 0.0341,
+          "cdf": 0.6588
+        },
+        {
+          "min_pct": 8.0,
+          "max_pct": 10.0,
+          "prob": 0.0328,
+          "cdf": 0.6916
+        }
+      ],
+      "summary": {
+        "mean_pct": -1.35,
+        "median_pct": -0.96,
+        "std_pct": 23.68,
+        "prob_positive": 0.4826,
+        "expected_shortfall_5pct": -53.93,
+        "quantiles_pct": {
+          "p01": -63.31,
+          "p05": -40.79,
+          "p25": -16.05,
+          "p75": 13.83,
+          "p95": 36.33,
+          "p99": 55.27
+        }
+      }
+    },
+    "next_quarter": {
+      "label": "Next Quarter (63D)",
+      "trading_days": 63,
+      "bin_width_pct": 3.0,
+      "underflow_prob": 0.3189,
+      "overflow_prob": 0.3325,
+      "bins": [
+        {
+          "min_pct": -15.0,
+          "max_pct": -12.0,
+          "prob": 0.0322,
+          "cdf": 0.3511
+        },
+        {
+          "min_pct": -12.0,
+          "max_pct": -9.0,
+          "prob": 0.0336,
+          "cdf": 0.3847
+        },
+        {
+          "min_pct": -9.0,
+          "max_pct": -6.0,
+          "prob": 0.0347,
+          "cdf": 0.4194
+        },
+        {
+          "min_pct": -6.0,
+          "max_pct": -3.0,
+          "prob": 0.0355,
+          "cdf": 0.4549
+        },
+        {
+          "min_pct": -3.0,
+          "max_pct": 0.0,
+          "prob": 0.036,
+          "cdf": 0.4909
+        },
+        {
+          "min_pct": 0.0,
+          "max_pct": 3.0,
+          "prob": 0.0363,
+          "cdf": 0.5272
+        },
+        {
+          "min_pct": 3.0,
+          "max_pct": 6.0,
+          "prob": 0.0361,
+          "cdf": 0.5633
+        },
+        {
+          "min_pct": 6.0,
+          "max_pct": 9.0,
+          "prob": 0.0356,
+          "cdf": 0.5989
+        },
+        {
+          "min_pct": 9.0,
+          "max_pct": 12.0,
+          "prob": 0.0348,
+          "cdf": 0.6337
+        },
+        {
+          "min_pct": 12.0,
+          "max_pct": 15.0,
+          "prob": 0.0338,
+          "cdf": 0.6675
+        }
+      ],
+      "summary": {
+        "mean_pct": 0.87,
+        "median_pct": 0.76,
+        "std_pct": 34.56,
+        "prob_positive": 0.5091,
+        "expected_shortfall_5pct": -72.0,
+        "quantiles_pct": {
+          "p01": -94.65,
+          "p05": -60.0,
+          "p25": -22.02,
+          "p75": 22.97,
+          "p95": 56.81,
+          "p99": 85.44
+        }
+      }
+    },
+    "next_year": {
+      "label": "Next Year (252D)",
+      "trading_days": 252,
+      "bin_width_pct": 5.0,
+      "underflow_prob": 0.2396,
+      "overflow_prob": 0.3993,
+      "bins": [
+        {
+          "min_pct": -25.0,
+          "max_pct": -20.0,
+          "prob": 0.0299,
+          "cdf": 0.2695
+        },
+        {
+          "min_pct": -20.0,
+          "max_pct": -15.0,
+          "prob": 0.032,
+          "cdf": 0.3015
+        },
+        {
+          "min_pct": -15.0,
+          "max_pct": -10.0,
+          "prob": 0.0339,
+          "cdf": 0.3354
+        },
+        {
+          "min_pct": -10.0,
+          "max_pct": -5.0,
+          "prob": 0.0356,
+          "cdf": 0.371
+        },
+        {
+          "min_pct": -5.0,
+          "max_pct": 0.0,
+          "prob": 0.037,
+          "cdf": 0.408
+        },
+        {
+          "min_pct": 0.0,
+          "max_pct": 5.0,
+          "prob": 0.038,
+          "cdf": 0.446
+        },
+        {
+          "min_pct": 5.0,
+          "max_pct": 10.0,
+          "prob": 0.0387,
+          "cdf": 0.4847
+        },
+        {
+          "min_pct": 10.0,
+          "max_pct": 15.0,
+          "prob": 0.039,
+          "cdf": 0.5237
+        },
+        {
+          "min_pct": 15.0,
+          "max_pct": 20.0,
+          "prob": 0.0388,
+          "cdf": 0.5625
+        },
+        {
+          "min_pct": 20.0,
+          "max_pct": 25.0,
+          "prob": 0.0382,
+          "cdf": 0.6007
+        }
+      ],
+      "summary": {
+        "mean_pct": 15.03,
+        "median_pct": 11.96,
+        "std_pct": 50.52,
+        "prob_positive": 0.592,
+        "expected_shortfall_5pct": -80.67,
+        "quantiles_pct": {
+          "p01": -99.9,
+          "p05": -80.34,
+          "p25": -23.22,
+          "p75": 46.52,
+          "p95": 99.4,
+          "p99": 143.68
+        }
+      }
+    }
+  }
+}
