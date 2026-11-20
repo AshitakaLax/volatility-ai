@@ -1,7 +1,8 @@
 # Daily risk report — the nightly LLM forecast as the next session's risk
 
 Nov 20, 2026 · **A plan: nothing here is built or measured yet** · for the TQQQ deployments
-(`paper`, `paper-ultimate`, `live`, `fidelity`)
+(`paper`, `paper-ultimate`, `live`, `fidelity`) · the owner's decisions are recorded in
+[Owner decisions](#owner-decisions)
 
 - [Goal](#goal)
 - [Answer](#answer)
@@ -33,6 +34,7 @@ distributions over 1, 5, 21, 63 and 252 sessions. The owner wants three things:
 | **What a report changes** | One session's **buying**: a size multiplier, an exposure ceiling, or a pause on new grid buys. Never a sale, a target, the regime or the strategy. |
 | **Where** | The engine's risk clamp (`RiskManager.clamp_trade_value`). Backtest and live already share it, and it can only shrink a buy (0 ≤ approved ≤ proposed). |
 | **Who decides** | Not the LLM. A versioned, deterministic **mapping** turns report fields into the overlay, inside bounds the deployment's YAML sets. The mapping is what gets backtested and promoted. |
+| **Priority** | On a session a report sets, the report is the day's risk decision: the risk governor's pause and the FOMC and earnings-day boosts stand down, and the report's own catalysts (checked against the engine's FOMC and earnings calendars) take their place. With no report the session trades exactly as configured, governor and boosts included. |
 | **How it gets in** | A new command, `apply_risk_report`. The Live page previews it, the server queues it, and the trader re-validates it, applies it to the report's target session and archives it. |
 | **How it is backtested** | There are no historical LLM reports, and none can be made honestly: a model with web search replaying the past reads the future. So three sources stand in. **Proxy reports** are the same schema built causally from the warehouse's outside series (2011 on); they design and stress-test the mapping. **Synthetic schedules** (constant tiers, a risk-response matrix, an oracle, time-shifted nulls, perturbations) answer the differing-risk question. The **real reports**, archived from now on, are scored as forecasts every night and enter the same backtest as their history grows. |
 | **What to expect** | Small effects. The closest precedent, the risk governor, bought about two points of drawdown on the reserve book and nothing measurable on Daily Ultimate ([its log](research/risk-governor.md)). |
@@ -117,9 +119,11 @@ next morning
 | `buy_multiplier` | each proposed buy × this | `[0, 1]`: never grows a buy |
 | `exposure_ceiling` | the share of equity open lots may hold | at least the YAML's `exposure_floor`; combined with the drawdown ramp by `min` |
 | `blackouts` | UTC windows with no new buys, around catalysts | |
+| `supersedes` | the strategy's day-level levers this session's report replaces (`governor`, `event_boosts`) | only those the YAML's `risk.overlay.supersedes` names; empty on a session no report set |
 | `tier`, `reasons`, `mapping_id`, `report_sha256` | what the Live page and the journals say | |
 
-`NEUTRAL` is the overlay that changes nothing. An `OverlaySchedule` maps sessions to overlays: a
+`NEUTRAL` is the overlay that changes nothing, `supersedes` included: a session without a report
+keeps the governor and the boosts. An `OverlaySchedule` maps sessions to overlays: a
 session it does not name reads NEUTRAL, and `content_hash()` identifies the schedule.
 
 ### The engine seam
@@ -137,6 +141,17 @@ session it does not name reads NEUTRAL, and `content_hash()` identifies the sche
   which is the form the governor measured. Whether reversal buys are exempt is a deployment
   setting, and the backtest runs it both ways.
 - The live loop also clamps in `_exposure_room` and `_whole_share_refusal`. Both pass `at`.
+- **The report's priority.** The governor and the boosts live inside strategies, which the clamp
+  cannot reach, so the overlay tells them through the bar's snapshot: a new
+  `MarketContext.report_supersedes: frozenset[str]` (default empty, so every existing run is
+  unchanged), filled from the schedule where the backtest builds its contexts
+  (`optimization_controller.py` `_simulate_single`) and where the live loop does
+  (`live_trading_loop.py`). Two strategies read it:
+  - `DailyUltimateSizing.record_tick`: with `governor` in it, the session is not `cautious`
+    whatever the votes say, and its diagnostics say the report superseded them.
+  - `HighFrequencyLocalReferenceSizing`'s event multipliers (`is_macro_event_day`,
+    `is_earnings_reaction_day`, the weighted event boost): with `event_boosts` in it, each is
+    ×1. Ultimate and Daily Ultimate inherit this.
 - `cli.py` builds the session's `RiskManager` with its overlay and hands it to `LiveTradingLoop`,
   which today builds its own from `config.risk.build()`. Tightening mid-session swaps the trader's
   own overlay in place between ticks, with no rebuild.
@@ -153,7 +168,8 @@ risk:
     exposure_floor: 0.10      # the lowest ceiling a report may set
     exempt: [reversal]        # buys a pause does not stop
     blackout_minutes: 0       # either side of a high-impact catalyst; 0 is off
-    missing: neutral          # no valid report for the session: neutral | cautious (tier 1)
+    supersedes: [governor, event_boosts]   # the day-level levers a session's report replaces;
+                                           # [] applies the report after them instead
 live:
   control:
     risk_reports: false       # whether the Live page may submit reports for this deployment
@@ -164,6 +180,11 @@ from what the reviewed file trades. "More aggressive on calm days" becomes a lar
 baseline in the YAML (stage `joint`), with the overlay scaling down from it on the other days. That
 change is made in a reviewable file, never by a browser.
 
+**The one exception is the priority, and it is the YAML's.** Where `supersedes` names the
+governor, a calm report lifts a pause the governor would have called for that session. That is
+the owner's choice (the report already weighs what the governor weighs), and it is made in the
+deployment's file, not by the report. Dropping the event boosts can only lower buying.
+
 ### The mapping (v1, pre-registered here)
 
 `research/risk_overlay/mapping.py` (new) is a pure, deterministic `map_report(report, inputs) ->
@@ -171,7 +192,7 @@ SessionOverlay`. It is monotone (raising any risk input never loosens the overla
 id. It reads only fields the proxy also produces with the same meaning, so one mapping runs on
 fifteen years of proxy reports and on the real ones.
 
-1. **Abstain** to NEUTRAL (or tier 1 with `missing: cautious`) when the report is for another
+1. **Abstain** to NEUTRAL, so the session trades as configured, when the report is for another
    symbol or another session, arrived after its session ended, has a `confidence_score` below 0.6
    or `source_coverage: degraded`, or has a `base_price` more than 5% from our last close. When its
    expected move is outside 0.5× to 2× the move VXN implies, the proxy's volatility component
@@ -183,7 +204,7 @@ fifteen years of proxy reports and on the real ones.
    | volatility | `expected_1d_move_pct` ÷ the fund's median 1-day move over the research window | 0 at 1×, 1 at 2.5×, linear between | 0.35 |
    | gap | `overnight_gap_risk` | low 0, moderate 0.5, high 1 | 0.20 |
    | regime | `regime` | low_vol_uptrend 0, mean_reverting_range 0.2, breakout_expansion 0.5, event_driven 0.6, high_vol_downtrend 1 | 0.20 |
-   | catalyst | `next_day_catalysts` inside the session | none 0, medium 0.5, high 1 | 0.15 |
+   | catalyst | `next_day_catalysts` inside the session, merged with the engine's own FOMC and earnings calendars (an FOMC decision or a megacap reaction session the report missed is added as high) | none 0, medium 0.5, high 1 | 0.15 |
    | tail | `skew_bias` | bullish_tail 0, neutral 0.5, bearish_tail 1 | 0.10 |
 
 3. **Tier** by S. The thresholds are set by frequency on the proxy over 2011–2018 and then frozen
@@ -243,11 +264,14 @@ The handler's rules:
   server's preview: the target session, the audit findings (hard failures refuse; warnings such as
   the bin coverage or a disagreement with VXN are shown), and the overlay in words for each TQQQ
   deployment that takes reports ("Thu Nov 20: no new grid buys; reversal lots allowed; sells
-  unchanged"). Then **Apply to** the deployments chosen.
-- `OverviewCard`: today's tier and the report it came from, with a history of tiers, the forecast
-  against the realised move, and what the shadow says each overlay cost or saved.
-- `lib/attention.ts`: "no risk report for today" (only where `missing: cautious`, or where the
-  owner wants it) and "the trader refused tonight's report: …".
+  unchanged"). **Apply to** lists every deployment whose YAML takes reports, paper and real money
+  alike, each with a checkbox, all checked by default; unchecking one leaves it out of that
+  report. Real-money deployments still ask for their id typed back.
+- `OverviewCard`: today's tier and the report it came from, or "no report: trading as
+  configured", with a history of tiers, the forecast against the realised move, and what the
+  shadow says each overlay cost or saved.
+- `lib/attention.ts`: "the trader refused tonight's report: …". A session without a report is
+  not an attention item; it trades as configured.
 - The contract is hand-mirrored: `types/control.ts` (`CommandType`, `TraderStatus.risk_overlay`)
   and a new `types/riskReport.ts`, changed with the server's shapes.
 
@@ -335,6 +359,7 @@ Total Return % and Calmar.
 | `stress` | `tools/stress_paths.py`'s `deeper`, `grind`, `fast`, `twice` and `top`: no harm on a worse path. | 10 |
 | `perturb` | What does a wrong report cost? 10%, 25% and 50% of sessions' tiers randomised, the schedule inverted, always tier 3, always tier 0. | 6 |
 | `catalysts` | The blackout alone, at ±10, 15 and 30 minutes around FOMC decisions (and other releases once their calendar exists), with the strategies' event-day boosts as researched. | 3 |
+| `priority` | What does the report's priority cost or buy? The v1 schedule three ways: superseding the governor and the event boosts (the owner's choice), superseding the governor alone, and applied after both (`supersedes: []`). On the champion grid the governor is absent, so this isolates the boosts; on Daily Ultimate the governed profile adds the governor. The boosts were a measured gain (2.5× on FOMC days), and on report sessions they are given up. | 3 |
 | `llm` | Recurring, once real reports accumulate: the LLM's schedule against the proxy's and against none, on the same sessions. | 3 |
 | `joint` | Only if an overlay passes: re-fit the baseline lot size and ceiling with the overlay on. This is the one honest route to "more aggressive on calm days". | ~8 |
 
@@ -351,7 +376,7 @@ cash, its lot cap), and the rows must be re-fit together.
 attribution's bad sessions, year by year. If S cannot rank them, no schedule built on it will
 help.
 
-That is about 130 runs a book. The governor's runs took about 50 seconds each, and its whole
+That is about 135 runs a book. The governor's runs took about 50 seconds each, and its whole
 measurement under fifteen minutes on 40 cores.
 
 ### Scoring the forecasts every night
@@ -385,9 +410,9 @@ at the tier level.
 
 | Step | Passes when |
 |---|---|
-| A proxy-driven overlay trades on paper | On the book as deployed: a better Calmar than no overlay in **both** halves; less than 5% of the baseline's return given up; the real schedule beats at least 36 of its 40 shifted copies on return over drawdown; no stress path more than a point worse in drawdown; a plateau in `robust`; and it holds in `walk`. |
+| A proxy-driven overlay trades on paper | On the book as deployed: a better Calmar than no overlay in **both** halves; less than 5% of the baseline's return given up; the real schedule beats at least 36 of its 40 shifted copies on return over drawdown; no stress path more than a point worse in drawdown; a plateau in `robust`; and it holds in `walk`. Measured in the `supersedes` form the deployment will trade; if `priority` shows superseding costs more than applying after, the write-up says so and the owner re-decides. |
 | The LLM's reports drive it instead of the proxy's | At least 120 scored sessions; 1-day skill over the VXN baseline above 0, with its 90% interval clear of 0; the LLM schedule's shadow at least the proxy's over the same sessions; and tiers stable on a rerun on at least 80% of nights. |
-| Real money | A passing paper `PromotionEvaluation` with the overlay on (at least 20 sessions), a promoted mapping id, and `live.control.risk_reports` granted in `config/production.yaml`. |
+| Real money | The owner wants real money to take reports, checked by default on the Live page beside paper. Granting `live.control.risk_reports` in `config/production.yaml` and `fidelity_live.yaml` waits for a passing paper `PromotionEvaluation` with the overlay on (at least 20 sessions) and a promoted mapping id, as every real-money change in this repository does. Until then the panel shows those deployments unticked and says why. |
 
 If nothing passes, the system keeps Phase 0 (archive and score) and the manual pause it already
 has, and the write-up says so. If the proxy passes and the LLM adds nothing over it, the nightly
@@ -398,7 +423,7 @@ step is unnecessary: the proxy runs itself.
 | Phase | Work | Done when | Size |
 |---|---|---|---|
 | **0. Record and score** (no effect on trading) | the parser and audit (`engine/core/risk_report.py`), the archive, the Live page panel in record-only mode, the nightly scorecard; the prompt committed with a version | a report is archived one evening, and its scorecard row exists after the next close | S |
-| **1. The seam** | `risk_overlay.py`, the `RiskManager` overlay and `at`, the `risk.overlay` and `live.control.risk_reports` config, the exemption hook, the command and its handlers, the risk section in the result row | the regression baseline is unchanged, and a parity test runs one schedule through backtest and live and gets the same buys | M |
+| **1. The seam** | `risk_overlay.py`, the `RiskManager` overlay and `at`, the `risk.overlay` and `live.control.risk_reports` config, the exemption hook, `MarketContext.report_supersedes` and the two strategies that read it, the command and its handlers, the risk section in the result row | the regression baseline is unchanged, and a parity test runs one schedule through backtest and live and gets the same buys | M |
 | **2. Measure** | `build_proxy_reports.py`, `probe_risk_overlay.py`, every stage above | `docs/research/risk-overlay.md`, with the tables, the null and the gates' verdict | L |
 | **3. Paper** | the passing mapping on `paper-ultimate` and/or `paper`, with the shadow with and without it | 20 or more sessions and a promotion record | M (calendar time) |
 | **4. Real money** | an owner decision on the record | | |
@@ -422,17 +447,20 @@ step is unnecessary: the proxy runs itself.
 
 ## Owner decisions
 
-1. **De-risk only from the browser?** Proposed: yes. More risk on calm days comes only through a
-   larger researched baseline in the YAML.
-2. **No report for a session**: neutral (the researched baseline, as the governor's stale rule
-   gives) or cautious (tier 1)?
-3. **Which deployments take reports**, and whether real money ever does.
-4. **The governor and the overlay together.** On `daily-ultimate-governed-tqqq` the two pauses
-   overlap. Measure both, keep one?
-5. **Blackouts against event boosts.** The strategies buy *more* on FOMC and earnings days
-   (`event_day_boost_multiplier` 2.5), a measured effect. A blackout should not undo it without
-   evidence of its own.
-6. **A budget** for sealed replays and reruns, if wanted.
+Decided Nov 20, 2026:
+
+| Question | Decision | What follows in this plan |
+|---|---|---|
+| May the browser only reduce risk? | **Yes.** | No `max_multiplier`; the clamp never grows a buy. More risk on calm days only through a larger researched baseline in the YAML (stage `joint`). |
+| No report for a session? | **Trade as normal.** | NEUTRAL: the YAML's algorithm exactly, governor and event boosts included. No `cautious` fallback, and no attention item for a missing report. |
+| Which deployments take reports; real money? | **Selectable per deployment, all by default, paper and real money.** | The Apply step lists every deployment configured for reports, all checked. Real money still types its id back, and its YAML grant follows the paper gate ([Gates](#gates)). |
+| The governor and the FOMC boosts? | **The report takes priority; it accounts for FOMC days itself.** | `risk.overlay.supersedes: [governor, event_boosts]`. On a report session the governor's pause and the event-day boosts stand down, and the mapping's catalyst component (merged with the engine's FOMC and earnings calendars) takes over. Stage `priority` measures what giving up the boosts costs. |
+
+Still open:
+
+- **Blackouts against event boosts** no longer conflict on report sessions (the boosts stand
+  down), but the blackout stays off until `catalysts` measures it.
+- **A budget** for sealed replays and reruns, if wanted.
 
 ## Tests
 
@@ -445,6 +473,10 @@ Each test lives in the section that owns its subject, with clocks injected:
   overlay is identical to today; the pause, the blackout's edges, the ceiling's `min` with the
   drawdown ramp, exempt buys.
 - `tests/test_task_7_1_live_backtest_parity.py`: the same schedule gives the same buys.
+- `research/tests/test_daily_ultimate.py` and the high-frequency sizing tests: with
+  `report_supersedes` empty nothing changes; with `governor` a session the governor would pause
+  is not paused; with `event_boosts` an FOMC or earnings session sizes at ×1; a NEUTRAL session
+  (no report) keeps both.
 - `research/tests/test_risk_overlay_mapping.py`: monotone in every input, bounded, abstains as
   specified; tonight's report maps to tier 3, pinned.
 - `research/tests/test_proxy_reports.py`: causal (changing any input after a session's cutoff
