@@ -12,7 +12,12 @@ from pathlib import Path
 import pytest
 
 from engine.core.risk_report import report_sha256
-from research.risk_overlay.forecasts import ForecastRefused, ForecastStore, default_path
+from research.risk_overlay.forecasts import (
+    ForecastRefused,
+    ForecastStore,
+    as_the_page_sends,
+    default_path,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests/fixtures/risk_reports"
@@ -41,7 +46,7 @@ class TestRecording:
             thursday(), via="check", operator="owner", at=SATURDAY_NIGHT.replace(minute=40)
         )
         assert first["new"] is True and again["new"] is False
-        assert first["sha256"] == report_sha256(thursday()) == again["sha256"]
+        assert first["sha256"] == report_sha256(as_the_page_sends(thursday())) == again["sha256"]
         assert first["session"] == "2026-11-20" and first["symbol"] == "TQQQ"
         assert len(store.receipts(first["sha256"])) == 2
         assert [row["session"] for row in store.sessions("TQQQ")] == ["2026-11-20"]
@@ -69,6 +74,26 @@ class TestRecording:
             "check",
         ]
 
+    def test_a_files_copy_and_the_pages_copy_are_one_report(self, store):
+        """The browser writes -22.0 as -22. Monday's report applied from the
+        page was archived by its trader as e65c4060431e; the same report read
+        from its file must land on that id, not beside it."""
+        from_file = store.record(weekend(), via="import")
+        from_page = store.record(json.loads(json.dumps(as_the_page_sends(weekend()))), via="check")
+        assert from_file["sha256"] == from_page["sha256"]
+        assert from_file["sha256"].startswith("e65c4060431e")
+        assert from_page["new"] is False
+        assert store.record(json.dumps(weekend()), via="import")["new"] is False
+
+    def test_whole_number_floats_become_integers_and_nothing_else_changes(self):
+        assert as_the_page_sends({"a": [-22.0, 0.5, 3], "b": {"c": 1.0}, "d": True, "e": "x"}) == {
+            "a": [-22, 0.5, 3],
+            "b": {"c": 1},
+            "d": True,
+            "e": "x",
+        }
+        assert isinstance(as_the_page_sends(-22.0), int)
+
     def test_the_raw_report_is_kept_whole(self, store):
         stored = store.record(thursday(), via="check")
         with sqlite3.connect(store.path) as con:
@@ -88,7 +113,7 @@ class TestSessions:
         store.record(later, via="check")
         rows = store.sessions("TQQQ")
         assert [row["session"] for row in rows] == ["2026-11-20", "2026-11-23"]
-        assert rows[0]["sha256"] == report_sha256(later)
+        assert rows[0]["sha256"] == report_sha256(as_the_page_sends(later))
         assert rows[0]["reports"] == 2
         assert rows[0]["expected_move_pct"] == 7.0
         assert rows[0]["quantiles"]["p05"] == -13.42 and rows[0]["median_pct"] == -0.19

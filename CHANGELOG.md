@@ -14,7 +14,10 @@ deployment.
   each report once by its SHA-256 (the traders' archive id), a receipt each
   time it is added, each finished session's closes, and each report's score.
   A report that fails the audit is not stored. The nightly `backup` service
-  now includes it.
+  now includes it. The browser writes `-22.0` as `-22` when the page sends a
+  report, which changes its hash, so the store keeps every report in that
+  form: a file's copy, the page's copy and a trader's archived copy are one
+  report.
 - **Kept on Check.** `server/risk_forecasts.py`, the database's one server
   writer, takes `POST /api/live/risk-forecasts`, and Check sends it before
   the previews: applied or not, the report is kept.

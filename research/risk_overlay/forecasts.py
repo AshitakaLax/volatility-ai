@@ -26,9 +26,13 @@ WHERE IT IS, AND WHO WRITES IT
 
 A report is keyed by its SHA-256 (engine/core/risk_report.py's
 report_sha256), the id the traders' archives use, so a row here joins
-theirs. It is stored only once it passes the audit -- one that fails cannot
-be scored -- and is never rewritten or deleted. Each time it is added is a
-receipt.
+theirs. The browser re-serialises every report the page sends, which writes
+a whole-number float as an integer (-22.0 becomes -22) and so changes the
+hash; a report is therefore stored in that same form (as_the_page_sends), so
+the copy imported from a file, the copy Check sent and the copy a trader
+archived are one report. It is stored only once it passes the audit -- one
+that fails cannot be scored -- and is never rewritten or deleted. Each time
+it is added is a receipt.
 
 --------------------------------------------------------------------
 TABLES
@@ -49,10 +53,11 @@ TABLES
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -149,6 +154,19 @@ def _iso(moment: datetime) -> str:
     return moment.astimezone(UTC).isoformat()
 
 
+def as_the_page_sends(value: Any) -> Any:
+    """`value` with every whole-number float an integer, as the browser's
+    JSON.parse and JSON.stringify leave a report the Live page sends
+    (module docstring): -22.0 becomes -22, 0.5 stays 0.5."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, Mapping):
+        return {key: as_the_page_sends(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [as_the_page_sends(item) for item in value]
+    return value
+
+
 class ForecastStore:
     """The database at `path` (module docstring). Each call opens its own
     connection: the server and the tracking service write it from two
@@ -185,6 +203,11 @@ class ForecastStore:
         """Store `report` and a receipt for this adding of it. Raises
         ForecastRefused when it does not pass the audit. Returns its id, the
         session it is for, and whether it was new."""
+        if isinstance(report, (str, bytes)):
+            with suppress(ValueError):  # not JSON: the audit says so
+                report = json.loads(report)
+        if isinstance(report, Mapping):
+            report = as_the_page_sends(report)
         audit = parse_report(report)
         if not audit.ok:
             raise ForecastRefused(audit)
@@ -428,4 +451,10 @@ def _session_row(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-__all__ = ["QUANTILE_KEYS", "ForecastRefused", "ForecastStore", "default_path"]
+__all__ = [
+    "QUANTILE_KEYS",
+    "ForecastRefused",
+    "ForecastStore",
+    "as_the_page_sends",
+    "default_path",
+]
