@@ -1,8 +1,9 @@
 import { FileJson } from "lucide-react";
-import { useState, type DragEvent } from "react";
+import { useCallback, useState, type DragEvent } from "react";
 
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Input } from "@/components/ui/primitives";
-import { api } from "@/lib/api";
+import { usePolled } from "@/hooks/usePolled";
+import { ApiError, api } from "@/lib/api";
 import { rememberedOperator, rememberOperator } from "@/lib/control";
 import {
   checkedByDefault,
@@ -17,12 +18,19 @@ import {
 } from "@/lib/riskReport";
 import { cn } from "@/lib/utils";
 import type { DeploymentSummary } from "@/types/control";
-import type { RiskReportPreview } from "@/types/riskReport";
+import type { RecordedForecast, RiskReportPreview } from "@/types/riskReport";
+
+import { ForecastChart } from "./ForecastChart";
 
 /**
  * Tonight's risk report (docs/daily_risk_report_plan.md): paste or drop the
  * JSON the evening prompt returned, CHECK it, then APPLY it to the
  * deployments ticked.
+ *
+ * Check first keeps the report in the forecast database
+ * (server/risk_forecasts.py) -- every report checked, applied or not -- and
+ * the chart beneath shows it beside the sessions before it: each forecast's
+ * range and where its close landed, recorded by the nightly tracking run.
  *
  * Check asks the server what the report would do to each deployment whose
  * config takes reports -- its audit, the session it is for, and the overlay
@@ -47,6 +55,11 @@ interface Sent {
   text: string;
 }
 
+/** What came of keeping the report in the forecast database. */
+type Kept = { ok: true; stored: RecordedForecast } | { ok: false; audit: boolean; text: string };
+
+const FORECAST_POLL_MS = 5 * 60_000;
+
 function newKey(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -63,6 +76,10 @@ export function RiskReportPanel({ deployments, onSent }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<Sent[]>([]);
   const [key, setKey] = useState(newKey);
+  const [kept, setKept] = useState<Kept | null>(null);
+  const [chartSymbol, setChartSymbol] = useState<string | undefined>(undefined);
+  const loadForecasts = useCallback(() => api.riskForecasts(chartSymbol), [chartSymbol]);
+  const forecasts = usePolled(loadForecasts, FORECAST_POLL_MS);
 
   if (!listed.length) return null;
   const pasted = parsePasted(text);
@@ -70,11 +87,23 @@ export function RiskReportPanel({ deployments, onSent }: Props) {
 
   const check = async () => {
     if (!pasted.report) return;
+    const report = pasted.report;
     setBusy(true);
     setError(null);
     setSent([]);
+    setKept(null);
+    // Kept whatever the deployments make of it: the record of every report
+    // is what says, later, whether the reports were worth anything.
+    const keeping = api.recordRiskForecast(report, operator.trim()).then(
+      (stored): Kept => ({ ok: true, stored }),
+      (cause: unknown): Kept => ({
+        ok: false,
+        audit: cause instanceof ApiError && cause.status === 422,
+        text: cause instanceof Error ? cause.message : String(cause),
+      }),
+    );
     try {
-      const found = await Promise.all(listed.map((d) => api.previewRiskReport(d.id, pasted.report)));
+      const found = await Promise.all(listed.map((d) => api.previewRiskReport(d.id, report)));
       setPreviews(found);
       setChecked(Object.fromEntries(found.map((p) => [p.deployment, checkedByDefault(p)])));
       setTyped({});
@@ -82,6 +111,10 @@ export function RiskReportPanel({ deployments, onSent }: Props) {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
+      const outcome = await keeping;
+      setKept(outcome);
+      if (outcome.ok) setChartSymbol(outcome.stored.symbol);
+      forecasts.refresh();
       setBusy(false);
     }
   };
@@ -175,7 +208,14 @@ export function RiskReportPanel({ deployments, onSent }: Props) {
             {busy && !previews ? "Checking…" : "Check"}
           </Button>
 
+          {kept ? <KeptLine kept={kept} /> : null}
           {first ? <AuditSummary preview={first} /> : null}
+
+          <ForecastChart
+            data={forecasts.data}
+            error={forecasts.error}
+            highlight={kept?.ok ? kept.stored.sha256 : null}
+          />
 
           {previews && first?.audit.ok ? (
             <div className="space-y-2">
@@ -220,6 +260,25 @@ export function RiskReportPanel({ deployments, onSent }: Props) {
         </CardContent>
       </Card>
     </details>
+  );
+}
+
+function KeptLine({ kept }: { kept: Kept }) {
+  if (!kept.ok) {
+    return (
+      <p className={cn("text-xs", kept.audit ? "text-muted-foreground" : "text-loss")}>
+        Not saved to the forecast database: {kept.text}
+      </p>
+    );
+  }
+  const { stored } = kept;
+  return (
+    <p className="text-xs text-muted-foreground">
+      {stored.new
+        ? `Saved to the forecast database: ${stored.symbol} for ${sessionDay(stored.session)}.`
+        : `Already in the forecast database (${stored.symbol} for ${sessionDay(stored.session)}, checked ${stored.receipts} times).`}{" "}
+      Its actual return is added after that session closes.
+    </p>
   );
 }
 

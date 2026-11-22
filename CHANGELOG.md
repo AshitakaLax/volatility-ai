@@ -1,5 +1,46 @@
 # Changelog
 
+## Feature: every risk report kept, and charted against its close
+
+**Every nightly risk report checked on the Live page is now kept in a
+database, and the panel charts each forecast beside where the session's
+close landed.** Without this, a report was saved only inside a deployment's
+control directory, and only once applied. Judging whether the reports are
+worth anything needs every one of them and every outcome, apart from any
+deployment.
+
+- **The forecast database** (`research/risk_overlay/forecasts.py`): SQLite
+  at `warehouse/forecasts/risk_reports.db` (`VAI_FORECAST_DB`). It holds
+  each report once by its SHA-256 (the traders' archive id), a receipt each
+  time it is added, each finished session's closes, and each report's score.
+  A report that fails the audit is not stored. The nightly `backup` service
+  now includes it.
+- **Kept on Check.** `server/risk_forecasts.py`, the database's one server
+  writer, takes `POST /api/live/risk-forecasts`, and Check sends it before
+  the previews: applied or not, the report is kept.
+  `GET /api/live/risk-forecasts` serves a symbol's last sessions.
+- **Scored every night.** After the deployments, the `tracking` service
+  copies in any report a trader archived, records the close of each
+  finished session with a report, and scores each report with the existing
+  `score_session`. The closes are the warehouse's regular-hours ones, so
+  every deployment sees the same numbers. A close is written once and only
+  for a finished session: the last bar at 15:45 or later, or a later
+  session in the warehouse. `tracking` mounts `./warehouse/forecasts`
+  read-write for this; the rest of the warehouse stays read-only.
+  `tools/score_risk_reports.py --forecasts` runs the step by hand, and
+  `--import` stores report files.
+- **The chart** (`ForecastChart`, `lib/forecastChart.ts`): each session's
+  90% range, middle 50% and median, with the close marked green inside the
+  middle 50%, amber inside the 90% range, and red outside it (a triangle
+  pointing the way it missed). A session waiting for its close is dashed.
+  Check refreshes it.
+- **The two reports so far are stored**: Thursday's for Fri Nov 20 and
+  Saturday's for Mon Nov 23 (now `tests/fixtures/risk_reports/
+  tqqq_2026-11-23.json`). Friday closed -16.3% (48.99 to 40.99), below its
+  90% range of -13.4% to +12.0%.
+- `engine/warehouse/bars.load_frame` takes an optional `since`, so the
+  nightly step reads days, not TQQQ's decade of minutes.
+
 ## Feature: the nightly risk report, advisory first (docs/daily_risk_report_plan.md, Phases 0-2)
 
 **The evening's LLM risk report can now be pasted on the Live page, checked,

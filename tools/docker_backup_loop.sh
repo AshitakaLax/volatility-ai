@@ -11,7 +11,9 @@
 # see docs/DEPLOY.md, "Backups".
 #
 # Ledgers are found, not listed: every *.db in the mounted state volumes,
-# so a second paper loop's ledger is backed up without editing this.
+# so a second paper loop's ledger is backed up without editing this. The
+# forecast database (every nightly risk report checked, and its score) sits
+# in the warehouse and is named.
 set -u
 
 AT="${VAI_BACKUP_AT:-03:30}"
@@ -38,7 +40,8 @@ run() {
 
 backup() {
     set --
-    for db in /app/state*/*.db /app/warehouse/market_data.duckdb /app/warehouse/sim_results.duckdb; do
+    for db in /app/state*/*.db /app/warehouse/market_data.duckdb /app/warehouse/sim_results.duckdb \
+        /app/warehouse/forecasts/risk_reports.db; do
         [ -f "$db" ] && set -- "$@" --db "$db"
     done
     if [ "$#" -eq 0 ]; then

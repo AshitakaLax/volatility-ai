@@ -181,7 +181,7 @@ def row_count(ticker: str) -> int | None:
     return int(count) if count else None
 
 
-def load_frame(ticker: str) -> pd.DataFrame:
+def load_frame(ticker: str, since: pd.Timestamp | None = None) -> pd.DataFrame:
     """One ticker's full bar history, shaped exactly like the old
 
         pd.read_csv(KNOWN_DATA[ticker], parse_dates=["timestamp"]).set_index("timestamp")
@@ -198,16 +198,21 @@ def load_frame(ticker: str) -> pd.DataFrame:
     `available_tickers()` first for the "no data at all" case, exactly
     as they gated on file-existence before; this only has to behave
     sanely if that gate is skipped.
+
+    `since` (a tz-aware instant) keeps only the bars at or after it, for a
+    caller that needs the last few sessions and not the decade before them
+    (tools/score_risk_reports.py's nightly closes).
     """
+    sql = "SELECT timestamp, open, high, low, close, volume FROM ohlcv WHERE ticker = ?"
+    params: list[Any] = [ticker]
+    if since is not None:
+        sql += " AND timestamp >= ?"
+        params.append(pd.Timestamp(since).tz_convert("UTC").to_pydatetime())
     with _reading() as con:
         if con is None:
             return _empty_frame()
         try:
-            frame = con.execute(
-                "SELECT timestamp, open, high, low, close, volume "
-                "FROM ohlcv WHERE ticker = ? ORDER BY timestamp",
-                [ticker],
-            ).df()
+            frame = con.execute(f"{sql} ORDER BY timestamp", params).df()
         except Exception as e:
             # Still "no data" to the caller, but never silently: a warehouse
             # whose views point at a moved directory looked exactly like an

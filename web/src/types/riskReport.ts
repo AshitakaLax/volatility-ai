@@ -4,7 +4,9 @@
  * Hand-mirrored from server/: the overlay is engine/core/risk_overlay.py's
  * SessionOverlay.to_dict(), a mapped report research/risk_overlay/mapping.py's
  * Mapped.to_dict(), the preview research/risk_overlay/preview.py's, the
- * archive rows server/live.py's _slim_entry. Change both sides together.
+ * archive rows server/live.py's _slim_entry, the forecast database's rows
+ * research/risk_overlay/forecasts.py's _session_row (server/risk_forecasts.py).
+ * Change both sides together.
  */
 
 /** What one session is told. Every lever can only take risk away. */
@@ -177,4 +179,51 @@ export interface TraderRiskOverlay {
   } | null;
   notes: string[];
   checked_at: string | null;
+}
+
+export type QuantileKey = "p01" | "p05" | "p25" | "p75" | "p95" | "p99";
+
+/** One session in the forecast database (GET /api/live/risk-forecasts): its
+ * newest report's 1-day forecast, and what the session did once the tracking
+ * service has recorded its close after the close. */
+export interface ForecastSession {
+  session: string;
+  symbol: string;
+  sha256: string;
+  as_of: string;
+  received_at: string;
+  /** Reports stored for this session; the newest by as_of is the one shown. */
+  reports: number;
+  expected_move_pct: number;
+  median_pct: number;
+  quantiles: Record<QuantileKey, number>;
+  volatility_state: string | null;
+  /** The close-to-close return from the warehouse's regular-hours closes. */
+  actual: {
+    return_pct: number;
+    close: number;
+    prior_close: number;
+    prior_session: string;
+    recorded_at: string;
+  } | null;
+  score: { in_90: boolean; in_50: boolean; pit: number; pinball: number; move_ratio: number } | null;
+}
+
+export interface RiskForecasts {
+  /** The symbol shown: the one asked for, else the most recently received. */
+  symbol: string | null;
+  symbols: string[];
+  /** Oldest first. */
+  sessions: ForecastSession[];
+}
+
+/** POST /api/live/risk-forecasts: the report kept. */
+export interface RecordedForecast {
+  sha256: string;
+  symbol: string;
+  session: string;
+  /** False when this report was already stored (a receipt is added either way). */
+  new: boolean;
+  warnings: number;
+  receipts: number;
 }

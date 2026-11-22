@@ -55,6 +55,7 @@ from server import (
     live_control,
     ml_insights,
     ml_upstream,
+    risk_forecasts,
     shards,
     upstream,
     warehouse_status,
@@ -111,6 +112,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.include_router(live.router)
 app.include_router(live_control.router)
 app.include_router(algorithms.router)
+app.include_router(risk_forecasts.router)
 # THE BACKTEST ROUTES COME FROM ONE PLACE OR THE OTHER, NEVER BOTH.
 #
 # With VAI_BACKTEST_UPSTREAM set this host forwards them and never
