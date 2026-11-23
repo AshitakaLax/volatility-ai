@@ -44,6 +44,34 @@ deployment.
 - `engine/warehouse/bars.load_frame` takes an optional `since`, so the
   nightly step reads days, not TQQQ's decade of minutes.
 
+## Research: the risk overlay measured (Phase 2 of docs/daily_risk_report_plan.md)
+
+**Every stage has now run on the real data, across about 7,700 full-history backtests of the champion
+grid, Ultimate and Daily Ultimate. No lever driven by the proxy passes its gate, so every
+deployment stays advisory.** The results are in `docs/research/risk-overlay.md`, and the
+probe's full report is in `docs/research/risk-overlay-results.md`.
+
+- **The proxy's timing is chance.** No real schedule beats 36 of its 40 time-shifted copies. The
+  closest is Daily Ultimate's grid spacing, at 30.
+- **The bar for a report.** It must beat the proxy by λ 0.2 to 0.3 on the Ultimate books and 0.5
+  on the grid. At λ 0.3 that is a 0.67 rank correlation with the session's move, against the
+  proxy's 0.40, and 0.57 with the month's drawdown, against 0.25.
+- **Mapping v1 costs the grid a quarter of its return even with a perfect report.** A report
+  about the fund's path does not pick out the grid's costly sessions. One that flags fewer days
+  still gives up 16% of the return.
+- **An alarmist report pays on the Ultimate books** once it is right at ρ 0.5 or better. At the
+  proxy's tier frequencies, even a perfect report flags too few sessions for them.
+- **The ρ scale overstates a report like the proxy.** The proxy's fields correlate 0.16 to 0.40
+  with what followed, yet its schedule loses on every book, worse than random tiers on both
+  Ultimate books. So the write-up suggests the LLM's gate use λ\*, not λ > 0, for the owner to
+  decide.
+- **Fixed: the synthetic bias knob changed nothing.** z + β is lost to a quantile map, which keeps
+  only ranks. β now moves each rank's quantile, in the fields and the tiers. The bias runs were
+  redone under new names, and the report leaves out the old ones.
+- **The probe's report** now tables the error knobs beside plain noise, the advisory operator by
+  setting, and the stress paths against the real path, not the first run that finished.
+
+
 ## Feature: the nightly risk report, advisory first (docs/daily_risk_report_plan.md, Phases 0-2)
 
 **The evening's LLM risk report can now be pasted on the Live page, checked,

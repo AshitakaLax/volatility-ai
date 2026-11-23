@@ -34,8 +34,15 @@ accuracy: accuracy moves WHICH days are flagged, never how often.
 
 The other ways a report goes wrong are knobs on the noise: persistence phi
 (AR(1) errors), shared error eta (one misreading across fields), bias beta
-(z + beta: complacent below 0, alarmist above), a missing rate (sessions with
-no report) and a catalyst miss rate. Seeds choose which days are wrong.
+(complacent below 0, alarmist above), a missing rate (sessions with no
+report) and a catalyst miss rate. Seeds choose which days are wrong.
+
+The bias is the one knob that changes how often: a quantile map keeps only
+ranks, so z + beta would change nothing. Instead each rank's normal quantile
+is moved by beta before its value is picked, in the fields and again when the
+score is ranked onto the proxy's tiers. On TQQQ from 2016, an alarmist
+history (beta 0.5) puts 33% of sessions in tier 3 against the proxy's 18%,
+and a complacent one (-0.5) 8%.
 """
 
 from __future__ import annotations
@@ -220,22 +227,27 @@ def latents(truth: Truths, proxy: Mapping[str, np.ndarray], knobs: Knobs) -> dic
             )
             residual = z_truth - beta * z_proxy
             z = _standardise(z_proxy + knobs.accuracy * _standardise(residual))
-        out[field] = z + knobs.bias
+        out[field] = z  # the bias acts in quantile_map, where a shift survives
     return out
 
 
-def quantile_map(z: np.ndarray, reference: np.ndarray) -> np.ndarray:
-    """Each z's rank picks the value at that rank in `reference`."""
+def quantile_map(z: np.ndarray, reference: np.ndarray, shift: float = 0.0) -> np.ndarray:
+    """Each z's rank picks the value at that rank in `reference`. A `shift`
+    (the bias knob, in z units) first moves each rank's normal quantile, so
+    the values sit higher on the reference (shift > 0) or lower than the
+    ranks alone would put them."""
     from scipy import stats
 
     order = np.sort(np.asarray(reference, dtype=float))
     # Ordinal ranks: with as many z as reference values this is an exact
     # permutation of the reference, so its frequencies are kept exactly.
     ranks = stats.rankdata(z, method="ordinal") - 1
-    picks = np.clip(
-        np.round(ranks / max(1, len(z) - 1) * (len(order) - 1)).astype(int), 0, len(order) - 1
-    )
-    return order[picks]
+    if shift:
+        u = stats.norm.cdf(stats.norm.ppf((ranks + 0.5) / len(z)) + shift)
+        picks = np.floor(u * len(order)).astype(int)
+    else:
+        picks = np.round(ranks / max(1, len(z) - 1) * (len(order) - 1)).astype(int)
+    return order[np.clip(picks, 0, len(order) - 1)]
 
 
 def synthetic_reports(
@@ -245,7 +257,7 @@ def synthetic_reports(
     session the `missing` knob leaves without one."""
     proxy = proxy_fields(reports)
     z = latents(truth, proxy, knobs)
-    mapped = {field: quantile_map(z[field], proxy[field]) for field in FIELDS}
+    mapped = {field: quantile_map(z[field], proxy[field], knobs.bias) for field in FIELDS}
     rng = random.Random(knobs.seed * 7919 + 1)
     out: list[RiskReport | None] = []
     for i, report in enumerate(reports):
@@ -318,7 +330,8 @@ def synthetic_schedule(
     TIER is then ranked onto the proxy's own tiers (quantile_map of the score
     onto the proxy's tier assignments), so the tiers' frequencies are the
     proxy's whatever the accuracy -- the fields' marginals alone would not
-    hold them, since the score depends on how the fields move together. The
+    hold them, since the score depends on how the fields move together --
+    unless the bias knob moves them (module docstring). The
     step and the week's cap come from the synthetic fields, whose marginals
     are the proxy's. `inputs[i]` is proxy report i's MappingInputs,
     `received[i]` when it arrived."""
@@ -336,7 +349,7 @@ def synthetic_schedule(
     present = scores >= 0
     tiers = np.zeros(len(scores), dtype=int)
     if present.any():
-        tiers[present] = quantile_map(scores[present], proxy_tiers).astype(int)
+        tiers[present] = quantile_map(scores[present], proxy_tiers, knobs.bias).astype(int)
     entries = []
     for i, m in enumerate(mapped):
         if m is None or m.abstained:

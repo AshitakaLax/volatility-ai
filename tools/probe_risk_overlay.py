@@ -89,8 +89,11 @@ KNOB_ACCURACIES = (0.2, 0.5, 0.9)
 KNOBS = {
     "persistence": {"persistence": 0.8},
     "shared": {"shared": 0.7},
-    "complacent": {"bias": -0.5},
-    "alarmist": {"bias": 0.5},
+    # Named by their beta. Runs named "complacent" and "alarmist" were made
+    # while the bias changed nothing (research/risk_overlay/synthetic.py, the
+    # bias), and the report leaves them out.
+    "bias -0.5": {"bias": -0.5},
+    "bias +0.5": {"bias": 0.5},
     "missing": {"missing": 0.1},
     "catalyst_miss": {"catalyst_miss": 0.3},
 }
@@ -863,6 +866,46 @@ def _delta(row: dict, base: dict) -> dict:
     }
 
 
+TABLE_ROWS = 60
+
+
+def _base(rows: list[dict], stage: str, book: str) -> dict | None:
+    """The stage's run with no overlay on the real path ("<stage> <book>
+    none"), else any run with none. Results arrive in the order they
+    finish, so the first `none` of the stress stage can be a stress path's."""
+    named = f"{stage} {book} none" if stage else None
+    return next((r for r in rows if named and r.get("name") == named), None) or next(
+        (r for r in rows if r["meta"].get("form") == "none" and not r["meta"].get("stress")), None
+    )
+
+
+def advisory_summary(rows: list[dict], base: dict) -> list[str]:
+    """The operator model by follow-through and delay: each setting's seeds
+    averaged against no overlay (the table above lists runs, not settings)."""
+    groups: dict[tuple, list[dict]] = {}
+    for r in rows:
+        meta = r["meta"]
+        if "follow" in meta:
+            groups.setdefault((meta["follow"], meta.get("delay", 0)), []).append(r)
+    if not groups:
+        return []
+    b = base["metrics"]
+    out = [
+        "| follows | after | seeds | d return | d max DD | d Calmar | seeds better |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for (follow, delay), runs in sorted(groups.items()):
+        d_return = statistics.mean(r["metrics"]["cagr"] - b["cagr"] for r in runs)
+        d_dd = statistics.mean(r["metrics"]["max_dd"] - b["max_dd"] for r in runs)
+        d_calmar = [_calmar(r["metrics"]) - _calmar(b) for r in runs]
+        better = sum(1 for d in d_calmar if d > 0)
+        out.append(
+            f"| {follow:.0%} | {delay} min | {len(runs)} | {d_return:+.2f} pts | {d_dd:+.2f} pts "
+            f"| {statistics.mean(d_calmar):+.3f} | {better} of {len(runs)} |"
+        )
+    return out
+
+
 def report(out_dir: Path) -> str:
     rows = [r for r in du.load_results(out_dir) if du._ok(r)]
     lines = ["# Risk overlay measurement", ""]
@@ -875,8 +918,9 @@ def report(out_dir: Path) -> str:
             if stage == "attribution":
                 continue  # its labels feed the oracle and the AUC check
             stage_rows = [r for r in mine if r["stage"] == stage and "cagr" in r["metrics"]]
-            base = next((r for r in stage_rows if r["meta"].get("form") == "none"), None)
-            base = base or next((r for r in mine if r["meta"].get("form") == "none"), None)
+            if stage == "accuracy":  # results.jsonl keeps runs of retired knobs too
+                stage_rows = [r for r in stage_rows if r["meta"].get("knob") in (None, *KNOBS)]
+            base = _base(stage_rows, stage, book) or _base(mine, "", book)
             if base is None:
                 continue
             lines += [
@@ -885,7 +929,7 @@ def report(out_dir: Path) -> str:
                 "| run | CAGR | max DD | Calmar | d Calmar | 2017-21 | 2022 on |",
                 "|---|---|---|---|---|---|---|",
             ]
-            for r in stage_rows[:60]:
+            for r in stage_rows[:TABLE_ROWS]:
                 d = _delta(r, base)
                 m = r["metrics"]
                 halves = " | ".join(
@@ -894,6 +938,13 @@ def report(out_dir: Path) -> str:
                 lines.append(
                     f"| {r['name']} | {m['cagr']:.1f}% | {m['max_dd']:.1f}% | {_calmar(m):.2f} | {d['calmar']:+.2f} | {halves} |"
                 )
+            if len(stage_rows) > TABLE_ROWS:
+                lines.append(
+                    f"\n*The first {TABLE_ROWS} of {len(stage_rows)} runs; every run is in "
+                    "results.jsonl, and the lines below count them all.*"
+                )
+            if stage == "advisory":
+                lines += ["", *advisory_summary(stage_rows, base)]
             if stage == "stress":
                 for r in stage_rows:
                     if r["meta"].get("form") != "tiers":
@@ -935,7 +986,7 @@ def report(out_dir: Path) -> str:
                             f"\n{lever}: the real schedule beats {beaten} of {len(nulls)} shifted copies on Calmar."
                         )
             if stage == "accuracy":
-                lines += ["", *accuracy_curves(stage_rows, base)]
+                lines += ["", *accuracy_curves(stage_rows, base), "", *knob_table(stage_rows, base)]
             lines.append("")
     return "\n".join(lines)
 
@@ -975,6 +1026,42 @@ def accuracy_curves(rows: list[dict], base: dict) -> list[str]:
     out.append("")
     for lever, (star, star90) in breakeven.items():
         out.append(f"{lever}: rho* = {star}, rho*90 = {star90}")
+    return out
+
+
+def knob_table(rows: list[dict], base: dict) -> list[str]:
+    """The error knobs (all three levers, the noisy family): each knob's
+    median d Calmar beside plain noise at the same accuracy."""
+
+    def median_of(select) -> str:
+        values = [_delta(r, base)["calmar"] for r in rows if select(r["meta"])]
+        return f"{statistics.median(values):+.3f}" if values else "-"
+
+    knobs = [k for k in KNOBS if any(r["meta"].get("knob") == k for r in rows)]
+    if not knobs:
+        return []
+    out = [
+        "| knob | " + " | ".join(f"rho {a}" for a in KNOB_ACCURACIES) + " |",
+        "|---|" + "---|" * len(KNOB_ACCURACIES),
+    ]
+    plain = [
+        median_of(
+            lambda m, a=a: (
+                m.get("lever") == "all"
+                and m.get("family") == "noisy"
+                and m.get("accuracy") == a
+                and not m.get("knob")
+            )
+        )
+        for a in KNOB_ACCURACIES
+    ]
+    out.append("| none | " + " | ".join(plain) + " |")
+    for knob in knobs:
+        cells = [
+            median_of(lambda m, a=a, k=knob: m.get("knob") == k and m.get("accuracy") == a)
+            for a in KNOB_ACCURACIES
+        ]
+        out.append(f"| {knob} | " + " | ".join(cells) + " |")
     return out
 
 
