@@ -76,7 +76,11 @@ the session's close against the previous close), from either
                       tools/probe_forecast_harvest.py), or
   forecast_db         the forecast database every checked report is kept
                       in (research/risk_overlay/forecasts.py), read once a
-                      session for the newest report targeting it.
+                      session for the newest report targeting it, or
+  forecast_from_db    that database at its usual place (VAI_FORECAST_DB, else
+                      <warehouse>/forecasts/risk_reports.db): what a
+                      deployment's profile sets, the path being the
+                      container's rather than the profile's.
 
 A session with no report uses the fund's own volatility, as above.
 
@@ -171,6 +175,7 @@ class ForecastHarvestSizing(DailyUltimateSizing):
         size_max: float = 2.0,
         forecast_by_date: Mapping[date, Mapping[str, float]] | None = None,
         forecast_db: str | None = None,
+        forecast_from_db: bool = False,
         forecast_symbol: str = "TQQQ",
         trade_from: str | date | None = None,
         seed_levels: str | None = None,
@@ -215,6 +220,7 @@ class ForecastHarvestSizing(DailyUltimateSizing):
         self.seed_target = float(seed_target)
         self._forecasts = dict(forecast_by_date) if forecast_by_date else None
         self._forecast_db = forecast_db
+        self.forecast_from_db = bool(forecast_from_db)
         # Session state.
         self._session: date | None = None
         self._last_close: float | None = None
@@ -247,7 +253,7 @@ class ForecastHarvestSizing(DailyUltimateSizing):
     def _forecast_for(self, session: date) -> Mapping[str, float] | None:
         if self._forecasts is not None:
             return self._forecasts.get(session)
-        if self._forecast_db:
+        if self._forecast_db or self.forecast_from_db:
             return self._read_db(session)
         return None
 
@@ -256,9 +262,10 @@ class ForecastHarvestSizing(DailyUltimateSizing):
         as its tomorrow quantiles. Never raises: a missing or unreadable
         database is a session without a report."""
         try:
-            from research.risk_overlay.forecasts import ForecastStore
+            from research.risk_overlay.forecasts import ForecastStore, default_path
 
-            rows = ForecastStore(self._forecast_db).sessions(self.forecast_symbol, limit=5)
+            path = self._forecast_db or default_path()
+            rows = ForecastStore(path).sessions(self.forecast_symbol, limit=5)
         except Exception:
             return None
         for row in rows:

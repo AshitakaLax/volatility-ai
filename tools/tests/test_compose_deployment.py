@@ -492,3 +492,11 @@ def test_sigterm_takes_the_supervisors_ctrl_c_path():
 
     with pytest.raises(KeyboardInterrupt):
         _interrupt(signal.SIGTERM, None)
+
+
+def test_paper_ultimate_reads_the_risk_reports_and_cannot_write_them(compose):
+    """A forecast_harvest profile with forecast_from_db reads the session's
+    report from the forecast database; the paper trader only ever reads it."""
+    volumes = compose["services"]["paper-ultimate"]["volumes"]
+    assert "./warehouse/forecasts:/app/warehouse/forecasts:ro" in volumes
+    assert not any(m.startswith("./warehouse") and not m.endswith(":ro") for m in volumes)

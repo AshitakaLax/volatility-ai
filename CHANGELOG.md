@@ -45,7 +45,18 @@ docs/research/forecast-harvest.md.
   18 crossings. Three were followed by a 55–98% fall within a year (2000, 2008, 2022), which is
   what the opening must survive.
 - Pinned as `config/forecast_harvest_tqqq.yaml`, with a paper profile
-  `config/live_profiles/forecast-harvest-tqqq.yaml` (not promoted). Registered in the backtest
+  `config/live_profiles/forecast-harvest-tqqq.yaml` (not promoted).
+- **The aggressive profile** (`config/live_profiles/aggressive-forecast-harvest-tqqq.yaml`, pinned
+  as `config/forecast_harvest_aggressive_tqqq.yaml`) is the base leaning on the report:
+  - the day level at 2.5 × the report's p75;
+  - day parts allowed +0.3% to +8%;
+  - lots tilted by the report's median;
+  - each session's report read from the forecast database (`forecast_from_db`).
+
+  It makes 0.145% a session at a 25.4% drawdown, and its day parts make 25% of the profit against
+  the base's ~10%. It loses about 0.003% a session to a wrong report, gains 0.006% with one right
+  at ρ 0.5, and reaches 0.161% / 14.4% with a perfect one.
+- **paper-ultimate mounts `warehouse/forecasts/` read-only**, so a profile can read the reports. Registered in the backtest
   form (`param_schema.py`, `server/backtest.py`) and the Live page's summary.
 
 ## Feature: every risk report kept, and charted against its close

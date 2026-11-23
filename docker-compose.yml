@@ -180,6 +180,10 @@ services:
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data:ro
+      # The nightly risk reports, read-only: a forecast_harvest profile with
+      # forecast_from_db reads the session's report here at the open
+      # (research/risk_overlay/forecasts.py; `tracking` and `web` write it).
+      - ./warehouse/forecasts:/app/warehouse/forecasts:ro
       - state_ultimate:/app/state
       - control_ultimate:/app/control
 

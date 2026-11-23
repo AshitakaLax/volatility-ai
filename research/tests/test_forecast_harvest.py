@@ -368,3 +368,59 @@ def test_the_live_profile_is_the_pinned_config():
     assert profile["strategy_params"] == dict(config.strategy.strategy_params)
     assert profile["step"] == 0.002 and profile["profit_target"] == 0.2
     assert profile["symbols"] == ["TQQQ"]
+
+
+def test_a_deployment_reads_the_database_at_its_usual_place(tmp_path, monkeypatch):
+    import json
+    from pathlib import Path
+
+    from research.risk_overlay.forecasts import ForecastStore
+
+    db = tmp_path / "forecasts" / "risk_reports.db"
+    monkeypatch.setenv("VAI_FORECAST_DB", str(db))
+    report = (
+        Path(__file__).resolve().parents[2] / "tests/fixtures/risk_reports/tqqq_2026-11-20.json"
+    )
+    ForecastStore(db).record(json.loads(report.read_text(encoding="utf-8")), via="import")
+    s = ForecastHarvestSizing(
+        per_lot_pct=0.01, lookback_days=0.02, bars_per_day=390, forecast_from_db=True
+    )
+    s._last_close, s._closes = 48.99, [52.47]
+    s._new_session(_ctx(date(2026, 11, 20)))
+    assert s.forecast is not None and s.forecast["p75"] == 4.55
+
+
+# The aggressive profile is the base one with these changes, and nothing else.
+AGGRESSIVE = {
+    "day_k": 2.5,
+    "day_target_max": 0.08,
+    "day_target_min": 0.003,
+    "forecast_tilt": 0.5,
+    "forecast_from_db": True,
+}
+
+
+def test_the_aggressive_profile_is_the_base_one_leaning_on_the_report():
+    from pathlib import Path
+
+    import yaml
+
+    from engine.core.config import BacktestConfig
+
+    root = Path(__file__).resolve().parents[2]
+
+    def load(name):
+        return yaml.safe_load((root / "config/live_profiles" / name).read_text(encoding="utf-8"))
+
+    base, aggressive = (
+        load("forecast-harvest-tqqq.yaml"),
+        load("aggressive-forecast-harvest-tqqq.yaml"),
+    )
+    assert aggressive["strategy_params"] == {**base["strategy_params"], **AGGRESSIVE}
+    for key in ("strategy_id", "step", "profit_target", "symbols"):
+        assert aggressive[key] == base[key], key
+    pinned = BacktestConfig.from_yaml(root / "config/forecast_harvest_aggressive_tqqq.yaml")
+    assert dict(pinned.strategy.strategy_params) == aggressive["strategy_params"]
+    assert list(pinned.grid.steps) == [aggressive["step"]]
+    assert list(pinned.grid.profit_targets) == [aggressive["profit_target"]]
+    ForecastHarvestSizing(**aggressive["strategy_params"])

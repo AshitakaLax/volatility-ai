@@ -375,6 +375,177 @@ def plan_entry2(out_dir: Path) -> list[dict]:
     return specs
 
 
+# The aggressive profile: the pinned book reading the report boldly, its day
+# parts reaching for more of the profit.
+AGGRESSIVE_SHARE = (22.0, 30.0)  # the day parts' share of target-sale profit, in percent
+PINNED = _REPO_ROOT / "config" / "forecast_harvest_tqqq.yaml"
+
+
+def pinned() -> tuple[dict, float, float]:
+    """(strategy_params, step, target) of config/forecast_harvest_tqqq.yaml."""
+    from engine.core.config import BacktestConfig
+
+    config = BacktestConfig.from_yaml(PINNED)
+    return (
+        dict(config.strategy.strategy_params),
+        config.grid.steps[0],
+        config.grid.profit_targets[0],
+    )
+
+
+def plan_aggressive() -> list[dict]:
+    """The day level at 1-2x the report's p75, a higher cap and floor on the
+    day target, with and without the closing sale, the report's tilt on --
+    all read from the causal proxy reports."""
+    params, step, target = pinned()
+    specs = []
+    for k in (1.0, 1.5, 2.0):
+        for top in (0.04, 0.08):
+            for low in (0.002, 0.005):
+                for close in (375, None):
+                    p = {
+                        **params,
+                        "day_k": k,
+                        "day_target_max": top,
+                        "day_target_min": low,
+                        "day_close_minute": close,
+                        "forecast_tilt": 0.5,
+                    }
+                    name = pdu._name("agg k", k, "max", top, "min", low, "close", close)
+                    specs.append(
+                        spec(
+                            "aggressive",
+                            name,
+                            "forecast_harvest",
+                            p,
+                            step,
+                            target,
+                            source="proxy",
+                            use="aggressive",
+                            k=k,
+                            top=top,
+                            low=low,
+                            close=close,
+                        )
+                    )
+    # Between the grid's two cells either side of a 25% share (k 2, closing
+    # sale: a floor of 0.2% gives 22%, 0.5% gives 27%).
+    for k, top, low in (
+        (2.0, 0.04, 0.003),
+        (2.0, 0.04, 0.0035),
+        (2.0, 0.04, 0.004),
+        (2.0, 0.08, 0.0035),
+        (2.5, 0.08, 0.003),
+    ):
+        p = {
+            **params,
+            "day_k": k,
+            "day_target_max": top,
+            "day_target_min": low,
+            "day_close_minute": 375,
+            "forecast_tilt": 0.5,
+        }
+        name = pdu._name("agg k", k, "max", top, "min", low, "close", 375)
+        specs.append(
+            spec(
+                "aggressive",
+                name,
+                "forecast_harvest",
+                p,
+                step,
+                target,
+                source="proxy",
+                use="aggressive",
+                k=k,
+                top=top,
+                low=low,
+                close=375,
+            )
+        )
+    return specs
+
+
+def choose_aggressive(rows: list[dict]) -> dict | None:
+    """The highest daily return within DD_BUDGET whose day parts make
+    AGGRESSIVE_SHARE of the target profit, preferring those that still bank
+    a profit on DAILY_SHARE of invested sessions; the share nearest 25%
+    if none is in range."""
+    ok = [r for r in rows if r.get("metrics") and r.get("daily") and r["stage"] == "aggressive"]
+    lo, hi = AGGRESSIVE_SHARE
+
+    def share(r):
+        return r["daily"].get("day_part_share", 0.0)
+
+    inside = [r for r in ok if lo <= share(r) <= hi and r["metrics"]["max_dd"] <= DD_BUDGET]
+    banking = [r for r in inside if r["daily"]["pct_invested_sessions_profit"] >= DAILY_SHARE]
+    for pool in (banking, inside):
+        if pool:
+            return max(pool, key=lambda r: r["metrics"]["geo_daily"])
+    return min(ok, key=lambda r: abs(share(r) - 25.0), default=None)
+
+
+def plan_aggressive2(out_dir: Path) -> list[dict]:
+    """The chosen aggressive book against reports of every quality, and
+    started from every -43% crossing."""
+    chosen = choose_aggressive(pdu.load_results(out_dir))
+    if chosen is None:
+        raise SystemExit("run --stage aggressive first")
+    params, step, target = chosen["params"], chosen["step"], chosen["target"]
+    specs = [
+        spec(
+            "aggressive2",
+            "agg none",
+            "forecast_harvest",
+            params,
+            step,
+            target,
+            source="none",
+            use="aggressive",
+        )
+    ]
+    for rho in (-0.3, 0.0, 0.2, 0.5, 1.0):
+        for seed in range(3 if rho < 1 else 1):
+            specs.append(
+                spec(
+                    "aggressive2",
+                    pdu._name("agg rho", rho, "seed", seed),
+                    "forecast_harvest",
+                    params,
+                    step,
+                    target,
+                    source="synthetic",
+                    rho=rho,
+                    seed=seed,
+                    use="aggressive",
+                )
+            )
+    starts = [(day, None) for day in CROSSINGS]
+    starts += [(day, scenario) for scenario, day in stressed_crossings().items()]
+    for day, scenario in starts:
+        meta = {
+            "entry": day,
+            "plan": "aggressive, no seed",
+            "seed_target": None,
+            "scenario": scenario or "real",
+            # a real crossing reads the proxy's reports; a stressed path has none
+            "source": "none" if scenario else "proxy",
+        }
+        if scenario:
+            meta["stress"] = scenario
+        specs.append(
+            spec(
+                "entry",
+                pdu._name("entry", scenario or "real", day, "aggressive"),
+                "forecast_harvest",
+                {**params, "trade_from": day},
+                step,
+                target,
+                **meta,
+            )
+        )
+    return specs
+
+
 # --------------------------------------------------------------- reports
 
 
@@ -472,8 +643,15 @@ def extra_metrics(sim, row, frame, out) -> None:
     ret = pnl / basis.where(basis > 0)
     realized = pnl.groupby(sells["day"]).sum().reindex(sessions, fill_value=0.0)
     invested = opening.reindex(sessions) > 1e-9
-    small = (sells["sell_reason"].astype(str) == "profit_target") & (ret <= 0.0405)
-    target_pnl = pnl[sells["sell_reason"].astype(str) == "profit_target"].sum()
+    is_target = sells["sell_reason"].astype(str) == "profit_target"
+    small = is_target & (ret <= 0.0405)
+    target_pnl = pnl[is_target].sum()
+    # A day part's sale, read from the blotter itself: a lot's FIRST sale, at
+    # its target, of fewer shares than it bought (the swing part stays open).
+    bought = b[b["side"] == "buy"].groupby("lot_id")["qty"].sum().astype(float)
+    first = ~sells.duplicated("lot_id", keep="first")
+    partial = sells["qty"].astype(float) < sells["lot_id"].map(bought).fillna(0.0) - 1e-6
+    day_sale = is_target & first & partial
     q = b["qty"].astype(float)
     out["daily"] = {
         "pct_sessions_profit": float((realized > 0).mean() * 100),
@@ -483,6 +661,10 @@ def extra_metrics(sim, row, frame, out) -> None:
         else 0.0,
         "day_part_share_of_target_pnl": float(pnl[small].sum() / target_pnl * 100)
         if target_pnl > 0
+        else 0.0,
+        "day_part_share": float(pnl[day_sale].sum() / target_pnl * 100) if target_pnl > 0 else 0.0,
+        "day_part_share_of_all_pnl": float(pnl[day_sale].sum() / pnl.sum() * 100)
+        if pnl.sum() > 0
         else 0.0,
         "signal_exit_pnl": float(
             pnl[sells["sell_reason"].astype(str).str.contains("signal")].sum()
@@ -602,7 +784,8 @@ def _row(r: dict) -> str:
         f"| {r['name']} | {m.get('geo_daily', 0):.3f}% | {m.get('cagr', 0):.1f}% | "
         f"{m.get('max_dd', 0):.1f}% | {m.get('calmar', 0):.2f} | {early.get('geo_daily', 0):.3f}% | "
         f"{late.get('geo_daily', 0):.3f}% | {d.get('pct_invested_sessions_profit', 0):.0f}% | "
-        f"{d.get('pct_sessions_profit', 0):.0f}% | {d.get('day_part_share_of_target_pnl', 0):.0f}% |"
+        f"{d.get('pct_sessions_profit', 0):.0f}% | "
+        f"{d.get('day_part_share', d.get('day_part_share_of_target_pnl', 0)):.0f}% |"
     )
 
 
@@ -757,7 +940,10 @@ def report(out_dir: Path) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--stage", choices=("design", "design2", "forecast", "entry", "entry2"))
+    ap.add_argument(
+        "--stage",
+        choices=("design", "design2", "forecast", "entry", "entry2", "aggressive", "aggressive2"),
+    )
     ap.add_argument("--out", type=Path)
     ap.add_argument("--proxy")
     ap.add_argument("--jobs", type=int, default=8)
@@ -778,6 +964,10 @@ def main(argv: list[str] | None = None) -> int:
         specs = plan_forecast(args.out)
     elif args.stage == "entry2":
         specs = plan_entry2(args.out)
+    elif args.stage == "aggressive":
+        specs = plan_aggressive()
+    elif args.stage == "aggressive2":
+        specs = plan_aggressive2(args.out)
     else:
         specs = plan_entry(args.out)
     if args.stage not in ("design", "design2") and not args.proxy:

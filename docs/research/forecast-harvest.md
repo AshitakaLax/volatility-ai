@@ -26,6 +26,7 @@ $86.84.
 | **Pinned** | `config/forecast_harvest_tqqq.yaml`, plus the paper profile `config/live_profiles/forecast-harvest-tqqq.yaml` |
 | **The report** | Wired in two ways: research reads it from a schedule, and a deployment reads it from the forecast database. It sets the day part's price level, and optionally the lot size. **It changes this configuration by under 0.002% a session at any accuracy short of perfect, so a wrong report cannot hurt it.** Turn up its weight (`day_k: 1`, `forecast_tilt: 0.5`) only once the forecast database shows the reports' median tracking the close (ρ ≈ 0.5 or better). |
 | **How to start with $250,000 now** | **No seed and no lump sum: start the book itself, on paper first.** It is in its turbulent mode, so it buys only capitulation reversal lots: $25,000 in the last 10 minutes of a session down 8% or more, at most two open, each sold at +8%. The day-by-day grid restarts by itself when TQQQ calms. |
+| **Aggressive profile** | `aggressive-forecast-harvest-tqqq`: the same book reading the report at ten times the weight (day level 2.5 × p75, day parts +0.3% to +8%, lots tilted by the report's median), so the day parts make **~25% of the profit**. 0.145% a session at a 25.4% drawdown; it gains when the report is right (0.151% at ρ 0.5) and loses a little when it is wrong (0.143%). Section 5. |
 
 Measured with causal intrabar fills, dynamic slippage, no cash yield and $250,000, from 2016-01-04
 to 2026-11-20, scored from 2017-01-03:
@@ -252,18 +253,75 @@ As of Nov 23, 2026, TQQQ closed Nov 20 at $40.99, 52.8% below its June 2 high:
 - **The report stays advisory.** Keep checking it every night: the database's growing score is
   the evidence that would justify turning its weight up.
 
+### 5. The aggressive profile: leaning on the report, day parts ~25% of the profit
+
+`config/live_profiles/aggressive-forecast-harvest-tqqq.yaml` (pinned as
+`config/forecast_harvest_aggressive_tqqq.yaml`) is `forecast-harvest-tqqq` with five changes and
+nothing else (`research/tests/test_forecast_harvest.py` holds it there):
+
+| | base | aggressive |
+|---|---|---|
+| day level (`day_k`) | prev close × (1 + 0.25 × p75) | **prev close × (1 + 2.5 × p75)**, ten times the report's weight |
+| day target (`day_target_min` – `day_target_max`) | +0.2% – +4% | **+0.3% – +8%** |
+| lot tilt (`forecast_tilt`) | none | **× (1 + 0.5 × the report's median / σ)**, none when it leans hard down |
+| the report (`forecast_from_db`) | not read | **read each session from the forecast database** |
+
+**How it was chosen** (`tools/probe_forecast_harvest.py --stage aggressive`). There were 29 runs,
+all reading the causal proxy reports:
+- the day level at 1, 1.5, 2 and 2.5 × p75;
+- caps of +4% and +8%;
+- floors from +0.2% to +0.5%;
+- with and without the closing sale.
+
+The rule was the highest daily return within a 30% drawdown, among runs whose day parts make
+22–30% of the target-sale profit and that still bank a profit on half the invested sessions. The
+day parts' share is now read from the blotter: a lot's first, partial sale at its target. The old
+column counted any sale under +4%, which a higher cap would break.
+
+| Run (closing sale at 375 unless noted) | /session | max DD | invested sessions banking | day parts' share |
+|---|---|---|---|---|
+| base (k 0.25, +0.2%–4%) | 0.144% | 24.5% | 54% | ~10% |
+| k 1, +0.2% | 0.144% | 25.2% | 53% | 15% |
+| k 2, +0.2% | 0.145% | 25.3% | 51% | 22% |
+| **k 2.5, +0.3%–8% (the choice)** | **0.145%** | **25.4%** | **52%** | **25%** |
+| k 2, +0.5% | 0.146% | 26.0% | 49% | 27% |
+| k 2, no closing sale | 0.146–0.147% | 25.3–26.2% | 22–29% | 39–46% |
+
+**Against reports of chosen accuracy** (`--stage aggressive2`, three seeds each):
+
+| Report | /session | max DD | day parts' share |
+|---|---|---|---|
+| wrong (ρ −0.3) | 0.142–0.143% | 25.7–26.7% | 22–23% |
+| none (own volatility) | 0.146% | 25.1% | 26% |
+| proxy | 0.145% | 25.4% | 25% |
+| ρ 0.2 | 0.145–0.148% | 24.1–25.2% | 26% |
+| ρ 0.5 | 0.150–0.152% | 22.6–23.0% | 24% |
+| perfect (ρ 1) | 0.161% | 14.4% | 23% |
+
+- **This is a bet on the report.** The base configuration makes about 0.146% at every accuracy.
+  This one loses about 0.003% a session to a wrong report, and gains about 0.006% with one right
+  at ρ 0.5. Its break-even is about ρ 0.1–0.2.
+- **The day parts make 22–26% of the profit whatever the report.** The closing sale with a +0.3%
+  floor and the higher level are what put them there.
+- **Started at the −43% crossings it is the base's book:** 1.61× after a year at the median and
+  0.88× at the worst (2022). Its lowest point was 0.84× on the real crossings and 0.73× on the
+  deeper bears.
+
 ### Paper trial
 
-`config/live_profiles/forecast-harvest-tqqq.yaml` passes paper-ultimate's own validation
-(`research/tests/test_live_profiles.py`). Before trusting real money with it:
-- **Switching** is from the Live page: Algorithm → profile `forecast-harvest-tqqq`.
+Both profiles pass paper-ultimate's own validation (`research/tests/test_live_profiles.py`), and a
+switch keeps the open lots as a legacy book the new algorithm never sells. Before trusting real
+money with either:
+- **Switching** is from the Live page: Algorithm → profile `forecast-harvest-tqqq` or
+  `aggressive-forecast-harvest-tqqq`.
 - **The drawdown throttle.** `config/ultimate_paper.yaml` carries the reserve's throttle
   (`risk.dd_exposure_*`), which this book was not measured with. On Daily Ultimate it cost about a
   fifth of the return.
-- **The forecast database is not mounted.** paper-ultimate does not mount
-  `warehouse/forecasts/`, so the trial's day level comes from TQQQ's own volatility. The sweep
-  says that changes nothing measurable. Reading the reports live needs the mount, read-only, and
-  `forecast_db: /app/warehouse/forecasts/risk_reports.db`.
+- **The forecast database.** paper-ultimate now mounts `warehouse/forecasts/` read-only
+  (`docker-compose.yml`). The aggressive profile reads each session's report there at the open,
+  so check every evening's report on the Live page, which is what stores it. A session with no
+  report uses TQQQ's own volatility. The base profile does not read it, since the sweep found the
+  report changes nothing measurable at its weight.
 - **The paper account's size** sets what whole shares mean. A $2,000 lot needs the account at
   about $250,000 for the trial to match this research.
 
@@ -317,9 +375,12 @@ python tools/probe_forecast_harvest.py --stage design   --out OUT/runs --jobs 32
 python tools/probe_forecast_harvest.py --stage design2  --out OUT/runs --jobs 32
 python tools/probe_forecast_harvest.py --stage forecast --out OUT/runs --proxy OUT/proxy --jobs 40
 python tools/probe_forecast_harvest.py --stage entry    --out OUT/runs --proxy OUT/proxy --jobs 40
+python tools/probe_forecast_harvest.py --stage entry2   --out OUT/runs --proxy OUT/proxy --jobs 40
+python tools/probe_forecast_harvest.py --stage aggressive  --out OUT/agg --proxy OUT/proxy --jobs 29
+python tools/probe_forecast_harvest.py --stage aggressive2 --out OUT/agg --proxy OUT/proxy --jobs 21
 python tools/probe_forecast_harvest.py --report OUT/runs
 python tools/probe_crash_entries.py --out OUT/crash_entries.csv
 ```
 
-A full-history run takes 1–11 minutes. The four stages (432 runs) take about three hours on 40
+A full-history run takes 1–11 minutes. The stages (482 runs) take about four hours on 40
 cores.

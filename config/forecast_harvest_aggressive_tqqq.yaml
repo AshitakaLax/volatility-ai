@@ -1,0 +1,96 @@
+# AGGRESSIVE FORECAST HARVEST on TQQQ: config/forecast_harvest_tqqq.yaml
+# leaning on the nightly risk report, with its day parts reaching for about a
+# quarter of the profit (docs/research/forecast-harvest.md, "The aggressive
+# profile"). A pinned single-point config, not a deployment.
+#
+# Built off forecast_harvest_tqqq.yaml with five changes, nothing else
+# (research/tests/test_forecast_harvest.py holds it there):
+#
+#   day_k             0.25 -> 2.5   the day level is the previous close x
+#                                   (1 + 2.5 x the report's p75): ten times
+#                                   the report's weight
+#   day_target_max    0.04 -> 0.08  a day part may take up to +8%
+#   day_target_min    0.002 -> 0.003  and at least +0.3% (the closing sale's
+#                                   floor too)
+#   forecast_tilt     0 -> 0.5      lots x (1 + 0.5 x the report's median /
+#                                   its sigma): bigger when it leans up,
+#                                   none when it leans hard down
+#   forecast_from_db  false -> true read each session's report from the
+#                                   forecast database (warehouse/forecasts/)
+#
+# tools/probe_forecast_harvest.py --stage aggressive / aggressive2 (causal
+# fills, dynamic slippage, no cash yield, 2016-01-04 to 2026-11-20, scored
+# from 2017-01-03, $250,000; reports from the causal proxy):
+#
+#                          per session  CAGR   max DD  invested sessions  day parts'
+#                                                      banking a profit   share of profit
+#   this configuration       0.145%     44.2%   25.4%        52%              25%
+#     2022 onward            0.084%
+#   forecast_harvest_tqqq    0.144%     43.5%   24.5%        54%              ~10%
+#
+# Against reports of chosen accuracy (synthetic, three seeds each):
+#   wrong (rho -0.3) 0.142-0.143% / DD 25.7-26.7%; rho 0.2 0.145-0.148% /
+#   24.1-25.2%; rho 0.5 0.150-0.152% / 22.6-23.0%; perfect 0.161% / 14.4%.
+#   The base configuration is about 0.146% at every accuracy: this one is the
+#   bet that the report is right more often than not.
+# Started with $250,000 at each -43% crossing: 1.61x after a year at the
+# median, 0.88x at the worst (2022); never below 0.73x on the three bears
+# deeper than 2022.
+#
+strategy:
+  strategy_id: forecast_harvest
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: 0.008
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    natr_period: 14
+    natr_lookback: 100
+    regime_min_hold: 5
+    bear_dd: 0.5
+    bear_window: 250
+    turbulent_mode: reversal
+    reversal_threshold: -0.08
+    reversal_target: 0.08
+    reversal_lot_pct: 0.1
+    reversal_max_lots: 2
+    liquidate_minute: 60
+    compound_lots: false
+    daily_goal: 0.001
+    goal_pause_buys: false
+    goal_lock: false
+    harvest_min_gain: 0.002
+    whole_shares: true
+    day_fraction: 0.75
+    day_quantile: p75
+    day_k: 2.5
+    day_target_min: 0.003
+    day_target_max: 0.08
+    day_close_minute: 375
+    swing_target: 0.2
+    forecast_tilt: 0.5
+    forecast_from_db: true
+grid:
+  steps: [0.002]
+  profit_targets: [0.2]
+backtest: {symbol: TQQQ, initial_cash: 250000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {}
+search: {strategy: grid, rank_by: Total Return %, direction: maximize, seed: 42}
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  intrabar_fill: causal
+  enforce_no_loss: true
+  allow_signal_exit: true
+  cash_yield_pct: 0.0
+output: {return_full_results: false}
