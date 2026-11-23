@@ -430,6 +430,24 @@ STRATEGY_DEFAULTS["daily_ultimate"] = {
     "harvest_min_gain": 0.002,
 }
 
+# forecast_harvest: Daily Ultimate in whole shares with the day / swing split
+# the forecast-harvest sweep chose (docs/research/forecast-harvest.md,
+# config/forecast_harvest_tqqq.yaml) -- pinned to that file by
+# research/tests/test_forecast_harvest.py.
+STRATEGY_DEFAULTS["forecast_harvest"] = {
+    **STRATEGY_DEFAULTS["daily_ultimate"],
+    "whole_shares": True,
+    "day_fraction": 0.75,
+    "day_quantile": "p75",
+    "day_k": 0.25,
+    "day_target_min": 0.002,
+    "day_target_max": 0.04,
+    "day_close_minute": 375,
+    "swing_target": 0.2,
+    "reversal_lot_pct": 0.1,
+    "reversal_max_lots": 2,
+}
+
 # ultimate_rsp: the recommended configuration of docs/research/ultimate-rsp.md
 # (config/ultimate_rsp.yaml), which is also the constructor's defaults --
 # listed so the form shows them as the strategy's primary fields.
@@ -574,6 +592,9 @@ _PARAM_ENUMS["catalog_signal"] = list(CATALOG_SIGNALS)
 # caution_dir and caution_by_date are DailyUltimateSizing's risk governor:
 # where its outside series live, and the research injection of a
 # precomputed {date: paused} map (research/strategies/risk_governor.py).
+# forecast_by_date and forecast_db are ForecastHarvestSizing's nightly report:
+# the research injection of {session: quantiles}, and the forecast database
+# a deployment reads it from.
 _HIDDEN_PARAMS: frozenset[str] = frozenset(
     {
         "model_dir",
@@ -582,6 +603,8 @@ _HIDDEN_PARAMS: frozenset[str] = frozenset(
         "exposure_by_date",
         "caution_dir",
         "caution_by_date",
+        "forecast_by_date",
+        "forecast_db",
     }
 )
 

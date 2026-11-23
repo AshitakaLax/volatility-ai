@@ -1,0 +1,100 @@
+# FORECAST HARVEST on TQQQ: the configuration tools/probe_forecast_harvest.py
+# chose (docs/research/forecast-harvest.md -- read its caveats before using
+# this for anything but a backtest). A pinned single-point config, not a
+# search space and not a deployment: there is no `live:` section.
+#
+# The ask: whole shares, mostly daily profits, dynamic buying and selling, the
+# reward set by the nightly risk report, $250,000 started after a 43% fall.
+# The sweep's rule: the highest daily return within a 30% drawdown among the
+# designs whose invested sessions bank a profit at least half the time. Then
+# one deliberate change for the start: reversal lots of 10% x 2, not 20% x 4.
+#
+#   CALM       Daily Ultimate's grid (NATR(14) below its 100-session median,
+#              held 5 sessions, within 50% of the 250-session high): a lot of
+#              0.8% of starting equity at each 0.2% pullback, volatility-
+#              scaled, rounded DOWN to whole shares.
+#   THE SPLIT  75% of each calm lot's shares (whole) is its DAY part: sold at
+#              the session's level -- the previous close x (1 + 0.25 x the
+#              report's p75, or the fund's own volatility without a report),
+#              at least +0.2% and at most +4% over its cost -- or at the
+#              market from minute 375 if it is up 0.2% by then. The other 25%
+#              is its SWING part, sold at +20%.
+#   TURBULENT  no grid. One reversal lot (10% of starting equity, +8%, at most
+#              2 open) in the last 10 minutes of a session down 8% or more.
+#   THE FLIP   calm lots (both parts) are sold an hour into the first turbulent
+#              session -- the one sale that may realise a loss.
+#
+# tools/probe_forecast_harvest.py (intrabar causal fills, dynamic slippage,
+# no cash yield, 2016-01-04 to 2026-11-20, scored from 2017-01-03, $250,000):
+#
+#                          per session  CAGR   max DD  Calmar  invested sessions
+#                                                              banking a profit
+#   this configuration       0.144%     43.5%   24.5%   1.78        54%
+#     2017-2021              0.205%
+#     2022 onward            0.080%
+#   with 20% x 4 reversals   0.146%     44.2%   24.8%   1.78        55%
+#   Daily Ultimate (whole)   0.158%     48.8%   29.9%   1.63        12%
+#   TQQQ held                0.111%     32.3%   81.7%
+#
+# Started with $250,000 at each close 43% below TQQQ's high (2018-12-17,
+# 2020-03-09, 2022-02-18, 2025-04-03): a year later 1.60x the start at the
+# median, 0.88x at the worst (2022, when TQQQ itself was 0.45x), never below
+# 0.84x. On tools/stress_paths.py's three bears deeper than 2022 (to -92%,
+# -95%, -84% in a month): never below 0.72x, and 1.43x or more two years on.
+# With 20% x 4 reversal lots those were 0.38x and 0.82x.
+#
+strategy:
+  strategy_id: forecast_harvest
+  strategy_params:
+    bars_per_day: 387
+    per_lot_pct: 0.008
+    lookback_days: 0.02
+    event_day_boost_multiplier: 2.5
+    earnings_day_boost_multiplier: 1.5
+    vol_scale_exponent: -1.5
+    vol_fast_days: 0.25
+    vol_slow_days: 10.0
+    vol_scale_min: 0.25
+    vol_scale_max: 3.0
+    vol_measure: stdev
+    volume_scale_exponent: -1.0
+    natr_period: 14
+    natr_lookback: 100
+    regime_min_hold: 5
+    bear_dd: 0.5
+    bear_window: 250
+    turbulent_mode: reversal
+    reversal_threshold: -0.08
+    reversal_target: 0.08
+    reversal_lot_pct: 0.1
+    reversal_max_lots: 2
+    liquidate_minute: 60
+    compound_lots: false
+    daily_goal: 0.001
+    goal_pause_buys: false
+    goal_lock: false
+    harvest_min_gain: 0.002
+    whole_shares: true
+    day_fraction: 0.75
+    day_quantile: p75
+    day_k: 0.25
+    day_target_min: 0.002
+    day_target_max: 0.04
+    day_close_minute: 375
+    swing_target: 0.2
+grid:
+  steps: [0.002]
+  profit_targets: [0.2]
+backtest: {symbol: TQQQ, initial_cash: 250000.0}
+costs: {model_type: dynamic_slippage, commission_per_trade: 0.0, base_bps: 0.5, vol_multiplier: 0.3}
+risk: {}
+search: {strategy: grid, rank_by: Total Return %, direction: maximize, seed: 42}
+execution:
+  on_flat_reentry: stale_reference
+  intrabar_priority: sell_first
+  fill_model: intrabar
+  intrabar_fill: causal
+  enforce_no_loss: true
+  allow_signal_exit: true
+  cash_yield_pct: 0.0
+output: {return_full_results: false}

@@ -511,6 +511,9 @@ for _lib_id in (_i for _i, _c in STRATEGIES.items() if _c.__name__ == "LibrarySi
 # Daily Ultimate buys exactly as Ultimate does (its goal can only pause the
 # calm grid), so it is described the same way.
 _GRID_TRIGGER["daily_ultimate"] = dict(_GRID_TRIGGER["ultimate"])
+# Forecast Harvest buys as Daily Ultimate does; its seed ladder only adds
+# one-off levels below the anchor, so it is described the same way.
+_GRID_TRIGGER["forecast_harvest"] = dict(_GRID_TRIGGER["ultimate"])
 
 # ml_meta_label inherits hf_local_reference's level unchanged (the model
 # sizes a buy, it never moves the trigger).

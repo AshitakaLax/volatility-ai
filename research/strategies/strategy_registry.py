@@ -25,6 +25,7 @@ from research.ml.tft_sizing import TemporalFusionTransformerSizer
 from research.strategies.bayesian_sizing_calculators import BayesianDualScaleSizing
 from research.strategies.catalog_exposure_sizing import CatalogExposureSizing
 from research.strategies.daily_ultimate_sizing import DailyUltimateSizing
+from research.strategies.forecast_harvest_sizing import ForecastHarvestSizing
 from research.strategies.gated_local_reference_sizing import GatedLocalReferenceSizing
 from research.strategies.high_frequency_sizing import HighFrequencyLocalReferenceSizing
 from research.strategies.library_sizing import LibrarySizing, library_strategy_ids
@@ -80,6 +81,12 @@ STRATEGIES: dict[str, type[SizingStrategy]] = {
     # (config/daily_ultimate_tqqq.yaml) leaves the three switches off --
     # 0.160% a session from 2017, 0.099% from 2022, 29.9% max DD.
     "daily_ultimate": DailyUltimateSizing,
+    # Forecast Harvest (docs/research/forecast-harvest.md): Daily Ultimate in
+    # whole shares, each calm lot split into a day part sold at the session's
+    # forecast move and a swing part at the run's target, lots sized by the
+    # nightly report, and an optional seed ladder for starting after a deep
+    # fall. Same regime exit, so the same allow_signal_exit requirement.
+    "forecast_harvest": ForecastHarvestSizing,
     # Ultimate-RSP (docs/research/ultimate-rsp.md): not a grid. A daily
     # exposure target for RSP from two uncorrelated vote families --
     # PLUS_DM (upside volatility) and Chaikin ADOSC (money flow), each
@@ -190,7 +197,14 @@ STRATEGIES.update(dict.fromkeys(library_strategy_ids(), LibrarySizing))
 # A live deployment must set it in its own file:
 # research/strategies/live_algorithm.py refuses to start one without it.
 SIGNAL_EXIT_STRATEGIES: frozenset[str] = frozenset(
-    {"ultimate", "daily_ultimate", "ultimate_rsp", "ultimate_ursp", "catalog_exposure"}
+    {
+        "ultimate",
+        "daily_ultimate",
+        "forecast_harvest",
+        "ultimate_rsp",
+        "ultimate_ursp",
+        "catalog_exposure",
+    }
 )
 
 

@@ -1,5 +1,53 @@
 # Changelog
 
+## Research: Forecast Harvest, a whole-share TQQQ book that banks most sessions
+
+**A new TQQQ algorithm, `forecast_harvest`, built for the owner's ask:**
+- whole shares;
+- mostly daily profits;
+- dynamic buying and selling;
+- the reward set by the nightly risk report;
+- the best way to start $250,000 after TQQQ has fallen 43%.
+
+It is Daily Ultimate with each calm lot split into a day part and a swing part. It makes 0.144% a
+session (43.5% CAGR) at a 24.5% drawdown, and banks a profit on 54% of the sessions it is
+invested in, against Daily Ultimate's 0.158%, 29.9% and 12%. Details in
+docs/research/forecast-harvest.md.
+
+- **The strategy** (`research/strategies/forecast_harvest_sizing.py`, `strategy_id:
+  forecast_harvest`):
+  - Daily Ultimate's regime, reversal lots and regime exit are unchanged.
+  - **Whole shares.** Buys are rounded down to whole shares at their fill price.
+  - **The split.** A whole-share fraction of each calm lot sells at the session's level: the
+    previous close × (1 + k × the report's p75), at least +0.2% over cost, or at the market from a
+    closing minute. The rest sells at the swing target.
+  - **The report** may also size the lots.
+  - **A seed ladder** for the opening.
+  - With every addition off it is Daily Ultimate, blotter for blotter. Nothing new can sell below
+    cost.
+- **The report reaches it** from a research schedule or, live, from the forecast database
+  (`forecast_db`).
+- **The sweep** (`tools/probe_forecast_harvest.py`): 432 runs with causal fills, slippage, no
+  cash yield and $250,000. Its findings:
+  - Whole shares cost nothing at this size.
+  - Selling whole lots day by day halves the return.
+  - A ¾ day part with a closing sale keeps most of it and takes the drawdown from 29.9% to 24.8%.
+- **Fake reports at chosen accuracy, worst to best.** Read the gentle way the configuration does,
+  the report moves it by under 0.002% a session from "confidently wrong" (ρ −0.3) to perfect. Read
+  boldly, a perfect report would make 0.161% at a 15.4% drawdown. The break-even accuracy is
+  about ρ 0.2.
+- **The start.** From the four real −43% crossings and three synthetic bears deeper than 2022,
+  seeds and ladders raised the median a little and cut the worst outcomes a lot. The chosen start
+  is no seed, with reversal lots of 10% × 2 instead of 20% × 4: a year on, 1.60× the start at the
+  median and 0.88× at the worst (2022), never below 0.72× in the deeper bears (0.38× with
+  20% × 4).
+- **The long history** (`tools/probe_crash_entries.py`): a daily 3× Nasdaq-100 from 1985 shows
+  18 crossings. Three were followed by a 55–98% fall within a year (2000, 2008, 2022), which is
+  what the opening must survive.
+- Pinned as `config/forecast_harvest_tqqq.yaml`, with a paper profile
+  `config/live_profiles/forecast-harvest-tqqq.yaml` (not promoted). Registered in the backtest
+  form (`param_schema.py`, `server/backtest.py`) and the Live page's summary.
+
 ## Feature: every risk report kept, and charted against its close
 
 **Every nightly risk report checked on the Live page is now kept in a
