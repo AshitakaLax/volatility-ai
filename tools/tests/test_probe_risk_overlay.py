@@ -185,6 +185,81 @@ def test_the_auc_check_and_the_report(proxy_dir, tmp_path):
     assert "## grid" in text and "tiers grid x0.5" in text and "+0.20" in text
 
 
+def _result(stage, name, meta, cagr, dd):
+    metrics = {"cagr": cagr, "max_dd": dd, "calmar": cagr / dd}
+    return {
+        "stage": stage,
+        "name": name,
+        "meta": {"book": "grid", **meta},
+        "metrics": metrics,
+        "halves": {"2017-21": metrics, "2022 on": metrics},
+    }
+
+
+def test_the_stress_table_is_measured_against_the_real_path(tmp_path):
+    # Results arrive in the order they finish: a stress path's `none` first.
+    rows = [
+        _result(
+            "stress", "stress grid grind none", {"form": "none", "stress": "grind"}, 10.0, 80.0
+        ),
+        _result("stress", "stress grid none", {"form": "none"}, 40.0, 50.0),
+        _result(
+            "stress", "stress grid grind tiers", {"form": "tiers", "stress": "grind"}, 8.0, 40.0
+        ),
+    ]
+    (tmp_path / "results.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    text = P.report(tmp_path)
+    assert "| stress grid none | 40.0% | 50.0% | 0.80 | +0.00 |" in text
+    assert "| stress grid grind none | 10.0% | 80.0% | 0.12 | -0.68 |" in text
+    assert "grind: the tiers move max DD by -40.0 points." in text
+
+
+def test_the_advisory_runs_are_summarised_by_setting(tmp_path):
+    rows = [_result("advisory", "advisory grid none", {"form": "none"}, 40.0, 50.0)]
+    for seed, cagr in enumerate((38.0, 44.0)):
+        rows.append(
+            _result(
+                "advisory",
+                f"advisory grid follow 0.5 after 30m seed {seed}",
+                {"follow": 0.5, "delay": 30, "seed": seed},
+                cagr,
+                50.0,
+            )
+        )
+    rows += [
+        _result(
+            "advisory", f"advisory grid x{i}", {"follow": 1.0, "delay": 0, "seed": i}, 30.0, 50.0
+        )
+        for i in range(P.TABLE_ROWS)
+    ]
+    (tmp_path / "results.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    text = P.report(tmp_path)
+    assert "| 50% | 30 min | 2 | +1.00 pts | +0.00 pts | +0.020 | 1 of 2 |" in text
+    assert f"| 100% | 0 min | {P.TABLE_ROWS} | -10.00 pts |" in text
+    assert f"The first {P.TABLE_ROWS} of {P.TABLE_ROWS + 3} runs" in text
+
+
+def test_the_error_knobs_are_tabled_beside_plain_noise(tmp_path):
+    rows = [_result("accuracy", "accuracy grid none", {"form": "none"}, 40.0, 50.0)]
+    plain = {"lever": "all", "family": "noisy", "accuracy": 0.2}
+    rows += [
+        _result("accuracy", f"all noisy 0.2 seed {seed}", {**plain, "seed": seed}, cagr, 50.0)
+        for seed, cagr in enumerate((40.0, 45.0, 50.0))
+    ]
+    rows.append(
+        _result("accuracy", "all shared 0.2 seed 0", {**plain, "knob": "shared"}, 30.0, 50.0)
+    )
+    # A retired knob's run stays in results.jsonl and out of the report.
+    rows.append(
+        _result("accuracy", "all alarmist 0.2 seed 0", {**plain, "knob": "alarmist"}, 30.0, 50.0)
+    )
+    (tmp_path / "results.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    text = P.report(tmp_path)
+    assert "| none | +0.100 | - | - |" in text
+    assert "| shared | -0.200 | - | - |" in text
+    assert "alarmist" not in text
+
+
 def test_a_run_through_the_engine_enforces_its_schedule(monkeypatch):
     """One spec end to end through probe_daily_ultimate.run_one: a pause
     every session buys nothing, and the run says what its overlay did."""

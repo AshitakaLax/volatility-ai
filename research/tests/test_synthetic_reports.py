@@ -1,6 +1,7 @@
 """Reports at a chosen accuracy (research/risk_overlay/synthetic.py): the
 accuracy achieved is the accuracy asked for, the tier frequencies are the
-proxy's at every accuracy, and a seed reproduces its reports exactly."""
+proxy's at every accuracy (unless the bias knob moves them), and a seed
+reproduces its reports exactly."""
 
 from __future__ import annotations
 
@@ -131,3 +132,21 @@ def test_the_tier_frequencies_are_the_proxys_at_every_accuracy(history):
         )
         tiers = sorted(schedule.get(r.session).tier or 0 for r in reports)
         assert tiers == proxy, accuracy
+
+
+def test_a_bias_moves_the_values_and_how_often_the_tiers_come(history):
+    """z + beta alone would change nothing, since a quantile map keeps only
+    ranks: the bias moves each rank's quantile, in the fields and the tiers."""
+    reports, truth, inputs, received = history
+    settings = RiskOverlayConfig(mode="enforce")
+
+    def run(bias):
+        knobs = Knobs(family="noisy", accuracy=0.5, seed=6, bias=bias)
+        moves = [r.expected_move_pct for r in synthetic_reports(reports, truth, knobs)]
+        schedule = synthetic_schedule(reports, inputs, received, truth, knobs, settings)
+        tiers = [schedule.get(r.session).tier or 0 for r in reports]
+        return float(np.mean(moves)), float(np.mean(tiers))
+
+    complacent, plain, alarmist = run(-0.5), run(0.0), run(0.5)
+    assert complacent[0] < plain[0] < alarmist[0]
+    assert complacent[1] < plain[1] < alarmist[1]
