@@ -809,6 +809,26 @@ def algorithm_summary(algorithm: dict, symbol: str | None = None) -> str:
             + "; turbulent ones: no grid buys, only reversal lots, and its calm lots are sold "
             f"at minute {minute} of the first turbulent session"
         )
+    if strategy_id == "forecast_harvest":
+        minute = _param(strategy_id, params, "liquidate_minute")
+        frac = float(_param(strategy_id, params, "day_fraction") or 0.0)
+        close = _param(strategy_id, params, "day_close_minute")
+        seeds = _param(strategy_id, params, "seed_levels")
+        shares = "whole shares" if _param(strategy_id, params, "whole_shares") else "fractional"
+        selling = f"sells each lot at +{_percent(target)}"
+        if frac > 0:
+            selling = (
+                f"sells {_percent(frac)} of each lot at the session's forecast level (at least "
+                f"+{_percent(_param(strategy_id, params, 'day_target_min'))}"
+                + (f", or at the market from minute {close}" if close is not None else "")
+                + f") and the rest at +{_percent(target)}"
+            )
+        seeded = f"; seed lots at falls of {seeds} below its start" if seeds else ""
+        return (
+            f"calm markets: buys each {_percent(step)} dip in {shares} and {selling}; turbulent "
+            f"ones: no grid buys, only reversal lots, and its calm lots are sold at minute "
+            f"{minute} of the first turbulent session{seeded}"
+        )
     return f"buys each {_percent(step)} dip, sells each lot at +{_percent(target)}"
 
 

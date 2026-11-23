@@ -375,6 +375,10 @@ your user (`mkdir -p warehouse/forecasts`) before the first `up`, or Docker
 creates it owned by root and nothing can be stored. Run the step by hand with
 `docker compose run --rm --entrypoint python tracking tools/score_risk_reports.py --forecasts`.
 
+`paper-ultimate` mounts the same folder read-only, so an algorithm that reads the reports
+(`forecast_harvest` with `forecast_from_db`, the `aggressive-forecast-harvest-tqqq` profile)
+finds each session's report there at the open.
+
 ```bash
 docker compose logs tracking                 # one line per deployment, each run
 docker compose run --rm tracking --report    # the stored report

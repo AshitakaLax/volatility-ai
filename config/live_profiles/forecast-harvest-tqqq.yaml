@@ -1,0 +1,71 @@
+# Forecast Harvest on TQQQ: config/forecast_harvest_tqqq.yaml's algorithm, for
+# paper-ultimate to switch to from the Live page.
+# research/strategies/live_profiles.py describes the format;
+# research/tests/test_forecast_harvest.py holds it to that config.
+#
+# Not promoted: real money needs evidence.promotion naming a passing paper
+# trial (docs/research/forecast-harvest.md, "Paper trial").
+id: forecast-harvest-tqqq
+label: Forecast Harvest, TQQQ (whole shares, 3/4 of each lot sold day by day)
+symbols:
+- TQQQ
+strategy_id: forecast_harvest
+strategy_params:
+  bars_per_day: 387
+  per_lot_pct: 0.008
+  lookback_days: 0.02
+  event_day_boost_multiplier: 2.5
+  earnings_day_boost_multiplier: 1.5
+  vol_scale_exponent: -1.5
+  vol_fast_days: 0.25
+  vol_slow_days: 10.0
+  vol_scale_min: 0.25
+  vol_scale_max: 3.0
+  vol_measure: stdev
+  volume_scale_exponent: -1.0
+  natr_period: 14
+  natr_lookback: 100
+  regime_min_hold: 5
+  bear_dd: 0.5
+  bear_window: 250
+  turbulent_mode: reversal
+  reversal_threshold: -0.08
+  reversal_target: 0.08
+  reversal_lot_pct: 0.1
+  reversal_max_lots: 2
+  liquidate_minute: 60
+  compound_lots: false
+  daily_goal: 0.001
+  goal_pause_buys: false
+  goal_lock: false
+  harvest_min_gain: 0.002
+  whole_shares: true
+  day_fraction: 0.75
+  day_quantile: p75
+  day_k: 0.25
+  day_target_min: 0.002
+  day_target_max: 0.04
+  day_close_minute: 375
+  swing_target: 0.2
+step: 0.002
+profit_target: 0.2
+evidence:
+  note: >-
+    config/forecast_harvest_tqqq.yaml, chosen by tools/probe_forecast_harvest.py
+    (docs/research/forecast-harvest.md). Daily Ultimate in whole shares, each calm
+    lot split into a day part (three quarters, sold at the session's level or at the
+    close from minute 375 once up 0.2%) and a swing part at +20%, with 10% x 2
+    reversal lots. Without forecast_db the day level comes from TQQQ's own
+    volatility; the sweep found the report moves this configuration by under
+    0.002% a session at any accuracy short of perfect. Needs
+    execution.allow_signal_exit and a regular-hours deployment.
+  backtest:
+    source: tools/probe_forecast_harvest.py --stage entry2 (fh3 rev 0.1 x2)
+    window: 2016-01-04 to 2026-11-20, scored from 2017-01-03
+    fills: intrabar causal, dynamic slippage, no cash yield
+    per_session_pct: 0.144
+    cagr_pct: 43.5
+    max_drawdown_pct: 24.5
+    invested_sessions_banking_a_profit_pct: 54
+    shares: whole
+    initial_cash: 250000.0
