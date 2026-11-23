@@ -85,6 +85,7 @@ ALL_MODULES = (
     "live_control.py",
     "live_registry.py",
     "algorithms.py",
+    "risk_forecasts.py",
     "backtest.py",
     "jobs.py",
     "app.py",
@@ -430,6 +431,46 @@ class TestWarehouseStatusIsReadOnly:
             "set_shard_schedule",
             "set_shards_paused",
         }
+
+
+class TestRiskForecastsWritesOnlyTheForecastDatabase:
+    """server/risk_forecasts.py keeps every risk report checked; storing one
+    changes nothing a deployment trades, so it may reach no ledger, no
+    trader's inbox, no shell and no file of its own."""
+
+    def test_it_reaches_no_ledger_inbox_or_shell(self):
+        imported = imported_modules(module_ast("risk_forecasts.py"))
+        assert not imported & {
+            "LedgerStore",
+            "CircuitBreaker",
+            "ControlInbox",
+            "control_inbox",
+            "live_registry",
+            "sqlite3",
+            "subprocess",
+        }, imported
+
+    def test_it_writes_only_through_the_store(self):
+        called = called_names(module_ast("risk_forecasts.py"))
+        assert not called & (WRITE_CALLS | QUEUE_CALLS - {"record"}), sorted(called)
+        # The positive case: the store's own writer is what it calls.
+        assert "record" in called
+
+    def test_every_post_route_has_the_cross_site_guard(self):
+        from server.live_control import same_origin
+        from server.risk_forecasts import router
+
+        posts = [route for route in router.routes if "POST" in getattr(route, "methods", ())]
+        assert posts
+        for route in posts:
+            guards = [dependency.call for dependency in route.dependant.dependencies]
+            assert same_origin in guards, route.path
+
+    def test_no_route_takes_a_path(self):
+        from server.risk_forecasts import router
+
+        for route in router.routes:
+            assert "{" not in route.path, route.path
 
 
 class TestAlgorithmsWritesOnlyItsOwnPlaces:

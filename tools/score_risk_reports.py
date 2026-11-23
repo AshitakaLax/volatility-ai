@@ -5,6 +5,8 @@ forecasts every night").
 
     python tools/score_risk_reports.py --all            # every deployment's scored sessions
     python tools/score_risk_reports.py --deployment paper-ultimate
+    python tools/score_risk_reports.py --forecasts      # the forecast database's nightly step, now
+    python tools/score_risk_reports.py --import tests/fixtures/risk_reports/*.json
 
 A few months of reports give a P&L test no power; the forecast itself can be
 scored every day. tools/track_live.py calls score_session() and followed()
@@ -39,6 +41,20 @@ whose suggestion was a pause: `followed` when buying was paused by the first
 window or within FOLLOW_MINUTES of it, `late` when a pause came later in the
 session, `not_followed` when none did. Size, spacing and the weekly cap have
 no button: `not_actionable`. In enforce mode: `enforced`.
+
+--------------------------------------------------------------------
+THE FORECAST DATABASE (research/risk_overlay/forecasts.py)
+
+Every report the Live page checked, apart from any deployment. Its nightly
+step -- run by tools/track_live.py after the warehouse refresh, or now with
+--forecasts -- copies in each report a trader archived, records the closes
+of each finished session that has a report (the warehouse's regular-hours
+minute bars, the last bar at 15:45 Eastern or later, or a later session's
+bars there: a close is written once, so a refresh cut off mid-day must not
+leave a wrong one), and scores every report against its session. The
+tracking rows above score against the trader's own bar journal; the
+database scores against the warehouse, the same closes for every
+deployment. --import stores report files by hand.
 """
 
 from __future__ import annotations
@@ -50,7 +66,8 @@ import random
 import statistics
 import sys
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from datetime import time as clock_time
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
@@ -265,15 +282,219 @@ def load_scores(out: Path, deployment: str) -> list[dict]:
     return scores
 
 
+# --------------------------------------------------------------------
+# The forecast database
+# --------------------------------------------------------------------
+
+REGULAR_OPEN = clock_time(9, 30)
+REGULAR_CLOSE = clock_time(16, 0)
+LATE_BAR = clock_time(15, 45)
+NY = "America/New_York"
+
+
+def session_closes(frame: Any) -> dict[date, float]:
+    """Each finished session's regular-hours close from minute bars (a
+    frame on a UTC index with a `close` column), by Eastern date. Finished:
+    the last regular bar is at LATE_BAR or later, or a later session has
+    bars (an early close)."""
+    if frame is None or len(frame) == 0:
+        return {}
+    last: dict[date, tuple[Any, float]] = {}
+    for moment, close in zip(frame.index.tz_convert(NY), frame["close"], strict=True):
+        if not REGULAR_OPEN <= moment.time() < REGULAR_CLOSE:
+            continue
+        day = moment.date()
+        if day not in last or moment >= last[day][0]:
+            last[day] = (moment, float(close))
+    days = sorted(last)
+    return {
+        day: last[day][1]
+        for i, day in enumerate(days)
+        if last[day][0].time() >= LATE_BAR or i < len(days) - 1
+    }
+
+
+def score_forecasts(store, now: datetime, *, load=None) -> dict[str, int]:
+    """Record the closes of every finished session with a report, then
+    score each report whose session has them. `load(symbol, since=...)`
+    gives minute bars (default: engine.warehouse.bars.load_frame)."""
+    import pandas as pd
+
+    from engine.core.trading_calendar import previous_session
+
+    if load is None:
+        from engine.warehouse.bars import load_frame as load
+    counts = {"closes": 0, "scored": 0, "waiting": 0}
+    wanted: dict[str, list[date]] = {}
+    for symbol, session in store.unclosed(now):
+        wanted.setdefault(symbol, []).append(session)
+    for symbol, sessions in wanted.items():
+        start = previous_session(min(sessions)) - timedelta(days=7)
+        closes = session_closes(load(symbol, since=pd.Timestamp(start.isoformat(), tz=NY)))
+        for session in sessions:
+            prior = previous_session(session)
+            if session not in closes or prior not in closes:
+                counts["waiting"] += 1
+                continue
+            store.record_close(
+                symbol,
+                session,
+                close=closes[session],
+                prior_session=prior,
+                prior_close=closes[prior],
+                source="warehouse",
+                at=now,
+            )
+            counts["closes"] += 1
+    for report, close in store.unscored():
+        score = score_session(report, prior_close=close["prior_close"], close=close["close"])
+        if score is not None:
+            store.record_score(report.sha256, score, at=now)
+            counts["scored"] += 1
+    return counts
+
+
+def collect_archives(store, deployments: Iterable[Any]) -> int:
+    """Copy into the database every report a deployment's trader archived
+    (each session's entry and those superseded), so an Apply the page did
+    not record is not lost. Returns how many were new; one already there
+    adds nothing, as its receipt is keyed by when the trader received it."""
+    from research.risk_overlay.archive import ReportArchive
+    from research.risk_overlay.forecasts import ForecastRefused
+
+    added = 0
+    for deployment in deployments:
+        inbox = deployment.inbox()
+        if inbox is None:
+            continue
+        archive = ReportArchive.in_control_dir(inbox.root)
+        for entry in [*archive.entries(), *archive.superseded()]:
+            raw = entry.get("report")
+            if not isinstance(raw, Mapping):
+                continue
+            at = _moment(entry.get("received_at")) or _moment(entry.get("as_of"))
+            if at is None:
+                continue
+            try:
+                stored = store.record(
+                    raw, via=f"archive:{deployment.id}", operator=entry.get("operator"), at=at
+                )
+            except ForecastRefused:
+                continue
+            added += int(stored["new"])
+    return added
+
+
+def _moment(text: Any) -> datetime | None:
+    try:
+        moment = datetime.fromisoformat(str(text))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def import_reports(store, paths: Iterable[Path], *, operator: str) -> list[dict[str, Any]]:
+    """Store report files by hand; a file that does not pass the audit is
+    reported, not stored."""
+    from research.risk_overlay.forecasts import ForecastRefused
+
+    results = []
+    for path in paths:
+        try:
+            stored = store.record(path.read_text(encoding="utf-8"), via="import", operator=operator)
+        except ForecastRefused as exc:
+            results.append({"file": str(path), "error": str(exc)})
+            continue
+        results.append({"file": str(path), **stored})
+    return results
+
+
+def describe_forecasts(store, limit: int = 20) -> list[str]:
+    """The database's sessions, one line each, by symbol."""
+    lines = []
+    for symbol in store.symbols():
+        for row in store.sessions(symbol, limit):
+            q = row["quantiles"]
+            band = f"90% {q['p05']:+.2f}%..{q['p95']:+.2f}%"
+            actual = row["actual"]
+            score = row["score"]
+            if actual is None:
+                said = "waiting for its close"
+            else:
+                where = (
+                    "inside its middle 50%"
+                    if score and score["in_50"]
+                    else "inside its 90%"
+                    if score and score["in_90"]
+                    else "outside its 90%"
+                )
+                said = f"actual {actual['return_pct']:+.2f}%: {where}"
+            lines.append(
+                f"{symbol} {row['session']}  {band}  move {row['expected_move_pct']:.2f}%  {said}"
+                f"  ({row['reports']} report(s), {row['sha256'][:12]})"
+            )
+    return lines
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     which = parser.add_mutually_exclusive_group(required=True)
     which.add_argument("--all", action="store_true")
     which.add_argument("--deployment")
+    which.add_argument(
+        "--forecasts",
+        action="store_true",
+        help="the forecast database's nightly step now (archived reports, closes, scores)",
+    )
+    which.add_argument(
+        "--import",
+        dest="import_files",
+        nargs="+",
+        type=Path,
+        metavar="REPORT",
+        help="store these report files in the forecast database",
+    )
     parser.add_argument(
         "--out", type=Path, default=DEFAULT_OUT, help="the tracking service's --out"
     )
+    parser.add_argument(
+        "--db",
+        type=Path,
+        help="the forecast database (default: VAI_FORECAST_DB, else "
+        "warehouse/forecasts/risk_reports.db)",
+    )
+    parser.add_argument("--operator", default="import", help="who --import records")
     args = parser.parse_args(argv)
+    if args.forecasts or args.import_files:
+        from research.risk_overlay.forecasts import ForecastStore
+
+        store = ForecastStore(args.db)
+        if args.import_files:
+            failed = False
+            for result in import_reports(store, args.import_files, operator=args.operator):
+                if "error" in result:
+                    failed = True
+                    print(f"{result['file']}: NOT stored: {result['error']}")
+                else:
+                    print(
+                        f"{result['file']}: {result['symbol']} {result['session']} "
+                        f"{'stored' if result['new'] else 'already stored'} ({result['sha256'][:12]})"
+                    )
+            if failed:
+                return 1
+        else:
+            from server import live_registry
+
+            copied = collect_archives(store, live_registry.registry().values())
+            counts = score_forecasts(store, datetime.now(UTC))
+            print(
+                f"{copied} archived report(s) copied in; {counts['closes']} close(s) recorded, "
+                f"{counts['scored']} report(s) scored, {counts['waiting']} session(s) waiting"
+            )
+        print(f"{store.path}:")
+        for line in describe_forecasts(store):
+            print(f"  {line}")
+        return 0
     if args.all:
         from server import live_registry
 

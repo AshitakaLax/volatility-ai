@@ -12,9 +12,12 @@ days.
 docker-compose.yml's `tracking` service runs the --daily form. It reads the
 deployments of config/deployments.yaml: each one's config, the journals its
 trader writes in its control directory (engine/trading/control_inbox.py)
-and the algorithm override beside its ledger. It writes only
-output/tracking/ (--out): `<id>/sessions.jsonl`, one row a session, and
-`report.md`.
+and the algorithm override beside its ledger. It writes output/tracking/
+(--out): `<id>/sessions.jsonl`, one row a session, and `report.md`; and,
+after the deployments, the forecast database
+(research/risk_overlay/forecasts.py, run_forecasts): every report the
+traders archived copied in, each finished session's closes from the
+warehouse, and each risk report's score against them.
 
 --------------------------------------------------------------------
 WHY IT KEEPS ITS OWN ROWS
@@ -941,6 +944,30 @@ def run_once(
     return ok
 
 
+def run_forecasts(
+    deployments: list, now: datetime, *, store=None, load=None, report_to=print
+) -> bool:
+    """The forecast database's nightly step (research/risk_overlay/forecasts.py;
+    tools/score_risk_reports.py --forecasts): every report the traders
+    archived copied in, then each finished session's closes and each
+    report's score. A failure is a line, and the run fails."""
+    from research.risk_overlay.forecasts import ForecastStore
+    from tools.score_risk_reports import collect_archives, score_forecasts
+
+    try:
+        store = store if store is not None else ForecastStore()
+        copied = collect_archives(store, deployments)
+        counts = score_forecasts(store, now, load=load)
+    except Exception as exc:
+        report_to(f"[tracking] forecasts: FAILED {type(exc).__name__}: {exc}"[:300])
+        return False
+    report_to(
+        f"[tracking] forecasts: {copied} archived report(s) copied in, {counts['closes']} "
+        f"close(s), {counts['scored']} score(s), {counts['waiting']} session(s) waiting for bars"
+    )
+    return True
+
+
 def next_run(now: datetime, at: clock_time) -> datetime:
     local = now.astimezone(EASTERN)
     candidate = datetime.combine(local.date(), at, tzinfo=EASTERN)
@@ -1016,7 +1043,10 @@ def main(argv: list[str] | None = None) -> int:
         ]
 
     def once() -> bool:
-        return run_once(deployments(), args.out, datetime.now(UTC), shadow=not args.no_shadow)
+        now = datetime.now(UTC)
+        found = deployments()
+        tracked = run_once(found, args.out, now, shadow=not args.no_shadow)
+        return run_forecasts(found, now) and tracked
 
     if at is None:
         return 0 if once() else 1

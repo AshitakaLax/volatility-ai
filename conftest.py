@@ -41,6 +41,10 @@ of their own; that overrides this for the test and restores it after.
                        is a fixture. This is a flat series for every input
                        a signal names, over fixed dates -- no warning is
                        ever raised from it.
+  VAI_FORECAST_DB      research/risk_overlay/forecasts.py's database of
+                       every risk report checked. Left at its default, a
+                       server test posting a report would store it in the
+                       warehouse's real one, beside the owner's reports.
 """
 
 from __future__ import annotations
@@ -56,6 +60,7 @@ os.environ["VAI_QUEUE_DIR"] = os.path.join(_ROOT, "queue")
 os.environ["VAI_RUN_HISTORY_DIR"] = os.path.join(_ROOT, "runs")
 os.environ["VAI_RECORD_WAREHOUSE"] = "0"
 os.environ["VAI_EXTERNAL_DIR"] = os.path.join(_ROOT, "external")
+os.environ["VAI_FORECAST_DB"] = os.path.join(_ROOT, "forecasts", "risk_reports.db")
 
 
 def _write_flat_external_series(directory: str) -> None:

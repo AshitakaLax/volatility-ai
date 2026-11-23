@@ -530,6 +530,13 @@ report that applied:
 | the 5-day horizon | the close five sessions later |
 | **accuracy**, on the scale the synthetic reports use: the rank correlation of `expected_1d_move_pct` with the realised move, of `overnight_gap_risk` with the realised gap, and of the 21-session ES5 with the worst drawdown over the next 21 sessions | the realised values, as each becomes known |
 
+**Every report checked is kept**, applied or not, in the forecast database
+(`research/risk_overlay/forecasts.py`, `warehouse/forecasts/risk_reports.db`, backed up nightly).
+Check stores it first (`POST /api/live/risk-forecasts`). After the close, the tracking service copies
+in anything a trader archived, records the session's closes from the warehouse, and scores each report
+against them. The Live page charts each session's 90% range, middle 50% and median beside where the
+close landed: green inside the middle 50%, amber inside the 90%, red outside it.
+
 Each is computed for the LLM, for the proxy and for a naive baseline (a normal at VXN's implied
 move). Skill is 1 − loss ÷ the baseline's loss, with a block-bootstrap interval. For **stability**,
 the prompt runs twice on some nights: a tier that flips between two runs of the same prompt is noise
