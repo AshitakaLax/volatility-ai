@@ -267,8 +267,10 @@ router; away from home, use a VPN.
 ## 7. Backups
 
 `backup` runs `tools/backup_databases.py` daily at `VAI_BACKUP_AT`
-(03:30 Eastern). It takes every `*.db` in the trading volumes and the two
-warehouse catalogs, writes one timestamped archive to `VAI_BACKUP_DIR`
+(03:30 Eastern). It takes every `*.db` in the trading volumes, the two
+warehouse catalogs and the forecast database
+(`warehouse/forecasts/risk_reports.db`: every nightly risk report checked,
+and its score), writes one timestamped archive to `VAI_BACKUP_DIR`
 (default `/workspace/backups`, a separate disk), and keeps
 `VAI_BACKUP_KEEP` (14) of them. The directory must exist and belong to
 your user before the service starts, or Docker creates it owned by root
@@ -362,6 +364,16 @@ Eastern) it writes `output/tracking/report.md` and, per deployment,
 A trader's journals keep ten sessions; the record here keeps every session
 it has seen. It mounts the ledgers' folders, the control directories and
 the configs read-only.
+
+After the deployments it runs the forecast database's nightly step
+(`research/risk_overlay/forecasts.py`): it copies in every risk report a
+trader archived, records the close of each finished session that has a
+report, and scores each report against it. The Live page's risk report
+panel charts the result. Its folder, `./warehouse/forecasts`, is the one
+part of the warehouse the service may write. On a new machine create it as
+your user (`mkdir -p warehouse/forecasts`) before the first `up`, or Docker
+creates it owned by root and nothing can be stored. Run the step by hand with
+`docker compose run --rm --entrypoint python tracking tools/score_risk_reports.py --forecasts`.
 
 ```bash
 docker compose logs tracking                 # one line per deployment, each run

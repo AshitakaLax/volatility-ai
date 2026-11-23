@@ -38,7 +38,12 @@ import type {
   TrialRequest,
 } from "@/types/algorithms";
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
-import type { RiskReportPreview, RiskReports } from "@/types/riskReport";
+import type {
+  RecordedForecast,
+  RiskForecasts,
+  RiskReportPreview,
+  RiskReports,
+} from "@/types/riskReport";
 import type {
   AlgorithmView,
   BridgeEvent,
@@ -305,6 +310,17 @@ export const api = {
       `/api/live/deployments/${encodeURIComponent(id)}/risk-report/preview`,
       { report },
     ),
+
+  /** Keep a pasted risk report in the forecast database (server/risk_forecasts.py).
+   * Check sends it first, so every report checked is kept, applied or not. */
+  recordRiskForecast: (report: unknown, operator?: string) =>
+    post<RecordedForecast>("/api/live/risk-forecasts", { report, operator: operator || null }),
+
+  /** The forecast database's last `sessions` sessions for `symbol` (default:
+   * the symbol most recently received), oldest first, each with its actual
+   * return once the tracking service has recorded the close. */
+  riskForecasts: (symbol?: string, sessions = 20) =>
+    request<RiskForecasts>(`/api/live/risk-forecasts?${query({ symbol, sessions })}`),
 
   /** The risk reports the deployment's trader archived, newest first, and
    * the overlay its next session would trade under. */

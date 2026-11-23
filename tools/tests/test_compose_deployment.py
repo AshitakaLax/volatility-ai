@@ -267,6 +267,13 @@ def test_the_session_loop_only_passes_flags_the_supervisor_accepts():
         assert flag in help_text, f"{flag} is passed by docker_session_loop.sh but not accepted"
 
 
+def test_the_forecast_database_is_backed_up(compose):
+    """Every risk report checked lives only there: the loop names it, and
+    `backup` mounts the warehouse that holds it."""
+    assert "/app/warehouse/forecasts/risk_reports.db" in BACKUP_LOOP.read_text(encoding="utf-8")
+    assert "./warehouse:/app/warehouse:ro" in compose["services"]["backup"]["volumes"]
+
+
 def test_the_backup_loop_only_passes_flags_the_backup_tool_accepts():
     from tools.backup_databases import build_parser
 
@@ -325,14 +332,20 @@ def test_the_market_inputs_service_writes_where_the_traders_read(compose):
 def test_the_tracking_service_reads_what_the_ui_reads_and_writes_only_its_record(compose):
     """It compares each deployment's journals with a backtest: every ledger
     folder and control directory `web` mounts, at the same paths (so
-    config/deployments.yaml names them for both), all read-only; one
-    writable folder, its own; and a command its parser takes."""
+    config/deployments.yaml names them for both), all read-only; two
+    writable folders, its own record and the forecast database's (closes
+    and scores, research/risk_overlay/forecasts.py) -- never the rest of
+    the warehouse; and a command its parser takes."""
     from tools.track_live import build_parser
 
     service = compose["services"]["tracking"]
     web = compose["services"]["web"]["volumes"]
     writable = [m for m in service["volumes"] if not m.endswith(":ro")]
-    assert writable == ["./output/tracking:/app/output/tracking"]
+    assert writable == [
+        "./warehouse/forecasts:/app/warehouse/forecasts",
+        "./output/tracking:/app/output/tracking",
+    ]
+    assert "./warehouse:/app/warehouse:ro" in service["volumes"]
     for mount in web:
         source, target = mount.split(":")[:2]
         if target.startswith(("/app/state", "/app/controls/")):

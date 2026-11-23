@@ -418,7 +418,9 @@ services:
   # force over the same days. At start, then daily at VAI_TRACKING_AT (20:40
   # Eastern, after the last traded window and the bar refresh). It reads the
   # traders' journals, configs and ledgers' folders READ-ONLY, at the paths
-  # `web` sees them, and writes only ./output/tracking.
+  # `web` sees them, and writes only ./output/tracking and the forecast
+  # database (./warehouse/forecasts: each finished session's closes and each
+  # risk report's score against them -- research/risk_overlay/forecasts.py).
   # One-off:  docker compose run --rm tracking --report
   tracking:
     <<: *app
@@ -431,6 +433,7 @@ services:
     volumes:
       - ./config:/app/config:ro
       - ./warehouse:/app/warehouse:ro
+      - ./warehouse/forecasts:/app/warehouse/forecasts
       - ./data:/app/data:ro
       - ./output/tracking:/app/output/tracking
       - state:/app/state:ro

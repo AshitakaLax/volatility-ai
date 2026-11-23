@@ -183,3 +183,188 @@ def test_the_shadows_run_with_every_report_enforced_and_with_none(tmp_path, monk
     assert shadows["no_report"]["realized_pnl"] == 2.0
     assert shadows["as_traded"] == shadows["no_report"], "advisory traded the YAML"
     assert "risk" not in rows["2026-11-19"]
+
+
+# --------------------------------------------------------------------
+# The forecast database's nightly step
+# --------------------------------------------------------------------
+
+WEEKEND = ROOT / "tests/fixtures/risk_reports/tqqq_2026-11-23.json"
+SATURDAY_NIGHT = datetime(2026, 11, 22, 1, 30, tzinfo=UTC)
+
+
+def minute_bars(sessions: dict[date, tuple[float, str]]):
+    """A few bars a session: the open, midday, and the last regular bar
+    (its time given) at `close`, then an after-hours bar that must be
+    ignored."""
+    import pandas as pd
+
+    stamps, closes = [], []
+    for day, (close, last) in sorted(sessions.items()):
+        hour, minute = (int(part) for part in last.split(":"))
+        for at, value in (
+            ((9, 30), close + 1),
+            ((12, 0), close + 2),
+            ((hour, minute), close),
+            ((17, 0), close + 9),
+        ):
+            stamps.append(
+                datetime.combine(
+                    day, datetime.min.time().replace(hour=at[0], minute=at[1]), tzinfo=EASTERN
+                )
+            )
+            closes.append(value)
+    index = pd.DatetimeIndex(stamps, name="timestamp").tz_convert("UTC")
+    return pd.DataFrame({"close": closes}, index=index)
+
+
+THROUGH_FRIDAY = {
+    date(2026, 11, 18): (52.47, "15:59"),
+    date(2026, 11, 19): (48.99, "15:59"),
+    FRIDAY: (40.99, "15:59"),
+}
+
+
+@pytest.fixture
+def store(tmp_path):
+    from research.risk_overlay.forecasts import ForecastStore
+
+    found = ForecastStore(tmp_path / "risk_reports.db")
+    found.record(json.loads(FIXTURE.read_text(encoding="utf-8")), via="import")
+    found.record(json.loads(WEEKEND.read_text(encoding="utf-8")), via="import")
+    return found
+
+
+class TestSessionCloses:
+    def test_the_last_regular_bar_of_each_finished_session(self):
+        closes = S.session_closes(minute_bars(THROUGH_FRIDAY))
+        assert closes == {date(2026, 11, 18): 52.47, date(2026, 11, 19): 48.99, FRIDAY: 40.99}
+
+    def test_a_session_cut_off_mid_day_is_not_finished(self):
+        bars = minute_bars({**THROUGH_FRIDAY, FRIDAY: (44.0, "13:10")})
+        assert FRIDAY not in S.session_closes(bars)
+
+    def test_an_early_close_counts_once_a_later_session_has_bars(self):
+        bars = minute_bars(
+            {date(2026, 11, 27): (50.0, "12:59"), date(2026, 11, 30): (51.0, "15:59")}
+        )
+        assert S.session_closes(bars) == {date(2026, 11, 27): 50.0, date(2026, 11, 30): 51.0}
+
+    def test_no_bars_no_closes(self):
+        assert S.session_closes(None) == {}
+
+
+class TestScoreForecasts:
+    def test_a_finished_session_gets_its_closes_and_its_report_a_score(self, store):
+        asked = []
+
+        def load(symbol, since):
+            asked.append((symbol, since))
+            return minute_bars(THROUGH_FRIDAY)
+
+        counts = S.score_forecasts(store, SATURDAY_NIGHT, load=load)
+        assert counts == {"closes": 1, "scored": 1, "waiting": 0}
+        assert asked[0][0] == "TQQQ" and asked[0][1].tzinfo is not None
+        friday, monday = store.sessions("TQQQ")
+        assert friday["actual"]["return_pct"] == pytest.approx(100 * (40.99 / 48.99 - 1), abs=1e-3)
+        assert friday["score"]["in_90"] is False and friday["score"]["in_50"] is False
+        assert monday["actual"] is None, "its session has not happened"
+        assert S.score_forecasts(store, SATURDAY_NIGHT, load=load) == {
+            "closes": 0,
+            "scored": 0,
+            "waiting": 0,
+        }
+
+    def test_a_session_the_warehouse_lacks_waits_for_the_next_night(self, store):
+        partial = {day: value for day, value in THROUGH_FRIDAY.items() if day != FRIDAY}
+        counts = S.score_forecasts(
+            store, SATURDAY_NIGHT, load=lambda s, since: minute_bars(partial)
+        )
+        assert counts == {"closes": 0, "scored": 0, "waiting": 1}
+        assert store.sessions("TQQQ")[0]["actual"] is None
+        counts = S.score_forecasts(
+            store, SATURDAY_NIGHT, load=lambda s, since: minute_bars(THROUGH_FRIDAY)
+        )
+        assert counts["closes"] == 1 and counts["scored"] == 1
+
+    def test_the_description_names_where_each_close_landed(self, store):
+        S.score_forecasts(store, SATURDAY_NIGHT, load=lambda s, since: minute_bars(THROUGH_FRIDAY))
+        friday, monday = S.describe_forecasts(store)
+        assert "2026-11-20" in friday and "outside its 90%" in friday
+        assert "2026-11-23" in monday and "waiting for its close" in monday
+
+
+class TestArchivesAndImports:
+    def test_every_archived_report_is_copied_in_once(self, tmp_path):
+        from research.risk_overlay.forecasts import ForecastStore
+
+        store = ForecastStore(tmp_path / "risk_reports.db")
+        inbox = ControlInbox(tmp_path / "control")
+        archive = ReportArchive.in_control_dir(inbox.root)
+        received = "2026-11-20T02:50:00+00:00"
+        archive.write(
+            FRIDAY,
+            {
+                "report": json.loads(FIXTURE.read_text(encoding="utf-8")),
+                "received_at": received,
+                "operator": "owner",
+                "sha256": "x",
+                "receipts": [],
+            },
+        )
+        deployment = SimpleNamespace(id="paper-ultimate", inbox=lambda: inbox)
+        assert S.collect_archives(store, [deployment]) == 1
+        assert S.collect_archives(store, [deployment]) == 0
+        row = store.sessions("TQQQ")[0]
+        assert row["received_at"] == received
+        assert [r["via"] for r in store.receipts(row["sha256"])] == ["archive:paper-ultimate"]
+
+    def test_a_deployment_without_a_control_directory_adds_nothing(self, tmp_path):
+        from research.risk_overlay.forecasts import ForecastStore
+
+        store = ForecastStore(tmp_path / "risk_reports.db")
+        assert S.collect_archives(store, [SimpleNamespace(id="x", inbox=lambda: None)]) == 0
+
+    def test_import_from_the_command_line(self, tmp_path, capsys):
+        db = tmp_path / "risk_reports.db"
+        assert S.main(["--import", str(FIXTURE), str(WEEKEND), "--db", str(db)]) == 0
+        out = capsys.readouterr().out
+        assert "TQQQ 2026-11-20 stored" in out and "TQQQ 2026-11-23 stored" in out
+        assert S.main(["--import", str(FIXTURE), "--db", str(db)]) == 0
+        assert "already stored" in capsys.readouterr().out
+
+    def test_a_file_that_fails_the_audit_is_named_and_not_stored(self, tmp_path, capsys):
+        broken = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        broken["horizons"]["tomorrow"]["summary"]["quantiles_pct"]["p05"] = 50.0
+        path = tmp_path / "broken.json"
+        path.write_text(json.dumps(broken), encoding="utf-8")
+        assert S.main(["--import", str(path), "--db", str(tmp_path / "db.db")]) == 1
+        assert "NOT stored" in capsys.readouterr().out
+
+
+class TestTheNightlyRun:
+    def test_it_reports_what_it_did(self, store):
+        lines = []
+        ok = T.run_forecasts(
+            [],
+            SATURDAY_NIGHT,
+            store=store,
+            load=lambda s, since: minute_bars(THROUGH_FRIDAY),
+            report_to=lines.append,
+        )
+        assert ok
+        assert lines == [
+            "[tracking] forecasts: 0 archived report(s) copied in, 1 close(s), 1 score(s), "
+            "0 session(s) waiting for bars"
+        ]
+
+    def test_a_failure_is_a_line_and_fails_the_run(self, store):
+        lines = []
+
+        def broken(symbol, since):
+            raise OSError("warehouse unreadable")
+
+        assert not T.run_forecasts(
+            [], SATURDAY_NIGHT, store=store, load=broken, report_to=lines.append
+        )
+        assert lines[0].startswith("[tracking] forecasts: FAILED OSError")
