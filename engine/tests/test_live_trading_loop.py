@@ -976,6 +976,111 @@ def test_startup_still_halts_on_shares_the_in_flight_fill_does_not_explain(store
     assert "POSITION_MISMATCH" in report.diagnostic()
 
 
+# --- sells left resting at the close (2026-11-23) ---
+#
+# Limit sells resting when the regular session closed could no longer fill,
+# but Alpaca expired them only 35-90 s after the close. The shutdown waited
+# 30 s for its own table to empty and halted new buys over orders that were
+# simply ending.
+
+
+def _sell_resting(store, broker=None):
+    broker = broker or FakeBroker()
+    market = FakeMarketData()
+    loop = _loop_with_an_open_lot(store, broker, market)
+    lot = loop.ledger.open_lots[0]
+    market.push(lot.target_sell_price + 1.0, ts=BASE_TS + timedelta(minutes=3))
+    assert loop.run_once().sells_submitted == 1
+    sell = broker.sells[0][3]
+    assert set(loop.state.open_orders) == {sell}, "resting at the venue, unfilled"
+    return loop, broker, lot, sell
+
+
+def _later(monkeypatch, seconds):
+    import engine.trading.live_trading_loop as module
+
+    moment = module.time.monotonic() + seconds
+    monkeypatch.setattr(module.time, "monotonic", lambda: moment)
+
+
+def test_the_shutdown_cancels_a_sell_left_resting(store, monkeypatch):
+    loop, broker, lot, sell = _sell_resting(store)
+
+    assert loop.settle_in_flight() is False, "the venue has not confirmed yet"
+    assert broker.cancels == [sell]
+    assert loop.state.open_orders[sell].cancel_reason == "shutdown"
+
+    broker.orders[sell].status = "canceled"
+    _later(monkeypatch, 10)
+    assert loop.settle_in_flight() is True
+    assert broker.cancels == [sell], "asked once"
+    assert [x.order_id for x in loop.ledger.open_lots] == [lot.order_id], "a cancel is no sale"
+    assert not loop.state.sells_in_flight, "the next session offers the lot again"
+
+
+def test_the_shutdown_books_a_sell_that_filled_before_its_cancel(store, monkeypatch):
+    loop, broker, lot, sell = _sell_resting(store)
+    assert loop.settle_in_flight() is False
+
+    broker.fill(sell, lot.shares, lot.target_sell_price)
+    _later(monkeypatch, 10)
+    assert loop.settle_in_flight() is True
+    assert loop.ledger.open_lots == []
+
+
+class _RefusesCancels(FakeBroker):
+    """A venue already ending the order: Alpaca answers 422."""
+
+    def cancel_order(self, client_order_id):
+        self.cancels.append(client_order_id)
+        raise RuntimeError("order is not cancelable")
+
+
+def test_a_refused_cancel_settles_when_the_venue_expires_the_order(store, monkeypatch):
+    loop, broker, _, sell = _sell_resting(store, _RefusesCancels())
+
+    assert loop.settle_in_flight() is False, "a refused cancel never raises"
+    assert broker.cancels == [sell]
+    broker.orders[sell].status = "expired"
+    _later(monkeypatch, 10)
+    assert loop.settle_in_flight() is True
+    assert len(loop.ledger.open_lots) == 1
+
+
+def test_a_shutdown_whose_venue_expires_its_sell_90s_later_stops_cleanly(store, monkeypatch):
+    """The incident end to end: the cancel refused, the venue expiring the
+    order 90 s after the shutdown began -- inside the window cli.py gives
+    the lifecycle, so it stops instead of halting new buys."""
+    import engine.trading.live_trading_loop as module
+    from engine.trading.live_trading_loop import SHUTDOWN_SETTLE_SECONDS
+    from engine.trading.risk_manager import CircuitBreaker
+    from engine.trading.runtime_lifecycle import RuntimeLifecycle, RuntimeState
+
+    loop, broker, _, sell = _sell_resting(store, _RefusesCancels())
+    now = {"t": 0.0}
+    monkeypatch.setattr(module.time, "monotonic", lambda: now["t"])
+
+    def advance(seconds):
+        now["t"] += seconds
+        if now["t"] >= 90.0:
+            broker.orders[sell].status = "expired"
+
+    breaker = CircuitBreaker(store=store)
+    lifecycle = RuntimeLifecycle(
+        store=store,
+        circuit_breaker=breaker,
+        settle_timeout_seconds=SHUTDOWN_SETTLE_SECONDS,
+        clock=lambda: now["t"],
+        sleep=advance,
+    )
+    result = lifecycle.shutdown(
+        in_flight_settled=loop.settle_in_flight, persist_state=loop.persist_state, poll_interval=1.0
+    )
+    assert result is RuntimeState.STOPPED
+    assert breaker.allows_new_buys
+    assert SHUTDOWN_SETTLE_SECONDS >= 120.0, "Alpaca took up to 90 s after the close"
+
+
 def test_no_in_flight_orders_when_none_were_kept(store):
     from engine.trading.live_trading_loop import in_flight_orders
 
