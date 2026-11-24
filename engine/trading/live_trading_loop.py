@@ -193,6 +193,13 @@ TRADABLE_BAR_AGE_SECONDS = 120.0
 WINDOW_AUDIT_GRACE_SECONDS = 180.0
 # During shutdown, how often the venue is asked about orders still settling.
 SETTLE_POLL_SECONDS = 5.0
+# How long a shutdown waits for its orders to settle (RuntimeLifecycle's
+# window, as cli.py builds it). Each order still resting is cancelled first,
+# which Alpaca confirms within a poll; the rest of the window covers a venue
+# that refuses the cancel because it is already ending the order itself --
+# Alpaca expired 2026-11-23's regular-session DAY sells 35-90 s after the
+# close. Within the traders' stop_grace_period (4m, docker-compose.yml).
+SHUTDOWN_SETTLE_SECONDS = 150.0
 EXTENDED_SESSIONS = (PRE_MARKET, AFTER_HOURS)
 
 
@@ -689,6 +696,7 @@ class LiveTradingLoop:
         self._audited: set[tuple[str, str]] = set()
         self.last_window: dict | None = None
         self._last_settle_poll: float | None = None
+        self._shutdown_cancels_sent = False
         self._orders_seen: dict[str, dict] = {}
         # Why this bar's buy was not placed (limit_pricing's answer), once.
         self._buy_note: str | None = None
@@ -1596,11 +1604,24 @@ class LiveTradingLoop:
         Every deployment's shutdown, not only one on the venue's windows: on
         2026-11-16 a buy placed by the session's last tick filled 3 s after
         the loop stopped, the shutdown (reading only its own table) waited
-        out its window and halted the trader for a fill nobody asked about."""
+        out its window and halted the trader for a fill nobody asked about.
+
+        And what still rests is cancelled first, once (2026-11-23): limit
+        sells resting at a regular-session close cannot fill once the session
+        is over, but Alpaca expires a DAY order only 35-90 s after the close,
+        past the 30 s window the shutdown then had -- so it halted new buys
+        over orders that were simply ending. A
+        cancel is not a sale: nothing is force-liquidated, a part that filled
+        first is booked as any fill is, and a lot whose sell is cancelled is
+        offered again by the next session. With the venue confirming, the
+        window ends on what happened rather than on a guess."""
         if not self.state.open_orders:
             return True
         if self.broker is None:
             return False
+        if not self._shutdown_cancels_sent:
+            self._shutdown_cancels_sent = True
+            self._cancel_for_shutdown()
         moment = time.monotonic()
         if self._last_settle_poll is None or moment - self._last_settle_poll >= SETTLE_POLL_SECONDS:
             self._last_settle_poll = moment
@@ -1609,6 +1630,36 @@ class LiveTradingLoop:
             except Exception as exc:
                 logger.warning(f"Could not ask about orders settling: {type(exc).__name__}: {exc}")
         return not self.state.open_orders
+
+    def _cancel_for_shutdown(self) -> None:
+        """Ask the venue to cancel every order still open that no one has
+        asked to cancel yet. Never raises: a cancel the venue refuses (it
+        is already filling or ending the order) or cannot take now leaves
+        the order to the polls, which book whatever it did."""
+        cancel = getattr(self.broker, "cancel_order", None)
+        if not callable(cancel):
+            return
+        changed = False
+        for tracked in list(self.state.open_orders.values()):
+            if tracked.cancel_requested:
+                continue
+            try:
+                cancel(tracked.client_order_id)
+            except Exception as exc:
+                logger.warning(
+                    f"Could not cancel {tracked.client_order_id!r} at shutdown "
+                    f"({type(exc).__name__}: {exc}); waiting for the venue to settle it."
+                )
+                continue
+            tracked.cancel_requested, tracked.cancel_reason = True, "shutdown"
+            changed = True
+            logger.info(
+                f"{tracked.kind.upper()} {tracked.client_order_id!r} cancel requested "
+                "(shutdown); done when the venue reports it gone."
+            )
+            self._order_event(tracked, "cancel_requested", why="shutdown")
+        if changed:
+            self._persist_open_orders()
 
     def run_forever(self, max_ticks: int | None = None) -> int:
         """Tick until stopped. Returns the number of ticks executed.

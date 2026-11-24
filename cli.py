@@ -920,8 +920,15 @@ def cmd_live(args: argparse.Namespace) -> int:
     store = LedgerStore(db_path)
     circuit_breaker = CircuitBreaker(store=store)
     reconciler = Reconciler(store=store, circuit_breaker=circuit_breaker)
+    from engine.trading.live_trading_loop import SHUTDOWN_SETTLE_SECONDS
+
     lifecycle = RuntimeLifecycle(
-        store=store, circuit_breaker=circuit_breaker, reconciler=reconciler
+        store=store,
+        circuit_breaker=circuit_breaker,
+        reconciler=reconciler,
+        # Long enough for the venue to confirm the cancels the shutdown sends
+        # and to expire what it will not cancel (live_trading_loop's note).
+        settle_timeout_seconds=SHUTDOWN_SETTLE_SECONDS,
     )
 
     # PAPER vs LIVE comes from the config, not from a CLI flag: routing

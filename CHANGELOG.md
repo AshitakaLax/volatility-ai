@@ -1,5 +1,30 @@
 # Changelog
 
+## Fix: a shutdown cancels the orders still resting, so a session's close no longer halts buys
+
+**paper-ultimate halted new buys after the Nov 23 close ("In-flight state did not settle within
+30.0s"), with nothing wrong.** The session ended with limit sells resting at their targets,
+unfilled, as targets often are; Friday's (Nov 20) ended with four more still open, cleared only at
+Monday's start. Alpaca expired them as DAY orders 35-90 s after the 16:00
+close (Nov 23: 21:00:35, 21:01:18, 21:01:29 UTC). The shutdown waited 30 s for its open-order table
+to empty, then halted into RECONCILIATION_REQUIRED, which only a manual reset clears.
+
+- **The shutdown cancels what still rests** (`LiveTradingLoop.settle_in_flight`), once, before it
+  polls:
+  - Alpaca confirms a cancel within a poll.
+  - A part that filled first is booked as any fill is.
+  - A cancel is not a sale: the lot stays open and the next session offers it again.
+  - A refused cancel (Alpaca's 422 for an order it is already ending) never raises; the polls book
+    whatever the venue reports.
+- **The window is 150 s** (`SHUTDOWN_SETTLE_SECONDS`, passed by `cli.py live`), up from 30 s. That
+  is long enough for an expiry the venue will not cancel, and inside the traders' 4-minute
+  `stop_grace_period`.
+- **Unchanged:** the halt itself. An order that genuinely does not settle still exits into
+  RECONCILIATION_REQUIRED, and only a person clears it.
+- **Tests:** four in `engine/tests/test_live_trading_loop.py`, the last the incident end to end
+  through `RuntimeLifecycle`: a cancel refused and the order expired 90 s later ends STOPPED, with
+  buys allowed.
+
 ## Research: Forecast Harvest, a whole-share TQQQ book that banks most sessions
 
 **A new TQQQ algorithm, `forecast_harvest`, built for the owner's ask:**
