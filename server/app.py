@@ -50,6 +50,7 @@ from server import (
     algorithms,
     backtest,
     deployment,
+    forecast_generator,
     history,
     live,
     live_control,
@@ -113,6 +114,11 @@ app.include_router(live.router)
 app.include_router(live_control.router)
 app.include_router(algorithms.router)
 app.include_router(risk_forecasts.router)
+# The Forecast tab: makes a report from public market data and writes nothing
+# (server/forecast_generator.py). Mounted everywhere: its historical baseline
+# needs only numpy, and Chronos-2 reports itself unavailable where
+# requirements-dl.txt is not installed (the Pi's image).
+app.include_router(forecast_generator.router)
 # THE BACKTEST ROUTES COME FROM ONE PLACE OR THE OTHER, NEVER BOTH.
 #
 # With VAI_BACKTEST_UPSTREAM set this host forwards them and never
@@ -161,7 +167,7 @@ def health() -> dict[str, object]:
     None when this process runs them itself.
     """
     return {
-        "caps": ["live", "control", "backtest", "ml"],
+        "caps": ["live", "control", "backtest", "ml", "forecast"],
         "upstream": upstream.upstream_base(),
         **deployment.describe(),
     }

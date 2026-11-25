@@ -38,6 +38,7 @@ import type {
   TrialRequest,
 } from "@/types/algorithms";
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
+import type { ForecastEngineId, ForecastRun, ForecastStatus, StartedForecast } from "@/types/forecast";
 import type {
   RecordedForecast,
   RiskForecasts,
@@ -112,7 +113,7 @@ const query = (params: Record<string, string | number | null | undefined>) =>
  * live.control. Liquidation is never listed, by design.
  */
 export interface Health {
-  caps: ("live" | "control" | "backtest" | "ml")[];
+  caps: ("live" | "control" | "backtest" | "ml" | "forecast")[];
   /** Where sweeps run; null when this server runs them itself. */
   upstream: string | null;
   build: {
@@ -315,6 +316,17 @@ export const api = {
    * Check sends it first, so every report checked is kept, applied or not. */
   recordRiskForecast: (report: unknown, operator?: string) =>
     post<RecordedForecast>("/api/live/risk-forecasts", { report, operator: operator || null }),
+
+  /** The Forecast tab (server/forecast_generator.py): what can run here, for
+   * which session, and the last runs. Makes and writes nothing. */
+  forecastStatus: () => request<ForecastStatus>("/api/forecast/status"),
+
+  /** The last runs, newest first, each with its report or why it was refused. */
+  forecastRuns: () => request<{ runs: ForecastRun[] }>("/api/forecast/runs"),
+
+  /** Start one forecast in the background (one at a time: 409 while one runs). */
+  startForecast: (symbol: string, engine: ForecastEngineId) =>
+    post<StartedForecast>("/api/forecast/runs", { symbol, engine }),
 
   /** The forecast database's last `sessions` sessions for `symbol` (default:
    * the symbol most recently received), oldest first, each with its actual

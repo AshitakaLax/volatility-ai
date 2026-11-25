@@ -86,6 +86,7 @@ ALL_MODULES = (
     "live_registry.py",
     "algorithms.py",
     "risk_forecasts.py",
+    "forecast_generator.py",
     "backtest.py",
     "jobs.py",
     "app.py",
@@ -468,6 +469,48 @@ class TestRiskForecastsWritesOnlyTheForecastDatabase:
 
     def test_no_route_takes_a_path(self):
         from server.risk_forecasts import router
+
+        for route in router.routes:
+            assert "{" not in route.path, route.path
+
+
+class TestForecastGeneratorWritesNothing:
+    """server/forecast_generator.py makes a risk report from public market
+    data and keeps none of it: the tab's Check stores a report through
+    server/risk_forecasts.py, so this may reach no ledger, inbox, shell or
+    store, and write nothing at all."""
+
+    def test_it_reaches_no_ledger_inbox_store_or_shell(self):
+        imported = imported_modules(module_ast("forecast_generator.py"))
+        assert not imported & {
+            "LedgerStore",
+            "CircuitBreaker",
+            "ControlInbox",
+            "control_inbox",
+            "live_registry",
+            "ForecastStore",
+            "forecasts",
+            "risk_forecasts",
+            "sqlite3",
+            "subprocess",
+        }, imported
+
+    def test_it_writes_nothing(self):
+        called = called_names(module_ast("forecast_generator.py"))
+        assert not called & (WRITE_CALLS | QUEUE_CALLS), sorted(called)
+
+    def test_every_post_route_has_the_cross_site_guard(self):
+        from server.forecast_generator import router
+        from server.live_control import same_origin
+
+        posts = [route for route in router.routes if "POST" in getattr(route, "methods", ())]
+        assert posts
+        for route in posts:
+            guards = [dependency.call for dependency in route.dependant.dependencies]
+            assert same_origin in guards, route.path
+
+    def test_no_route_takes_a_path(self):
+        from server.forecast_generator import router
 
         for route in router.routes:
             assert "{" not in route.path, route.path
