@@ -9,6 +9,7 @@ import {
   Monitor,
   Moon,
   Sun,
+  Sunrise,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 
@@ -46,6 +47,9 @@ const AlgorithmsTab = lazy(() =>
 );
 const ModelInsights = lazy(() =>
   import("@/components/ml/ModelInsights").then((m) => ({ default: m.ModelInsights })),
+);
+const ForecastTab = lazy(() =>
+  import("@/components/forecast/ForecastTab").then((m) => ({ default: m.ForecastTab })),
 );
 const WarehouseTab = lazy(() =>
   import("@/components/warehouse/WarehouseTab").then((m) => ({ default: m.WarehouseTab })),
@@ -187,6 +191,7 @@ export default function App() {
                 { id: "backtest", label: "Backtesting", icon: LineChart },
                 { id: "result", label: "Backtest result", icon: BarChart3 },
                 { id: "live", label: "Live", icon: Activity },
+                { id: "forecast", label: "Forecast", icon: Sunrise },
                 { id: "algorithms", label: "Algorithms", icon: ListChecks },
                 { id: "ml", label: "Model research", icon: FlaskConical },
                 { id: "warehouse", label: "Warehouse", icon: Database },
@@ -235,6 +240,8 @@ export default function App() {
         <Suspense fallback={<p className="text-sm text-muted-foreground">Loading…</p>}>
           {tab === "live" ? (
             <LiveTab chosen={place.deployment} onChoose={setDeployment} />
+          ) : tab === "forecast" ? (
+            <ForecastTab onOpenLive={() => setTab("live")} />
           ) : tab === "algorithms" ? (
             <AlgorithmsTab />
           ) : tab === "ml" ? (

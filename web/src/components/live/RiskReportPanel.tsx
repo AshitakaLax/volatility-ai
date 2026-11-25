@@ -1,10 +1,11 @@
 import { FileJson } from "lucide-react";
-import { useCallback, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useState, type DragEvent } from "react";
 
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Input } from "@/components/ui/primitives";
 import { usePolled } from "@/hooks/usePolled";
 import { ApiError, api } from "@/lib/api";
 import { rememberedOperator, rememberOperator } from "@/lib/control";
+import { takeHandedOffReport } from "@/lib/forecast";
 import {
   checkedByDefault,
   levers,
@@ -80,6 +81,15 @@ export function RiskReportPanel({ deployments, onSent }: Props) {
   const [chartSymbol, setChartSymbol] = useState<string | undefined>(undefined);
   const loadForecasts = useCallback(() => api.riskForecasts(chartSymbol), [chartSymbol]);
   const forecasts = usePolled(loadForecasts, FORECAST_POLL_MS);
+  // A report the Forecast tab generated and handed over (lib/forecast.ts):
+  // taken once there are deployments to check it against, then checked
+  // here like a pasted one.
+  const hasDeployments = listed.length > 0;
+  useEffect(() => {
+    if (!hasDeployments) return;
+    const handed = takeHandedOffReport();
+    if (handed) setText(handed);
+  }, [hasDeployments]);
 
   if (!listed.length) return null;
   const pasted = parsePasted(text);

@@ -1,5 +1,7 @@
 # Deep learning: the Temporal Fusion Transformer behind the `ml_tft` sizer
-# (research/ml/tft_model.py, tft_training.py). Kept SEPARATE for the same
+# (research/ml/tft_model.py, tft_training.py), and Chronos-2 behind the
+# Forecast tab (research/forecast_generator/model.py, imported only when a
+# forecast asks for it; without it the tab offers the historical baseline). Kept SEPARATE for the same
 # reason as requirements-ml.txt: the live loop and the Raspberry Pi must
 # never need these to start, and nothing outside research/ml/tft_model.py
 # and tft_training.py imports them (lazily, when a TFT is loaded or trained).
@@ -18,3 +20,4 @@ torch>=2.6,<3
 lightning>=2.4,<2.7,!=2.6.2,!=2.6.3
 pytorch-forecasting==1.8.0
 pandas>=3.0.5,<3.1
+chronos-forecasting>=2.3,<3

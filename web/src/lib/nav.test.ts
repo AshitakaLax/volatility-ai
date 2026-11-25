@@ -12,6 +12,7 @@ describe("the page's address", () => {
     expect(parsePlace("#backtest")).toEqual({ tab: "backtest", deployment: null });
     expect(parsePlace("#live/fidelity")).toEqual({ tab: "live", deployment: "fidelity" });
     expect(parsePlace("#/warehouse")).toEqual({ tab: "warehouse", deployment: null });
+    expect(parsePlace("#forecast")).toEqual({ tab: "forecast", deployment: null });
     // A deployment means nothing off the Live page, and is never markup.
     expect(parsePlace("#backtest/fidelity").deployment).toBeNull();
     expect(parsePlace("#live/<script>").deployment).toBeNull();

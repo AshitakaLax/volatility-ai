@@ -1,5 +1,59 @@
 # Changelog
 
+## Feature: a Forecast tab that makes the risk report itself
+
+**The pre-market forecast generator
+(github.com/AshitakaLax/pre-market-session-forecast-report-generator) is ported in, and a new
+Forecast tab runs it.** Until now the report reached the Live page only by pasting JSON made
+elsewhere. The tab fetches the fund's daily history and the overnight inputs, runs Chronos-2, and
+shows the report beside what it read. "Open in Live" hands the report to the risk report panel,
+where Check and Apply work exactly as for a pasted one, so sending a report to a trader still
+happens in one place.
+
+- **The pipeline** (`research/forecast_generator/`) is the generator's, moved onto this
+  repository's own pieces:
+  - the engine's trading calendar instead of pandas_market_calendars;
+  - `research/ml/sources.py`'s HTTP getter instead of yfinance, so no new dependency;
+  - `parse_report` as the audit.
+- **Every report is rounded so the audit's sums hold.** Probabilities are whole basis points
+  summing to 10,000, and quantiles are taken straight from the 10,000 simulated paths. Each run is
+  seeded by fund and session, so a rerun reproduces itself. Reports are about 5.5 KB, under
+  `MAX_REPORT_BYTES`.
+- **What can make a report, and when:**
+  - Chronos-2 is optional, like the TFT: `requirements-dl.txt` now carries `chronos-forecasting`.
+  - Where it is not installed (the Pi's image) the historical baseline still runs, and is labelled
+    as such in the report's `model`.
+  - A run inside regular hours, or in the quarter hour after the close, is refused, because the
+    parser refuses such a report.
+  - A run whose latest daily bar is not the session before the target session is refused, because
+    the source has not posted that close yet.
+- **The overnight inputs are display only:**
+  - the index futures since the 16:00 close;
+  - the overnight VIX from 03:15 ET;
+  - Cboe's VIX9D/VIX3M/VXN/RVX closes;
+  - IV rank;
+  - the 04:00-04:05 pre-market window.
+
+  Each is shown with where and when it was read, and none is a model covariate: no history exists
+  at the same pre-market clock time.
+- **Two departures from the generator:**
+  - Chronos-2 forecasts at most 64 sessions directly (`VAI_CHRONOS_DIRECT_HORIZON`).
+    chronos-forecasting 2.3 reports a native horizon of 1,024, and the generator's own cap is 64.
+  - `^TNX` is read in either Yahoo convention. Yahoo now quotes the yield itself (4.84), so the
+    generator's `/ 10` showed 0.48%.
+- **`server/forecast_generator.py` writes nothing.**
+  - `GET /api/forecast/status` reports what can run here and for which session.
+  - `POST /api/forecast/runs` starts one run in the background, one at a time.
+  - `GET /api/forecast/runs` returns the last five.
+  - "Keep" stores a report through `server/risk_forecasts.py` like Check does.
+  - The capability test pins all of this: no ledger, inbox, store or shell, the cross-site guard
+    on its POST, and no route taking a path.
+- **Tests:**
+  - `research/tests/test_forecast_generator.py` runs offline against synthetic bars and a fake
+    Chronos-2, and every report it makes passes the audit.
+  - `server/tests/test_forecast_generator_api.py` covers the routes.
+  - `web/src/lib/forecast.test.ts` covers the tab's helpers.
+
 ## Fix: a shutdown cancels the orders still resting, so a session's close no longer halts buys
 
 **paper-ultimate halted new buys after the Nov 23 close ("In-flight state did not settle within

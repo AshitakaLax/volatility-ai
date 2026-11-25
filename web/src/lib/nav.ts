@@ -8,7 +8,15 @@
  * one that says when real money needs attention. `?run=<id>` (a run opened
  * in its own browser tab, lib/utils.ts runUrl) still lands on its result.
  */
-export const TABS = ["backtest", "result", "live", "algorithms", "ml", "warehouse"] as const;
+export const TABS = [
+  "backtest",
+  "result",
+  "live",
+  "forecast",
+  "algorithms",
+  "ml",
+  "warehouse",
+] as const;
 
 export type Tab = (typeof TABS)[number];
 
