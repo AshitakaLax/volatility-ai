@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from engine.core.risk_report import MAX_REPORT_BYTES, canonical_json, parse_report
+from engine.core.risk_report import DEGRADED, MAX_REPORT_BYTES, canonical_json, parse_report
 from engine.core.trading_calendar import EASTERN, previous_session
 from research.forecast_generator import generator, model
 from research.forecast_generator.generator import ForecastRefused, generate, rounded_horizon
@@ -26,6 +26,7 @@ from research.forecast_generator.market_data import (
 )
 from research.forecast_generator.market_inputs import overnight_futures_change
 from research.forecast_generator.scenarios import QUANTILE_LEVELS
+from research.risk_overlay.mapping import MIN_CONFIDENCE
 
 # Tuesday 2026-11-24 04:20 ET: a pre-market run for that session.
 PRE_MARKET = datetime(2026, 11, 24, 9, 20, tzinfo=UTC)
@@ -289,6 +290,43 @@ def test_a_missing_covariate_history_is_listed():
     made = generate("TQQQ", "bootstrap", now=PRE_MARKET, data=market, simulations=2000)
     assert "wti_return_pct" in made.report["execution_signals"]["data_quality"]["missing_inputs"]
     assert made.snapshot["wti_crude_usd"] is None
+
+
+def test_confidence_counts_only_the_outside_sources():
+    made = bootstrap()
+    assert made.report["execution_signals"]["data_quality"]["confidence_score"] == 1.0
+    assert made.report["execution_signals"]["data_quality"]["source_coverage"] == "mixed"
+
+
+def test_with_every_outside_source_down_the_mapping_would_abstain():
+    """Calendar and fund-derived features are always there; they must not
+    lift a report with no outside data over the mapping's abstain line."""
+    market = FakeMarket()
+    for ticker in ("QQQ", "SPY", "NQ=F", "^VIX", "^VXN", "^TNX", "DX-Y.NYB", "CL=F"):
+        market._daily.pop(ticker)
+    made = generate("TQQQ", "bootstrap", now=PRE_MARKET, data=market, simulations=2000)
+    audit = parse_report(made.report)
+    assert audit.ok
+    assert audit.report.confidence < MIN_CONFIDENCE
+    assert audit.report.coverage == DEGRADED
+
+
+def test_losing_most_outside_sources_is_degraded():
+    market = FakeMarket()
+    for ticker in ("^VIX", "^VXN", "^TNX", "DX-Y.NYB", "CL=F"):
+        market._daily.pop(ticker)
+    quality = generate("TQQQ", "bootstrap", now=PRE_MARKET, data=market, simulations=2000).report[
+        "execution_signals"
+    ]["data_quality"]
+    assert quality["confidence_score"] == pytest.approx(3 / 8, abs=0.01)
+    assert quality["source_coverage"] == "degraded"
+
+
+def test_a_source_the_fund_is_itself_is_not_asked_for():
+    # QQQ's underlying is QQQ: four of its eight outside series remain asked.
+    assert generator.data_confidence(["spy_return_pct"], [], 1000) == (1.0, "mixed")
+    assert generator.data_confidence([], [], 1000) == (0.0, "degraded")
+    assert generator.data_confidence(["vix_level"], ["wti_return_pct"], 400) == (0.5, "degraded")
 
 
 # --------------------------------------------------------------------

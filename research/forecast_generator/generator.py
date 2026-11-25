@@ -564,6 +564,41 @@ def _session_phase(now_et: datetime) -> str:
     return "after_hours" if now_et.time() < clock_time(20, 0) else "closed"
 
 
+# Covariates that come from a market source other than the fund itself. The
+# calendar columns and the fund's own realised vol, momentum, gap, range and
+# volume are always computable from its history, so they say nothing about
+# whether the outside sources answered.
+SOURCED_COVARIATES = (
+    "underlying_return_pct",
+    "spy_return_pct",
+    "index_futures_return_pct",
+    "vix_level",
+    "primary_volatility_index",
+    "us_10y_yield_level",
+    "dxy_return_pct",
+    "wti_return_pct",
+)
+
+
+def data_confidence(
+    covariates: list[str], missing: list[str], training_rows: int
+) -> tuple[float, str]:
+    """(confidence, source_coverage) from the source-backed covariates alone.
+
+    The generator scored len(covariates) / 22, which counts eight calendar
+    columns and six fund-derived ones: with every outside source down it
+    still reported 0.64 and "mixed", above the mapping's 0.6 abstain line
+    (research/risk_overlay/mapping.py MIN_CONFIDENCE). Here confidence is
+    the share of the outside series that loaded (one that is the fund itself
+    is not asked for), and coverage is degraded when under half did, or the
+    history is short."""
+    asked = [name for name in SOURCED_COVARIATES if name in covariates or name in missing]
+    loaded = [name for name in asked if name in covariates]
+    confidence = round(len(loaded) / len(asked), 2) if asked else 0.0
+    degraded = training_rows < 500 or confidence < 0.5
+    return confidence, ("degraded" if degraded else "mixed")
+
+
 def build_snapshot(
     data: MarketSource,
     symbol: str,
@@ -579,6 +614,7 @@ def build_snapshot(
 ) -> tuple[dict[str, Any], list[str]]:
     """What was observable at the run, each value with where and when it
     was read. Returns (snapshot, the Cboe symbols read)."""
+    confidence, coverage = data_confidence(covariates, missing, training_rows)
     now_et = now.astimezone(EASTERN)
     close = target["Close"].astype(float)
     base_price = float(close.iloc[-1])
@@ -672,8 +708,8 @@ def build_snapshot(
         "dxy_level": _last(dxy),
         "wti_crude_usd": _last(crude),
         "missing_inputs": list(dict.fromkeys(missing)),
-        "confidence_score": min(1.0, len(covariates) / 22.0),
-        "source_coverage": "mixed" if training_rows >= 500 and len(covariates) >= 3 else "degraded",
+        "confidence_score": confidence,
+        "source_coverage": coverage,
         "notes": notes,
         "input_observations": observations,
     }
@@ -1020,6 +1056,7 @@ __all__ = [
     "ForecastRefused",
     "Generated",
     "calendar_covariates",
+    "data_confidence",
     "execution_signals",
     "future_sessions",
     "generate",

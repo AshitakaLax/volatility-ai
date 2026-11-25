@@ -36,11 +36,16 @@ happens in one place.
 
   Each is shown with where and when it was read, and none is a model covariate: no history exists
   at the same pre-market clock time.
-- **Two departures from the generator:**
+- **Three departures from the generator:**
   - Chronos-2 forecasts at most 64 sessions directly (`VAI_CHRONOS_DIRECT_HORIZON`).
     chronos-forecasting 2.3 reports a native horizon of 1,024, and the generator's own cap is 64.
   - `^TNX` is read in either Yahoo convention. Yahoo now quotes the yield itself (4.84), so the
     generator's `/ 10` showed 0.48%.
+  - Confidence counts only the outside series that loaded: underlying, SPY, index futures, VIX,
+    the fund's volatility index, the 10-year yield, the dollar and crude. The generator's
+    `len(covariates) / 22` counted calendar and fund-derived columns too, so with every outside
+    source down it still scored 0.64 and "mixed", above the mapping's 0.6 abstain line. Coverage
+    is now degraded when under half load.
 - **`server/forecast_generator.py` writes nothing.**
   - `GET /api/forecast/status` reports what can run here and for which session.
   - `POST /api/forecast/runs` starts one run in the background, one at a time.
