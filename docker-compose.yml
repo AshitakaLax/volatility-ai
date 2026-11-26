@@ -415,6 +415,41 @@ services:
     mem_limit: 2g
     cpu_shares: 256
 
+  # Each trading morning's risk report (tools/forecast_morning.py). At
+  # VAI_FORECAST_AT (07:45 Eastern) on a session day it makes the report for
+  # each of VAI_FORECAST_SYMBOLS with Chronos-2 -- the Forecast tab's run,
+  # research/forecast_generator/ -- keeps it in the forecast database and
+  # applies it to every PAPER deployment that takes that fund's reports and
+  # is up. Both go through `web`'s own routes, as the Live page's Check and
+  # Apply do, so it mounts nothing it writes; real money is never applied to.
+  # A run that does not finish is tried again every 10 minutes until 09:15,
+  # and a report already made that morning is left as it is. Its own image
+  # target (the Dockerfile's `forecast`: torch on CPU + chronos-forecasting);
+  # the model's weights download once, into the hf_cache volume.
+  # One-off:  docker compose run --rm forecast --dry-run
+  forecast:
+    <<: *app
+    build:
+      context: .
+      target: forecast
+      args:
+        VAI_BUILD_COMMIT: ${VAI_BUILD_COMMIT:-}
+    image: volatility-ai:forecast
+    entrypoint: ["python", "/app/tools/forecast_morning.py"]
+    command: ["--daily", "${VAI_FORECAST_AT:-07:45}"]
+    environment:
+      <<: *env
+      VAI_WEB_URL: http://web:8000
+      VAI_FORECAST_SYMBOLS: ${VAI_FORECAST_SYMBOLS:-TQQQ}
+      VAI_FORECAST_ENGINE: ${VAI_FORECAST_ENGINE:-chronos}
+    volumes:
+      - hf_cache:/app/hf-cache
+    restart: unless-stopped
+    # Chronos-2 on CPU for a minute or two a morning: below the traders, who
+    # are up then, in memory and in CPU weight.
+    mem_limit: 6g
+    cpu_shares: 256
+
   # Live against backtest, session by session (tools/track_live.py): for
   # every deployment in config/deployments.yaml, whether its trader was
   # watching each session, what it bought and sold, how its orders filled
@@ -558,3 +593,6 @@ volumes:
   control_fidelity:
   # The Fidelity bridge host's socket, for that deployment's trader alone.
   bridge_fidelity:
+  # Chronos-2's weights, downloaded from Hugging Face on the forecast
+  # service's first run and kept, so a restart does not fetch them again.
+  hf_cache:

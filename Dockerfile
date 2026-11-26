@@ -114,6 +114,33 @@ RUN pip install --no-cache-dir "pyqlib>=0.9.6" \
 USER runner
 
 
+# --------------------------------------------------------------------
+# The forecast image: the app plus Chronos-2 -- torch on CPU and
+# chronos-forecasting, at requirements-dl.txt's pins -- for the `forecast`
+# service, which makes each session morning's risk report
+# (tools/forecast_morning.py). Its own target, never the deployed default:
+# torch is the better part of a gigabyte that the traders and the server never
+# import (research/forecast_generator/model.py imports it lazily). The app's
+# own packages are held at their versions (the constraints file), so the
+# generator runs on the pandas and numpy its tests ran on. The weights
+# download from Hugging Face on the first run, into HF_HOME, which compose
+# keeps on a volume.
+#
+#     docker compose build forecast
+FROM base AS forecast
+USER root
+RUN pip freeze > /tmp/app-constraints.txt \
+    && pip install --no-cache-dir -c /tmp/app-constraints.txt "torch>=2.6,<3" \
+        --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -c /tmp/app-constraints.txt "chronos-forecasting>=2.3,<3" \
+    && rm /tmp/app-constraints.txt \
+    && mkdir -p /app/hf-cache && chown runner:runner /app/hf-cache
+ENV HF_HOME=/app/hf-cache
+USER runner
+ARG VAI_BUILD_COMMIT=
+ENV VAI_BUILD_COMMIT=${VAI_BUILD_COMMIT}
+
+
 # The deployed image, and the default target -- the last stage is what a
 # bare `docker build .` produces: the app without qlib.
 FROM base AS app

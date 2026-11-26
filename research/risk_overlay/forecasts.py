@@ -14,7 +14,11 @@ WHERE IT IS, AND WHO WRITES IT
                                            (tools/docker_backup_loop.sh).
 
   server/risk_forecasts.py                 records a report when the Live
-                                           page's Check is pressed
+                                           page's Check is pressed, and
+                                           each trading morning's from the
+                                           forecast service
+                                           (tools/forecast_morning.py), which
+                                           sends it through the same route
   tools/score_risk_reports.py --forecasts  run nightly by tools/track_live.py
                                            after the close: copies in every
                                            report a trader archived (an

@@ -1,5 +1,54 @@
 # Changelog
 
+## Feature: the risk report is made, kept and applied each trading morning
+
+**A `forecast` service now does each morning what the owner did by hand**
+(Nov 25: a report at 07:44 ET, then Check and Apply at 08:37). At 07:45 ET on a
+session day, `tools/forecast_morning.py` makes the TQQQ report with Chronos-2
+through the Forecast tab's generator. It keeps the report in the forecast
+database, where `forecast_from_db` reads it at the open and `tracking` scores
+it, and applies it to every paper deployment that takes TQQQ reports and is
+up.
+
+- **Through the Live page's own routes:**
+  - Check: `POST /api/live/risk-forecasts`.
+  - Apply: `POST .../commands`, `apply_risk_report`.
+
+  `server/risk_forecasts.py` stays the one writer of the forecast database,
+  and the trader stays the one that applies. The service mounts nothing but
+  the model's weights.
+- **Never real money.** Such a command needs the id typed back, and the
+  service never sends it. Each Apply's idempotency key is the deployment plus
+  the report's hash, so a retry or a restart never queues the same report
+  twice. The report travels in the page's JSON form (`as_the_page_sends`), so
+  the database, the command and the trader's archive hash it alike.
+- **When:**
+  - Session days only, from the engine's calendar.
+  - A run that does not finish is tried again every 10 minutes from when it
+    was due, until 09:15, and only the step that failed is retried: a report
+    already made is never made again.
+  - A start inside the window (a deploy, a restart) runs at once.
+- **A report made that morning stands.** One from the Forecast tab or a
+  paste, or the service's own from before a restart, is left alone. An
+  evening report does not count, because the morning's carries the pre-market
+  move (`overnight_gap_risk`) and the evening's cannot.
+- **Its own image:** the Dockerfile's `forecast` target, the app plus torch on
+  CPU and chronos-forecasting. The app's own packages are held at their
+  versions by a constraints file. The weights download once into the
+  `hf_cache` volume. A bare `docker build` is still the deployed app, and a
+  test pins it.
+- **Tests:**
+  - `tools/tests/test_forecast_morning.py` drives the tool through the real
+    routers. It covers who gets an Apply (paper and up, not real money, not
+    a trader that is down, not a config without an overlay) and the trader
+    applying it. It also covers retries that finish only what failed, a
+    server refusal that is not asked again, the idempotency key, this
+    morning's report standing and an evening's not, and the schedule
+    (Thanksgiving and weekends skipped, the 10-minute cadence to 09:15, a
+    start inside the window).
+  - `test_compose_deployment.py` pins the service's mounts, routes and
+    command.
+
 ## Feature: a Forecast tab that makes the risk report itself
 
 **The pre-market forecast generator
