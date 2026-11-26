@@ -104,3 +104,60 @@ def test_without_a_symbol_the_one_most_recently_received(client, db):
 
 def test_a_symbol_is_a_ticker_not_a_path(client, db):
     assert client.get("/api/live/risk-forecasts?symbol=../../etc").status_code == 422
+
+
+def snapshot_inputs(session: str = "2026-11-20") -> dict:
+    return {
+        "snapshot": {"symbol": "TQQQ", "target_session": session, "vix_level": 24.1},
+        "diagnostics": {"engine": "chronos"},
+        "sources": [],
+    }
+
+
+def test_the_forecast_tabs_keep_sends_what_it_read(client, db):
+    answer = client.post(
+        "/api/live/risk-forecasts",
+        json={"report": report(), "operator": "owner", "inputs": snapshot_inputs()},
+    )
+    assert answer.status_code == 201, answer.text
+    found = client.get(f"/api/live/risk-forecasts/report?sha256={answer.json()['sha256']}").json()
+    assert found["inputs"]["snapshot"]["vix_level"] == 24.1
+    assert found["report"]["symbol"] == "TQQQ" and found["receipts"][0]["operator"] == "owner"
+
+
+def test_another_reports_inputs_are_refused_with_the_reason(client, db):
+    answer = client.post(
+        "/api/live/risk-forecasts",
+        json={"report": report(), "inputs": snapshot_inputs("2026-11-23")},
+    )
+    assert answer.status_code == 422
+    assert "2026-11-23" in answer.json()["detail"]
+    assert ForecastStore(db).symbols() == []
+
+
+def test_every_report_newest_first_and_the_session_one_sent_now_is_for(client, db, monkeypatch):
+    from datetime import UTC, datetime
+
+    from server import risk_forecasts
+
+    monkeypatch.setattr(risk_forecasts, "_now", lambda: datetime(2026, 11, 26, 17, 0, tzinfo=UTC))
+    assert client.get("/api/live/risk-forecasts/reports").json() == {
+        "symbol": None,
+        "symbols": [],
+        "upcoming_session": "2026-11-27",
+        "reports": [],
+    }
+    client.post("/api/live/risk-forecasts", json={"report": report()})
+    client.post("/api/live/risk-forecasts", json={"report": report("tqqq_2026-11-23.json")})
+    body = client.get("/api/live/risk-forecasts/reports?symbol=tqqq&limit=5").json()
+    assert body["symbol"] == "TQQQ" and body["upcoming_session"] == "2026-11-27"
+    assert [row["session"] for row in body["reports"]] == ["2026-11-23", "2026-11-20"]
+    first = body["reports"][0]
+    assert first["newest"] is True and first["has_inputs"] is False and first["model"]
+    assert first["horizons"]["next_week"]["end_session"] == "2026-11-30"
+
+
+def test_an_unknown_report_is_404_and_an_id_is_hex_not_a_path(client, db):
+    assert client.get(f"/api/live/risk-forecasts/report?sha256={'a' * 64}").status_code == 404
+    assert client.get("/api/live/risk-forecasts/report?sha256=../../etc").status_code == 422
+    assert client.get("/api/live/risk-forecasts/reports?symbol=../x").status_code == 422

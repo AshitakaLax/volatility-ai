@@ -170,6 +170,17 @@ def last_completed_session(now: datetime) -> date:
     return previous_session(today)
 
 
+def upcoming_session(now: datetime) -> date:
+    """The session a trader started at `now` would trade, and so the one a
+    risk report sent now is for: today before 16:00 Eastern on a session
+    day, else the next session."""
+    local = now.astimezone(EASTERN)
+    today = local.date()
+    if is_session(today) and local.time() < SESSION_CLOSE:
+        return today
+    return next_session(today)
+
+
 __all__ = [
     "EASTERN",
     "SESSION_CLOSE",
@@ -180,4 +191,5 @@ __all__ = [
     "next_session",
     "previous_session",
     "sessions_between",
+    "upcoming_session",
 ]

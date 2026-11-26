@@ -963,7 +963,8 @@ def run_forecasts(
         return False
     report_to(
         f"[tracking] forecasts: {copied} archived report(s) copied in, {counts['closes']} "
-        f"close(s), {counts['scored']} score(s), {counts['waiting']} session(s) waiting for bars"
+        f"close(s), {counts['scored']} score(s), {counts.get('horizons', 0)} longer "
+        f"horizon(s) scored, {counts['waiting']} session(s) waiting for bars"
     )
     return True
 

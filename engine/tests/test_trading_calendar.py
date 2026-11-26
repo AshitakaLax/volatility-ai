@@ -108,3 +108,22 @@ def test_next_session_skips_weekends_and_holidays():
     assert next_session(date(2026, 10, 23)) == date(2026, 10, 26), "Friday to Monday"
     assert next_session(date(2026, 10, 20), 4) == date(2026, 10, 26)
     assert next_session(date(2026, 11, 25)) == date(2026, 11, 27), "past Thanksgiving"
+
+
+@pytest.mark.parametrize(
+    ("now", "expected"),
+    [
+        (datetime(2026, 11, 25, 12, 44, tzinfo=UTC), date(2026, 11, 25)),  # 07:44 ET, before it
+        (datetime(2026, 11, 25, 20, 59, tzinfo=UTC), date(2026, 11, 25)),  # 15:59 ET, during it
+        (
+            datetime(2026, 11, 25, 21, 0, tzinfo=UTC),
+            date(2026, 11, 27),
+        ),  # 16:00 ET, past Thanksgiving
+        (datetime(2026, 11, 26, 17, 0, tzinfo=UTC), date(2026, 11, 27)),  # on the holiday
+        (datetime(2026, 11, 28, 15, 0, tzinfo=UTC), date(2026, 11, 30)),  # a Saturday
+    ],
+)
+def test_upcoming_session_is_the_one_a_report_sent_now_is_for(now, expected):
+    from engine.core.trading_calendar import upcoming_session
+
+    assert upcoming_session(now) == expected

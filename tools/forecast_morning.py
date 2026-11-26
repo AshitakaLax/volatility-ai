@@ -172,10 +172,13 @@ class Web:
     def sessions(self, symbol: str) -> list[dict[str, Any]]:
         return self._call("GET", f"/api/live/risk-forecasts?symbol={symbol}&sessions=5")["sessions"]
 
-    def keep(self, report: dict[str, Any]) -> dict[str, Any]:
-        return self._call(
-            "POST", "/api/live/risk-forecasts", {"report": report, "operator": OPERATOR}
-        )
+    def keep(self, report: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Keep the report, and what the generator read for it (shown beside
+        it on the Forecast tab; research/risk_overlay/forecasts.py)."""
+        body: dict[str, Any] = {"report": report, "operator": OPERATOR}
+        if inputs is not None:
+            body["inputs"] = inputs
+        return self._call("POST", "/api/live/risk-forecasts", body)
 
     def apply(self, deployment: str, report: dict[str, Any], key: str, reason: str) -> Any:
         return self._call(
@@ -234,6 +237,7 @@ class Fund:
     """What a session's runs have done for one fund."""
 
     report: dict[str, Any] | None = None  # in the page's form
+    inputs: dict[str, Any] | None = None  # what the generator read for it
     sha256: str | None = None
     kept: bool = False
     applied: set[str] = field(default_factory=set)
@@ -314,6 +318,11 @@ def run_fund(
             fund.done = True
             return True
         fund.report, fund.sha256 = page, audit.report.sha256
+        fund.inputs = {
+            "snapshot": made.snapshot,
+            "diagnostics": made.diagnostics,
+            "sources": made.sources,
+        }
         report(f"{symbol}: made {fund.sha256[:12]} for {session}{_summary(page)}")
 
     if dry_run:
@@ -323,7 +332,15 @@ def run_fund(
 
     if not fund.kept:
         try:
-            kept = web.keep(fund.report)
+            try:
+                kept = web.keep(fund.report, fund.inputs)
+            except WebError as exc:
+                # The report matters more than what is shown beside it.
+                if exc.status != 422 or fund.inputs is None:
+                    raise
+                report(f"{symbol}: its inputs were refused ({exc.detail}); keeping it without")
+                fund.inputs = None
+                kept = web.keep(fund.report)
         except WebError as exc:
             report(f"{symbol}: could not keep the report: {exc.detail}")
             if not exc.retryable:

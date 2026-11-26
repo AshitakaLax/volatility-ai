@@ -1,5 +1,59 @@
 # Changelog
 
+## Feature: the Forecast tab shows every horizon ahead and every report's record
+
+**The tab showed one report, the last made in this browser, and forgot it on a
+restart.** From the morning service on, the report that matters is made in
+another container, so the tab could not see it at all. Past reports were only
+on the Live page, next session only and the newest per session, and a report's
+week-to-year forecasts were a table nobody could check.
+
+- **Next session:** the report the traders will read for the coming session,
+  from the forecast database: when it was made, by whom (the forecast service,
+  a name, a file, a trader's archive), the model and which traders it went to.
+  If there is none yet, it says so. Generate sits beside it.
+- **Looking ahead:**
+  - A fan of the report's 90% range, middle 50% and median, from the base
+    close through a week, a month, a quarter or a year, in % or in dollars.
+  - One horizon's whole distribution, drawn from the report's bins, with its
+    5%, median and 95% marked.
+  - Any other kept report laid over both in gray, to compare.
+  - Once a horizon's close is in, where the fund actually was, with the Live
+    page's marks.
+- **Track record:**
+  - How often each horizon's close landed inside its ranges, for the report
+    in force each session and for each model.
+  - The Live page's forecast-against-the-close chart.
+  - Every report, a session's evening and morning ones both. A click on a
+    row or a column opens it above.
+- **Longer horizons are scored.** The nightly step (`tracking`, or
+  `score_risk_reports.py --forecasts`) now scores each week, month, quarter
+  and year forecast against the close of its last session, once that has
+  closed. That close is measured from the same prior close as the next
+  session's score, and the report's own session counts as the first, so a
+  week ends four sessions later. The scores are kept in a new
+  `horizon_scores` table.
+- **What a report read is kept.** The Forecast tab's Keep and the forecast
+  service send the generator's snapshot, diagnostics and sources beside the
+  report (`inputs`, a new table), so "What it read" still shows a week later.
+  Inputs that name another fund or session are refused (422). The service
+  keeps the report without its inputs rather than lose it.
+- **Every report kept before this is included.** All were stored whole, so
+  their horizons, outcomes and longer scores show like any other. What they
+  read was never recorded, since they were made elsewhere (an LLM, the public
+  Chronos-2 service), so their "What it read" says so and nothing is
+  reconstructed.
+- **Server routes:** two new read-only routes, `GET
+  /api/live/risk-forecasts/reports` and `.../report?sha256=`. The database
+  gains its two tables the next time it is opened (`user_version` 2); nothing
+  already stored is rewritten. `upcoming_session` moves into
+  `engine/core/trading_calendar.py` for the Live route and the Forecast tab
+  to share.
+- **One new colour token:** `--series-1`, a blue for the report shown when a
+  gray reference is beside it. It passed the dataviz palette validator's
+  colour-blind and normal-vision checks against the page's gray in both
+  themes.
+
 ## Feature: the risk report is made, kept and applied each trading morning
 
 **A `forecast` service now does each morning what the owner did by hand**

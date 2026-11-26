@@ -57,7 +57,13 @@ class FakeMake:
         progress("Simulating 2,000 scenarios")
         if self.fail is not None:
             raise self.fail
-        return generator.Generated(report=self.report, audit={}, snapshot={}, sources=[])
+        return generator.Generated(
+            report=self.report,
+            audit={},
+            snapshot={"symbol": symbol, "target_session": "2026-11-20", "prev_close": 48.99},
+            sources=[{"name": "Yahoo Finance chart API"}],
+            diagnostics={"engine": engine},
+        )
 
 
 @pytest.fixture
@@ -205,6 +211,35 @@ def test_it_travels_in_the_pages_form_so_every_copy_is_one_report(client, deploy
     assert sent["horizons"]["tomorrow"]["summary"]["mean_pct"] == -1
     assert isinstance(sent["horizons"]["tomorrow"]["summary"]["mean_pct"], int)
     assert row["sha256"] == morning.fund("TQQQ").sha256
+
+
+def test_what_it_read_is_kept_beside_the_report(client, deployments):
+    _, morning = morning_run(through(client), FakeMake())
+    sha = morning.fund("TQQQ").sha256
+    found = client.get(f"/api/live/risk-forecasts/report?sha256={sha}").json()
+    assert found["inputs"]["snapshot"]["prev_close"] == 48.99
+    assert found["inputs"]["diagnostics"] == {"engine": "chronos"}
+    assert found["receipts"][0]["operator"] == fm.OPERATOR
+
+
+def test_inputs_the_server_refuses_do_not_cost_the_report(client, deployments):
+    class Elsewhere(FakeMake):
+        def __call__(self, symbol, engine, *, now, progress):
+            made = super().__call__(symbol, engine, now=now, progress=progress)
+            return generator.Generated(
+                report=made.report,
+                audit={},
+                snapshot={"symbol": symbol, "target_session": "2026-11-23"},
+                sources=[],
+            )
+
+    lines: list[str] = []
+    finished, morning = morning_run(through(client), Elsewhere(), lines=lines)
+    assert finished and len(kept(client)) == 1
+    assert any("inputs were refused" in line for line in lines), lines
+    sha = morning.fund("TQQQ").sha256
+    assert client.get(f"/api/live/risk-forecasts/report?sha256={sha}").json()["inputs"] is None
+    assert len(queued(deployments["paper"])) == 1, "and it is still applied"
 
 
 def test_a_dry_run_keeps_and_applies_nothing(client, deployments):
