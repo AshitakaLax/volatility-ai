@@ -58,6 +58,7 @@ def test_up_starts_what_must_keep_running_and_nothing_else(compose):
         "backup",
         "market-data",
         "market-inputs",
+        "forecast",
         "tracking",
     }
     assert _services(compose, profile="champion") == {"paper"}
@@ -327,6 +328,40 @@ def test_the_market_inputs_service_writes_where_the_traders_read(compose):
     args = build_parser().parse_args(command)
     assert args.daily == ["20:45", "07:30"]
     assert str(args.earnings_file) == "/app/data/earnings_releases_derived.csv"
+
+
+def test_the_forecast_service_writes_only_through_the_live_pages_own_routes(compose):
+    """It makes each morning's risk report on its own image (Chronos-2), and
+    keeps and applies it through `web`'s routes -- the Live page's Check and
+    Apply -- so it mounts nothing but the model's weights: no ledger, no
+    control directory, no warehouse, no key file. Its command is one its own
+    parser takes, before the last try."""
+    from tools.forecast_morning import LAST_TRY, build_parser
+
+    service = compose["services"]["forecast"]
+    assert service["build"]["target"] == "forecast"
+    assert service["image"] == "volatility-ai:forecast" != compose["services"]["web"]["image"]
+    assert service["volumes"] == ["hf_cache:/app/hf-cache"]
+    assert "hf_cache" in compose["volumes"]
+    assert "env_file" not in service and "profiles" not in service
+    assert service["environment"]["VAI_WEB_URL"] == "http://web:8000"
+    assert service["restart"] == "unless-stopped"
+    command = [part.replace("${VAI_FORECAST_AT:-07:45}", "07:45") for part in service["command"]]
+    args = build_parser().parse_args(command)
+    assert args.daily == ["07:45"] and not args.no_apply and not args.dry_run
+    assert all(t < f"{LAST_TRY:%H:%M}" for t in args.daily)
+
+
+def test_a_bare_docker_build_is_still_the_deployed_app():
+    """The Dockerfile's last stage is what `docker build .` makes; the
+    research and forecast images are targets of their own, before it."""
+    stages = [
+        line.split()[-1]
+        for line in (ROOT / "Dockerfile").read_text(encoding="utf-8").splitlines()
+        if line.startswith("FROM ")
+    ]
+    assert stages[-1] == "app"
+    assert {"research", "forecast"} <= set(stages[:-1])
 
 
 def test_the_tracking_service_reads_what_the_ui_reads_and_writes_only_its_record(compose):

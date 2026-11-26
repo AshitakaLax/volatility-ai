@@ -10,6 +10,7 @@ One host runs everything that has to stay up, from one file,
 | `backup` | every ledger and the warehouse catalogs, daily | `/workspace/backups` |
 | `market-data` | every tracked fund's bars into the warehouse, daily | Alpaca market data |
 | `market-inputs` | every outside series (volatility, rates, credit, stress, positioning) into `data/external/` and the warehouse, twice daily | public endpoints, no keys |
+| `forecast` | each trading morning's TQQQ risk report (Chronos-2), kept and applied to the paper deployments that take it, at 07:45 ET | Yahoo and Cboe, public; its own image |
 | `paper` | *profile `champion`*: the champion grid, `config/paper_aggressive.yaml` | Alpaca paper, no port |
 | `live` | *profile `production`*: **real money**, `config/production.yaml` | Alpaca live |
 | `test`, `preflight`, `fetch-data`, `ingest`, `backtest` | *profile `tools`*: one-offs for `docker compose run --rm` | |
@@ -120,7 +121,7 @@ Every line must be `ok`. The ones worth reading:
 Then:
 
 ```bash
-docker compose up -d                 # web, paper-ultimate, backup, market-data, market-inputs, tracking
+docker compose up -d                 # web, paper-ultimate, backup, market-data, market-inputs, forecast, tracking
 docker compose ps
 docker compose logs -f paper
 ```
@@ -443,6 +444,56 @@ docker compose run --rm market-inputs --provider ofr    # one provider, now
 ```
 
 A new series is one line in `research/ml/sources.py`'s registry.
+
+### The risk report, each trading morning
+
+`forecast` makes the next session's risk report with nobody at the page
+(`tools/forecast_morning.py`). At `VAI_FORECAST_AT` (07:45 Eastern) on a
+session day -- weekends and NYSE holidays are skipped -- it runs the Forecast
+tab's generator (`research/forecast_generator/`) for each of
+`VAI_FORECAST_SYMBOLS` (TQQQ) with Chronos-2, then does what the Live page's
+buttons do:
+
+- **Check:** the report is kept in the forecast database through `web`'s own
+  route. A `forecast_harvest` profile with `forecast_from_db` reads it there
+  at the open, the risk report panel charts it, and `tracking` scores it
+  after the close.
+- **Apply:** it is queued for every **paper** deployment that takes that
+  fund's reports and whose trader is up (`paper-ultimate`), so the trader
+  applies it before the open. Real money is never applied to: the server asks
+  for its id typed back, and the service never types it. Each Apply carries
+  an idempotency key from the deployment and the report's hash, so the same
+  report is never queued twice.
+
+It talks only to `web` (`http://web:8000`) and the public market-data
+sources, and mounts nothing but the model's weights (`hf_cache`, filled from
+Hugging Face on the first run). It runs on its own image target, the
+Dockerfile's `forecast` (the app plus torch on CPU and
+chronos-forecasting), so the traders and `web` stay without torch.
+
+- **A run that does not finish is tried again every 10 minutes until 09:15**,
+  and only what did not finish: a report already made is kept and applied as
+  it is, never made again. After 09:15 that session goes without it, and the
+  log says to make one on the Forecast tab.
+- **A report made that morning is left as it is.** One made on the Forecast
+  tab or pasted before 07:45, or by the service itself before a restart,
+  stands, so the service never replaces yours or applies twice. An evening
+  report does not count: the morning's carries the pre-market move
+  (`overnight_gap_risk`), which the evening's cannot.
+- **A start inside the window runs at once**, so a deploy or a restart at
+  08:20 still makes that morning's report.
+
+```bash
+docker compose logs forecast                       # each morning: made, kept, applied
+docker compose run --rm forecast --dry-run         # make and audit one now; keep and apply nothing
+docker compose run --rm forecast --no-apply        # make and keep one now
+docker compose build forecast                      # its image, after a pull
+```
+
+A one-off run (`--dry-run`, `--no-apply`; `docker compose run --rm forecast
+--engine chronos` to make, keep and apply one now) is for whichever session a
+report made then is for, as the Forecast tab's is, and goes ahead even when
+one was made that morning; inside regular hours it refuses.
 
 ---
 
