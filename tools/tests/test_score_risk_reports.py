@@ -263,7 +263,7 @@ class TestScoreForecasts:
             return minute_bars(THROUGH_FRIDAY)
 
         counts = S.score_forecasts(store, SATURDAY_NIGHT, load=load)
-        assert counts == {"closes": 1, "scored": 1, "waiting": 0}
+        assert counts == {"closes": 1, "scored": 1, "waiting": 0, "horizons": 0}
         assert asked[0][0] == "TQQQ" and asked[0][1].tzinfo is not None
         friday, monday = store.sessions("TQQQ")
         assert friday["actual"]["return_pct"] == pytest.approx(100 * (40.99 / 48.99 - 1), abs=1e-3)
@@ -273,6 +273,7 @@ class TestScoreForecasts:
             "closes": 0,
             "scored": 0,
             "waiting": 0,
+            "horizons": 0,
         }
 
     def test_a_session_the_warehouse_lacks_waits_for_the_next_night(self, store):
@@ -280,12 +281,55 @@ class TestScoreForecasts:
         counts = S.score_forecasts(
             store, SATURDAY_NIGHT, load=lambda s, since: minute_bars(partial)
         )
-        assert counts == {"closes": 0, "scored": 0, "waiting": 1}
+        assert counts == {"closes": 0, "scored": 0, "waiting": 1, "horizons": 0}
         assert store.sessions("TQQQ")[0]["actual"] is None
         counts = S.score_forecasts(
             store, SATURDAY_NIGHT, load=lambda s, since: minute_bars(THROUGH_FRIDAY)
         )
         assert counts["closes"] == 1 and counts["scored"] == 1
+
+    def test_a_week_is_scored_once_its_last_session_has_closed(self, store):
+        bars = {
+            **THROUGH_FRIDAY,
+            date(2026, 11, 23): (44.0, "15:59"),
+            date(2026, 11, 24): (45.0, "15:59"),
+            date(2026, 11, 25): (46.0, "15:59"),
+            date(2026, 11, 27): (47.0, "12:59"),  # the early close after Thanksgiving
+        }
+
+        def night(month, day):
+            return S.score_forecasts(
+                store,
+                datetime(2026, month, day, 2, 0, tzinfo=UTC),
+                load=lambda s, since: minute_bars(bars),
+            )
+
+        assert night(11, 26)["horizons"] == 0, "the 20th's week ends on the 27th"
+        assert night(11, 28)["horizons"] == 0, "an early close counts once a later session has bars"
+        bars[date(2026, 11, 30)] = (48.0, "15:59")
+        assert night(12, 1)["horizons"] == 2, (
+            "the 20th's week, to the 27th; the 23rd's, to the 30th"
+        )
+        monday, friday = store.reports("TQQQ")
+        week = friday["horizons"]["next_week"]
+        assert week["end_session"] == "2026-11-27"
+        assert week["score"]["return_pct"] == pytest.approx(100 * (47.0 / 48.99 - 1), abs=1e-3)
+        assert week["score"]["end_close"] == 47.0
+        assert monday["horizons"]["next_week"]["score"]["return_pct"] == pytest.approx(
+            100 * (48.0 / 40.99 - 1), abs=1e-3
+        )
+        assert friday["horizons"]["next_month"]["score"] is None
+        assert night(12, 1)["horizons"] == 0, "scored once"
+
+    def test_score_horizon_reads_that_horizons_bands(self):
+        parsed = report()
+        q = parsed.horizon("next_week").quantiles
+        inside = S.score_horizon(parsed, "next_week", prior_close=100.0, close=100.0 + q["p25"])
+        assert inside["in_90"] and inside["in_50"]
+        outside = S.score_horizon(
+            parsed, "next_week", prior_close=100.0, close=100.0 + q["p01"] - 1
+        )
+        assert not outside["in_90"] and outside["pit"] < 0.05
 
     def test_the_description_names_where_each_close_landed(self, store):
         S.score_forecasts(store, SATURDAY_NIGHT, load=lambda s, since: minute_bars(THROUGH_FRIDAY))
@@ -355,7 +399,7 @@ class TestTheNightlyRun:
         assert ok
         assert lines == [
             "[tracking] forecasts: 0 archived report(s) copied in, 1 close(s), 1 score(s), "
-            "0 session(s) waiting for bars"
+            "0 longer horizon(s) scored, 0 session(s) waiting for bars"
         ]
 
     def test_a_failure_is_a_line_and_fails_the_run(self, store):

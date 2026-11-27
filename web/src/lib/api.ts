@@ -40,6 +40,9 @@ import type {
 import type { Ablation, ByTicker, Dataset, Eval, MlSeries } from "@/types/ml";
 import type { ForecastEngineId, ForecastRun, ForecastStatus, StartedForecast } from "@/types/forecast";
 import type {
+  KeptInputs,
+  KeptReportDetail,
+  KeptReports,
   RecordedForecast,
   RiskForecasts,
   RiskReportPreview,
@@ -314,8 +317,22 @@ export const api = {
 
   /** Keep a pasted risk report in the forecast database (server/risk_forecasts.py).
    * Check sends it first, so every report checked is kept, applied or not. */
-  recordRiskForecast: (report: unknown, operator?: string) =>
-    post<RecordedForecast>("/api/live/risk-forecasts", { report, operator: operator || null }),
+  recordRiskForecast: (report: unknown, operator?: string, inputs?: KeptInputs) =>
+    post<RecordedForecast>("/api/live/risk-forecasts", {
+      report,
+      operator: operator || null,
+      ...(inputs ? { inputs } : {}),
+    }),
+
+  /** Every report kept for `symbol` (default: the most recently received), newest
+   * first -- a session's evening and morning reports both -- with who added each,
+   * its outcome and each longer horizon's score once it has closed. */
+  keptReports: (symbol?: string, limit = 60) =>
+    request<KeptReports>(`/api/live/risk-forecasts/reports?${query({ symbol, limit })}`),
+
+  /** One kept report whole: the report, every receipt, the inputs it was made from. */
+  keptReport: (sha256: string) =>
+    request<KeptReportDetail>(`/api/live/risk-forecasts/report?${query({ sha256 })}`),
 
   /** The Forecast tab (server/forecast_generator.py): what can run here, for
    * which session, and the last runs. Makes and writes nothing. */

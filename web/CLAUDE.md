@@ -35,8 +35,11 @@ src/
 │   │                      #   RiskReportPanel (paste, check and apply the nightly risk report -- lib/riskReport.ts; Check also keeps it
 │   │                      #   in the forecast database, and ForecastChart charts each forecast against its close -- lib/forecastChart.ts)
 │   │                      #   and RiskReportHistory,
-│   ├── forecast/           # ForecastTab: generate a risk report (server/forecast_generator.py; lib/forecast.ts), see what it read,
-│   │                      #   keep it in the forecast database, or hand it to Live's RiskReportPanel (sessionStorage, taken once)
+│   ├── forecast/           # ForecastTab: the next session's report in force, Generate (server/forecast_generator.py; lib/forecast.ts),
+│   │                      #   ReportView (one report: FanChart through a year, DistributionChart for one horizon, what came of
+│   │                      #   each horizon, what it read; Keep, or hand it to Live's RiskReportPanel -- sessionStorage, taken
+│   │                      #   once) and TrackRecord (every report kept, how often each horizon landed in its ranges) --
+│   │                      #   server/risk_forecasts.py's .../reports and .../report; lib/forecastReview.ts
 │   ├── algorithms/         # AlgorithmsTab: candidates -> paper trial -> promoted -> live profile (server/algorithms.py; lib/algorithms.ts)
 │   ├── ml/                 # ModelInsights — reads server/ml_insights.py's read-only artifacts
 │   ├── warehouse/          # WarehouseTab (polls server/warehouse_status.py): funds, sweeps, storage, server

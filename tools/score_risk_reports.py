@@ -51,7 +51,9 @@ step -- run by tools/track_live.py after the warehouse refresh, or now with
 of each finished session that has a report (the warehouse's regular-hours
 minute bars, the last bar at 15:45 Eastern or later, or a later session's
 bars there: a close is written once, so a refresh cut off mid-day must not
-leave a wrong one), and scores every report against its session. The
+leave a wrong one), and scores every report against its session -- and
+each longer horizon (a week, a month, a quarter, a year) against the close
+of its last session once that has closed (score_horizon). The
 tracking rows above score against the trader's own bar journal; the
 database scores against the warehouse, the same closes for every
 deployment. --import stores report files by hand.
@@ -150,6 +152,23 @@ def score_session(
             "pinball": round(pinball(wq, week), 4),
         }
     return row
+
+
+def score_horizon(
+    report: RiskReport, horizon: str, *, prior_close: float, close: float
+) -> dict[str, Any]:
+    """One longer horizon against the close of its last session, measured
+    from the same prior close as the next session's score: the return,
+    inside its 90% and 50% bands, the PIT and the pinball loss."""
+    realised = 100.0 * (close / prior_close - 1.0)
+    q = report.horizon(horizon).quantiles
+    return {
+        "return_pct": round(realised, 4),
+        "in_90": q["p05"] <= realised <= q["p95"],
+        "in_50": q["p25"] <= realised <= q["p75"],
+        "pit": round(pit(q, realised), 4),
+        "pinball": round(pinball(q, realised), 4),
+    }
 
 
 def followed(
@@ -316,15 +335,16 @@ def session_closes(frame: Any) -> dict[date, float]:
 
 def score_forecasts(store, now: datetime, *, load=None) -> dict[str, int]:
     """Record the closes of every finished session with a report, then
-    score each report whose session has them. `load(symbol, since=...)`
-    gives minute bars (default: engine.warehouse.bars.load_frame)."""
+    score each report whose session has them, then each longer horizon
+    whose last session has closed. `load(symbol, since=...)` gives minute
+    bars (default: engine.warehouse.bars.load_frame)."""
     import pandas as pd
 
     from engine.core.trading_calendar import previous_session
 
     if load is None:
         from engine.warehouse.bars import load_frame as load
-    counts = {"closes": 0, "scored": 0, "waiting": 0}
+    counts = {"closes": 0, "scored": 0, "waiting": 0, "horizons": 0}
     wanted: dict[str, list[date]] = {}
     for symbol, session in store.unclosed(now):
         wanted.setdefault(symbol, []).append(session)
@@ -351,6 +371,20 @@ def score_forecasts(store, now: datetime, *, load=None) -> dict[str, int]:
         if score is not None:
             store.record_score(report.sha256, score, at=now)
             counts["scored"] += 1
+    due: dict[str, list[tuple[RiskReport, float, str, date]]] = {}
+    for found in store.unscored_horizons(now):
+        due.setdefault(found[0].symbol, []).append(found)
+    for symbol, horizons in due.items():
+        start = min(end for _, _, _, end in horizons) - timedelta(days=7)
+        closes = session_closes(load(symbol, since=pd.Timestamp(start.isoformat(), tz=NY)))
+        for report, prior_close, horizon, end in horizons:
+            if end not in closes:
+                continue  # the warehouse has not got it yet; the next night will
+            score = score_horizon(report, horizon, prior_close=prior_close, close=closes[end])
+            store.record_horizon_score(
+                report.sha256, horizon, score, end_session=end, end_close=closes[end], at=now
+            )
+            counts["horizons"] += 1
     return counts
 
 
@@ -489,7 +523,8 @@ def main(argv: list[str] | None = None) -> int:
             counts = score_forecasts(store, datetime.now(UTC))
             print(
                 f"{copied} archived report(s) copied in; {counts['closes']} close(s) recorded, "
-                f"{counts['scored']} report(s) scored, {counts['waiting']} session(s) waiting"
+                f"{counts['scored']} report(s) scored, {counts['horizons']} longer horizon(s) "
+                f"scored, {counts['waiting']} session(s) waiting"
             )
         print(f"{store.path}:")
         for line in describe_forecasts(store):

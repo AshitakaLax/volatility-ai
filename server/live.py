@@ -456,13 +456,9 @@ def upcoming_session(now: datetime):
     """The session a report sent now would be for: tomorrow's after today's
     close, today's before it (engine/core/risk_report.target_session, with a
     moment inside a session read as that session)."""
-    from engine.core.trading_calendar import EASTERN, SESSION_CLOSE, is_session, next_session
+    from engine.core.trading_calendar import upcoming_session as session_for
 
-    local = now.astimezone(EASTERN)
-    day = local.date()
-    if is_session(day) and local.time() < SESSION_CLOSE:
-        return day
-    return next_session(day)
+    return session_for(now)
 
 
 def _slim_entry(entry: dict[str, Any], full: bool) -> dict[str, Any]:

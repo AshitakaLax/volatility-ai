@@ -5,9 +5,11 @@
  * SessionOverlay.to_dict(), a mapped report research/risk_overlay/mapping.py's
  * Mapped.to_dict(), the preview research/risk_overlay/preview.py's, the
  * archive rows server/live.py's _slim_entry, the forecast database's rows
- * research/risk_overlay/forecasts.py's _session_row (server/risk_forecasts.py).
+ * research/risk_overlay/forecasts.py's _session_row (server/risk_forecasts.py),
+ * and every report kept its _listed_rows / ForecastStore.report.
  * Change both sides together.
  */
+import type { ForecastResult, ForecastSnapshot, GeneratedReport } from "@/types/forecast";
 
 /** What one session is told. Every lever can only take risk away. */
 export interface RiskOverlay {
@@ -215,6 +217,81 @@ export interface RiskForecasts {
   symbols: string[];
   /** Oldest first. */
   sessions: ForecastSession[];
+}
+
+/** One time a report was added to the forecast database. */
+export interface ForecastReceipt {
+  received_at: string;
+  operator: string | null;
+  /** "check" (the Live page, the Forecast tab, the forecast service),
+   * "import" (a file, by hand) or "archive:<deployment>" (copied in nightly). */
+  via: string;
+}
+
+/** The horizons scored against a later close (tomorrow's is `score`). */
+export type LongerHorizonKey = "next_week" | "next_month" | "next_quarter" | "next_year";
+
+/** A longer horizon: the session it ends on, and its score once that has closed. */
+export interface HorizonOutcome {
+  end_session: string;
+  score: {
+    end_session: string;
+    end_close: number;
+    return_pct: number;
+    in_90: boolean;
+    in_50: boolean;
+    pit: number;
+    pinball: number;
+  } | null;
+}
+
+/** GET /api/live/risk-forecasts/reports: one report kept, of every report
+ * (not only each session's newest), with who added it and what came of it. */
+export interface KeptReport extends ForecastSession {
+  model: string | null;
+  base_price: number | null;
+  mean_pct: number;
+  std_pct: number;
+  prob_positive: number;
+  es5_pct: number;
+  regime: string | null;
+  gap_risk: string | null;
+  skew_bias: string | null;
+  confidence: number | null;
+  /** Audit warnings when it was kept. */
+  warnings: number;
+  /** Its session's newest report: the one the chart and the traders' "next" read. */
+  newest: boolean;
+  /** What the generator read for it is kept (the Forecast tab's Keep, the forecast service). */
+  has_inputs: boolean;
+  receipt_count: number;
+  /** The first receipts, oldest first. */
+  receipts: ForecastReceipt[];
+  horizons: Record<LongerHorizonKey, HorizonOutcome>;
+}
+
+export interface KeptReports {
+  symbol: string | null;
+  symbols: string[];
+  /** The session a report sent now is for. */
+  upcoming_session: string;
+  /** Newest session first; inside one, the newest report first. */
+  reports: KeptReport[];
+}
+
+/** What the generator read, kept beside a report it made. */
+export interface KeptInputs {
+  snapshot: ForecastSnapshot;
+  diagnostics?: Partial<ForecastResult["diagnostics"]>;
+  sources?: ForecastResult["sources"];
+}
+
+/** GET /api/live/risk-forecasts/report: one report whole. */
+export interface KeptReportDetail extends KeptReport {
+  report: GeneratedReport;
+  /** Every receipt, oldest first. */
+  receipts: ForecastReceipt[];
+  inputs: KeptInputs | null;
 }
 
 /** POST /api/live/risk-forecasts: the report kept. */

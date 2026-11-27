@@ -42,6 +42,8 @@ interface Props {
   error: string | null;
   /** The report Check just stored: its column is marked and described. */
   highlight?: string | null;
+  /** A click on a session's column: the Forecast tab opens that report. */
+  onSelect?: ((sha256: string) => void) | undefined;
 }
 
 /** The element's width, followed as it resizes. */
@@ -58,7 +60,7 @@ function useWidth() {
   return [ref, width] as const;
 }
 
-export function ForecastChart({ data, error, highlight }: Props) {
+export function ForecastChart({ data, error, highlight, onSelect }: Props) {
   const [ref, width] = useWidth();
   const [hover, setHover] = useState<number | null>(null);
   const rows = data?.sessions ?? [];
@@ -89,6 +91,7 @@ export function ForecastChart({ data, error, highlight }: Props) {
             hover={hover}
             setHover={setHover}
             highlight={highlight ?? null}
+            onSelect={onSelect}
           />
         ) : (
           <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
@@ -112,12 +115,14 @@ function Plot({
   hover,
   setHover,
   highlight,
+  onSelect,
 }: {
   rows: ForecastSession[];
   width: number;
   hover: number | null;
   setHover: (index: number | null) => void;
   highlight: string | null;
+  onSelect?: ((sha256: string) => void) | undefined;
 }) {
   const n = rows.length;
   const plotWidth = Math.max(40, Math.min(width - PAD.left - PAD.right, n * MAX_SLOT));
@@ -232,7 +237,11 @@ function Plot({
               height={HEIGHT}
               fill="transparent"
               onMouseEnter={() => setHover(index)}
-              onClick={() => setHover(index)}
+              onClick={() => {
+                setHover(index);
+                onSelect?.(row.sha256);
+              }}
+              className={onSelect ? "cursor-pointer" : undefined}
             />
           </g>
         );
@@ -241,7 +250,8 @@ function Plot({
   );
 }
 
-function Mark({ cx, cy, where }: { cx: number; cy: number; where: Landing }) {
+/** Where a close landed: a dot inside a range, a triangle pointing the way it missed. */
+export function Mark({ cx, cy, where }: { cx: number; cy: number; where: Landing }) {
   const fill = FILL[LANDING[where].tone];
   if (where === "above" || where === "below") {
     const size = 6.5;
@@ -257,7 +267,7 @@ function Mark({ cx, cy, where }: { cx: number; cy: number; where: Landing }) {
   return <circle cx={cx} cy={cy} r={5.5} className={cn(fill, "stroke-card")} strokeWidth={2} />;
 }
 
-function Swatch({ where }: { where: Landing }) {
+export function Swatch({ where }: { where: Landing }) {
   return (
     <svg viewBox="0 0 12 12" className="inline size-3 shrink-0" aria-hidden="true">
       {where === "above" || where === "below" ? (
